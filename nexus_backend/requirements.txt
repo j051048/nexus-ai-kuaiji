@@ -1,0 +1,11 @@
+fastapi>=0.133,<0.134
+uvicorn>=0.41,<0.43
+pydantic>=2.13,<3
+httpx>=0.28,<0.29
+pytest>=9,<10
+psycopg[binary]>=3.2,<4
+PyJWT[crypto]>=2.10,<3
+python-dotenv>=1.0,<2
+python-multipart>=0.0.22,<0.1
+Pillow>=12,<13
+pypdfium2>=4.30,<6
