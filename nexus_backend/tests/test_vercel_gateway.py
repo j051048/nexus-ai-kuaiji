@@ -192,7 +192,7 @@ def test_transport_errors_have_no_automatic_write_retry_or_private_details(error
 
     with client(handle) as browser:
         response = browser.post("/api/write", content=b"SYNTHETIC")
-    assert response.status_code == 502 and len(calls) == 1
+    assert response.status_code == (504 if error is httpx.ReadTimeout else 502) and len(calls) == 1
     assert "private-origin" not in response.text
     assert "结果尚未确认" in response.json()["detail"]
 
@@ -204,7 +204,7 @@ def test_whole_exchange_has_a_wall_clock_timeout():
 
     with client(handle, timeout_seconds=1) as browser:
         response = browser.post("/api/write", content=b"SYNTHETIC")
-    assert response.status_code == 502 and "超时" in response.json()["detail"]
+    assert response.status_code == 504 and "超时" in response.json()["detail"]
 
 
 @pytest.mark.parametrize("declared", [str(gateway.MAX_REQUEST_BYTES + 1), "x", "9" * 5000])
@@ -280,7 +280,86 @@ def test_unexposed_paths_and_docs_are_not_proxied():
 def test_settings_reads_only_explicit_server_environment(monkeypatch):
     monkeypatch.setenv("ACCOUNTING_BACKEND_ORIGIN", "http://127.0.0.1:8100/")
     monkeypatch.setenv("ACCOUNTING_GATEWAY_ALLOW_LOCAL_HTTP", "1")
+    monkeypatch.setenv("ACCOUNTING_GATEWAY_TIMEOUT_SECONDS", "95")
     settings = gateway.GatewaySettings.from_env()
     assert settings.backend_origin == "http://127.0.0.1:8100"
     assert settings.allow_local_http is True
+    assert settings.timeout_seconds == 95
     assert "127.0.0.1" not in repr(settings)
+
+
+@pytest.mark.parametrize("value", ["invalid", "nan", "111", "0"])
+def test_invalid_timeout_environment_is_rejected_safely(monkeypatch, value):
+    monkeypatch.setenv("ACCOUNTING_GATEWAY_TIMEOUT_SECONDS", value)
+    with pytest.raises(ValueError):
+        gateway.GatewaySettings.from_env()
+
+
+@pytest.mark.parametrize("headers", [
+    [("authorization", "Bearer synthetic-1"), ("authorization", "Bearer synthetic-2")],
+    [("x-firm-id", "synthetic-firm-1"), ("x-firm-id", "synthetic-firm-2")],
+    [("authorization", "a" * 8193)],
+    [("authorization", "Bearer synthetic\x00invalid")],
+])
+def test_ambiguous_or_invalid_identity_headers_do_not_reach_backend(headers):
+    def forbidden(request):
+        pytest.fail("Invalid identity headers must not reach the backend")
+
+    with client(forbidden) as browser:
+        response = browser.get("/api/auth/config", headers=headers)
+    assert response.status_code == 400
+
+
+@pytest.mark.parametrize("host", ["[", "attacker.synthetic.test", "https://attacker.synthetic.test"])
+def test_browser_host_is_never_parsed_to_construct_upstream_target(host):
+    with client(lambda request: upstream(str(request.url).encode())) as browser:
+        response = browser.get("/api/health", headers={"host": host})
+    assert response.status_code == 200
+    assert response.text == "https://accounting.synthetic.test:8443/api/health"
+
+
+def test_deeply_nested_login_configuration_fails_safely():
+    body = (b'{"nested":' + b"[" * 1500 + b"0" + b"]" * 1500 + b"}")
+    with client(lambda request: upstream(body)) as browser:
+        response = browser.get("/api/auth/config")
+    assert response.status_code == 502
+
+
+def test_request_reading_shares_whole_exchange_deadline_and_is_not_forwarded():
+    def forbidden(request):
+        pytest.fail("Timed-out body must not reach the backend")
+
+    application = gateway.create_app(
+        gateway.GatewaySettings(backend_origin="https://accounting.synthetic.test", timeout_seconds=1),
+        transport=httpx.MockTransport(forbidden),
+    )
+    messages = []
+
+    async def run():
+        async def receive():
+            await asyncio.sleep(2)
+            return {"type": "http.request", "body": b"SYNTHETIC", "more_body": False}
+
+        async def send(message):
+            messages.append(message)
+
+        scope = {
+            "type": "http", "asgi": {"version": "3.0"}, "http_version": "1.1", "method": "POST",
+            "scheme": "https", "path": "/api/write", "raw_path": b"/api/write", "query_string": b"",
+            "root_path": "", "headers": [], "client": ("127.0.0.1", 1), "server": ("synthetic.test", 443),
+        }
+        async with application.router.lifespan_context(application):
+            await application(scope, receive, send)
+
+    asyncio.run(run())
+    assert messages[0]["status"] == 504
+    assert "尚未发送" in json.loads(messages[1]["body"])["detail"]
+
+
+def test_backend_origin_cannot_be_selected_by_browser_query_or_headers():
+    with client(lambda request: upstream(str(request.url).encode())) as browser:
+        response = browser.get("/api/health?backend_origin=https%3A%2F%2Fattacker.synthetic.test", headers={
+            "accounting-backend-origin": "https://attacker.synthetic.test",
+        })
+    assert response.status_code == 200
+    assert response.text.startswith("https://accounting.synthetic.test:8443/api/health?")

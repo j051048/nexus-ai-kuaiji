@@ -54,6 +54,7 @@ __pycache__/
 *.py[cod]
 *.class
 .venv/
+**/.venv/
 nexus_backend/.venv/
 
 
@@ -129,3 +130,4 @@ artifacts/
 
 # Vercel local project/build state (environment and account metadata)
 .vercel/
+**/.vercel/

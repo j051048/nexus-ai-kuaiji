@@ -42,11 +42,11 @@ class GatewaySettings:
     # Origin is never returned to the browser or included in error messages.
     backend_origin: str = field(default="", repr=False)
     allow_local_http: bool = False
-    timeout_seconds: float = 25
+    timeout_seconds: float = 110
 
     def __post_init__(self) -> None:
-        if not 1 <= self.timeout_seconds <= 25:
-            raise ValueError("网关超时必须在 1 至 25 秒之间")
+        if not 1 <= self.timeout_seconds <= 110:
+            raise ValueError("网关超时必须在 1 至 110 秒之间")
         if not self.backend_origin:
             return
         value = self.backend_origin
@@ -84,9 +84,14 @@ class GatewaySettings:
 
     @classmethod
     def from_env(cls) -> GatewaySettings:
+        try:
+            timeout_seconds = float(os.environ.get("ACCOUNTING_GATEWAY_TIMEOUT_SECONDS", "110"))
+        except ValueError as error:
+            raise ValueError("网关超时格式无效，请检查网关服务器配置") from error
         return cls(
             backend_origin=os.environ.get("ACCOUNTING_BACKEND_ORIGIN", "").strip(),
             allow_local_http=os.environ.get("ACCOUNTING_GATEWAY_ALLOW_LOCAL_HTTP") == "1",
+            timeout_seconds=timeout_seconds,
         )
 
 
@@ -122,7 +127,7 @@ def _target(settings: GatewaySettings, request: Request) -> httpx.URL:
     path = request.scope.get("raw_path", request.url.path.encode("utf-8"))
     if not (path == b"/api" or path.startswith(b"/api/")):
         raise ValueError("无效 API 路径")
-    if any(part in (".", "..") for part in request.url.path.split("/")):
+    if any(part in (".", "..") for part in request.scope["path"].split("/")):
         raise ValueError("无效 API 路径")
     query = request.scope.get("query_string", b"")
     return httpx.URL(settings.backend_origin).copy_with(raw_path=path + (b"?" + query if query else b""))
@@ -136,16 +141,32 @@ async def _proxy(app: FastAPI, request: Request) -> Response:
         target = _target(settings, request)
     except (ValueError, httpx.InvalidURL):
         return _error(400, "无效 API 路径")
-    content = await _read_request(request)
+    deadline = asyncio.get_running_loop().time() + settings.timeout_seconds
+    try:
+        async with asyncio.timeout_at(deadline):
+            content = await _read_request(request)
+    except TimeoutError:
+        return _error(504, "请求读取超时，尚未发送到会计后端，请缩小文件后重试")
     if isinstance(content, Response):
         return content
     # Cookies, Host and forwarding headers are intentionally excluded. httpx
     # sets Host from the trusted target, preserving backend TrustedHost checks.
-    headers = {name: request.headers[name] for name in REQUEST_HEADERS if name in request.headers}
-    headers["accept-encoding"] = "identity"
+    # Preserve raw header bytes, including valid non-ASCII values, without
+    # relying on a lossy decode/encode round trip. Reject ambiguous identities.
+    headers: list[tuple[bytes, bytes]] = []
+    selected: set[bytes] = set()
+    for name, value in request.scope.get("headers", []):
+        name = name.lower()
+        if name.decode("ascii", errors="ignore") not in REQUEST_HEADERS:
+            continue
+        if name in selected or len(value) > 8192 or b"\r" in value or b"\n" in value or b"\x00" in value:
+            return _error(400, "请求头格式无效或包含重复身份信息")
+        selected.add(name)
+        headers.append((name, value))
+    headers.append((b"accept-encoding", b"identity"))
     try:
         # Bound the whole exchange, including a slowly streaming upstream.
-        async with asyncio.timeout(settings.timeout_seconds):
+        async with asyncio.timeout_at(deadline):
             client: httpx.AsyncClient = app.state.gateway_client
             async with client.stream(request.method, target, headers=headers, content=content) as upstream:
                 if 300 <= upstream.status_code < 400:
@@ -164,13 +185,13 @@ async def _proxy(app: FastAPI, request: Request) -> Response:
                 for name in RESPONSE_HEADERS:
                     value = upstream.headers.get(name)
                     if value is not None:
-                        if len(value) > 8192 or "\r" in value or "\n" in value:
+                        if len(value) > 8192 or "\r" in value or "\n" in value or "\x00" in value:
                             return _error(502, "会计后端响应格式无效")
                         response_headers[name] = value
                 response_headers["Cache-Control"] = "no-store"
                 response_headers["X-Content-Type-Options"] = "nosniff"
                 body = bytes(result)
-                if request.method != "HEAD" and request.url.path == "/api/auth/config" and upstream.status_code == 200:
+                if request.method != "HEAD" and request.scope["path"] == "/api/auth/config" and upstream.status_code == 200:
                     try:
                         config = json.loads(body)
                         if not isinstance(config, dict):
@@ -179,12 +200,12 @@ async def _proxy(app: FastAPI, request: Request) -> Response:
                         body = json.dumps(config, ensure_ascii=False, allow_nan=False, separators=(",", ":")).encode("utf-8")
                         if len(body) > MAX_RESPONSE_BYTES:
                             raise ValueError("auth config too large")
-                    except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
+                    except (UnicodeDecodeError, json.JSONDecodeError, ValueError, RecursionError):
                         return _error(502, "会计后端登录配置格式无效")
                     response_headers["content-type"] = "application/json"
                 return Response(body, status_code=upstream.status_code, headers=response_headers)
     except (httpx.TimeoutException, TimeoutError):
-        return _error(502, "会计后端请求超时，操作结果尚未确认，请先刷新状态再决定是否重试")
+        return _error(504, "会计后端请求超时，操作结果尚未确认，请先刷新任务或操作状态再决定是否重试")
     except httpx.HTTPError:
         return _error(502, "无法连接会计后端，操作结果尚未确认，请稍后刷新状态")
 
@@ -200,12 +221,13 @@ def create_app(
     async def lifespan(application: FastAPI):
         # No implicit environment proxies and no transport retries. A timed-out
         # accounting write may already have committed on the durable backend.
+        limits = httpx.Limits(max_connections=20, max_keepalive_connections=10)
         async with httpx.AsyncClient(
-            transport=transport or httpx.AsyncHTTPTransport(retries=0),
+            transport=transport if transport is not None else httpx.AsyncHTTPTransport(retries=0, trust_env=False, limits=limits),
             timeout=httpx.Timeout(effective.timeout_seconds, connect=5, pool=5),
             follow_redirects=False,
             trust_env=False,
-            limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
+            limits=limits,
         ) as client:
             application.state.gateway_client = client
             yield

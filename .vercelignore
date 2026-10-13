@@ -3,6 +3,8 @@
 .agents/
 .legacy-snapshot/
 .venv/
+**/.venv/
+**/.vercel/
 nexus_backend/.venv/
 nexus_backend/
 scripts/

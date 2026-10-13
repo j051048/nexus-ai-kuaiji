@@ -31,6 +31,10 @@ npm run dev
 
 数据库默认保存在 `nexus_backend/data/accounting.db`，不纳入 Git。关闭服务后备份该文件；可用 `ACCOUNTING_DB_PATH` 指向另一份本地数据库。`ACCOUNTING_SEED=0` 可停用示例账套。
 
+## Vercel 前端与网关
+
+根目录已提供多服务 vercel.json：app 是 Vite 前端，api_gateway 转发 /api 到 ACCOUNTING_BACKEND_ORIGIN 指向的持久会计服务器。数据库、原件和 workers 继续在服务器运行。环境、文件上限和本地联调见 [Vercel 部署说明](docs/VERCEL_DEPLOYMENT.md)，网关环境示例见 [.env.vercel.example](.env.vercel.example)。
+
 ## PostgreSQL 与真实登录试点
 
 1. 新建独立 Supabase 项目，配置 Email / Password 用户。使用管理员连接显式执行迁移，并建立受限运行账号，见 [数据库接入](docs/POSTGRES_SETUP.md)。应用拒绝超级用户或 BYPASSRLS 运行连接。

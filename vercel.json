@@ -5,6 +5,7 @@
       "root": ".",
       "framework": "vite",
       "buildCommand": "npm run build",
+      "devCommand": "npm run dev -- --port $PORT",
       "outputDirectory": "dist"
     },
     "api_gateway": {
@@ -18,9 +19,8 @@
       }
     }
   },
-  "rewrites": [
-    { "source": "/api", "destination": { "service": "api_gateway" } },
-    { "source": "/api/(.*)", "destination": { "service": "api_gateway" } },
-    { "source": "/(.*)", "destination": { "service": "app" } }
+  "routes": [
+    { "src": "^/api(?:/.*)?$", "destination": { "service": "api_gateway" } },
+    { "src": "^/(.*)$", "destination": { "service": "app" } }
   ]
 }
