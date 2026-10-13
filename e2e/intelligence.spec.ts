@@ -1,3 +1,4 @@
+import { openManagement } from './ui-navigation';
 import { expect, test, type Page } from '@playwright/test';
 
 const receipt = { name: '第四阶段虚构票据.png', mimeType: 'image/png', buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAFUlEQVR4nGP8//8/AzbAhFV00EoAAFbUAw037MyjAAAAAElFTkSuQmCC', 'base64') };
@@ -18,6 +19,7 @@ async function createWithOriginal(page: Page, description: string) {
   await page.getByLabel('交易对方', { exact: true }).fill('第四阶段虚构供应商');
   await page.getByLabel('事项分类', { exact: true }).selectOption('office');
   await page.getByLabel('业务用途', { exact: true }).fill('第四阶段隔离浏览器验证');
+  if (await page.getByText('我已核对原件，确认日期、金额、交易对方与本次业务一致。', { exact: true }).count()) await page.getByText('我已核对原件，确认日期、金额、交易对方与本次业务一致。', { exact: true }).click();
   await page.getByRole('button', { name: '保存事项', exact: true }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(page.getByRole('heading', { name: description, exact: true })).toBeVisible();
@@ -31,6 +33,9 @@ async function createWithOriginal(page: Page, description: string) {
 
 async function openEvent(page: Page, description: string, scope?: '企业财务') {
   if (scope) await page.getByRole('tab', { name: scope, exact: true }).click();
+  // Finance now starts with pending verification; this test deliberately
+  // inspects an employee's draft without changing its approval state.
+  if (scope) if (await page.getByLabel('筛选业务事项状态', { exact: true }).inputValue() !== '') await page.getByLabel('筛选业务事项状态', { exact: true }).selectOption('');
   await page.getByRole('button').filter({ has: page.getByText(description, { exact: true }) }).click();
   await expect(page.getByRole('heading', { name: description, exact: true })).toBeVisible();
 }
@@ -63,7 +68,7 @@ test('真实本地 UI：企业启用、未配置服务禁识别、员工登记�
     await expect(panel.getByText('这是最新资料的即时核对发现，请先“重新核对”登记后再记录人工处理。', { exact: true })).toHaveCount(0);
     await expect(panel.getByText('附件尚未成功识别，需人工核对或重试', { exact: true })).toBeVisible();
     await expect(panel.getByRole('button', { name: '记录人工处理', exact: true })).toHaveCount(0);
-    await page.getByRole('button', { name: '票据核对异常', exact: true }).click();
+    await openManagement(page); await page.getByRole('button', { name: '票据核对异常', exact: true }).click();
     await expect(page.getByText(description, { exact: true }).first()).toBeVisible();
 
     await persona(page, 'finance');

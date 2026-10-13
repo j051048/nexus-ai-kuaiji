@@ -109,7 +109,7 @@ class OperationsService:
         return dict(row) if row else dict(DEFAULT_POLICY)
 
     def policy(self, actor, company_id, request=None):
-        with self.db.transaction(write=request is not None, actor=actor) as conn:
+        with self.db.transaction(write=request is not None, actor=actor, company_id=company_id) as conn:
             _, manager = self._company(conn, actor, company_id, manage=request is not None)
             old = self._policy_raw(conn, actor.firm_id, company_id)
             if request is None:
@@ -156,12 +156,25 @@ class OperationsService:
             "risk_fingerprint": fingerprint([(row["id"], row["state"], row["version"]) for row in sorted(current + carried + historical_overrun, key=lambda row: row["id"])]),
         }
         jobs = [dict(row) for row in conn.execute("SELECT * FROM ocr_jobs WHERE firm_id=? AND company_id=?", (firm_id, company_id))]
+        proposal_jobs = [dict(row) for row in conn.execute("SELECT * FROM proposal_jobs WHERE firm_id=? AND company_id=?", (firm_id, company_id))]
+        waiting_count = sum(row["status"] == "waiting" for row in proposal_jobs)
+        for row in proposal_jobs:
+            jobs.append({**row, "id": "proposal:" + row["id"], "status": "queued" if row["status"] == "waiting" else row["status"]})
         cutoff = self.meter.clock() - timedelta(minutes=policy["failure_window_minutes"])
         queue = {state: sum(row["status"] == state for row in jobs) for state in QUEUE_STATES}
         queue.update(recent_failures=sum(row["status"] in {"failed", "interrupted"} and _date(row["finished_at"]) is not None and _date(row["finished_at"]) >= cutoff for row in jobs),
                      oldest_pending_at=min((row["created_at"] for row in jobs if row["status"] in {"queued", "retry_wait"}), default=None),
                      risk_fingerprint=fingerprint([(row["id"], row["status"], row["attempt_count"], row["finished_at"]) for row in sorted(jobs, key=lambda row: row["id"])]))
+        queue.update(waiting=waiting_count, needs_attention=sum(row["status"]=="needs_attention" for row in proposal_jobs))
         snapshots = [dict(row) for row in conn.execute("SELECT x.* FROM ops_exception_snapshots x WHERE x.firm_id=? AND x.company_id=? AND EXISTS(SELECT 1 FROM ai_company_settings s WHERE s.firm_id=x.firm_id AND s.company_id=x.company_id AND s.enabled=1) AND NOT EXISTS(SELECT 1 FROM business_mappings m JOIN drafts d ON d.id=m.draft_id AND d.book_id=m.book_id WHERE m.event_id=x.event_id AND d.status<>'draft')", (firm_id, company_id))]
+        blocked = {row["event_id"] for row in snapshots if row["blocking_count"] > 0}
+        attention = conn.execute("""SELECT p.event_id,MIN(p.created_at) AS oldest_opened_at,MAX(p.updated_at) AS updated_at
+            FROM proposal_jobs p JOIN drafts d ON d.id=p.draft_id AND d.book_id=p.book_id AND d.status='draft'
+            JOIN ai_company_settings enabled ON enabled.firm_id=p.firm_id AND enabled.company_id=p.company_id AND enabled.enabled=1
+            WHERE p.firm_id=? AND p.company_id=? AND p.status='needs_attention' GROUP BY p.event_id""",(firm_id,company_id)).fetchall()
+        for row in attention:
+            if row["event_id"] not in blocked:
+                snapshots.append({**dict(row),"blocking_count":1,"warning_count":0,"context_fingerprint":fingerprint({"proposal_attention":row["event_id"],"updated_at":row["updated_at"]})})
         exceptions = {"blocking_events": sum(row["blocking_count"] > 0 for row in snapshots), "blocking_count": sum(row["blocking_count"] for row in snapshots), "warning_count": sum(row["warning_count"] for row in snapshots),
                       "oldest_opened_at": min((row["oldest_opened_at"] for row in snapshots if row["blocking_count"] and row["oldest_opened_at"]), default=None),
                       "updated_at": max((row["updated_at"] for row in snapshots), default=None),
@@ -170,7 +183,22 @@ class OperationsService:
         stale_before = self.meter.clock() - timedelta(seconds=policy["worker_stale_seconds"])
         worker = {"available": any(row["state"] in {"active", "idle"} and _date(row["heartbeat_at"]) is not None and _date(row["heartbeat_at"]) >= stale_before for row in heartbeats),
                   "last_heartbeat_at": max((row["heartbeat_at"] for row in heartbeats), default=None)}
-        return {"period": period, "policy": policy, "costs": costs, "queue": queue, "exceptions": exceptions, "worker": worker}
+        cases = [dict(row) for row in conn.execute("SELECT id,version,state,due_on,created_at FROM case_tasks WHERE firm_id=? AND company_id=? AND state<>'closed'", (firm_id, company_id))]
+        today = self.meter.clock().astimezone(timezone(timedelta(hours=8))).date().isoformat()
+        workflow = {"open_cases": len(cases), "overdue_supplements": sum(item["state"] == "awaiting_info" and item["due_on"] is not None and item["due_on"] < today for item in cases),
+                    "exports_without_receipt": conn.execute("SELECT COUNT(*) FROM delivery_manifests m WHERE m.firm_id=? AND m.company_id=? AND NOT EXISTS(SELECT 1 FROM delivery_receipts r WHERE r.export_id=m.export_id)", (firm_id, company_id)).fetchone()[0],
+                    "latest_receipts_unknown": 0, "latest_receipts_rejected": 0}
+        for row in conn.execute("SELECT r.body_json FROM delivery_receipts r WHERE r.firm_id=? AND r.company_id=? AND r.id=(SELECT r2.id FROM delivery_receipts r2 WHERE r2.export_id=r.export_id ORDER BY r2.created_at DESC,r2.id DESC LIMIT 1)", (firm_id, company_id)):
+            for item in _json(row["body_json"]).get("items", []):
+                if item.get("status") == "unknown":
+                    workflow["latest_receipts_unknown"] += 1
+                elif item.get("status") == "rejected":
+                    workflow["latest_receipts_rejected"] += 1
+        exceptions["blocking_events"] += len(cases)
+        exceptions["blocking_count"] += len(cases)
+        exceptions["oldest_opened_at"] = min([value for value in [exceptions["oldest_opened_at"], *[item["created_at"] for item in cases]] if value], default=None)
+        exceptions["risk_fingerprint"] = fingerprint({"existing": exceptions["risk_fingerprint"], "cases": [(item["id"], item["version"], item["state"]) for item in cases]})
+        return {"period": period, "policy": policy, "costs": costs, "queue": queue, "exceptions": exceptions, "worker": worker, "workflow": workflow}
 
     @staticmethod
     def _cost_json(row, manager):
@@ -194,7 +222,7 @@ class OperationsService:
     def overview(self, actor, company_id, period=None):
         if period is not None and not re.fullmatch(r"20[0-9]{2}-(?:0[1-9]|1[0-2])", period):
             raise AccountingError("费用月份须为2000至2099年的YYYY-MM", 422)
-        with self.db.transaction(actor=actor) as conn:
+        with self.db.transaction(actor=actor, company_id=company_id) as conn:
             company, manager = self._company(conn, actor, company_id)
             period = period or self.meter.period(conn)
             metrics = self._metrics(conn, actor.firm_id, company_id, period)
@@ -216,7 +244,13 @@ class OperationsService:
                     "queue": queue, "exceptions": {"events": int(exceptions["blocking_events"]), "blocking": int(exceptions["blocking_count"]), "warning": int(exceptions["warning_count"]),
                                                        "oldest_opened_at": exceptions["oldest_opened_at"], "updated_at": exceptions.get("updated_at")},
                     "workers": {"available": bool(metrics["worker"]["available"]), "last_heartbeat_at": metrics["worker"]["last_heartbeat_at"]},
-                    "alerts": alerts, "costs": records, "can_manage_budget": manager}
+                    "alerts": alerts, "costs": records, "can_manage_budget": manager,
+                    "workflow": metrics.get("workflow", {}), "monitor": self._monitor_state(conn, actor.firm_id, company_id)}
+
+    @staticmethod
+    def _monitor_state(conn, firm_id, company_id):
+        row = conn.execute("SELECT last_refreshed_at,next_due_at FROM ops_company_refresh WHERE firm_id=? AND company_id=?", (firm_id, company_id)).fetchone()
+        return dict(row) if row else {"last_refreshed_at": None, "next_due_at": None}
 
     def _refresh_alerts(self, conn, firm_id, company_id):
         if self.db.is_postgres:
@@ -237,10 +271,10 @@ class OperationsService:
             "budget_exhausted": (bool(policy["quota_enabled"] and costs["exposure_micro"] >= policy["monthly_limit_micro"]), costs["exposure_micro"], "本月模型费用额度已用尽", "critical", costs["risk_fingerprint"]),
             "quota_overrun": (overrun > 0, overrun, "模型费用超过单次预留金额，须核对成本", "critical", costs["risk_fingerprint"]),
             "usage_uncertain": (unknown > 0, unknown, "部分模型调用的用量或费用尚未确认", "warning", costs["risk_fingerprint"]),
-            "task_failures": (queue["recent_failures"] >= policy["failure_threshold"], queue["recent_failures"], "近期票据处理失败较多，请检查服务", "warning", queue["risk_fingerprint"]),
+            "task_failures": (queue["recent_failures"] >= policy["failure_threshold"], queue["recent_failures"], "近期后台处理失败较多，请检查服务", "warning", queue["risk_fingerprint"]),
             "exception_backlog": (bool(exceptions["blocking_events"] >= policy["backlog_threshold"] and old_exception and old_exception <= clock - timedelta(minutes=policy["backlog_age_minutes"])), exceptions["blocking_events"], "会计核对异常积压，需要人工处理", "warning", exceptions["risk_fingerprint"]),
-            "queue_wait": (bool(pending and old_queue and old_queue <= clock - timedelta(minutes=policy["queue_wait_minutes"])), pending, "票据任务等待时间过长", "warning", queue["risk_fingerprint"]),
-            "worker_unavailable": (bool(pending + queue["running"] > 0 and not worker["available"]), pending + queue["running"], "有待处理票据，但后台进程心跳不可用", "critical", queue["risk_fingerprint"]),
+            "queue_wait": (bool(pending and old_queue and old_queue <= clock - timedelta(minutes=policy["queue_wait_minutes"])), pending, "后台任务等待时间过长", "warning", queue["risk_fingerprint"]),
+            "worker_unavailable": (bool(pending + queue["running"] > 0 and not worker["available"]), pending + queue["running"], "有待处理任务，但后台进程心跳不可用", "critical", queue["risk_fingerprint"]),
         }
         stamp = self.meter.timestamp(conn)
         for code, (triggered, count, message, severity, risk) in conditions.items():
@@ -262,7 +296,7 @@ class OperationsService:
         return {"refreshed": 7}
 
     def refresh(self, actor, company_id):
-        with self.db.transaction(write=True, actor=actor) as conn:
+        with self.db.transaction(write=True, actor=actor, company_id=company_id) as conn:
             self._company(conn, actor, company_id)
             self._refresh_alerts(conn, actor.firm_id, company_id)
         return self.overview(actor, company_id)
@@ -303,18 +337,42 @@ class OperationsService:
             self._refresh_alerts(conn, actor.firm_id, row["company_id"])
             return self._cost_json(conn.execute("SELECT * FROM model_costs WHERE id=?", (cost_id,)).fetchone(), True)
 
-    def maintenance(self, conn, worker_id, inflight=0, state="idle"):
-        """Only the worker's trusted dispatch transaction calls global maintenance."""
+    def heartbeat(self, conn, worker_id, inflight=0, state="idle"):
+        """Heartbeat is callable in its own short transaction, without scanning."""
         if state not in {"active", "idle", "stopped"} or type(inflight) is not int or not 0 <= inflight <= 2 or (state != "active" and inflight):
             raise ValueError("后台心跳状态不合法")
         if not isinstance(worker_id, str) or not 1 <= len(worker_id.strip()) <= 120:
             raise ValueError("后台标识不合法")
         if self.db.is_postgres:
-            conn.execute("SELECT accounting.record_worker_heartbeat(?,?,?)", (worker_id, state, inflight))
-            return conn.execute("SELECT accounting.ops_scan_all_alerts()").fetchone()[0]
+            return conn.execute("SELECT accounting.record_worker_heartbeat(?,?,?)", (worker_id, state, inflight)).fetchone()[0]
         stamp = self.meter.timestamp(conn)
         conn.execute("INSERT INTO worker_heartbeats(worker_id,started_at,heartbeat_at,state,inflight_count) VALUES(?,?,?,?,?) ON CONFLICT(worker_id) DO UPDATE SET started_at=CASE WHEN worker_heartbeats.state='stopped' AND excluded.state<>'stopped' THEN excluded.started_at ELSE worker_heartbeats.started_at END,heartbeat_at=excluded.heartbeat_at,state=excluded.state,inflight_count=excluded.inflight_count", (worker_id, stamp, stamp, state, inflight))
-        companies = conn.execute("SELECT firm_id,company_id FROM firm_clients WHERE status='active' ORDER BY firm_id,company_id").fetchall()
-        for company in companies:
+        return True
+
+    def refresh_pending(self, conn, batch_limit=20, deadline_limit=5):
+        """Worker-only bounded fair queue, plus periodic time-based rechecks."""
+        if type(batch_limit) is not int or not 1 <= batch_limit <= 100 or type(deadline_limit) is not int or not 0 <= deadline_limit <= 20:
+            raise ValueError("监控批量参数不合法")
+        if self.db.is_postgres:
+            return conn.execute("SELECT accounting.ops_refresh_dirty(?,?)", (batch_limit, deadline_limit)).fetchone()[0]
+        stamp, refreshed = self.meter.timestamp(conn), 0
+        next_due = (self.meter.clock() + timedelta(seconds=30)).astimezone(timezone.utc).isoformat()
+        dirty = conn.execute("SELECT d.firm_id,d.company_id FROM ops_company_dirty d JOIN firm_clients f USING(firm_id,company_id) WHERE f.status='active' ORDER BY d.dirty_at,d.firm_id,d.company_id LIMIT ?", (batch_limit,)).fetchall()
+        for company in dirty:
             self._refresh_alerts(conn, company["firm_id"], company["company_id"])
-        return len(companies)
+            conn.execute("DELETE FROM ops_company_dirty WHERE firm_id=? AND company_id=?", (company["firm_id"], company["company_id"]))
+            conn.execute("UPDATE ops_company_refresh SET last_refreshed_at=?,next_due_at=? WHERE firm_id=? AND company_id=?", (stamp, next_due, company["firm_id"], company["company_id"]))
+            refreshed += 1
+        due = conn.execute("SELECT r.firm_id,r.company_id FROM ops_company_refresh r JOIN firm_clients f USING(firm_id,company_id) WHERE f.status='active' AND r.next_due_at<=? ORDER BY r.next_due_at,r.firm_id,r.company_id LIMIT ?", (stamp, deadline_limit)).fetchall()
+        for company in due:
+            self._refresh_alerts(conn, company["firm_id"], company["company_id"])
+            conn.execute("DELETE FROM ops_company_dirty WHERE firm_id=? AND company_id=?", (company["firm_id"], company["company_id"]))
+            conn.execute("UPDATE ops_company_refresh SET last_refreshed_at=?,next_due_at=? WHERE firm_id=? AND company_id=?", (stamp, next_due, company["firm_id"], company["company_id"]))
+            refreshed += 1
+        return refreshed
+
+    def maintenance(self, conn, worker_id, inflight=0, state="idle", batch_limit=20, deadline_limit=5, update_heartbeat=True):
+        """Compatibility entry point; workers can commit heartbeat separately."""
+        if update_heartbeat:
+            self.heartbeat(conn, worker_id, inflight, state)
+        return self.refresh_pending(conn, batch_limit, deadline_limit)

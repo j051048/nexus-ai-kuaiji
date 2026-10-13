@@ -1,3 +1,4 @@
+from period_fixtures import restore_period_state
 """Real PostgreSQL exercises complete service payloads with synthetic OCR only."""
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
@@ -14,6 +15,7 @@ from app.accounting.service import fingerprint
 from app.business.service import BusinessService
 from app.business.storage import AttachmentStore
 from app.intelligence.provider import EXTRACTION_PROMPT_VERSION
+from app.intelligence.cache import config_key
 from app.intelligence.requests import BankLinkRequest, OCRRequest
 from app.intelligence.service import IntelligenceService
 from test_business_postgres import ADMIN_URL, APP_URL, business_case, business_postgres
@@ -109,7 +111,7 @@ def test_pg_ai_period_closed_during_external_ocr_abandons_without_output(pg_ai):
     case = pg_ai
     event = create_event(case)
     receipt = handoff(case, event)
-    case.provider.extract_hook = lambda: case.ledger.close_period(case.actors["accountant"], case.book["id"], "2026-10")
+    case.provider.extract_hook = lambda: restore_period_state(case.ledger.db, case.book["id"])
     with pytest.raises(AccountingError):
         extract(case, receipt["event"])
     assert admin_rows(case, "SELECT status,result_json FROM accounting.ai_runs WHERE event_id=%s", (event["id"],)) == [("stale", None)]
@@ -217,13 +219,15 @@ def test_pg_ai_foreign_requester_cannot_expire_another_persons_running_claim(pg_
     old = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat()
     settings = case.provider.settings
     attachment = event["attachments"][0]
-    digest = fingerprint({"attachment_id": attachment["id"], "sha256": attachment["sha256"], "provider": settings.base_url,
-                          "format": settings.response_format, "model": settings.vision_model, "prompt": EXTRACTION_PROMPT_VERSION})
+    digest = fingerprint({"attachment_id": attachment["id"], "sha256": attachment["sha256"],
+                          "config": config_key(settings, attachment["media_type"]),
+                          "fact_version": event["fact_version"], "force_refresh": False})
     with monkeypatch.context() as patched:
         patched.setattr("app.intelligence.service.now", lambda: old)
         with case.db.transaction(write=True, actor=case.actors["employee"]) as conn:
             current = case.business._event(conn, case.actors["employee"], event["id"])
             run, _ = case.intelligence._claim(conn, case.actors["employee"], current, "ocr", "old-running-claim", digest, settings.vision_model, EXTRACTION_PROMPT_VERSION, attachment_id=attachment["id"])
+            assert run["input_fingerprint"] == digest and run["created_by"] == case.actors["employee"].user_id
     with pytest.raises(AccountingError, match="其他人员"):
         extract(case, event, actor="finance", key="old-running-claim")
     assert admin_rows(case, "SELECT status FROM accounting.ai_runs WHERE id=%s", (run["id"],)) == [("running",)]

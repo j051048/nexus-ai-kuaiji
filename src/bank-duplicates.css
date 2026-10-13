@@ -1,0 +1,11 @@
+.bank-duplicate-panel { margin-top: 18px; padding: 18px; border: 1px solid var(--border); border-left: 3px solid #a86e35; background: #faf8f3; }
+.bank-duplicate-heading { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.bank-duplicate-warning { display: flex; align-items: flex-start; gap: 8px; color: #895728; line-height: 1.6; font-size: 13px; }
+.bank-duplicate-warning svg { flex-shrink: 0; margin-top: 3px; }
+.bank-duplicate-candidates article { display: flex; justify-content: space-between; gap: 12px; align-items: center; border-top: 1px solid #e8e0d5; padding: 12px 0; }
+.bank-duplicate-candidates article div { display: grid; gap: 5px; font-size: 13px; min-width: 0; overflow-wrap: anywhere; }
+.bank-duplicate-candidates article span { color: #6b665e; font-size: 12px; }
+.bank-distinguished { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.bank-duplicate-candidates article .bank-duplicate-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; max-width: 450px; }
+.bank-isolate-button { border-color: #b99e7c; color: #754d24; }
+@media(max-width: 700px) { .bank-duplicate-candidates article { flex-direction: column; align-items: flex-start; } }

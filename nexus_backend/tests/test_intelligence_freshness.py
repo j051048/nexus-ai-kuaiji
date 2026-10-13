@@ -1,3 +1,4 @@
+from period_fixtures import restore_period_state
 """Published suggestions and human decisions remain tied to the current evidence."""
 import pytest
 
@@ -54,7 +55,7 @@ def test_closed_period_and_frozen_source_cannot_send_employee_attachment(ai_case
     extract(ai_case, event)
     handoff(ai_case, event)
     current = ai_case.business.get_event(ai_case.actors["employee"], event["id"])
-    ai_case.ledger.close_period(ai_case.actors["accountant"], ai_case.book["id"], "2026-10")
+    restore_period_state(ai_case.ledger.db, ai_case.book["id"])
     with pytest.raises(AccountingError):
         extract(ai_case, current, key="closed-period-extract")
     assert ai_case.provider.extract_calls == 1
@@ -116,4 +117,4 @@ def test_daily_income_template_uses_seller_company_and_bank_debit(ai_case):
     suggestion = propose(ai_case, receipt["draft_id"])
     assert suggestion["status"] == "succeeded", suggestion
     applied = ai_case.intelligence.apply(ai_case.actors["accountant"], suggestion["id"], 1)
-    assert applied["issues"] == [] and applied["lines"][0] == {"account_code": "1002", "debit": "0.30", "credit": "0.00"}
+    assert applied["issues"] == [] and applied["lines"][0] == {"account_code": "1002", "debit": "0.30", "credit": "0.00", "auxiliary_values": {}}

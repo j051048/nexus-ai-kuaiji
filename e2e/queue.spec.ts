@@ -1,3 +1,4 @@
+import { openManagement } from './ui-navigation';
 import { expect, test, type Page } from '@playwright/test';
 
 const original = { name: '第五阶段虚构票据.png', mimeType: 'image/png', buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAFUlEQVR4nGP8//8/AzbAhFV00EoAAFbUAw037MyjAAAAAElFTkSuQmCC', 'base64') };
@@ -12,8 +13,12 @@ async function createOriginal(page: Page, description: string) {
   await page.getByLabel('事项摘要', { exact: true }).fill(description);
   await page.getByLabel('交易对方', { exact: true }).fill('第五阶段虚构供应商');
   await page.getByLabel('事项分类', { exact: true }).selectOption('office');
+  if (await page.getByText('我已核对原件，确认日期、金额、交易对方与本次业务一致。', { exact: true }).count()) await page.getByText('我已核对原件，确认日期、金额、交易对方与本次业务一致。', { exact: true }).click();
   await page.getByRole('button', { name: '保存事项', exact: true }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
+  // setInputFiles can target a disabled hidden input while saving still holds
+  // the action lock; wait for the actual upload button to be usable first.
+  await expect(page.getByRole('button', { name: '上传原始附件', exact: true })).toBeEnabled();
   const uploaded = page.waitForResponse(response => response.request().method() === 'POST' && response.url().includes('/attachments?'));
   await page.getByLabel('上传业务事项附件').setInputFiles(original);
   const response = await uploaded; expect(response.status()).toBe(200);
@@ -35,7 +40,7 @@ test('真实本地 UI：任务中心可读，供应商未配置时单份与批�
   await expect(dialog.getByLabel('批量识别企业')).toHaveValue(event.company_id);
   await expect(dialog.getByLabel('批量识别企业').locator('option')).toHaveCount(1);
   await dialog.getByRole('button', { name: '取消', exact: true }).click();
-  await page.getByRole('button', { name: '票据处理任务', exact: true }).click();
+  await openManagement(page); await page.getByRole('button', { name: '票据处理任务', exact: true }).click();
   await expect(page.getByRole('heading', { name: '票据交给后台，判断留给会计。', exact: true })).toBeVisible();
   await expect(page.getByText('当前没有可见处理任务', { exact: true })).toBeVisible();
   await expect(page.getByText('进度仅计入获授权条目', { exact: true })).toBeVisible();
@@ -78,7 +83,7 @@ test('显式合成队列响应仅验证展示：GET轮询、失败重试确认�
     fixture = { ...fixture, progress: { ...fixture.progress, completed: 2, pending: 1, cancelled: 1, percent: 66.67 }, jobs: fixture.jobs.map(job => job.id === 'synthetic-ui-job-0' ? { ...job, status: 'cancelled', permissions: { retry: false, cancel: false } } : job) };
     await route.fulfill({ status: 200, json: fixture });
   });
-  await page.getByRole('button', { name: '票据处理任务', exact: true }).click();
+  await openManagement(page); await page.getByRole('button', { name: '票据处理任务', exact: true }).click();
   await page.getByRole('button', { name: /^查看识别批次 青屿设计（虚构示例）/ }).click();
   const detail = page.getByRole('complementary', { name: '票据处理任务详情', exact: true });
   await expect(detail.getByText('合成测试：模型服务暂时不可用', { exact: true }).first()).toBeVisible();
@@ -102,7 +107,7 @@ test('显式合成队列响应仅验证展示：GET轮询、失败重试确认�
   await page.unroute('**/api/intelligence/batches/synthetic-queue-rendering-only');
   await page.getByLabel('切换验证身份').selectOption('accountant');
   await expect(page.getByText(description, { exact: true })).toHaveCount(0);
-  await page.getByRole('button', { name: '票据处理任务', exact: true }).click();
+  await openManagement(page); await page.getByRole('button', { name: '票据处理任务', exact: true }).click();
   await expect(page.getByText('当前没有可见处理任务', { exact: true })).toBeVisible();
   await expect(page.getByText('合成展示票据-0.png', { exact: true })).toHaveCount(0);
 });
@@ -146,5 +151,5 @@ test('显式合成入队回执：批量选择保留版本，响应丢失后复�
   expect(keys).toHaveLength(2); expect(keys[1]).toBe(keys[0]); expect(synchronousOcrCalls).toBe(0);
   await page.getByRole('button', { name: '业务事项', exact: true }).click();
   await expect(page.getByRole('heading', { name: '从业务发生，到有据可记。', exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: '票据处理任务', exact: true })).toBeEnabled();
+  await openManagement(page); await expect(page.getByRole('button', { name: '票据处理任务', exact: true })).toBeEnabled();
 });

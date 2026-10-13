@@ -101,7 +101,7 @@ class AttachmentBodyLimitMiddleware:
         self.app = app
 
     async def __call__(self, scope, receive, send):
-        limited = scope["type"] == "http" and scope.get("method") == "POST" and re.fullmatch(r"/api/business/events/[^/]+/attachments", scope.get("path", ""))
+        limited = scope["type"] == "http" and scope.get("method") == "POST" and re.fullmatch(r"/api/(?:business/events|intake/drafts)/[^/]+/attachments", scope.get("path", ""))
         if not limited:
             return await self.app(scope, receive, send)
         consumed = 0

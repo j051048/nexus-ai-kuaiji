@@ -64,7 +64,7 @@ def main():
         assert result["stats"]["book_count"] == args.books
         assert result["stats"]["pending_count"] == expected
         assert result["stats"]["exception_count"] == args.books * ((args.sources + 4) // 5)
-        print(json.dumps({"books": args.books, "sources": expected, "draft_lines": expected * 2, "sql_statements": statement_count, "summary_ms": round(elapsed * 1000, 2), "scope": "synthetic, single process, local SQLite"}, ensure_ascii=False))
+        print(json.dumps({"books": args.books, "returned_books": len(result["books"]), "sources": expected, "draft_lines": expected * 2, "sql_statements": statement_count, "summary_ms": round(elapsed * 1000, 2), "scope": "synthetic summary page, single process, local SQLite; not full accounting capacity"}, ensure_ascii=False))
         if statement_count > 20:
             raise SystemExit("Workbench summary still makes per-book/per-source queries")
 

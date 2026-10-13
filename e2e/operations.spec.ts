@@ -1,3 +1,4 @@
+import { openManagement } from './ui-navigation';
 import { expect, test } from '@playwright/test';
 
 const companyName = '青屿设计（虚构示例）';
@@ -7,7 +8,7 @@ const policyFields = ['quota_enabled', 'monthly_limit', 'ocr_reserve', 'proposal
 
 test('真实本地费用监控：管理员设置预算，财务只读，员工与部门人员无入口', async ({ page, request }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: '费用与运行监控', exact: true }).click();
+  await openManagement(page); await page.getByRole('button', { name: '费用与运行监控', exact: true }).click();
   const sessionResponse = await request.get('/api/session?persona=accountant');
   expect(sessionResponse.status()).toBe(200); const owner = await sessionResponse.json();
   const companiesResponse = await request.get('/api/operations/companies', { headers: { Authorization: `Bearer ${owner.token}` } });
@@ -39,16 +40,16 @@ test('真实本地费用监控：管理员设置预算，财务只读，员工�
     await page.setViewportSize({ width: 1440, height: 1100 });
     await page.screenshot({ path: 'artifacts/operations-local-no-provider.png', fullPage: true });
     await page.getByLabel('切换验证身份').selectOption('finance');
-    await page.getByRole('button', { name: '费用与运行监控', exact: true }).click();
+    await openManagement(page); await page.getByRole('button', { name: '费用与运行监控', exact: true }).click();
     await page.getByLabel('监控客户企业').selectOption({ label: companyName });
     await expect(page.getByText('额度控制已开启', { exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: '设置预算策略', exact: true })).toHaveCount(0);
     await expect(page.getByRole('button', { name: '核定此项费用', exact: true })).toHaveCount(0);
     await page.getByLabel('切换验证身份').selectOption('employee');
-    await expect(page.getByRole('heading', { name: '从业务发生，到有据可记。', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '我的工作台', exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: '费用与运行监控', exact: true })).toHaveCount(0);
     await page.getByLabel('切换验证身份').selectOption('department');
-    await expect(page.getByRole('heading', { name: '从业务发生，到有据可记。', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '审批工作台', exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: '费用与运行监控', exact: true })).toHaveCount(0);
   } finally {
     const currentResponse = await request.get(`/api/operations/companies/${company.id}/overview?period=${period}`, { headers: { Authorization: `Bearer ${owner.token}` } });
@@ -63,6 +64,7 @@ test('显式合成监控响应：未知费用不置零，提醒处置和账单�
   let ackRequests = 0; let reconciliationRequests = 0; let policyRequests = 0;
   let alertState = 'open'; let confirmed: string | null = null; let reconciliationReason: string | null = null;
   let currentPolicyVersion = 1;
+  try {
   await page.route('**/api/operations/companies/*/overview?**', async route => {
     const real = await route.fetch(); expect(real.status()).toBe(200); const authorized = await real.json();
     const canManage = authorized.can_manage_budget === true;
@@ -89,7 +91,7 @@ test('显式合成监控响应：未知费用不置零，提醒处置和账单�
     await route.fulfill({ status: 409, json: { detail: '合成测试：预算版本已改变，请读取最新策略' } });
   });
   await page.goto('/');
-  await page.getByRole('button', { name: '费用与运行监控', exact: true }).click();
+  await openManagement(page); await page.getByRole('button', { name: '费用与运行监控', exact: true }).click();
   await page.getByLabel('监控客户企业').selectOption({ label: companyName });
   const summary = page.getByRole('region', { name: '企业模型费用与额度', exact: true });
   await expect(summary.getByText('¥ 0.000001', { exact: true })).toBeVisible();
@@ -123,10 +125,13 @@ test('显式合成监控响应：未知费用不置零，提醒处置和账单�
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({ path: 'artifacts/operations-synthetic-monitor-ui.png', fullPage: true });
   await page.getByLabel('切换验证身份').selectOption('finance');
-  await page.getByRole('button', { name: '费用与运行监控', exact: true }).click();
+  await openManagement(page); await page.getByRole('button', { name: '费用与运行监控', exact: true }).click();
   await expect(page.getByRole('button', { name: '核定此项费用', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: '设置预算策略', exact: true })).toHaveCount(0);
   await page.getByLabel('切换验证身份').selectOption('employee');
   await expect(page.getByText('合成费用示例（非供应商账单）', { exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: '费用与运行监控', exact: true })).toHaveCount(0);
+  } finally {
+    await page.unrouteAll({ behavior: 'wait' });
+  }
 });

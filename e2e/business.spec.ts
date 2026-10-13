@@ -20,16 +20,21 @@ async function create(page: Page, description: string, template: '员工报销' 
   await page.getByLabel('事项分类', { exact: true }).selectOption('office');
   if (template === '日常收支') await page.getByLabel('收支方向', { exact: true }).selectOption('income');
   await page.getByLabel('业务用途', { exact: true }).fill('2–3 家企业试点流程验证');
+  if (await page.getByText('我已核对原件，确认日期、金额、交易对方与本次业务一致。', { exact: true }).count()) await page.getByText('我已核对原件，确认日期、金额、交易对方与本次业务一致。', { exact: true }).click();
   await page.getByRole('button', { name: '保存事项', exact: true }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(page.getByRole('heading', { name: description, exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: '提交审批', exact: true })).toBeDisabled();
+  // Saving closes the dialog before the follow-up list refresh releases the
+  // action lock. Match the visible upload control's real user readiness.
+  await expect(page.getByRole('button', { name: '上传原始附件', exact: true })).toBeEnabled();
   await page.getByLabel('上传业务事项附件').setInputFiles(receipt);
   await expect(page.getByRole('button', { name: '提交审批', exact: true })).toBeEnabled();
 }
 
 async function open(page: Page, description: string, scope: '部门审批' | '企业财务' | '会计接收') {
   await page.getByRole('tab', { name: scope, exact: true }).click();
+  if (await page.getByLabel('筛选业务事项状态', { exact: true }).inputValue() !== '') await page.getByLabel('筛选业务事项状态', { exact: true }).selectOption('');
   await page.getByRole('button').filter({ has: page.getByText(description, { exact: true }) }).click();
   await expect(page.getByRole('heading', { name: description, exact: true })).toBeVisible();
 }
@@ -100,6 +105,7 @@ test('采购费用退回重提保留版本和原件', async ({ page }) => {
   await expect(page.getByText('请补充采购用途', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: '修改事项', exact: true }).click();
   await page.getByLabel('业务用途', { exact: true }).fill('采购办公室耗材，已经补充确认');
+  if (await page.getByText('我已核对原件，确认日期、金额、交易对方与本次业务一致。', { exact: true }).count()) await page.getByText('我已核对原件，确认日期、金额、交易对方与本次业务一致。', { exact: true }).click();
   await page.getByRole('button', { name: '保存事项', exact: true }).click();
   await page.getByRole('button', { name: '提交审批', exact: true }).click();
   await expect(page.getByRole('status')).toContainText('事项已提交');

@@ -27,7 +27,7 @@ export function displayedPercent(progress: QueueBatch['progress']): number {
 }
 export function selectedQueueItems(events: BusinessEvent[], companyId: string, attachmentIds: string[]): QueueItem[] {
   const selected = new Set(attachmentIds);
-  return events.filter(event => event.company_id === companyId && event.permissions.process_intelligence).flatMap(event => event.attachments.filter(attachment => selected.has(attachment.id)).map(attachment => ({ event_id: event.id, attachment_id: attachment.id, expected_version: event.version })));
+  return events.filter(event => event.company_id === companyId && event.permissions.process_intelligence).flatMap(event => event.attachments.filter(attachment => !attachment.superseded && selected.has(attachment.id)).map(attachment => ({ event_id: event.id, attachment_id: attachment.id, expected_version: event.version })));
 }
 export function batchSelectionError(items: QueueItem[]): string {
   return !items.length ? '请选择至少一份已上传的原始附件。' : items.length > MAX_BATCH_ATTACHMENTS ? `每批最多 ${MAX_BATCH_ATTACHMENTS} 份附件，请减少选择。` : '';

@@ -30,6 +30,19 @@ describe('business intake boundaries', () => {
     expect(validateBusinessPayload('reimbursement', { ...valid('reimbursement'), description: '  ' })).toContain('摘要');
     expect(validateBusinessPayload('reimbursement', { ...valid('reimbursement'), counterparty: '' })).toContain('对方');
   });
+  it('preserves project evidence while normalizing equivalent retry commands', () => {
+    const input = { ...valid('reimbursement'), project: '  客户实施项目  ' };
+    const normalized = normalizeBusinessPayload(input);
+    expect(normalized.project).toBe('客户实施项目');
+    expect(normalized).toEqual(normalizeBusinessPayload({ ...input, project: '客户实施项目' }));
+    expect(JSON.stringify(normalized)).not.toBe(JSON.stringify(normalizeBusinessPayload({ ...input, project: '另一个客户项目' })));
+    expect(normalizeBusinessPayload({ ...valid('reimbursement'), project: undefined }).project).toBe('');
+  });
+  it('allows optional project details within the server length boundary', () => {
+    expect(validateBusinessPayload('reimbursement', { ...valid('reimbursement'), project: '' })).toBe('');
+    expect(validateBusinessPayload('reimbursement', { ...valid('reimbursement'), project: '项'.repeat(200) })).toBe('');
+    expect(validateBusinessPayload('reimbursement', { ...valid('reimbursement'), project: '项'.repeat(201) })).toContain('项目');
+  });
 });
 describe('business attachment limits', () => {
   const file = { name: '交通发票.pdf', type: 'application/pdf', size: 1024 };

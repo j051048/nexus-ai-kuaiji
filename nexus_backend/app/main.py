@@ -9,7 +9,7 @@ from pathlib import Path
 from urllib.parse import urlsplit, parse_qs
 
 import psycopg
-from fastapi import Depends, FastAPI, Header, Request
+from fastapi import Depends, FastAPI, Header, Request, Query
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
@@ -25,6 +25,25 @@ from .accounting.models import (
 )
 from .accounting.seed import FIRM_NAME, LOCAL_ACTOR, USER_NAME, bootstrap
 from .accounting.service import AccountingError, AccountingService, Actor
+from .accounting.catalog import CatalogService
+from .accounting.catalog_router import build_catalog_router
+from .accounting.review import ReviewService
+from .accounting.packages import ReviewPackagesService
+from .accounting.review_router import build_review_router
+from .accounting.bank_imports import BankImportService
+from .accounting.bank_import_router import build_bank_import_router
+from .cases.service import CaseService
+from .cases.router import build_cases_router
+from .cases.middleware import CaseAttachmentBodyLimitMiddleware
+from .learning.service import LearningService
+from .learning.router import build_learning_router
+from .quality.service import QualityService
+from .quality.router import build_quality_router
+from .reconciliation.service import ReconciliationService
+from .reconciliation.router import build_reconciliation_router
+from .delivery.service import DeliveryService
+from .delivery.router import build_delivery_router
+from .delivery.middleware import DeliveryBodyLimitMiddleware
 from .tools.accounting_tools import AccountingSuggestionTool
 from .business.api import build_business_router
 from .business.demo import PERSONAS, bootstrap_business_demo
@@ -39,6 +58,32 @@ from .jobs.router import build_queue_router
 from .operations.meter import MeterService
 from .operations.service import OperationsService
 from .operations.router import build_operations_router
+from .ledgers.service import LedgersService
+from .ledgers.router import build_ledgers_router
+from .integrations.service import FinancialBridgeService
+from .settlements.service import SettlementService
+from .settlements.router import build_settlement_router
+from .integrations.router import build_integrations_router
+from .integrations.middleware import BridgeBodyLimitMiddleware
+from .revisions.service import FactRevisionService
+from .revisions.router import build_revisions_router
+from .dispositions.service import SourceDispositionService
+from .dispositions.router import build_dispositions_router
+from .operations.efficiency import EfficiencyService
+from .operations.efficiency_router import build_efficiency_router
+from .operations.telemetry import TelemetryService
+from .operations.telemetry_router import build_telemetry_router
+from .closing.service import ClosingService
+from .closing.router import build_closing_router
+from .closing.models import CloseRequest
+from .revisions.history import SourceHistoryService
+from .revisions.history_router import build_source_history_router
+from .intake.service import IntakeService
+from .intake.router import build_intake_router
+from .import_wizard.service import ImportWizardService
+from .import_wizard.router import build_import_wizard_router, ImportWizardBodyLimitMiddleware
+from .workspace.service import WorkspaceService
+from .workspace.router import build_workspace_router
 
 
 def is_loopback(host: str) -> bool:
@@ -100,16 +145,48 @@ def create_app(db_path: str | Path | None = None, seed: bool | None = None, auth
                 if conn.execute("SELECT pg_has_role(session_user,'accounting_worker','MEMBER')").fetchone()[0]:
                     raise RuntimeError("API与后台处理必须使用独立账号；API登录不得授予accounting_worker")
         application.state.service = AccountingService(database)
+        application.state.ledgers = LedgersService(database)
+        application.state.integrations = FinancialBridgeService(database)
+        application.state.settlements = SettlementService(database)
+        application.state.service.settlements = application.state.settlements
+        application.state.service.ledgers = application.state.ledgers
+        application.state.catalog = CatalogService(database)
         application.state.directory = DirectoryService(database)
         application.state.business = BusinessService(database)
+        application.state.revisions = FactRevisionService(database, application.state.business, application.state.service)
+        application.state.dispositions = SourceDispositionService(database)
+        application.state.service.revisions = application.state.revisions
+        application.state.service.dispositions = application.state.dispositions
+        application.state.efficiency = EfficiencyService(database)
+        application.state.closing = ClosingService(database, application.state.service)
+        application.state.learning = LearningService(database)
+        application.state.quality = QualityService(database)
+        application.state.cases = CaseService(database, application.state.business)
+        application.state.service.learning = application.state.learning
+        application.state.service.cases = application.state.cases
+        application.state.review = ReviewService(database, application.state.service)
+        application.state.review_packages = ReviewPackagesService(database, application.state.review)
+        application.state.bank_import = BankImportService(database)
+        application.state.service.bank_import = application.state.bank_import
+        application.state.delivery = DeliveryService(database)
+        application.state.service.delivery = application.state.delivery
         application.state.attachment_store = AttachmentStore(storage_path)
+        application.state.source_history = SourceHistoryService(database, application.state.attachment_store)
         application.state.intelligence = IntelligenceService(database, application.state.attachment_store, provider=intelligence_provider)
         application.state.meter = MeterService(database, pricing=model_pricing)
         application.state.intelligence.meter = application.state.meter
         application.state.operations = OperationsService(database, application.state.meter, intelligence=application.state.intelligence)
+        application.state.telemetry = TelemetryService(database, application.state.operations)
         application.state.service.intelligence = application.state.intelligence
+        application.state.reconciliation = ReconciliationService(database, intelligence=application.state.intelligence, bank_import=application.state.bank_import)
         application.state.business.intelligence = application.state.intelligence
         application.state.queue = QueueService(database, application.state.intelligence)
+        application.state.business.proposal_queue = application.state.queue.proposal_queue
+        application.state.intake = IntakeService(database, application.state.attachment_store, application.state.intelligence.provider,
+            meter=application.state.meter, business=application.state.business, intelligence=application.state.intelligence)
+        application.state.import_wizard = ImportWizardService(database, application.state.attachment_store, ledger=application.state.service)
+        application.state.workspace = WorkspaceService(database, application.state.service, application.state.business, application.state.review, application.state.cases)
+        application.state.revisions.after_replace = application.state.queue.proposal_queue.enqueue_in_transaction
         application.state.tokens = {}
         application.state.token_users = {}
         application.state.authenticator = authenticator or (SupabaseAuthenticator(settings) if settings.mode == "supabase" else None)
@@ -138,9 +215,11 @@ def create_app(db_path: str | Path | None = None, seed: bool | None = None, auth
             if application.state.authenticator and authenticator is None:
                 application.state.authenticator.close()
 
-    app = FastAPI(title="衡账 · AI 会计工作台", version="0.6.0", lifespan=lifespan, docs_url="/api/docs", openapi_url="/api/openapi.json", redoc_url=None)
+    app = FastAPI(title="衡账 · AI 会计工作台", version="0.12.0", lifespan=lifespan, docs_url="/api/docs", openapi_url="/api/openapi.json", redoc_url=None)
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=hosts)
     app.add_middleware(AttachmentBodyLimitMiddleware)
+    app.add_middleware(CaseAttachmentBodyLimitMiddleware)
+    app.add_middleware(BridgeBodyLimitMiddleware)
     app.add_middleware(CORSMiddleware, allow_origins=origins, allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"], allow_headers=["Authorization", "Content-Type", "X-Firm-Id"], allow_credentials=False)
 
     @app.middleware("http")
@@ -260,16 +339,24 @@ def create_app(db_path: str | Path | None = None, seed: bool | None = None, auth
         return dirs.create_firm(current.user_id, payload)
 
     @app.get("/api/workbench")
-    def workbench(current=Depends(actor), svc=Depends(service)):
-        return svc.workbench(current)
+    def workbench(limit: int = Query(50, ge=1, le=100), offset: int = Query(0, ge=0, le=1000000), filter: str = Query('all', pattern='^(all|pending|exception|approved)$'), search: str = Query('', max_length=120), focus_book_id: str | None = Query(None, max_length=100), current=Depends(actor), svc=Depends(service)):
+        return svc.workbench(current, limit, offset, filter, search, focus_book_id)
+
+    @app.get("/api/companies/{company_id}/books")
+    def book_choices(company_id: str, period: str | None = Query(None, pattern='^20[0-9]{2}-(0[1-9]|1[0-2])$'), limit: int = Query(100,ge=1,le=100), offset: int = Query(0,ge=0,le=1000000),current=Depends(actor),svc=Depends(service)):
+        return svc.book_choices(current,company_id,period,limit,offset)
 
     @app.post("/api/books", status_code=201)
     def create_book(payload: BookCreate, current=Depends(actor), svc=Depends(service)):
         return svc.create_book(current, payload)
 
     @app.get("/api/books/{book_id}")
-    def get_book(book_id: str, current=Depends(book_actor), svc=Depends(service)):
-        return svc.get_book(current, book_id)
+    def get_book(book_id: str, limit: int = Query(50, ge=1, le=100), offset: int = Query(0, ge=0, le=1000000), source_offset: int = Query(0, ge=0, le=1000000), filter: str = Query('all', pattern='^(all|pending|exception|approved)$'), summaries: bool = False, focus_draft_id: str | None = Query(None, max_length=100), current=Depends(book_actor), svc=Depends(service)):
+        return svc.get_book(current, book_id, limit, offset, source_offset, filter, summaries, focus_draft_id)
+
+    @app.get("/api/books/{book_id}/drafts/{draft_id}")
+    def get_draft(book_id: str, draft_id: str, current=Depends(book_actor), svc=Depends(service)):
+        return svc.get_draft(current, book_id, draft_id)
 
     @app.post("/api/books/{book_id}/imports")
     def import_sources(book_id: str, payload: ImportRequest, current=Depends(book_actor), svc=Depends(service)):
@@ -304,8 +391,8 @@ def create_app(db_path: str | Path | None = None, seed: bool | None = None, auth
         return svc.get_export(current, book_id, export_id)
 
     @app.post("/api/books/{book_id}/periods/{period}/close")
-    def close_period(book_id: str, period: str, current=Depends(book_actor), svc=Depends(service)):
-        return svc.close_period(current, book_id, period)
+    def close_period(book_id: str, period: str, payload: CloseRequest | None = None, current=Depends(book_actor), svc=Depends(service)):
+        return svc.close_period(current, book_id, period, payload.snapshot_id if payload else None, payload.reason if payload else None)
 
     @app.get("/api/companies")
     def companies(current=Depends(actor), dirs=Depends(directory)):
@@ -360,9 +447,31 @@ def create_app(db_path: str | Path | None = None, seed: bool | None = None, auth
         return dirs.create_department(current, company_id, payload)
 
     app.include_router(build_business_router(actor))
+    app.include_router(build_intake_router(actor))
+    app.include_router(build_import_wizard_router(actor))
+    app.include_router(build_workspace_router(actor))
     app.include_router(build_intelligence_router(actor))
     app.include_router(build_queue_router(actor))
     app.include_router(build_operations_router(actor))
+    app.include_router(build_catalog_router(actor))
+    app.include_router(build_review_router(actor))
+    app.include_router(build_cases_router(actor))
+    app.include_router(build_learning_router(actor))
+    app.include_router(build_quality_router(actor))
+    app.include_router(build_bank_import_router(actor))
+    app.include_router(build_reconciliation_router(actor))
+    app.include_router(build_delivery_router(actor))
+    app.include_router(build_ledgers_router(actor))
+    app.include_router(build_integrations_router(actor))
+    app.include_router(build_settlement_router(actor))
+    app.include_router(build_revisions_router(actor))
+    app.include_router(build_dispositions_router(actor))
+    app.include_router(build_efficiency_router(actor))
+    app.include_router(build_telemetry_router(actor))
+    app.include_router(build_closing_router(actor))
+    app.include_router(build_source_history_router(actor))
+    app.add_middleware(DeliveryBodyLimitMiddleware)
+    app.add_middleware(ImportWizardBodyLimitMiddleware)
     return app
 
 

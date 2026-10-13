@@ -6,6 +6,8 @@ from uuid import uuid4
 
 import pytest
 
+from period_fixtures import complete_month_close
+
 from app.accounting.database import Database
 from app.accounting.models import ApprovalRequest, BookCreate, ExportRequest, ImportRequest
 from app.accounting.directory import DirectoryService
@@ -72,7 +74,7 @@ def test_postgres_full_workflow_precision_dedup_close_and_receipt(case):
     case.service.approve(case.actor, case.book, draft["id"], ApprovalRequest(expected_version=1))
     export = ExportRequest(draft_ids=[draft["id"]], idempotency_key="pg-complete-export")
     receipt = case.service.export(case.actor, case.book, export)
-    case.service.close_period(case.actor, case.book, "2026-10")
+    complete_month_close(case.service, case.actor, case.book)
     assert case.service.export(case.actor, case.book, export) == receipt
     assert case.service.get_export(case.actor, case.book, receipt["id"]) == receipt
     with pytest.raises(AccountingError, match="已关闭"):
@@ -260,6 +262,11 @@ def test_postgres_runtime_cannot_rewrite_source_or_delivered_receipt(case, table
 
 def test_postgres_close_period_and_import_race_cannot_write_after_close(case):
     import threading
+    from app.closing.service import ClosingService
+    from app.closing.models import PreflightRequest, SnapshotReview, CloseRequest
+    closing = ClosingService(case.db)
+    snapshot = closing.preflight(case.actor, case.book, PreflightRequest(idempotency_key=uuid4().hex))
+    closing.review(case.actor, case.book, snapshot['id'], SnapshotReview(reason='核实当前空月份全部资料完整', materials_confirmed=True))
     barrier = threading.Barrier(2)
     def import_source():
         barrier.wait()
@@ -269,13 +276,21 @@ def test_postgres_close_period_and_import_race_cannot_write_after_close(case):
             return error.status
     def close():
         barrier.wait()
-        return case.service.close_period(case.actor, case.book, "2026-10")
+        try:
+            return closing.close(case.actor, case.book, CloseRequest(snapshot_id=snapshot['id'], reason='当前月结快照复核完毕'))
+        except AccountingError as error:
+            return error.status
     with ThreadPoolExecutor(max_workers=2) as pool:
         imported = pool.submit(import_source)
         closed = pool.submit(close)
-        assert closed.result()["status"] == "closed"
+        close_result = closed.result()
         result = imported.result()
-    assert result in (403, {"imported": 1, "duplicates": 0})
-    assert len(case.service.get_book(case.actor, case.book)["sources"]) == (0 if result == 403 else 1)
-    with pytest.raises(AccountingError, match="已关闭"):
-        case.service.import_sources(case.actor, case.book, request(external_id="later"))
+    if isinstance(close_result, dict):
+        assert close_result['status'] == 'closed' and result == 403
+        assert case.service.get_book(case.actor, case.book)['sources'] == []
+        with pytest.raises(AccountingError, match="已关闭"):
+            case.service.import_sources(case.actor, case.book, request(external_id="later"))
+    else:
+        assert close_result == 409 and result == {"imported": 1, "duplicates": 0}
+        assert closing.overview(case.actor, case.book)['period_status'] == 'open'
+        assert closing.get_snapshot(case.actor, case.book, snapshot['id'])['stale']

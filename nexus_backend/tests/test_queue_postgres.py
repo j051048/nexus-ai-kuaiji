@@ -285,8 +285,11 @@ def test_auto_retry_budget_and_explicit_retry_keep_attempt_history(queue_case):
         assert get_job(case, job["id"])["status"] == ("retry_wait" if attempt < 3 else "failed")
     assert claim(case) is None
     with case.db.transaction(write=True, actor=case.finance) as conn:
-        assert conn.execute("UPDATE ocr_jobs SET status='queued',execution_user_id=?,max_attempts=attempt_count+3,current_run_id=NULL,error_code='',error_detail='',finished_at=NULL,available_at=?,updated_at=? WHERE id=?", (case.finance.user_id, now(), now(), job["id"])).rowcount == 1
-        conn.execute("INSERT INTO ocr_retries VALUES(?,?,?,?,?,?,?)", (job["id"], uuid4().hex, case.finance.firm_id, case.company, job["event_id"], case.finance.user_id, now()))
+        # Use the database clock without granting the app a private worker
+        # helper. Windows/WSL clock skew must not defer an immediate unit job.
+        stamp = conn.execute('''SELECT to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"+00:00"')''').fetchone()[0]
+        assert conn.execute("UPDATE ocr_jobs SET status='queued',execution_user_id=?,max_attempts=attempt_count+3,current_run_id=NULL,error_code='',error_detail='',finished_at=NULL,available_at=?,updated_at=? WHERE id=?", (case.finance.user_id, stamp, stamp, job["id"])).rowcount == 1
+        conn.execute("INSERT INTO ocr_retries VALUES(?,?,?,?,?,?,?)", (job["id"], uuid4().hex, case.finance.firm_id, case.company, job["event_id"], case.finance.user_id, stamp))
     fresh = claim(case)
     assert fresh["attempt_count"] == 4 and fresh["max_attempts"] == 6 and fresh["execution_user_id"] == case.finance.user_id
     with case.db.transaction(actor=case.employee) as conn:

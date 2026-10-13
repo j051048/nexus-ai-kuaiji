@@ -64,9 +64,26 @@ class InvoiceExtraction(OutputModel):
 
 
 class JournalLine(OutputModel):
+    model_config = ConfigDict(extra="forbid", strict=True, json_schema_extra=lambda schema: schema["required"].append("auxiliary_values"))
     account_code: StrictStr = Field(min_length=1, max_length=30)
     debit: StrictStr
     credit: StrictStr
+    # Fixed nullable properties keep the provider's strict JSON schema bounded;
+    # null values are normalized away for the ledger's existing dict contract.
+    auxiliary_values: dict[str, StrictStr] = Field(default_factory=dict, json_schema_extra={
+        "type": "object", "properties": {key: {"type": ["string", "null"], "maxLength": 200}
+                                              for key in ("department", "counterparty", "employee", "project")},
+        "required": ["department", "counterparty", "employee", "project"], "additionalProperties": False,
+    })
+
+    @field_validator("auxiliary_values", mode="before")
+    @classmethod
+    def valid_auxiliaries(cls, value):
+        if not isinstance(value, dict) or set(value) - {"department", "counterparty", "employee", "project"}:
+            raise ValueError("辅助核算字段不合法")
+        if any(item is not None and (not isinstance(item, str) or not item.strip() or len(item) > 200) for item in value.values()):
+            raise ValueError("辅助核算值须为1–200字的文本或null")
+        return {key: item.strip() for key, item in value.items() if item is not None}
 
     @field_validator("debit", "credit")
     @classmethod

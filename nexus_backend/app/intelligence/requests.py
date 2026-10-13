@@ -5,6 +5,8 @@ from ..accounting.models import InputModel
 class OCRRequest(InputModel):
     attachment_id: StrictStr = Field(min_length=1, max_length=100)
     expected_version: int = Field(strict=True, ge=1)
+    expected_fact_version: int | None = Field(default=None, strict=True, ge=1)
+    force_refresh: bool = Field(default=False, strict=True)
     idempotency_key: StrictStr = Field(min_length=8, max_length=120)
 
 

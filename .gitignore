@@ -121,6 +121,7 @@ lint_output.txt
 supabase/.temp/
 
 # Vite temp
+*.tsbuildinfo
 vite.config.ts.timestamp-*
 *.timestamp-*.mjs
 # Artifacts

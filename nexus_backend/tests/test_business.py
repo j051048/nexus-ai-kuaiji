@@ -1,3 +1,4 @@
+from period_fixtures import restore_period_state
 """业务权限、审批版本与账务移交的真实事务验证。"""
 from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
@@ -253,14 +254,14 @@ def test_handoff_closed_period_cross_company_and_outside_period_roll_back(busine
     with pytest.raises(AccountingError, match="不属于事项"):
         handoff(case, event, book_id=case.other_book["id"])
     with case.db.transaction(write=True) as conn:
-        conn.execute("UPDATE periods SET status='closed' WHERE book_id=?", (case.book["id"],))
+        restore_period_state(case.ledger.db, case.book["id"], conn=conn)
     with pytest.raises(AccountingError, match="已关闭"):
         handoff(case, event)
     with case.db.transaction() as conn:
         assert conn.execute("SELECT COUNT(*) FROM sources").fetchone()[0] == 0
     assert case.service.get_event(case.actors["employee"], event["id"])["status"] == "finance_approved"
     with case.db.transaction(write=True) as conn:
-        conn.execute("UPDATE periods SET status='open' WHERE book_id=?", (case.book["id"],))
+        restore_period_state(case.ledger.db, case.book["id"], status="open", conn=conn)
     outside = approved(case, occurred_on="2026-11-01")
     with pytest.raises(AccountingError, match="会计期间"):
         handoff(case, outside)

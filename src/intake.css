@@ -1,0 +1,74 @@
+.intake-modal { width: min(1060px, calc(100vw - 48px)); max-height: min(92dvh, 980px); padding: 0; overflow: hidden; }
+.intake-modal[open] { display: flex; flex-direction: column; }
+.intake-modal .modal-header { background: #f7f8f3; flex-shrink: 0; padding: 22px 28px; }
+.intake-modal .modal-header .eyebrow { font-size: 11px; letter-spacing: .08em; color: var(--green); margin-bottom: 6px; }
+.intake-scroll { padding: 20px 28px 26px; overflow-y: auto; }
+.intake-modal .business-template-grid { margin: 0 0 18px; }
+.intake-modal .business-template-grid button { text-align: left; min-height: 94px; }
+.intake-company-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; padding-bottom: 20px; border-bottom: 1px solid var(--line); }
+.intake-company-grid label, .intake-extra label { display: grid; gap: 7px; }
+.intake-two-column { display: grid; grid-template-columns: .95fr 1.2fr; gap: 28px; margin-top: 22px; }
+.intake-two-column section > h3 { font-size: 15px; display: flex; align-items: center; gap: 7px; margin-bottom: 16px; }
+.intake-two-column section > h3 > span { margin-left: auto; font-size: 11px; color: #6c796e; font-weight: 400; }
+.intake-upload { background: #f2f6ef; border: 1px dashed #a5b9a6; border-radius: 12px; padding: 24px 18px; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 12px; color: var(--green); }
+.intake-upload > strong { font-size: 14px; font-weight: 600; }
+.intake-upload p { color: #617363; font-size: 11px; line-height: 1.65; }
+.intake-upload > div { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+.intake-ai-help { display: flex; gap: 7px; line-height: 1.7; color: #526a5a; font-size: 12px; margin: 14px 0; }
+.intake-file { border: 1px solid var(--line); border-radius: 10px; padding: 13px; margin-top: 12px; }
+.intake-file-header { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
+.intake-file-header > div { flex: 1; min-width: 0; display: grid; gap: 4px; }
+.intake-file-header strong { overflow-wrap: anywhere; font-size: 12px; }
+.intake-file-header span { font-size: 11px; color: #6c796e; }
+.intake-candidate { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 12px; font-size: 12px; }
+.intake-candidate > strong, .intake-candidate > span { display: block; overflow-wrap: anywhere; line-height: 1.6; }
+.intake-candidate > span { color: #6b776d; font-size: 11px; margin-top: 4px; }
+.intake-suggested-field { display: flex; align-items: center; gap: 10px; padding-top: 12px; }
+.intake-suggested-field > div { display: grid; flex: 1; min-width: 0; gap: 3px; }
+.intake-suggested-field > div > span { font-size: 11px; color: #69766c; }
+.intake-suggested-field small { color: #69766c; font-size: 11px; overflow-wrap: anywhere; }
+.intake-suggested-field strong { font-size: 13px; overflow-wrap: anywhere; }
+.intake-checks { margin-top: 14px; font-size: 12px; color: #9b582e; }
+.intake-checks summary { cursor: pointer; }
+.intake-checks p { margin-top: 8px; line-height: 1.6; }
+.intake-fields .business-form-grid { margin: 0; }
+.intake-extra { font-size: 12px; margin-top: 18px; }
+.intake-extra summary { cursor: pointer; color: #5b7061; margin-bottom: 10px; }
+.intake-confirm { display: flex; align-items: flex-start; gap: 9px; padding: 15px; background: #edf4ec; border-radius: 8px; margin-top: 20px; font-size: 12px; line-height: 1.65; }
+.intake-confirm input { flex-shrink: 0; width: 18px; height: 18px; margin-top: 1px; }
+.intake-footer { flex-shrink: 0; background: #fff; border-top: 1px solid var(--line); display: flex; align-items: center; flex-wrap: wrap; gap: 14px; padding: 16px 28px; }
+.intake-footer > span { font-size: 11px; color: #637768; flex: 1; }
+.intake-footer > div { display: flex; flex-wrap: wrap; gap: 9px; }
+.intake-resume { border: 1px solid #cfdbce; border-radius: 8px; margin-bottom: 18px; background: #f5f8f2; padding: 12px; }
+.intake-resume summary { display: flex; gap: 7px; align-items: center; font-size: 12px; cursor: pointer; }
+.intake-resume summary > svg:last-child { margin-left: auto; }
+.intake-resume > button { width: 100%; display: flex; gap: 12px; align-items: center; text-align: left; border: 0; background: #fff; border-radius: 6px; padding: 12px; margin-top: 8px; font-size: 12px; }
+.intake-resume > button > span { margin-left: auto; color: #637768; font-size: 11px; }
+.business-mobile-back { display: none; }
+.business-next-step { background: #f1f6ef; padding: 12px 14px; color: #355b43; font-size: 12px; line-height: 1.65; border-radius: 8px; margin-bottom: 17px; }
+@media (max-width: 680px) {
+  .intake-modal { width: 100vw; height: 100dvh; max-height: 100dvh; max-width: 100vw; margin: 0; border-radius: 0; border: 0; }
+  .intake-modal .modal-header { padding: 17px 18px; }
+  .intake-modal .modal-header h2 { font-size: 20px; }
+  .intake-scroll { padding: 16px 18px 20px; }
+  .intake-modal .business-template-grid { grid-template-columns: 1fr; gap: 8px; }
+  .intake-modal .business-template-grid button { min-height: 58px; padding: 12px 14px; display: grid; grid-template-columns: 20px 1fr; column-gap: 9px; }
+  .intake-modal .business-template-grid button > span { grid-column: 2; }
+  .intake-company-grid { gap: 10px; }
+  .intake-two-column { grid-template-columns: 1fr; gap: 24px; }
+  .intake-upload { padding: 19px 12px; }
+  .intake-modal input, .intake-modal select, .intake-modal textarea { font-size: 16px; min-height: 44px; }
+  .intake-modal input[type=checkbox] { min-height: 20px; width: 20px; }
+  .intake-modal .button { min-height: 44px; }
+  .intake-footer { padding: 11px 18px calc(12px + env(safe-area-inset-bottom)); gap: 8px; }
+  .intake-footer > span { flex-basis: 100%; font-size: 11px; }
+  .intake-footer > div { width: 100%; }
+  .intake-footer > div > button { flex: 1; white-space: nowrap; padding: 10px 8px; font-size: 12px; }
+  .intake-footer .intake-save-draft { display: none; }
+  .business-grid.mobile-detail .business-list-panel { display: none; }
+  .business-grid:not(.mobile-detail) .business-detail-panel { display: none; }
+  .business-mobile-back { display: flex; align-items: center; gap: 6px; border: 0; background: transparent; padding: 12px 16px; font-size: 13px; color: var(--green); }
+  .business-detail-content .business-actions { padding-bottom: 25px; }
+  .business-workspace .business-intro { display: none; }
+  .business-event-list .business-event-row { min-height: 80px; }
+}

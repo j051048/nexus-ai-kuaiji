@@ -618,7 +618,9 @@ def test_http_quota_refuses_second_send_finance_ack_and_manager_manual_cost_conf
     first = client.post(url, headers=employee, json=request)
     assert first.status_code == 200 and first.json()["status"] == "succeeded", first.text
     assert client.post(url, headers=employee, json=request).json()["id"] == first.json()["id"]
-    refused = client.post(url, headers=employee, json={**request, "idempotency_key": "http-paid-ocr-refused"})
+    reused = client.post(url, headers=employee, json={**request, "idempotency_key": "http-cached-ocr-free"})
+    assert reused.status_code == 200 and reused.json()["cache_hit"] == 1 and client.provider.extract_calls == 1
+    refused = client.post(url, headers=employee, json={**request, "idempotency_key": "http-paid-ocr-refused", "force_refresh": True})
     assert refused.status_code == 429 and client.provider.extract_calls == 1, refused.text
     refresh = client.post(f"/api/operations/companies/{company['id']}/refresh", headers=finance)
     assert refresh.status_code == 200, refresh.text

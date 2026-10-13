@@ -145,7 +145,9 @@ h1 { font-family: "Noto Serif SC", "Source Han Serif SC", "Songti SC", "SimSun",
 .panel-footnote { display: flex; align-items: center; gap: 5px; padding: 10px 20px; font-size: 8px; color: #a1aa95; background: #fdfefb; border-top: 1px solid #edf0e7; }
 .panel-footnote > span:last-child { margin-left: auto; color: #b4bca9; }
 .panel-footnote .small-dot { background: #a3b392; width: 3px; height: 3px; }
-.transaction-heading { padding-bottom: 16px; }
+.transaction-heading { padding-bottom: 16px; flex-wrap: wrap; align-items: flex-start; }
+.transaction-heading > div:first-child { flex-basis: 100%; min-width: 0; }
+.transaction-heading .selected-book-title { overflow-wrap: anywhere; }
 .section-eyebrow { font-size: 9px; color: #9ca78f; margin-bottom: 7px; }
 .panel-heading .selected-book-title { font-size: 13px; }
 .list-tabs { padding: 0 20px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #e5ebdc; gap: 10px; }
@@ -906,3 +908,11 @@ dd { text-align: right; color: #7f916b; margin: 0; overflow-wrap: anywhere; }
   .member-row > select { min-width: 100px; }
   .access-modal .modal-footer > span { display: none; }
 }
+
+.pagination-controls { display:flex; align-items:center; justify-content:flex-end; gap:10px; padding:12px 18px; border-top:1px solid var(--line); }
+.pagination-controls > span { margin-right:auto; font-size:12px; color:var(--muted); }
+.line-auxiliaries { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; margin-top:8px; }
+.line-auxiliaries label { font-size:11px; color:var(--muted); }
+.line-auxiliaries input { width:100%; margin-top:4px; }
+.activity-timer { display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:8px 28px; background:#eef0e8; border-bottom:1px solid #d8dccd; color:#53604b; font-size:12px; }
+.activity-timer .button { margin-left:auto; }

@@ -1,3 +1,4 @@
+from period_fixtures import restore_period_state
 """Current OCR facts gate review/export; reading guards never writes findings."""
 import json
 from types import SimpleNamespace
@@ -263,7 +264,7 @@ def test_ledger_postgres_closed_period_hides_mapping_but_freezes_staff_processin
     if not case.db.is_postgres:
         pytest.skip("PostgreSQL 私有冻结函数边界")
     event, _, _ = business_draft(case)
-    case.ledger.close_period(case.reviewer, case.book, "2026-10")
+    restore_period_state(case.ledger.db, case.book)
     with case.db.transaction(actor=case.employee) as conn:
         assert conn.execute("SELECT COUNT(*) FROM business_mappings WHERE event_id=?", (event["id"],)).fetchone()[0] == 0
         assert conn.execute("SELECT accounting.ai_event_open(?,?,?)", (event["id"], case.employee.firm_id, case.company)).fetchone()[0] is False

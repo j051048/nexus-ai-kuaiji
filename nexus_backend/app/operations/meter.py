@@ -46,7 +46,8 @@ class MeterService:
     def reserve(self, conn, actor, run, token):
         pricing = self.pricing.for_kind(run["kind"]).snapshot(run["provider"], run["model"])
         if self.db.is_postgres:
-            state = conn.execute("SELECT accounting.reserve_model_cost(?,?,?,?,?,?)", (run["id"], token, run["provider"], run["model"], encode(pricing), 0)).fetchone()[0]
+            function = "reserve_intake_model_cost" if run.get("intake_id") else "reserve_model_cost"
+            state = conn.execute(f"SELECT accounting.{function}(?,?,?,?,?,?)", (run["id"], token, run["provider"], run["model"], encode(pricing), 0)).fetchone()[0]
             if state not in {"reserved", "sent", "estimated", "uncertain", "released", "reconciled"}:
                 raise BudgetError(state)
             return
@@ -73,7 +74,8 @@ class MeterService:
             if self.exposure(rows) + carried + reserve > policy["monthly_limit_micro"]:
                 raise BudgetError("quota_exhausted")
         stamp = self.timestamp(conn)
-        conn.execute("INSERT INTO model_costs(id,run_id,firm_id,company_id,event_id,kind,created_by,period,provider,model,charge_token,pricing_json,quota_enabled,reserved_micro,state,version,created_at,overrun,manual_reason) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,'reserved',1,?,0,'')", (run["id"], run["id"], actor.firm_id, run["company_id"], run["event_id"], run["kind"], actor.user_id, period, run["provider"], run["model"], token, encode(pricing), int(enabled), reserve, stamp))
+        intake = bool(run.get("intake_id"))
+        conn.execute("INSERT INTO model_costs(id,run_id,intake_run_id,firm_id,company_id,event_id,kind,created_by,period,provider,model,charge_token,pricing_json,quota_enabled,reserved_micro,state,version,created_at,overrun,manual_reason) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'reserved',1,?,0,'')", (run["id"], None if intake else run["id"], run["id"] if intake else None, actor.firm_id, run["company_id"], run.get("event_id"), run["kind"], actor.user_id, period, run["provider"], run["model"], token, encode(pricing), int(enabled), reserve, stamp))
 
     def mark_sent(self, conn, actor, run, token):
         if self.db.is_postgres:

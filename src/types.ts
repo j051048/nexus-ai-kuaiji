@@ -41,7 +41,10 @@ export interface Book {
 export interface Workbench {
   books: Book[];
   stats: Pick<Book, 'pending_count' | 'exception_count' | 'approved_count'> & { book_count: number };
+  pagination?: Pagination;
 }
+
+export interface Pagination { limit: number; offset: number; total: number; has_more: boolean }
 
 export interface SourceRow {
   external_id: string;
@@ -51,6 +54,7 @@ export interface SourceRow {
   amount: string;
   direction: 'expense' | 'income';
   evidence_ref: string;
+  stable_transaction_id?: string;
 }
 
 export interface Source extends SourceRow {
@@ -62,9 +66,11 @@ export interface JournalLine {
   account_code: string;
   debit: string;
   credit: string;
+  auxiliary_values?: Partial<Record<'department' | 'counterparty' | 'employee' | 'project', string>>;
 }
 
 export interface Draft {
+  source_inactive?: boolean;
   id: string;
   source_id: string;
   description: string;
@@ -73,11 +79,16 @@ export interface Draft {
   explanation: string;
   issues: string[];
   lines: JournalLine[];
+  detail_loaded?: boolean;
+  business_origin?: { event_id: string; submitted_version: number } | null;
 }
 
 export interface BookDetail {
   book: Book;
-  accounts: { code: string; name: string }[];
+  accounts: { code: string; name: string; auxiliary_requirements?: string }[];
   sources: Source[];
   drafts: Draft[];
+  pagination?: Pagination;
+  source_pagination?: Pagination;
+  source_page_ids?: string[];
 }

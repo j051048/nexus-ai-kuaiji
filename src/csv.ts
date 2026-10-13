@@ -59,6 +59,10 @@ export function toSourceRows(text: string): SourceRow[] {
     const prefix = `第 ${index + 2} 行`;
     if (row.length !== names.length) throw new Error(`${prefix}列数与表头不一致。含逗号的字段须用双引号包裹。`);
     const value = Object.fromEntries(CSV_HEADERS.map(name => [name, row[names.indexOf(name)].trim()])) as unknown as SourceRow;
+    if (names.includes('stable_transaction_id')) {
+      value.stable_transaction_id = row[names.indexOf('stable_transaction_id')].trim();
+      if (value.stable_transaction_id.length > 200) throw new Error(`${prefix}稳定交易编号超过 200 字。`);
+    }
     if (!value.external_id || !value.description || !value.date || !value.amount || !value.direction) {
       throw new Error(`${prefix}缺少流水编号、日期、摘要、金额或收支方向。`);
     }

@@ -1,3 +1,4 @@
+from period_fixtures import restore_period_state, complete_month_close
 import csv
 import io
 import sqlite3
@@ -205,7 +206,7 @@ def test_unmatched_rule_and_tool_cannot_approve(service, book):
     assert tool.execute(LOCAL_ACTOR, book) == {"created": 1, "exceptions": 1}
     assert tool.execute(LOCAL_ACTOR, book) == {"created": 0, "exceptions": 0}
     draft = service.get_book(LOCAL_ACTOR, book)["drafts"][0]
-    assert draft["status"] == "draft" and "没有接入 LLM" in draft["explanation"]
+    assert draft["status"] == "draft" and "需会计选择对应科目" in draft["explanation"]
     assert draft["issues"]
 
 
@@ -247,7 +248,7 @@ def test_export_is_atomic_idempotent_and_formula_safe(service, book):
 
 def test_closed_period_blocks_every_write(service, book):
     draft = make_draft(service, book)
-    service.close_period(LOCAL_ACTOR, book, "2026-10")
+    restore_period_state(service.db, book)
     for call in (
         lambda: import_rows(service, book),
         lambda: service.suggestions(LOCAL_ACTOR, book),
@@ -266,7 +267,7 @@ def test_export_receipts_survive_close_and_remain_scoped(service, book):
     approve(service, book, draft)
     request = ExportRequest(draft_ids=[draft["id"]], idempotency_key="receipt-reload")
     receipt = service.export(LOCAL_ACTOR, book, request)
-    service.close_period(LOCAL_ACTOR, book, "2026-10")
+    complete_month_close(service, LOCAL_ACTOR, book)
     records = service.list_exports(LOCAL_ACTOR, book)["exports"]
     assert len(records) == 1 and records[0]["id"] == receipt["id"]
     assert service.get_export(LOCAL_ACTOR, book, receipt["id"]) == receipt

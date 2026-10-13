@@ -1,0 +1,45 @@
+.review-workbench { --surface: #fff; --surface-soft: #f8faf5; padding-bottom: 48px; }
+.batch-review-grid { display: grid; grid-template-columns: minmax(0, 1.12fr) minmax(360px, .88fr); gap: 22px; align-items: start; }
+.batch-review-filters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 20px 24px; border-bottom: 1px solid var(--line); }
+.batch-review-filters label { display: grid; gap: 6px; font-size: 12px; color: var(--muted); }
+.batch-review-filters input, .batch-review-filters select { width: 100%; min-width: 0; padding: 9px 10px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 5px; }
+.batch-selection-bar { display: flex; align-items: center; gap: 16px; padding: 14px 24px; border-bottom: 1px solid var(--line); background: var(--surface-soft); }
+.batch-selection-bar label { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.batch-selection-bar > span { color: var(--muted); font-size: 12px; }
+.batch-selection-bar button { margin-left: auto; }
+.batch-review-group h3 { margin: 0; padding: 12px 24px; background: var(--surface-soft); font-size: 12px; font-weight: 600; color: var(--muted); border-bottom: 1px solid var(--line); }
+.batch-review-row { display: flex; align-items: center; gap: 12px; padding: 18px 24px; border-bottom: 1px solid var(--line); }
+.batch-review-row > div { min-width: 0; flex: 1; }
+.batch-review-row strong { display: block; font-size: 14px; overflow-wrap: anywhere; }
+.batch-review-row p { margin: 5px 0 0; color: var(--muted); font-size: 11px; }
+.batch-review-amount { font-variant-numeric: tabular-nums; white-space: nowrap; font-size: 14px; }
+.batch-review-row > button { white-space: nowrap; }
+.batch-preview-content { padding: 20px; }
+.batch-preview-summary { margin-bottom: 20px; border-bottom: 1px solid var(--line); padding-bottom: 16px; }
+.batch-preview-summary > strong { display: block; font-size: 24px; margin-bottom: 6px; }
+.batch-preview-summary > span { font-size: 12px; color: var(--muted); }
+.batch-preview-summary p, .batch-review-confirm p { color: var(--muted); font-size: 12px; line-height: 1.7; }
+.batch-preview-draft { border: 1px solid var(--line); border-radius: 6px; padding: 16px; margin-bottom: 16px; }
+.batch-preview-draft.has-issues { border-left: 3px solid #b66c35; }
+.batch-preview-draft > div { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.batch-preview-draft > div > strong { font-size: 11px; color: var(--muted); }
+.batch-preview-draft h3 { font-size: 15px; margin: 12px 0 6px; overflow-wrap: anywhere; }
+.batch-preview-draft > p { font-size: 11px; color: var(--muted); line-height: 1.7; }
+.batch-preview-draft table { width: 100%; border-collapse: collapse; font-size: 12px; margin: 14px 0; }
+.batch-preview-draft th, .batch-preview-draft td { text-align: right; padding: 7px 4px; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+.batch-preview-draft th:first-child, .batch-preview-draft td:first-child { text-align: left; }
+.batch-preview-draft td small { display: block; font-size: 10px; color: var(--muted); overflow-wrap: anywhere; }
+.batch-evidence-ref { overflow-wrap: anywhere; }
+.batch-preview-issues { color: #a04d28; font-size: 12px; line-height: 1.7; padding-left: 18px; }
+.batch-review-confirm { border-top: 1px solid var(--line); padding-top: 16px; }
+.batch-review-confirm label { display: flex; gap: 9px; align-items: flex-start; font-size: 13px; line-height: 1.7; }
+.batch-review-confirm input { margin-top: 5px; }
+.batch-review-confirm .button { width: 100%; }
+.batch-review-receipt { padding: 16px; background: var(--surface-soft); border: 1px solid var(--line); border-radius: 6px; }
+.batch-review-receipt h3 { font-size: 15px; margin-top: 0; }
+.batch-review-receipt > p { font-size: 12px; color: var(--muted); }
+.batch-review-receipt > div { border-top: 1px solid var(--line); padding: 12px 0; }
+.batch-review-receipt strong { display: flex; gap: 8px; font-size: 12px; align-items: center; }
+.batch-review-receipt div p { font-size: 12px; line-height: 1.7; margin: 7px 0 0; overflow-wrap: anywhere; }
+@media (max-width: 1180px) { .batch-review-grid { grid-template-columns: 1fr; } }
+@media (max-width: 600px) { .batch-review-filters { grid-template-columns: 1fr; } .batch-review-row { flex-wrap: wrap; } .batch-review-row > div { min-width: 65%; } .batch-selection-bar { flex-wrap: wrap; } }

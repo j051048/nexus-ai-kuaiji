@@ -1,11 +1,14 @@
+import { confirmStatement, openAccounting, previewPastedStatement } from './ui-navigation';
 import { expect, test } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 
 const csv = 'external_id,date,description,counterparty,amount,direction,evidence_ref\nqa-bank:202610:001,2026-10-10,办公用品采购,端到端虚构商店,268.10,expense,\n';
 
 test('导入去重、补证、修改复核、冻结和真实 CSV 下载', async ({ page }) => {
+  test.setTimeout(60_000);
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto('/');
+  await openAccounting(page);
   await expect(page.getByText('本地验证环境', { exact: false })).toBeVisible();
   await expect(page.getByRole('listitem').first()).toBeVisible();
   await expect(page.getByRole('button', { name: '确认审核', exact: true })).toBeVisible();
@@ -17,16 +20,14 @@ test('导入去重、补证、修改复核、冻结和真实 CSV 下载', async 
   await expect(page.getByRole('heading', { name: '端到端验证企业', exact: true })).toBeVisible();
 
   for (const expected of ['成功导入 1 条流水', '成功导入 0 条流水，跳过 1 条重复记录']) {
-    await page.getByRole('button', { name: '导入流水', exact: true }).click();
-    await page.getByLabel('或直接粘贴 CSV 内容（含表头）').fill(csv);
-    await page.getByRole('button', { name: '确认导入', exact: true }).click();
+    await previewPastedStatement(page, csv);
+    await confirmStatement(page);
     await expect(page.getByRole('status')).toContainText(expected);
   }
-  await page.getByRole('button', { name: '导入流水', exact: true }).click();
-  await page.getByLabel('或直接粘贴 CSV 内容（含表头）').fill(csv.replace('268.10', '268.11'));
-  await page.getByRole('button', { name: '确认导入', exact: true }).click();
-  await expect(page.getByRole('dialog').getByRole('alert')).toContainText('内容不同');
-  await page.getByRole('button', { name: '取消', exact: true }).click();
+  await previewPastedStatement(page, csv.replace('268.10', '268.11'));
+  await expect(page.getByRole('dialog').locator('.import-wizard-row.invalid')).toContainText('同一交易号对应不同内容，整批禁止确认');
+  await expect(page.getByRole('dialog').getByRole('button', { name: '确认导入', exact: true })).toBeDisabled();
+  await page.getByRole('button', { name: '关闭导入向导', exact: true }).click();
   await page.getByRole('button', { name: '生成记账建议', exact: true }).click();
   await expect(page.getByRole('status')).toContainText('已生成 1 张凭证草稿');
   await expect(page.getByRole('button', { name: '确认审核', exact: true })).toBeDisabled();
@@ -56,7 +57,7 @@ test('导入去重、补证、修改复核、冻结和真实 CSV 下载', async 
   await expect(page.getByRole('status')).toContainText('已导出 1 张凭证');
   await expect(page.getByRole('button', { name: '导出凭证 CSV', exact: true })).toBeDisabled();
   await page.reload();
-  await page.getByLabel('搜索企业名称').fill('端到端验证企业');
+  await openAccounting(page); await page.getByLabel('搜索企业名称').fill('端到端验证企业');
   await page.getByRole('listitem').filter({ hasText: '端到端验证企业' }).click();
   await expect(page.getByText('此凭证已导出，修改入口已锁定。', { exact: false })).toBeVisible();
   await page.getByRole('tab', { name: /导出记录/ }).click();
@@ -66,13 +67,15 @@ test('导入去重、补证、修改复核、冻结和真实 CSV 下载', async 
   expect(await readFile((await restored.path())!, 'utf8')).toBe(content);
 });
 
-test('异常入口呈现待处理账套，清空搜索后可以恢复', async ({ page }) => {
+test('统一待办直接打开异常凭证，回到账套清空搜索后可以恢复', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: /^异常处理/ }).click();
-  await expect(page.getByRole('listitem').filter({ hasText: '禾田商贸' })).toBeVisible();
-  await page.getByRole('listitem').filter({ hasText: '禾田商贸' }).click();
-  await expect(page.getByRole('complementary', { name: '凭证复核' }).getByLabel('待处理问题')).toBeVisible();
-  await page.getByLabel('搜索企业名称').fill('不存在的企业 QA');
+  await page.getByLabel('筛选待办类型').selectOption('review');
+  await page.getByLabel('筛选待办企业').selectOption({ label: '禾田商贸（虚构示例）' });
+  await page.locator('.workspace-task').filter({ hasText: '禾田商贸' }).first().getByRole('button', { name: '同屏复核', exact: true }).click();
+  const drawer = page.getByRole('dialog', { name: '原件与凭证，一起核对', exact: true });
+  await expect(drawer.getByLabel('同屏待处理问题')).toBeVisible();
+  await drawer.getByRole('button', { name: '关闭同屏复核', exact: true }).click();
+  await openAccounting(page); await page.getByLabel('搜索企业名称').fill('不存在的企业 QA');
   await expect(page.getByText('没有符合条件的企业')).toBeVisible();
   await page.getByRole('button', { name: '清空搜索', exact: true }).click();
   await expect(page.getByRole('listitem').filter({ hasText: '禾田商贸' })).toBeVisible();
@@ -81,6 +84,7 @@ test('异常入口呈现待处理账套，清空搜索后可以恢复', async ({
 test('窄屏工作台可读且页面没有横向溢出', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/');
+  await openAccounting(page);
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
   await expect(page.getByRole('listitem').first()).toBeVisible();
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);

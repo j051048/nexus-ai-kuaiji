@@ -56,6 +56,12 @@ describe('CSV 解析与导入边界', () => {
 });
 
 describe('人民币精确分位计算', () => {
+  it('可选银行稳定交易编号保留为来源身份，拒绝超长编号', () => {
+    const header = 'external_id,date,description,counterparty,amount,direction,evidence_ref,stable_transaction_id';
+    const value = toSourceRows(`${header}\nalias-1,2026-10-01,办公用品,商店,27.01,expense,归档凭据,BANK-ORIGINAL-1`)[0];
+    expect(value.stable_transaction_id).toBe('BANK-ORIGINAL-1');
+    expect(() => toSourceRows(`${header}\nalias-1,2026-10-01,办公用品,商店,27.01,expense,归档凭据,${'x'.repeat(201)}`)).toThrow('稳定交易编号');
+  });
   it('0.1 + 0.2 精确等于 0.30，大金额没有浮点误差', () => {
     expect(formatCents(moneyToCents('0.1') + moneyToCents('0.2'))).toBe('0.30');
     expect(formatCents(moneyToCents('999999999999.99'))).toBe('999,999,999,999.99');

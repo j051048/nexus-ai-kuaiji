@@ -2,6 +2,7 @@
 from contextlib import contextmanager
 from datetime import datetime, timezone, timedelta
 import json
+from time import perf_counter
 from uuid import uuid4
 
 from ..accounting.database import WRITE_LOCK
@@ -20,6 +21,12 @@ class QueueService:
         self.business, self.access = intelligence.business, intelligence.access
         self.clock = clock or (lambda: datetime.now(timezone.utc))
         intelligence.queue = self
+        from .proposals import ProposalQueueService
+        self.proposals = ProposalQueueService(self)
+        self.proposal_queue = self.proposals
+        self.business.proposal_queue = self.proposals
+        from .automation import QueueAutomationService
+        self.automation = QueueAutomationService(self)
 
     def timestamp(self, seconds=0):
         return (self.clock() + timedelta(seconds=seconds)).astimezone(timezone.utc).isoformat()
@@ -49,6 +56,9 @@ class QueueService:
         attachment = conn.execute("SELECT * FROM business_attachments WHERE id=? AND event_id=?", (attachment_id, event_id)).fetchone()
         if not attachment:
             raise AccountingError("附件不存在或不属于当前事项", 404)
+        from ..intelligence.current_evidence import superseded_ids
+        if attachment_id in superseded_ids(self.db, conn, event):
+            raise AccountingError("原件已被核验后的补件替代，请识别当前有效票据", 409)
         return event, attachment
 
     def enqueue(self, actor, request):
@@ -71,7 +81,7 @@ class QueueService:
             batch_id, stamp = uuid4().hex, self.database_timestamp(conn)
             conn.execute("INSERT INTO ocr_batches(id,firm_id,company_id,created_by,idempotency_key,request_fingerprint,created_at) VALUES(?,?,?,?,?,?,?)", (batch_id, actor.firm_id, request.company_id, actor.user_id, request.idempotency_key, digest, stamp))
             for event, attachment in inputs:
-                conn.execute("INSERT INTO ocr_jobs(id,batch_id,firm_id,company_id,event_id,attachment_id,expected_version,attachment_sha256,configuration_fingerprint,execution_user_id,created_by,created_at,status,attempt_count,max_attempts,available_at,error_code,error_detail,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,'queued',0,3,?,'','',?)", (uuid4().hex, batch_id, actor.firm_id, request.company_id, event["id"], attachment["id"], event["version"], attachment["sha256"], self.configuration_fingerprint(), actor.user_id, actor.user_id, stamp, stamp, stamp))
+                conn.execute("INSERT INTO ocr_jobs(id,batch_id,firm_id,company_id,event_id,attachment_id,expected_version,expected_fact_version,attachment_sha256,configuration_fingerprint,execution_user_id,created_by,created_at,status,attempt_count,max_attempts,available_at,error_code,error_detail,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,'queued',0,3,?,'','',?)", (uuid4().hex, batch_id, actor.firm_id, request.company_id, event["id"], attachment["id"], event["version"], event["fact_version"], attachment["sha256"], self.configuration_fingerprint(), actor.user_id, actor.user_id, stamp, stamp, stamp))
             self.business._audit(conn, actor, "queue.batch.enqueue", batch_id, {"company_id": request.company_id, "count": len(inputs)})
             for event, _ in inputs:
                 self.intelligence.capture_snapshot(conn, actor, event)
@@ -136,6 +146,12 @@ class QueueService:
                 raise AccountingError("任务批次不存在或无权访问", 404)
             return self._batch_json(conn, actor, batch)
 
+    def get_job(self, actor, job_id):
+        with self.db.transaction(actor=actor) as conn:
+            self.access.require_user(conn, actor.user_id)
+            job, event = self._job(conn, actor, job_id)
+            return self._job_json(conn, actor, job, event)
+
     def list_batches(self, actor, company_id=None, event_id=None, limit=50, offset=0):
         if not 1 <= limit <= 100 or not 0 <= offset <= 100000:
             raise AccountingError("分页范围无效", 422)
@@ -145,15 +161,35 @@ class QueueService:
                 self.access.company(conn, actor, company_id)
             if event_id:
                 self.business._event(conn, actor, event_id)
-            rows = conn.execute("SELECT DISTINCT b.* FROM ocr_batches b JOIN ocr_jobs j ON j.batch_id=b.id WHERE b.firm_id=?" + (" AND b.company_id=?" if company_id else "") + (" AND j.event_id=?" if event_id else "") + " ORDER BY b.created_at DESC,b.id DESC", [actor.firm_id, *([company_id] if company_id else []), *([event_id] if event_id else [])])
-            values = []
-            for batch in rows:
-                try:
-                    values.append(self._batch_json(conn, actor, batch, with_jobs=False))
-                except AccountingError as error:
-                    if error.status != 404:
-                        raise
-            return {"batches": values[offset:offset + limit], "total": len(values)}
+            from .visibility import event_scope
+            scope, params = event_scope(actor)
+            if company_id:
+                scope += " AND j.company_id=?"; params.append(company_id)
+            if event_id:
+                scope += " AND j.event_id=?"; params.append(event_id)
+            # Scope before COUNT and LIMIT, including SQLite. No hidden batch or
+            # job counts and no Python slicing of a tenant's complete history.
+            scoped = " FROM ocr_jobs j JOIN business_events e ON e.id=j.event_id WHERE " + scope
+            total = conn.execute("SELECT COUNT(DISTINCT j.batch_id)" + scoped, params).fetchone()[0]
+            page = conn.execute("SELECT b.*,c.name AS company_name FROM ocr_batches b JOIN companies c ON c.id=b.company_id WHERE b.id IN (SELECT DISTINCT j.batch_id" + scoped + ") ORDER BY b.created_at DESC,b.id DESC LIMIT ? OFFSET ?", [*params, limit, offset]).fetchall()
+            if not page:
+                return {"batches": [], "total": total}
+            ids = [row["id"] for row in page]
+            counts = conn.execute("SELECT j.batch_id,j.status,COUNT(*) AS n" + scoped + " AND j.batch_id IN (" + ",".join("?" for _ in ids) + ") GROUP BY j.batch_id,j.status", [*params, *ids]).fetchall()
+            grouped = {value: {} for value in ids}
+            for row in counts:
+                grouped[row["batch_id"]][row["status"]] = row["n"]
+            return {"batches": [self._batch_summary(row, grouped[row["id"]]) for row in page], "total": total}
+
+    @staticmethod
+    def _batch_summary(batch, counts):
+        total = sum(counts.values())
+        completed = sum(counts.get(state, 0) for state in TERMINAL)
+        pending = counts.get("queued", 0) + counts.get("retry_wait", 0)
+        running, succeeded = counts.get("running", 0), counts.get("succeeded", 0)
+        status = "running" if running else "queued" if pending else "completed" if succeeded == total else "cancelled" if counts.get("cancelled", 0) == total else "attention"
+        return {"id": batch["id"], "company_id": batch["company_id"], "company_name": batch["company_name"], "created_at": batch["created_at"], "status": status, "jobs": [],
+                "progress": {"total": total, "completed": completed, "succeeded": succeeded, "failed": counts.get("failed", 0), "interrupted": counts.get("interrupted", 0), "stale": counts.get("stale", 0), "cancelled": counts.get("cancelled", 0), "pending": pending, "running": running, "percent": completed * 100 // total}}
 
     def _job(self, conn, actor, job_id):
         job = conn.execute("SELECT * FROM ocr_jobs WHERE id=? AND firm_id=?", (job_id, actor.firm_id)).fetchone()
@@ -173,7 +209,7 @@ class QueueService:
             raise AccountingError("该票据已有另一项未完成任务", 409)
         stamp = self.database_timestamp(conn)
         conn.execute("INSERT INTO ocr_retries(job_id,request_key,firm_id,company_id,event_id,requested_by,created_at) VALUES(?,?,?,?,?,?,?)", (job["id"], key, actor.firm_id, job["company_id"], job["event_id"], actor.user_id, stamp))
-        changed = conn.execute("UPDATE ocr_jobs SET status='queued',expected_version=?,attachment_sha256=?,configuration_fingerprint=?,execution_user_id=?,max_attempts=?,available_at=?,current_run_id=NULL,error_code='',error_detail='',finished_at=NULL,updated_at=? WHERE id=? AND status=?", (event["version"], attachment["sha256"], self.configuration_fingerprint(), actor.user_id, min(job["attempt_count"] + 3, 30), stamp, stamp, job["id"], job["status"]))
+        changed = conn.execute("UPDATE ocr_jobs SET status='queued',expected_version=?,expected_fact_version=?,attachment_sha256=?,configuration_fingerprint=?,execution_user_id=?,max_attempts=?,available_at=?,current_run_id=NULL,error_code='',error_detail='',finished_at=NULL,updated_at=? WHERE id=? AND status=?", (event["version"], event["fact_version"], attachment["sha256"], self.configuration_fingerprint(), actor.user_id, min(job["attempt_count"] + 3, 30), stamp, stamp, job["id"], job["status"]))
         if changed.rowcount != 1:
             raise AccountingError("任务状态已改变，请刷新", 409)
         self.business._audit(conn, actor, "queue.job.retry", job["id"], {"previous_status": job["status"], "expected_version": event["version"]})
@@ -241,22 +277,37 @@ class QueueService:
             conn.close()
 
     def claim(self, worker_id, lease_seconds=180, concurrency=2):
+        started = perf_counter()
+        job = self._claim(worker_id, lease_seconds, concurrency)
+        if job:
+            with self.worker_transaction() as conn:
+                self.automation.record_metric(conn, job, "claim_lock", (perf_counter() - started) * 1000)
+        return job
+
+    def _claim(self, worker_id, lease_seconds=180, concurrency=2):
+        if not isinstance(worker_id, str) or not 1 <= len(worker_id.strip()) <= 120 or type(lease_seconds) is not int or not 30 <= lease_seconds <= 600 or type(concurrency) is not int or concurrency not in {1, 2}:
+            raise ValueError("任务领取须使用有效worker标识、30–600秒租约及1或2并发")
         with self.worker_transaction() as conn:
             if self.db.is_postgres:
-                row = conn.execute("SELECT * FROM accounting.claim_ocr_job(?,?,?)", (worker_id, lease_seconds, concurrency)).fetchone()
-                return dict(row) if row else None
+                row = conn.execute("SELECT accounting.claim_processing_job(?,?,?)", (worker_id, lease_seconds, concurrency)).fetchone()[0]
+                return row if row else None
             stamp = self.timestamp()
-            if conn.execute("SELECT COUNT(*) FROM ocr_jobs WHERE status='running'", ()).fetchone()[0] >= concurrency:
+            self.proposals.refresh_dependencies_sqlite(conn)
+            if conn.execute("SELECT (SELECT COUNT(*) FROM ocr_jobs WHERE status='running')+(SELECT COUNT(*) FROM proposal_jobs WHERE status='running')").fetchone()[0] >= concurrency:
                 return None
-            job = conn.execute("SELECT j.* FROM ocr_jobs j LEFT JOIN ocr_company_schedule s ON s.firm_id=j.firm_id AND s.company_id=j.company_id WHERE j.status IN ('queued','retry_wait') AND j.available_at<=? AND j.attempt_count<j.max_attempts AND NOT EXISTS(SELECT 1 FROM ocr_jobs active WHERE active.firm_id=j.firm_id AND active.company_id=j.company_id AND active.status='running') ORDER BY COALESCE(s.last_dispatch_seq,0),j.created_at,j.id LIMIT 1", (stamp,)).fetchone()
-            if not job:
+            candidate = conn.execute("SELECT j.id,j.job_kind,j.firm_id,j.company_id FROM (SELECT id,firm_id,company_id,status,available_at,attempt_count,max_attempts,created_at,'ocr' AS job_kind FROM ocr_jobs UNION ALL SELECT id,firm_id,company_id,status,available_at,attempt_count,max_attempts,created_at,'proposal' AS job_kind FROM proposal_jobs) j LEFT JOIN ocr_company_schedule s ON s.firm_id=j.firm_id AND s.company_id=j.company_id WHERE j.status IN ('queued','retry_wait') AND j.available_at<=? AND j.attempt_count<j.max_attempts AND NOT EXISTS(SELECT 1 FROM ocr_jobs active WHERE active.firm_id=j.firm_id AND active.company_id=j.company_id AND active.status='running') AND NOT EXISTS(SELECT 1 FROM proposal_jobs active WHERE active.firm_id=j.firm_id AND active.company_id=j.company_id AND active.status='running') ORDER BY COALESCE(s.last_dispatch_seq,0),j.created_at,j.id LIMIT 1", (stamp,)).fetchone()
+            if not candidate:
                 return None
+            sequence = conn.execute("SELECT COALESCE(MAX(last_dispatch_seq),0)+1 FROM ocr_company_schedule").fetchone()[0]
+            conn.execute("INSERT INTO ocr_company_schedule(firm_id,company_id,last_dispatch_seq) VALUES(?,?,?) ON CONFLICT(firm_id,company_id) DO UPDATE SET last_dispatch_seq=excluded.last_dispatch_seq", (candidate["firm_id"], candidate["company_id"], sequence))
+            if candidate["job_kind"] == "proposal":
+                job = conn.execute("SELECT * FROM proposal_jobs WHERE id=?", (candidate["id"],)).fetchone()
+                return self.proposals.claim_sqlite(conn, job, worker_id, lease_seconds)
+            job = conn.execute("SELECT * FROM ocr_jobs WHERE id=?", (candidate["id"],)).fetchone()
             token = uuid4().hex
             conn.execute("UPDATE ocr_jobs SET status='running',attempt_count=attempt_count+1,lease_token=?,lease_until=?,worker_id=?,current_run_id=NULL,updated_at=? WHERE id=?", (token, self.timestamp(lease_seconds), worker_id, stamp, job["id"]))
-            sequence = conn.execute("SELECT COALESCE(MAX(last_dispatch_seq),0)+1 FROM ocr_company_schedule").fetchone()[0]
-            conn.execute("INSERT INTO ocr_company_schedule(firm_id,company_id,last_dispatch_seq) VALUES(?,?,?) ON CONFLICT(firm_id,company_id) DO UPDATE SET last_dispatch_seq=excluded.last_dispatch_seq", (job["firm_id"], job["company_id"], sequence))
-            conn.execute("INSERT INTO ocr_attempts(id,job_id,firm_id,company_id,event_id,attachment_id,attempt_no,lease_token,execution_user_id,input_version,attachment_sha256,configuration_fingerprint,phase,status,error_code,error_detail,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,'claimed','running','','',?)", (uuid4().hex, job["id"], job["firm_id"], job["company_id"], job["event_id"], job["attachment_id"], job["attempt_count"] + 1, token, job["execution_user_id"], job["expected_version"], job["attachment_sha256"], job["configuration_fingerprint"], stamp))
-            return dict(conn.execute("SELECT * FROM ocr_jobs WHERE id=?", (job["id"],)).fetchone())
+            conn.execute("INSERT INTO ocr_attempts(id,job_id,firm_id,company_id,event_id,attachment_id,attempt_no,lease_token,execution_user_id,input_version,attachment_sha256,configuration_fingerprint,phase,status,error_code,error_detail,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,'claimed','running','','',?)", (uuid4().hex, job["id"], job["firm_id"], job["company_id"], job["event_id"], job["attachment_id"], job["attempt_count"] + 1, token, job["execution_user_id"], job["expected_fact_version"] or job["expected_version"], job["attachment_sha256"], job["configuration_fingerprint"], stamp))
+            return {**dict(conn.execute("SELECT * FROM ocr_jobs WHERE id=?", (job["id"],)).fetchone()), "job_kind": "ocr"}
 
     def _invalidate_run(self, conn, job):
         if job["current_run_id"]:
@@ -271,7 +322,7 @@ class QueueService:
     def recover(self):
         with self.worker_transaction() as conn:
             if self.db.is_postgres:
-                return conn.execute("SELECT accounting.recover_ocr_jobs()").fetchone()[0]
+                return conn.execute("SELECT accounting.recover_ocr_jobs()+accounting.recover_proposal_jobs()").fetchone()[0]
             jobs = conn.execute("SELECT * FROM ocr_jobs WHERE status='running' AND lease_until<=?", (self.timestamp(),)).fetchall()
             for job in jobs:
                 run = conn.execute("SELECT * FROM ai_runs WHERE id=?", (job["current_run_id"],)).fetchone() if job["current_run_id"] else None
@@ -285,4 +336,4 @@ class QueueService:
                 else:
                     self._finish_sqlite(conn, job, "interrupted", "result_uncertain", "模型请求已发送但结果不确定，请核对后决定是否重试")
                     self._invalidate_run(conn, job)
-            return len(jobs)
+            return len(jobs) + self.proposals.recover_sqlite(conn)

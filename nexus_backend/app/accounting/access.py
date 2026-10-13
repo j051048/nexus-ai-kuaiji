@@ -1,5 +1,6 @@
 """Authorization derives from current database membership, never JWT metadata."""
 from .domain import AccountingError, Actor
+from .telemetry import tag_authorized_company
 
 FIRM_MANAGERS = {"owner", "admin"}
 FIRM_EDITORS = {"owner", "admin", "operator", "reviewer"}
@@ -51,6 +52,7 @@ class AccessControl:
                 raise AccountingError("需要企业管理员或事务所管理员权限", 403)
             if not manage and not own_role and not (role and assigned):
                 raise AccountingError("客户企业不存在或无权访问", 404)
+        tag_authorized_company(company_id)
         return company
 
     def book(self, conn, actor: Actor, book_id, capability="read"):
@@ -70,6 +72,7 @@ class AccessControl:
             if not permissions["read"] and capability != "manage":
                 raise AccountingError("账套不存在或无权访问", 404)
             raise AccountingError("当前账号没有该账套的编辑、复核或管理权限", 403)
+        tag_authorized_company(book['company_id'])
         return {**dict(book), "permissions": {k: v for k, v in permissions.items() if k != "read"}}
 
     @staticmethod

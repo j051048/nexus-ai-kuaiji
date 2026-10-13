@@ -7,6 +7,9 @@ from collections.abc import Mapping
 from contextlib import closing, contextmanager
 from decimal import Decimal
 from pathlib import Path
+from time import perf_counter
+
+from .telemetry import TransactionMetrics, transaction_scope
 
 MIGRATIONS = Path(__file__).resolve().parents[2] / "migrations"
 WRITE_LOCK = 6_420_031_786_281_903_101
@@ -124,6 +127,7 @@ class PostgresConnection:
 
 class Database:
     def __init__(self, path: str | Path | None = None):
+        self.metrics = TransactionMetrics()
         self.path = str(path if path is not None else os.getenv("ACCOUNTING_DATABASE_URL") or "data/accounting.db")
         self.is_postgres = self.path.startswith(("postgres://", "postgresql://"))
         self.dialect = "postgres" if self.is_postgres else "sqlite"
@@ -207,12 +211,18 @@ class Database:
             conn.execute("PRAGMA foreign_keys=ON")
 
     @contextmanager
-    def transaction(self, write: bool = False, actor=None, system: bool = False):
+    def transaction(self, write: bool = False, actor=None, system: bool = False, *, company_id=None):
         if self.is_postgres and actor is None and not system:
             raise ValueError("PostgreSQL 事务必须提供 actor 或显式使用 system=True 的身份事务")
         if actor is not None and system:
             raise ValueError("actor 与 system 身份事务不能混用")
+        started = perf_counter()
         conn = self.connect()
+        connected = perf_counter()
+        lock_wait_ms = 0
+        outcome = "rolled_back"
+        companies = {company_id} if company_id else set()
+        metric_token = transaction_scope.set(companies)
         try:
             if self.is_postgres:
                 conn.execute("BEGIN" if write else "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY")
@@ -220,13 +230,23 @@ class Database:
                 conn.execute("SET LOCAL search_path TO accounting,pg_catalog")
                 conn.execute("SELECT set_config('app.user_id',?,true),set_config('app.firm_id',?,true)", (getattr(actor, "user_id", ""), getattr(actor, "firm_id", "")))
                 if write:
+                    lock_started = perf_counter()
                     conn.execute("SELECT pg_advisory_xact_lock(?)", (WRITE_LOCK,))
+                    lock_wait_ms = (perf_counter() - lock_started) * 1000
             else:
+                lock_started = perf_counter()
                 conn.execute("BEGIN IMMEDIATE" if write else "BEGIN")
+                if write:
+                    lock_wait_ms = (perf_counter() - lock_started) * 1000
             yield conn
             conn.commit()
+            outcome = "committed"
         except Exception:
             conn.rollback()
             raise
         finally:
             conn.close()
+            transaction_scope.reset(metric_token)
+            self.metrics.record(firm_id=getattr(actor, "firm_id", None), company_id=next(iter(companies)) if len(companies) == 1 else None,
+                                write=write, outcome=outcome, connect_ms=(connected-started)*1000,
+                                lock_wait_ms=lock_wait_ms, transaction_ms=(perf_counter()-connected)*1000)

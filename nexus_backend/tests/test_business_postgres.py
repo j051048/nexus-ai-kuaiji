@@ -284,7 +284,12 @@ def test_business_postgres_all_new_tables_force_rls_and_functions_are_private(bu
     case = business_case
     with case.db.transaction(actor=case.owner) as conn:
         rows = conn.execute("SELECT relname,relrowsecurity,relforcerowsecurity FROM pg_class JOIN pg_namespace n ON n.oid=relnamespace WHERE n.nspname='accounting' AND (relname LIKE 'business_%' OR relname='department_approvers') AND relkind='r'").fetchall()
-        assert len(rows) == 6 and all(row["relrowsecurity"] and row["relforcerowsecurity"] for row in rows)
+        assert {row["relname"] for row in rows} == {
+            "department_approvers", "business_events", "business_versions",
+            "business_attachments", "business_actions", "business_mappings",
+            "business_mapping_versions",
+        }
+        assert all(row["relrowsecurity"] and row["relforcerowsecurity"] for row in rows)
         functions = conn.execute("SELECT p.oid,p.proname,p.prosecdef,p.proconfig FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='accounting' AND p.proname LIKE 'business_%'").fetchall()
         assert functions
         for function in functions:

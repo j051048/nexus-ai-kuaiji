@@ -49,44 +49,43 @@ class BusinessService:
         return [row["department_id"] for row in conn.execute(sql, params)]
 
     def _ledger_books(self, conn, actor):
-        self.access.require_user(conn, actor.user_id)
-        rows = conn.execute(
-            "SELECT b.id FROM books b JOIN firm_clients fc ON fc.company_id=b.company_id AND fc.firm_id=b.firm_id "
-            "WHERE b.firm_id=? AND fc.status='active'", (actor.firm_id,),
-        ).fetchall()
-        allowed = []
-        for row in rows:
-            try:
-                self.access.book(conn, actor, row["id"])
-                allowed.append(row["id"])
-            except AccountingError as error:
-                if error.status not in {403, 404}:
-                    raise
-        return allowed
+        role = self.access.firm_role(conn, actor)
+        sql = """SELECT b.id FROM books b
+            JOIN firm_clients fc ON fc.company_id=b.company_id AND fc.firm_id=b.firm_id AND fc.status='active'
+            LEFT JOIN book_access a ON a.book_id=b.id AND a.firm_id=b.firm_id AND a.user_id=?
+            LEFT JOIN company_memberships cm ON cm.company_id=b.company_id AND cm.user_id=?
+            WHERE b.firm_id=?"""
+        values = [actor.user_id,actor.user_id,actor.firm_id]
+        if role not in FIRM_MANAGERS:
+            sql += " AND a.role IS NOT NULL AND (?=1 OR cm.role IN ('owner','admin','finance'))"
+            values.append(1 if role else 0)
+        return [row["id"] for row in conn.execute(sql,values)]
 
     def context(self, actor: Actor):
         with self.db.transaction(actor=actor) as conn:
             firm_role = self.access.firm_role(conn, actor)
             companies = []
+            ledger_ids = self._ledger_books(conn, actor)
+            ledger_companies = {row["company_id"] for row in conn.execute("SELECT DISTINCT company_id FROM books WHERE id IN (" + ",".join("?" for _ in ledger_ids) + ")",ledger_ids)} if ledger_ids else set()
             for row in conn.execute(
                 "SELECT c.id,c.name,cm.role,cm.department_id FROM companies c "
                 "JOIN firm_clients fc ON fc.company_id=c.id AND fc.firm_id=? AND fc.status='active' "
                 "LEFT JOIN company_memberships cm ON cm.company_id=c.id AND cm.user_id=? ORDER BY c.name,c.id",
                 (actor.firm_id, actor.user_id),
             ):
-                if not row["role"] and firm_role not in FIRM_MANAGERS:
+                if not row["role"] and firm_role not in FIRM_MANAGERS and row["id"] not in ledger_companies:
                     continue
                 approver_ids = self._approver_departments(conn, actor, row["id"])
-                departments = self._departments(conn, row["id"])
+                departments = self._departments(conn, row["id"]) if row["role"] or firm_role in FIRM_MANAGERS else []
                 companies.append({
-                    **dict(row), "departments": departments, "approver_department_ids": approver_ids,
+                    **dict(row), "ledger_available": row["id"] in ledger_companies, "departments": departments, "approver_department_ids": approver_ids,
                     "can_submit": bool(row["role"] and (row["department_id"] or row["role"] != "employee" and departments)),
                     "can_finance": row["role"] == "finance",
                     "can_manage_approvers": firm_role in FIRM_MANAGERS or row["role"] in {"owner", "admin"},
                 })
             return {"companies": companies, "templates": list(TEMPLATES.values()), "scopes": {
                 "own": True, "department": any(row["approver_department_ids"] for row in companies),
-                "company": any(row["can_finance"] for row in companies), "accounting": bool(self._ledger_books(conn, actor)),
+                "company": any(row["can_finance"] for row in companies), "accounting": bool(ledger_ids),
             }}
 
     def _event(self, conn, actor, event_id):
@@ -162,6 +161,10 @@ class BusinessService:
         result["payload"] = json.loads(event["payload"])
         result["currency"] = "CNY"
         result["attachments"] = self._attachments(conn, event["id"])
+        from ..intelligence.current_evidence import superseded_ids
+        excluded = superseded_ids(self.db, conn, event)
+        for attachment in result["attachments"]:
+            attachment["superseded"] = attachment["id"] in excluded
         result["actions"] = [dict(row) for row in conn.execute(
             "SELECT id,submitted_version,stage,decision,reason,created_by,created_at FROM business_actions WHERE event_id=? ORDER BY created_at,id", (event["id"],),
         )]
@@ -254,43 +257,45 @@ class BusinessService:
         if not self._permissions(conn, actor, event)["edit"]:
             raise AccountingError("仅申请人可修改草稿或退回事项", 403)
 
-    def _bump(self, conn, actor, event, status=None, submitted_version=None):
+    def _bump(self, conn, actor, event, status=None, submitted_version=None, facts_changed=False, payload=None):
         version = event["version"] + 1
-        conn.execute("UPDATE business_events SET version=?,status=?,submitted_version=?,updated_at=? WHERE id=? AND firm_id=? AND version=?", (
-            version, status or event["status"], submitted_version if submitted_version is not None else event["submitted_version"], now(), event["id"], actor.firm_id, event["version"],
+        conn.execute("UPDATE business_events SET version=?,fact_version=fact_version+?,payload=COALESCE(?,payload),status=?,submitted_version=?,updated_at=? WHERE id=? AND firm_id=? AND version=?", (
+            version, int(facts_changed), encode(payload) if payload is not None else None, status or event["status"], submitted_version if submitted_version is not None else event["submitted_version"], now(), event["id"], actor.firm_id, event["version"],
         ))
         if getattr(self, "intelligence", None):
             self.intelligence.capture_snapshot(conn, actor, self._event(conn, actor, event["id"]))
         return version
 
-    def create(self, actor, request: BusinessEventCreate):
+    def create(self, actor, request: BusinessEventCreate, conn=None):
         payload = request.payload.model_dump()
         validate_payload(request.template_id, request.template_version, payload)
         digest = fingerprint(request.model_dump(exclude={"idempotency_key"})) if request.idempotency_key else None
-        with self.db.transaction(write=True, actor=actor) as conn:
-            member = self._membership(conn, actor, request.company_id)
-            if not member:
-                raise AccountingError("需要当前企业的成员授权才能录入业务事项", 403)
-            if request.idempotency_key:
-                existing = conn.execute("SELECT * FROM business_events WHERE firm_id=? AND applicant_id=? AND create_key=?", (actor.firm_id, actor.user_id, request.idempotency_key)).fetchone()
-                if existing:
-                    if existing["creation_fingerprint"] != digest:
-                        raise AccountingError("创建幂等键已使用且原始事项内容不同", 409)
-                    return self._event_json(conn, actor, self._event(conn, actor, existing["id"]))
-            department_id = request.department_id or member["department_id"]
-            if member["role"] == "employee" and department_id != member["department_id"]:
-                raise AccountingError("员工只能在本人所属部门录入事项", 403)
-            if department_id and not conn.execute("SELECT 1 FROM departments WHERE id=? AND company_id=?", (department_id, request.company_id)).fetchone():
-                raise AccountingError("部门不属于当前企业")
-            event_id, timestamp = uuid4().hex, now()
-            conn.execute(
-                "INSERT INTO business_events(id,firm_id,company_id,department_id,applicant_id,template_id,template_version,payload,status,version,created_at,updated_at,create_key,creation_fingerprint) VALUES(?,?,?,?,?,?,?,?,'draft',1,?,?,?,?)",
-                (event_id, actor.firm_id, request.company_id, department_id, actor.user_id, request.template_id, request.template_version, encode(payload), timestamp, timestamp, request.idempotency_key, digest),
-            )
-            self._audit(conn, actor, "business.create", event_id, {"template_id": request.template_id, "company_id": request.company_id})
-            if getattr(self, "intelligence", None):
-                self.intelligence.capture_snapshot(conn, actor, self._event(conn, actor, event_id))
-            return self._event_json(conn, actor, self._event(conn, actor, event_id))
+        if conn is None:
+            with self.db.transaction(write=True, actor=actor) as transaction:
+                return self.create(actor, request, transaction)
+        member = self._membership(conn, actor, request.company_id)
+        if not member:
+            raise AccountingError("需要当前企业的成员授权才能录入业务事项", 403)
+        if request.idempotency_key:
+            existing = conn.execute("SELECT * FROM business_events WHERE firm_id=? AND applicant_id=? AND create_key=?", (actor.firm_id, actor.user_id, request.idempotency_key)).fetchone()
+            if existing:
+                if existing["creation_fingerprint"] != digest:
+                    raise AccountingError("创建幂等键已使用且原始事项内容不同", 409)
+                return self._event_json(conn, actor, self._event(conn, actor, existing["id"]))
+        department_id = request.department_id or member["department_id"]
+        if member["role"] == "employee" and department_id != member["department_id"]:
+            raise AccountingError("员工只能在本人所属部门录入事项", 403)
+        if department_id and not conn.execute("SELECT 1 FROM departments WHERE id=? AND company_id=?", (department_id, request.company_id)).fetchone():
+            raise AccountingError("部门不属于当前企业")
+        event_id, timestamp = uuid4().hex, now()
+        conn.execute(
+            "INSERT INTO business_events(id,firm_id,company_id,department_id,applicant_id,template_id,template_version,payload,status,version,created_at,updated_at,create_key,creation_fingerprint) VALUES(?,?,?,?,?,?,?,?,'draft',1,?,?,?,?)",
+            (event_id, actor.firm_id, request.company_id, department_id, actor.user_id, request.template_id, request.template_version, encode(payload), timestamp, timestamp, request.idempotency_key, digest),
+        )
+        self._audit(conn, actor, "business.create", event_id, {"template_id": request.template_id, "company_id": request.company_id})
+        if getattr(self, "intelligence", None):
+            self.intelligence.capture_snapshot(conn, actor, self._event(conn, actor, event_id))
+        return self._event_json(conn, actor, self._event(conn, actor, event_id))
 
     def update(self, actor, event_id, request: BusinessEventUpdate):
         with self.db.transaction(write=True, actor=actor) as conn:
@@ -298,8 +303,7 @@ class BusinessService:
             self._require_edit(conn, actor, event, request.expected_version)
             payload = request.payload.model_dump()
             validate_payload(event["template_id"], event["template_version"], payload)
-            conn.execute("UPDATE business_events SET payload=? WHERE id=? AND firm_id=?", (encode(payload), event_id, actor.firm_id))
-            self._bump(conn, actor, event)
+            self._bump(conn, actor, event, facts_changed=json.loads(event["payload"]) != payload, payload=payload)
             self._audit(conn, actor, "business.update", event_id, {"version": event["version"] + 1})
             return self._event_json(conn, actor, self._event(conn, actor, event_id))
 
@@ -322,7 +326,7 @@ class BusinessService:
             "INSERT INTO business_attachments(id,event_id,firm_id,company_id,storage_key,filename,media_type,sha256,size_bytes,created_at,created_by) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
             (metadata["id"], event_id, actor.firm_id, event["company_id"], metadata["storage_key"], metadata["filename"], metadata["media_type"], metadata["sha256"], metadata["size_bytes"], now(), actor.user_id),
         )
-        self._bump(conn, actor, event)
+        self._bump(conn, actor, event, facts_changed=True)
         self._audit(conn, actor, "business.attachment.add", event_id, {"attachment_id": metadata["id"], "sha256": metadata["sha256"]})
         return self._event_json(conn, actor, self._event(conn, actor, event_id))
 
@@ -334,37 +338,39 @@ class BusinessService:
             self._event(conn, actor, attachment["event_id"])
             return dict(attachment)
 
-    def submit(self, actor, event_id, expected_version):
-        with self.db.transaction(write=True, actor=actor) as conn:
-            event = self._event(conn, actor, event_id)
-            self._require_edit(conn, actor, event, expected_version)
-            if not event["department_id"]:
-                raise AccountingError("请先由管理员设置所属部门，再重新创建并提交事项")
-            member = self._membership(conn, actor, event["company_id"])
-            if member["role"] == "employee" and member["department_id"] != event["department_id"]:
-                raise AccountingError("本人所属部门已变更，请按当前部门重新创建事项", 403)
-            attachments = self._attachments(conn, event_id)
-            if not attachments:
-                raise AccountingError("提交前至少上传一个真实附件")
-            if self.db.is_postgres and not conn.execute("SELECT accounting.business_submission_ready(?,?,?,?)", (actor.firm_id, event["company_id"], event["department_id"], actor.user_id)).fetchone()[0]:
-                raise AccountingError("请先配置非申请人的有效部门审批人与企业财务审批人")
-            for sql, text in (() if self.db.is_postgres else (
-                ("SELECT 1 FROM department_approvers da JOIN company_memberships cm ON cm.company_id=da.company_id AND cm.user_id=da.user_id JOIN users u ON u.id=da.user_id WHERE da.firm_id=? AND da.company_id=? AND da.department_id=? AND da.user_id<>? AND u.active=1", "请先配置一位非申请人的有效部门审批人"),
-                ("SELECT 1 FROM company_memberships cm JOIN users u ON u.id=cm.user_id WHERE cm.company_id=? AND cm.role='finance' AND cm.user_id<>? AND u.active=1", "请先配置一位非申请人的有效企业财务审批人"),
-            )):
-                params = (actor.firm_id, event["company_id"], event["department_id"], actor.user_id) if "department_approvers" in sql else (event["company_id"], actor.user_id)
-                if not conn.execute(sql, params).fetchone():
-                    raise AccountingError(text)
-            payload = json.loads(event["payload"])
-            template = validate_payload(event["template_id"], event["template_version"], payload)
-            new_version = event["version"] + 1
-            conn.execute(
-                "INSERT INTO business_versions(event_id,firm_id,company_id,event_version,payload,template_snapshot,attachment_snapshot,created_at,created_by) VALUES(?,?,?,?,?,?,?,?,?)",
-                (event_id, actor.firm_id, event["company_id"], new_version, event["payload"], encode(template), encode(attachments), now(), actor.user_id),
-            )
-            self._bump(conn, actor, event, "submitted", new_version)
-            self._audit(conn, actor, "business.submit", event_id, {"submitted_version": new_version, "attachment_count": len(attachments)})
-            return self._event_json(conn, actor, self._event(conn, actor, event_id))
+    def submit(self, actor, event_id, expected_version, conn=None):
+        if conn is None:
+            with self.db.transaction(write=True, actor=actor) as transaction:
+                return self.submit(actor, event_id, expected_version, transaction)
+        event = self._event(conn, actor, event_id)
+        self._require_edit(conn, actor, event, expected_version)
+        if not event["department_id"]:
+            raise AccountingError("请先由管理员设置所属部门，再重新创建并提交事项")
+        member = self._membership(conn, actor, event["company_id"])
+        if member["role"] == "employee" and member["department_id"] != event["department_id"]:
+            raise AccountingError("本人所属部门已变更，请按当前部门重新创建事项", 403)
+        attachments = self._attachments(conn, event_id)
+        if not attachments:
+            raise AccountingError("提交前至少上传一个真实附件")
+        if self.db.is_postgres and not conn.execute("SELECT accounting.business_submission_ready(?,?,?,?)", (actor.firm_id, event["company_id"], event["department_id"], actor.user_id)).fetchone()[0]:
+            raise AccountingError("请先配置非申请人的有效部门审批人与企业财务审批人")
+        for sql, text in (() if self.db.is_postgres else (
+            ("SELECT 1 FROM department_approvers da JOIN company_memberships cm ON cm.company_id=da.company_id AND cm.user_id=da.user_id JOIN users u ON u.id=da.user_id WHERE da.firm_id=? AND da.company_id=? AND da.department_id=? AND da.user_id<>? AND u.active=1", "请先配置一位非申请人的有效部门审批人"),
+            ("SELECT 1 FROM company_memberships cm JOIN users u ON u.id=cm.user_id WHERE cm.company_id=? AND cm.role='finance' AND cm.user_id<>? AND u.active=1", "请先配置一位非申请人的有效企业财务审批人"),
+        )):
+            params = (actor.firm_id, event["company_id"], event["department_id"], actor.user_id) if "department_approvers" in sql else (event["company_id"], actor.user_id)
+            if not conn.execute(sql, params).fetchone():
+                raise AccountingError(text)
+        payload = json.loads(event["payload"])
+        template = validate_payload(event["template_id"], event["template_version"], payload)
+        new_version = event["version"] + 1
+        conn.execute(
+            "INSERT INTO business_versions(event_id,firm_id,company_id,event_version,payload,template_snapshot,attachment_snapshot,created_at,created_by) VALUES(?,?,?,?,?,?,?,?,?)",
+            (event_id, actor.firm_id, event["company_id"], new_version, event["payload"], encode(template), encode(attachments), now(), actor.user_id),
+        )
+        self._bump(conn, actor, event, "submitted", new_version)
+        self._audit(conn, actor, "business.submit", event_id, {"submitted_version": new_version, "attachment_count": len(attachments)})
+        return self._event_json(conn, actor, self._event(conn, actor, event_id))
 
     def _action(self, conn, actor, event, stage, decision, reason=""):
         conn.execute(
@@ -458,7 +464,8 @@ class BusinessService:
                 mapping = existing_key or existing_event
                 if mapping["event_id"] != event_id or mapping["request_fingerprint"] != digest or mapping["idempotency_key"] != request.idempotency_key:
                     raise AccountingError("移交幂等键或已移交的目标内容不一致", 409)
-                return {"event": self._event_json(conn, actor, event), "book_id": mapping["book_id"], "source_id": mapping["source_id"], "draft_id": mapping["draft_id"]}
+                job = conn.execute("SELECT id FROM proposal_jobs WHERE book_id=? AND draft_id=? ORDER BY created_at,id LIMIT 1", (mapping["book_id"], mapping["draft_id"])).fetchone()
+                return {"event": self._event_json(conn, actor, event), "book_id": mapping["book_id"], "source_id": mapping["source_id"], "draft_id": mapping["draft_id"], "automatic_job": {"id": job["id"]} if job else None}
             self._version(event, request.expected_version)
             if event["status"] != "finance_approved":
                 raise AccountingError("事项必须完成部门与财务审批后才能移交", 409)
@@ -477,7 +484,19 @@ class BusinessService:
                 "INSERT INTO sources(id,book_id,external_id,source_name,date,description,counterparty,amount_cents,direction,evidence_ref,fingerprint,source_kind) VALUES(?,?,?,?,?,?,?,?,?,?,?,'business')",
                 (source_id, request.book_id, evidence, "企业业务事项", payload["occurred_on"], payload["description"], payload["counterparty"], amount, payload["direction"], evidence, fingerprint({"payload": payload, "evidence_ref": evidence})),
             )
-            lines = self._proposal(event["template_id"], payload, amount)
+            from ..accounting.catalog import CatalogService
+            catalog = CatalogService(self.db)
+            configured = None
+            template_pending = ""
+            try:
+                configured = catalog.generate_in_transaction(conn, actor, request.book_id, event["template_id"], payload, amount, {"department_id": event["department_id"], "applicant_id": event["applicant_id"]})
+            except AccountingError as error:
+                # Tax formulas consume verified invoice amounts after OCR;
+                # handoff still preserves the approved business facts now.
+                if "拆分税额模板要求" not in str(error):
+                    raise
+                template_pending = "企业拆分税额模板等待票据识别和金额核对；当前保留空草稿，须处理完成后复核。"
+            lines = configured["lines"] if configured is not None else [] if template_pending else self._proposal(event["template_id"], payload, amount)
             available = {row["code"] for row in conn.execute("SELECT code FROM accounts WHERE book_id=? AND active=1", (request.book_id,))}
             # 账套自定义科目缺失时保留可用一侧，让会计补充，不默默建立科目。
             lines = [line for line in lines if line[0] in available]
@@ -486,13 +505,26 @@ class BusinessService:
                 "按固定模板及费用类别生成候选分录。附件 SHA-256 仅用于追溯提交资料，未验证单据真实性。"
                 "未判定税额、收入确认或业务实质，须由会计独立复核。"
             )
+            if configured is not None:
+                explanation = configured["explanation"] + "；" + "；".join(configured["issues"])
+            elif template_pending:
+                explanation = template_pending
             conn.execute("INSERT INTO drafts(id,book_id,source_id,description,status,version,explanation) VALUES(?,?,?,?,'draft',1,?)", (draft_id, request.book_id, source_id, payload["description"], explanation))
             conn.executemany("INSERT INTO draft_lines(draft_id,book_id,ordinal,account_code,debit_cents,credit_cents) VALUES(?,?,?,?,?,?)", [(draft_id, request.book_id, ordinal, *line) for ordinal, line in enumerate(lines, 1)])
             conn.execute(
                 "INSERT INTO business_mappings(event_id,firm_id,company_id,book_id,source_id,draft_id,submitted_version,idempotency_key,request_fingerprint,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
                 (event_id, actor.firm_id, event["company_id"], request.book_id, source_id, draft_id, event["submitted_version"], request.idempotency_key, digest, actor.user_id, now()),
             )
+            if configured is not None:
+                catalog.save_auxiliaries_in_transaction(conn, actor, request.book_id, draft_id, configured["auxiliaries"])
             self._bump(conn, actor, event, "handed_off")
             self._action(conn, actor, event, "handoff", "handoff")
             self._audit(conn, actor, "business.handoff", event_id, {"book_id": request.book_id, "source_id": source_id, "draft_id": draft_id, "submitted_version": event["submitted_version"]}, request.book_id)
-            return {"event": self._event_json(conn, actor, self._event(conn, actor, event_id)), "book_id": request.book_id, "source_id": source_id, "draft_id": draft_id}
+            current_event = self._event(conn, actor, event_id)
+            automatic = None
+            if getattr(self, "proposal_queue", None) is not None:
+                current_draft = conn.execute("SELECT * FROM drafts WHERE id=? AND book_id=?", (draft_id, request.book_id)).fetchone()
+                automatic = self.proposal_queue.enqueue_in_transaction(conn, actor, current_event, book, current_draft)
+            # Handoff returns a stable task identity. Live progress belongs to
+            # the task endpoint, so a retry returns the same command receipt.
+            return {"event": self._event_json(conn, actor, current_event), "book_id": request.book_id, "source_id": source_id, "draft_id": draft_id, "automatic_job": {"id": automatic["id"]} if automatic else None}

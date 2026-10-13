@@ -6,6 +6,7 @@ export interface BusinessCompany {
   id: string; name: string; role: string | null; department_id: string | null; departments: Department[];
   can_submit: boolean; can_finance: boolean; can_manage_approvers: boolean;
   approver_department_ids: string[];
+  ledger_available?: boolean;
 }
 export interface BusinessContext {
   companies: BusinessCompany[];
@@ -17,7 +18,7 @@ export interface BusinessPayload {
   direction: 'expense' | 'income'; payment_status: 'paid' | 'unpaid';
   category: 'office' | 'travel' | 'rent' | 'communication' | 'other'; purpose?: string; project?: string;
 }
-export interface BusinessAttachment { id: string; filename: string; media_type: string; sha256: string; size_bytes: number }
+export interface BusinessAttachment { superseded?: boolean; id: string; filename: string; media_type: string; sha256: string; size_bytes: number }
 export interface BusinessAction { stage: string; decision: string; reason?: string; created_by?: string; created_at?: string; submitted_version?: number }
 export interface BusinessVersion { event_version: number; payload: BusinessPayload; attachment_snapshot: BusinessAttachment[]; created_at: string; created_by: string }
 export interface BusinessEvent {

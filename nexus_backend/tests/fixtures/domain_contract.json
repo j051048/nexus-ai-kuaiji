@@ -1,0 +1,24 @@
+{
+  "money": [
+    {"value":"0", "valid":true,"cents":0},
+    {"value":"0.01", "valid":true,"cents":1},
+    {"value":"123.4", "valid":true,"cents":12340},
+    {"value":"999999999999.99", "valid":true,"cents":99999999999999},
+    {"value":"01.00", "valid":false},
+    {"value":"1e3", "valid":false},
+    {"value":"1.001", "valid":false},
+    {"value":"-1", "valid":false},
+    {"value":"NaN", "valid":false},
+    {"value":1.01, "valid":false},
+    {"value":"1000000000000", "valid":false}
+  ],
+  "period": [
+    {"value":"2000-01", "valid":true},
+    {"value":"2099-12", "valid":true},
+    {"value":"1999-12", "valid":false},
+    {"value":"2100-01", "valid":false},
+    {"value":"2026-00", "valid":false},
+    {"value":"2026-13", "valid":false},
+    {"value":"2026-1", "valid":false}
+  ]
+}

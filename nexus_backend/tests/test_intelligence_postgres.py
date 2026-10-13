@@ -5,6 +5,8 @@ from uuid import uuid4
 import pytest
 
 from app.accounting.service import Actor
+from app.business.models import BusinessEventCreate, HandoffRequest
+from app.business.service import BusinessService
 from test_business_postgres import (  # Reuse the actual multi-company fixture.
     ADMIN_URL, APP_URL, STAMP, attach, business_case,
     business_postgres, full_event, handoff, insert_event,
@@ -62,12 +64,26 @@ def count_visible(case, actor, table, event_id):
         return conn.execute(f"SELECT COUNT(*) FROM {table} WHERE event_id=?", (event_id,)).fetchone()[0]
 
 
-def paid_mapped(case):
-    event_id = full_event(case)
-    with case.psycopg.connect(ADMIN_URL) as conn:
-        conn.execute("UPDATE accounting.business_events SET payload=%s WHERE id=%s", ('{"amount":"12.34","payment_status":"paid"}', event_id))
-    source_id, draft_id = handoff(case, event_id)
-    return event_id, source_id, draft_id
+def paid_mapped(case, payment_status="paid"):
+    # Payment facts belong to the original draft input. Never amend an already
+    # approved payload as fixture setup: stage 10 requires an independent
+    # revision for that change, including administrator SQL writes.
+    business = BusinessService(case.db)
+    event = business.create(case.employee, BusinessEventCreate(
+        company_id=case.company, department_id=case.department,
+        template_id="daily_cashflow" if payment_status == "paid" else "procurement_expense",
+        payload={"amount": "12.34", "occurred_on": "2026-10-01", "description": "业务测试", "counterparty": "供应商",
+                 "direction": "expense", "payment_status": payment_status, "category": "office", "purpose": "办公费用"},
+    ))
+    # Metadata-only original intentionally reused by these SQL permission tests;
+    # the fixture does not pretend to OCR a real file or call a supplier.
+    attach(case, event["id"])
+    event = business.submit(case.employee, event["id"], event["version"])
+    event = business.approve_department(case.approver, event["id"], event["version"])
+    event = business.approve_finance(case.finance, event["id"], event["version"])
+    receipt = business.handoff(case.finance, event["id"], HandoffRequest(
+        expected_version=event["version"], book_id=case.book, idempotency_key="sql-boundary-handoff-" + uuid4().hex))
+    return event["id"], receipt["source_id"], receipt["draft_id"]
 
 
 def bank_source(case, book_id=None):
@@ -269,7 +285,7 @@ def test_ai_bank_links_hide_ledger_metadata_from_staff_and_department(business_c
 @pytest.mark.parametrize("invalid", ["other_company", "business_source", "approved_bank", "approved_business", "unpaid"])
 def test_ai_bank_link_wrong_scope_and_finalized_or_unpaid_documents_are_blocked(business_case, invalid):
     case = business_case
-    event_id, business_source_id, business_draft_id = paid_mapped(case)
+    event_id, business_source_id, business_draft_id = paid_mapped(case, "unpaid" if invalid == "unpaid" else "paid")
     bank_id, bank_draft_id = bank_source(case, case.other_book if invalid == "other_company" else None)
     if invalid == "business_source":
         bank_id = business_source_id
@@ -278,8 +294,6 @@ def test_ai_bank_link_wrong_scope_and_finalized_or_unpaid_documents_are_blocked(
             conn.execute("UPDATE accounting.drafts SET status='approved' WHERE id=%s", (bank_draft_id,))
         elif invalid == "approved_business":
             conn.execute("UPDATE accounting.drafts SET status='approved' WHERE id=%s", (business_draft_id,))
-        elif invalid == "unpaid":
-            conn.execute("UPDATE accounting.business_events SET payload=%s WHERE id=%s", ('{"payment_status":"unpaid"}', event_id))
     with pytest.raises((case.psycopg.errors.CheckViolation, case.psycopg.errors.ForeignKeyViolation)):
         bank_link(case, event_id, bank_id)
 

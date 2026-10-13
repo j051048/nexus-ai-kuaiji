@@ -11,7 +11,6 @@ from app.accounting.domain import Actor, AccountingError
 from app.accounting.models import CompanyCreate, CompanyMemberGrant
 from app.business.models import BusinessEventCreate
 from app.jobs.requests import BatchRequest
-from test_intelligence_workflow import create_event
 from test_queue_worker_postgres import (
     ADMIN_URL, APP_URL, WORKER_URL, business_case, business_postgres, pg_ai, pg_queue,
 )
@@ -45,9 +44,26 @@ def batch_request(company_id, events):
     } for event in events], idempotency_key="pg-fair-" + uuid4().hex)
 
 
+def distinct_first_company_event(case, sequence):
+    """Fair scheduling measures separate documents, independent of OCR caching."""
+    actor = case.actors["employee"]
+    event = case.business.create(actor, BusinessEventCreate(company_id=case.company["id"], template_id="reimbursement", payload={
+        "occurred_on": "2026-10-03", "description": f"大批次第{sequence}张独立合成票据", "counterparty": "耗材商店",
+        "amount": "0.30", "direction": "expense", "payment_status": "unpaid", "category": "office",
+    }))
+    original = io.BytesIO()
+    picture = Image.new("RGB", (40, 20), "white")
+    picture.putpixel((0, 0), (sequence, 0, 0))
+    picture.save(original, "PNG")
+    attachment = case.storage.put(f"独立合成票据-{sequence}.png", "image/png", original.getvalue())
+    return case.business.add_attachment(actor, event["id"], event["version"], attachment)
+
+
 def test_real_pg_three_companies_share_first_turns_and_keep_progress_private(pg_queue):
     case = pg_queue
-    large = case.queue.enqueue(case.actors["employee"], batch_request(case.company["id"], [create_event(case) for _ in range(3)]))
+    documents = [distinct_first_company_event(case, number) for number in range(1, 4)]
+    assert len({event["attachments"][0]["sha256"] for event in documents}) == 3
+    large = case.queue.enqueue(case.actors["employee"], batch_request(case.company["id"], documents))
     second_company, second_actor, second_event = new_company_input(case, "公平调度第二企业")
     second = case.queue.enqueue(second_actor, batch_request(second_company["id"], [second_event]))
     third_company, third_actor, third_event = new_company_input(case, "公平调度第三企业")
