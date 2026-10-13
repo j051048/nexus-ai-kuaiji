@@ -5,6 +5,7 @@ import { downloadCsv, formatMoney } from './csv';
 import type { Book, Session } from './types';
 import type { ImportFileInfo, ImportMapping, ImportPreview, ImportProfile, ImportReceipt } from './import-wizard-types';
 import { IMPORT_FIELD_LABELS, IMPORT_TEMPLATE, changeAmountMode, compatibleProfile, mappingError, mappingFields } from './import-wizard-helpers';
+import { uploadLimitLabel, uploadSizeError } from './transport-limits';
 import './import-wizard.css';
 
 export default function ChineseImportWizard({ session, book, onClose, onImported, onBusyChange }: {
@@ -37,11 +38,15 @@ export default function ChineseImportWizard({ session, book, onClose, onImported
     mounted.current = true;
     const controller = new AbortController();
     const oldFocus = document.activeElement as HTMLElement | null;
+    const originalBodyOverflow = document.body.style.overflow;
+    const originalDocumentOverflow = document.documentElement.style.overflow;
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
     dialog.current?.focus();
     void api<{ profiles: ImportProfile[] }>(`${endpoint}/profiles`, session, { signal: controller.signal })
       .then(value => { if (!controller.signal.aborted) setProfiles(value.profiles); })
       .catch(value => { if (!controller.signal.aborted) setError(errorMessage(value)); });
-    return () => { mounted.current = false; controller.abort(); busyCallback.current?.(false); oldFocus?.focus(); };
+    return () => { mounted.current = false; controller.abort(); document.body.style.overflow = originalBodyOverflow; document.documentElement.style.overflow = originalDocumentOverflow; busyCallback.current?.(false); if (oldFocus?.isConnected) oldFocus.focus({ preventScroll: true }); };
   }, [endpoint, session]);
 
   useEffect(() => { onBusyChange?.(busy); }, [busy, onBusyChange]);
@@ -64,7 +69,8 @@ export default function ChineseImportWizard({ session, book, onClose, onImported
     if (!selected) return;
     setFile(null); setPreview(null); setConfirmed(false); setPaste('');
     await perform(async () => {
-      if (selected.size > 2 * 1024 * 1024) throw new Error('文件不能超过2MB，请拆分后上传。');
+      const invalidSize = uploadSizeError(selected.size, 2 * 1024 * 1024);
+      if (invalidSize) throw new Error(invalidSize);
       const body = new FormData(); body.append('file', selected);
       const value = await api<ImportFileInfo>(`${endpoint}/files`, session, { method: 'POST', body });
       if (mounted.current) inspected(value);
@@ -96,7 +102,7 @@ export default function ChineseImportWizard({ session, book, onClose, onImported
   const maxPage = Math.max(0, Math.ceil(displayRows.length / 20) - 1);
   const visible = displayRows.slice(page * 20, page * 20 + 20);
   function keydown(event: React.KeyboardEvent<HTMLDivElement>) {
-    if (event.key === 'Escape' && !busy) onClose();
+    if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); if (!busy) onClose(); return; }
     if (event.key === 'Tab') {
       const nodes = dialog.current?.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex="0"]');
       if (!nodes?.length) return;
@@ -112,7 +118,7 @@ export default function ChineseImportWizard({ session, book, onClose, onImported
     <main className="import-wizard-main">
       {error && <p className="form-error" role="alert">{error}</p>}
       {step === 1 && <>
-        <div className="import-wizard-title-row"><div><h3>把银行文件交给系统</h3><p>支持UTF-8 / GBK CSV和单工作表Excel，最大2MB、1,000行。</p></div><button type="button" className="text-button" onClick={() => downloadCsv(IMPORT_TEMPLATE.replace(/PERIOD/g, book.period), '中文流水模板.csv')}><Download size={15} />下载中文模板</button></div>
+        <div className="import-wizard-title-row"><div><h3>把银行文件交给系统</h3><p>支持UTF-8 / GBK CSV和单工作表Excel，最大 {uploadLimitLabel(2 * 1024 * 1024)}、1,000行。</p></div><button type="button" className="text-button" onClick={() => downloadCsv(IMPORT_TEMPLATE.replace(/PERIOD/g, book.period), '中文流水模板.csv')}><Download size={15} />下载中文模板</button></div>
         <input ref={input} type="file" accept=".csv,.xlsx" hidden aria-label="选择银行流水文件" disabled={busy} onChange={event => void upload(event.target.files?.[0])} />
         <button type="button" className="import-wizard-upload" disabled={busy} onClick={() => input.current?.click()}>{busy ? <LoaderCircle className="spinner" size={26} /> : <FileSpreadsheet size={30} />}<strong>{file?.filename ?? '选择CSV或Excel文件'}</strong><span>{file ? `${file.row_count}条流水 · ${file.encoding}` : '直接使用中文表头，下一步确认字段对应'}</span></button>
         <details className="import-wizard-paste"><summary>或直接粘贴中文 / 原英文CSV</summary><label htmlFor="csv-text">粘贴流水内容（含表头）</label><textarea id="csv-text" rows={5} value={paste} onChange={event => { setPaste(event.target.value); setFile(null); setPreview(null); setConfirmed(false); }} disabled={busy} placeholder="交易编号,交易日期,摘要,交易对方,金额,方向" /><button type="button" className="button secondary" disabled={busy || !paste.trim()} onClick={() => void perform(async () => { const value = await api<ImportFileInfo>(`${endpoint}/paste`, session, { method: 'POST', body: { filename: '粘贴流水.csv', content: paste } }); if (mounted.current) inspected(value); })}>识别粘贴内容</button></details>

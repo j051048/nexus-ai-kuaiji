@@ -7,7 +7,7 @@ from app.closing.queries import receipt_valid_sql
 from app.jobs.visibility import book_edit_scope, event_scope
 
 
-KINDS = {"intake", "business", "approval", "finance", "handoff", "case", "review", "export", "ocr", "proposal", "delivery", "alert"}
+KINDS = {"intake", "business", "approval", "finance", "handoff", "case", "review", "export", "ocr", "proposal", "delivery", "alert", "migration"}
 TEMPLATES = {"reimbursement": "报销", "procurement_expense": "采购 / 费用", "daily_cashflow": "日常收支"}
 ALERTS = {"budget_exhausted": "模型预算已用尽", "quota_overrun": "模型费用超限", "usage_uncertain": "模型费用待核实", "task_failures": "后台任务失败", "exception_backlog": "异常处理积压", "queue_wait": "任务排队过久", "worker_unavailable": "后台处理不可用"}
 
@@ -51,11 +51,19 @@ class WorkspaceService:
           visible_cases AS (SELECT t.* FROM {self.cases._task_table()} t
             JOIN firm_clients fc ON fc.firm_id=t.firm_id AND fc.company_id=t.company_id AND fc.status='active'
             WHERE t.firm_id=? AND {case_scope})"""
-        columns = ["kind", "ref", "company_id", "book_id", "event_id", "draft_id", "batch_id", "title", "state", "priority", "due_on", "updated_at", "bucket", "action_label", "responsible"]
+        columns = ["kind", "ref", "company_id", "book_id", "event_id", "draft_id", "batch_id", "title", "state", "priority", "due_on", "updated_at", "bucket", "action_label", "responsible", "amount_cents"]
         parts = []
 
         def branch(kind, table, where, values=None, args=()):
-            fields = {"kind": f"'{kind}'", "ref": "e.id", "company_id": "e.company_id", "book_id": "NULL", "event_id": "e.id", "draft_id": "NULL", "batch_id": "NULL", "title": "'业务事项'", "state": "e.status", "priority": "2", "due_on": "NULL", "updated_at": "e.updated_at", "bucket": "'action'", "action_label": "'查看事项'", "responsible": "'我'", **(values or {})}
+            fields = {"kind": f"'{kind}'", "ref": "e.id", "company_id": "e.company_id", "book_id": "NULL", "event_id": "e.id", "draft_id": "NULL", "batch_id": "NULL", "title": "'业务事项'", "state": "e.status", "priority": "2", "due_on": "NULL", "updated_at": "e.updated_at", "bucket": "'action'", "action_label": "'查看事项'", "responsible": "'我'", "amount_cents": "NULL", **(values or {})}
+            if kind in {"business", "approval", "finance", "handoff"}:
+                fields["amount_cents"] = event_amount("e.payload")
+            elif kind in {"ocr", "proposal"}:
+                fields["amount_cents"] = event_amount("be.payload")
+            elif kind == "review":
+                fields["amount_cents"] = "s.amount_cents"
+            elif kind == "export":
+                fields["amount_cents"] = "SUM(s.amount_cents)"
             parts.append("SELECT " + ",".join(fields[c] + " AS " + c for c in columns) + " FROM " + table + " WHERE " + where)
             params.extend(args)
 
@@ -65,6 +73,12 @@ class WorkspaceService:
             # link, HTML fragment, SQL input or source of authorization.
             value = f"({column})::jsonb->>'description'" if self.db.is_postgres else f"json_extract(CASE WHEN json_valid({column}) THEN {column} ELSE '{{}}' END,'$.description')"
             return f"COALESCE(NULLIF(trim({value}),''),'{fallback}')"
+
+        def event_amount(column):
+            # Business payloads canonicalize validated amounts to two decimal
+            # places. Strip the dot into integer cents, never a float sort key.
+            value = f"({column})::jsonb->>'amount'" if self.db.is_postgres else f"json_extract({column},'$.amount')"
+            return f"CAST(REPLACE({value},'.','') AS BIGINT)"
 
         membership = "EXISTS(SELECT 1 FROM company_memberships cm WHERE cm.company_id=e.company_id AND cm.user_id=?)"
         intake_member = "EXISTS(SELECT 1 FROM company_memberships cm WHERE cm.company_id=e.company_id AND cm.user_id=? AND (cm.role<>'employee' OR cm.department_id=e.department_id))"
@@ -114,11 +128,15 @@ class WorkspaceService:
         manager = "EXISTS(SELECT 1 FROM memberships m WHERE m.firm_id=e.firm_id AND m.user_id=? AND m.role IN ('owner','admin')) OR EXISTS(SELECT 1 FROM company_memberships cm WHERE cm.company_id=e.company_id AND cm.user_id=? AND cm.role IN ('owner','admin'))"
         branch("alert", "ops_alerts e JOIN firm_clients fc ON fc.firm_id=e.firm_id AND fc.company_id=e.company_id", "e.firm_id=? AND fc.status='active' AND e.state='open' AND (" + manager + ")",
                {"event_id": "NULL", "title": "e.code", "state": "e.state", "priority": "CASE WHEN e.severity='critical' THEN 0 ELSE 1 END", "updated_at": "e.last_seen_at", "action_label": "'处理运行告警'", "responsible": "'企业 / 事务所管理员'"}, (actor.firm_id, actor.user_id, actor.user_id))
+        from app.legacy_migration.workspace import workspace_branch
+        migration_sql, migration_params = workspace_branch(self.db, actor)
+        parts.append("SELECT migration_task.*,NULL AS amount_cents FROM (" + migration_sql + ") migration_task")
+        params.extend(migration_params)
         return ctes + ", tasks AS (" + " UNION ALL ".join(parts) + ") ", params
 
-    def list(self, actor, bucket="action", kind=None, company_id=None, limit=20, offset=0, ref=None):
+    def list(self, actor, bucket="action", kind=None, company_id=None, limit=20, offset=0, ref=None, sort="priority", q=""):
         page_bounds(limit, offset)
-        if bucket not in {"action", "waiting", "all"} or kind is not None and kind not in KINDS:
+        if bucket not in {"action", "waiting", "all"} or kind is not None and kind not in KINDS or sort not in {"priority", "due", "amount", "updated"} or len(q) > 200:
             raise AccountingError("待办筛选参数无效")
         with self.db.transaction(actor=actor) as conn:
             self.access.require_user(conn, actor.user_id)
@@ -128,20 +146,48 @@ class WorkspaceService:
                 if value is not None:
                     where.append(col + "=?")
                     filters.append(value)
+            if q.strip():
+                where.append("(title LIKE ? ESCAPE '!' OR company_id IN (SELECT id FROM companies WHERE name LIKE ? ESCAPE '!'))")
+                filters.extend([self._search(q)] * 2)
             base = " FROM tasks WHERE " + " AND ".join(where)
             total = conn.execute(query + "SELECT count(*)" + base, [*params, *filters]).fetchone()[0]
             counts = conn.execute(query + "SELECT bucket,count(*) AS total FROM tasks GROUP BY bucket", params).fetchall()
-            rows = conn.execute(query + "SELECT t.*,c.name AS company_name FROM (SELECT *" + base + " ORDER BY priority,COALESCE(due_on,'9999-12-31'),updated_at DESC,kind,ref LIMIT ? OFFSET ?) t JOIN companies c ON c.id=t.company_id", [*params, *filters, limit, offset]).fetchall()
+            order = {"priority": "priority,COALESCE(due_on,'9999-12-31'),updated_at DESC", "due": "COALESCE(due_on,'9999-12-31'),priority,updated_at DESC", "amount": "CASE WHEN amount_cents IS NULL THEN 1 ELSE 0 END,amount_cents DESC,priority,updated_at DESC", "updated": "updated_at DESC,priority"}[sort]
+            rows = conn.execute(query + "SELECT t.*,c.name AS company_name FROM (SELECT *" + base + " ORDER BY " + order + ",kind,ref LIMIT ? OFFSET ?) t JOIN companies c ON c.id=t.company_id", [*params, *filters, limit, offset]).fetchall()
             today = datetime.now(ZoneInfo("Asia/Shanghai")).date().isoformat()
             tasks = []
             for row in rows:
                 item = dict(row)
                 item["key"] = item["kind"] + ":" + item["ref"]
+                amount = item.pop("amount_cents")
+                # PostgreSQL SUM(bigint) yields Decimal; aggregate task totals
+                # can exceed the single-transaction amount ceiling. Their
+                # input is still exclusively validated integer cents.
+                cents = int(amount) if amount is not None else None
+                item["amount"] = f"{cents // 100}.{cents % 100:02d}" if cents is not None else None
                 item["overdue"] = bool(item["due_on"] and item["due_on"] < today)
                 if item["kind"] == "alert":
                     item["title"] = ALERTS.get(item["title"], "待处理运行告警")
                 tasks.append(item)
             return {"tasks": tasks, "counts": {r["bucket"]: r["total"] for r in counts}, "pagination": {"total": total, "limit": limit, "offset": offset, "has_more": offset + limit < total}}
+
+    @staticmethod
+    def _search(value):
+        return "%" + value.strip().replace("!", "!!").replace("%", "!%").replace("_", "!_") + "%"
+
+    def companies(self, actor, q="", limit=20, offset=0):
+        page_bounds(limit, offset)
+        if len(q) > 200:
+            raise AccountingError("企业搜索文字过长")
+        with self.db.transaction(actor=actor) as conn:
+            self.access.require_user(conn, actor.user_id)
+            query, params = self._query(conn, actor)
+            search = " WHERE c.name LIKE ? ESCAPE '!'" if q.strip() else ""
+            args = [*params, *([self._search(q)] if q.strip() else [])]
+            choices = "SELECT c.id,c.name,COUNT(*) AS task_count FROM tasks t JOIN companies c ON c.id=t.company_id" + search + " GROUP BY c.id,c.name"
+            total = conn.execute(query + "SELECT COUNT(*) FROM (" + choices + ") choices", args).fetchone()[0]
+            rows = conn.execute(query + choices + " ORDER BY c.name,c.id LIMIT ? OFFSET ?", [*args, limit, offset]).fetchall()
+            return {"companies": [dict(row) for row in rows], "pagination": {"total": total, "limit": limit, "offset": offset, "has_more": offset + len(rows) < total}}
 
     def get(self, actor, kind, ref):
         result = self.list(actor, bucket="all", kind=kind, ref=ref, limit=1)

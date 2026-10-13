@@ -45,6 +45,7 @@ class AISettings:
     timeout_seconds: float = 45
     allow_http: bool = False
     max_concurrency: int = 2
+    chat_model: str = ""
 
     def __post_init__(self) -> None:
         if self.response_format not in {"json_schema", "json_object"}:
@@ -53,7 +54,7 @@ class AISettings:
             raise ProviderError("configuration", "AI 请求超时必须在 1 至 90 秒之间")
         if type(self.max_concurrency) is not int or not 1 <= self.max_concurrency <= 2:
             raise ProviderError("configuration", "AI 并发数必须为 1 或 2")
-        if any(not isinstance(model, str) or len(model) > 200 or "\n" in model or "\r" in model for model in (self.vision_model, self.journal_model)):
+        if any(not isinstance(model, str) or len(model) > 200 or "\n" in model or "\r" in model for model in (self.vision_model, self.journal_model, self.chat_model)):
             raise ProviderError("configuration", "AI 模型配置无效")
         if not isinstance(self.api_key, str) or "\n" in self.api_key or "\r" in self.api_key:
             raise ProviderError("configuration", "AI 密钥配置无效")
@@ -86,6 +87,7 @@ class AISettings:
             api_key=env.get("ACCOUNTING_AI_API_KEY", "").strip(),
             vision_model=env.get("ACCOUNTING_AI_VISION_MODEL", "").strip(),
             journal_model=env.get("ACCOUNTING_AI_JOURNAL_MODEL", "").strip(),
+            chat_model=env.get("ACCOUNTING_AI_CHAT_MODEL", "").strip(),
             response_format=env.get("ACCOUNTING_AI_RESPONSE_FORMAT", "json_schema").strip(),
             timeout_seconds=timeout,
             allow_http=env.get("ACCOUNTING_AI_ALLOW_HTTP", "") == "1",
@@ -99,6 +101,10 @@ class AISettings:
     @property
     def suggestion_available(self) -> bool:
         return bool(self.base_url and self.api_key and self.journal_model)
+
+    @property
+    def chat_available(self) -> bool:
+        return bool(self.base_url and self.api_key and self.chat_model)
 
 
 def _json_without_duplicates(text: str) -> object:
@@ -178,7 +184,7 @@ class OpenAICompatibleProvider:
             user_content="当前请求授权范围内的不可信证据上下文：\n" + encoded,
         )
 
-    def _request(self, *, model: str, output_type: type[T], prompt_version: str, system: str, user_content: str | list[dict]) -> ProviderResult[T]:
+    def _request(self, *, model: str, output_type: type[T], prompt_version: str, system: str, user_content: str | list[dict], max_tokens: int | None = None) -> ProviderResult[T]:
         if self.settings.response_format == "json_schema":
             response_format = {"type": "json_schema", "json_schema": {
                 "name": output_type.__name__, "strict": True, "schema": output_type.model_json_schema(),
@@ -193,6 +199,10 @@ class OpenAICompatibleProvider:
             "stream": False,
             "store": False,
         }
+        if max_tokens is not None:
+            if type(max_tokens) is not int or not 1 <= max_tokens <= 4096:
+                raise ProviderError("context_invalid", "模型输出长度配置无效")
+            payload["max_tokens"] = max_tokens
         if not self._semaphore.acquire(blocking=False):
             raise ProviderError("busy", "识别服务繁忙，请稍后重试")
         owned_client = self._client is None

@@ -9,7 +9,11 @@ async function setup(request: APIRequestContext) {
   expect(response.status()).toBe(201); let event = await response.json();
   response = await request.post(`/api/business/events/${event.id}/attachments?expected_version=${event.version}`, { headers: headers.employee, multipart: { file: image } }); expect(response.status()).toBe(200); event = await response.json();
   for (const [action, actor] of [['submit', 'employee'], ['department-approve', 'department'], ['finance-approve', 'finance']]) { response = await request.post(`/api/business/events/${event.id}/${action}`, { headers: headers[actor], data: { expected_version: event.version } }); expect(response.status()).toBe(200); event = await response.json(); }
-  const books = await (await request.get('/api/workbench', { headers: headers.finance })).json(); const book = books.books.find((row: { company_id: string }) => row.company_id === company.id);
+  const businessPeriod = event.payload.occurred_on.slice(0, 7);
+  response = await request.get(`/api/companies/${encodeURIComponent(company.id)}/books?period=${businessPeriod}&limit=100`, { headers: headers.finance });
+  expect(response.status()).toBe(200); const choices = await response.json();
+  const book = choices.books.find((row: { company_id: string; period: string; period_status: string; permissions: { edit: boolean } }) => row.company_id === company.id && row.period === businessPeriod && row.period_status === 'open' && row.permissions.edit);
+  expect(book, '事项须交接至本企业、发生月份内开放且当前财务可编辑的账套').toBeDefined();
   response = await request.post(`/api/business/events/${event.id}/handoff`, { headers: headers.finance, data: { expected_version: event.version, book_id: book.id, idempotency_key: crypto.randomUUID() } }); expect(response.status()).toBe(200); const mapping = await response.json();
   response = await request.post('/api/cases', { headers: headers.accountant, data: { event_id: event.id, kind: 'supplement', title: '第八阶段补充合同用途', reason: '请说明采购用途并补充清晰票据原件', required_fields: ['业务用途'], attachment_required: true, idempotency_key: crypto.randomUUID() } }); expect(response.status()).toBe(201); const task = await response.json();
   response = await request.post('/api/cases', { headers: headers.accountant, data: { event_id: event.id, kind: 'exception', title: '会计内部交易调查不可见', reason: '内部核对不向员工发布', idempotency_key: crypto.randomUUID() } }); expect(response.status()).toBe(201);

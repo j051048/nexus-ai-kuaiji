@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight, Check, CheckCircle2, Download, FileText, LoaderCircle, Plus, RefreshCw, ShieldCheck, Trash2, TriangleAlert, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, CheckCircle2, Download, FileText, LoaderCircle, Plus, ShieldCheck, Sparkles, Trash2, TriangleAlert, X } from 'lucide-react';
 import { api, apiBlob, ApiError, errorMessage } from './api';
 import { formatCents, formatMoney, moneyToCents } from './csv';
-import { EvidenceViewer, type ReviewAttachment } from './EvidenceViewer';
+import { EvidenceViewer, type EvidenceFocus, type ReviewAttachment } from './EvidenceViewer';
+import { AccountingContextAssistant, type AccountingContextAction } from './AccountingContextAssistant';
 import { clearReviewSession, inputOwnsKeyboard } from './review-session';
 import type { BusinessEvent } from './business-types';
 import type { SourceHistory } from './SourceHistoryPanel';
@@ -23,7 +24,10 @@ export function InlineReviewDrawer({ session, bookId, draftId, queue = [], onClo
   const [acknowledged, setAcknowledged] = useState(false), [loading, setLoading] = useState(true), [busy, setBusy] = useState('');
   const [error, setError] = useState(''), [notice, setNotice] = useState('');
   const [leaveTarget, setLeaveTarget] = useState<InlineReviewTarget | 'close' | null>(null);
-  const panel = useRef<HTMLDivElement>(null), epoch = useRef(0), active = useRef(true), command = useRef(false);
+  const [assistantOpen, setAssistantOpen] = useState(() => window.matchMedia('(min-width: 1440px)').matches);
+  const assistantWasOpen = useRef(assistantOpen);
+  const [evidenceFocus, setEvidenceFocus] = useState<EvidenceFocus | undefined>();
+  const panel = useRef<HTMLDivElement>(null), facts = useRef<HTMLElement>(null), evidenceColumn = useRef<HTMLDivElement>(null), assistantButton = useRef<HTMLButtonElement>(null), epoch = useRef(0), active = useRef(true), command = useRef(false);
   const scope = `${session.scope_key}:${bookId}:${draftId}`, scopeRef = useRef(scope); scopeRef.current = scope;
   const source = detail?.sources.find(row => row.id === draft?.source_id);
   const dirty = !!draft && (description !== draft.description || JSON.stringify(lines) !== JSON.stringify(draft.lines));
@@ -37,7 +41,7 @@ export function InlineReviewDrawer({ session, bookId, draftId, queue = [], onClo
   useEffect(() => { onBusyChange?.(!!busy || dirty); return () => onBusyChange?.(false); }, [busy, dirty, onBusyChange]);
   const load = useCallback(async (signal?: AbortSignal) => {
     const request = ++epoch.current, target = scope;
-    setLoading(true); setError(''); setEvidenceError(''); setAttachments([]); setBankOriginals([]); setDetail(null); setDraft(null); setAcknowledged(false); setLeaveTarget(null);
+    setLoading(true); setError(''); setEvidenceError(''); setAttachments([]); setBankOriginals([]); setDetail(null); setDraft(null); setAcknowledged(false); setLeaveTarget(null); setEvidenceFocus(undefined);
     try {
       const value = await api<BookDetail>(`/books/${encodeURIComponent(bookId)}?focus_draft_id=${encodeURIComponent(draftId)}&limit=1`, session, { signal });
       if (!active.current || target !== scopeRef.current || request !== epoch.current || signal?.aborted) return;
@@ -91,11 +95,34 @@ export function InlineReviewDrawer({ session, bookId, draftId, queue = [], onClo
     const oldOverflow = document.body.style.overflow; document.body.style.overflow = 'hidden'; panel.current?.focus();
     return () => { document.body.style.overflow = oldOverflow; previous?.focus(); };
   }, []);
+  useEffect(() => {
+    if (assistantOpen && window.matchMedia('(max-width: 1100px)').matches) panel.current?.querySelector<HTMLButtonElement>('.context-assistant-close')?.focus();
+    else if (!assistantOpen && assistantWasOpen.current) assistantButton.current?.focus();
+    assistantWasOpen.current = assistantOpen;
+  }, [assistantOpen, draft?.id]);
 
   function navigate(target: InlineReviewTarget | 'close') {
     if (busy) return;
     if (dirty) { setLeaveTarget(target); return; }
     if (target === 'close') onClose(); else onNavigate?.(target.book_id, target.draft_id);
+  }
+  function closeAssistant() { setAssistantOpen(false); assistantButton.current?.focus(); }
+  function openEvidence(evidenceId: string) {
+    const attachment = evidenceId.startsWith('attachment:') ? attachments.find(row => row.id === evidenceId.slice('attachment:'.length)) : undefined;
+    if (attachment) setEvidenceFocus({ attachment_id: attachment.id });
+    else if (evidenceId.startsWith('source:')) setEvidenceFocus({ reference: source?.evidence_ref || '当前来源尚未填写凭据引用' });
+    else { facts.current?.scrollIntoView({ block: 'start', behavior: 'auto' }); facts.current?.focus(); }
+    if (attachment || evidenceId.startsWith('source:')) evidenceColumn.current?.scrollIntoView({ block: 'start', behavior: 'auto' });
+    if (window.matchMedia('(max-width: 1100px)').matches) closeAssistant();
+  }
+  function assistantAction(action: AccountingContextAction) {
+    if (action.book_id !== bookId || action.draft_id !== draftId || !action.enabled) return;
+    // These callbacks reveal the existing manual controls; no journal mutation occurs here.
+    if (action.type === 'review' || action.type === 'edit' || action.type === 'history') {
+      const target = action.type === 'edit' ? facts.current?.querySelector<HTMLTextAreaElement>('textarea') : facts.current;
+      target?.scrollIntoView({ block: 'center', behavior: 'auto' }); target?.focus();
+      if (window.matchMedia('(max-width: 1100px)').matches) closeAssistant();
+    }
   }
   function discardAndNavigate() { const target = leaveTarget; setLeaveTarget(null); if (target === 'close') onClose(); else if (target) onNavigate?.(target.book_id, target.draft_id); }
   async function downloadOriginal(original: BankOriginal) {
@@ -131,36 +158,36 @@ export function InlineReviewDrawer({ session, bookId, draftId, queue = [], onClo
   useEffect(() => {
     function keydown(event: KeyboardEvent) {
       if (event.key === 'Tab') {
-        const focusable = panel.current?.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], iframe, [tabindex="0"]');
+        const focusable = Array.from(panel.current?.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], iframe, [tabindex="0"]') ?? []).filter(element => element.getClientRects().length && getComputedStyle(element).visibility !== 'hidden');
         if (!focusable?.length) return;
         const first = focusable[0], last = focusable[focusable.length - 1];
         if (event.shiftKey && (document.activeElement === first || document.activeElement === panel.current)) { event.preventDefault(); last.focus(); }
         else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
       }
-      if (event.key === 'Escape') { event.preventDefault(); navigate('close'); return; }
-      if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || inputOwnsKeyboard(event.target) || busy || loading || leaveTarget) return;
+      if (event.key === 'Escape') { event.preventDefault(); if (assistantOpen && window.matchMedia('(max-width: 1100px)').matches) closeAssistant(); else navigate('close'); return; }
+      if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || inputOwnsKeyboard(event.target) || busy || loading || leaveTarget || event.target instanceof Element && !!event.target.closest('.accounting-context-assistant')) return;
       if ((event.key.toLowerCase() === 'j' || event.key === 'ArrowRight') && position >= 0 && position < queue.length - 1) { event.preventDefault(); navigate(queue[position + 1]); }
       if ((event.key.toLowerCase() === 'k' || event.key === 'ArrowLeft') && position > 0) { event.preventDefault(); navigate(queue[position - 1]); }
     }
     window.addEventListener('keydown', keydown); return () => window.removeEventListener('keydown', keydown);
   });
   function editLine(index: number, field: keyof JournalLine, value: string) { setLines(old => old.map((row, i) => i === index ? { ...row, [field]: value } : row)); setAcknowledged(false); }
-  return <div className="inline-review-backdrop"><div className="inline-review-drawer" ref={panel} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="inline-review-title">
-    <header className="inline-review-header"><div><p>同屏复核{position >= 0 && ` · ${position + 1} / ${queue.length}`}</p><h2 id="inline-review-title">原件与凭证，一起核对</h2><span>{detail?.book.company_name} · {detail?.book.name} · {detail?.book.period}</span></div><button className="icon-button" aria-label="关闭同屏复核" disabled={!!busy} onClick={() => navigate('close')}><X size={20} /></button></header>
+  return <div className="inline-review-backdrop"><div className={`inline-review-drawer ${assistantOpen ? 'assistant-open' : ''}`} ref={panel} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="inline-review-title">
+    <header className="inline-review-header"><div><p>同屏复核{position >= 0 && ` · ${position + 1} / ${queue.length}`}</p><h2 id="inline-review-title">原件与凭证，一起核对</h2><span>{detail?.book.company_name} · {detail?.book.name} · {detail?.book.period}</span></div><div className="inline-review-header-actions"><button ref={assistantButton} className={`button secondary small inline-assistant-toggle ${assistantOpen ? 'active' : ''}`} aria-expanded={assistantOpen} disabled={loading || !draft} onClick={() => setAssistantOpen(value => !value)}><Sparkles size={15} />会计助手</button><button className="icon-button" aria-label="关闭同屏复核" disabled={!!busy} onClick={() => navigate('close')}><X size={20} /></button></div></header>
     {error && <p className="inline-error inline-review-message" role="alert"><TriangleAlert size={16} />{error}<button className="text-button" disabled={!!busy || dirty} onClick={() => void load()}>重新读取</button></p>}
     {notice && <p className="inline-review-notice" role="status"><CheckCircle2 size={16} />{notice}</p>}
     {leaveTarget && <section className="inline-review-unsaved" role="alert"><strong>有尚未保存的修改</strong><p>继续核对可以保留修改；离开前可先保存，或明确放弃本次修改。</p><div><button className="button secondary small" onClick={() => setLeaveTarget(null)}>继续修改</button><button className="button secondary small" onClick={discardAndNavigate}>放弃修改并{leaveTarget === 'close' ? '返回列表' : '切换凭证'}</button></div></section>}
-    {loading ? <div className="loading-block"><LoaderCircle size={20} className="spinner" />正在读取最新版本及授权原件…</div> : detail && draft ? <div className="inline-review-columns"><div className="inline-review-evidence-column">{evidenceError && <p className="inline-error" role="alert">原件暂不可读取：{evidenceError}</p>}{bankOriginals.length > 0 ? <section className="inline-bank-originals" aria-label="流水原表与对应行"><h3><FileText size={17} />流水原表与对应行</h3>{bankOriginals.map(original => <article key={original.file_id}><div><strong>{original.filename}</strong><button className="text-button" disabled={!!busy} onClick={() => void downloadOriginal(original)}><Download size={14} />下载原表</button></div><p>原表第 {original.original_position ?? original.row_number} 行 · SHA-256 {original.sha256.slice(0, 12)}…</p><dl>{original.raw.map((value, i) => <div key={i}><dt>{original.headers?.[i] || `原表第 ${i + 1} 列`}</dt><dd>{value || '—'}</dd></div>)}</dl></article>)}<p className="field-help">以上为留存原表的文字内容，仍须核对流水与交易依据。</p></section> : <EvidenceViewer session={session} attachments={attachments} reference={source?.evidence_ref ?? ''} historical={!!draft.source_inactive} />}</div><section className="inline-review-facts" aria-label="同屏凭证核对"><div className="inline-review-state"><span className={`badge ${draft.status}`}>{draft.status === 'draft' ? '待会计审核' : draft.status === 'approved' ? '已审核，待导出' : '已导出'}</span><span>草稿版本 {draft.version}</span></div>
+    {loading ? <div className="loading-block"><LoaderCircle size={20} className="spinner" />正在读取最新版本及授权原件…</div> : detail && draft ? <div className="inline-review-content"><div className="inline-review-columns"><div className="inline-review-evidence-column" ref={evidenceColumn}>{evidenceError && <p className="inline-error" role="alert">原件暂不可读取：{evidenceError}</p>}{bankOriginals.length > 0 ? <section className="inline-bank-originals" aria-label="流水原表与对应行"><h3><FileText size={17} />流水原表与对应行</h3>{bankOriginals.map(original => <article key={original.file_id}><div><strong>{original.filename}</strong><button className="text-button" disabled={!!busy} onClick={() => void downloadOriginal(original)}><Download size={14} />下载原表</button></div><p>原表第 {original.original_position ?? original.row_number} 行 · SHA-256 {original.sha256.slice(0, 12)}…</p><dl>{original.raw.map((value, i) => <div key={i}><dt>{original.headers?.[i] || `原表第 ${i + 1} 列`}</dt><dd>{value || '—'}</dd></div>)}</dl></article>)}<p className="field-help">以上为留存原表的文字内容，仍须核对流水与交易依据。</p></section> : <EvidenceViewer session={session} attachments={attachments} reference={source?.evidence_ref ?? ''} historical={!!draft.source_inactive} focus={evidenceFocus} />}</div><section className="inline-review-facts" aria-label="同屏凭证核对" ref={facts} tabIndex={-1}><div className="inline-review-state"><span className={`badge ${draft.status}`}>{draft.status === 'draft' ? '待会计审核' : draft.status === 'approved' ? '已审核，待导出' : '已导出'}</span><span>草稿版本 {draft.version}</span></div>
       <dl className="inline-review-source"><div><dt>来源金额</dt><dd>¥{formatMoney(source?.amount ?? '0.00')}</dd></div><div><dt>发生日期</dt><dd>{source?.date}</dd></div><div><dt>交易对方</dt><dd>{source?.counterparty || '未填写'}</dd></div><div><dt>来源摘要</dt><dd>{source?.description}</dd></div></dl>
       <div className="inline-review-rationale"><h3>建议依据</h3><p>{draft.explanation || '请根据原始资料核对会计处理。'}</p></div>
       {draft.issues.length > 0 && <section className="issues-box" aria-label="同屏待处理问题"><h3><TriangleAlert size={15} />先处理 {draft.issues.length} 项问题</h3><ul>{draft.issues.map((issue, i) => <li key={i}>{issue}</li>)}</ul></section>}
       <label className="inline-review-label"><span>凭证摘要</span><textarea aria-label="同屏凭证摘要" value={description} maxLength={500} rows={2} disabled={readonly || !!busy} onChange={event => { setDescription(event.target.value); setAcknowledged(false); }} /></label>
       <div className="inline-review-lines">{lines.map((line, index) => <div className="inline-review-line" key={index}><div><span>{index + 1}</span><select aria-label={`同屏第 ${index + 1} 行科目`} value={line.account_code} disabled={readonly || !!busy} onChange={event => editLine(index, 'account_code', event.target.value)}><option value="">选择会计科目</option>{detail.accounts.map(account => <option key={account.code} value={account.code}>{account.code} · {account.name}</option>)}</select><button className="icon-button" aria-label={`同屏删除第 ${index + 1} 行`} disabled={readonly || !!busy || lines.length <= 1} onClick={() => setLines(old => old.filter((_, i) => i !== index))}><Trash2 size={14} /></button></div><div className="inline-line-amounts"><label>借方<input aria-label={`同屏第 ${index + 1} 行借方`} inputMode="decimal" value={line.debit} disabled={readonly || !!busy} onChange={event => editLine(index, 'debit', event.target.value)} /></label><label>贷方<input aria-label={`同屏第 ${index + 1} 行贷方`} inputMode="decimal" value={line.credit} disabled={readonly || !!busy} onChange={event => editLine(index, 'credit', event.target.value)} /></label></div>{[...new Set([...(JSON.parse(detail.accounts.find(account => account.code === line.account_code)?.auxiliary_requirements || '[]') as string[]), ...Object.keys(line.auxiliary_values ?? {})])].map(key => <label className="inline-review-aux" key={key}>{({ department: '部门', employee: '人员', counterparty: '交易对方', project: '项目' } as Record<string, string>)[key] ?? key}<input aria-label={`同屏第 ${index + 1} 行${key}辅助核算`} maxLength={200} value={(line.auxiliary_values as Record<string, string> | undefined)?.[key] ?? ''} disabled={readonly || !!busy} onChange={event => setLines(old => old.map((row, i) => i === index ? { ...row, auxiliary_values: { ...row.auxiliary_values, [key]: event.target.value } } : row))} /></label>)}</div>)}</div>
       {!readonly && <button className="text-button" disabled={!!busy || lines.length >= 20} onClick={() => setLines(old => [...old, { account_code: '', debit: '0.00', credit: '0.00' }])}><Plus size={14} />添加分录</button>}
-      <div className={`inline-review-totals ${balanced ? '' : 'unbalanced'}`}><span>借方 <b>{amountError ? '—' : formatCents(debit)}</b></span><span>贷方 <b>{amountError ? '—' : formatCents(credit)}</b></span><p>{balanced ? <><CheckCircle2 size={14} />借贷平衡</> : amountError || '借贷不平衡，请核对金额'}</p></div>
+      <div className={`inline-review-totals ${balanced ? '' : 'unbalanced'}`}><span>借方 <b>{amountError ? '—' : formatCents(debit)}</b></span><span>贷方 <b>{amountError ? '—' : formatCents(credit)}</b></span><p>{balanced ? <><CheckCircle2 size={14} />借贷平衡</> : amountError || (debit === 0n && credit === 0n ? '借贷金额须大于零，请补充分录金额' : `借贷差额 ¥${formatCents(debit > credit ? debit - credit : credit - debit)}，请核对金额`)}</p></div>
       {dirty && <label className="inline-review-label"><span>会计修正依据（可选）</span><textarea aria-label="同屏会计修正依据" rows={2} maxLength={1000} value={reason} disabled={!!busy} onChange={event => setReason(event.target.value)} /></label>}
       {readonly ? <p className="permission-note"><ShieldCheck size={16} />{draft.source_inactive ? '此来源已替代或隔离，保留历史凭据供追溯。' : draft.status === 'draft' ? '当前授权或期间只允许查看。' : '凭证已冻结，修改需使用后续调整流程。'}</p> : <label className="inline-review-ack"><input type="checkbox" aria-label="我已核对同屏原件与分录" checked={acknowledged} disabled={!!busy || dirty || !!evidenceError} onChange={event => setAcknowledged(event.target.checked)} />我已核对原件、金额和会计处理</label>}
-    </section></div> : null}
+    </section></div>{assistantOpen && <div className="inline-assistant-pane"><AccountingContextAssistant session={session} bookId={bookId} draftId={draft.id} draftVersion={draft.version} hasUnsavedChanges={dirty} actionTypes={['edit', 'review']} onClose={closeAssistant} onOpenEvidence={openEvidence} onAction={assistantAction} /></div>}</div> : null}
     <footer className="inline-review-footer"><div className="inline-review-pagination"><button className="button secondary small" disabled={!!busy || loading || position <= 0} onClick={() => navigate(queue[position - 1])}><ArrowLeft size={15} />上一笔</button><button className="button secondary small" disabled={!!busy || loading || position < 0 || position >= queue.length - 1} onClick={() => navigate(queue[position + 1])}>下一笔<ArrowRight size={15} /></button><span>J / K 切换 · Esc 返回</span></div><div className="inline-review-actions"><button className="button secondary" disabled={!!busy} onClick={() => navigate('close')}>返回列表</button><button className="button secondary" disabled={readonly || !!busy || !dirty || !description.trim() || !!amountError} onClick={() => void mutate('save')}>{busy === 'save' ? <LoaderCircle size={15} className="spinner" /> : <FileText size={15} />}保存草稿</button><button className="button primary" disabled={readonly || !detail?.book.permissions.review || !!busy || !draft || dirty || !acknowledged || !balanced || !!draft.issues.length || !source?.evidence_ref || !!evidenceError} onClick={() => void mutate('approve')}>{busy === 'approve' ? <LoaderCircle size={15} className="spinner" /> : <Check size={15} />}确认审核</button></div></footer>
   </div></div>;
 }

@@ -122,6 +122,8 @@ class LearningService:
         source = conn.execute("SELECT * FROM sources WHERE id=? AND book_id=?", (draft["source_id"], book["id"])).fetchone()
         if source is None:
             raise AccountingError("审核样例缺少来源", 409)
+        if self._legacy_source_allocated(conn, actor, source):
+            return {"id": None, "captured": False, "reason": "历史款项清偿不作为新收入或费用的普通学习样例"}
         payload = {"occurred_on": source["date"], "description": source["description"], "counterparty": source["counterparty"],
                    "amount": cents_to_money(source["amount_cents"]), "direction": source["direction"],
                    "payment_status": "paid", "category": "other", "project": ""}
@@ -224,7 +226,14 @@ class LearningService:
     def _ordinary_sample(self, conn, book_id, sample_id):
         if self.db.is_postgres:
             return bool(conn.execute("SELECT accounting.learning_sample_ordinary(?,?)", (book_id, sample_id)).fetchone()[0])
-        return conn.execute("SELECT 1 FROM learning_samples x WHERE x.id=? AND x.book_id=? AND NOT EXISTS(SELECT 1 FROM sources s JOIN settlement_allocations a ON a.bank_source_id=s.id WHERE s.id=x.source_id AND s.source_kind='bank' AND NOT EXISTS(SELECT 1 FROM settlement_reversals r WHERE r.allocation_id=a.id))", (sample_id, book_id)).fetchone() is not None
+        return conn.execute("SELECT 1 FROM learning_samples x WHERE x.id=? AND x.book_id=? AND NOT EXISTS(SELECT 1 FROM sources s JOIN settlement_allocations a ON a.bank_source_id=s.id WHERE s.id=x.source_id AND s.source_kind='bank' AND NOT EXISTS(SELECT 1 FROM settlement_reversals r WHERE r.allocation_id=a.id)) AND NOT EXISTS(SELECT 1 FROM migration_clearance_allocations a WHERE a.bank_source_id=x.source_id AND a.bank_book_id=x.book_id AND NOT EXISTS(SELECT 1 FROM migration_clearance_reversals r WHERE r.command_id=a.command_id))", (sample_id, book_id)).fetchone() is not None
+
+    def _legacy_source_allocated(self, conn, actor, source):
+        legacy=getattr(self,'legacy_settlements',None)
+        if legacy:return legacy.source_allocated_in_transaction(conn,actor,source)
+        if self.db.is_postgres:
+            return bool(conn.execute('SELECT accounting.legacy_clearance_source_locked(?,?)',(source['book_id'],source['id'])).fetchone()[0])
+        return bool(conn.execute('SELECT 1 FROM migration_clearance_allocations a WHERE a.bank_source_id=? AND a.bank_book_id=? AND NOT EXISTS(SELECT 1 FROM migration_clearance_reversals r WHERE r.command_id=a.command_id)',(source['id'],source['book_id'])).fetchone())
 
     def _require_ordinary_samples(self, conn, book_id, sample_ids):
         if any(not self._ordinary_sample(conn, book_id, sample_id) for sample_id in sample_ids):
@@ -394,7 +403,10 @@ class LearningService:
     def policy_fingerprint(self, conn, actor, book_id):
         self._book(conn, actor, book_id)
         rows = [dict(row) for row in conn.execute("SELECT r.id,r.current_version,r.state_version,v.definition_fingerprint FROM learning_rules r JOIN learning_rule_versions v ON v.rule_id=r.id AND v.book_id=r.book_id AND v.version=r.current_version WHERE r.book_id=? AND r.firm_id=? AND r.status='published' ORDER BY r.id", (book_id, actor.firm_id))]
-        return fingerprint({'rules': rows, 'master': self._master_fingerprint(conn, actor, book_id)})
+        value={'rules':rows,'master':self._master_fingerprint(conn,actor,book_id)}
+        historical=getattr(self,'legacy_learning',None)
+        if historical:value['historical_formulas']=historical.policy_fingerprint_in_transaction(conn,actor,book_id)
+        return fingerprint(value)
 
     def shadow_replay_in_transaction(self, conn, actor, book_id, definition, sample_ids=None):
         """Read-only replay against frozen reviewed answers; never updates samples or drafts."""

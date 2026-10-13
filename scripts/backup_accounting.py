@@ -52,7 +52,7 @@ def sqlite_metadata(conn):
     tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     versions = [dict(zip(("version", "checksum"), row)) for row in conn.execute("SELECT version,checksum FROM schema_migrations ORDER BY version")]
     originals = {}
-    for table in ("business_attachments", "case_attachments", "intake_attachments", "bank_import_files"):
+    for table in ("business_attachments", "case_attachments", "intake_attachments", "bank_import_files", "migration_files"):
         if table in tables:
             for key, digest, size in conn.execute(f"SELECT storage_key,sha256,size_bytes FROM {table}"):
                 prior = originals.setdefault(key, {"storage_key": key, "sha256": digest, "size_bytes": size})
@@ -112,7 +112,7 @@ def backup(database, storage_root, destination):
             snapshot = conn.execute("SELECT pg_export_snapshot()").fetchone()[0]
             versions = [{"version": row[0], "checksum": row[1]} for row in conn.execute("SELECT version,checksum FROM accounting.schema_migrations ORDER BY version")]
             originals = {}
-            for table in ("business_attachments", "case_attachments", "intake_attachments", "bank_import_files"):
+            for table in ("business_attachments", "case_attachments", "intake_attachments", "bank_import_files", "migration_files"):
                 if conn.execute("SELECT to_regclass(%s)", ("accounting." + table,)).fetchone()[0] is None:
                     continue
                 for key, digest, size in conn.execute(f"SELECT storage_key,sha256,size_bytes FROM accounting.{table}"):
@@ -209,7 +209,7 @@ def restore(directory, destination, postgres_target=None):
             migrations = [{"version": row[0], "checksum": row[1]} for row in conn.execute("SELECT version,checksum FROM accounting.schema_migrations ORDER BY version")]
             if migrations != manifest["migrations"]:
                 raise ValueError("恢复数据库迁移清单不同")
-            for table in ("business_attachments", "case_attachments", "intake_attachments", "bank_import_files"):
+            for table in ("business_attachments", "case_attachments", "intake_attachments", "bank_import_files", "migration_files"):
                 if conn.execute("SELECT to_regclass(%s)", ("accounting." + table,)).fetchone()[0] is None:
                     continue
                 for key, digest, size in conn.execute(f"SELECT storage_key,sha256,size_bytes FROM accounting.{table}"):

@@ -4,7 +4,7 @@ import { expect, test } from '@playwright/test';
 const companyName = '青屿设计（虚构示例）';
 const periodParts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit' }).formatToParts(new Date());
 const period = `${periodParts.find(part => part.type === 'year')?.value}-${periodParts.find(part => part.type === 'month')?.value}`;
-const policyFields = ['quota_enabled', 'monthly_limit', 'ocr_reserve', 'proposal_reserve', 'failure_threshold', 'failure_window_minutes', 'backlog_threshold', 'backlog_age_minutes', 'queue_wait_minutes', 'worker_stale_seconds'];
+const policyFields = ['quota_enabled', 'monthly_limit', 'ocr_reserve', 'proposal_reserve', 'chat_reserve', 'failure_threshold', 'failure_window_minutes', 'backlog_threshold', 'backlog_age_minutes', 'queue_wait_minutes', 'worker_stale_seconds'];
 
 test('真实本地费用监控：管理员设置预算，财务只读，员工与部门人员无入口', async ({ page, request }) => {
   await page.goto('/');
@@ -20,13 +20,14 @@ test('真实本地费用监控：管理员设置预算，财务只读，员工�
   expect(overviewResponse.status()).toBe(200); const initial = await overviewResponse.json();
   try {
     await expect(page.getByText('企业聚合监控，不开放员工票据原件', { exact: true })).toBeVisible();
-    await expect(page.getByText('等待管理员配置报价', { exact: true })).toHaveCount(2);
+    await expect(page.getByText('等待管理员配置报价', { exact: true })).toHaveCount(3);
     await page.getByRole('button', { name: '设置预算策略', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: '预算与运行策略', exact: true });
     await dialog.getByLabel('开启企业月度模型额度控制').check();
     await dialog.getByLabel('企业月度模型额度', { exact: true }).fill('100.00');
     await dialog.getByLabel('单次票据识别费用预留').fill('1.00');
     await dialog.getByLabel('单次分录建议费用预留').fill('2.00');
+    await dialog.getByLabel('单次会计对话费用预留').fill('0.50');
     await expect(dialog.getByText('模型单价尚未完整配置。开启额度控制后，仍需管理员配置报价才能发送模型请求。', { exact: true })).toBeVisible();
     await dialog.getByRole('button', { name: '保存预算策略', exact: true }).click();
     await expect(dialog).toHaveCount(0);

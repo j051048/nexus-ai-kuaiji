@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { choosePersona, openBusiness } from './ui-navigation';
 
 const receipt = { name: '第十二阶段原始票据.png', mimeType: 'image/png', buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAFUlEQVR4nGP8//8/AzbAhFV00EoAAFbUAw037MyjAAAAAElFTkSuQmCC', 'base64') };
 const contract = { name: '采购说明.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4\n% Stage 12 synthetic business evidence, no real customer data\n%%EOF\n') };
@@ -6,8 +7,8 @@ const contract = { name: '采购说明.pdf', mimeType: 'application/pdf', buffer
 test('员工一体化原件上传、服务端草稿恢复和独立部门审批', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 960 });
   await page.goto('/');
-  await page.getByLabel('切换验证身份').selectOption('employee');
-  await page.getByRole('button', { name: '业务事项', exact: true }).click();
+  await choosePersona(page, 'employee');
+  await openBusiness(page);
   await page.getByRole('button', { name: '录入业务事项', exact: true }).click();
   await page.getByLabel('事项客户企业').selectOption({ label: '青屿设计（虚构示例）' });
   await page.getByLabel('一体化录入上传附件').setInputFiles([receipt, contract]);
@@ -26,8 +27,8 @@ test('员工一体化原件上传、服务端草稿恢复和独立部门审批',
   await page.reload();
   // Demo reload intentionally signs in as the default accountant; authenticate
   // the same employee before testing its private server-side draft recovery.
-  await page.getByLabel('切换验证身份').selectOption('employee');
-  await page.getByRole('button', { name: '业务事项', exact: true }).click();
+  await choosePersona(page, 'employee');
+  await openBusiness(page);
   await page.getByRole('button', { name: '录入业务事项', exact: true }).click();
   await page.getByText(/继续未完成的录入/).click();
   await page.getByRole('button', { name: /第十二阶段采购报销草稿恢复/ }).click();
@@ -44,8 +45,8 @@ test('员工一体化原件上传、服务端草稿恢复和独立部门审批',
   await expect(page.getByRole('button').filter({ has: page.getByText('第十二阶段采购报销草稿恢复', { exact: true }) })).toBeVisible();
   await expect(page.getByRole('heading', { name: '第十二阶段采购报销草稿恢复', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: '部门审批通过', exact: true })).toHaveCount(0);
-  await page.getByLabel('切换验证身份').selectOption('department');
-  await page.getByRole('button', { name: '业务事项', exact: true }).click();
+  await choosePersona(page, 'department');
+  await openBusiness(page);
   await expect(page.getByRole('tab', { name: '部门审批', exact: true })).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByLabel('筛选业务事项状态')).toHaveValue('submitted');
   await page.getByRole('button').filter({ has: page.getByText('第十二阶段采购报销草稿恢复', { exact: true }) }).click();
@@ -55,8 +56,8 @@ test('员工一体化原件上传、服务端草稿恢复和独立部门审批',
 test('手机录入同一界面完成并可返回独立事项列表', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/');
-  await page.getByLabel('切换验证身份').selectOption('employee');
-  await page.getByRole('button', { name: '业务事项', exact: true }).click();
+  await choosePersona(page, 'employee');
+  await openBusiness(page);
   await page.getByRole('button', { name: '录入业务事项', exact: true }).click();
   await page.getByLabel('一体化录入上传附件').setInputFiles(receipt);
   await expect(page.getByText(receipt.name, { exact: true })).toBeVisible();

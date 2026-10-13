@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Download, FileUp, Link2, LoaderCircle } from 'lucide-react';
 import { api, errorMessage } from './api';
 import type { Session } from './types';
+import { uploadSizeError } from './transport-limits';
 import './integration.css';
 
 type Mapping = { local_code: string; external_code: string };
@@ -54,7 +55,9 @@ export function IntegrationWorkbench({ session, bookId, onBack, onBusyChange }: 
   async function importFile() {
     if (!file) return;
     await run(async () => {
-      if (file.size > 2_000_000 || !/\.(csv|json)$/i.test(file.name)) throw new Error('请选择不超过 2 MB 的 UTF-8 JSON 或 CSV 文件');
+      const invalidSize = uploadSizeError(file.size, 2_000_000);
+      if (invalidSize) throw new Error(invalidSize);
+      if (!/\.(csv|json)$/i.test(file.name)) throw new Error('请选择 UTF-8 JSON 或 CSV 文件');
       const content = new TextDecoder('utf-8', { fatal: true }).decode(await file.arrayBuffer());
       const result = await api<Preview>(`${base}/imports`, session, { method: 'POST', body: ({ format: /\.csv$/i.test(file.name) ? 'csv' : 'json', content, reason, idempotency_key: key('import') }) });
       if (live.current) { setPreview(result); await load(); }

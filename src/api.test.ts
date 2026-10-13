@@ -2,12 +2,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { api, apiBlob, ApiError, setApiScope } from './api';
 import { currentAccessToken } from './auth';
 import type { Session } from './types';
+import { getTransportLimits, maxUploadBytes, setTransportLimits } from './transport-limits';
 
 vi.mock('./auth', () => ({ currentAccessToken: vi.fn() }));
 const credentials: Session = { mode: 'supabase', token: 'initial-token', firm_id: 'firm-one', firm_name: '第一事务所', user_id: 'user-one', user_name: '会计', role: 'reviewer', scope_key: 'scope-one' };
 const tokenGetter = vi.mocked(currentAccessToken);
 
-afterEach(() => { setApiScope(null); vi.unstubAllGlobals(); vi.clearAllMocks(); });
+afterEach(() => { setApiScope(null); setTransportLimits(); vi.unstubAllGlobals(); vi.clearAllMocks(); });
 
 describe('authenticated accounting requests', () => {
   it('resolves the current token for every request and sends the selected firm', async () => {
@@ -106,5 +107,54 @@ describe('authenticated accounting requests', () => {
     deliver({ detail: '旧企业已撤权' });
     await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
     expect(dispatchEvent).not.toHaveBeenCalled();
+  });
+});
+
+describe('deployment transport limits', () => {
+  const limits = { max_file_bytes: 3145728, max_request_bytes: 4194304, max_response_bytes: 4194304 };
+
+  it('reads runtime limits from auth config and resets for a direct backend without metadata', async () => {
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ mode: 'supabase', transport_limits: limits })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ mode: 'local', personas: [] }))));
+    await api('/auth/config');
+    expect(getTransportLimits()).toEqual(limits);
+    expect(maxUploadBytes()).toBe(3145728);
+    await api('/auth/config');
+    expect(getTransportLimits()).toBeNull();
+    expect(maxUploadBytes()).toBe(10 * 1024 * 1024);
+  });
+
+  it('does not accept metadata from another endpoint or an unsuccessful config request', async () => {
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ transport_limits: limits })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ transport_limits: limits }), { status: 503 })));
+    await api('/workbench');
+    expect(getTransportLimits()).toBeNull();
+    await expect(api('/auth/config')).rejects.toMatchObject({ status: 503 });
+    expect(getTransportLimits()).toBeNull();
+  });
+
+  it('turns a platform HTML 413 into a Chinese actionable error', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('<html>FUNCTION_PAYLOAD_TOO_LARGE</html>', { status: 413 })));
+    await expect(api('/import')).rejects.toMatchObject({ status: 413, message: expect.stringContaining('按期间拆分') });
+  });
+
+  it('checks encoded JSON and multipart requests before fetch when runtime limits are present', async () => {
+    setTransportLimits(limits);
+    const fetcher = vi.fn(); vi.stubGlobal('fetch', fetcher);
+    await expect(api('/import', undefined, { method: 'POST', body: { content: '账'.repeat(1_500_000) } })).rejects.toMatchObject({ status: 413 });
+    const body = new FormData(); body.append('file', new Blob([new Uint8Array(3145729)]), 'invoice.pdf');
+    await expect(api('/business/attachments', undefined, { method: 'POST', body })).rejects.toMatchObject({ status: 413, message: expect.stringContaining('3 MB') });
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it('keeps the existing authenticated multipart transport at the 3 MB boundary', async () => {
+    setApiScope(credentials); tokenGetter.mockResolvedValue('fresh-token'); setTransportLimits(limits);
+    const fetcher = vi.fn().mockImplementation(async () => new Response('{}')); vi.stubGlobal('fetch', fetcher);
+    const body = new FormData(); body.append('file', new Blob([new Uint8Array(3145728)]), 'invoice.pdf');
+    await api('/business/attachments', credentials, { method: 'POST', body });
+    expect(fetcher.mock.calls[0][1]).toMatchObject({ body, headers: { Authorization: 'Bearer fresh-token', 'X-Firm-Id': 'firm-one' } });
+    expect(fetcher.mock.calls[0][1].headers).not.toHaveProperty('Content-Type');
   });
 });

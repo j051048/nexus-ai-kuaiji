@@ -85,10 +85,10 @@ class AccountingService:
         if book["period_status"] != "open":
             raise AccountingError("该会计期间已关闭，不可写入", 403)
 
-    def _audit(self, conn, actor, book_id, action, object_id, details):
+    def _audit(self, conn, actor, book_id, action, object_id, details, created_at=None):
         conn.execute(
             "INSERT INTO audit_events(firm_id,book_id,user_id,action,object_id,details,created_at) VALUES(?,?,?,?,?,?,?)",
-            (actor.firm_id, book_id, actor.user_id, action, object_id, json.dumps(details, ensure_ascii=False), now()),
+            (actor.firm_id, book_id, actor.user_id, action, object_id, json.dumps(details, ensure_ascii=False), created_at or now()),
         )
 
     def create_book(self, actor: Actor, request: BookCreate):
@@ -233,6 +233,9 @@ class AccountingService:
         if self.learning is None:
             from ..learning.service import LearningService
             self.learning = LearningService(self.db)
+        for name in ('legacy_learning', 'legacy_settlements'):
+            if getattr(self, name, None) is not None:
+                setattr(self.learning, name, getattr(self, name))
         return self.learning
 
     def _delivery_guard(self):
@@ -273,6 +276,8 @@ class AccountingService:
         auxiliary_values = catalog.load_auxiliaries_in_transaction(conn, draft["book_id"], draft["id"])
         public_lines = [{"account_code": x["account_code"], "debit": cents_to_money(x["debit_cents"]), "credit": cents_to_money(x["credit_cents"]), "auxiliary_values": auxiliary_values.get(x["ordinal"], {})} for x in lines]
         auxiliary_issues = catalog.validate_auxiliaries_in_transaction(conn, actor, draft["book_id"], public_lines)
+        if actor and getattr(self, "legacy_settlements", None):
+            auxiliary_issues += self.legacy_settlements.blocking_issues_in_transaction(conn, actor, source, public_lines)
         mapping = None
         if source["source_kind"] == "business":
             row = conn.execute("SELECT event_id,submitted_version FROM business_mapping_versions WHERE source_id=? AND book_id=?", (source["id"], source["book_id"])).fetchone()
@@ -476,37 +481,64 @@ class AccountingService:
 
     def suggestions(self, actor: Actor, book_id: str):
         with self.db.transaction(write=True, actor=actor) as conn:
-            self._open(self._book(conn, actor, book_id, edit=True))
-            sources = conn.execute("SELECT s.* FROM sources s LEFT JOIN drafts d ON d.source_id=s.id WHERE s.book_id=? AND d.id IS NULL AND NOT " + inactive_source_sql(self.db.dialect) + " ORDER BY s.date,s.id", (book_id,)).fetchall()
-            created = exceptions = 0
-            for source in sources:
-                payload = {"occurred_on": source["date"], "description": source["description"], "counterparty": source["counterparty"], "amount": cents_to_money(source["amount_cents"]), "direction": source["direction"], "payment_status": "paid", "category": "other", "project": ""}
-                learned = self._learning_guard().rule_generate_in_transaction(conn, actor, book_id, "daily_cashflow", payload, source["amount_cents"], source_kind="bank")
-                rule = next((r for r in RULES if r[0] == source["direction"] and any(word in source["description"] for word in r[1])), None)
-                explanation = (
-                    f"命中演示规则「{rule[3]}」，建议科目 {rule[2]}。依据：原始摘要「{source['description']}」。金额直接取自原始流水；未判断税额与业务实质，须会计人工复核。"
-                    if rule else "没有匹配到本账套企业规则或演示规则，仅生成银行存款行，需会计选择对应科目。"
-                )
-                if learned:
-                    explanation = learned["explanation"]
-                draft_id = uuid4().hex
-                conn.execute("INSERT INTO drafts(id,book_id,source_id,description,explanation) VALUES(?,?,?,?,?)", (draft_id, book_id, source["id"], source["description"], explanation))
-                amount = source["amount_cents"]
-                debit, credit = ((amount, 0) if source["direction"] == "income" else (0, amount))
-                lines = [("1002", debit, credit)]
-                if rule:
-                    lines.insert(0, (rule[2], credit, debit))
-                if learned:
-                    lines = learned["lines"]
-                conn.executemany("INSERT INTO draft_lines VALUES(?,?,?,?,?,?)", [(draft_id, book_id, i, *line) for i, line in enumerate(lines)])
-                if learned:
-                    from .catalog import CatalogService
-                    CatalogService(self.db).save_auxiliaries_in_transaction(conn, actor, book_id, draft_id, learned["auxiliaries"])
-                draft = conn.execute("SELECT * FROM drafts WHERE id=?", (draft_id,)).fetchone()
-                exceptions += bool(self._draft_json(conn, draft, actor)["issues"])
-                self._audit(conn, actor, book_id, "draft.suggest", draft_id, {"source_id": source["id"], "rule": rule[3] if rule else None, "company_rule_id": learned["rule_id"] if learned else None, "company_rule_version": learned["rule_version"] if learned else None})
-                created += 1
-            return {"created": created, "exceptions": exceptions}
+            result = self.suggestions_in_transaction(conn, actor, book_id)
+            return {"created": result["created"], "exceptions": result["exceptions"]}
+
+    def suggestions_in_transaction(self, conn, actor, book_id, source_ids=None):
+        """Same deterministic draft pipeline, bounded to an immutable action preview."""
+        self._open(self._book(conn, actor, book_id, edit=True))
+        requested = list(source_ids) if source_ids is not None else None
+        params = [book_id]
+        restriction = ""
+        if requested is not None:
+            if not requested or len(requested) > 100 or len(set(requested)) != len(requested):
+                raise AccountingError("流水任务范围必须为1至100条不重复来源", 422)
+            restriction = " AND s.source_kind='bank' AND s.id IN (" + ",".join("?" for _ in requested) + ")"
+            params.extend(requested)
+        sources = conn.execute("SELECT s.* FROM sources s LEFT JOIN drafts d ON d.source_id=s.id WHERE s.book_id=? AND d.id IS NULL AND NOT " + inactive_source_sql(self.db.dialect) + restriction + " ORDER BY s.date,s.id", params).fetchall()
+        if requested is not None and len(sources) != len(requested):
+            raise AccountingError("流水已生成草稿、已隔离或任务范围发生变化，请重新预览", 409)
+        created = exceptions = 0
+        draft_ids = []
+        # Native confirmation and its proof must share the database clock,
+        # including deployments where the API runs on a different host.
+        audit_stamp = conn.execute("SELECT to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS.US\"+00:00\"')").fetchone()[0] if source_ids is not None and self.db.is_postgres else None
+        for source in sources:
+            payload = {"occurred_on": source["date"], "description": source["description"], "counterparty": source["counterparty"], "amount": cents_to_money(source["amount_cents"]), "direction": source["direction"], "payment_status": "paid", "category": "other", "project": ""}
+            learned = self._learning_guard().rule_generate_in_transaction(conn, actor, book_id, "daily_cashflow", payload, source["amount_cents"], source_kind="bank")
+            legacy_clearance = getattr(self, "legacy_settlements", None)
+            if legacy_clearance and legacy_clearance.source_allocated_in_transaction(conn, actor, source):
+                if source_ids is not None:
+                    raise AccountingError("流水已分配历史结算，请重新预览", 409)
+                continue
+            if not learned and getattr(self, "legacy_learning", None):
+                learned = self.legacy_learning.render_in_transaction(conn, actor, book_id, source)
+            rule = next((r for r in RULES if r[0] == source["direction"] and any(word in source["description"] for word in r[1])), None)
+            explanation = (
+                f"命中演示规则「{rule[3]}」，建议科目 {rule[2]}。依据：原始摘要「{source['description']}」。金额直接取自原始流水；未判断税额与业务实质，须会计人工复核。"
+                if rule else "没有匹配到本账套企业规则或演示规则，仅生成银行存款行，需会计选择对应科目。"
+            )
+            if learned:
+                explanation = learned["explanation"]
+            draft_id = uuid4().hex
+            conn.execute("INSERT INTO drafts(id,book_id,source_id,description,explanation) VALUES(?,?,?,?,?)", (draft_id, book_id, source["id"], source["description"], explanation))
+            amount = source["amount_cents"]
+            debit, credit = ((amount, 0) if source["direction"] == "income" else (0, amount))
+            lines = [("1002", debit, credit)]
+            if rule:
+                lines.insert(0, (rule[2], credit, debit))
+            if learned:
+                lines = learned["lines"]
+            conn.executemany("INSERT INTO draft_lines VALUES(?,?,?,?,?,?)", [(draft_id, book_id, i, *line) for i, line in enumerate(lines)])
+            if learned:
+                from .catalog import CatalogService
+                CatalogService(self.db).save_auxiliaries_in_transaction(conn, actor, book_id, draft_id, learned["auxiliaries"])
+            draft = conn.execute("SELECT * FROM drafts WHERE id=?", (draft_id,)).fetchone()
+            exceptions += bool(self._draft_json(conn, draft, actor)["issues"])
+            self._audit(conn, actor, book_id, "draft.suggest", draft_id, {"source_id": source["id"], "rule": rule[3] if rule else None, "company_rule_id": learned.get("rule_id") if learned else None, "company_rule_version": learned.get("rule_version") if learned else None, "migration_rule_id": learned.get("migration_rule_id") if learned else None, "migration_rule_version": learned.get("migration_rule_version") if learned else None}, created_at=audit_stamp)
+            created += 1
+            draft_ids.append(draft_id)
+        return {"created": created, "exceptions": exceptions, "draft_ids": draft_ids}
 
     def _editable_draft(self, conn, book_id, draft_id, expected_version):
         draft = conn.execute("SELECT * FROM drafts WHERE id=? AND book_id=?", (draft_id, book_id)).fetchone()
@@ -523,20 +555,27 @@ class AccountingService:
 
     def update_draft(self, actor: Actor, book_id: str, draft_id: str, request: DraftUpdate):
         with self.db.transaction(write=True, actor=actor) as conn:
-            self._open(self._book(conn, actor, book_id, edit=True))
-            draft = self._editable_draft(conn, book_id, draft_id, request.expected_version)
-            before = self._draft_json(conn, draft, actor)
-            for line in request.lines:
-                account = conn.execute("SELECT active FROM accounts WHERE book_id=? AND code=?", (book_id, line.account_code)).fetchone()
-                if not account or not account["active"]:
-                    raise AccountingError(f"科目 {line.account_code} 不属于当前账套或已停用")
-            conn.execute("DELETE FROM draft_lines WHERE draft_id=? AND book_id=?", (draft_id, book_id))
-            conn.executemany("INSERT INTO draft_lines VALUES(?,?,?,?,?,?)", [(draft_id, book_id, i, line.account_code, money_to_cents(line.debit), money_to_cents(line.credit)) for i, line in enumerate(request.lines)])
-            self._save_auxiliaries(conn, actor, draft, request.lines)
-            conn.execute("UPDATE drafts SET description=?,version=version+1,last_manual_edit_version=version+1 WHERE id=? AND book_id=? AND version=?", (request.description, draft_id, book_id, request.expected_version))
-            updated = self._draft_json(conn, conn.execute("SELECT * FROM drafts WHERE id=? AND book_id=?", (draft_id, book_id)).fetchone(), actor)
-            self._audit(conn, actor, book_id, "draft.update", draft_id, {"before": {k: before[k] for k in ("version", "description", "lines")}, "after": {k: updated[k] for k in ("version", "description", "lines")}, "reason": request.correction_reason})
-            return updated
+            return self.update_draft_in_transaction(conn, actor, book_id, draft_id, request)
+
+    def update_draft_in_transaction(self, conn, actor, book_id, draft_id, request):
+        """Share the exact human-edit guards with atomic clearance commands."""
+        self._open(self._book(conn, actor, book_id, edit=True))
+        draft = self._editable_draft(conn, book_id, draft_id, request.expected_version)
+        before = self._draft_json(conn, draft, actor)
+        legacy = getattr(self, "legacy_settlements", None)
+        if legacy and legacy.source_allocated_in_transaction(conn, actor, before["source"] if "source" in before else dict(conn.execute("SELECT * FROM sources WHERE id=? AND book_id=?", (draft["source_id"], book_id)).fetchone())):
+            raise AccountingError("历史清偿已有分配依据，请先撤回未审核清偿再调整分录", 409)
+        for line in request.lines:
+            account = conn.execute("SELECT active FROM accounts WHERE book_id=? AND code=?", (book_id, line.account_code)).fetchone()
+            if not account or not account["active"]:
+                raise AccountingError(f"科目 {line.account_code} 不属于当前账套或已停用")
+        conn.execute("DELETE FROM draft_lines WHERE draft_id=? AND book_id=?", (draft_id, book_id))
+        conn.executemany("INSERT INTO draft_lines VALUES(?,?,?,?,?,?)", [(draft_id, book_id, i, line.account_code, money_to_cents(line.debit), money_to_cents(line.credit)) for i, line in enumerate(request.lines)])
+        self._save_auxiliaries(conn, actor, draft, request.lines)
+        conn.execute("UPDATE drafts SET description=?,version=version+1,last_manual_edit_version=version+1 WHERE id=? AND book_id=? AND version=?", (request.description, draft_id, book_id, request.expected_version))
+        updated = self._draft_json(conn, conn.execute("SELECT * FROM drafts WHERE id=? AND book_id=?", (draft_id, book_id)).fetchone(), actor)
+        self._audit(conn, actor, book_id, "draft.update", draft_id, {"before": {k: before[k] for k in ("version", "description", "lines")}, "after": {k: updated[k] for k in ("version", "description", "lines")}, "reason": request.correction_reason})
+        return updated
 
     def _save_auxiliaries(self, conn, actor, draft, lines):
         from .catalog import CatalogService

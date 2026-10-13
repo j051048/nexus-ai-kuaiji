@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { choosePersona, openNavigation } from './ui-navigation';
 
 test('四种真实验证身份按主业务角色进入待办首页，兼有复核权的财务仍先核验业务', async ({ page, request }) => {
   const owner = await (await request.get('/api/session?persona=accountant')).json();
@@ -17,11 +18,13 @@ test('四种真实验证身份按主业务角色进入待办首页，兼有复�
     const profile = await profileResponse.json();
     expect(profile.role).toBe(role);
     if (persona === 'finance') expect(profile.can_review).toBe(true);
-    await page.getByLabel('切换验证身份').selectOption(persona);
+    await choosePersona(page, persona);
     await expect(page.getByRole('heading', { name: title, exact: true })).toBeVisible();
+    await openNavigation(page);
     await expect(home).toHaveAttribute('aria-current', 'page');
     await expect(page.getByLabel('我的工作概览')).toBeVisible();
     await expect(page.getByLabel('筛选待办类型')).toBeVisible();
+    await openNavigation(page);
     await expect(page.locator('summary').filter({ hasText: /^处理记录与管理$/ })).toBeVisible();
     await expect(page.locator('summary').filter({ hasText: /^处理记录与管理$/ }).locator('..')).not.toHaveAttribute('open', '');
     if (persona === 'employee' || persona === 'department') {
@@ -29,6 +32,7 @@ test('四种真实验证身份按主业务角色进入待办首页，兼有复�
       await expect(page.getByRole('navigation', { name: '主导航', exact: true }).getByRole('button', { name: '跨企业批量复核', exact: true })).toHaveCount(0);
       await expect(page.getByLabel('快速录入')).toBeVisible();
     }
+    await page.getByRole('button', { name: '关闭导航', exact: true }).click();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
   }
   await page.getByRole('heading', { level: 1 }).scrollIntoViewIfNeeded();

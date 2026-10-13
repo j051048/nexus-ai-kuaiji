@@ -20,6 +20,7 @@ class PolicyRequest(InputModel):
     monthly_limit: StrictStr = "0.00"
     ocr_reserve: StrictStr = "0.00"
     proposal_reserve: StrictStr = "0.00"
+    chat_reserve: StrictStr | None = None
     failure_threshold: int = Field(default=3, strict=True, ge=1, le=1000)
     failure_window_minutes: int = Field(default=60, strict=True, ge=1, le=10080)
     backlog_threshold: int = Field(default=10, strict=True, ge=1, le=1000)
@@ -27,10 +28,10 @@ class PolicyRequest(InputModel):
     queue_wait_minutes: int = Field(default=10, strict=True, ge=1, le=10080)
     worker_stale_seconds: int = Field(default=90, strict=True, ge=30, le=3600)
 
-    @field_validator("monthly_limit", "ocr_reserve", "proposal_reserve")
+    @field_validator("monthly_limit", "ocr_reserve", "proposal_reserve", "chat_reserve")
     @classmethod
     def valid_money(cls, value):
-        return exact_money(value)
+        return exact_money(value) if value is not None else value
 
     @model_validator(mode="after")
     def enabled_budget_must_be_positive(self):
@@ -50,4 +51,4 @@ class ReconcileRequest(AcknowledgeRequest):
     @field_validator("confirmed_cost")
     @classmethod
     def valid_money(cls, value):
-        return exact_money(value)
+        return exact_money(value) if value is not None else value

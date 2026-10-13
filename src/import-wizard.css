@@ -1,5 +1,5 @@
-.import-wizard-backdrop { z-index: 70; padding: 24px; }
-.import-wizard-dialog { width: min(850px, 100%); max-height: calc(100dvh - 48px); display: flex; flex-direction: column; border-radius: 16px; background: var(--surface, #fffefb); color: var(--text, #253a31); box-shadow: 0 28px 85px #132b2433; outline: none; }
+.import-wizard-backdrop { position: fixed; inset: 0; z-index: 120; padding: 24px; display: flex; align-items: center; justify-content: center; background: #173d3059; overscroll-behavior: contain; }
+.import-wizard-dialog { width: min(850px, 100%); min-width: 0; max-height: calc(100dvh - 48px); display: flex; flex-direction: column; overflow: hidden; border-radius: 16px; background: var(--surface, #fffefb); color: var(--text, #253a31); box-shadow: 0 28px 85px #132b2433; outline: none; }
 .import-wizard-header { display: flex; align-items: flex-start; justify-content: space-between; padding: 24px 28px 18px; border-bottom: 1px solid #dfe6df; }
 .import-wizard-header h2 { font-size: 23px; margin: 6px 0 5px; }
 .import-wizard-header p, .import-wizard-title-row p, .import-wizard-scope p { margin: 0; font-size: 13px; color: #5e7066; line-height: 1.6; }
@@ -7,7 +7,9 @@
 .import-wizard-steps li { display: flex; gap: 7px; align-items: center; flex: 1; font-size: 12px; color: #738175; }
 .import-wizard-steps li > span { width: 26px; height: 26px; display: grid; place-items: center; background: #e5e9df; border-radius: 50%; flex-shrink: 0; }
 .import-wizard-steps li.current { color: #225844; font-weight: 700; }.import-wizard-steps li.current > span { background: #225844; color: white; }.import-wizard-steps li.complete { color: #32624c; }
-.import-wizard-main { padding: 24px 28px; overflow-y: auto; min-height: 0; }
+.import-wizard-main { width: 100%; max-width: none; margin: 0; padding: 24px 28px; overflow-y: auto; min-width: 0; min-height: 0; flex: 1; overscroll-behavior: contain; }
+.import-wizard-header, .import-wizard-steps, .import-wizard-footer { flex-shrink: 0; }
+.import-wizard-header > div { min-width: 0; overflow-wrap: anywhere; }
 .import-wizard-title-row { display: flex; gap: 14px; justify-content: space-between; align-items: flex-start; margin-bottom: 17px; }.import-wizard-title-row h3, .import-wizard-scope h3 { margin: 0 0 6px; font-size: 17px; }
 .import-wizard-title-row .status-pill { white-space: normal; overflow-wrap: anywhere; max-width: 240px; }
 .import-wizard-upload { width: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 9px; padding: 28px; background: #f4f7ef; border: 1px dashed #8caa94; border-radius: 10px; color: #2c6045; cursor: pointer; }.import-wizard-upload strong { font-size: 15px; overflow-wrap: anywhere; }.import-wizard-upload span { font-size: 12px; color: #647668; }

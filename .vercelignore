@@ -1,0 +1,21 @@
+# Exclude local private state and inherited platform material from CLI uploads.
+.codex/
+.agents/
+.legacy-snapshot/
+.venv/
+nexus_backend/.venv/
+nexus_backend/
+scripts/
+node_modules/
+artifacts/
+test-results/
+playwright-report/
+nexus_backend/data/
+nexus_backend/private-attachments/
+**/__pycache__/
+**/*.pyc
+.env
+.env.accounting
+.env.local
+.env.*.local
+nexus_backend/.env

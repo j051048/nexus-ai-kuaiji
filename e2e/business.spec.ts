@@ -1,11 +1,12 @@
+import { choosePersona, openBusiness } from './ui-navigation';
 import { expect, test, type Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 
 const receipt = { name: 'MVP测试票据.png', mimeType: 'image/png', buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAFUlEQVR4nGP8//8/AzbAhFV00EoAAFbUAw037MyjAAAAAElFTkSuQmCC', 'base64') };
 
 async function persona(page: Page, id: 'employee' | 'department' | 'finance' | 'accountant') {
-  await page.getByLabel('切换验证身份').selectOption(id);
-  if (id !== 'accountant') await page.getByRole('button', { name: '业务事项', exact: true }).click();
+  await choosePersona(page, id);
+  if (id !== 'accountant') await openBusiness(page);
 }
 
 async function create(page: Page, description: string, template: '员工报销' | '采购 / 费用' | '日常收支', amount = '268.10') {
@@ -72,7 +73,7 @@ test('员工报销经过独立审批与原件上传后交接指定账套、会�
   await page.screenshot({ path: 'artifacts/business-workbench.png', fullPage: true });
 
   await persona(page, 'accountant');
-  await page.getByRole('button', { name: '业务事项', exact: true }).click();
+  await openBusiness(page);
   await open(page, description, '会计接收');
   await page.getByRole('button', { name: '打开会计复核', exact: true }).click();
   await expect(page.getByLabel('凭证摘要', { exact: true })).toHaveValue(description);

@@ -1,5 +1,6 @@
 import type { BusinessPayload, BusinessTemplate } from './business-types';
 import { moneyToCents } from './csv';
+import { DEFAULT_ATTACHMENT_BYTES, uploadSizeError } from './transport-limits';
 
 export const BUSINESS_TEMPLATES = [
   { id: 'reimbursement' as const, name: '员工报销', description: '差旅、办公与日常垫付费用', icon: 'receipt' },
@@ -8,7 +9,7 @@ export const BUSINESS_TEMPLATES = [
 ];
 export const BUSINESS_CATEGORIES = { office: '办公费用', travel: '差旅费用', rent: '租赁费用', communication: '通信费用', other: '其他事项' };
 export const ATTACHMENT_TYPES = ['application/pdf', 'image/png', 'image/jpeg', 'image/webp'];
-export const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+export const MAX_ATTACHMENT_BYTES = DEFAULT_ATTACHMENT_BYTES;
 export const MAX_TOTAL_ATTACHMENT_BYTES = 50 * 1024 * 1024;
 
 export function initialBusinessPayload(template: BusinessTemplate): BusinessPayload {
@@ -35,7 +36,8 @@ export function validateBusinessPayload(template: BusinessTemplate, payload: Bus
 
 export function validateAttachment(file: Pick<File, 'size' | 'type' | 'name'>, existingCount: number, existingBytes: number): string {
   if (!ATTACHMENT_TYPES.includes(file.type)) return '附件仅支持 PDF、PNG、JPEG 和 WebP。';
-  if (!file.size || file.size > MAX_ATTACHMENT_BYTES) return '每个附件须大于零且不超过 10 MB。';
+  const sizeError = uploadSizeError(file.size, MAX_ATTACHMENT_BYTES);
+  if (sizeError) return sizeError;
   if (existingCount >= 10) return '每个事项最多上传 10 个附件。';
   if (existingBytes + file.size > MAX_TOTAL_ATTACHMENT_BYTES) return '每个事项的附件总大小不得超过 50 MB。';
   return '';

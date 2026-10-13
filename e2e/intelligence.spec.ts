@@ -1,12 +1,12 @@
-import { openManagement } from './ui-navigation';
+import { choosePersona, openBusiness, openManagement } from './ui-navigation';
 import { expect, test, type Page } from '@playwright/test';
 
 const receipt = { name: '第四阶段虚构票据.png', mimeType: 'image/png', buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAFUlEQVR4nGP8//8/AzbAhFV00EoAAFbUAw037MyjAAAAAElFTkSuQmCC', 'base64') };
 const companyName = '青屿设计（虚构示例）';
 
 async function persona(page: Page, id: 'employee' | 'finance' | 'accountant') {
-  await page.getByLabel('切换验证身份').selectOption(id);
-  await page.getByRole('button', { name: '业务事项', exact: true }).click();
+  await choosePersona(page, id);
+  await openBusiness(page);
 }
 
 async function createWithOriginal(page: Page, description: string) {
@@ -43,7 +43,7 @@ async function openEvent(page: Page, description: string, scope?: '企业财务'
 test('真实本地 UI：企业启用、未配置服务禁识别、员工登记核对异常及财务独立处理', async ({ page, request }) => {
   await page.setViewportSize({ width: 1440, height: 1100 });
   await page.goto('/');
-  await page.getByRole('button', { name: '业务事项', exact: true }).click();
+  await openBusiness(page);
   await page.getByRole('button', { name: '部门与企业设置', exact: true }).click();
   const settings = page.getByRole('dialog');
   await settings.getByLabel('客户企业', { exact: true }).selectOption({ label: companyName });

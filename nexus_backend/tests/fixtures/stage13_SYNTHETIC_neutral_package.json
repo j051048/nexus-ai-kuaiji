@@ -1,0 +1,130 @@
+{
+  "schema": "nexus.legacy/v1",
+  "context": {
+    "external_book_id": "SYNTHETIC-TPLUS-BOOK",
+    "currency": "CNY",
+    "history_start": "2026-08-01",
+    "history_end": "2026-08-31",
+    "cutover_date": "2026-09-01"
+  },
+  "records": [
+    {
+      "kind": "account",
+      "external_id": "1001",
+      "period": "2026-08",
+      "payload": {
+        "code": "1001",
+        "name": "模拟现金",
+        "parent_code": "",
+        "posting": true,
+        "category": "asset",
+        "normal_balance": "debit",
+        "auxiliary_requirements": []
+      }
+    },
+    {
+      "kind": "account",
+      "external_id": "2001",
+      "period": "2026-08",
+      "payload": {
+        "code": "2001",
+        "name": "模拟借款",
+        "parent_code": "",
+        "posting": true,
+        "category": "liability",
+        "normal_balance": "credit",
+        "auxiliary_requirements": []
+      }
+    },
+    {
+      "kind": "account",
+      "external_id": "6602",
+      "period": "2026-08",
+      "payload": {
+        "code": "6602",
+        "name": "模拟管理费用",
+        "parent_code": "",
+        "posting": true,
+        "category": "expense",
+        "normal_balance": "debit",
+        "auxiliary_requirements": []
+      }
+    },
+    {
+      "kind": "voucher",
+      "external_id": "SYNTHETIC-V1",
+      "period": "2026-08",
+      "payload": {
+        "external_id": "SYNTHETIC-V1",
+        "date": "2026-08-05",
+        "period": "2026-08",
+        "voucher_type": "记",
+        "number": "0001",
+        "status": "posted",
+        "is_reversal": false,
+        "lines": [
+          {
+            "ordinal": 1,
+            "account_code": "6602",
+            "description": "仅用于测试",
+            "debit": "100.00",
+            "credit": "0.00",
+            "auxiliaries": {},
+            "original_currency": "CNY"
+          },
+          {
+            "ordinal": 2,
+            "account_code": "1001",
+            "description": "仅用于测试",
+            "debit": "0.00",
+            "credit": "100.00",
+            "auxiliaries": {},
+            "original_currency": "CNY"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "balance",
+      "external_id": "1001",
+      "period": "2026-08",
+      "payload": {
+        "account_code": "1001",
+        "auxiliaries": {},
+        "opening": "1000.00",
+        "period_debit": "0.00",
+        "period_credit": "100.00",
+        "closing": "900.00",
+        "scope": "posted"
+      }
+    },
+    {
+      "kind": "balance",
+      "external_id": "2001",
+      "period": "2026-08",
+      "payload": {
+        "account_code": "2001",
+        "auxiliaries": {},
+        "opening": "-1000.00",
+        "period_debit": "0.00",
+        "period_credit": "0.00",
+        "closing": "-1000.00",
+        "scope": "posted"
+      }
+    },
+    {
+      "kind": "balance",
+      "external_id": "6602",
+      "period": "2026-08",
+      "payload": {
+        "account_code": "6602",
+        "auxiliaries": {},
+        "opening": "0.00",
+        "period_debit": "100.00",
+        "period_credit": "0.00",
+        "closing": "100.00",
+        "scope": "posted"
+      }
+    }
+  ]
+}

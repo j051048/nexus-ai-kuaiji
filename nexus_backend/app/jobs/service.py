@@ -62,30 +62,34 @@ class QueueService:
         return event, attachment
 
     def enqueue(self, actor, request):
+        with self.db.transaction(write=True, actor=actor) as conn:
+            return self.enqueue_in_transaction(conn, actor, request)
+
+    def enqueue_in_transaction(self, conn, actor, request):
+        """Use the same enqueue checks inside atomic assistant plans."""
         pairs = [(item.event_id, item.attachment_id) for item in request.items]
         if len(pairs) != len(set(pairs)):
             raise AccountingError("同一批次不能重复选择附件", 422)
         digest = fingerprint({"company_id": request.company_id, "items": sorted((item.model_dump() for item in request.items), key=lambda value: (value["event_id"], value["attachment_id"]))})
-        with self.db.transaction(write=True, actor=actor) as conn:
-            inputs = [self._input(conn, actor, item.event_id, item.attachment_id, request.company_id, item.expected_version) for item in request.items]
-            self._ready()
-            existing = conn.execute("SELECT * FROM ocr_batches WHERE firm_id=? AND created_by=? AND idempotency_key=?", (actor.firm_id, actor.user_id, request.idempotency_key)).fetchone()
-            if existing:
-                if existing["request_fingerprint"] != digest:
-                    raise AccountingError("批次幂等键已用于不同的票据集合", 409)
-                return self._batch_json(conn, actor, existing)
-            self._capacity(conn, actor, request.company_id, len(inputs))
-            for event, attachment in inputs:
-                if conn.execute("SELECT 1 FROM ocr_jobs WHERE event_id=? AND attachment_id=? AND status IN ('queued','running','retry_wait')", (event["id"], attachment["id"])).fetchone():
-                    raise AccountingError("所选票据已有未完成任务，请查看进度，勿重复提交", 409)
-            batch_id, stamp = uuid4().hex, self.database_timestamp(conn)
-            conn.execute("INSERT INTO ocr_batches(id,firm_id,company_id,created_by,idempotency_key,request_fingerprint,created_at) VALUES(?,?,?,?,?,?,?)", (batch_id, actor.firm_id, request.company_id, actor.user_id, request.idempotency_key, digest, stamp))
-            for event, attachment in inputs:
-                conn.execute("INSERT INTO ocr_jobs(id,batch_id,firm_id,company_id,event_id,attachment_id,expected_version,expected_fact_version,attachment_sha256,configuration_fingerprint,execution_user_id,created_by,created_at,status,attempt_count,max_attempts,available_at,error_code,error_detail,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,'queued',0,3,?,'','',?)", (uuid4().hex, batch_id, actor.firm_id, request.company_id, event["id"], attachment["id"], event["version"], event["fact_version"], attachment["sha256"], self.configuration_fingerprint(), actor.user_id, actor.user_id, stamp, stamp, stamp))
-            self.business._audit(conn, actor, "queue.batch.enqueue", batch_id, {"company_id": request.company_id, "count": len(inputs)})
-            for event, _ in inputs:
-                self.intelligence.capture_snapshot(conn, actor, event)
-            return self._batch_json(conn, actor, conn.execute("SELECT * FROM ocr_batches WHERE id=?", (batch_id,)).fetchone())
+        inputs = [self._input(conn, actor, item.event_id, item.attachment_id, request.company_id, item.expected_version) for item in request.items]
+        self._ready()
+        existing = conn.execute("SELECT * FROM ocr_batches WHERE firm_id=? AND created_by=? AND idempotency_key=?", (actor.firm_id, actor.user_id, request.idempotency_key)).fetchone()
+        if existing:
+            if existing["request_fingerprint"] != digest:
+                raise AccountingError("批次幂等键已用于不同的票据集合", 409)
+            return self._batch_json(conn, actor, existing)
+        self._capacity(conn, actor, request.company_id, len(inputs))
+        for event, attachment in inputs:
+            if conn.execute("SELECT 1 FROM ocr_jobs WHERE event_id=? AND attachment_id=? AND status IN ('queued','running','retry_wait')", (event["id"], attachment["id"])).fetchone():
+                raise AccountingError("所选票据已有未完成任务，请查看进度，勿重复提交", 409)
+        batch_id, stamp = uuid4().hex, self.database_timestamp(conn)
+        conn.execute("INSERT INTO ocr_batches(id,firm_id,company_id,created_by,idempotency_key,request_fingerprint,created_at) VALUES(?,?,?,?,?,?,?)", (batch_id, actor.firm_id, request.company_id, actor.user_id, request.idempotency_key, digest, stamp))
+        for event, attachment in inputs:
+            conn.execute("INSERT INTO ocr_jobs(id,batch_id,firm_id,company_id,event_id,attachment_id,expected_version,expected_fact_version,attachment_sha256,configuration_fingerprint,execution_user_id,created_by,created_at,status,attempt_count,max_attempts,available_at,error_code,error_detail,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,'queued',0,3,?,'','',?)", (uuid4().hex, batch_id, actor.firm_id, request.company_id, event["id"], attachment["id"], event["version"], event["fact_version"], attachment["sha256"], self.configuration_fingerprint(), actor.user_id, actor.user_id, stamp, stamp, stamp))
+        self.business._audit(conn, actor, "queue.batch.enqueue", batch_id, {"company_id": request.company_id, "count": len(inputs)})
+        for event, _ in inputs:
+            self.intelligence.capture_snapshot(conn, actor, event)
+        return self._batch_json(conn, actor, conn.execute("SELECT * FROM ocr_batches WHERE id=?", (batch_id,)).fetchone())
 
     def _capacity(self, conn, actor, company_id, additional):
         # RLS limits ordinary members to their visible work. The unique active
@@ -293,9 +297,9 @@ class QueueService:
                 return row if row else None
             stamp = self.timestamp()
             self.proposals.refresh_dependencies_sqlite(conn)
-            if conn.execute("SELECT (SELECT COUNT(*) FROM ocr_jobs WHERE status='running')+(SELECT COUNT(*) FROM proposal_jobs WHERE status='running')").fetchone()[0] >= concurrency:
+            if conn.execute("SELECT (SELECT COUNT(*) FROM ocr_jobs WHERE status='running')+(SELECT COUNT(*) FROM proposal_jobs WHERE status='running')+(SELECT COUNT(*) FROM assistant_turns WHERE status='running')").fetchone()[0] >= concurrency:
                 return None
-            candidate = conn.execute("SELECT j.id,j.job_kind,j.firm_id,j.company_id FROM (SELECT id,firm_id,company_id,status,available_at,attempt_count,max_attempts,created_at,'ocr' AS job_kind FROM ocr_jobs UNION ALL SELECT id,firm_id,company_id,status,available_at,attempt_count,max_attempts,created_at,'proposal' AS job_kind FROM proposal_jobs) j LEFT JOIN ocr_company_schedule s ON s.firm_id=j.firm_id AND s.company_id=j.company_id WHERE j.status IN ('queued','retry_wait') AND j.available_at<=? AND j.attempt_count<j.max_attempts AND NOT EXISTS(SELECT 1 FROM ocr_jobs active WHERE active.firm_id=j.firm_id AND active.company_id=j.company_id AND active.status='running') AND NOT EXISTS(SELECT 1 FROM proposal_jobs active WHERE active.firm_id=j.firm_id AND active.company_id=j.company_id AND active.status='running') ORDER BY COALESCE(s.last_dispatch_seq,0),j.created_at,j.id LIMIT 1", (stamp,)).fetchone()
+            candidate = conn.execute("SELECT j.id,j.job_kind,j.firm_id,j.company_id FROM (SELECT id,firm_id,company_id,status,available_at,attempt_count,max_attempts,created_at,'ocr' AS job_kind FROM ocr_jobs UNION ALL SELECT id,firm_id,company_id,status,available_at,attempt_count,max_attempts,created_at,'proposal' AS job_kind FROM proposal_jobs) j LEFT JOIN ocr_company_schedule s ON s.firm_id=j.firm_id AND s.company_id=j.company_id WHERE j.status IN ('queued','retry_wait') AND j.available_at<=? AND j.attempt_count<j.max_attempts AND NOT EXISTS(SELECT 1 FROM ocr_jobs active WHERE active.firm_id=j.firm_id AND active.company_id=j.company_id AND active.status='running') AND NOT EXISTS(SELECT 1 FROM proposal_jobs active WHERE active.firm_id=j.firm_id AND active.company_id=j.company_id AND active.status='running') AND NOT EXISTS(SELECT 1 FROM assistant_turns active WHERE active.firm_id=j.firm_id AND active.company_id=j.company_id AND active.status='running') ORDER BY COALESCE(s.last_dispatch_seq,0),j.created_at,j.id LIMIT 1", (stamp,)).fetchone()
             if not candidate:
                 return None
             sequence = conn.execute("SELECT COALESCE(MAX(last_dispatch_seq),0)+1 FROM ocr_company_schedule").fetchone()[0]

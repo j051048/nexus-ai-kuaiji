@@ -25,7 +25,6 @@ test('评测标准须两位会计核对，未覆盖不能算通过，评测不�
   expect(standard.confirmed).toBe(false);
   expect((await request.post(`/api/books/${book.id}/quality/standards/${standard.id}/confirm`, { headers, data: { evidence_checked: true, reason: '自证应该被拒绝' } })).status()).toBe(409);
   await page.getByLabel('切换验证身份').selectOption('finance');
-  await page.getByRole('button', { name: '会计工作台', exact: true }).click();
   await openAccounting(page); await page.getByLabel('搜索企业名称').fill(name); await page.getByRole('listitem').filter({ hasText: name }).click();
   await openBookTools(page); await page.getByRole('button', { name: '试点评测', exact: true }).click();
   await page.locator('.quality-standard .quality-row').filter({ hasText: party }).click();

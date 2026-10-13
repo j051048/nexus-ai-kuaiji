@@ -1,5 +1,6 @@
 import { currentAccessToken } from './auth';
 import type { Session } from './types';
+import { setTransportLimits, transportBodyError, transportTooLargeMessage } from './transport-limits';
 
 let activeScope: string | null = null;
 let scopeController = new AbortController();
@@ -38,6 +39,9 @@ async function request(
   const signal = session
     ? options.signal ? AbortSignal.any([options.signal, scopeController.signal]) : scopeController.signal
     : options.signal;
+  const body = options.body === undefined ? undefined : options.body instanceof FormData ? options.body : JSON.stringify(options.body);
+  const bodyError = transportBodyError(body);
+  if (bodyError) throw new ApiError(bodyError, 413);
   const response = await fetch(`/api${path}`, {
     method: options.method ?? 'GET',
     headers: {
@@ -45,7 +49,7 @@ async function request(
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(session?.firm_id ? { 'X-Firm-Id': session.firm_id } : {}),
     },
-    ...(options.body !== undefined ? { body: options.body instanceof FormData ? options.body : JSON.stringify(options.body) } : {}),
+    ...(body !== undefined ? { body } : {}),
     signal,
   });
   if (signal?.aborted || (session && session.scope_key !== activeScope)) throw new DOMException('授权范围已切换', 'AbortError');
@@ -62,7 +66,7 @@ async function request(
       : Array.isArray(detail) ? detail.map((item: { msg?: string }) => item.msg ?? '输入不符合要求').join('；')
       : detail && typeof detail === 'object' && 'message' in detail ? String(detail.message)
       : payload?.message ?? `请求失败（${response.status}），请稍后重试。`;
-    throw new ApiError(message, response.status);
+    throw new ApiError(response.status === 413 ? transportTooLargeMessage() : message, response.status);
   }
   return response;
 }
@@ -71,6 +75,9 @@ export async function api<T>(path: string, credentials?: string | Session, optio
   const response = await request(path, credentials, options);
   const data = await response.json().catch(() => null);
   if (options.signal?.aborted || (typeof credentials === 'object' && credentials.scope_key !== activeScope)) throw new DOMException('授权范围已切换', 'AbortError');
+  if (path === '/auth/config' && (options.method === undefined || options.method === 'GET') && data && typeof data === 'object') {
+    setTransportLimits((data as { transport_limits?: unknown }).transport_limits);
+  }
   return data as T;
 }
 

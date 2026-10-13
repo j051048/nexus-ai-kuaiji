@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowDownToLine, CheckCircle2, LoaderCircle, Paperclip, RefreshCw, Send, X } from 'lucide-react';
 import { api, apiBlob, errorMessage } from './api';
 import type { Session } from './types';
+import { uploadLimitLabel, uploadSizeError } from './transport-limits';
 import { caseCanClose, caseMissingFields, caseReasonError, caseStateLabels } from './case-types';
 import type { CaseTask } from './case-types';
 import './cases.css';
@@ -56,7 +57,8 @@ export function CasePanel({ session, caseId, onChanged, onClose }: { session: Se
   }
   async function upload() {
     if (!task || !file || lock.current) return;
-    if (file.size > 10 * 1024 * 1024 || file.size === 0) { setError('单个附件须为 1 字节至 10 MB'); return; }
+    const invalidSize = uploadSizeError(file.size);
+    if (invalidSize) { setError(invalidSize); return; }
     const started = target; const signature = `${target}:upload:${task.version}:${file.name}:${file.size}:${file.lastModified}`;
     const query = new URLSearchParams({ expected_version: String(task.version), idempotency_key: commandKey(signature) });
     const body = new FormData(); body.append('file', file); lock.current = true; setBusy(true); setError('');
@@ -78,7 +80,7 @@ export function CasePanel({ session, caseId, onChanged, onClose }: { session: Se
       {task.kind === 'supplement' && <p className="field-help">补件作为新的证据保留，不替换已批准事项。金额、日期等业务事实如有错误，请由财务确认更正路径。</p>}
       {!!task.required_fields.length && <div className="case-requirements"><strong>需要补充的字段</strong>{task.required_fields.map(field => <span key={field}>{field}</span>)}{!!task.attachment_required && <span><Paperclip size={12} />须上传原件</span>}</div>}
       {!!task.responses?.length && <div className="case-responses"><h3>补件响应</h3>{task.responses.map(response => <article key={response.id}><div><strong>{{ draft: '待提交补件', submitted: '已提交补件', accepted: '已接受补件', returned: '已退回补件' }[response.state]}</strong><small>{labelDate(response.created_at)}</small></div>{response.message && <p>{response.message}</p>}{Object.entries(response.fields).map(([field, value]) => <dl key={field}><dt>{field}</dt><dd>{value}</dd></dl>)}{response.attachments.map(attachment => <button key={attachment.id} className="text-button" onClick={() => void download(attachment.id, attachment.filename)}><ArrowDownToLine size={13} />{attachment.filename} · {(attachment.size_bytes / 1024).toFixed(0)} KB</button>)}{response.review_reason && <p className="field-help">核验依据：{response.review_reason}</p>}</article>)}</div>}
-      {task.permissions.upload && <div className="case-upload"><label>补件原件<input aria-label="补件原件" type="file" accept=".pdf,.png,.jpg,.jpeg,.webp" disabled={busy} onChange={event => setFile(event.target.files?.[0] ?? null)} /></label><button className="button secondary small" disabled={busy || !file} onClick={() => void upload()}><Paperclip size={14} />上传补件原件</button><small>单个附件最多 10 MB；本次补件最多 10 件。</small></div>}
+      {task.permissions.upload && <div className="case-upload"><label>补件原件<input aria-label="补件原件" type="file" accept=".pdf,.png,.jpg,.jpeg,.webp" disabled={busy} onChange={event => setFile(event.target.files?.[0] ?? null)} /></label><button className="button secondary small" disabled={busy || !file} onClick={() => void upload()}><Paperclip size={14} />上传补件原件</button><small>单个附件最多 {uploadLimitLabel()}；本次补件最多 10 件。</small></div>}
       {(task.permissions.manage || task.permissions.respond) && <div className="case-command"><label>处理操作<select aria-label="异常处理操作" value={task.permissions.respond && !task.permissions.manage ? 'respond' : operation} disabled={busy} onChange={event => setOperation(event.target.value as typeof operation)}>
         {task.permissions.manage && <><option value="comment">记录处理依据</option>{task.state !== 'closed' && <option value="assign">指派责任人及期限</option>}{task.state === 'response_submitted' && <><option value="accept">接受补件 · 继续核对</option><option value="return">退回补件</option></>}{caseCanClose(task) && <option value="close">关闭已处理任务</option>}</>}{task.permissions.respond && <option value="respond">提交补件核验</option>}
       </select></label>

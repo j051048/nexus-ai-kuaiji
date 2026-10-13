@@ -1,0 +1,126 @@
+import { readFileSync } from 'node:fs';
+import { expect, test, type Page } from '@playwright/test';
+import { choosePersona, openAccounting, openBookTools } from './ui-navigation';
+
+async function openMigration(page: Page, bookName: string) {
+  await openAccounting(page);
+  await page.getByLabel('搜索企业名称').fill(bookName);
+  await page.getByRole('listitem').filter({ hasText: bookName }).click();
+  await openBookTools(page);
+  await page.getByRole('button', { name: '旧账迁移', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '把旧账接清楚，再开始新月份。', exact: true })).toBeVisible();
+}
+
+test('完整合成旧账在手机五步迁移、独立验收后归档，历史凭证不进入当前导出', async ({ page, request }) => {
+  test.setTimeout(120_000);
+  const owner = await (await request.get('/api/session?persona=accountant')).json();
+  const finance = await (await request.get('/api/session?persona=finance')).json();
+  const headers = { Authorization: `Bearer ${owner.token}` }, financeHeaders = { Authorization: `Bearer ${finance.token}` };
+  const company = (await (await request.get('/api/business/context', { headers: financeHeaders })).json()).companies[0];
+  const name = `SYNTHETIC 第十三阶段接管 ${crypto.randomUUID().slice(0, 8)}`;
+  let response = await request.post('/api/books', { headers, data: { name, company_id: company.id, period: '2026-09' } });
+  expect(response.status()).toBe(201); const book = await response.json();
+  expect((await request.put(`/api/books/${book.id}/members/local-business-finance`, { headers, data: { role: 'reviewer' } })).status()).toBe(200);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/'); await openMigration(page, name);
+  await page.getByRole('button', { name: '新建迁移', exact: true }).click();
+  await page.getByLabel('旧账产品版本', { exact: true }).fill('T+ 17.0 · 合成格式验证');
+  await page.getByLabel('旧账外部账套标识', { exact: true }).fill('SYNTHETIC-TPLUS-BOOK');
+  await page.getByLabel('旧账固定来源系统标识', { exact: true }).fill(`SYNTHETIC-${book.id}`);
+  await page.getByLabel('旧账历史开始月份', { exact: true }).fill('2026-08');
+  await page.getByLabel('旧账历史结束月份', { exact: true }).fill('2026-08');
+  await page.getByLabel('建立旧账迁移项目依据', { exact: true }).fill('仅合成资料的企业接管验证，未连接生产软件');
+  await page.getByRole('button', { name: '建立迁移项目', exact: true }).click();
+  await expect(page.getByLabel('旧账迁移操作依据', { exact: true })).toBeVisible();
+  const projects = await (await request.get(`/api/books/${book.id}/legacy-migrations`, { headers })).json();
+  expect(projects.projects).toHaveLength(1); const projectId = projects.projects[0].id;
+  const path = `/api/books/${book.id}/legacy-migrations/${projectId}`;
+  await page.getByLabel('旧账迁移操作依据', { exact: true }).fill('核对合成原件、凭证及余额数量');
+  await page.getByLabel('选择旧账资料文件', { exact: true }).setInputFiles({ name: 'SYNTHETIC-neutral-package.json', mimeType: 'application/json', buffer: readFileSync('nexus_backend/tests/fixtures/stage13_SYNTHETIC_neutral_package.json') });
+  await page.getByRole('button', { name: '保留所选资料', exact: true }).click();
+  await expect(page.locator('.legacy-migration-files')).toContainText('SYNTHETIC-neutral-package.json');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+  await page.screenshot({ path: 'artifacts/stage13-migration-mobile.png', fullPage: false });
+  await page.getByRole('button', { name: '开始后台解析', exact: true }).click();
+  await expect.poll(async () => {
+    const detail = await (await request.get(path, { headers })).json();
+    return detail.jobs.some((job: { phase: string; status: string }) => job.phase === 'parse' && job.status === 'succeeded');
+  }, { timeout: 45_000 }).toBe(true);
+  await expect(page.getByRole('list', { name: '旧账迁移步骤' })).toBeVisible();
+  await page.getByRole('list', { name: '旧账迁移步骤' }).getByRole('button', { name: '科目与辅助映射', exact: false }).click();
+  const accounts = (await (await request.get(`/api/books/${book.id}/catalog`, { headers })).json()).accounts;
+  for (const code of ['1001', '2001', '6602']) {
+    await page.getByLabel(`科目 ${code} 对应方式`, { exact: true }).selectOption(accounts.some((item: { code: string }) => item.code === code) ? 'use_existing' : 'create');
+    await page.getByLabel(`科目 ${code} 目标编码`, { exact: true }).fill(code);
+  }
+  await expect(page.getByRole('button', { name: '运行完整校验', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: '返回账套', exact: true })).toBeDisabled();
+  await page.getByRole('button', { name: '保存映射新版本', exact: true }).click();
+  await page.getByRole('button', { name: '运行完整校验', exact: true }).click();
+  await expect.poll(async () => {
+    const detail = await (await request.get(path, { headers })).json();
+    return detail.latest_validation?.current && detail.latest_validation.blocking_count === 0;
+  }, { timeout: 45_000 }).toBe(true);
+  await expect(page.getByRole('list', { name: '旧账迁移步骤' })).toBeVisible();
+  await page.getByRole('button', { name: '核对接管快照', exact: true }).click();
+  await expect(page.getByRole('button', { name: '记录独立会计验收', exact: true })).toHaveCount(0);
+  response = await request.post(`${path}/access`, { headers, data: { user_id: 'local-business-finance', role: 'reviewer', reason: '明确授权另一名财务复核当前合成历史项目' } });
+  expect(response.status()).toBe(200);
+  await choosePersona(page, 'finance');
+  await openMigration(page, name);
+  await page.getByLabel('选择旧账迁移项目', { exact: true }).selectOption(projectId);
+  await page.getByRole('list', { name: '旧账迁移步骤' }).getByRole('button', { name: '确认接管', exact: false }).click();
+  await page.getByLabel('旧账迁移操作依据', { exact: true }).fill('另一名财务已核对完整合成旧账及警告范围');
+  await expect(page.getByRole('button', { name: '记录独立会计验收', exact: true })).toBeDisabled();
+  await page.getByLabel('确认旧账验收范围与差异', { exact: true }).check();
+  await page.getByRole('button', { name: '记录独立会计验收', exact: true }).click();
+  await expect(page.getByRole('status')).toContainText('独立验收已记录');
+  await choosePersona(page, 'accountant');
+  await openMigration(page, name);
+  await page.getByLabel('选择旧账迁移项目', { exact: true }).selectOption(projectId);
+  await page.getByLabel('旧账迁移操作依据', { exact: true }).fill('长期账套管理人确认合成接管快照');
+  await page.getByLabel('确认旧账验收范围与差异', { exact: true }).check();
+  await page.getByRole('button', { name: '确认接管当前期间', exact: true }).click();
+  await expect(page.getByText('接管快照已冻结', { exact: true })).toBeVisible();
+  const currentBook = await (await request.get(`/api/books/${book.id}`, { headers })).json();
+  expect(currentBook.sources).toEqual([]); expect(currentBook.drafts).toEqual([]);
+  expect((await (await request.get(`/api/books/${book.id}/exports`, { headers })).json()).exports).toEqual([]);
+  await page.getByRole('button', { name: '查询历史归档', exact: true }).click();
+  await page.getByLabel('旧账历史资料类型', { exact: true }).selectOption('vouchers');
+  await expect(page.locator('.legacy-migration-records')).toContainText('SYNTHETIC-V1');
+  await page.getByRole('button', { name: '原始字段与依据', exact: true }).click();
+  const drawer = page.getByRole('dialog', { name: '0001', exact: true });
+  await expect(drawer).toContainText('100.00');
+  await expect(drawer.getByLabel('历史凭证分录', { exact: true })).toBeVisible();
+  await expect(drawer.locator('.legacy-migration-readable-journal article')).toHaveCount(2);
+  await expect(drawer.getByText('凭证状态', { exact: true })).toBeVisible();
+  await expect(drawer.getByText('已记账', { exact: true }).first()).toBeVisible();
+  await expect(drawer.locator('.legacy-migration-raw-details')).not.toHaveAttribute('open', '');
+  await expect(drawer.locator('.legacy-migration-raw-details pre').first()).toBeHidden();
+  await expect(drawer.getByRole('button', { name: '下载获授权原件', exact: true })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+  await page.screenshot({ path: 'artifacts/stage13-migration-archive-mobile.png', fullPage: false });
+  await drawer.getByRole('button', { name: '返回当前工作位置', exact: true }).click();
+  const employee = await (await request.get('/api/session?persona=employee')).json();
+  expect([403, 404]).toContain((await request.get(path, { headers: { Authorization: `Bearer ${employee.token}` } })).status());
+});
+
+test('当前账套撤权后历史原件与解析记录同时不可见，项目ID不能串企业', async ({ request }) => {
+  const owner = await (await request.get('/api/session?persona=accountant')).json();
+  const finance = await (await request.get('/api/session?persona=finance')).json();
+  const headers = { Authorization: `Bearer ${owner.token}` }, financeHeaders = { Authorization: `Bearer ${finance.token}` };
+  const company = (await (await request.get('/api/business/context', { headers: financeHeaders })).json()).companies[0];
+  const book = await (await request.post('/api/books', { headers, data: { name: `SYNTHETIC 旧账撤权 ${crypto.randomUUID().slice(0, 8)}`, company_id: company.id, period: '2026-09' } })).json();
+  expect((await request.put(`/api/books/${book.id}/members/local-business-finance`, { headers, data: { role: 'reviewer' } })).status()).toBe(200);
+  let response = await request.post(`/api/books/${book.id}/legacy-migrations`, { headers, data: { target_book_id: book.id, source_product: 'generic', product_version: 'SYNTHETIC', external_book_id: 'SYNTHETIC-TPLUS-BOOK', source_system_key: `SYNTHETIC-${book.id}`, history_start: '2026-08-01', history_end: '2026-08-31', cutover_date: '2026-09-01', reason: '仅合成撤权验证', idempotency_key: crypto.randomUUID() } });
+  expect(response.ok()).toBe(true); const project = (await response.json()).project;
+  const path = `/api/books/${book.id}/legacy-migrations/${project.id}`;
+  expect((await request.post(`${path}/access`, { headers, data: { user_id: 'local-business-finance', role: 'viewer', reason: '明确授权只读历史资料' } })).status()).toBe(200);
+  response = await request.post(`${path}/files`, { headers, multipart: { category: 'package', mapping_json: '{}', expected_version: String(project.version), idempotency_key: crypto.randomUUID(), reason: '保留合成原件', file: { name: 'SYNTHETIC-acl.json', mimeType: 'application/json', buffer: readFileSync('nexus_backend/tests/fixtures/stage13_SYNTHETIC_neutral_package.json') } } });
+  expect(response.ok()).toBe(true); const fileId = (await response.json()).file.id;
+  expect((await request.get(`${path}/files/${fileId}`, { headers: financeHeaders })).status()).toBe(200);
+  const unrelated = await (await request.post('/api/books', { headers, data: { name: `SYNTHETIC 不同账套 ${crypto.randomUUID().slice(0, 8)}`, period: '2026-09' } })).json();
+  expect((await request.get(`/api/books/${unrelated.id}/legacy-migrations/${project.id}/files/${fileId}`, { headers })).status()).toBe(404);
+  expect((await request.delete(`/api/books/${book.id}/members/local-business-finance`, { headers })).status()).toBe(200);
+  for (const suffix of ['', `/files/${fileId}`, '/records?kind=voucher']) expect([403, 404]).toContain((await request.get(path + suffix, { headers: financeHeaders })).status());
+});

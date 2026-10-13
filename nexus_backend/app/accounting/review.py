@@ -103,6 +103,8 @@ class ReviewService:
                    "master_policy": self.accounting._ledger_guard().policy_fingerprint_in_transaction(conn, actor, item['book_id']), "issues": sorted(set(issues))}
         context['fact_revisions'] = self.accounting._revision_guard().event_fingerprint_in_transaction(conn, actor, mapping) if mapping else None
         context['settlements'] = self.accounting._settlement_guard().policy_fingerprint_in_transaction(conn, actor, source)
+        legacy = getattr(self.accounting, 'legacy_settlements', None)
+        context['legacy_settlements'] = legacy.policy_fingerprint_in_transaction(conn, actor, source) if legacy else None
         return {**item, "company_id": book["company_id"], "company_name": book["company_name"], "book_name": book["name"], "period": book["period"],
                 "template": mapping["template_id"] if mapping else "bank", "fact_version": mapping["fact_version"] if mapping else None,
                 "source_amount": value["source_amount"], "source_date": value["source_date"], "description": value["description"],

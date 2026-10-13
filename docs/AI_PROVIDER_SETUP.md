@@ -13,6 +13,7 @@ ACCOUNTING_AI_BASE_URL=https://your-provider.example/v1
 ACCOUNTING_AI_API_KEY=
 ACCOUNTING_AI_VISION_MODEL=
 ACCOUNTING_AI_JOURNAL_MODEL=
+ACCOUNTING_AI_CHAT_MODEL=
 ACCOUNTING_AI_RESPONSE_FORMAT=json_schema
 ACCOUNTING_AI_TIMEOUT_SECONDS=45
 ACCOUNTING_AI_MAX_CONCURRENCY=2
@@ -54,3 +55,5 @@ python -m pytest tests/test_intelligence_provider.py -q
 真实试点先用少量已知答案的票据验证字段和原文引用，再执行“员工上传 → 视觉识别 → 事项/流水核对 → 人工处理疑点 → 接受草稿 → 会计复核 → 导出”。逐项记录识别失败率、金额/税额/交易对方错误率、异常处理时间、会计修改量和供应商 token 用量。跨企业数据不可见、重复点击不重复执行、错误响应不绕过复核及撤权后不可读是上线前必须完成的实际配置验收。HTTP 路径、幂等键、版本、异常状态及流水关联请求见 [第四阶段接口](STAGE4_API.md)；解除流水关联通过 JSON body 传处理原因，避免将解释写入 URL 访问日志。
 
 OpenAI 协议依据：[图像与视觉](https://developers.openai.com/api/docs/guides/images-vision)、[结构化输出](https://developers.openai.com/api/docs/guides/structured-outputs)。其他兼容供应商仍须按其当前协议和数据处理条款验证。
+
+全局会计助手的对话模型、CNY 单价、企业预留与独立后台部署见[第十五阶段](STAGE15_ACCOUNTING_ASSISTANT.md)。对话费用与现有识别、分录预算共用；未配置对话模型不会复用其他模型。

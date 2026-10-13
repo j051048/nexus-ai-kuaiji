@@ -24,7 +24,7 @@ export function budgetPercentage(overview: Pick<OperationsOverview, 'policy' | '
 }
 export function policyFromOverview(policy: OperationsPolicy): OperationsPolicyInput {
   const amountInput = (value: string) => /^\d+\.\d{2}0{1,4}$/.test(value) ? value.slice(0, value.indexOf('.') + 3) : value;
-  return { expected_version: policy.version, quota_enabled: policy.quota_enabled, monthly_limit: amountInput(policy.monthly_limit), ocr_reserve: amountInput(policy.ocr_reserve), proposal_reserve: amountInput(policy.proposal_reserve), failure_threshold: policy.failure_threshold, failure_window_minutes: policy.failure_window_minutes, backlog_threshold: policy.backlog_threshold, backlog_age_minutes: policy.backlog_age_minutes, queue_wait_minutes: policy.queue_wait_minutes, worker_stale_seconds: policy.worker_stale_seconds };
+  return { expected_version: policy.version, quota_enabled: policy.quota_enabled, monthly_limit: amountInput(policy.monthly_limit), ocr_reserve: amountInput(policy.ocr_reserve), proposal_reserve: amountInput(policy.proposal_reserve), chat_reserve: amountInput(policy.chat_reserve ?? "0.00"), failure_threshold: policy.failure_threshold, failure_window_minutes: policy.failure_window_minutes, backlog_threshold: policy.backlog_threshold, backlog_age_minutes: policy.backlog_age_minutes, queue_wait_minutes: policy.queue_wait_minutes, worker_stale_seconds: policy.worker_stale_seconds };
 }
 export function normalizeOperatingAmount(value: string): string {
   if (!/^\d{1,12}(?:\.\d{1,2})?$/.test(value)) throw new Error('金额须为非负十进制数，最多两位小数。');
@@ -32,7 +32,7 @@ export function normalizeOperatingAmount(value: string): string {
   return `${BigInt(integer).toString()}.${fraction.padEnd(2, '0')}`;
 }
 export function normalizePolicyRequest(policy: OperationsPolicyInput): OperationsPolicyInput {
-  return { ...policy, monthly_limit: normalizeOperatingAmount(policy.monthly_limit), ocr_reserve: normalizeOperatingAmount(policy.ocr_reserve), proposal_reserve: normalizeOperatingAmount(policy.proposal_reserve) };
+  return { ...policy, monthly_limit: normalizeOperatingAmount(policy.monthly_limit), ocr_reserve: normalizeOperatingAmount(policy.ocr_reserve), proposal_reserve: normalizeOperatingAmount(policy.proposal_reserve), chat_reserve: normalizeOperatingAmount(policy.chat_reserve ?? "0.00") };
 }
 export function validatePolicyInput(policy: OperationsPolicyInput): string {
   const amountFields: [keyof OperationsPolicyInput, string][] = [['monthly_limit', '月度额度'], ['ocr_reserve', '单次票据识别预留'], ['proposal_reserve', '单次分录建议预留']];
@@ -41,6 +41,7 @@ export function validatePolicyInput(policy: OperationsPolicyInput): string {
     if (!/^\d{1,12}(?:\.\d{1,2})?$/.test(value)) return `${label}请填写非负金额，最多 12 位整数和两位小数。`;
     if (policy.quota_enabled && micros(value) === 0n) return `开启额度控制后，${label}必须大于零。`;
   }
+  if (policy.chat_reserve !== undefined && !/^\d{1,12}(?:\.\d{1,2})?$/.test(policy.chat_reserve)) return '单次会计对话预留请填写非负金额，最多两位小数。';
   const thresholds: [keyof OperationsPolicyInput, string, number, number][] = [['failure_threshold', '连续失败次数', 1, 1000], ['failure_window_minutes', '失败观察窗口', 1, 10080], ['backlog_threshold', '积压份数', 1, 1000], ['backlog_age_minutes', '积压时间', 1, 10080], ['queue_wait_minutes', '排队等待时间', 1, 10080], ['worker_stale_seconds', '后台心跳时限', 30, 3600]];
   for (const [key, label, minimum, maximum] of thresholds) {
     const value = policy[key];
@@ -59,3 +60,5 @@ export function canReconcileOperatingCost(cost: OperationsCost, canManage: boole
 }
 export const operatingCostStateLabels: Record<string, string> = { reserved: '处理预留', sent: '已发送 · 待回执', running: '处理中', estimated: '已估算', reported: '已报告用量', uncertain: '费用待核定', interrupted: '费用待核定', confirmed: '已人工核定', reconciled: '已人工核定', released: '已释放预留', cancelled: '已取消' };
 export const operationsAlertStateLabels: Record<string, string> = { open: '待处理', acknowledged: '已记录处置', resolved: '已恢复', closed: '已关闭' };
+
+export function operatingKindLabel(kind: OperationsCost["kind"]): string { return {ocr: "票据识别", proposal: "分录建议", chat: "会计对话"}[kind]; }

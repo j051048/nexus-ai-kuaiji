@@ -68,7 +68,7 @@ def test_operations_endpoints_forward_verified_actor_and_exact_inputs(operations
     assert client.get("/api/operations/companies/company/overview?period=2026-10", headers=headers).status_code == 200
     assert client.operations_calls[-1] == ("overview", client.operations_actor, "company", "2026-10")
     assert client.put("/api/operations/companies/company/policy", headers=headers, json=policy_body()).status_code == 200
-    assert client.operations_calls[-1] == ("policy", client.operations_actor, "company", policy_body())
+    assert client.operations_calls[-1] == ("policy", client.operations_actor, "company", {**policy_body(), "chat_reserve": None})
     assert client.post("/api/operations/companies/company/refresh", headers=headers, json={}).status_code == 200
     ack = {"reason": "值班财务已知晓并安排人工核对", "expected_version": 1}
     assert client.post("/api/operations/alerts/alert/acknowledge", headers=headers, json=ack).status_code == 200

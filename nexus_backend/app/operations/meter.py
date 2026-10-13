@@ -46,7 +46,7 @@ class MeterService:
     def reserve(self, conn, actor, run, token):
         pricing = self.pricing.for_kind(run["kind"]).snapshot(run["provider"], run["model"])
         if self.db.is_postgres:
-            function = "reserve_intake_model_cost" if run.get("intake_id") else "reserve_model_cost"
+            function = "reserve_assistant_model_cost" if run["kind"] == "chat" else "reserve_intake_model_cost" if run.get("intake_id") else "reserve_model_cost"
             state = conn.execute(f"SELECT accounting.{function}(?,?,?,?,?,?)", (run["id"], token, run["provider"], run["model"], encode(pricing), 0)).fetchone()[0]
             if state not in {"reserved", "sent", "estimated", "uncertain", "released", "reconciled"}:
                 raise BudgetError(state)
@@ -60,7 +60,7 @@ class MeterService:
             return
         policy = conn.execute("SELECT * FROM model_company_policies WHERE firm_id=? AND company_id=?", (actor.firm_id, run["company_id"])).fetchone()
         enabled = bool(policy and policy["quota_enabled"])
-        reserve = policy["ocr_reserve_micro" if run["kind"] == "ocr" else "proposal_reserve_micro"] if enabled else 0
+        reserve = policy[{"ocr": "ocr_reserve_micro", "proposal": "proposal_reserve_micro", "chat": "chat_reserve_micro"}[run["kind"]]] if enabled else 0
         period = self.period(conn)
         if enabled:
             if not pricing["configured"]:
@@ -75,7 +75,8 @@ class MeterService:
                 raise BudgetError("quota_exhausted")
         stamp = self.timestamp(conn)
         intake = bool(run.get("intake_id"))
-        conn.execute("INSERT INTO model_costs(id,run_id,intake_run_id,firm_id,company_id,event_id,kind,created_by,period,provider,model,charge_token,pricing_json,quota_enabled,reserved_micro,state,version,created_at,overrun,manual_reason) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'reserved',1,?,0,'')", (run["id"], None if intake else run["id"], run["id"] if intake else None, actor.firm_id, run["company_id"], run.get("event_id"), run["kind"], actor.user_id, period, run["provider"], run["model"], token, encode(pricing), int(enabled), reserve, stamp))
+        chat = run["kind"] == "chat"
+        conn.execute("INSERT INTO model_costs(id,run_id,intake_run_id,chat_turn_id,firm_id,company_id,event_id,kind,created_by,period,provider,model,charge_token,pricing_json,quota_enabled,reserved_micro,state,version,created_at,overrun,manual_reason) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'reserved',1,?,0,'')", (run["id"], None if intake or chat else run["id"], run["id"] if intake else None, run["id"] if chat else None, actor.firm_id, run["company_id"], run.get("event_id"), run["kind"], actor.user_id, period, run["provider"], run["model"], token, encode(pricing), int(enabled), reserve, stamp))
 
     def mark_sent(self, conn, actor, run, token):
         if self.db.is_postgres:

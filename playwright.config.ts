@@ -4,6 +4,7 @@ import { defineConfig } from '@playwright/test';
 const database = `.codex/e2e/accounting-${Date.now()}.db`;
 export default defineConfig({
   testDir: './e2e',
+  testIgnore: '**/stage15-assistant-model.spec.ts',
   fullyParallel: false,
   workers: 1,
   timeout: 30_000,

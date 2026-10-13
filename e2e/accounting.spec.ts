@@ -70,7 +70,10 @@ test('导入去重、补证、修改复核、冻结和真实 CSV 下载', async 
 test('统一待办直接打开异常凭证，回到账套清空搜索后可以恢复', async ({ page }) => {
   await page.goto('/');
   await page.getByLabel('筛选待办类型').selectOption('review');
-  await page.getByLabel('筛选待办企业').selectOption({ label: '禾田商贸（虚构示例）' });
+  await page.getByRole('button', { name: '筛选待办企业', exact: true }).click();
+  const companyPicker = page.getByRole('region', { name: '企业快搜', exact: true });
+  await companyPicker.getByLabel('搜索企业名称', { exact: true }).fill('禾田商贸');
+  await companyPicker.getByRole('button').filter({ hasText: '禾田商贸（虚构示例）' }).click();
   await page.locator('.workspace-task').filter({ hasText: '禾田商贸' }).first().getByRole('button', { name: '同屏复核', exact: true }).click();
   const drawer = page.getByRole('dialog', { name: '原件与凭证，一起核对', exact: true });
   await expect(drawer.getByLabel('同屏待处理问题')).toBeVisible();

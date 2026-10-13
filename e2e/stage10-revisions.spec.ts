@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { openAccounting } from './ui-navigation';
 
 test('事实修订真实 UI：财务提议、另一会计独立复核、旧证据保留与新草稿待审', async ({ page, request }) => {
   const headers: Record<string, { Authorization: string }> = {};
@@ -23,6 +24,7 @@ test('事实修订真实 UI：财务提议、另一会计独立复核、旧证�
   response = await request.post(`/api/business/events/${event.id}/handoff`, { headers: headers.finance, data: { expected_version: event.version, book_id: book.id, idempotency_key: crypto.randomUUID() } });
   expect(response.status()).toBe(200); const original = await response.json();
   await page.goto('/'); await page.getByLabel('切换验证身份').selectOption('finance');
+  await openAccounting(page);
   await page.getByRole('button', { name: '事实修订与调整', exact: true }).click();
   await expect(page.getByRole('heading', { name: '业务事实纠错', exact: true })).toBeVisible();
   await page.getByLabel('待修订事项编号', { exact: true }).fill(event.id);
@@ -38,6 +40,7 @@ test('事实修订真实 UI：财务提议、另一会计独立复核、旧证�
   const before = await (await request.get(`/api/books/${book.id}/drafts/${original.draft_id}`, { headers: headers.accountant })).json();
   expect(before.status).toBe('draft'); expect(before.source_amount).toBe('100.00');
   await page.getByLabel('切换验证身份').selectOption('accountant');
+  await openAccounting(page);
   await page.getByRole('button', { name: '事实修订与调整', exact: true }).click();
   await page.locator('.revision-item').filter({ hasText: description }).click();
   await expect(page.locator('.revision-diff')).toContainText('100.00');

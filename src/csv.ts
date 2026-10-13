@@ -1,4 +1,5 @@
 import type { SourceRow } from './types';
+import { maxUploadBytes, uploadLimitLabel } from './transport-limits';
 
 export const MAX_CSV_BYTES = 2 * 1024 * 1024;
 export const MAX_CSV_ROWS = 1000;
@@ -7,7 +8,7 @@ export const EXAMPLE_CSV = `${CSV_HEADERS.join(',')}\nDEMO-001,2026-10-08,办公
 
 /** Strict CSV reader: quoted commas/newlines and escaped double quotes are preserved. */
 export function parseCsv(text: string): string[][] {
-  if (new TextEncoder().encode(text).length > MAX_CSV_BYTES) throw new Error('CSV 文件不能超过 2 MB。');
+  if (new TextEncoder().encode(text).length > maxUploadBytes(MAX_CSV_BYTES)) throw new Error(`CSV 文件不能超过 ${uploadLimitLabel(MAX_CSV_BYTES)}。`);
   const input = text.replace(/^\uFEFF/, '');
   const rows: string[][] = [];
   let row: string[] = [];

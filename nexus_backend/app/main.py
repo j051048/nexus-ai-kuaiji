@@ -18,6 +18,14 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from .auth import AuthSettings, AuthError, Identity, SupabaseAuthenticator
 from .accounting.database import Database
+from .agent_workspace.service import AgentWorkspaceService
+from .agent_workspace.router import build_agent_workspace_router
+from .assistant.service import AssistantService
+from .assistant.provider import AssistantProvider
+from .assistant.meter import AssistantMeter
+from .assistant.actions import AssistantActionService
+from .assistant.worker import AssistantWorker
+from .assistant.router import build_assistant_router
 from .accounting.directory import DirectoryService
 from .accounting.models import (
     ApprovalRequest, BookCreate, DraftUpdate, EvidenceRequest, ExportRequest, ImportRequest,
@@ -84,6 +92,11 @@ from .import_wizard.service import ImportWizardService
 from .import_wizard.router import build_import_wizard_router, ImportWizardBodyLimitMiddleware
 from .workspace.service import WorkspaceService
 from .workspace.router import build_workspace_router
+from .legacy_migration.service import LegacyMigrationService
+from .legacy_migration.worker import MigrationWorker
+from .legacy_migration.router import build_legacy_migration_router, MigrationBodyLimitMiddleware
+from .legacy_migration.learning import LegacyLearningService
+from .legacy_migration.settlements import LegacySettlementService
 
 
 def is_loopback(host: str) -> bool:
@@ -114,7 +127,7 @@ def validate_environment(settings, path):
     return production
 
 
-def create_app(db_path: str | Path | None = None, seed: bool | None = None, auth_settings=None, authenticator=None, attachment_root=None, intelligence_provider=None, queue_worker_enabled=None, model_pricing=None):
+def create_app(db_path: str | Path | None = None, seed: bool | None = None, auth_settings=None, authenticator=None, attachment_root=None, intelligence_provider=None, queue_worker_enabled=None, model_pricing=None, assistant_provider=None):
     settings = auth_settings or AuthSettings.from_env()
     path = db_path or os.getenv("ACCOUNTING_DATABASE_URL") or os.getenv("ACCOUNTING_DB_PATH") or Path(__file__).resolve().parents[1] / "data" / "accounting.db"
     production = validate_environment(settings, path)
@@ -186,6 +199,19 @@ def create_app(db_path: str | Path | None = None, seed: bool | None = None, auth
             meter=application.state.meter, business=application.state.business, intelligence=application.state.intelligence)
         application.state.import_wizard = ImportWizardService(database, application.state.attachment_store, ledger=application.state.service)
         application.state.workspace = WorkspaceService(database, application.state.service, application.state.business, application.state.review, application.state.cases)
+        application.state.legacy_migration = LegacyMigrationService(database, application.state.attachment_store)
+        application.state.legacy_learning = LegacyLearningService(database, application.state.legacy_migration)
+        application.state.legacy_settlements = LegacySettlementService(database, application.state.legacy_migration, application.state.service)
+        application.state.legacy_migration.settlements = application.state.legacy_settlements
+        application.state.service.legacy_settlements = application.state.legacy_settlements
+        application.state.service.legacy_learning = application.state.legacy_learning
+        application.state.learning.legacy_settlements = application.state.legacy_settlements
+        application.state.learning.legacy_learning = application.state.legacy_learning
+        application.state.agent_workspace = AgentWorkspaceService(database, application.state.service, application.state.business, application.state.workspace, application.state.legacy_migration)
+        application.state.assistant_provider = assistant_provider or AssistantProvider(application.state.intelligence.provider)
+        application.state.assistant = AssistantService(database, application.state.service, application.state.business,
+            agent_workspace=application.state.agent_workspace, provider=application.state.assistant_provider, intelligence=application.state.intelligence)
+        application.state.assistant_actions = AssistantActionService(database, application.state.assistant, application.state.queue, application.state.service)
         application.state.revisions.after_replace = application.state.queue.proposal_queue.enqueue_in_transaction
         application.state.tokens = {}
         application.state.token_users = {}
@@ -205,9 +231,22 @@ def create_app(db_path: str | Path | None = None, seed: bool | None = None, auth
             worker = QueueWorker(application.state.queue, concurrency=int(os.getenv("ACCOUNTING_QUEUE_CONCURRENCY", "2")), lease_seconds=lease_seconds, poll_seconds=float(os.getenv("ACCOUNTING_QUEUE_POLL_SECONDS", "1")))
             worker.start()
         application.state.queue_worker = worker
+        migration_worker = MigrationWorker(application.state.legacy_migration) if embedded else None
+        if migration_worker:
+            migration_worker.start()
+        application.state.migration_worker = migration_worker
+        assistant_worker = AssistantWorker(application.state.assistant, application.state.assistant_provider,
+            AssistantMeter(database, application.state.meter)) if embedded else None
+        if assistant_worker:
+            assistant_worker.start()
+        application.state.assistant_worker = assistant_worker
         try:
             yield
         finally:
+            if assistant_worker:
+                assistant_worker.stop()
+            if migration_worker:
+                migration_worker.stop()
             if worker:
                 worker.stop()
             application.state.tokens.clear()
@@ -215,7 +254,7 @@ def create_app(db_path: str | Path | None = None, seed: bool | None = None, auth
             if application.state.authenticator and authenticator is None:
                 application.state.authenticator.close()
 
-    app = FastAPI(title="衡账 · AI 会计工作台", version="0.12.0", lifespan=lifespan, docs_url="/api/docs", openapi_url="/api/openapi.json", redoc_url=None)
+    app = FastAPI(title="衡账 · 会计 Agent 工作空间", version="0.15.0", lifespan=lifespan, docs_url="/api/docs", openapi_url="/api/openapi.json", redoc_url=None)
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=hosts)
     app.add_middleware(AttachmentBodyLimitMiddleware)
     app.add_middleware(CaseAttachmentBodyLimitMiddleware)
@@ -450,6 +489,9 @@ def create_app(db_path: str | Path | None = None, seed: bool | None = None, auth
     app.include_router(build_intake_router(actor))
     app.include_router(build_import_wizard_router(actor))
     app.include_router(build_workspace_router(actor))
+    app.include_router(build_agent_workspace_router(actor))
+    app.include_router(build_assistant_router(actor))
+    app.include_router(build_legacy_migration_router(actor))
     app.include_router(build_intelligence_router(actor))
     app.include_router(build_queue_router(actor))
     app.include_router(build_operations_router(actor))
@@ -472,6 +514,7 @@ def create_app(db_path: str | Path | None = None, seed: bool | None = None, auth
     app.include_router(build_source_history_router(actor))
     app.add_middleware(DeliveryBodyLimitMiddleware)
     app.add_middleware(ImportWizardBodyLimitMiddleware)
+    app.add_middleware(MigrationBodyLimitMiddleware)
     return app
 
 

@@ -1,0 +1,286 @@
+"""Synthetic HTTP transports only; no customer backend or credentials."""
+
+import asyncio
+import importlib.util
+import json
+from pathlib import Path
+import sys
+
+import httpx
+import pytest
+from fastapi.testclient import TestClient
+
+
+_spec = importlib.util.spec_from_file_location(
+    "isolated_vercel_gateway", Path(__file__).resolve().parents[2] / "services/api_gateway/main.py",
+)
+gateway = importlib.util.module_from_spec(_spec)
+sys.modules[_spec.name] = gateway
+_spec.loader.exec_module(gateway)
+
+
+class Chunks(httpx.AsyncByteStream):
+    def __init__(self, *values):
+        self.values = values
+
+    async def __aiter__(self):
+        for value in self.values:
+            yield value
+
+
+def upstream(body=b"ok", *, status=200, headers=None):
+    return httpx.Response(status, headers=headers or {}, stream=Chunks(body))
+
+
+def client(handler, *, origin="https://accounting.synthetic.test:8443", **settings):
+    return TestClient(gateway.create_app(
+        gateway.GatewaySettings(backend_origin=origin, **settings),
+        transport=httpx.MockTransport(handler),
+    ))
+
+
+@pytest.mark.parametrize("method", ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
+def test_exact_method_prefix_query_body_and_only_safe_headers(method):
+    requests = []
+
+    def handle(request):
+        requests.append(request)
+        return upstream(b'{"accepted":true}', headers={"content-type": "application/json", "set-cookie": "private=secret", "cache-control": "public"})
+
+    with client(handle) as browser:
+        response = browser.request(method, "/api/books/book%20name?offset=0&q=a%2Fb&q=x", content=b"original-bytes", headers={
+            "Authorization": "Bearer synthetic-token", "X-Firm-Id": "synthetic-firm",
+            "Content-Type": "application/json", "Accept": "application/json", "Origin": "https://frontend.synthetic.test",
+            "Cookie": "private=do-not-forward", "X-Forwarded-Host": "attacker.synthetic.test",
+            "X-Forwarded-For": "1.2.3.4", "Host": "attacker.synthetic.test",
+        })
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
+    assert "set-cookie" not in response.headers
+    assert len(requests) == 1
+    sent = requests[0]
+    assert sent.method == method
+    assert sent.url == httpx.URL("https://accounting.synthetic.test:8443/api/books/book%20name?offset=0&q=a%2Fb&q=x")
+    assert sent.content == b"original-bytes"
+    assert sent.headers["host"] == "accounting.synthetic.test:8443"
+    assert sent.headers["authorization"] == "Bearer synthetic-token"
+    assert sent.headers["x-firm-id"] == "synthetic-firm"
+    assert sent.headers["origin"] == "https://frontend.synthetic.test"
+    assert sent.headers["accept-encoding"] == "identity"
+    assert "cookie" not in sent.headers and "x-forwarded-host" not in sent.headers and "x-forwarded-for" not in sent.headers
+
+
+def test_raw_multipart_upload_is_preserved_without_parsing():
+    body = b'--synthetic-boundary\r\nContent-Disposition: form-data; name="file"; filename="invoice.png"\r\nContent-Type: image/png\r\n\r\n\x89PNG\x00\xff\r\n--synthetic-boundary--\r\n'
+    requests = []
+
+    def handle(request):
+        requests.append(request)
+        return upstream(status=201)
+
+    with client(handle) as browser:
+        response = browser.post("/api/business/events/example/attachments", content=body, headers={"content-type": "multipart/form-data; boundary=synthetic-boundary"})
+    assert response.status_code == 201
+    assert requests[0].content == body
+    assert requests[0].headers["content-type"] == "multipart/form-data; boundary=synthetic-boundary"
+
+
+@pytest.mark.parametrize("media_type,body", [("application/pdf", b"%PDF-synthetic\x00\xff"), ("text/csv; charset=utf-8", "摘要,金额\n验证,12.00\n".encode())])
+def test_binary_and_csv_downloads_preserve_content_and_safe_headers(media_type, body):
+    with client(lambda request: upstream(body, headers={
+        "content-type": media_type,
+        "content-disposition": "attachment; filename*=UTF-8''SYNTHETIC-export.csv",
+        "content-security-policy": "sandbox; default-src 'none'",
+    })) as browser:
+        response = browser.get("/api/books/example/exports/test/file")
+    assert response.status_code == 200 and response.content == body
+    assert response.headers["content-type"] == media_type
+    assert response.headers["content-disposition"].startswith("attachment;")
+    assert response.headers["content-security-policy"].startswith("sandbox;")
+    assert response.headers["x-content-type-options"] == "nosniff"
+
+
+@pytest.mark.parametrize("status", [401, 403, 404, 409, 422, 429, 500, 503])
+def test_backend_status_and_error_body_are_not_rewritten(status):
+    body = "{\"detail\":\"合成错误\"}".encode()
+    with client(lambda request: upstream(body, status=status, headers={"content-type": "application/json", "retry-after": "30"})) as browser:
+        response = browser.get("/api/companies/private")
+    assert response.status_code == status and response.content == body
+    assert response.headers["retry-after"] == "30"
+
+
+def test_config_adds_platform_limits_without_modifying_backend_auth_fields():
+    original = {"mode": "supabase", "supabase_url": "https://synthetic.supabase.co", "anon_key": "public-synthetic", "transport_limits": {"max_file_bytes": 999}}
+    with client(lambda request: upstream(json.dumps(original).encode(), headers={"content-type": "application/json"})) as browser:
+        response = browser.get("/api/auth/config")
+    assert response.status_code == 200
+    assert response.json() == {**original, "transport_limits": gateway.TRANSPORT_LIMITS}
+
+
+@pytest.mark.parametrize("body", [b"null", b"[]", b"not-json", b'{"mode": NaN}', b"\xff"])
+def test_invalid_auth_config_fails_safely(body):
+    with client(lambda request: upstream(body)) as browser:
+        response = browser.get("/api/auth/config")
+    assert response.status_code == 502
+    assert "登录配置" in response.json()["detail"]
+
+
+def test_head_config_does_not_require_a_json_body():
+    with client(lambda request: upstream(b"", headers={"content-type": "application/json"})) as browser:
+        response = browser.head("/api/auth/config")
+    assert response.status_code == 200 and response.content == b""
+
+
+@pytest.mark.parametrize("origin", [
+    "http://accounting.synthetic.test", "http://localhost:8100", "ftp://accounting.synthetic.test",
+    "https://user:password@accounting.synthetic.test", "https://accounting.synthetic.test/api",
+    "https://accounting.synthetic.test?target=private", "https://accounting.synthetic.test#private", "https://accounting.synthetic.test?",
+    "https://accounting.synthetic.test#", "https://accounting.synthetic.test\\attacker", "https://accounting.synthetic.test:invalid",
+    "https://accounting.synthetic.test:999999", "https:///missing", "https://accounting.synthetic.test\n", "https://exa mple.test",
+    "https://%61ccounting.synthetic.test",
+])
+def test_invalid_server_targets_are_rejected_without_exposing_them(origin):
+    with pytest.raises(ValueError) as error:
+        gateway.GatewaySettings(backend_origin=origin)
+    assert origin not in str(error.value)
+
+
+@pytest.mark.parametrize("origin", ["http://localhost:8100", "http://127.0.0.1:8100", "http://[::1]:8100"])
+def test_http_is_only_allowed_for_explicit_local_development(origin):
+    assert gateway.GatewaySettings(backend_origin=origin, allow_local_http=True).backend_origin == origin
+
+
+def test_explicit_local_flag_cannot_enable_remote_http():
+    with pytest.raises(ValueError):
+        gateway.GatewaySettings(backend_origin="http://accounting.synthetic.test", allow_local_http=True)
+
+
+def test_missing_configuration_serves_safe_503_without_an_upstream_call():
+    def forbidden(request):
+        pytest.fail("No request should occur without a configured origin")
+
+    with client(forbidden, origin="") as browser:
+        response = browser.get("/api/auth/config")
+    assert response.status_code == 503
+    assert "后端尚未配置" in response.json()["detail"]
+    assert response.headers["cache-control"] == "no-store"
+
+
+@pytest.mark.parametrize("location", ["/api/other", "https://accounting.synthetic.test/api/other", "https://attacker.synthetic.test/steal"])
+def test_no_redirect_is_followed_or_exposed(location):
+    requests = []
+
+    def handle(request):
+        requests.append(request)
+        return upstream(b"", status=307, headers={"location": location})
+
+    with client(handle) as browser:
+        response = browser.post("/api/write", content=b"SYNTHETIC", headers={"authorization": "Bearer synthetic"})
+    assert response.status_code == 502
+    assert "location" not in response.headers
+    assert len(requests) == 1
+    assert location not in response.text
+
+
+@pytest.mark.parametrize("error", [httpx.ConnectError, httpx.ReadError, httpx.ReadTimeout])
+def test_transport_errors_have_no_automatic_write_retry_or_private_details(error):
+    calls = []
+
+    def handle(request):
+        calls.append(request)
+        raise error("private-origin-and-synthetic-token", request=request)
+
+    with client(handle) as browser:
+        response = browser.post("/api/write", content=b"SYNTHETIC")
+    assert response.status_code == 502 and len(calls) == 1
+    assert "private-origin" not in response.text
+    assert "结果尚未确认" in response.json()["detail"]
+
+
+def test_whole_exchange_has_a_wall_clock_timeout():
+    async def handle(request):
+        await asyncio.sleep(2)
+        return upstream()
+
+    with client(handle, timeout_seconds=1) as browser:
+        response = browser.post("/api/write", content=b"SYNTHETIC")
+    assert response.status_code == 502 and "超时" in response.json()["detail"]
+
+
+@pytest.mark.parametrize("declared", [str(gateway.MAX_REQUEST_BYTES + 1), "x", "9" * 5000])
+def test_request_length_rejected_before_contacting_upstream(declared):
+    def forbidden(request):
+        pytest.fail("Oversized or invalid requests must not reach the backend")
+
+    with client(forbidden) as browser:
+        response = browser.post("/api/write", content=b"SYNTHETIC", headers={"content-length": declared})
+    assert response.status_code in (400, 413)
+
+
+def test_unknown_length_request_is_bounded_during_asgi_streaming():
+    def forbidden(request):
+        pytest.fail("Oversized stream must not reach the backend")
+
+    with client(forbidden) as browser:
+        response = browser.post("/api/write", content=iter([b"a" * gateway.MAX_REQUEST_BYTES, b"b"]))
+    assert response.status_code == 413
+
+
+def test_request_exact_limit_is_forwarded():
+    with client(lambda request: upstream(str(len(request.content)).encode())) as browser:
+        response = browser.post("/api/write", content=b"a" * gateway.MAX_REQUEST_BYTES)
+    assert response.status_code == 200 and response.text == str(gateway.MAX_REQUEST_BYTES)
+
+
+@pytest.mark.parametrize("declared", [str(gateway.MAX_RESPONSE_BYTES + 1), "invalid", "9" * 5000])
+def test_upstream_content_length_is_bounded(declared):
+    with client(lambda request: upstream(b"small", headers={"content-length": declared})) as browser:
+        response = browser.get("/api/export")
+    assert response.status_code == 502
+
+
+def test_unknown_length_upstream_stream_is_bounded():
+    with client(lambda request: httpx.Response(200, stream=Chunks(b"a" * gateway.MAX_RESPONSE_BYTES, b"b"))) as browser:
+        response = browser.get("/api/export")
+    assert response.status_code == 502
+
+
+def test_response_exact_limit_is_forwarded():
+    body = b"a" * gateway.MAX_RESPONSE_BYTES
+    with client(lambda request: upstream(body)) as browser:
+        response = browser.get("/api/export")
+    assert response.status_code == 200 and response.content == body
+
+
+def test_unrequested_upstream_compression_is_rejected():
+    with client(lambda request: upstream(b"compressed", headers={"content-encoding": "gzip"})) as browser:
+        response = browser.get("/api/export")
+    assert response.status_code == 502 and "传输格式" in response.json()["detail"]
+
+
+@pytest.mark.parametrize("path", ["/api/%2e%2e/admin", "/api/a/%2e%2e/admin", "/api/%2e/admin"])
+def test_encoded_dot_segments_cannot_remove_public_api_prefix(path):
+    def forbidden(request):
+        pytest.fail("Invalid API paths must not reach the backend")
+
+    with client(forbidden) as browser:
+        response = browser.get(path)
+    assert response.status_code == 400
+
+
+def test_unexposed_paths_and_docs_are_not_proxied():
+    def forbidden(request):
+        pytest.fail("Only /api routes may reach the backend")
+
+    with client(forbidden) as browser:
+        for path in ["/", "/docs", "/openapi.json", "/admin", "/apis"]:
+            assert browser.get(path).status_code == 404
+
+
+def test_settings_reads_only_explicit_server_environment(monkeypatch):
+    monkeypatch.setenv("ACCOUNTING_BACKEND_ORIGIN", "http://127.0.0.1:8100/")
+    monkeypatch.setenv("ACCOUNTING_GATEWAY_ALLOW_LOCAL_HTTP", "1")
+    settings = gateway.GatewaySettings.from_env()
+    assert settings.backend_origin == "http://127.0.0.1:8100"
+    assert settings.allow_local_http is True
+    assert "127.0.0.1" not in repr(settings)

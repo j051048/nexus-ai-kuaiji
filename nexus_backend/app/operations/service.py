@@ -16,7 +16,7 @@ OPS_ROLES = {"owner", "admin", "finance"}
 HELD_STATES = {"reserved", "sent", "uncertain"}
 QUEUE_STATES = ("queued", "running", "retry_wait", "succeeded", "failed", "interrupted", "stale", "cancelled")
 DEFAULT_POLICY = {
-    "quota_enabled": 0, "monthly_limit_micro": 0, "ocr_reserve_micro": 0, "proposal_reserve_micro": 0,
+    "quota_enabled": 0, "monthly_limit_micro": 0, "ocr_reserve_micro": 0, "proposal_reserve_micro": 0, "chat_reserve_micro": 0,
     "failure_threshold": 3, "failure_window_minutes": 60, "backlog_threshold": 10,
     "backlog_age_minutes": 60, "queue_wait_minutes": 10, "worker_stale_seconds": 90, "version": 0,
 }
@@ -99,8 +99,8 @@ class OperationsService:
     def _policy_json(raw, manager):
         result = {key: raw[key] for key in DEFAULT_POLICY if not key.endswith("_micro") and key != "quota_enabled"}
         result["quota_enabled"] = bool(raw["quota_enabled"])
-        for name in ("monthly_limit", "ocr_reserve", "proposal_reserve"):
-            result[name] = cents_to_money(int(raw[name + "_micro"]) // 10_000)
+        for name in ("monthly_limit", "ocr_reserve", "proposal_reserve", "chat_reserve"):
+            result[name] = cents_to_money(int(raw.get(name + "_micro", 0)) // 10_000)
         result["can_manage"] = manager
         return result
 
@@ -116,10 +116,10 @@ class OperationsService:
                 return self._policy_json(old, manager)
             if request.expected_version != old["version"]:
                 raise AccountingError("企业费用政策版本已更新，请刷新后重试", 409)
-            raw = request.model_dump(exclude={"expected_version", "monthly_limit", "ocr_reserve", "proposal_reserve"})
+            raw = request.model_dump(exclude={"expected_version", "monthly_limit", "ocr_reserve", "proposal_reserve", "chat_reserve"})
             raw["quota_enabled"] = int(raw["quota_enabled"])
-            for name in ("monthly_limit", "ocr_reserve", "proposal_reserve"):
-                raw[name + "_micro"] = decimal_micro(getattr(request, name))
+            for name in ("monthly_limit", "ocr_reserve", "proposal_reserve", "chat_reserve"):
+                raw[name + "_micro"] = decimal_micro(getattr(request, name)) if getattr(request, name) is not None else old[name + "_micro"]
             raw.update(version=old["version"] + 1, updated_by=actor.user_id, updated_at=self.meter.timestamp(conn))
             fields = list(raw)
             if old["version"] == 0:
@@ -131,7 +131,7 @@ class OperationsService:
                 if updated.rowcount != 1:
                     raise AccountingError("企业费用政策已改变，请刷新", 409)
             BusinessService._audit(conn, actor, "model.policy.update", company_id, {"version": raw["version"], "quota_enabled": bool(raw["quota_enabled"]), "monthly_limit": request.monthly_limit,
-                                                                                       "ocr_reserve": request.ocr_reserve, "proposal_reserve": request.proposal_reserve})
+                                                                                       "ocr_reserve": request.ocr_reserve, "proposal_reserve": request.proposal_reserve, "chat_reserve": cents_to_money(raw["chat_reserve_micro"] // 10_000)})
             self._refresh_alerts(conn, actor.firm_id, company_id)
             return self._policy_json(raw, manager)
 
@@ -183,6 +183,24 @@ class OperationsService:
         stale_before = self.meter.clock() - timedelta(seconds=policy["worker_stale_seconds"])
         worker = {"available": any(row["state"] in {"active", "idle"} and _date(row["heartbeat_at"]) is not None and _date(row["heartbeat_at"]) >= stale_before for row in heartbeats),
                   "last_heartbeat_at": max((row["heartbeat_at"] for row in heartbeats), default=None)}
+        assistant_jobs = [dict(row) for row in conn.execute("SELECT id,status,attempt_count,created_at,finished_at FROM assistant_turns WHERE firm_id=? AND company_id=?", (firm_id, company_id))]
+        assistant_queue = {state: sum(row["status"] == state for row in assistant_jobs) for state in QUEUE_STATES}
+        assistant_queue.update(recent_failures=sum(row["status"] in {"failed", "interrupted"} and _date(row["finished_at"]) is not None and _date(row["finished_at"]) >= cutoff for row in assistant_jobs),
+                               oldest_pending_at=min((row["created_at"] for row in assistant_jobs if row["status"] == "queued"), default=None),
+                               risk_fingerprint=fingerprint([(row["id"], row["status"], row["attempt_count"], row["finished_at"]) for row in sorted(assistant_jobs, key=lambda row: row["id"])]))
+        assistant_heartbeats = [dict(row) for row in conn.execute("SELECT heartbeat_at,state FROM assistant_worker_heartbeats")]
+        assistant_worker = {"available": any(row["state"] in {"active", "idle"} and _date(row["heartbeat_at"]) is not None and _date(row["heartbeat_at"]) >= stale_before for row in assistant_heartbeats),
+                            "last_heartbeat_at": max((row["heartbeat_at"] for row in assistant_heartbeats), default=None)}
+        processing_pending = queue["queued"] + queue["retry_wait"] + queue["running"]
+        assistant_pending = assistant_queue["queued"] + assistant_queue["running"]
+        worker["processing_available"], worker["assistant_available"] = worker["available"], assistant_worker["available"]
+        worker["available"] = (not processing_pending or worker["processing_available"]) and (not assistant_pending or assistant_worker["available"]) and bool(processing_pending or assistant_pending or worker["processing_available"] or assistant_worker["available"])
+        worker["last_heartbeat_at"] = max((stamp for stamp in (worker["last_heartbeat_at"], assistant_worker["last_heartbeat_at"]) if stamp), default=None)
+        for state in QUEUE_STATES:
+            queue[state] += assistant_queue[state]
+        queue["recent_failures"] += assistant_queue["recent_failures"]
+        queue["oldest_pending_at"] = min((stamp for stamp in (queue["oldest_pending_at"], assistant_queue["oldest_pending_at"]) if stamp), default=None)
+        queue["risk_fingerprint"] = fingerprint({"processing": queue["risk_fingerprint"], "assistant": assistant_queue["risk_fingerprint"]})
         cases = [dict(row) for row in conn.execute("SELECT id,version,state,due_on,created_at FROM case_tasks WHERE firm_id=? AND company_id=? AND state<>'closed'", (firm_id, company_id))]
         today = self.meter.clock().astimezone(timezone(timedelta(hours=8))).date().isoformat()
         workflow = {"open_cases": len(cases), "overdue_supplements": sum(item["state"] == "awaiting_info" and item["due_on"] is not None and item["due_on"] < today for item in cases),
@@ -198,7 +216,8 @@ class OperationsService:
         exceptions["blocking_count"] += len(cases)
         exceptions["oldest_opened_at"] = min([value for value in [exceptions["oldest_opened_at"], *[item["created_at"] for item in cases]] if value], default=None)
         exceptions["risk_fingerprint"] = fingerprint({"existing": exceptions["risk_fingerprint"], "cases": [(item["id"], item["version"], item["state"]) for item in cases]})
-        return {"period": period, "policy": policy, "costs": costs, "queue": queue, "exceptions": exceptions, "worker": worker, "workflow": workflow}
+        return {"period": period, "policy": policy, "costs": costs, "queue": queue, "exceptions": exceptions, "worker": worker, "workflow": workflow,
+                "assistant": {"queue": assistant_queue, "workers": assistant_worker}}
 
     @staticmethod
     def _cost_json(row, manager):
@@ -216,8 +235,8 @@ class OperationsService:
         settings = self.intelligence.provider.settings if self.intelligence else None
         return {kind: {"configured": rate.configured, "input_per_million": micro_decimal(decimal_micro(rate.input_per_million)) if rate.input_per_million is not None else None,
                        "output_per_million": micro_decimal(decimal_micro(rate.output_per_million)) if rate.output_per_million is not None else None,
-                       "model": getattr(settings, "vision_model" if kind == "ocr" else "journal_model", "")}
-                for kind, rate in (("ocr", self.meter.pricing.ocr), ("proposal", self.meter.pricing.proposal))}
+                       "model": getattr(settings, {"ocr": "vision_model", "proposal": "journal_model", "chat": "chat_model"}[kind], "")}
+                for kind, rate in (("ocr", self.meter.pricing.ocr), ("proposal", self.meter.pricing.proposal), ("chat", self.meter.pricing.chat))}
 
     def overview(self, actor, company_id, period=None):
         if period is not None and not re.fullmatch(r"20[0-9]{2}-(?:0[1-9]|1[0-2])", period):
@@ -243,7 +262,10 @@ class OperationsService:
                               "overrun_count": int(costs["overrun_count"]) + int(costs.get("historical_overrun_count") or 0)},
                     "queue": queue, "exceptions": {"events": int(exceptions["blocking_events"]), "blocking": int(exceptions["blocking_count"]), "warning": int(exceptions["warning_count"]),
                                                        "oldest_opened_at": exceptions["oldest_opened_at"], "updated_at": exceptions.get("updated_at")},
-                    "workers": {"available": bool(metrics["worker"]["available"]), "last_heartbeat_at": metrics["worker"]["last_heartbeat_at"]},
+                    "workers": {"available": bool(metrics["worker"]["available"]), "last_heartbeat_at": metrics["worker"]["last_heartbeat_at"],
+                                "processing_available": bool(metrics["worker"].get("processing_available", metrics["worker"]["available"])), "assistant_available": bool(metrics["worker"].get("assistant_available", False))},
+                    "assistant": {"queue": {key: value for key, value in metrics.get("assistant", {}).get("queue", {}).items() if key != "risk_fingerprint"},
+                                  "workers": metrics.get("assistant", {}).get("workers", {"available": False, "last_heartbeat_at": None})},
                     "alerts": alerts, "costs": records, "can_manage_budget": manager,
                     "workflow": metrics.get("workflow", {}), "monitor": self._monitor_state(conn, actor.firm_id, company_id)}
 

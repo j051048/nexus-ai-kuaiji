@@ -12,7 +12,8 @@ export interface Session {
 export type FirmRole = 'owner' | 'admin' | 'operator' | 'reviewer' | 'viewer' | 'client_employee' | 'client_member';
 export type BookRole = 'editor' | 'reviewer' | 'viewer';
 export type CompanyRole = 'owner' | 'admin' | 'finance' | 'employee';
-export interface AuthConfig { mode: 'local' | 'supabase'; supabase_url?: string; publishable_key?: string; personas?: { id: string; label: string }[] }
+export interface TransportLimits { max_file_bytes: number; max_request_bytes: number; max_response_bytes: number }
+export interface AuthConfig { mode: 'local' | 'supabase'; supabase_url?: string; publishable_key?: string; personas?: { id: string; label: string }[]; transport_limits?: TransportLimits }
 export interface Firm { id: string; name: string; role: FirmRole }
 export interface Me {
   user: { id: string; name: string; email: string };

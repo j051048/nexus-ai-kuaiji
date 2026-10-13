@@ -1,3 +1,5 @@
+import { uploadSizeError } from './transport-limits';
+
 export const deliveryStates = { verified: '回执数据一致', received_unverified: '已收到 · 待核验', discrepancy: '存在交付差异' };
 const labels: Record<string, string> = {
   book_id_mismatch: '客户账套不一致', company_id_mismatch: '客户企业不一致', period_mismatch: '会计期间不一致', currency_mismatch: '币种不一致',
@@ -16,7 +18,8 @@ export function receiptFileFormat(name: string): 'json' | 'csv' {
   return extension;
 }
 export function validateReceiptFile(name: string, bytes: number): 'json' | 'csv' {
-  if (!Number.isFinite(bytes) || bytes <= 0 || bytes > 2_000_000) throw new Error('回执文件须为 1 字节至 2 MB。');
+  const invalidSize = uploadSizeError(bytes, 2_000_000);
+  if (invalidSize) throw new Error(`回执${invalidSize}`);
   return receiptFileFormat(name);
 }
 export function decodeReceiptBytes(bytes: ArrayBuffer): string {

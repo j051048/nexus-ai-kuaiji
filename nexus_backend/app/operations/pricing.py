@@ -47,6 +47,7 @@ class Rate:
 class Pricing:
     ocr: Rate = Rate()
     proposal: Rate = Rate()
+    chat: Rate = Rate()
 
     @classmethod
     def from_env(cls):
@@ -57,7 +58,7 @@ class Pricing:
             except ValueError:
                 # Invalid pricing can never silently become a zero-cost tariff.
                 return Rate()
-        return cls(ocr=rate("OCR"), proposal=rate("PROPOSAL"))
+        return cls(ocr=rate("OCR"), proposal=rate("PROPOSAL"), chat=rate("CHAT"))
 
     def for_kind(self, kind):
-        return self.ocr if kind == "ocr" else self.proposal
+        return {"ocr": self.ocr, "proposal": self.proposal, "chat": self.chat}[kind]

@@ -1,6 +1,6 @@
 # 数据库与票据原件的备份、恢复演练
 
-`scripts/backup_accounting.py` 生成数据库快照、快照所引用的业务/补件原件、SHA-256 清单和迁移版本清单。恢复只允许明确指定的新目录或空目录；已有数据库、原件及失败演练产物不会被删除或覆写。校验失败时不会写出完成清单。
+`scripts/backup_accounting.py` 生成数据库快照、快照所引用的业务、补件、未提交录入、银行导入及旧账迁移原件、SHA-256 清单和迁移版本清单。恢复只允许明确指定的新目录或空目录；已有数据库、原件及失败演练产物不会被删除或覆写。校验失败时不会写出完成清单。
 
 ## SQLite 本地试点
 
@@ -23,6 +23,8 @@ SQLite 使用官方 backup API，避免复制运行中的 `.db` 文件而漏掉 
 
 恢复目标需要人工事先建立**独立空数据库**，并设置 `ACCOUNTING_RECOVERY_DATABASE_URL`。脚本检查所有用户 schema 的表和函数，拒绝恢复到已有应用数据库；`pg_restore` 在单一事务里执行，出错回滚。目标须预先具备迁移中引用的 `accounting_app`、`accounting_system`、`accounting_worker` 等 NOLOGIN 角色；脚本不会复制角色登录密码。
 
+当前恢复使用 `--no-acl`，不会自动启用原环境的对象授权。恢复核验成功后，管理员仍需撤销 PUBLIC 默认权限，按当前版本审查并重建三个内部 NOLOGIN 角色的 schema、表、函数和列授权，再配置新环境的受限登录。列授权必须单独保留，尤其不能把任务公开字段的 SELECT 升成整表 SELECT。不要复制旧登录账号、PUBLIC / anon 权限或授予转授权能力；重新授权及 RLS 验证完成前，恢复库保持 `serving_enabled=false`。
+
 ```powershell
 python scripts/backup_accounting.py backup --database-env ACCOUNTING_BACKUP_DATABASE_URL --storage-root 'C:\试点原件' --destination 'C:\试点备份\pg-001'
 python scripts/backup_accounting.py restore 'C:\试点备份\pg-001' --destination 'C:\恢复演练\pg-001' --postgres-target-env ACCOUNTING_RECOVERY_DATABASE_URL
@@ -41,3 +43,5 @@ python scripts/backup_accounting.py restore 'C:\试点备份\pg-001' --destinati
 清单哈希用于检测误改和文件损坏，不代替签名或加密。备份包含真实业务资料，应放在受控且加密的存储中，并纳入保留期限管理。
 
 2026-10-12 已演练本机虚构 SQLite 数据与真实附件，并在独立 PostgreSQL 14 集群新建两个仅含合成资料的数据库，实际执行共享快照 `pg_dump` 与新空库 `pg_restore`。Windows Python 调用 WSL PostgreSQL 客户端，使用本脚本的真实快照、清单和恢复校验路径；迁移清单、企业账套、FORCE RLS 标记及原件字节哈希一致，重复恢复到已有数据库被拒绝。恢复结果保持 `serving_enabled=false`。这次演练未启用恢复库对外服务，也未覆盖生产规模、云服务恢复、运行角色重新授权和真实 RPO/RTO；这些仍须按试点部署环境演练。
+
+2026-10-13 第十三阶段演练还原 65 个迁移版本、8 条历史记录及两份旧账原件。先验证恢复后运行账号无法启动，再审查并重建三个内部 NOLOGIN 角色的对象与列 ACL，撤销 PUBLIC 默认权限，不复制旧登录、owner 或转授权能力。使用实际受限账号验证原件 SHA、接管只读及无历史授权不可读取，任务列权限未提升为整表读取，仍保持 `serving_enabled=false`。具体结果见 [第十三阶段记录](VALIDATION_STAGE13_20261013.md)。

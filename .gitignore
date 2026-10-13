@@ -126,3 +126,6 @@ vite.config.ts.timestamp-*
 *.timestamp-*.mjs
 # Artifacts
 artifacts/
+
+# Vercel local project/build state (environment and account metadata)
+.vercel/
