@@ -7,6 +7,8 @@ import pytest
 from app.accounting.database import Database
 from test_accounting import service, book, make_draft
 from test_intelligence_workflow import ai_case, create_event
+from test_shared_original_storage import SyntheticStorage
+from app.accounting.domain import AccountingError
 
 path = Path(__file__).resolve().parents[2] / "scripts" / "backup_accounting.py"
 spec = spec_from_file_location("backup_accounting_stage10", path)
@@ -80,3 +82,43 @@ def test_originals_restored_match_exact_snapshot_and_missing_blob_fails(ai_case,
     with pytest.raises(ValueError, match="哈希不符"):
         recovery.backup(c.db.path, c.storage.root, tmp_path / "failed-backup")
     assert not (tmp_path / "failed-backup" / "manifest.json").exists()
+
+
+def test_remote_snapshot_originals_are_backed_up_and_restored_without_shared_disk(ai_case, tmp_path):
+    c, remote = ai_case, SyntheticStorage()
+    c.storage = remote.store()
+    event = create_event(c)
+    independent_reader = remote.store()
+    archive, restored = tmp_path / "cloud-backup", tmp_path / "cloud-restore"
+    manifest = recovery.backup(c.db.path, None, archive, storage_store=independent_reader)
+    assert c.storage.root is independent_reader.root is None
+    assert len(manifest["files"]) == 2 and recovery.verify(archive) == manifest
+    receipt = recovery.restore(archive, restored)
+    assert receipt["serving_enabled"] is False and receipt["verified_files"] == 2
+    with c.db.transaction(actor=c.actors["employee"]) as conn:
+        original = dict(conn.execute("SELECT storage_key,sha256,size_bytes FROM business_attachments WHERE id=?",
+                                     (event["attachments"][0]["id"],)).fetchone())
+    assert (restored / "originals" / original["storage_key"]).read_bytes() == independent_reader.read(original)
+    assert "synthetic-storage.example" not in str(manifest) and "sb_secret_" not in str(manifest)
+    assert all(request.method == "GET" for request in remote.requests[2:])
+
+
+def test_remote_corrupt_original_does_not_complete_backup(ai_case, tmp_path):
+    remote = SyntheticStorage()
+    ai_case.storage = remote.store()
+    create_event(ai_case)
+    key = next(iter(remote.blobs))
+    remote.blobs[key] = b"corrupt"
+    target = tmp_path / "incomplete-cloud-backup"
+    with pytest.raises(AccountingError, match="完整性"):
+        recovery.backup(ai_case.db.path, None, target, storage_store=remote.store())
+    assert not (target / "manifest.json").exists()
+
+
+def test_public_remote_bucket_rejected_before_backup_directory_created(ai_case, tmp_path):
+    remote = SyntheticStorage()
+    remote.public = True
+    target = tmp_path / "must-not-create"
+    with pytest.raises(AccountingError, match="私有"):
+        recovery.backup(ai_case.db.path, None, target, storage_store=remote.store())
+    assert not target.exists()

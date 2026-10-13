@@ -8,7 +8,7 @@ from uuid import uuid4
 from ..accounting.database import WRITE_LOCK
 from ..accounting.domain import AccountingError
 from ..accounting.service import fingerprint
-from ..intelligence.provider import EXTRACTION_PROMPT_VERSION, ProviderError
+from ..intelligence.provider import EXTRACTION_PROMPT_VERSION, ProviderError, effective_settings
 
 ACTIVE = {"queued", "running", "retry_wait"}
 RETRYABLE = {"failed", "interrupted", "stale", "cancelled"}
@@ -38,8 +38,8 @@ class QueueService:
         return self.timestamp()
 
     def configuration_fingerprint(self):
-        settings = self.intelligence.provider.settings
-        return fingerprint({"url": settings.base_url, "model": settings.vision_model,
+        settings = effective_settings(self.intelligence.provider.settings, "ocr")
+        return fingerprint({"url": settings.base_url, "model": settings.model,
                             "format": settings.response_format, "prompt": EXTRACTION_PROMPT_VERSION})
 
     def _ready(self):

@@ -31,9 +31,9 @@ origin 只允许 HTTPS 主机地址，可带端口，不包含 /api、密码、q
 
 ## 持久服务器
 
-保留原 Supabase 真实登录、受限 PostgreSQL 与显式 TLS、私有持久附件目录及独立 worker。ACCOUNTING_ALLOWED_HOSTS 包含实际后端域名；ACCOUNTING_ALLOWED_ORIGINS 包含前端的 HTTPS 来源，需要预览时明确添加相应来源，不开放通配符。管理员迁移继续显式执行，不作为 Vercel buildCommand。网关没有导入会计应用，不创建 SQLite、原件目录或常驻线程。
+保留 Supabase 真实登录、受限 PostgreSQL 与显式 TLS、私有原件存储及独立 worker。原件可在同一持久服务器目录保存，也可供 Zeabur 独立服务通过 Supabase 私有 bucket 共用，具体见 [云端 Demo 部署](DEMO_VERCEL_ZEABUR_SUPABASE.md)。ACCOUNTING_ALLOWED_HOSTS 包含实际后端域名；ACCOUNTING_ALLOWED_ORIGINS 包含前端的 HTTPS 来源，需要预览时明确添加相应来源，不开放通配符。管理员迁移继续显式执行，不作为 Vercel buildCommand。网关没有导入会计应用，不创建 SQLite、原件目录或常驻线程。
 
-实际后端参数见 [.env.accounting.example](../.env.accounting.example) 和 [数据库接入](POSTGRES_SETUP.md)。本轮没有修改既有账务或原件。
+实际后端参数见 [.env.accounting.example](../.env.accounting.example) 和 [数据库接入](POSTGRES_SETUP.md)。Vercel 只配置外部后端 origin，不填写 PostgreSQL、Storage secret 或模型密钥。
 
 ## 上传与下载限制
 

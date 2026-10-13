@@ -207,14 +207,11 @@ class LegacyMigrationService:
 
     def _read_blob(self, row):
         try:
-            from .normalization import MAX_BYTES
-            with self.storage._path(row["storage_key"]).open("rb") as stream:
-                data = stream.read(MAX_BYTES + 1)
-        except OSError:
-            raise AccountingError("旧账原件缺失，迁移不会继续发布", 503) from None
-        if len(data) > MAX_BYTES or len(data) != row["size_bytes"] or hashlib.sha256(data).hexdigest() != row["sha256"]:
-            raise AccountingError("旧账原件校验不一致，请核验恢复记录", 409)
-        return data
+            return self.storage.read(dict(row))
+        except AccountingError as error:
+            if "完整性" in str(error):
+                raise AccountingError("旧账原件校验不一致，请核验恢复记录", 409) from None
+            raise
 
     def original(self, actor, book_id, project_id, file_id):
         with self.db.transaction(actor=actor) as conn:
@@ -232,10 +229,10 @@ class LegacyMigrationService:
             self._mutable(project, target)
         if category == "attachment":
             from ..business.storage import AttachmentStore
-            metadata = AttachmentStore(self.storage.root).put(filename, "", data)
+            metadata = self.storage.clone(AttachmentStore).put(filename, "", data)
             inspected = {"format": "attachment", "headers": [], "samples": [], "adapter_verified": False}
         else:
-            metadata = LegacyOriginalStore(self.storage.root).put(filename, data)
+            metadata = self.storage.clone(LegacyOriginalStore).put(filename, data)
             try:
                 inspected = inspect_file(metadata["filename"], data, profile)
                 inspected = {k: v for k, v in inspected.items() if k not in {"rows", "positions", "raw", "package"}} | {"samples": inspected.get("rows", [])[:5]}
@@ -272,6 +269,7 @@ class LegacyMigrationService:
                 self._audit(conn, actor, book_id, "file.add", identity, {"category": category, "sha256": metadata["sha256"], "replaces_file_id": replaces_file_id, "reason": reason})
                 receipt = {"file": {"id": identity, "filename": metadata["filename"], "category": category, "sha256": metadata["sha256"]}, "inspection": inspected, "detail": self._detail(conn, actor, book_id, project_id)}
                 commit_may_have_succeeded = True
+                self.storage.retain(metadata)
                 return receipt
         except Exception:
             if commit_may_have_succeeded:

@@ -414,13 +414,13 @@ class QueueWorker:
         # durable recovery state; queued work is never deleted at shutdown.
 
 
-def main():
+def main(ready_callback=None):
     import argparse
     import signal
     from pathlib import Path
     from dotenv import load_dotenv
     from ..accounting.database import Database
-    from ..business.storage import AttachmentStore
+    from ..storage.factory import create_attachment_store
     from ..intelligence.service import IntelligenceService
     parser = argparse.ArgumentParser(description="持久票据处理后台服务")
     parser.add_argument("--env-file", help="显式加载新的会计配置文件，默认不加载任何文件")
@@ -433,14 +433,18 @@ def main():
         load_dotenv(config_path, override=False)
     url = os.getenv("ACCOUNTING_WORKER_DATABASE_URL", "")
     root = os.getenv("ACCOUNTING_ATTACHMENT_ROOT", "")
-    if not url or not root:
-        parser.error("须显式配置 ACCOUNTING_WORKER_DATABASE_URL 和 ACCOUNTING_ATTACHMENT_ROOT")
+    if not url:
+        parser.error("须显式配置 ACCOUNTING_WORKER_DATABASE_URL；原件存储须使用共享 Supabase 或本地持久目录")
     if os.getenv("ACCOUNTING_ENV", "local").lower() == "production" or any(os.getenv(key, "").lower() in {"prod", "production"} for key in ("APP_ENV", "ENV", "ENVIRONMENT")):
         if not url.startswith(("postgres://", "postgresql://")) or parse_qs(urlsplit(url).query).get("sslmode", [""])[0] not in {"require", "verify-ca", "verify-full"}:
             parser.error("生产worker须使用独立PostgreSQL与显式sslmode=require或证书校验")
+    worker_started = False
+    worker = None
     try:
         database = Database(url)
-        queue = QueueService(database, IntelligenceService(database, AttachmentStore(root)))
+        storage = create_attachment_store(root)
+        storage.verify_private()
+        queue = QueueService(database, IntelligenceService(database, storage))
         lease = int(os.getenv("ACCOUNTING_QUEUE_LEASE_SECONDS", "180"))
         if lease < 150:
             raise ValueError("部署租约至少150秒，覆盖PDF准备与模型调用")
@@ -449,16 +453,21 @@ def main():
             worker.run_once()
             return 0
         worker.start()
+        worker_started = True
+        if ready_callback:
+            ready_callback()
         halted = threading.Event()
         signal.signal(signal.SIGINT, lambda *_: halted.set())
         signal.signal(signal.SIGTERM, lambda *_: halted.set())
         while not halted.wait(1):
             pass
-        worker.stop()
         return 0
     except Exception:
         logger.error("后台服务启动或执行失败，请检查独立账号、迁移及模型配置；连接和原件内容已隐藏")
         return 1
+    finally:
+        if worker_started:
+            worker.stop()
 
 
 if __name__ == "__main__":

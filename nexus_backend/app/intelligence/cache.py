@@ -4,7 +4,7 @@ import json
 from ..accounting.service import fingerprint, now
 from ..business.service import encode
 from .models import InvoiceExtraction
-from .provider import EXTRACTION_PROMPT_VERSION
+from .provider import EXTRACTION_PROMPT_VERSION, effective_settings
 
 PARSER_VERSION = "document-parser-v1"
 CACHE_VERSION = "validated-ocr-cache-v1"
@@ -12,7 +12,8 @@ CACHE_VERSION = "validated-ocr-cache-v1"
 
 def config_key(settings, media_type):
     # Keys are deliberately absent: rotating a secret does not change OCR semantics.
-    return fingerprint({"provider": settings.base_url, "model": settings.vision_model,
+    settings = effective_settings(settings, "ocr")
+    return fingerprint({"provider": settings.base_url, "model": settings.model,
                         "format": settings.response_format, "prompt": EXTRACTION_PROMPT_VERSION,
                         "parser": PARSER_VERSION, "cache": CACHE_VERSION, "media_type": media_type})
 

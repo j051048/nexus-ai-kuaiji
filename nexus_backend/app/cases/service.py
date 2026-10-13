@@ -363,7 +363,10 @@ class CaseService:
             if summary[0] >= 10 or summary[1] + stored["size_bytes"] > 50 * 1024 * 1024 or total + stored["size_bytes"] > 100 * 1024 * 1024:
                 raise AccountingError("每次补件最多 10 个附件、50 MB，任务累计最多 100 MB", 413)
             conn.execute("INSERT INTO case_attachments(id,response_id,case_id,firm_id,company_id,storage_key,filename,media_type,sha256,size_bytes,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)", (stored["id"], response["id"], case_id, actor.firm_id, row["company_id"], stored["storage_key"], stored["filename"], stored["media_type"], stored["sha256"], stored["size_bytes"], actor.user_id, now()))
-            return {"case": self._finish(conn, actor, row, payload, digest, "upload", "requester" if row["kind"] == "supplement" or self._collector(conn, actor, row) else "internal"), "duplicate": False}
+            result = {"case": self._finish(conn, actor, row, payload, digest, "upload", "requester" if row["kind"] == "supplement" or self._collector(conn, actor, row) else "internal"), "duplicate": False}
+            from ..business.storage import retain_original
+            retain_original(stored)
+            return result
 
     def download_metadata(self, actor, attachment_id):
         with self.db.transaction(actor=actor) as conn:

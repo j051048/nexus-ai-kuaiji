@@ -279,7 +279,7 @@ def hashlib_id(job_id, position):
     return hashlib.sha256((job_id + ":" + str(position)).encode()).hexdigest()
 
 
-def main():
+def main(ready_callback=None):
     import argparse
     import os
     import signal
@@ -287,7 +287,7 @@ def main():
     from urllib.parse import urlsplit, parse_qs
     from dotenv import load_dotenv
     from app.accounting.database import Database
-    from app.business.storage import AttachmentStore
+    from app.storage.factory import create_attachment_store
     from .service import LegacyMigrationService
     parser = argparse.ArgumentParser(description="独立旧账迁移后台，不调用模型或发送外部凭证")
     parser.add_argument("--env-file")
@@ -299,28 +299,37 @@ def main():
             parser.error("指定配置文件不存在")
         load_dotenv(path, override=False)
     url, root = os.getenv("ACCOUNTING_WORKER_DATABASE_URL", ""), os.getenv("ACCOUNTING_ATTACHMENT_ROOT", "")
-    if not url or not root:
-        parser.error("须显式配置独立worker连接及持久原件目录")
+    if not url:
+        parser.error("须显式配置独立worker连接；原件存储须使用共享 Supabase 或本地持久目录")
     production = os.getenv("ACCOUNTING_ENV", "local").lower() == "production" or any(os.getenv(k, "").lower() in {"production", "prod"} for k in ("APP_ENV", "ENV", "ENVIRONMENT"))
     if production and (not url.startswith(("postgres://", "postgresql://")) or parse_qs(urlsplit(url).query).get("sslmode", [""])[0] not in {"require", "verify-ca", "verify-full"}):
         parser.error("生产迁移worker须独立PostgreSQL账号及显式TLS连接")
+    worker_started = False
+    worker = None
     try:
-        service = LegacyMigrationService(Database(url), AttachmentStore(root))
+        storage = create_attachment_store(root)
+        storage.verify_private()
+        service = LegacyMigrationService(Database(url), storage)
         worker = MigrationWorker(service, concurrency=int(os.getenv("ACCOUNTING_MIGRATION_CONCURRENCY", "1")))
         if args.once:
             worker.run_once()
             return 0
         worker.start()
+        worker_started = True
+        if ready_callback:
+            ready_callback()
         halted = threading.Event()
         signal.signal(signal.SIGINT, lambda *_: halted.set())
         signal.signal(signal.SIGTERM, lambda *_: halted.set())
         while not halted.wait(1):
             pass
-        worker.stop()
         return 0
     except Exception:
         logger.error("迁移后台初始化失败，请检查专用账号、迁移和原件配置；连接信息不输出")
         return 1
+    finally:
+        if worker_started:
+            worker.stop()
 
 
 if __name__ == "__main__":

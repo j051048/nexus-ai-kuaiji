@@ -2,7 +2,7 @@
 import hashlib
 import json
 
-from ..intelligence.provider import ProviderError
+from ..intelligence.provider import ProviderError, effective_settings
 
 PROMPT_VERSION = "accounting-assistant-v1"
 
@@ -17,9 +17,10 @@ class AssistantProvider:
         return bool(getattr(self.settings, "chat_available", False))
 
     def configuration_fingerprint(self):
+        settings = effective_settings(self.settings, "chat")
         return hashlib.sha256(json.dumps({
-            "base_url": self.settings.base_url, "model": self.settings.chat_model,
-            "format": self.settings.response_format, "prompt": PROMPT_VERSION,
+            "base_url": settings.base_url, "model": settings.model,
+            "format": settings.response_format, "prompt": PROMPT_VERSION,
         }, sort_keys=True).encode()).hexdigest()
 
     def reply(self, context, question, history):
@@ -36,7 +37,7 @@ class AssistantProvider:
         if len(evidence.encode()) > 65536 or len(past.encode()) > 49152:
             raise ProviderError("context_too_large", "会计助手资料超过单轮范围，请缩小账套与事项范围")
         return self.transport._request(
-            model=self.settings.chat_model, output_type=AssistantReply,
+            model=effective_settings(self.settings, "chat").model, output_type=AssistantReply, scenario="chat",
             prompt_version=PROMPT_VERSION, max_tokens=4096,
             system=(
                 "你是衡账的只读会计助手。回答只适用于当前明确授权的企业、账期和事项。"

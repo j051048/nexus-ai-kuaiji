@@ -21,7 +21,7 @@ class ImportWizardService:
     def __init__(self, db, storage, ledger=None):
         self.db, self.ledger = db, ledger
         self.access = AccessControl()
-        self.storage = ImportOriginalStore(storage.root)
+        self.storage = storage.clone(ImportOriginalStore)
         self.bank = BankImportService(db)
 
     def _book(self, conn, actor, book_id, edit=False):
@@ -43,9 +43,11 @@ class ImportWizardService:
                     raise AccountingError('此账套每人每小时最多上传20个导入文件，请稍后重试', 429)
                 conn.execute('INSERT INTO bank_import_files(id,book_id,firm_id,company_id,storage_key,filename,media_type,sha256,size_bytes,table_json,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)',
                              (metadata['id'], book_id, actor.firm_id, book['company_id'], metadata['storage_key'], metadata['filename'], metadata['media_type'], metadata['sha256'], metadata['size_bytes'], dumped(table), actor.user_id, now()))
-                return {'file_id': metadata['id'], 'filename': metadata['filename'], 'sha256': metadata['sha256'], 'headers': table['headers'],
+                result = {'file_id': metadata['id'], 'filename': metadata['filename'], 'sha256': metadata['sha256'], 'headers': table['headers'],
                         'sample_rows': table['rows'][:5], 'row_count': len(table['rows']), 'encoding': table['encoding'],
                         'suggested_columns': table['suggested_columns'], 'ambiguous_fields': table['ambiguous_fields'], 'sheet_name': table.get('sheet_name')}
+                self.storage.retain(metadata)
+                return result
         except Exception:
             self.storage.discard(metadata)
             raise

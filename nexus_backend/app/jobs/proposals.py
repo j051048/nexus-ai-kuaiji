@@ -5,7 +5,7 @@ from uuid import uuid4
 
 from ..accounting.domain import AccountingError
 from ..accounting.service import fingerprint
-from ..intelligence.provider import JOURNAL_PROMPT_VERSION
+from ..intelligence.provider import JOURNAL_PROMPT_VERSION, effective_settings
 from ..intelligence.cache import config_key
 from .visibility import book_edit_scope
 
@@ -21,8 +21,8 @@ class ProposalQueueService:
         self.business, self.access = queue.business, queue.access
 
     def configuration_fingerprint(self):
-        settings = self.intelligence.provider.settings
-        return fingerprint({"url": settings.base_url, "model": settings.journal_model,
+        settings = effective_settings(self.intelligence.provider.settings, "journal")
+        return fingerprint({"url": settings.base_url, "model": settings.model,
                             "format": settings.response_format, "prompt": JOURNAL_PROMPT_VERSION,
                             "extraction": self.queue.configuration_fingerprint()})
 

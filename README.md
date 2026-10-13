@@ -35,6 +35,14 @@ npm run dev
 
 根目录已提供多服务 vercel.json：app 是 Vite 前端，api_gateway 转发 /api 到 ACCOUNTING_BACKEND_ORIGIN 指向的持久会计服务器。数据库、原件和 workers 继续在服务器运行。环境、文件上限和本地联调见 [Vercel 部署说明](docs/VERCEL_DEPLOYMENT.md)，网关环境示例见 [.env.vercel.example](.env.vercel.example)。
 
+## Vercel + Zeabur + Supabase 云端 Demo
+
+已提供 [完整部署步骤](docs/DEMO_VERCEL_ZEABUR_SUPABASE.md)、根目录 Dockerfile / zbpack.json、四个服务的[环境范本](deploy/.env.api.example)和只读自检。Vercel 承载前端与 `/api` 网关，Zeabur 运行 API、OCR/分录、助手和旧账四个常驻服务，Supabase 承载 PostgreSQL、Auth 和同一个私有原件 bucket。API 与后台使用不同受限数据库账号，不需要共享本地磁盘。
+
+OCR、分录和对话可分别配置 OpenAI 兼容供应商；模型地址、密钥及 ID 之外，仍须配置登录、数据库迁移、企业/人员授权、科目模板和企业 AI 开关/预算。`python scripts/check_demo_deployment.py --online --require-ai` 只读核验当前服务，错误输出隐藏密钥与连接。云资源、真实供应商与真实账务尚需部署后验收。
+
+本轮测试范围和实际部署边界见 [云端 Demo 验证记录](docs/VALIDATION_DEMO_CLOUD_20261013.md)。
+
 ## PostgreSQL 与真实登录试点
 
 1. 新建独立 Supabase 项目，配置 Email / Password 用户。使用管理员连接显式执行迁移，并建立受限运行账号，见 [数据库接入](docs/POSTGRES_SETUP.md)。应用拒绝超级用户或 BYPASSRLS 运行连接。
@@ -88,7 +96,7 @@ worker 与 API 连接同一业务数据库，并使用同一持久私有附件�
 
 第三阶段新增“业务事项”入口，支持 **员工报销、采购/费用、日常收支** 三个模板。员工保存草稿、上传原件后提交，部门确认、财务核验并移交同企业开放账套，会计查看来源与提交快照后独立复核。退回重提保留版本和原因，创建与移交重试去重。完整配置顺序见 [第三阶段试点操作](docs/STAGE3_PILOT.md)。
 
-附件私有保存为服务端随机键，下载重新验证当前权限及原件哈希。生产需显式设置 `ACCOUNTING_ATTACHMENT_ROOT` 的持久目录并与数据库一起备份，当前不是 Supabase Storage。默认本地演示为 `nexus_backend/private-attachments/`；本地模式可切换四个虚构身份走通闭环，真实模式使用各自账号。
+附件私有保存为服务端随机键，下载重新验证当前权限及原件哈希。本地存储生产模式需显式设置 `ACCOUNTING_ATTACHMENT_ROOT` 持久目录；独立容器可用 `ACCOUNTING_STORAGE_BACKEND=supabase` 与同一个私有 bucket，不配置本地原件目录。两种模式都须与数据库一起备份。默认本地演示为 `nexus_backend/private-attachments/`；本地模式可切换四个虚构身份走通闭环，真实模式使用各自账号。
 
 原有银行流水入口继续支持：
 
@@ -159,7 +167,7 @@ python scripts/benchmark_workbench.py
 - [第七阶段验证记录](docs/VALIDATION_STAGE7_20261012.md)
 - [企业员工业务录入与模板规划](docs/BUSINESS_ENTRY_ARCHITECTURE.md)
 
-生产配置要求 PostgreSQL、Supabase 登录、明确域名/HTTPS 来源、数据库 TLS 与持久私有附件目录。本机验证覆盖 PostgreSQL、离线 Supabase 认证和员工到凭证的操作流程，尚未连接用户的真实 Supabase 项目或真实模型供应商。第四阶段供应商测试使用注入响应，PDF 与图像准备使用真实本地渲染。真实企业试点还需确认账号开通、供应商字段质量、科目模板、原件及数据库备份恢复和会计月结结果。
+生产配置要求 PostgreSQL、Supabase 登录、明确域名/HTTPS 来源、数据库 TLS 与私有原件存储。本机验证覆盖 PostgreSQL、离线 Supabase 认证和员工到凭证的操作流程，尚未连接用户的真实 Supabase 项目或真实模型供应商。第四阶段供应商测试使用注入响应，PDF 与图像准备使用真实本地渲染。真实企业试点还需确认账号开通、供应商字段质量、科目模板、原件及数据库备份恢复和会计月结结果。
 
 第七阶段已接通客户科目与版本化模板、事实版本、移交后持久自动草稿、企业 OCR 复用与授权待办分页。后台优先使用会计配置的模板，无匹配时生成模型候选；人工改稿受到版本保护，异常须人工处理，最终仍经独立会计复核与 CSV 导出。辅助核算值随导出保留。初期按 2–3 家企业验证真实月份，不以首页汇总或合成测试宣称达到 200–500 家完整做账容量。
 

@@ -87,6 +87,7 @@ def build_business_router(actor_dependency):
         return Response(content=data, media_type=metadata["media_type"], headers={
             "Content-Disposition": f"attachment; filename*=UTF-8''{quote(metadata['filename'], safe='')}",
             "Content-Security-Policy": "sandbox; default-src 'none'",
+            "Cache-Control": "private, no-store",
         })
 
     @router.get("/companies/{company_id}/departments/{department_id}/approvers")

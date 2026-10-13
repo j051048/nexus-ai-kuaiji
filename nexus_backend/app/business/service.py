@@ -328,7 +328,10 @@ class BusinessService:
         )
         self._bump(conn, actor, event, facts_changed=True)
         self._audit(conn, actor, "business.attachment.add", event_id, {"attachment_id": metadata["id"], "sha256": metadata["sha256"]})
-        return self._event_json(conn, actor, self._event(conn, actor, event_id))
+        result = self._event_json(conn, actor, self._event(conn, actor, event_id))
+        from .storage import retain_original
+        retain_original(metadata)
+        return result
 
     def download_metadata(self, actor, attachment_id):
         with self.db.transaction(actor=actor) as conn:

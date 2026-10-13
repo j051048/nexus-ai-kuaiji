@@ -11,13 +11,13 @@ from urllib.parse import urlsplit, parse_qs
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "nexus_backend"))
 
 
-def main():
+def main(ready_callback=None):
     from dotenv import load_dotenv
     from app.accounting.database import Database
     from app.agent_workspace.service import AgentWorkspaceService
     from app.intelligence.provider import AISettings, OpenAICompatibleProvider
     from app.intelligence.service import IntelligenceService
-    from app.business.storage import AttachmentStore
+    from app.storage.factory import create_attachment_store
     from app.legacy_migration.service import LegacyMigrationService
     from app.legacy_migration.settlements import LegacySettlementService
     from app.operations.meter import MeterService
@@ -36,16 +36,19 @@ def main():
         load_dotenv(config, override=False)
     url = os.getenv("ACCOUNTING_WORKER_DATABASE_URL", "")
     root = os.getenv("ACCOUNTING_ATTACHMENT_ROOT", "")
-    if not url or not root:
-        parser.error("须显式配置 ACCOUNTING_WORKER_DATABASE_URL 和 ACCOUNTING_ATTACHMENT_ROOT")
+    if not url:
+        parser.error("须显式配置 ACCOUNTING_WORKER_DATABASE_URL；原件存储须使用共享 Supabase 或本地持久目录")
     production = os.getenv("ACCOUNTING_ENV", "local").lower() == "production" or any(
         os.getenv(key, "").lower() in {"production", "prod"} for key in ("APP_ENV", "ENV", "ENVIRONMENT"))
     if production and (not url.startswith(("postgres://", "postgresql://")) or
                        parse_qs(urlsplit(url).query).get("sslmode", [""])[0] not in {"require", "verify-ca", "verify-full"}):
         parser.error("生产助手须使用独立PostgreSQL worker账号与显式TLS配置")
+    worker_started = False
+    worker = None
     try:
         db = Database(url)
-        storage = AttachmentStore(root)
+        storage = create_attachment_store(root)
+        storage.verify_private()
         intelligence = IntelligenceService(db, storage, provider=OpenAICompatibleProvider(AISettings.from_env()))
         ledger, business = intelligence.ledger, intelligence.business
         migration = LegacyMigrationService(db, storage)
@@ -65,13 +68,18 @@ def main():
         signal.signal(signal.SIGINT, lambda *_: stopped.set())
         signal.signal(signal.SIGTERM, lambda *_: stopped.set())
         worker.start()
+        worker_started = True
+        if ready_callback:
+            ready_callback()
         while not stopped.wait(1):
             pass
-        worker.stop()
         return 0
     except Exception:
         logging.error("会计助手后台启动或执行失败，请检查独立账号、迁移与模型配置；连接及资料内容已隐藏")
         return 1
+    finally:
+        if worker_started:
+            worker.stop()
 
 
 if __name__ == "__main__":

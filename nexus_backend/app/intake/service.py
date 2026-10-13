@@ -13,7 +13,7 @@ from ..intelligence.checks import extraction_checks
 from ..intelligence.cache import config_key, store_cache
 from ..intelligence.documents import prepare_document
 from ..intelligence.models import InvoiceExtraction, ProviderResult
-from ..intelligence.provider import EXTRACTION_PROMPT_VERSION, ProviderError
+from ..intelligence.provider import EXTRACTION_PROMPT_VERSION, ProviderError, effective_settings
 from ..operations.meter import MeterService
 
 
@@ -131,7 +131,10 @@ class IntakeService:
                 return self._json(conn, actor, draft)
             conn.execute("INSERT INTO intake_attachments(id,intake_id,firm_id,company_id,storage_key,filename,media_type,sha256,size_bytes,created_at,created_by) VALUES(?,?,?,?,?,?,?,?,?,?,?)", (metadata["id"], draft_id, actor.firm_id, draft["company_id"], metadata["storage_key"], metadata["filename"], metadata["media_type"], metadata["sha256"], metadata["size_bytes"], now(), actor.user_id))
             conn.execute("UPDATE intake_drafts SET version=version+1,updated_at=? WHERE id=?", (now(), draft_id))
-            return self._json(conn, actor, self._draft(conn, actor, draft_id))
+            result = self._json(conn, actor, self._draft(conn, actor, draft_id))
+            from ..business.storage import retain_original
+            retain_original(metadata)
+            return result
 
     def download(self, actor, attachment_id):
         with self.db.transaction(actor=actor) as conn:
@@ -153,7 +156,7 @@ class IntakeService:
             attachment = conn.execute("SELECT * FROM intake_attachments WHERE id=? AND intake_id=?", (attachment_id, draft_id)).fetchone()
             if not attachment:
                 raise AccountingError("附件不存在或无权访问", 404)
-            digest = fingerprint({"sha256": attachment["sha256"], "model": self.provider.settings.vision_model, "provider": self.provider.settings.base_url, "prompt": EXTRACTION_PROMPT_VERSION})
+            digest = self._configuration_input(attachment)
             prior = conn.execute("SELECT * FROM intake_runs WHERE intake_id=? AND idempotency_key=?", (draft_id, request.idempotency_key)).fetchone()
             if prior:
                 if prior["input_fingerprint"] != digest or prior["attachment_id"] != attachment_id:
@@ -168,7 +171,8 @@ class IntakeService:
             if unresolved:
                 raise AccountingError("上次请求结果或费用尚未确认，请管理员核定后再识别；可继续手工填写", 409)
             run_id, stamp = uuid4().hex, now()
-            conn.execute("INSERT INTO intake_runs(id,intake_id,attachment_id,firm_id,company_id,created_by,input_fingerprint,idempotency_key,status,provider,model,prompt_version,created_at) VALUES(?,?,?,?,?,?,?,?,'running',?,?,?,?)", (run_id, draft_id, attachment_id, actor.firm_id, draft["company_id"], actor.user_id, digest, request.idempotency_key, urlsplit(self.provider.settings.base_url).hostname or "openai-compatible", self.provider.settings.vision_model, EXTRACTION_PROMPT_VERSION, stamp))
+            settings = effective_settings(self.provider.settings, "ocr")
+            conn.execute("INSERT INTO intake_runs(id,intake_id,attachment_id,firm_id,company_id,created_by,input_fingerprint,idempotency_key,status,provider,model,prompt_version,created_at) VALUES(?,?,?,?,?,?,?,?,'running',?,?,?,?)", (run_id, draft_id, attachment_id, actor.firm_id, draft["company_id"], actor.user_id, digest, request.idempotency_key, urlsplit(settings.base_url).hostname or "openai-compatible", settings.model, EXTRACTION_PROMPT_VERSION, stamp))
             run = dict(conn.execute("SELECT * FROM intake_runs WHERE id=?", (run_id,)).fetchone()) | {"kind": "ocr"}
             metadata = dict(attachment)
         budget, attempted, result, error = self.meter.context(actor, run), False, None, None
@@ -176,7 +180,7 @@ class IntakeService:
             pages = prepare_document(self.storage.read(metadata), metadata["media_type"])
             with self.db.transaction(write=True, actor=actor) as conn:
                 current = self._draft(conn, actor, draft_id, editable=True)
-                if not self._enabled(conn, current):
+                if not self._enabled(conn, current) or self._configuration_input(metadata) != digest:
                     raise AccountingError("企业处理配置已改变，识别未发送", 403)
                 budget.before_send(conn)
             attempted = True
@@ -194,7 +198,7 @@ class IntakeService:
         try:
             with self.db.transaction(write=True, actor=actor) as conn:
                 current = self._draft(conn, actor, draft_id, editable=True)
-                if not self._enabled(conn, current):
+                if not self._enabled(conn, current) or self._configuration_input(metadata) != digest:
                     raise AccountingError("企业处理配置已改变，识别结果未发布", 403)
                 checks = [] if error else extraction_checks(result.data.model_dump()["documents"], [page.page for page in pages], {page.page: page.native_text for page in pages})
                 conn.execute("UPDATE intake_runs SET status=?,result_json=?,usage_json=?,error_code=?,error_detail=?,checks_json=?,finished_at=? WHERE id=? AND status='running'", ("failed" if error else "succeeded", None if error else encode(result.data.model_dump()), encode(result.usage.model_dump()) if result and result.usage else "{}", error.code if error else "", error.detail if error else "", encode(checks), now(), run_id))
@@ -202,6 +206,12 @@ class IntakeService:
         except BaseException:
             self._abandon(actor, run_id)
             raise
+
+    def _configuration_input(self, attachment):
+        settings = effective_settings(self.provider.settings, "ocr")
+        return fingerprint({"sha256": attachment["sha256"], "model": settings.model,
+                            "provider": settings.base_url, "format": settings.response_format,
+                            "prompt": EXTRACTION_PROMPT_VERSION})
 
     def _abandon(self, actor, run_id):
         try:
@@ -246,7 +256,7 @@ class IntakeService:
                     finished = self.intelligence._finish(conn, actor, transferred, ProviderResult(recognized, prior["provider"], prior["model"], prior["prompt_version"], None), cache_hit=True)
                     for issue in json.loads(prior["checks_json"]):
                         self.intelligence._record_finding(conn, event_row, finished["id"], issue, fingerprint({"run": finished["id"], "issue": issue}))
-                    current_config = fingerprint({"sha256": attachment["sha256"], "model": self.provider.settings.vision_model, "provider": self.provider.settings.base_url, "prompt": EXTRACTION_PROMPT_VERSION})
+                    current_config = self._configuration_input(attachment)
                     if self._enabled(conn, draft) and prior["input_fingerprint"] == current_config and not any(issue["severity"] == "blocking" for issue in json.loads(prior["checks_json"])):
                         store_cache(self.db, conn, actor, event_row, attachment, config_key(self.provider.settings, attachment["media_type"]), finished)
             if request.submit:

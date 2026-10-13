@@ -32,6 +32,19 @@ python scripts/backup_accounting.py restore 'C:\试点备份\pg-001' --destinati
 
 数据库创建、角色授权和部署切换必须另行完成。恢复使用 `--no-owner --no-privileges`，因此 **恢复数据库不直接作为生产服务使用**：先由管理员重新核验对象所有者、SECURITY DEFINER、FORCE RLS、运行角色授权及新运行登录账号。备份管理员不能成为 API 的运行账号。Supabase Auth、Storage 和项目配置另按云服务自己的恢复方式备份，本脚本不操作真实云项目。
 
+## Supabase 私有原件的离线备份
+
+Zeabur 多服务 Demo 使用同一个私有 bucket，不再传入本地原件目录。在独立维护终端配置专用备份数据库连接及与服务相同的 `ACCOUNTING_STORAGE_*`；不要把备份管理员连接注入运行服务。执行：
+
+```powershell
+python scripts/backup_accounting.py backup --database-env ACCOUNTING_BACKUP_DATABASE_URL --configured-storage --destination 'C:\试点备份\supabase-001'
+python scripts/backup_accounting.py verify 'C:\试点备份\supabase-001'
+```
+
+此模式只读取 private bucket metadata 和数据库快照引用的对象，逐件校验 SHA-256 / 长度，保存到受控备份目录；不创建 bucket、不签发公共链接、不上传或删除对象。bucket 公开、原件丢失、响应超时或哈希不符时，不写出完成清单。清单仍采用相同格式，不记录项目地址、bucket 密钥或数据库连接。
+
+`restore` 继续把原件还原至新目录 `originals/`，不自动上传到云存储。恢复到新的 Supabase 环境仍需重建 Auth / 数据库角色及 ACL，并将核验过的原件按原存储键放入**新的私有 bucket**，验证后才切换服务。不能把还原到本地目录视为云端原件已恢复。新 Demo 可直接新建客户导入资料；现有 SQLite 业务库迁至 PostgreSQL 的自动搬迁不在此工具范围内。
+
 ## 演练验收
 
 1. 在隔离目录/空库恢复，保持真实模型、财务软件发送及自动 worker 未启动。

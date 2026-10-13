@@ -10,6 +10,7 @@ from ..accounting.domain import AccountingError
 from ..accounting.models import cents_to_money
 from ..accounting.service import fingerprint
 from ..business.service import BusinessService, encode
+from ..intelligence.provider import effective_settings
 from .pricing import decimal_micro, micro_decimal
 
 OPS_ROLES = {"owner", "admin", "finance"}
@@ -235,7 +236,7 @@ class OperationsService:
         settings = self.intelligence.provider.settings if self.intelligence else None
         return {kind: {"configured": rate.configured, "input_per_million": micro_decimal(decimal_micro(rate.input_per_million)) if rate.input_per_million is not None else None,
                        "output_per_million": micro_decimal(decimal_micro(rate.output_per_million)) if rate.output_per_million is not None else None,
-                       "model": getattr(settings, {"ocr": "vision_model", "proposal": "journal_model", "chat": "chat_model"}[kind], "")}
+                       "model": effective_settings(settings, {"ocr": "ocr", "proposal": "journal", "chat": "chat"}[kind]).model if settings else ""}
                 for kind, rate in (("ocr", self.meter.pricing.ocr), ("proposal", self.meter.pricing.proposal), ("chat", self.meter.pricing.chat))}
 
     def overview(self, actor, company_id, period=None):

@@ -83,18 +83,29 @@ def pg_tool(name, args, url):
         raise ValueError(f"{name} 未成功；请在本机检查数据库授权、客户端版本和目标，未导出任何连接信息")
 
 
-def copy_originals(storage_root, target, originals):
-    storage_root = Path(storage_root).resolve()
+def copy_originals(storage_root, target, originals, *, storage_store=None):
+    storage_root = Path(storage_root).resolve() if storage_store is None else None
     files = []
     for item in originals:
-        source = safe_child(storage_root, item["storage_key"])
-        if not source.is_file() or source.stat().st_size != item["size_bytes"] or sha256(source) != item["sha256"]:
-            raise ValueError("数据库快照引用的原件不存在或哈希不符，备份未完成")
+        if storage_store is None:
+            source = safe_child(storage_root, item["storage_key"])
+            if not source.is_file() or source.stat().st_size != item["size_bytes"] or sha256(source) != item["sha256"]:
+                raise ValueError("数据库快照引用的原件不存在或哈希不符，备份未完成")
+        else:
+            # Read through the same private backend as the API. It bounds bytes
+            # and checks snapshot SHA/size; no signed/public object URLs.
+            data = storage_store.read(item)
         relative = "originals/" + item["storage_key"].replace("\\", "/")
         destination = safe_child(target, relative)
         destination.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        with source.open("rb") as src, destination.open("xb") as dst:
-            shutil.copyfileobj(src, dst)
+        with destination.open("xb") as dst:
+            if storage_store is None:
+                with source.open("rb") as src:
+                    shutil.copyfileobj(src, dst)
+            else:
+                dst.write(data)
+            dst.flush()
+            os.fsync(dst.fileno())
         destination.chmod(0o600)
         if sha256(destination) != item["sha256"]:
             raise ValueError("复制后的原件哈希不符")
@@ -102,7 +113,9 @@ def copy_originals(storage_root, target, originals):
     return files
 
 
-def backup(database, storage_root, destination):
+def backup(database, storage_root, destination, *, storage_store=None):
+    if storage_store is not None:
+        storage_store.verify_private()
     target = empty_destination(destination)
     postgres = database.startswith(("postgres://", "postgresql://"))
     if postgres:
@@ -121,7 +134,7 @@ def backup(database, storage_root, destination):
                         raise ValueError("同一原件存储键对应不同哈希")
             dump = target / "database.dump"
             pg_tool("pg_dump", ["--format=custom", "--schema=accounting", "--no-password", "--snapshot", snapshot, "--file", str(dump)], database)
-            files = copy_originals(storage_root, target, list(originals.values()))
+            files = copy_originals(storage_root, target, list(originals.values()), storage_store=storage_store)
     else:
         source = Path(database).resolve()
         if not source.is_file() or source.is_symlink():
@@ -132,7 +145,7 @@ def backup(database, storage_root, destination):
             if snapshot.execute("PRAGMA integrity_check").fetchone()[0] != "ok" or snapshot.execute("PRAGMA foreign_key_check").fetchall():
                 raise ValueError("SQLite 快照完整性验证失败")
             versions, originals = sqlite_metadata(snapshot)
-        files = copy_originals(storage_root, target, originals)
+        files = copy_originals(storage_root, target, originals, storage_store=storage_store)
     dump.chmod(0o600)
     files.insert(0, {"path": dump.name, "sha256": sha256(dump), "size_bytes": dump.stat().st_size})
     manifest = {"format_version": FORMAT_VERSION, "dialect": "postgres" if postgres else "sqlite", "created_at": datetime.now(timezone.utc).isoformat(), "migrations": versions, "files": files, "consistency": "exported_repeatable_read_snapshot" if postgres else "sqlite_backup_snapshot", "contains_credentials": False}
@@ -227,7 +240,9 @@ def main():
     sub = parser.add_subparsers(dest="command", required=True)
     create = sub.add_parser("backup")
     create.add_argument("--database-env", default="ACCOUNTING_DATABASE_URL")
-    create.add_argument("--storage-root", required=True)
+    source_storage = create.add_mutually_exclusive_group(required=True)
+    source_storage.add_argument("--storage-root", help="本地原件的持久目录")
+    source_storage.add_argument("--configured-storage", action="store_true", help="使用 ACCOUNTING_STORAGE_* 的私有共享存储；不创建或删除对象")
     create.add_argument("--destination", required=True)
     check = sub.add_parser("verify")
     check.add_argument("directory")
@@ -241,7 +256,12 @@ def main():
             database = os.getenv(args.database_env)
             if not database:
                 raise ValueError("指定数据库环境变量未配置")
-            result = backup(database, args.storage_root, args.destination)
+            storage = None
+            if args.configured_storage:
+                sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "nexus_backend"))
+                from app.storage.factory import create_attachment_store
+                storage = create_attachment_store()
+            result = backup(database, args.storage_root, args.destination, storage_store=storage)
             print(json.dumps({"completed": True, "dialect": result["dialect"], "verified_files": len(result["files"]), "migration_count": len(result["migrations"])}, ensure_ascii=False))
         elif args.command == "verify":
             result = verify(args.directory)

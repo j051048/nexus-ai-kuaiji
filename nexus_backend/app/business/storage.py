@@ -1,7 +1,6 @@
 """Private, immutable attachment blobs. Metadata and authorization live in DB."""
 import hashlib
 import io
-import os
 import re
 import warnings
 from pathlib import Path
@@ -11,11 +10,11 @@ from PIL import Image, UnidentifiedImageError
 from starlette.exceptions import HTTPException
 
 from ..accounting.domain import AccountingError
+from ..storage.local import KEY_PATTERN, LocalBlobBackend, check_key
 
 MAX_FILE_BYTES = 10 * 1024 * 1024
 MAX_REQUEST_BYTES = MAX_FILE_BYTES + 128 * 1024
 MAX_IMAGE_PIXELS = 20_000_000
-KEY_PATTERN = re.compile(r"[0-9a-f]{2}/[0-9a-f]{32}\Z")
 MIME_EXTENSIONS = {"application/pdf": {".pdf"}, "image/png": {".png"}, "image/jpeg": {".jpg", ".jpeg"}, "image/webp": {".webp"}}
 
 
@@ -47,49 +46,74 @@ def validate_attachment(filename, claimed_type, data):
     return name, detected
 
 
+class StoredOriginal(dict):
+    """Ephemeral cleanup capability; never reconstructed from a database row."""
+    def __init__(self, metadata, backend):
+        super().__init__(metadata)
+        self._backend = backend
+        self._created_key = metadata["storage_key"]
+        self._discardable = True
+
+
+def retain_original(metadata):
+    """Protect a blob before COMMIT: uncertain acknowledgements retain evidence."""
+    if isinstance(metadata, StoredOriginal):
+        metadata._discardable = False
+
+
 class AttachmentStore:
-    def __init__(self, root):
-        self.root = Path(root).resolve()
-        self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
+    def __init__(self, root=None, *, backend=None):
+        if backend is None and root is None:
+            raise ValueError("附件存储须配置本地持久目录或共享存储后端")
+        self.backend = backend if backend is not None else LocalBlobBackend(root)
+        self.root = self.backend.root
+
+    def clone(self, store_type=None):
+        return (store_type or type(self))(backend=self.backend)
+
+    def verify_private(self):
+        if hasattr(self.backend, "verify_private"):
+            return self.backend.verify_private()
+        return {"private": True, "backend": "local"}
 
     def _path(self, key):
-        if not isinstance(key, str) or not KEY_PATTERN.fullmatch(key):
-            raise AccountingError("附件存储记录无效", 503)
-        path = (self.root / key).resolve()
-        if not path.is_relative_to(self.root):
-            raise AccountingError("附件存储记录无效", 503)
-        return path
+        if not isinstance(self.backend, LocalBlobBackend):
+            raise AccountingError("共享对象存储没有可读取的本地原件路径", 503)
+        return self.backend.path(key)
+
+    def put_original(self, name, detected, data):
+        if not isinstance(data, bytes) or not data or len(data) > MAX_FILE_BYTES:
+            raise AccountingError("附件不能为空，单个文件最多 10 MB", 413)
+        blob_id = uuid4().hex
+        key = f"{blob_id[:2]}/{blob_id}"
+        self.backend.put(key, data, detected)
+        return StoredOriginal({"id": blob_id, "storage_key": key, "filename": name, "media_type": detected,
+                               "sha256": hashlib.sha256(data).hexdigest(), "size_bytes": len(data)}, self.backend)
 
     def put(self, filename, content_type, data):
         name, detected = validate_attachment(filename, content_type, data)
-        blob_id = uuid4().hex
-        key = f"{blob_id[:2]}/{blob_id}"
-        path = self._path(key)
-        path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        try:
-            with path.open("xb") as stream:
-                stream.write(data)
-                stream.flush()
-                os.fsync(stream.fileno())
-            path.chmod(0o600)
-        except OSError:
-            if path.exists():
-                path.unlink()
-            raise AccountingError("附件存储暂时不可用，请重试", 503) from None
-        return {"id": blob_id, "storage_key": key, "filename": name, "media_type": detected,
-                "sha256": hashlib.sha256(data).hexdigest(), "size_bytes": len(data)}
+        return self.put_original(name, detected, data)
+
+    def retain(self, metadata):
+        retain_original(metadata)
 
     def discard(self, metadata):
-        # Only the newly generated blob from a failed transaction is discarded.
-        self._path(metadata["storage_key"]).unlink(missing_ok=True)
+        # A persisted metadata row (or a clone in another process) carries no
+        # deletion capability. Never remove evidence after an uncertain COMMIT.
+        if not isinstance(metadata, StoredOriginal) or metadata._backend is not self.backend or not metadata._discardable:
+            return
+        if metadata.get("storage_key") != metadata._created_key:
+            raise AccountingError("新上传原件的清理范围无效", 503)
+        metadata._discardable = False
+        self.backend.discard(metadata._created_key)
 
     def read(self, metadata):
-        path = self._path(metadata["storage_key"])
-        try:
-            with path.open("rb") as stream:
-                data = stream.read(MAX_FILE_BYTES + 1)
-        except OSError:
-            raise AccountingError("附件原件暂不可用，请联系管理员恢复", 503) from None
+        metadata = dict(metadata)
+        check_key(metadata["storage_key"])
+        size, digest = metadata.get("size_bytes"), metadata.get("sha256")
+        if type(size) is not int or not 1 <= size <= MAX_FILE_BYTES or not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
+            raise AccountingError("附件存储记录无效", 503)
+        data = self.backend.read(metadata["storage_key"], size)
         if len(data) != metadata["size_bytes"] or hashlib.sha256(data).hexdigest() != metadata["sha256"]:
             raise AccountingError("附件完整性校验失败，请联系管理员恢复原件", 503)
         return data

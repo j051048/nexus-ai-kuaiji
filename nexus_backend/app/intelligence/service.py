@@ -13,7 +13,7 @@ from .checks import extraction_checks, reconcile_checks, finding, normalized, in
 from .documents import prepare_document
 from .models import InvoiceExtraction, JournalSuggestion, ProviderResult
 from .cache import config_key, read_cache, store_cache
-from .provider import AISettings, OpenAICompatibleProvider, ProviderError, EXTRACTION_PROMPT_VERSION, JOURNAL_PROMPT_VERSION
+from .provider import AISettings, OpenAICompatibleProvider, ProviderError, EXTRACTION_PROMPT_VERSION, JOURNAL_PROMPT_VERSION, effective_settings
 
 
 class IntelligenceService:
@@ -51,9 +51,12 @@ class IntelligenceService:
                 except AccountingError as error:
                     if error.status not in {403, 404}:
                         raise
+        labels = list(dict.fromkeys(urlsplit(effective_settings(settings, scenario).base_url).hostname
+                                   for scenario in ("ocr", "journal")
+                                   if getattr(settings, "extraction_available" if scenario == "ocr" else "suggestion_available")))
         return {"configured": settings.extraction_available or settings.suggestion_available,
                 "vision_ready": settings.extraction_available, "journal_ready": settings.suggestion_available,
-                "provider_label": urlsplit(settings.base_url).hostname or "尚未配置模型服务", "enabled_company_ids": companies}
+                "provider_label": " / ".join(label for label in labels if label) or "尚未配置模型服务", "enabled_company_ids": companies}
 
     def company_settings(self, actor, company_id, enabled=None):
         with self.db.transaction(write=enabled is not None, actor=actor) as conn:
@@ -140,7 +143,7 @@ class IntelligenceService:
         run_id = uuid4().hex
         conn.execute("INSERT INTO ai_runs(id,firm_id,company_id,event_id,kind,attachment_id,draft_id,book_id,input_version,input_fingerprint,idempotency_key,status,result_json,provider,model,prompt_version,usage_json,error_code,error_detail,created_by,created_at,finished_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,'running',NULL,?,?,?,'{}','','',?,?,NULL)",
                      (run_id, actor.firm_id, event["company_id"], event["id"], kind, attachment_id, draft["id"] if draft else None, draft["book_id"] if draft else None,
-                      input_version if input_version is not None else draft["version"] if draft else event["version"], digest, key, urlsplit(self.provider.settings.base_url).hostname or "openai-compatible", model, prompt, actor.user_id, now()))
+                      input_version if input_version is not None else draft["version"] if draft else event["version"], digest, key, urlsplit(effective_settings(self.provider.settings, "ocr" if kind == "ocr" else "journal").base_url).hostname or "openai-compatible", model, prompt, actor.user_id, now()))
         self.business._audit(conn, actor, "intelligence." + kind + ".claim", run_id, {"event_id": event["id"], "input_version": input_version if input_version is not None else draft["version"] if draft else event["version"], "fact_version": event["fact_version"]})
         return conn.execute("SELECT * FROM ai_runs WHERE id=?", (run_id,)).fetchone(), True
 
@@ -187,7 +190,7 @@ class IntelligenceService:
             cache_key = config_key(self.provider.settings, attachment["media_type"])
             digest = fingerprint({"attachment_id": attachment["id"], "sha256": attachment["sha256"], "config": cache_key,
                                   "fact_version": event["fact_version"], "force_refresh": request.force_refresh})
-            run, execute = self._claim(conn, actor, event, "ocr", request.idempotency_key, digest, self.provider.settings.vision_model, EXTRACTION_PROMPT_VERSION,
+            run, execute = self._claim(conn, actor, event, "ocr", request.idempotency_key, digest, effective_settings(self.provider.settings, "ocr").model, EXTRACTION_PROMPT_VERSION,
                                        attachment_id=attachment["id"], input_version=request.expected_fact_version)
             if execution and execute:
                 execution.bind(conn, run)
@@ -474,11 +477,12 @@ class IntelligenceService:
             documents.extend({**document, **ref} for document in json.loads(run["result_json"])["documents"])
         master_context = self.ledger._ledger_guard().context_in_transaction(conn, actor, event['company_id'], json.loads(event['payload']), book_id)
         # Reviews may change after a proposal; facts, account set and draft version may not.
+        settings = effective_settings(self.provider.settings, "journal")
         fact_context = {"draft_id": draft_id, "draft_version": draft["version"], "source": dict(source),
                         "event_fact_version": event["fact_version"], "templates": templates,
                         "evidence_ref": self.ledger._effective_evidence(conn, source), "accounts": accounts,
-                        "assessment": assessment["fingerprint"], "provider": self.provider.settings.base_url,
-                        "format": self.provider.settings.response_format, "model": self.provider.settings.journal_model,
+                        "assessment": assessment["fingerprint"], "provider": settings.base_url,
+                        "format": settings.response_format, "model": settings.model,
                         "prompt": JOURNAL_PROMPT_VERSION,
                         "company_rules": self.ledger._learning_guard().policy_fingerprint(conn, actor, book_id),
                         "master_context": master_context,
@@ -530,7 +534,7 @@ class IntelligenceService:
             if execution:
                 execution.check(conn)
                 execution.inputs(event, draft)
-            run, execute = self._claim(conn, actor, event, "proposal", request.idempotency_key, digest, self.provider.settings.journal_model, JOURNAL_PROMPT_VERSION, draft=draft)
+            run, execute = self._claim(conn, actor, event, "proposal", request.idempotency_key, digest, effective_settings(self.provider.settings, "journal").model, JOURNAL_PROMPT_VERSION, draft=draft)
             if execution and execute:
                 execution.bind(conn, run)
         if not execute:

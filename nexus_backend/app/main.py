@@ -56,7 +56,9 @@ from .tools.accounting_tools import AccountingSuggestionTool
 from .business.api import build_business_router
 from .business.demo import PERSONAS, bootstrap_business_demo
 from .business.service import BusinessService
-from .business.storage import AttachmentStore, AttachmentBodyLimitMiddleware
+from .business.storage import AttachmentBodyLimitMiddleware
+from .storage.factory import create_attachment_store
+from .storage.settings import StorageSettings
 from .intelligence.provider import ProviderError
 from .intelligence.router import build_intelligence_router
 from .intelligence.service import IntelligenceService
@@ -131,6 +133,7 @@ def create_app(db_path: str | Path | None = None, seed: bool | None = None, auth
     settings = auth_settings or AuthSettings.from_env()
     path = db_path or os.getenv("ACCOUNTING_DATABASE_URL") or os.getenv("ACCOUNTING_DB_PATH") or Path(__file__).resolve().parents[1] / "data" / "accounting.db"
     production = validate_environment(settings, path)
+    storage_settings = StorageSettings.from_env()
     configured_attachment_root = attachment_root or os.getenv("ACCOUNTING_ATTACHMENT_ROOT")
     storage_path = configured_attachment_root or Path(__file__).resolve().parents[1] / "private-attachments"
     hosts = [x.strip() for x in os.getenv("ACCOUNTING_ALLOWED_HOSTS", "localhost,127.0.0.1,[::1],::1").split(",") if x.strip()]
@@ -147,8 +150,8 @@ def create_app(db_path: str | Path | None = None, seed: bool | None = None, auth
             valid = False
         if not valid:
             raise RuntimeError("ACCOUNTING_ALLOWED_ORIGINS 必须为完整网页来源，生产须使用 HTTPS")
-    if production and not configured_attachment_root:
-        raise RuntimeError("生产模式须显式配置 ACCOUNTING_ATTACHMENT_ROOT 的持久私有存储目录")
+    if production and storage_settings.backend == "local" and not configured_attachment_root:
+        raise RuntimeError("本地原件存储的生产模式须配置 ACCOUNTING_ATTACHMENT_ROOT 持久目录；独立容器可改用私有 Supabase Storage")
 
     @asynccontextmanager
     async def lifespan(application):
@@ -183,7 +186,8 @@ def create_app(db_path: str | Path | None = None, seed: bool | None = None, auth
         application.state.service.bank_import = application.state.bank_import
         application.state.delivery = DeliveryService(database)
         application.state.service.delivery = application.state.delivery
-        application.state.attachment_store = AttachmentStore(storage_path)
+        application.state.attachment_store = create_attachment_store(storage_path, settings=storage_settings)
+        await run_in_threadpool(application.state.attachment_store.verify_private)
         application.state.source_history = SourceHistoryService(database, application.state.attachment_store)
         application.state.intelligence = IntelligenceService(database, application.state.attachment_store, provider=intelligence_provider)
         application.state.meter = MeterService(database, pricing=model_pricing)
@@ -282,7 +286,8 @@ def create_app(db_path: str | Path | None = None, seed: bool | None = None, auth
                 except AuthError as error:
                     return JSONResponse({"detail": error.detail}, status_code=error.status)
         response = await call_next(request)
-        response.headers["Cache-Control"] = "no-store"
+        private = "private" in {part.strip().lower() for part in response.headers.get("Cache-Control", "").split(",")}
+        response.headers["Cache-Control"] = "private, no-store" if private else "no-store"
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
         return response
