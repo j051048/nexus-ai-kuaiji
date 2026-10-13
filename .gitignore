@@ -131,3 +131,7 @@ artifacts/
 # Vercel local project/build state (environment and account metadata)
 .vercel/
 **/.vercel/
+.vercel
+.env*
+!.env*.example
+!**/.env*.example

@@ -1,6 +1,6 @@
 # Vercel 前端与 API 网关
 
-按用户确认的分工：Vercel 部署 Vite 前端与轻量 API 网关，实际会计 FastAPI、PostgreSQL、私有持久附件及 OCR／迁移／对话 worker 保留在持久服务器。服务名称、公开范围与调用关系仍待用户最终确认；本轮没有执行云端部署。
+按用户确认的分工：Vercel 部署 Vite 前端与轻量 API 网关，实际会计 FastAPI、PostgreSQL、私有持久附件及 OCR／迁移／对话 worker 保留在持久服务器。`app` 与 `api_gateway` 已完成真实云端构建和正式域名验证，公开路径及调用关系见下表。
 
 | 服务 | 根目录 | 构建／入口 | 公开路径 |
 | --- | --- | --- | --- |
@@ -55,6 +55,6 @@ npx vercel@63.1.2 dev -L
 
 -L 不连接 Vercel 账号；生产不启用本地 HTTP。CLI 不自动读取旧平台环境。普通 npm run dev 继续使用 ACCOUNTING_API_PROXY 本地代理，这个变量不参与生产网关路由。[官方本地服务开发](https://vercel.com/docs/services)
 
-.vercelignore 排除原会计后端、私有数据、旧平台快照和本地产物；独立网关仅需 FastAPI/httpx。各服务自动生成的 .venv/.vercel 被 Git 和上传规则排除。
+.vercelignore 排除原会计后端、私有数据、旧平台快照和本地产物；独立网关仅需 FastAPI/httpx。各服务自动生成的 .venv/.vercel 被 Git 和上传规则排除。CLI 上传还显式排除 `.mcp.json`、`.codex-*`、全部 `.env*`、日志和数据库备份：存在 `.vercelignore` 时不要假定 Git 忽略规则足以保护私密文件，部署前用 `vercel deploy --dry` 核对实际上传列表。
 
-本轮结果见 [验证记录](VALIDATION_VERCEL_20261013.md)。实际公网后端 HTTPS 地址、云端构建与运行尚待提供并验证。
+结果见 [验证记录](VALIDATION_VERCEL_20261013.md)。当前正式前端为 `https://kuaiji.flydao.top`，外部 API 为 `https://kuaiji.zeabur.app`；经前端域名访问 `/api/health` 已返回 PostgreSQL 与 Supabase 登录正常。供应商密钥、模型 ID、报价及企业处理开关仍需单独配置，基础部署成功不表示 AI 自动记账已验收。

@@ -114,6 +114,14 @@ ACCOUNTING_AI_ALLOW_HTTP=0
 
 建议先部署 API，启动自检后再启动三后台。启动后台前确认数据库迁移完成，避免尚未具备权限的进程反复重启。Zeabur 默认 TCP 健康检查可检测四服务；三个后台也可设置 HTTP 健康检查路径 `/healthz`。API 默认 TCP 检查不受 Host 白名单影响。探针只确认当前进程初始化完成，供应商可用性、任务积压与后续数据库故障继续由工作台心跳及告警判断。参考 [官方健康检查说明](https://zeabur.com/docs/en-US/operations/monitoring/health-checks)。Zeabur 中只有 API 要绑定 HTTPS 域名；入口及域名配置参考 [官方公网网络说明](https://zeabur.com/docs/en-US/deploy/networking/public-networking)。
 
+本次实际 Git 部署发现平台运行设置会覆盖 Dockerfile 的 `USER`。四个服务的部署规格已显式设置 `source.runAsUserID=10001`，仓库根目录、环境变量、域名及端口保持原配置。新建服务和 Git 自动重建后，应在容器终端核对 PID1，而不是只检查镜像声明或当前终端用户：
+
+```sh
+python -c 'print(next(line for line in open("/proc/1/status") if line.startswith("Uid:")))'
+```
+
+应显示 UID 10001。规格调整使用已核验的 Zeabur 部署接口并保留现有环境；不要把本机私密运维脚本、令牌或环境文件提交到仓库。
+
 ## 3. 配置 Vercel
 
 Vercel 从仓库根目录读取 `vercel.json`；沿用 `app` 与 `api_gateway` 两服务，网关 `/api/*` 先匹配，前端兜底。仅在网关服务端设置：

@@ -1,5 +1,13 @@
 # Exclude local private state and inherited platform material from CLI uploads.
 .codex/
+.codex
+.codex/**
+.codex-*
+.mcp.json
+**/.mcp.json
+.claude/
+.agent/
+.cache/
 .agents/
 .legacy-snapshot/
 .venv/
@@ -21,3 +29,12 @@ nexus_backend/private-attachments/
 .env.local
 .env.*.local
 nexus_backend/.env
+.env*
+**/*.local
+*.log
+**/*.log
+*.db
+**/*.db
+*.dump
+**/*.dump
+**/*.sqlite*
