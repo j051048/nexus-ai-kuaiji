@@ -1,4 +1,5 @@
 """Explicit CNY tariff inputs. No exchange-rate guesses or supplier price defaults."""
+
 from dataclasses import dataclass
 import os
 import re
@@ -10,7 +11,9 @@ MAX_TOKENS = 10_000_000
 
 
 def decimal_micro(value):
-    if not isinstance(value, str) or not re.fullmatch(r"(?:0|[1-9][0-9]{0,11})(?:\.[0-9]{1,6})?", value):
+    if not isinstance(value, str) or not re.fullmatch(
+        r"(?:0|[1-9][0-9]{0,11})(?:\.[0-9]{1,6})?", value
+    ):
         raise ValueError("费用须为非负十进制字符串，最多6位小数")
     whole, _, fraction = value.partition(".")
     result = int(whole) * MICRO_PER_YUAN + int(fraction.ljust(6, "0") or "0")
@@ -38,9 +41,17 @@ class Rate:
         return self.input_per_million is not None and self.output_per_million is not None
 
     def snapshot(self, provider, model):
-        return {"configured": self.configured, "input_per_million_micro": decimal_micro(self.input_per_million) if self.input_per_million is not None else None,
-                "output_per_million_micro": decimal_micro(self.output_per_million) if self.output_per_million is not None else None,
-                "provider": provider, "model": model}
+        return {
+            "configured": self.configured,
+            "input_per_million_micro": decimal_micro(self.input_per_million)
+            if self.input_per_million is not None
+            else None,
+            "output_per_million_micro": decimal_micro(self.output_per_million)
+            if self.output_per_million is not None
+            else None,
+            "provider": provider,
+            "model": model,
+        }
 
 
 @dataclass(frozen=True)
@@ -52,12 +63,16 @@ class Pricing:
     @classmethod
     def from_env(cls):
         def rate(kind):
-            values = [os.getenv(f"ACCOUNTING_AI_{kind}_{side}_CNY_PER_MILLION", "").strip() or None for side in ("INPUT", "OUTPUT")]
+            values = [
+                os.getenv(f"ACCOUNTING_AI_{kind}_{side}_CNY_PER_MILLION", "").strip() or None
+                for side in ("INPUT", "OUTPUT")
+            ]
             try:
                 return Rate(*values)
             except ValueError:
                 # Invalid pricing can never silently become a zero-cost tariff.
                 return Rate()
+
         return cls(ocr=rate("OCR"), proposal=rate("PROPOSAL"), chat=rate("CHAT"))
 
     def for_kind(self, kind):

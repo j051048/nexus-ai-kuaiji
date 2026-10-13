@@ -14,16 +14,16 @@ class PeriodCreate(InputModel):
     inherit_rule_ids: list[StrictStr] = Field(default_factory=list, max_length=100)
     idempotency_key: StrictStr = Field(min_length=8, max_length=120)
 
-    @field_validator('period')
+    @field_validator("period")
     @classmethod
     def valid_period(cls, value):
         return BookCreate.valid_period(value)
 
-    @field_validator('inherit_user_ids', 'inherit_rule_ids')
+    @field_validator("inherit_user_ids", "inherit_rule_ids")
     @classmethod
     def unique(cls, value):
         if len(value) != len(set(value)) or any(not item or len(item) > 100 for item in value):
-            raise ValueError('继承标识不得为空、重复或过长')
+            raise ValueError("继承标识不得为空、重复或过长")
         return sorted(value)
 
 
@@ -39,7 +39,7 @@ class ManagerGrant(InputModel):
 
 
 class EntityCreate(InputModel):
-    kind: Literal['counterparty', 'project', 'bank_account']
+    kind: Literal["counterparty", "project", "bank_account"]
     code: StrictStr = Field(min_length=1, max_length=100)
     name: StrictStr = Field(min_length=1, max_length=200)
 
@@ -59,7 +59,7 @@ class AliasCreate(InputModel):
 
 class AliasDecision(InputModel):
     expected_version: int = Field(strict=True, ge=1)
-    decision: Literal['approve', 'reject', 'retire']
+    decision: Literal["approve", "reject", "retire"]
     reason: StrictStr = Field(min_length=3, max_length=1000)
 
 
@@ -68,12 +68,12 @@ class InheritanceActivate(InputModel):
     negative_sample_ids: list[StrictStr] = Field(min_length=1, max_length=100)
     reason: StrictStr = Field(min_length=3, max_length=1000)
 
-    @field_validator('sample_ids')
+    @field_validator("sample_ids")
     @classmethod
     def positive(cls, value):
         return RuleCreate.unique_samples(value)
 
-    @field_validator('negative_sample_ids')
+    @field_validator("negative_sample_ids")
     @classmethod
     def negative(cls, value):
         return RuleEvaluate.unique_samples(value)

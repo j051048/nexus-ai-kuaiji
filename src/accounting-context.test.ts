@@ -1,7 +1,24 @@
 import { describe, expect, it } from 'vitest';
-import { contextActions, contextQuestion, evidencePage, matchesAccountingScope, type AccountingContextAction, type AccountingContextScope } from './accounting-context';
+import {
+  contextActions,
+  contextQuestion,
+  evidencePage,
+  matchesAccountingScope,
+  type AccountingContextAction,
+  type AccountingContextScope,
+} from './accounting-context';
 
-const scope: AccountingContextScope = { book_id: 'b1', company_id: 'c1', company_name: '企业一', book_name: '账套', period: '2026-10', period_status: 'open', draft_id: 'd1', draft_version: 3, fact_version: 2 };
+const scope: AccountingContextScope = {
+  book_id: 'b1',
+  company_id: 'c1',
+  company_name: '企业一',
+  book_name: '账套',
+  period: '2026-10',
+  period_status: 'open',
+  draft_id: 'd1',
+  draft_version: 3,
+  fact_version: 2,
+};
 describe('会计上下文边界', () => {
   it('账套、凭证或事实版本变化后不能呈现旧回复', () => {
     expect(matchesAccountingScope(scope, 'b1', 'd1', 3)).toBe(true);

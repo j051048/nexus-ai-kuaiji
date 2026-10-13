@@ -1,4 +1,5 @@
 """Construct the same backend for API, OCR, chat and migration processes."""
+
 import os
 
 from .settings import StorageSettings
@@ -7,6 +8,7 @@ from .supabase import SupabaseBlobBackend
 
 def create_attachment_store(local_root=None, settings=None, client=None):
     from ..business.storage import AttachmentStore
+
     settings = settings or StorageSettings.from_env()
     if settings.backend == "supabase":
         return AttachmentStore(backend=SupabaseBlobBackend(settings, client=client))

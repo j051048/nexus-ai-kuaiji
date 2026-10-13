@@ -1,4 +1,5 @@
 """Authorization predicates are applied before totals and pagination."""
+
 from app.jobs.visibility import event_scope
 
 

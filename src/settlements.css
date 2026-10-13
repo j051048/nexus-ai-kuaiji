@@ -1,1 +1,158 @@
-.settlement-workbench{max-width:1260px;margin:0 auto}.settlement-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.settlement-scope{border-left:3px solid var(--green);background:#edf4ec;padding:13px 18px;margin-bottom:22px;font-size:12px;color:#577150}.settlement-registration,.settlement-allocation,.settlement-history{border:1px solid var(--line);background:#fff;border-radius:10px;padding:22px;margin-bottom:22px}.settlement-workbench h2{font-size:16px;font-weight:600;margin-bottom:15px}.settlement-workbench label{display:flex;flex-direction:column;gap:7px;font-size:12px;color:#6d7a67}.settlement-registration>label{margin:16px 0}.settlement-candidate,.settlement-history-row{display:flex;align-items:center;justify-content:space-between;gap:15px;border-top:1px solid var(--line);padding:16px 0;font-size:13px}.settlement-candidate p,.settlement-history-row p{font-size:11px;color:#7e8877;margin-top:7px}.settlement-candidate small{display:block;color:var(--orange);margin-top:6px}.settlement-muted{color:#85917a;font-size:12px;padding:20px 0}.settlement-allocation>div>p{font-size:12px;color:#7a8673;margin-bottom:18px}.settlement-bank-fact{padding:15px;margin-top:18px;border:1px solid var(--line);background:#f8faf4;display:flex;flex-direction:column;gap:8px;font-size:12px}.settlement-bank-fact span{color:#7b8772}.settlement-bank-fact small{color:var(--orange)}.settlement-table{overflow-x:auto;margin:18px 0}.settlement-table table{border-collapse:collapse;min-width:630px;width:100%;font-size:12px;text-align:left}.settlement-table th{background:#f6f9f2;font-weight:500;color:#778370}.settlement-table td,.settlement-table th{border-bottom:1px solid var(--line);padding:13px 12px;white-space:nowrap}.settlement-table input:not([type=checkbox]){width:140px;padding:7px 10px}.settlement-dialog{width:min(580px,calc(100vw - 32px));max-height:85vh;overflow-y:auto;background:#fff;padding:28px;border-radius:12px;box-shadow:0 18px 70px #173d3033}.settlement-dialog p{font-size:12px;color:#798473;line-height:1.8;margin-bottom:18px}.settlement-dialog label{margin-bottom:18px}.settlement-preview-line{display:flex;align-items:center;justify-content:space-between;gap:15px;padding:14px 0;border-top:1px solid var(--line);font-size:13px}.settlement-dialog>.settlement-actions{margin-top:22px;justify-content:flex-end}@media(max-width:850px){.settlement-candidate,.settlement-history-row{align-items:flex-start;flex-direction:column}.settlement-registration,.settlement-allocation,.settlement-history{padding:16px}}
+.settlement-workbench {
+  max-width: 1260px;
+  margin: 0 auto;
+}
+.settlement-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.settlement-scope {
+  border-left: 3px solid var(--green);
+  background: #edf4ec;
+  padding: 13px 18px;
+  margin-bottom: 22px;
+  font-size: 12px;
+  color: #577150;
+}
+.settlement-registration,
+.settlement-allocation,
+.settlement-history {
+  border: 1px solid var(--line);
+  background: #fff;
+  border-radius: 10px;
+  padding: 22px;
+  margin-bottom: 22px;
+}
+.settlement-workbench h2 {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 15px;
+}
+.settlement-workbench label {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  font-size: 12px;
+  color: #6d7a67;
+}
+.settlement-registration > label {
+  margin: 16px 0;
+}
+.settlement-candidate,
+.settlement-history-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 15px;
+  border-top: 1px solid var(--line);
+  padding: 16px 0;
+  font-size: 13px;
+}
+.settlement-candidate p,
+.settlement-history-row p {
+  font-size: 11px;
+  color: #7e8877;
+  margin-top: 7px;
+}
+.settlement-candidate small {
+  display: block;
+  color: var(--orange);
+  margin-top: 6px;
+}
+.settlement-muted {
+  color: #85917a;
+  font-size: 12px;
+  padding: 20px 0;
+}
+.settlement-allocation > div > p {
+  font-size: 12px;
+  color: #7a8673;
+  margin-bottom: 18px;
+}
+.settlement-bank-fact {
+  padding: 15px;
+  margin-top: 18px;
+  border: 1px solid var(--line);
+  background: #f8faf4;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 12px;
+}
+.settlement-bank-fact span {
+  color: #7b8772;
+}
+.settlement-bank-fact small {
+  color: var(--orange);
+}
+.settlement-table {
+  overflow-x: auto;
+  margin: 18px 0;
+}
+.settlement-table table {
+  border-collapse: collapse;
+  min-width: 630px;
+  width: 100%;
+  font-size: 12px;
+  text-align: left;
+}
+.settlement-table th {
+  background: #f6f9f2;
+  font-weight: 500;
+  color: #778370;
+}
+.settlement-table td,
+.settlement-table th {
+  border-bottom: 1px solid var(--line);
+  padding: 13px 12px;
+  white-space: nowrap;
+}
+.settlement-table input:not([type='checkbox']) {
+  width: 140px;
+  padding: 7px 10px;
+}
+.settlement-dialog {
+  width: min(580px, calc(100vw - 32px));
+  max-height: 85vh;
+  overflow-y: auto;
+  background: #fff;
+  padding: 28px;
+  border-radius: 12px;
+  box-shadow: 0 18px 70px #173d3033;
+}
+.settlement-dialog p {
+  font-size: 12px;
+  color: #798473;
+  line-height: 1.8;
+  margin-bottom: 18px;
+}
+.settlement-dialog label {
+  margin-bottom: 18px;
+}
+.settlement-preview-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 15px;
+  padding: 14px 0;
+  border-top: 1px solid var(--line);
+  font-size: 13px;
+}
+.settlement-dialog > .settlement-actions {
+  margin-top: 22px;
+  justify-content: flex-end;
+}
+@media (max-width: 850px) {
+  .settlement-candidate,
+  .settlement-history-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .settlement-registration,
+  .settlement-allocation,
+  .settlement-history {
+    padding: 16px;
+  }
+}

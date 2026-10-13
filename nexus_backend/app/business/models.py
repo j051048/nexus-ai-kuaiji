@@ -1,4 +1,5 @@
 """业务输入契约：固定人民币、精确字符串金额、严格乐观锁。"""
+
 import re
 from datetime import date
 from typing import Literal
@@ -66,3 +67,16 @@ class HandoffRequest(VersionRequest):
 
 class DepartmentApproverGrant(InputModel):
     user_id: StrictStr = Field(min_length=1, max_length=100)
+
+
+class SubmissionPolicyUpdate(InputModel):
+    mode: Literal["department", "direct"]
+    expected_version: int = Field(strict=True, ge=0)
+    reason: StrictStr = Field(min_length=1, max_length=1000)
+
+    @field_validator("reason")
+    @classmethod
+    def nonblank_reason(cls, value):
+        if not value.strip():
+            raise ValueError("请说明资料提交方式变更依据")
+        return value.strip()

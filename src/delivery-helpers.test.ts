@@ -1,12 +1,20 @@
 import { describe, expect, it } from 'vitest';
-import { decodeReceiptBytes, deliveryIssueLabel, deliveryStates, receiptFileFormat, validateReceiptFile } from './delivery-helpers';
+import {
+  decodeReceiptBytes,
+  deliveryIssueLabel,
+  deliveryStates,
+  receiptFileFormat,
+  validateReceiptFile,
+} from './delivery-helpers';
 
 describe('交付回执输入与核验文案', () => {
   it('只有中性 JSON / CSV 输入，大小边界明确', () => {
     expect(receiptFileFormat('客户回执.JSON')).toBe('json');
     expect(validateReceiptFile('客户回执.csv', 2_000_000)).toBe('csv');
-    for (const name of ['reply.xlsx', 'invoice.pdf', 'reply']) expect(() => receiptFileFormat(name)).toThrow();
-    for (const size of [0, -1, 2_000_001, NaN]) expect(() => validateReceiptFile('reply.json', size)).toThrow();
+    for (const name of ['reply.xlsx', 'invoice.pdf', 'reply'])
+      expect(() => receiptFileFormat(name)).toThrow();
+    for (const size of [0, -1, 2_000_001, NaN])
+      expect(() => validateReceiptFile('reply.json', size)).toThrow();
   });
   it('明确区分回执数据一致、缺字段和真实差异', () => {
     expect(deliveryStates.verified).toBe('回执数据一致');

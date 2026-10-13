@@ -1,0 +1,164 @@
+.journal-grid-wrap {
+  width: 100%;
+  margin: 14px 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.journal-entry-grid {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 12px;
+  background: #fff;
+}
+.journal-entry-grid thead {
+  background: var(--surface-soft, #f6f7f2);
+  color: var(--muted);
+}
+.journal-entry-grid th,
+.journal-entry-grid td {
+  padding: 8px 6px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+}
+.journal-entry-grid tbody tr:last-child > * {
+  border-bottom: 0;
+}
+.journal-entry-grid .journal-grid-index {
+  width: 28px;
+  padding-left: 10px;
+  font-weight: 500;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.journal-entry-grid .journal-grid-amount {
+  width: 92px;
+  text-align: right;
+}
+.journal-entry-grid .journal-grid-action {
+  width: 30px;
+  text-align: center;
+}
+.journal-entry-grid select,
+.journal-entry-grid input {
+  width: 100%;
+  min-width: 0;
+  padding: 8px 6px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  font: inherit;
+  color: var(--ink);
+  background: transparent;
+}
+.journal-entry-grid select:hover,
+.journal-entry-grid input:hover {
+  background: var(--surface-soft);
+  border-color: var(--line);
+}
+.journal-entry-grid select:focus,
+.journal-entry-grid input:focus {
+  outline: 2px solid var(--green, #3d6041);
+  outline-offset: -1px;
+  background: #fff;
+}
+.journal-entry-grid input {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.journal-entry-grid .journal-grid-auxiliary td {
+  padding: 8px 12px;
+  background: #fafbf7;
+}
+.journal-grid-auxiliary td > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+.journal-grid-auxiliary label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--muted);
+  flex: 1 1 140px;
+}
+.journal-grid-auxiliary label input {
+  text-align: left;
+  border-color: var(--line);
+  background: #fff;
+}
+@media (min-width: 1101px) {
+  .inline-review-facts {
+    padding: 18px 20px;
+  }
+  .inline-review-source {
+    gap: 10px 14px;
+    padding: 14px 0;
+  }
+  .inline-review-rationale {
+    padding: 12px 0;
+  }
+  .inline-review-header {
+    padding: 16px 24px;
+  }
+}
+@media (max-width: 700px) {
+  .journal-entry-grid,
+  .journal-entry-grid tbody {
+    display: block;
+  }
+  .journal-entry-grid thead {
+    display: none;
+  }
+  .journal-entry-grid .journal-grid-line {
+    display: grid;
+    grid-template-columns: 24px minmax(0, 1fr) minmax(0, 1fr) 30px;
+    padding: 8px;
+    gap: 6px;
+  }
+  .journal-entry-grid .journal-grid-line > * {
+    border: 0;
+    padding: 0;
+    width: auto;
+  }
+  .journal-entry-grid .journal-grid-index {
+    grid-column: 1;
+    grid-row: 1;
+    align-self: center;
+  }
+  .journal-entry-grid .journal-grid-account {
+    grid-column: 2 / 4;
+    grid-row: 1;
+  }
+  .journal-entry-grid .journal-grid-action {
+    grid-column: 4;
+    grid-row: 1;
+  }
+  .journal-entry-grid .journal-grid-amount {
+    grid-row: 2;
+    grid-column: 2;
+    text-align: left;
+  }
+  .journal-entry-grid .journal-grid-amount + .journal-grid-amount {
+    grid-column: 3;
+  }
+  .journal-entry-grid .journal-grid-amount::before {
+    content: attr(data-label);
+    display: block;
+    color: var(--muted);
+    padding-bottom: 5px;
+  }
+  .journal-entry-grid input,
+  .journal-entry-grid select {
+    border-color: var(--line);
+    padding: 10px;
+    background: var(--surface-soft);
+  }
+  .journal-entry-grid .journal-grid-auxiliary {
+    display: block;
+  }
+  .journal-entry-grid .journal-grid-auxiliary td {
+    display: block;
+  }
+}

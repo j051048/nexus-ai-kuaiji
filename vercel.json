@@ -6,7 +6,10 @@
       "framework": "vite",
       "buildCommand": "npm run build",
       "devCommand": "npm run dev -- --port $PORT",
-      "outputDirectory": "dist"
+      "outputDirectory": "dist",
+      "rewrites": [
+        { "source": "/workspace/:path*", "destination": "/index.html" }
+      ]
     },
     "api_gateway": {
       "root": "services/api_gateway",

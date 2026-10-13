@@ -1,87 +1,877 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowRight, CheckCircle2, FileCheck2, LoaderCircle, RefreshCw, TriangleAlert, X } from 'lucide-react';
+import {
+  ArrowRight,
+  CheckCircle2,
+  FileCheck2,
+  LoaderCircle,
+  RefreshCw,
+  TriangleAlert,
+  X,
+} from 'lucide-react';
 import { ApiError, api, errorMessage } from './api';
 import { migrationMoney, migrationUnsignedCents } from './legacy-migration-helpers';
 import type { Draft, JournalLine, Pagination, Session } from './types';
 import './legacy-migration-settlements.css';
 
 export type LegacyBankBook = { id: string; name: string; period: string; period_status?: string };
-type LegacyOpenItem = { id: string; external_id: string; record_id: string; kind: 'receivable' | 'payable'; source_account_code: string; target_account_code: string; counterparty_code: string; counterparty_id: string; counterparty_name?: string; occurred_on: string; due_on?: string | null; amount: string; allocated: string; remaining: string };
-type LegacyClearance = { id: string; bank_book_id: string; bank_source_id: string; bank_draft_id: string; created_by: string; created_at: string; allocations: { item_id: string; amount: string; target_account_code: string }[]; reversed: boolean; fingerprint: string; can_reverse: boolean };
-type SettlementOverview = { items: LegacyOpenItem[]; commands: LegacyClearance[]; pagination: Pagination };
-type BankChoice = { id: string; book_id: string; date: string; description: string; counterparty: string; amount: string; direction: 'expense' | 'income'; draft_id: string; draft_version: number };
-type BankChoices = { banks: BankChoice[]; bank_accounts: { code: string; name: string }[]; period_status: string; pagination: Pagination };
-type ClearancePreview = { id: string; fingerprint: string; expires_at: string; previous_draft: Draft; plan: { bank_book_id: string; bank_source_id: string; bank_draft_id: string; description: string; lines: JournalLine[]; total_cents: number | string; parts: { item_id: string; amount_cents: number | string; counterparty_name: string; clearing_account: string }[] } };
+type LegacyOpenItem = {
+  id: string;
+  external_id: string;
+  record_id: string;
+  kind: 'receivable' | 'payable';
+  source_account_code: string;
+  target_account_code: string;
+  counterparty_code: string;
+  counterparty_id: string;
+  counterparty_name?: string;
+  occurred_on: string;
+  due_on?: string | null;
+  amount: string;
+  allocated: string;
+  remaining: string;
+};
+type LegacyClearance = {
+  id: string;
+  bank_book_id: string;
+  bank_source_id: string;
+  bank_draft_id: string;
+  created_by: string;
+  created_at: string;
+  allocations: { item_id: string; amount: string; target_account_code: string }[];
+  reversed: boolean;
+  fingerprint: string;
+  can_reverse: boolean;
+};
+type SettlementOverview = {
+  items: LegacyOpenItem[];
+  commands: LegacyClearance[];
+  pagination: Pagination;
+};
+type BankChoice = {
+  id: string;
+  book_id: string;
+  date: string;
+  description: string;
+  counterparty: string;
+  amount: string;
+  direction: 'expense' | 'income';
+  draft_id: string;
+  draft_version: number;
+};
+type BankChoices = {
+  banks: BankChoice[];
+  bank_accounts: { code: string; name: string }[];
+  period_status: string;
+  pagination: Pagination;
+};
+type ClearancePreview = {
+  id: string;
+  fingerprint: string;
+  expires_at: string;
+  previous_draft: Draft;
+  plan: {
+    bank_book_id: string;
+    bank_source_id: string;
+    bank_draft_id: string;
+    description: string;
+    lines: JournalLine[];
+    total_cents: number | string;
+    parts: {
+      item_id: string;
+      amount_cents: number | string;
+      counterparty_name: string;
+      clearing_account: string;
+    }[];
+  };
+};
 const encoded = encodeURIComponent;
 
-export function LegacyMigrationSettlements({ session, bookId, projectId, bankBooks, onBusyChange, onChanged, onOpenDraft, onLostAccess }: { session: Session; bookId: string; projectId: string; bankBooks: LegacyBankBook[]; onBusyChange: (value: boolean) => void; onChanged?: () => void; onOpenDraft?: (bookId: string, draftId: string) => void; onLostAccess: () => void }) {
+export function LegacyMigrationSettlements({
+  session,
+  bookId,
+  projectId,
+  bankBooks,
+  onBusyChange,
+  onChanged,
+  onOpenDraft,
+  onLostAccess,
+}: {
+  session: Session;
+  bookId: string;
+  projectId: string;
+  bankBooks: LegacyBankBook[];
+  onBusyChange: (value: boolean) => void;
+  onChanged?: () => void;
+  onOpenDraft?: (bookId: string, draftId: string) => void;
+  onLostAccess: () => void;
+}) {
   const base = `/books/${encoded(bookId)}/legacy-migrations/${encoded(projectId)}/settlements`;
-  const [data, setData] = useState<SettlementOverview | null>(null), [banks, setBanks] = useState<BankChoices | null>(null);
-  const [bankBook, setBankBook] = useState(bankBooks.some(book => book.id === bookId) ? bookId : ''), [bankId, setBankId] = useState(''), [bankAccount, setBankAccount] = useState('');
-  const [offset, setOffset] = useState(0), [bankOffset, setBankOffset] = useState(0);
+  const [data, setData] = useState<SettlementOverview | null>(null),
+    [banks, setBanks] = useState<BankChoices | null>(null);
+  const [bankBook, setBankBook] = useState(
+      bankBooks.some((book) => book.id === bookId) ? bookId : '',
+    ),
+    [bankId, setBankId] = useState(''),
+    [bankAccount, setBankAccount] = useState('');
+  const [offset, setOffset] = useState(0),
+    [bankOffset, setBankOffset] = useState(0);
   const [parts, setParts] = useState<Record<string, { item: LegacyOpenItem; amount: string }>>({});
-  const [preview, setPreview] = useState<ClearancePreview | null>(null), [confirmed, setConfirmed] = useState(false);
-  const [reason, setReason] = useState(''), [busy, setBusy] = useState(false), [loading, setLoading] = useState(true), [error, setError] = useState(''), [notice, setNotice] = useState('');
-  const [reversal, setReversal] = useState<LegacyClearance | null>(null), [reverseReason, setReverseReason] = useState(''), [receipt, setReceipt] = useState<LegacyClearance | null>(null);
-  const active = useRef(true), lock = useRef(false), epoch = useRef(0), bankEpoch = useRef(0), keys = useRef<Record<string, string>>({});
-  const callback = useRef(onBusyChange); callback.current = onBusyChange;
-  const target = `${session.scope_key}:${bookId}:${projectId}`, targetRef = useRef(target); targetRef.current = target;
+  const [preview, setPreview] = useState<ClearancePreview | null>(null),
+    [confirmed, setConfirmed] = useState(false);
+  const [reason, setReason] = useState(''),
+    [busy, setBusy] = useState(false),
+    [loading, setLoading] = useState(true),
+    [error, setError] = useState(''),
+    [notice, setNotice] = useState('');
+  const [reversal, setReversal] = useState<LegacyClearance | null>(null),
+    [reverseReason, setReverseReason] = useState(''),
+    [receipt, setReceipt] = useState<LegacyClearance | null>(null);
+  const active = useRef(true),
+    lock = useRef(false),
+    epoch = useRef(0),
+    bankEpoch = useRef(0),
+    keys = useRef<Record<string, string>>({});
+  const callback = useRef(onBusyChange);
+  callback.current = onBusyChange;
+  const target = `${session.scope_key}:${bookId}:${projectId}`,
+    targetRef = useRef(target);
+  targetRef.current = target;
   const dirty = Object.keys(parts).length > 0 || !!preview || !!reversal;
-  useEffect(() => { active.current = true; return () => { active.current = false; epoch.current++; bankEpoch.current++; callback.current(false); }; }, [target]);
-  useEffect(() => { callback.current(busy || dirty); }, [busy, dirty]);
-  useEffect(() => { setData(null); setBanks(null); setParts({}); setPreview(null); setReversal(null); setReceipt(null); setReason(''); setReverseReason(''); keys.current = {}; }, [target]);
-  const load = useCallback(async (signal?: AbortSignal) => {
-    const generation = ++epoch.current, commandTarget = target; setLoading(true);
-    try { const result = await api<SettlementOverview>(`${base}/items?limit=20&offset=${offset}`, session, { signal }); if (active.current && !signal?.aborted && generation === epoch.current && targetRef.current === commandTarget) { setData(result); setError(''); } }
-    catch (failure) { if (active.current && !signal?.aborted && generation === epoch.current) { setData(null); if (failure instanceof ApiError && [401, 403, 404].includes(failure.status)) onLostAccess(); setError(errorMessage(failure)); } }
-    finally { if (active.current && !signal?.aborted && generation === epoch.current) setLoading(false); }
-  }, [base, offset, session, target]);
-  useEffect(() => { const controller = new AbortController(); void load(controller.signal); return () => controller.abort(); }, [load]);
-  const loadBanks = useCallback(async (signal?: AbortSignal) => {
-    if (!bankBook) { setBanks(null); return; }
-    const generation = ++bankEpoch.current, commandTarget = target;
-    try { const result = await api<BankChoices>(`${base}/banks?bank_book_id=${encoded(bankBook)}&limit=20&offset=${bankOffset}`, session, { signal }); if (active.current && !signal?.aborted && generation === bankEpoch.current && targetRef.current === commandTarget) setBanks(result); }
-    catch (failure) { if (active.current && !signal?.aborted && generation === bankEpoch.current) { setBanks(null); if (failure instanceof ApiError && [401, 403, 404].includes(failure.status)) onLostAccess(); setError(errorMessage(failure)); } }
-  }, [bankBook, bankOffset, base, session, target]);
-  useEffect(() => { const controller = new AbortController(); setBanks(null); setBankId(''); setBankAccount(''); void loadBanks(controller.signal); return () => controller.abort(); }, [loadBanks]);
-  const bank = banks?.banks.find(value => value.id === bankId);
-  const amounts = Object.values(parts).map(part => migrationUnsignedCents(part.amount));
-  const total = amounts.every(value => value !== null) ? amounts.reduce<bigint>((sum, value) => sum + value!, 0n) : null;
+  useEffect(() => {
+    active.current = true;
+    return () => {
+      active.current = false;
+      epoch.current++;
+      bankEpoch.current++;
+      callback.current(false);
+    };
+  }, [target]);
+  useEffect(() => {
+    callback.current(busy || dirty);
+  }, [busy, dirty]);
+  useEffect(() => {
+    setData(null);
+    setBanks(null);
+    setParts({});
+    setPreview(null);
+    setReversal(null);
+    setReceipt(null);
+    setReason('');
+    setReverseReason('');
+    keys.current = {};
+  }, [target]);
+  const load = useCallback(
+    async (signal?: AbortSignal) => {
+      const generation = ++epoch.current,
+        commandTarget = target;
+      setLoading(true);
+      try {
+        const result = await api<SettlementOverview>(
+          `${base}/items?limit=20&offset=${offset}`,
+          session,
+          { signal },
+        );
+        if (
+          active.current &&
+          !signal?.aborted &&
+          generation === epoch.current &&
+          targetRef.current === commandTarget
+        ) {
+          setData(result);
+          setError('');
+        }
+      } catch (failure) {
+        if (active.current && !signal?.aborted && generation === epoch.current) {
+          setData(null);
+          if (failure instanceof ApiError && [401, 403, 404].includes(failure.status))
+            onLostAccess();
+          setError(errorMessage(failure));
+        }
+      } finally {
+        if (active.current && !signal?.aborted && generation === epoch.current) setLoading(false);
+      }
+    },
+    [base, offset, session, target],
+  );
+  useEffect(() => {
+    const controller = new AbortController();
+    void load(controller.signal);
+    return () => controller.abort();
+  }, [load]);
+  const loadBanks = useCallback(
+    async (signal?: AbortSignal) => {
+      if (!bankBook) {
+        setBanks(null);
+        return;
+      }
+      const generation = ++bankEpoch.current,
+        commandTarget = target;
+      try {
+        const result = await api<BankChoices>(
+          `${base}/banks?bank_book_id=${encoded(bankBook)}&limit=20&offset=${bankOffset}`,
+          session,
+          { signal },
+        );
+        if (
+          active.current &&
+          !signal?.aborted &&
+          generation === bankEpoch.current &&
+          targetRef.current === commandTarget
+        )
+          setBanks(result);
+      } catch (failure) {
+        if (active.current && !signal?.aborted && generation === bankEpoch.current) {
+          setBanks(null);
+          if (failure instanceof ApiError && [401, 403, 404].includes(failure.status))
+            onLostAccess();
+          setError(errorMessage(failure));
+        }
+      }
+    },
+    [bankBook, bankOffset, base, session, target],
+  );
+  useEffect(() => {
+    const controller = new AbortController();
+    setBanks(null);
+    setBankId('');
+    setBankAccount('');
+    void loadBanks(controller.signal);
+    return () => controller.abort();
+  }, [loadBanks]);
+  const bank = banks?.banks.find((value) => value.id === bankId);
+  const amounts = Object.values(parts).map((part) => migrationUnsignedCents(part.amount));
+  const total = amounts.every((value) => value !== null)
+    ? amounts.reduce<bigint>((sum, value) => sum + value!, 0n)
+    : null;
   const bankAmount = bank ? migrationUnsignedCents(bank.amount) : null;
-  const exact = total !== null && bankAmount !== null && amounts.every(value => value !== null && value > 0n) && total > 0n && total === bankAmount;
-  function changed() { setPreview(null); setConfirmed(false); setReceipt(null); keys.current = {}; }
-  function key(action: string) { return keys.current[action] ||= crypto.randomUUID(); }
+  const exact =
+    total !== null &&
+    bankAmount !== null &&
+    amounts.every((value) => value !== null && value > 0n) &&
+    total > 0n &&
+    total === bankAmount;
+  function changed() {
+    setPreview(null);
+    setConfirmed(false);
+    setReceipt(null);
+    keys.current = {};
+  }
+  function key(action: string) {
+    return (keys.current[action] ||= crypto.randomUUID());
+  }
   async function run(action: () => Promise<void>) {
-    if (lock.current) return; lock.current = true; setBusy(true); setError(''); setNotice(''); const commandTarget = target;
-    try { await action(); }
-    catch (failure) { if (active.current && commandTarget === targetRef.current) { if (failure instanceof ApiError && [401, 403, 404].includes(failure.status)) onLostAccess(); setError(errorMessage(failure)); } }
-    finally { lock.current = false; if (active.current && commandTarget === targetRef.current) setBusy(false); }
+    if (lock.current) return;
+    lock.current = true;
+    setBusy(true);
+    setError('');
+    setNotice('');
+    const commandTarget = target;
+    try {
+      await action();
+    } catch (failure) {
+      if (active.current && commandTarget === targetRef.current) {
+        if (failure instanceof ApiError && [401, 403, 404].includes(failure.status)) onLostAccess();
+        setError(errorMessage(failure));
+      }
+    } finally {
+      lock.current = false;
+      if (active.current && commandTarget === targetRef.current) setBusy(false);
+    }
   }
   async function prepare() {
-    await run(async () => { if (!bank || !exact || !bankAccount || !reason.trim()) throw new Error('请选择当前银行流水与银行科目，完整分配流水金额并填写核对依据。'); const result = await api<ClearancePreview>(`${base}/previews`, session, { method: 'POST', body: { bank_book_id: bankBook, bank_source_id: bank.id, bank_account_code: bankAccount, parts: Object.entries(parts).map(([item_id, value]) => ({ item_id, amount: value.amount })), reason: reason.trim() } }); if (active.current && targetRef.current === target) { setPreview(result); setConfirmed(false); keys.current = {}; } });
+    await run(async () => {
+      if (!bank || !exact || !bankAccount || !reason.trim())
+        throw new Error('请选择当前银行流水与银行科目，完整分配流水金额并填写核对依据。');
+      const result = await api<ClearancePreview>(`${base}/previews`, session, {
+        method: 'POST',
+        body: {
+          bank_book_id: bankBook,
+          bank_source_id: bank.id,
+          bank_account_code: bankAccount,
+          parts: Object.entries(parts).map(([item_id, value]) => ({
+            item_id,
+            amount: value.amount,
+          })),
+          reason: reason.trim(),
+        },
+      });
+      if (active.current && targetRef.current === target) {
+        setPreview(result);
+        setConfirmed(false);
+        keys.current = {};
+      }
+    });
   }
   async function confirm() {
     if (!preview || !confirmed) return;
-    await run(async () => { const result = await api<LegacyClearance>(`${base}/previews/${encoded(preview.id)}/confirm`, session, { method: 'POST', body: { expected_fingerprint: preview.fingerprint, idempotency_key: key(`confirm:${preview.id}`) } }); if (active.current && targetRef.current === target) { setReceipt(result); setPreview(null); setParts({}); setBankId(''); setConfirmed(false); keys.current = {}; await load(); await loadBanks(); setNotice('历史清偿已替代当前未审核草稿，仍须会计复核后明确导出；没有再次确认费用或收入。'); onChanged?.(); } });
+    await run(async () => {
+      const result = await api<LegacyClearance>(
+        `${base}/previews/${encoded(preview.id)}/confirm`,
+        session,
+        {
+          method: 'POST',
+          body: {
+            expected_fingerprint: preview.fingerprint,
+            idempotency_key: key(`confirm:${preview.id}`),
+          },
+        },
+      );
+      if (active.current && targetRef.current === target) {
+        setReceipt(result);
+        setPreview(null);
+        setParts({});
+        setBankId('');
+        setConfirmed(false);
+        keys.current = {};
+        await load();
+        await loadBanks();
+        setNotice('历史清偿已替代当前未审核草稿，仍须会计复核后明确导出；没有再次确认费用或收入。');
+        onChanged?.();
+      }
+    });
   }
   async function reverse() {
     if (!reversal || !reverseReason.trim() || !confirmed) return;
-    await run(async () => { await api(`${base}/commands/${encoded(reversal.id)}/reverse`, session, { method: 'POST', body: { expected_fingerprint: reversal.fingerprint, idempotency_key: key(`reverse:${reversal.id}`), reason: reverseReason.trim() } }); if (active.current && targetRef.current === target) { setReversal(null); setConfirmed(false); keys.current = {}; await load(); await loadBanks(); setNotice('独立撤销已记录，历史余额与未审核草稿恢复到分配前版本。'); onChanged?.(); } });
+    await run(async () => {
+      await api(`${base}/commands/${encoded(reversal.id)}/reverse`, session, {
+        method: 'POST',
+        body: {
+          expected_fingerprint: reversal.fingerprint,
+          idempotency_key: key(`reverse:${reversal.id}`),
+          reason: reverseReason.trim(),
+        },
+      });
+      if (active.current && targetRef.current === target) {
+        setReversal(null);
+        setConfirmed(false);
+        keys.current = {};
+        await load();
+        await loadBanks();
+        setNotice('独立撤销已记录，历史余额与未审核草稿恢复到分配前版本。');
+        onChanged?.();
+      }
+    });
   }
-  return <section className="legacy-migration-settlements" aria-label="历史未结清偿"><div className="legacy-migration-card-title"><FileCheck2 size={23} /><div><h2>旧欠款，用新流水核销</h2><p>明确分配至历史应收或应付，用确定性分录替代未审核银行草稿，避免再次确认费用或收入。</p></div></div>{error && <p className="inline-error" role="alert"><TriangleAlert size={16} />{error}</p>}{notice && <p className="form-success" role="status">{notice}</p>}{receipt && onOpenDraft && <button className="button primary" disabled={busy || dirty} onClick={() => onOpenDraft(receipt.bank_book_id, receipt.bank_draft_id)}>复核这张清偿草稿<ArrowRight size={16} /></button>}
-    {loading && !data ? <div className="loading-block"><LoaderCircle size={17} className="spinner" />读取历史未结余额…</div> : data && <>
-      <div className="legacy-migration-filters"><p className="legacy-migration-help">按原事项分别列示应收与应付，保留完整余额口径。</p><button className="button secondary small" disabled={busy || !!preview} onClick={() => void load()}><RefreshCw size={15} />读取当前余额</button></div>
-      <div className="legacy-migration-openitems">{data.items.length ? data.items.map(item => { const selected = parts[item.id]; const remaining = migrationUnsignedCents(item.remaining); const incompatible = !!bank && (item.kind === 'payable') !== (bank.direction === 'expense'); return <article key={item.id}><div><strong>{item.counterparty_name ?? item.counterparty_code}</strong><span className="badge pending">{item.kind === 'receivable' ? '应收' : '应付'}</span><small>{item.external_id} · {item.occurred_on}{item.due_on ? ` · ${item.due_on} 到期` : ''}</small></div><dl><div><dt>接管未结</dt><dd>{migrationMoney(item.amount)}</dd></div><div><dt>已清偿</dt><dd>{migrationMoney(item.allocated)}</dd></div><div><dt>剩余</dt><dd>{migrationMoney(item.remaining)}</dd></div></dl>{bankBooks.length > 0 && <div className="legacy-migration-clearance-part"><label className="legacy-migration-check"><input type="checkbox" aria-label={`分配历史未结 ${item.external_id}`} checked={!!selected} disabled={busy || !!preview || remaining === null || remaining <= 0n || incompatible} onChange={event => { setParts(previous => { const next = { ...previous }; if (event.target.checked) next[item.id] = { item, amount: '' }; else delete next[item.id]; return next; }); changed(); }} />分配本笔流水</label>{selected && <label>本次清偿金额<input aria-label={`历史未结 ${item.external_id} 分配金额`} inputMode="decimal" maxLength={20} value={selected.amount} disabled={busy || !!preview} placeholder={`最多 ${item.remaining}`} onChange={event => { setParts(previous => ({ ...previous, [item.id]: { item, amount: event.target.value } })); changed(); }} /></label>}</div>}</article>; }) : <p className="legacy-migration-help">当前没有符合筛选条件的历史未结事项。只有已验收的明细才进入清偿基线，不由汇总余额猜测。</p>}</div><SettlementPage page={data.pagination} disabled={busy || !!preview} onPage={setOffset} />
-      {bankBooks.length > 0 ? <section className="legacy-migration-clearance-bank"><h3>选择接管后的银行流水</h3><div className="legacy-migration-formgrid"><label>当前银行账套与期间<select aria-label="历史清偿银行账套" value={bankBook} disabled={busy || !!preview} onChange={event => { setBankBook(event.target.value); setBankOffset(0); changed(); }}><option value="">明确选择当前有复核权的期间</option>{bankBooks.map(book => <option value={book.id} key={book.id}>{book.name} · {book.period}{book.period_status === 'closed' ? ' · 已关期' : ''}</option>)}</select></label><label>银行存款科目<select aria-label="历史清偿银行科目" value={bankAccount} disabled={busy || !!preview} onChange={event => { setBankAccount(event.target.value); changed(); }}><option value="">选择当前启用的银行科目</option>{banks?.bank_accounts.map(account => <option key={account.code} value={account.code}>{account.code} · {account.name}</option>)}</select></label></div><div className="legacy-migration-clearance-banks">{banks?.banks.map(value => <label key={value.id} className={bankId === value.id ? 'selected' : ''}><input type="radio" name={`legacy-bank-${projectId}`} aria-label={`历史清偿流水 ${value.description}`} value={value.id} checked={bankId === value.id} disabled={busy || !!preview} onChange={() => { setBankId(value.id); changed(); }} /><span><strong>{value.description}</strong><small>{value.date} · {value.counterparty} · {value.direction === 'expense' ? '支出' : '收入'}</small></span><b>{migrationMoney(value.amount)}</b></label>)}</div>{banks?.pagination && <SettlementPage page={banks.pagination} disabled={busy || !!preview} onPage={setBankOffset} />}{bank && <div className="legacy-migration-clearance-total"><span>已分配 {total === null ? '金额待填写' : migrationMoney(total.toString(), true)} / 流水 {migrationMoney(bank.amount)}</span><strong>{exact ? '金额一致' : '须完整分配至同往来方的同类应收或应付'}</strong></div>}<label>本次清偿核对依据<input aria-label="历史清偿核对依据" value={reason} maxLength={1000} disabled={busy || !!preview} onChange={event => { setReason(event.target.value); changed(); }} /></label><div className="legacy-migration-actions"><button className="button secondary" disabled={busy || !!preview || !Object.keys(parts).length} onClick={() => { setParts({}); changed(); }}>清空本次分配</button><button className="button primary" disabled={busy || !!preview || !exact || !reason.trim() || !bankAccount || banks?.period_status !== 'open'} onClick={() => void prepare()}>预览清偿分录<ArrowRight size={16} /></button></div></section> : <p className="legacy-migration-help">当前没有同一长期账套、接管后期间的银行复核权限，只显示已授权历史余额。</p>}
-      {data.commands.length > 0 && <section className="legacy-migration-clearance-history"><h3>清偿与撤销记录</h3>{data.commands.map(command => <article key={command.id}><div><strong>{command.reversed ? '已独立撤销' : '已分配 · 会计复核后导出'}</strong><small>{command.created_at.slice(0, 10)} · {command.allocations.length} 项历史往来</small></div><div className="legacy-migration-actions">{onOpenDraft && <button className="text-button" disabled={busy || dirty} onClick={() => onOpenDraft(command.bank_book_id, command.bank_draft_id)}>打开当前凭证</button>}{command.can_reverse && command.created_by !== session.user_id && bankBooks.some(book => book.id === command.bank_book_id && book.period_status !== 'closed') && <button className="text-button" disabled={busy || dirty} onClick={() => { setReversal(command); setReverseReason(''); setConfirmed(false); keys.current = {}; }}>独立撤销未审清偿</button>}</div></article>)}</section>}
-    </>}
-    {preview && <ClearanceDialog title="核对历史清偿与当前草稿" busy={busy} onClose={() => { setPreview(null); setConfirmed(false); }}>{error && <p className="inline-error" role="alert">{error}</p>}<p>本次只替代所选流水的未审核草稿；当前金额、余额、主数据与草稿版本会在确认时再次核验。</p><div className="legacy-migration-clearance-comparison"><section><h3>当前未审核草稿</h3><p>{preview.previous_draft.description}</p><ClearanceLines lines={preview.previous_draft.lines} /></section><section><h3>历史清偿建议</h3><p>{preview.plan.description}</p><ClearanceLines lines={preview.plan.lines} /></section></div><label className="legacy-migration-check"><input aria-label="确认历史清偿原件与草稿替代" type="checkbox" checked={confirmed} disabled={busy} onChange={event => setConfirmed(event.target.checked)} />已核对真实流水、原欠款、完整分配与草稿替代；此后仍由会计复核。</label><button className="button primary" disabled={busy || !confirmed} onClick={() => void confirm()}><CheckCircle2 size={16} />确认分配并保留待审草稿</button></ClearanceDialog>}
-    {reversal && <ClearanceDialog title="独立撤销历史清偿" busy={busy} onClose={() => { setReversal(null); setConfirmed(false); }}>{error && <p className="inline-error" role="alert">{error}</p>}<p>仅能由另一名当前会计复核人员撤销整笔尚未审核的清偿。已审核、已导出或事实变化的记录须另行调整。</p><label>独立撤销依据<input aria-label="独立撤销历史清偿依据" value={reverseReason} maxLength={1000} disabled={busy} onChange={event => { setReverseReason(event.target.value); setConfirmed(false); keys.current = {}; }} /></label><label className="legacy-migration-check"><input aria-label="确认独立撤销历史清偿" type="checkbox" checked={confirmed} disabled={busy} onChange={event => setConfirmed(event.target.checked)} />已独立核对当前未审草稿和分配记录，确认恢复分配前草稿及历史余额。</label><button className="button primary" disabled={busy || !confirmed || !reverseReason.trim()} onClick={() => void reverse()}>记录独立撤销</button></ClearanceDialog>}
-  </section>;
+  return (
+    <section className="legacy-migration-settlements" aria-label="历史未结清偿">
+      <div className="legacy-migration-card-title">
+        <FileCheck2 size={23} />
+        <div>
+          <h2>旧欠款，用新流水核销</h2>
+          <p>明确分配至历史应收或应付，用确定性分录替代未审核银行草稿，避免再次确认费用或收入。</p>
+        </div>
+      </div>
+      {error && (
+        <p className="inline-error" role="alert">
+          <TriangleAlert size={16} />
+          {error}
+        </p>
+      )}
+      {notice && (
+        <p className="form-success" role="status">
+          {notice}
+        </p>
+      )}
+      {receipt && onOpenDraft && (
+        <button
+          className="button primary"
+          disabled={busy || dirty}
+          onClick={() => onOpenDraft(receipt.bank_book_id, receipt.bank_draft_id)}
+        >
+          复核这张清偿草稿
+          <ArrowRight size={16} />
+        </button>
+      )}
+      {loading && !data ? (
+        <div className="loading-block">
+          <LoaderCircle size={17} className="spinner" />
+          读取历史未结余额…
+        </div>
+      ) : (
+        data && (
+          <>
+            <div className="legacy-migration-filters">
+              <p className="legacy-migration-help">
+                按原事项分别列示应收与应付，保留完整余额口径。
+              </p>
+              <button
+                className="button secondary small"
+                disabled={busy || !!preview}
+                onClick={() => void load()}
+              >
+                <RefreshCw size={15} />
+                读取当前余额
+              </button>
+            </div>
+            <div className="legacy-migration-openitems">
+              {data.items.length ? (
+                data.items.map((item) => {
+                  const selected = parts[item.id];
+                  const remaining = migrationUnsignedCents(item.remaining);
+                  const incompatible =
+                    !!bank && (item.kind === 'payable') !== (bank.direction === 'expense');
+                  return (
+                    <article key={item.id}>
+                      <div>
+                        <strong>{item.counterparty_name ?? item.counterparty_code}</strong>
+                        <span className="badge pending">
+                          {item.kind === 'receivable' ? '应收' : '应付'}
+                        </span>
+                        <small>
+                          {item.external_id} · {item.occurred_on}
+                          {item.due_on ? ` · ${item.due_on} 到期` : ''}
+                        </small>
+                      </div>
+                      <dl>
+                        <div>
+                          <dt>接管未结</dt>
+                          <dd>{migrationMoney(item.amount)}</dd>
+                        </div>
+                        <div>
+                          <dt>已清偿</dt>
+                          <dd>{migrationMoney(item.allocated)}</dd>
+                        </div>
+                        <div>
+                          <dt>剩余</dt>
+                          <dd>{migrationMoney(item.remaining)}</dd>
+                        </div>
+                      </dl>
+                      {bankBooks.length > 0 && (
+                        <div className="legacy-migration-clearance-part">
+                          <label className="legacy-migration-check">
+                            <input
+                              type="checkbox"
+                              aria-label={`分配历史未结 ${item.external_id}`}
+                              checked={!!selected}
+                              disabled={
+                                busy ||
+                                !!preview ||
+                                remaining === null ||
+                                remaining <= 0n ||
+                                incompatible
+                              }
+                              onChange={(event) => {
+                                setParts((previous) => {
+                                  const next = { ...previous };
+                                  if (event.target.checked) next[item.id] = { item, amount: '' };
+                                  else delete next[item.id];
+                                  return next;
+                                });
+                                changed();
+                              }}
+                            />
+                            分配本笔流水
+                          </label>
+                          {selected && (
+                            <label>
+                              本次清偿金额
+                              <input
+                                aria-label={`历史未结 ${item.external_id} 分配金额`}
+                                inputMode="decimal"
+                                maxLength={20}
+                                value={selected.amount}
+                                disabled={busy || !!preview}
+                                placeholder={`最多 ${item.remaining}`}
+                                onChange={(event) => {
+                                  setParts((previous) => ({
+                                    ...previous,
+                                    [item.id]: { item, amount: event.target.value },
+                                  }));
+                                  changed();
+                                }}
+                              />
+                            </label>
+                          )}
+                        </div>
+                      )}
+                    </article>
+                  );
+                })
+              ) : (
+                <p className="legacy-migration-help">
+                  当前没有符合筛选条件的历史未结事项。只有已验收的明细才进入清偿基线，不由汇总余额猜测。
+                </p>
+              )}
+            </div>
+            <SettlementPage
+              page={data.pagination}
+              disabled={busy || !!preview}
+              onPage={setOffset}
+            />
+            {bankBooks.length > 0 ? (
+              <section className="legacy-migration-clearance-bank">
+                <h3>选择接管后的银行流水</h3>
+                <div className="legacy-migration-formgrid">
+                  <label>
+                    当前银行账套与期间
+                    <select
+                      aria-label="历史清偿银行账套"
+                      value={bankBook}
+                      disabled={busy || !!preview}
+                      onChange={(event) => {
+                        setBankBook(event.target.value);
+                        setBankOffset(0);
+                        changed();
+                      }}
+                    >
+                      <option value="">明确选择当前有复核权的期间</option>
+                      {bankBooks.map((book) => (
+                        <option value={book.id} key={book.id}>
+                          {book.name} · {book.period}
+                          {book.period_status === 'closed' ? ' · 已关期' : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    银行存款科目
+                    <select
+                      aria-label="历史清偿银行科目"
+                      value={bankAccount}
+                      disabled={busy || !!preview}
+                      onChange={(event) => {
+                        setBankAccount(event.target.value);
+                        changed();
+                      }}
+                    >
+                      <option value="">选择当前启用的银行科目</option>
+                      {banks?.bank_accounts.map((account) => (
+                        <option key={account.code} value={account.code}>
+                          {account.code} · {account.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <div className="legacy-migration-clearance-banks">
+                  {banks?.banks.map((value) => (
+                    <label key={value.id} className={bankId === value.id ? 'selected' : ''}>
+                      <input
+                        type="radio"
+                        name={`legacy-bank-${projectId}`}
+                        aria-label={`历史清偿流水 ${value.description}`}
+                        value={value.id}
+                        checked={bankId === value.id}
+                        disabled={busy || !!preview}
+                        onChange={() => {
+                          setBankId(value.id);
+                          changed();
+                        }}
+                      />
+                      <span>
+                        <strong>{value.description}</strong>
+                        <small>
+                          {value.date} · {value.counterparty} ·{' '}
+                          {value.direction === 'expense' ? '支出' : '收入'}
+                        </small>
+                      </span>
+                      <b>{migrationMoney(value.amount)}</b>
+                    </label>
+                  ))}
+                </div>
+                {banks?.pagination && (
+                  <SettlementPage
+                    page={banks.pagination}
+                    disabled={busy || !!preview}
+                    onPage={setBankOffset}
+                  />
+                )}
+                {bank && (
+                  <div className="legacy-migration-clearance-total">
+                    <span>
+                      已分配{' '}
+                      {total === null ? '金额待填写' : migrationMoney(total.toString(), true)} /
+                      流水 {migrationMoney(bank.amount)}
+                    </span>
+                    <strong>{exact ? '金额一致' : '须完整分配至同往来方的同类应收或应付'}</strong>
+                  </div>
+                )}
+                <label>
+                  本次清偿核对依据
+                  <input
+                    aria-label="历史清偿核对依据"
+                    value={reason}
+                    maxLength={1000}
+                    disabled={busy || !!preview}
+                    onChange={(event) => {
+                      setReason(event.target.value);
+                      changed();
+                    }}
+                  />
+                </label>
+                <div className="legacy-migration-actions">
+                  <button
+                    className="button secondary"
+                    disabled={busy || !!preview || !Object.keys(parts).length}
+                    onClick={() => {
+                      setParts({});
+                      changed();
+                    }}
+                  >
+                    清空本次分配
+                  </button>
+                  <button
+                    className="button primary"
+                    disabled={
+                      busy ||
+                      !!preview ||
+                      !exact ||
+                      !reason.trim() ||
+                      !bankAccount ||
+                      banks?.period_status !== 'open'
+                    }
+                    onClick={() => void prepare()}
+                  >
+                    预览清偿分录
+                    <ArrowRight size={16} />
+                  </button>
+                </div>
+              </section>
+            ) : (
+              <p className="legacy-migration-help">
+                当前没有同一长期账套、接管后期间的银行复核权限，只显示已授权历史余额。
+              </p>
+            )}
+            {data.commands.length > 0 && (
+              <section className="legacy-migration-clearance-history">
+                <h3>清偿与撤销记录</h3>
+                {data.commands.map((command) => (
+                  <article key={command.id}>
+                    <div>
+                      <strong>{command.reversed ? '已独立撤销' : '已分配 · 会计复核后导出'}</strong>
+                      <small>
+                        {command.created_at.slice(0, 10)} · {command.allocations.length} 项历史往来
+                      </small>
+                    </div>
+                    <div className="legacy-migration-actions">
+                      {onOpenDraft && (
+                        <button
+                          className="text-button"
+                          disabled={busy || dirty}
+                          onClick={() => onOpenDraft(command.bank_book_id, command.bank_draft_id)}
+                        >
+                          打开当前凭证
+                        </button>
+                      )}
+                      {command.can_reverse &&
+                        command.created_by !== session.user_id &&
+                        bankBooks.some(
+                          (book) =>
+                            book.id === command.bank_book_id && book.period_status !== 'closed',
+                        ) && (
+                          <button
+                            className="text-button"
+                            disabled={busy || dirty}
+                            onClick={() => {
+                              setReversal(command);
+                              setReverseReason('');
+                              setConfirmed(false);
+                              keys.current = {};
+                            }}
+                          >
+                            独立撤销未审清偿
+                          </button>
+                        )}
+                    </div>
+                  </article>
+                ))}
+              </section>
+            )}
+          </>
+        )
+      )}
+      {preview && (
+        <ClearanceDialog
+          title="核对历史清偿与当前草稿"
+          busy={busy}
+          onClose={() => {
+            setPreview(null);
+            setConfirmed(false);
+          }}
+        >
+          {error && (
+            <p className="inline-error" role="alert">
+              {error}
+            </p>
+          )}
+          <p>
+            本次只替代所选流水的未审核草稿；当前金额、余额、主数据与草稿版本会在确认时再次核验。
+          </p>
+          <div className="legacy-migration-clearance-comparison">
+            <section>
+              <h3>当前未审核草稿</h3>
+              <p>{preview.previous_draft.description}</p>
+              <ClearanceLines lines={preview.previous_draft.lines} />
+            </section>
+            <section>
+              <h3>历史清偿建议</h3>
+              <p>{preview.plan.description}</p>
+              <ClearanceLines lines={preview.plan.lines} />
+            </section>
+          </div>
+          <label className="legacy-migration-check">
+            <input
+              aria-label="确认历史清偿原件与草稿替代"
+              type="checkbox"
+              checked={confirmed}
+              disabled={busy}
+              onChange={(event) => setConfirmed(event.target.checked)}
+            />
+            已核对真实流水、原欠款、完整分配与草稿替代；此后仍由会计复核。
+          </label>
+          <button
+            className="button primary"
+            disabled={busy || !confirmed}
+            onClick={() => void confirm()}
+          >
+            <CheckCircle2 size={16} />
+            确认分配并保留待审草稿
+          </button>
+        </ClearanceDialog>
+      )}
+      {reversal && (
+        <ClearanceDialog
+          title="独立撤销历史清偿"
+          busy={busy}
+          onClose={() => {
+            setReversal(null);
+            setConfirmed(false);
+          }}
+        >
+          {error && (
+            <p className="inline-error" role="alert">
+              {error}
+            </p>
+          )}
+          <p>
+            仅能由另一名当前会计复核人员撤销整笔尚未审核的清偿。已审核、已导出或事实变化的记录须另行调整。
+          </p>
+          <label>
+            独立撤销依据
+            <input
+              aria-label="独立撤销历史清偿依据"
+              value={reverseReason}
+              maxLength={1000}
+              disabled={busy}
+              onChange={(event) => {
+                setReverseReason(event.target.value);
+                setConfirmed(false);
+                keys.current = {};
+              }}
+            />
+          </label>
+          <label className="legacy-migration-check">
+            <input
+              aria-label="确认独立撤销历史清偿"
+              type="checkbox"
+              checked={confirmed}
+              disabled={busy}
+              onChange={(event) => setConfirmed(event.target.checked)}
+            />
+            已独立核对当前未审草稿和分配记录，确认恢复分配前草稿及历史余额。
+          </label>
+          <button
+            className="button primary"
+            disabled={busy || !confirmed || !reverseReason.trim()}
+            onClick={() => void reverse()}
+          >
+            记录独立撤销
+          </button>
+        </ClearanceDialog>
+      )}
+    </section>
+  );
 }
-function SettlementPage({ page, disabled, onPage }: { page: Pagination; disabled: boolean; onPage: (offset: number) => void }) { return <div className="legacy-migration-pagination"><span>共 {page.total} 项 · 第 {Math.floor(page.offset / 20) + 1} 页</span><button className="button secondary small" disabled={disabled || page.offset === 0} onClick={() => onPage(Math.max(0, page.offset - 20))}>上一页</button><button className="button secondary small" disabled={disabled || !page.has_more} onClick={() => onPage(page.offset + 20)}>下一页</button></div>; }
-function ClearanceLines({ lines }: { lines: JournalLine[] }) { return <div className="legacy-migration-clearance-lines">{lines.map((line, index) => <div key={index}><strong>{line.account_code}</strong><span>借 {migrationMoney(line.debit)} / 贷 {migrationMoney(line.credit)}</span>{Object.values(line.auxiliary_values ?? {}).map((value, i) => <small key={i}>{value}</small>)}</div>)}</div>; }
-function ClearanceDialog({ title, busy, onClose, children }: { title: string; busy: boolean; onClose: () => void; children: React.ReactNode }) {
-  const ref = useRef<HTMLDialogElement>(null); useEffect(() => { ref.current?.showModal(); }, []);
-  return <dialog className="legacy-migration-clearance-dialog" ref={ref} aria-labelledby="legacy-clearance-title" onCancel={event => { event.preventDefault(); if (!busy) onClose(); }}><header><h2 id="legacy-clearance-title">{title}</h2><button className="icon-button" aria-label="关闭历史清偿核对" disabled={busy} onClick={onClose}><X size={19} /></button></header><div>{children}</div><footer><button className="button secondary" disabled={busy} onClick={onClose}>返回当前分配</button></footer></dialog>;
+function SettlementPage({
+  page,
+  disabled,
+  onPage,
+}: {
+  page: Pagination;
+  disabled: boolean;
+  onPage: (offset: number) => void;
+}) {
+  return (
+    <div className="legacy-migration-pagination">
+      <span>
+        共 {page.total} 项 · 第 {Math.floor(page.offset / 20) + 1} 页
+      </span>
+      <button
+        className="button secondary small"
+        disabled={disabled || page.offset === 0}
+        onClick={() => onPage(Math.max(0, page.offset - 20))}
+      >
+        上一页
+      </button>
+      <button
+        className="button secondary small"
+        disabled={disabled || !page.has_more}
+        onClick={() => onPage(page.offset + 20)}
+      >
+        下一页
+      </button>
+    </div>
+  );
+}
+function ClearanceLines({ lines }: { lines: JournalLine[] }) {
+  return (
+    <div className="legacy-migration-clearance-lines">
+      {lines.map((line, index) => (
+        <div key={index}>
+          <strong>{line.account_code}</strong>
+          <span>
+            借 {migrationMoney(line.debit)} / 贷 {migrationMoney(line.credit)}
+          </span>
+          {Object.values(line.auxiliary_values ?? {}).map((value, i) => (
+            <small key={i}>{value}</small>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+function ClearanceDialog({
+  title,
+  busy,
+  onClose,
+  children,
+}: {
+  title: string;
+  busy: boolean;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
+  const ref = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    ref.current?.showModal();
+  }, []);
+  return (
+    <dialog
+      className="legacy-migration-clearance-dialog"
+      ref={ref}
+      aria-labelledby="legacy-clearance-title"
+      onCancel={(event) => {
+        event.preventDefault();
+        if (!busy) onClose();
+      }}
+    >
+      <header>
+        <h2 id="legacy-clearance-title">{title}</h2>
+        <button
+          className="icon-button"
+          aria-label="关闭历史清偿核对"
+          disabled={busy}
+          onClick={onClose}
+        >
+          <X size={19} />
+        </button>
+      </header>
+      <div>{children}</div>
+      <footer>
+        <button className="button secondary" disabled={busy} onClick={onClose}>
+          返回当前分配
+        </button>
+      </footer>
+    </dialog>
+  );
 }

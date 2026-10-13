@@ -4,8 +4,15 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, StrictStr, field_validator, model_validator
 
 
-from .invariants import (MAX_CENTS, MONEY_PATTERN, PERIOD_PATTERN, money_to_cents,
-                         cents_to_money, validate_period, validate_date)
+from .invariants import (
+    MAX_CENTS,
+    MONEY_PATTERN,
+    PERIOD_PATTERN,
+    money_to_cents,
+    cents_to_money,
+    validate_period,
+    validate_date,
+)
 
 
 class InputModel(BaseModel):
@@ -53,12 +60,12 @@ class ImportRequest(InputModel):
     namespace: StrictStr = Field(default="", max_length=100)
     bank_account: StrictStr = Field(default="", max_length=100)
 
-    @model_validator(mode='after')
+    @model_validator(mode="after")
     def identity_scope(self):
         if bool(self.namespace) != bool(self.bank_account):
-            raise ValueError('来源标识与银行账号标识须同时填写')
+            raise ValueError("来源标识与银行账号标识须同时填写")
         if not self.namespace and any(row.stable_transaction_id for row in self.rows):
-            raise ValueError('稳定交易编号须配合来源和银行账号标识')
+            raise ValueError("稳定交易编号须配合来源和银行账号标识")
         return self
 
 
@@ -66,13 +73,15 @@ class DraftLine(InputModel):
     account_code: StrictStr = Field(min_length=1, max_length=30)
     debit: StrictStr
     credit: StrictStr
-    auxiliary_values: dict[Literal['department', 'counterparty', 'employee', 'project'], StrictStr] = Field(default_factory=dict, max_length=4)
+    auxiliary_values: dict[
+        Literal["department", "counterparty", "employee", "project"], StrictStr
+    ] = Field(default_factory=dict, max_length=4)
 
-    @field_validator('auxiliary_values')
+    @field_validator("auxiliary_values")
     @classmethod
     def valid_auxiliaries(cls, value):
         if any(not item.strip() or len(item) > 200 for item in value.values()):
-            raise ValueError('辅助核算值须为1–200字的非空文本')
+            raise ValueError("辅助核算值须为1–200字的非空文本")
         return {key: item.strip() for key, item in value.items()}
 
     @field_validator("debit", "credit")

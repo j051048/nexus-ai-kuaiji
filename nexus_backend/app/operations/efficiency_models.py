@@ -1,4 +1,5 @@
 """Explicit human work sessions; elapsed browser-open time is never work time."""
+
 from typing import Literal
 from pydantic import BaseModel, ConfigDict, StrictInt, StrictStr, Field, model_validator
 
@@ -7,7 +8,9 @@ class SessionStart(BaseModel):
     model_config = ConfigDict(extra="forbid")
     book_id: StrictStr | None = Field(default=None, min_length=1, max_length=100)
     event_id: StrictStr | None = Field(default=None, min_length=1, max_length=100)
-    activity: Literal["review", "correction", "supplement", "month_close", "business_entry"] = "review"
+    activity: Literal["review", "correction", "supplement", "month_close", "business_entry"] = (
+        "review"
+    )
     idempotency_key: StrictStr = Field(min_length=1, max_length=100)
 
     @model_validator(mode="after")

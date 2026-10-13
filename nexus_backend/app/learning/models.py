@@ -34,16 +34,34 @@ class RuleDefinition(InputModel):
         c = self.conditions
         if self.source_kind == "business" and c.category is None:
             raise ValueError("业务规则须限定事项类别")
-        if self.source_kind == "bank" and (c.business_type != "daily_cashflow" or c.payment_status != "paid" or c.category is not None or any(line.amount_field != "gross" for line in self.lines)):
+        if self.source_kind == "bank" and (
+            c.business_type != "daily_cashflow"
+            or c.payment_status != "paid"
+            or c.category is not None
+            or any(line.amount_field != "gross" for line in self.lines)
+        ):
             raise ValueError("流水规则仅按交易对方和方向匹配，金额使用总额")
-        if (c.business_type == "reimbursement" and (c.direction != "expense" or c.payment_status != "unpaid")) or (c.business_type == "procurement_expense" and c.direction != "expense") or (c.business_type == "daily_cashflow" and c.payment_status != "paid"):
+        if (
+            (
+                c.business_type == "reimbursement"
+                and (c.direction != "expense" or c.payment_status != "unpaid")
+            )
+            or (c.business_type == "procurement_expense" and c.direction != "expense")
+            or (c.business_type == "daily_cashflow" and c.payment_status != "paid")
+        ):
             raise ValueError("规则条件不符合业务模板")
         return self
 
     def as_template(self):
         c = self.conditions
-        return TemplateDefinition(name=self.name, business_type=c.business_type, direction=c.direction,
-                                  category=c.category, payment_status=c.payment_status, lines=self.lines)
+        return TemplateDefinition(
+            name=self.name,
+            business_type=c.business_type,
+            direction=c.direction,
+            category=c.category,
+            payment_status=c.payment_status,
+            lines=self.lines,
+        )
 
 
 class RuleCreate(InputModel):

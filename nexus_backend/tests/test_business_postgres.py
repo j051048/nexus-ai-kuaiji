@@ -288,6 +288,7 @@ def test_business_postgres_all_new_tables_force_rls_and_functions_are_private(bu
             "department_approvers", "business_events", "business_versions",
             "business_attachments", "business_actions", "business_mappings",
             "business_mapping_versions",
+            "business_submission_policies",
         }
         assert all(row["relrowsecurity"] and row["relforcerowsecurity"] for row in rows)
         functions = conn.execute("SELECT p.oid,p.proname,p.prosecdef,p.proconfig FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='accounting' AND p.proname LIKE 'business_%'").fetchall()

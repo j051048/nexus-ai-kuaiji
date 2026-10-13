@@ -1,4 +1,5 @@
 """Client-maintained charts and deterministic, versioned journal templates."""
+
 import re
 from typing import Literal
 
@@ -74,9 +75,14 @@ class TemplateDefinition(InputModel):
         # user expressions. A gross-only template has no implied tax judgment.
         coefficients = {"debit": {"net": 0, "tax": 0}, "credit": {"net": 0, "tax": 0}}
         for line in self.lines:
-            for component in (("net", "tax") if line.amount_field == "gross" else (line.amount_field,)):
+            for component in (
+                ("net", "tax") if line.amount_field == "gross" else (line.amount_field,)
+            ):
                 coefficients[line.side][component] += 1
-        if coefficients["debit"] != coefficients["credit"] or coefficients["debit"] != {"net": 1, "tax": 1}:
+        if coefficients["debit"] != coefficients["credit"] or coefficients["debit"] != {
+            "net": 1,
+            "tax": 1,
+        }:
             raise ValueError("模板借贷两侧必须各等于一份含税总额，不允许重复计入金额")
         return self
 

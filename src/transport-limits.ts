@@ -6,22 +6,42 @@ let limits: TransportLimits | null = null;
 
 /** Deployment limits come from the public runtime config, never a build-time internal URL. */
 export function setTransportLimits(value?: unknown): void {
-  if (!value || typeof value !== 'object') { limits = null; return; }
+  if (!value || typeof value !== 'object') {
+    limits = null;
+    return;
+  }
   const candidate = value as Record<string, unknown>;
   const fields = ['max_file_bytes', 'max_request_bytes', 'max_response_bytes'] as const;
-  if (fields.some(field => typeof candidate[field] !== 'number' || !Number.isSafeInteger(candidate[field]) || Number(candidate[field]) <= 0)
-    || Number(candidate.max_request_bytes) <= MULTIPART_MARGIN_BYTES) { limits = null; return; }
+  if (
+    fields.some(
+      (field) =>
+        typeof candidate[field] !== 'number' ||
+        !Number.isSafeInteger(candidate[field]) ||
+        Number(candidate[field]) <= 0,
+    ) ||
+    Number(candidate.max_request_bytes) <= MULTIPART_MARGIN_BYTES
+  ) {
+    limits = null;
+    return;
+  }
   limits = {
-    max_file_bytes: Math.min(Number(candidate.max_file_bytes), Number(candidate.max_request_bytes) - MULTIPART_MARGIN_BYTES),
+    max_file_bytes: Math.min(
+      Number(candidate.max_file_bytes),
+      Number(candidate.max_request_bytes) - MULTIPART_MARGIN_BYTES,
+    ),
     max_request_bytes: Number(candidate.max_request_bytes),
     max_response_bytes: Number(candidate.max_response_bytes),
   };
 }
 
-export function getTransportLimits(): Readonly<TransportLimits> | null { return limits ? { ...limits } : null; }
+export function getTransportLimits(): Readonly<TransportLimits> | null {
+  return limits ? { ...limits } : null;
+}
 
 /** Keep each domain's existing, potentially smaller, limit and read deployment limits at use time. */
-export function maxUploadBytes(domainLimit = DEFAULT_ATTACHMENT_BYTES): number { return Math.min(domainLimit, limits?.max_file_bytes ?? domainLimit); }
+export function maxUploadBytes(domainLimit = DEFAULT_ATTACHMENT_BYTES): number {
+  return Math.min(domainLimit, limits?.max_file_bytes ?? domainLimit);
+}
 
 export function uploadLimitLabel(domainLimit = DEFAULT_ATTACHMENT_BYTES): string {
   const bytes = maxUploadBytes(domainLimit);
@@ -32,7 +52,8 @@ export function uploadLimitLabel(domainLimit = DEFAULT_ATTACHMENT_BYTES): string
 
 export function uploadSizeError(bytes: number, domainLimit = DEFAULT_ATTACHMENT_BYTES): string {
   if (!Number.isSafeInteger(bytes) || bytes <= 0) return '文件大小须大于零。';
-  if (bytes > maxUploadBytes(domainLimit)) return `单份文件不能超过 ${uploadLimitLabel(domainLimit)}，请压缩票据图片或按历史期间拆分后上传。`;
+  if (bytes > maxUploadBytes(domainLimit))
+    return `单份文件不能超过 ${uploadLimitLabel(domainLimit)}，请压缩票据图片或按历史期间拆分后上传。`;
   return '';
 }
 
@@ -52,7 +73,9 @@ export function transportBodyError(body: string | FormData | undefined): string 
       }
     }
   }
-  return bytes > limits.max_request_bytes ? '本次提交内容超过大小限制，请减少每批记录、压缩附件或按期间拆分后重新提交。' : '';
+  return bytes > limits.max_request_bytes
+    ? '本次提交内容超过大小限制，请减少每批记录、压缩附件或按期间拆分后重新提交。'
+    : '';
 }
 
 export function transportTooLargeMessage(): string {

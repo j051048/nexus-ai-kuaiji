@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- Entirely fictional. Shape based on MOF's 2025 promotion guide, not a valid invoice. -->
+<EInvoice>
+  <Header>
+    <EIid>26999900000000000001</EIid>
+    <EInvoiceTag>SWEI4400</EInvoiceTag>
+    <Version>0.3</Version>
+    <InherentLabel>
+      <InIssuType><LabelCode>Y</LabelCode><LabelName>是否蓝字发票标志</LabelName></InIssuType>
+      <EInvoiceType><LabelCode>01</LabelCode><LabelName>电子发票</LabelName></EInvoiceType>
+      <GeneralOrSpecialVAT><LabelCode>02</LabelCode><LabelName>普通发票</LabelName></GeneralOrSpecialVAT>
+    </InherentLabel>
+  </Header>
+  <EInvoiceData>
+    <SellerInformation><SellerIdNum>913101TESTSELLER</SellerIdNum><SellerName>耗材商店</SellerName></SellerInformation>
+    <BuyerInformation><BuyerIdNum>913101TESTBUYER</BuyerIdNum><BuyerName>第一客户企业</BuyerName></BuyerInformation>
+    <BasicInformation>
+      <TotalAmWithoutTax>0.30</TotalAmWithoutTax>
+      <TotalTaxAm>0.00</TotalTaxAm>
+      <TotalTax-includedAmount>0.30</TotalTax-includedAmount>
+      <RequestTime>2026-10-03 10:20:30</RequestTime>
+    </BasicInformation>
+  </EInvoiceData>
+</EInvoice>

@@ -1,10 +1,12 @@
 import type { ReviewBasis, ReviewPacketSet } from './review-package-types';
 
 export function eligiblePacketIds(value: ReviewPacketSet): Set<string> {
-  return new Set(value.items.filter(item => item.check_state === 'ready').map(item => item.draft_id));
+  return new Set(
+    value.items.filter((item) => item.check_state === 'ready').map((item) => item.draft_id),
+  );
 }
 export function packetSelection(value: ReviewPacketSet, selected: Set<string>): string[] {
-  return [...eligiblePacketIds(value)].filter(id => selected.has(id)).sort();
+  return [...eligiblePacketIds(value)].filter((id) => selected.has(id)).sort();
 }
 export function basisLabel(basis: ReviewBasis): string {
   if (basis.kind === 'manual') return `会计修正 · 草稿 v${basis.manual_version}`;

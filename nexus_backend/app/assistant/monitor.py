@@ -1,4 +1,5 @@
 """Dedicated dialogue heartbeat plus the existing bounded alert refresh queue."""
+
 from contextlib import contextmanager
 
 from app.operations.meter import MeterService
@@ -29,16 +30,27 @@ class AssistantMonitor:
             conn.close()
 
     def tick(self, inflight=0, state="idle"):
-        if state not in {"active", "idle", "stopped"} or type(inflight) is not int or not 0 <= inflight <= 2 or (state != "active" and inflight != 0):
+        if (
+            state not in {"active", "idle", "stopped"}
+            or type(inflight) is not int
+            or not 0 <= inflight <= 2
+            or (state != "active" and inflight != 0)
+        ):
             raise ValueError("助手心跳状态或运行数量不合法")
         # A failed alert refresh cannot roll back the liveness observation.
         with self._transaction() as conn:
             if self.db.is_postgres:
-                valid = conn.execute("SELECT accounting.record_assistant_heartbeat(?,?,?)", (self.worker_id, state, inflight)).fetchone()[0]
+                valid = conn.execute(
+                    "SELECT accounting.record_assistant_heartbeat(?,?,?)",
+                    (self.worker_id, state, inflight),
+                ).fetchone()[0]
                 if not valid:
                     raise ValueError("助手心跳未通过独立后台权限检查")
             else:
                 stamp = self.operations.meter.timestamp(conn)
-                conn.execute("INSERT INTO assistant_worker_heartbeats(worker_id,started_at,heartbeat_at,state,inflight_count) VALUES(?,?,?,?,?) ON CONFLICT(worker_id) DO UPDATE SET started_at=CASE WHEN assistant_worker_heartbeats.state='stopped' AND excluded.state<>'stopped' THEN excluded.started_at ELSE assistant_worker_heartbeats.started_at END,heartbeat_at=excluded.heartbeat_at,state=excluded.state,inflight_count=excluded.inflight_count", (self.worker_id, stamp, stamp, state, inflight))
+                conn.execute(
+                    "INSERT INTO assistant_worker_heartbeats(worker_id,started_at,heartbeat_at,state,inflight_count) VALUES(?,?,?,?,?) ON CONFLICT(worker_id) DO UPDATE SET started_at=CASE WHEN assistant_worker_heartbeats.state='stopped' AND excluded.state<>'stopped' THEN excluded.started_at ELSE assistant_worker_heartbeats.started_at END,heartbeat_at=excluded.heartbeat_at,state=excluded.state,inflight_count=excluded.inflight_count",
+                    (self.worker_id, stamp, stamp, state, inflight),
+                )
         with self._transaction() as conn:
             return self.operations.refresh_pending(conn)

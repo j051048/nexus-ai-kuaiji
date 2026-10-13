@@ -9,12 +9,27 @@ export interface Session {
   scope_key: string;
 }
 
-export type FirmRole = 'owner' | 'admin' | 'operator' | 'reviewer' | 'viewer' | 'client_employee' | 'client_member';
+export type FirmRole =
+  'owner' | 'admin' | 'operator' | 'reviewer' | 'viewer' | 'client_employee' | 'client_member';
 export type BookRole = 'editor' | 'reviewer' | 'viewer';
 export type CompanyRole = 'owner' | 'admin' | 'finance' | 'employee';
-export interface TransportLimits { max_file_bytes: number; max_request_bytes: number; max_response_bytes: number }
-export interface AuthConfig { mode: 'local' | 'supabase'; supabase_url?: string; publishable_key?: string; personas?: { id: string; label: string }[]; transport_limits?: TransportLimits }
-export interface Firm { id: string; name: string; role: FirmRole }
+export interface TransportLimits {
+  max_file_bytes: number;
+  max_request_bytes: number;
+  max_response_bytes: number;
+}
+export interface AuthConfig {
+  mode: 'local' | 'supabase';
+  supabase_url?: string;
+  publishable_key?: string;
+  personas?: { id: string; label: string }[];
+  transport_limits?: TransportLimits;
+}
+export interface Firm {
+  id: string;
+  name: string;
+  role: FirmRole;
+}
 export interface Me {
   user: { id: string; name: string; email: string };
   firms: Firm[];
@@ -22,9 +37,24 @@ export interface Me {
   permissions: { manage_firm: boolean; create_company: boolean; create_book: boolean };
   mode: 'local' | 'supabase';
 }
-export interface Company { id: string; name: string; tax_id?: string }
-export interface Member<Role extends string> { user_id: string; name: string; email: string; role: Role; department_id?: string | null }
-export interface BookPermissions { edit: boolean; review: boolean; export: boolean; manage: boolean }
+export interface Company {
+  id: string;
+  name: string;
+  tax_id?: string;
+}
+export interface Member<Role extends string> {
+  user_id: string;
+  name: string;
+  email: string;
+  role: Role;
+  department_id?: string | null;
+}
+export interface BookPermissions {
+  edit: boolean;
+  review: boolean;
+  export: boolean;
+  manage: boolean;
+}
 
 export interface Book {
   id: string;
@@ -41,11 +71,18 @@ export interface Book {
 
 export interface Workbench {
   books: Book[];
-  stats: Pick<Book, 'pending_count' | 'exception_count' | 'approved_count'> & { book_count: number };
+  stats: Pick<Book, 'pending_count' | 'exception_count' | 'approved_count'> & {
+    book_count: number;
+  };
   pagination?: Pagination;
 }
 
-export interface Pagination { limit: number; offset: number; total: number; has_more: boolean }
+export interface Pagination {
+  limit: number;
+  offset: number;
+  total: number;
+  has_more: boolean;
+}
 
 export interface SourceRow {
   external_id: string;
@@ -67,7 +104,9 @@ export interface JournalLine {
   account_code: string;
   debit: string;
   credit: string;
-  auxiliary_values?: Partial<Record<'department' | 'counterparty' | 'employee' | 'project', string>>;
+  auxiliary_values?: Partial<
+    Record<'department' | 'counterparty' | 'employee' | 'project', string>
+  >;
 }
 
 export interface Draft {

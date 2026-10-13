@@ -1,11 +1,122 @@
 export type QualityMode = 'rules' | 'templates' | 'stored_model' | 'stored_ocr';
 export type QualityStatus = 'passed' | 'different' | 'uncovered' | 'stale';
-export interface QualityReportGroup { business_type: string; mode: QualityMode; run_id: string; created_at: string; context_stale: boolean; sample_count: number; counts: Record<QualityStatus, number>; measured_sample_count: number | null; measured_match_rate: number | null; human_minutes: null; supplement_wait_seconds: null; delivery_differences: null }
-export interface QualityLabel { extraction_id: string; document_index: number; field: string; page: number; value: string | null }
-export interface QualityLine { account_code: string; debit: string; credit: string; auxiliary_values: Record<string, string> }
-export interface QualityDocument { [field: string]: unknown; pages: { page: number; raw_text: string }[]; evidence: { field: string; page: number; quote: string }[] }
-export interface QualityEvidence { event_id: string | null; evidence_ref: string; attachments: { id: string; sha256: string; filename: string; size_bytes: number }[]; ocr: { id: string; attachment_id: string; model: string; prompt_version: string; result: { documents: QualityDocument[] } }[] }
-export interface QualityPreview { sample_id?: string; draft_id: string; snapshot: { payload: { amount: string; counterparty: string; occurred_on: string; description: string }; business_type: string }; final: { description: string; lines: QualityLine[] }; evidence: QualityEvidence; field_labels?: QualityLabel[] }
-export interface QualityStandard { id: string; sample_id: string; draft_id: string; source_id: string; business_type: string; amount: string; counterparty: string; confirmed: boolean; stale: boolean; can_confirm: boolean; reason: string; label_count: number; created_by: string; confirmation: { confirmed_by: string; reason: string; created_at: string } | null }
-export interface QualityRun { id: string; stale: boolean; settings: { mode: QualityMode; model: string | null; prompt_version: string | null }; report: { mode: QualityMode; counts: Record<QualityStatus, number>; scope_note: string; items: { standard_id: string; draft_id: string; business_type: string; status: QualityStatus; provenance: Record<string, unknown>; differences: { field: string; expected: unknown; actual: unknown; reference?: unknown }[] }[] } }
-export interface QualityOverview { book_id: string; company_id: string; period: string; candidates: { id: string; draft_id: string; amount: string; counterparty: string; reviewed_by: string }[]; standards: QualityStandard[]; runs: { id: string; created_at: string; settings: { mode: QualityMode }; counts: Record<QualityStatus, number> }[]; pagination: { limit: number; offset: number; totals: Record<'standards' | 'candidates' | 'runs', number> }; summary_by_business_type: { business_type: string; confirmed_count: number }[]; report_groups: QualityReportGroup[]; human_minutes: number | null; supplement_wait_seconds: number | null; delivery_differences: number | null; delivery_measurement: { observed_receipts: number; receipt_count: number; truncated: boolean }; measurement_note: string }
+export interface QualityReportGroup {
+  business_type: string;
+  mode: QualityMode;
+  run_id: string;
+  created_at: string;
+  context_stale: boolean;
+  sample_count: number;
+  counts: Record<QualityStatus, number>;
+  measured_sample_count: number | null;
+  measured_match_rate: number | null;
+  human_minutes: null;
+  supplement_wait_seconds: null;
+  delivery_differences: null;
+}
+export interface QualityLabel {
+  extraction_id: string;
+  document_index: number;
+  field: string;
+  page: number;
+  value: string | null;
+}
+export interface QualityLine {
+  account_code: string;
+  debit: string;
+  credit: string;
+  auxiliary_values: Record<string, string>;
+}
+export interface QualityDocument {
+  [field: string]: unknown;
+  pages: { page: number; raw_text: string }[];
+  evidence: { field: string; page: number; quote: string }[];
+}
+export interface QualityEvidence {
+  event_id: string | null;
+  evidence_ref: string;
+  attachments: { id: string; sha256: string; filename: string; size_bytes: number }[];
+  ocr: {
+    id: string;
+    attachment_id: string;
+    model: string;
+    prompt_version: string;
+    result: { documents: QualityDocument[] };
+  }[];
+}
+export interface QualityPreview {
+  sample_id?: string;
+  draft_id: string;
+  snapshot: {
+    payload: { amount: string; counterparty: string; occurred_on: string; description: string };
+    business_type: string;
+  };
+  final: { description: string; lines: QualityLine[] };
+  evidence: QualityEvidence;
+  field_labels?: QualityLabel[];
+}
+export interface QualityStandard {
+  id: string;
+  sample_id: string;
+  draft_id: string;
+  source_id: string;
+  business_type: string;
+  amount: string;
+  counterparty: string;
+  confirmed: boolean;
+  stale: boolean;
+  can_confirm: boolean;
+  reason: string;
+  label_count: number;
+  created_by: string;
+  confirmation: { confirmed_by: string; reason: string; created_at: string } | null;
+}
+export interface QualityRun {
+  id: string;
+  stale: boolean;
+  settings: { mode: QualityMode; model: string | null; prompt_version: string | null };
+  report: {
+    mode: QualityMode;
+    counts: Record<QualityStatus, number>;
+    scope_note: string;
+    items: {
+      standard_id: string;
+      draft_id: string;
+      business_type: string;
+      status: QualityStatus;
+      provenance: Record<string, unknown>;
+      differences: { field: string; expected: unknown; actual: unknown; reference?: unknown }[];
+    }[];
+  };
+}
+export interface QualityOverview {
+  book_id: string;
+  company_id: string;
+  period: string;
+  candidates: {
+    id: string;
+    draft_id: string;
+    amount: string;
+    counterparty: string;
+    reviewed_by: string;
+  }[];
+  standards: QualityStandard[];
+  runs: {
+    id: string;
+    created_at: string;
+    settings: { mode: QualityMode };
+    counts: Record<QualityStatus, number>;
+  }[];
+  pagination: {
+    limit: number;
+    offset: number;
+    totals: Record<'standards' | 'candidates' | 'runs', number>;
+  };
+  summary_by_business_type: { business_type: string; confirmed_count: number }[];
+  report_groups: QualityReportGroup[];
+  human_minutes: number | null;
+  supplement_wait_seconds: number | null;
+  delivery_differences: number | null;
+  delivery_measurement: { observed_receipts: number; receipt_count: number; truncated: boolean };
+  measurement_note: string;
+}

@@ -1,7 +1,46 @@
-.inline-evidence { outline: none; }
-.evidence-location-note { padding: 13px 14px; margin: 4px 0 13px; background: #fff; border: 1px solid #c8d4bf; border-left: 3px solid #668456; border-radius: 5px; }
-.evidence-location-note strong { display: flex; gap: 6px; align-items: center; font-size: 12px; color: #426037; }
-.evidence-location-note blockquote { margin: 10px 0; font-size: 13px; line-height: 1.8; color: #384936; white-space: pre-wrap; overflow-wrap: anywhere; }
-.evidence-location-note > p { margin: 8px 0 0; font-size: 11px; color: #697960; line-height: 1.7; }
-.evidence-citation-reference { font-size: 12px; padding: 11px 12px; background: #e5eddf; color: #48673a; border-radius: 4px; line-height: 1.8; overflow-wrap: anywhere; }
-@media (max-width:700px) { .inline-file-select select { font-size: 16px; } }
+.inline-evidence {
+  outline: none;
+}
+.evidence-location-note {
+  padding: 13px 14px;
+  margin: 4px 0 13px;
+  background: #fff;
+  border: 1px solid #c8d4bf;
+  border-left: 3px solid #668456;
+  border-radius: 5px;
+}
+.evidence-location-note strong {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 12px;
+  color: #426037;
+}
+.evidence-location-note blockquote {
+  margin: 10px 0;
+  font-size: 13px;
+  line-height: 1.8;
+  color: #384936;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.evidence-location-note > p {
+  margin: 8px 0 0;
+  font-size: 11px;
+  color: #697960;
+  line-height: 1.7;
+}
+.evidence-citation-reference {
+  font-size: 12px;
+  padding: 11px 12px;
+  background: #e5eddf;
+  color: #48673a;
+  border-radius: 4px;
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 700px) {
+  .inline-file-select select {
+    font-size: 16px;
+  }
+}

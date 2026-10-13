@@ -1,31 +1,198 @@
-.proposal-dialog-backdrop { position: fixed; inset: 0; z-index: 125; display: grid; place-items: center; background: rgba(17,35,28,.34); backdrop-filter: blur(2px); padding: 24px; }
-.proposal-dialog { width: min(660px, 100%); max-height: min(850px, 90dvh); background: #fff; border-radius: 10px; box-shadow: 0 25px 80px rgba(17,35,28,.2); display: flex; flex-direction: column; outline: none; }
-.proposal-dialog > header { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; padding: 24px 28px; border-bottom: 1px solid var(--line); }
-.proposal-dialog > header p { color: var(--green); font-size: 12px; margin: 0 0 7px; }
-.proposal-dialog > header h2 { margin: 0; font-size: 25px; }
-.proposal-dialog-content { min-height: 0; overflow-y: auto; padding: 24px 28px; }
-.proposal-dialog-summary { background: var(--surface-soft); padding: 18px; border: 1px solid var(--line); border-radius: 6px; }
-.proposal-dialog-summary > div { display: flex; align-items: center; gap: 10px; color: var(--green); }
-.proposal-dialog-summary strong { font-size: 19px; }
-.proposal-dialog-summary p { font-size: 14px; line-height: 1.8; overflow-wrap: anywhere; }
-.proposal-dialog-summary dl { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.proposal-dialog dt { font-size: 12px; color: var(--muted); }
-.proposal-dialog dd { margin: 5px 0 0; font-size: 13px; overflow-wrap: anywhere; }
-.proposal-dialog-next { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 22px 0; }
-.proposal-dialog-next h3 { width: 100%; margin: 0; font-size: 15px; }
-.proposal-dialog-next p { font-size: 13px; color: var(--muted); line-height: 1.7; }
-.proposal-dialog-operation { padding: 18px; border: 1px solid #d1dac8; border-radius: 6px; background: var(--green-soft); }
-.proposal-dialog-operation h3 { margin: 0; font-size: 16px; }
-.proposal-dialog-operation p { font-size: 13px; line-height: 1.8; }
-.proposal-dialog-operation > label { display: grid; gap: 7px; font-size: 13px; }
-.proposal-dialog-operation textarea { width: 100%; font: inherit; resize: vertical; padding: 10px; background: #fff; border: 1px solid var(--line); border-radius: 4px; }
-.proposal-dialog-operation .proposal-dialog-ack { display: flex; gap: 8px; align-items: flex-start; line-height: 1.8; margin: 14px 0; }
-.proposal-dialog-ack input { margin-top: 5px; }
-.proposal-dialog-operation > div { display: flex; gap: 15px; margin-top: 15px; flex-wrap: wrap; }
-.proposal-dialog-technical { margin-top: 24px; font-size: 13px; border-top: 1px solid var(--line); padding-top: 15px; }
-.proposal-dialog-technical summary { cursor: pointer; color: var(--muted); }
-.proposal-dialog-technical dl { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-.proposal-dialog-technical article { border-top: 1px solid var(--line); padding: 12px 0; }
-.proposal-dialog-technical p { font-size: 12px; line-height: 1.7; color: var(--muted); }
-.proposal-dialog > footer { display: flex; gap: 12px; justify-content: space-between; padding: 18px 28px; border-top: 1px solid var(--line); }
-@media(max-width:600px) { .proposal-dialog-backdrop { padding: 0; } .proposal-dialog { width: 100%; height: 100dvh; max-height: 100dvh; border-radius: 0; } .proposal-dialog > header, .proposal-dialog-content { padding: 20px 18px; } .proposal-dialog-content { flex: 1; } .proposal-dialog > footer { padding: 13px 18px max(13px, env(safe-area-inset-bottom)); } .proposal-dialog > footer .button { flex: 1; justify-content: center; font-size: 13px; } .proposal-dialog-summary dl, .proposal-dialog-technical dl { grid-template-columns: 1fr; } }
+.proposal-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 125;
+  display: grid;
+  place-items: center;
+  background: rgba(17, 35, 28, 0.34);
+  backdrop-filter: blur(2px);
+  padding: 24px;
+}
+.proposal-dialog {
+  width: min(660px, 100%);
+  max-height: min(850px, 90dvh);
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 25px 80px rgba(17, 35, 28, 0.2);
+  display: flex;
+  flex-direction: column;
+  outline: none;
+}
+.proposal-dialog > header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 20px;
+  padding: 24px 28px;
+  border-bottom: 1px solid var(--line);
+}
+.proposal-dialog > header p {
+  color: var(--green);
+  font-size: 12px;
+  margin: 0 0 7px;
+}
+.proposal-dialog > header h2 {
+  margin: 0;
+  font-size: 25px;
+}
+.proposal-dialog-content {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 24px 28px;
+}
+.proposal-dialog-summary {
+  background: var(--surface-soft);
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.proposal-dialog-summary > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--green);
+}
+.proposal-dialog-summary strong {
+  font-size: 19px;
+}
+.proposal-dialog-summary p {
+  font-size: 14px;
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+}
+.proposal-dialog-summary dl {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.proposal-dialog dt {
+  font-size: 12px;
+  color: var(--muted);
+}
+.proposal-dialog dd {
+  margin: 5px 0 0;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.proposal-dialog-next {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin: 22px 0;
+}
+.proposal-dialog-next h3 {
+  width: 100%;
+  margin: 0;
+  font-size: 15px;
+}
+.proposal-dialog-next p {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.7;
+}
+.proposal-dialog-operation {
+  padding: 18px;
+  border: 1px solid #d1dac8;
+  border-radius: 6px;
+  background: var(--green-soft);
+}
+.proposal-dialog-operation h3 {
+  margin: 0;
+  font-size: 16px;
+}
+.proposal-dialog-operation p {
+  font-size: 13px;
+  line-height: 1.8;
+}
+.proposal-dialog-operation > label {
+  display: grid;
+  gap: 7px;
+  font-size: 13px;
+}
+.proposal-dialog-operation textarea {
+  width: 100%;
+  font: inherit;
+  resize: vertical;
+  padding: 10px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+.proposal-dialog-operation .proposal-dialog-ack {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  line-height: 1.8;
+  margin: 14px 0;
+}
+.proposal-dialog-ack input {
+  margin-top: 5px;
+}
+.proposal-dialog-operation > div {
+  display: flex;
+  gap: 15px;
+  margin-top: 15px;
+  flex-wrap: wrap;
+}
+.proposal-dialog-technical {
+  margin-top: 24px;
+  font-size: 13px;
+  border-top: 1px solid var(--line);
+  padding-top: 15px;
+}
+.proposal-dialog-technical summary {
+  cursor: pointer;
+  color: var(--muted);
+}
+.proposal-dialog-technical dl {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+.proposal-dialog-technical article {
+  border-top: 1px solid var(--line);
+  padding: 12px 0;
+}
+.proposal-dialog-technical p {
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--muted);
+}
+.proposal-dialog > footer {
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 18px 28px;
+  border-top: 1px solid var(--line);
+}
+@media (max-width: 600px) {
+  .proposal-dialog-backdrop {
+    padding: 0;
+  }
+  .proposal-dialog {
+    width: 100%;
+    height: 100dvh;
+    max-height: 100dvh;
+    border-radius: 0;
+  }
+  .proposal-dialog > header,
+  .proposal-dialog-content {
+    padding: 20px 18px;
+  }
+  .proposal-dialog-content {
+    flex: 1;
+  }
+  .proposal-dialog > footer {
+    padding: 13px 18px max(13px, env(safe-area-inset-bottom));
+  }
+  .proposal-dialog > footer .button {
+    flex: 1;
+    justify-content: center;
+    font-size: 13px;
+  }
+  .proposal-dialog-summary dl,
+  .proposal-dialog-technical dl {
+    grid-template-columns: 1fr;
+  }
+}

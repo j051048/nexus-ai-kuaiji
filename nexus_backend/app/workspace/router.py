@@ -12,16 +12,27 @@ def build_workspace_router(actor_dependency):
         return workspace.profile(current)
 
     @router.get("/tasks")
-    def tasks(bucket: str = Query("action", max_length=20), kind: str | None = Query(None, max_length=30),
-              company_id: str | None = Query(None, min_length=1, max_length=100),
-              limit: int = Query(20, ge=1, le=100), offset: int = Query(0, ge=0, le=1_000_000),
-              sort: str = Query("priority", max_length=20), q: str = Query("", max_length=200),
-              current=Depends(actor_dependency), workspace=Depends(service)):
+    def tasks(
+        bucket: str = Query("action", max_length=20),
+        kind: str | None = Query(None, max_length=30),
+        company_id: str | None = Query(None, min_length=1, max_length=100),
+        limit: int = Query(20, ge=1, le=100),
+        offset: int = Query(0, ge=0, le=1_000_000),
+        sort: str = Query("priority", max_length=20),
+        q: str = Query("", max_length=200),
+        current=Depends(actor_dependency),
+        workspace=Depends(service),
+    ):
         return workspace.list(current, bucket, kind, company_id, limit, offset, sort=sort, q=q)
 
     @router.get("/companies")
-    def companies(q: str = Query("", max_length=200), limit: int = Query(20, ge=1, le=100),
-                  offset: int = Query(0, ge=0, le=1_000_000), current=Depends(actor_dependency), workspace=Depends(service)):
+    def companies(
+        q: str = Query("", max_length=200),
+        limit: int = Query(20, ge=1, le=100),
+        offset: int = Query(0, ge=0, le=1_000_000),
+        current=Depends(actor_dependency),
+        workspace=Depends(service),
+    ):
         return workspace.companies(current, q, limit, offset)
 
     @router.get("/tasks/{kind}/{ref}")

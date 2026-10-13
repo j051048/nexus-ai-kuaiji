@@ -35,7 +35,10 @@ class PolicyRequest(InputModel):
 
     @model_validator(mode="after")
     def enabled_budget_must_be_positive(self):
-        if self.quota_enabled and any(money_to_cents(getattr(self, name)) <= 0 for name in ("monthly_limit", "ocr_reserve", "proposal_reserve")):
+        if self.quota_enabled and any(
+            money_to_cents(getattr(self, name)) <= 0
+            for name in ("monthly_limit", "ocr_reserve", "proposal_reserve")
+        ):
             raise ValueError("启用额度时，月额度及两类请求预留必须大于零")
         return self
 

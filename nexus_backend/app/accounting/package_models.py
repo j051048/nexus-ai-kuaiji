@@ -14,7 +14,9 @@ class PackageSelect(InputModel):
 
     @model_validator(mode="after")
     def distinct(self):
-        if any(not 1 <= len(value) <= 100 for value in self.draft_ids) or len(set(self.draft_ids)) != len(self.draft_ids):
+        if any(not 1 <= len(value) <= 100 for value in self.draft_ids) or len(
+            set(self.draft_ids)
+        ) != len(self.draft_ids):
             raise ValueError("凭证编号必须有效且不重复")
         self.draft_ids.sort()
         return self

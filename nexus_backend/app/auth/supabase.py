@@ -51,7 +51,9 @@ class AuthSettings:
         if self.mode == "local":
             return
         if not self.supabase_url or not self.publishable_key:
-            raise RuntimeError("Supabase 登录必须配置 ACCOUNTING_SUPABASE_URL 和 ACCOUNTING_SUPABASE_PUBLISHABLE_KEY")
+            raise RuntimeError(
+                "Supabase 登录必须配置 ACCOUNTING_SUPABASE_URL 和 ACCOUNTING_SUPABASE_PUBLISHABLE_KEY"
+            )
         try:
             parsed = urlsplit(self.supabase_url)
             valid_port = parsed.port in {None, 443}
@@ -63,12 +65,24 @@ class AuthSettings:
                 is_ip = False
         except ValueError:
             raise RuntimeError("ACCOUNTING_SUPABASE_URL 必须是有效的 HTTPS 项目地址") from None
-        if (any(character.isspace() for character in self.supabase_url)
-                or parsed.scheme != "https" or not valid_port or not host or "." not in host
-                or is_ip or host.endswith(".localhost") or host == "localhost"
-                or parsed.username or parsed.password or parsed.path not in {"", "/"}
-                or parsed.query or parsed.fragment):
-            raise RuntimeError("ACCOUNTING_SUPABASE_URL 必须是有效的 HTTPS 项目地址，不含路径、用户信息或查询参数")
+        if (
+            any(character.isspace() for character in self.supabase_url)
+            or parsed.scheme != "https"
+            or not valid_port
+            or not host
+            or "." not in host
+            or is_ip
+            or host.endswith(".localhost")
+            or host == "localhost"
+            or parsed.username
+            or parsed.password
+            or parsed.path not in {"", "/"}
+            or parsed.query
+            or parsed.fragment
+        ):
+            raise RuntimeError(
+                "ACCOUNTING_SUPABASE_URL 必须是有效的 HTTPS 项目地址，不含路径、用户信息或查询参数"
+            )
         object.__setattr__(self, "supabase_url", self.supabase_url.rstrip("/"))
         if not self.audience or len(self.audience) > 200:
             raise RuntimeError("ACCOUNTING_AUTH_AUDIENCE 必须为非空 audience")
@@ -83,7 +97,9 @@ class AuthSettings:
         except PyJWTError:
             public_key = False
         if not public_key:
-            raise RuntimeError("ACCOUNTING_SUPABASE_PUBLISHABLE_KEY 只能使用 publishable 或 legacy anon 公钥，禁止 secret/service_role")
+            raise RuntimeError(
+                "ACCOUNTING_SUPABASE_PUBLISHABLE_KEY 只能使用 publishable 或 legacy anon 公钥，禁止 secret/service_role"
+            )
 
     @classmethod
     def from_env(cls, environ: Mapping[str, str] | None = None):
@@ -102,7 +118,11 @@ class AuthSettings:
     def public_config(self):
         if self.mode == "local":
             return {"mode": "local"}
-        return {"mode": "supabase", "supabase_url": self.supabase_url, "publishable_key": self.publishable_key}
+        return {
+            "mode": "supabase",
+            "supabase_url": self.supabase_url,
+            "publishable_key": self.publishable_key,
+        }
 
 
 class JwksClient(Protocol):
@@ -128,12 +148,19 @@ class _RemoteJwks:
             if not isinstance(payload, dict) or not isinstance(payload.get("keys"), list):
                 raise _unavailable()
             # 共享密钥不得从 JWKS 进入本地 JWT 解码路径。
-            raw_keys = [key for key in payload["keys"] if isinstance(key, dict)
-                        and key.get("kty") in {"EC", "RSA"}
-                        and key.get("alg") in {"ES256", "RS256"}
-                        and key.get("use", "sig") == "sig"
-                        and "d" not in key
-                        and ("key_ops" not in key or (isinstance(key["key_ops"], list) and "verify" in key["key_ops"]))]
+            raw_keys = [
+                key
+                for key in payload["keys"]
+                if isinstance(key, dict)
+                and key.get("kty") in {"EC", "RSA"}
+                and key.get("alg") in {"ES256", "RS256"}
+                and key.get("use", "sig") == "sig"
+                and "d" not in key
+                and (
+                    "key_ops" not in key
+                    or (isinstance(key["key_ops"], list) and "verify" in key["key_ops"])
+                )
+            ]
             keys = [jwt.PyJWK.from_dict(key) for key in raw_keys]
         except (httpx.HTTPError, ValueError, TypeError, PyJWTError):
             raise _unavailable() from None
@@ -156,13 +183,21 @@ class _RemoteJwks:
 
 
 class SupabaseAuthenticator:
-    def __init__(self, settings: AuthSettings, *, http_client: httpx.Client | None = None, jwks_client: JwksClient | None = None):
+    def __init__(
+        self,
+        settings: AuthSettings,
+        *,
+        http_client: httpx.Client | None = None,
+        jwks_client: JwksClient | None = None,
+    ):
         if settings.mode != "supabase":
             raise RuntimeError("SupabaseAuthenticator 需要 supabase 认证配置")
         self.settings = settings
         self._owns_client = http_client is None
         self.client = http_client or httpx.Client(timeout=5.0, follow_redirects=False)
-        self.jwks = jwks_client or _RemoteJwks(f"{settings.issuer}/.well-known/jwks.json", self.client)
+        self.jwks = jwks_client or _RemoteJwks(
+            f"{settings.issuer}/.well-known/jwks.json", self.client
+        )
 
     def close(self):
         if self._owns_client:
@@ -170,10 +205,14 @@ class SupabaseAuthenticator:
 
     def _online_user(self, token: str) -> dict:
         try:
-            response = self.client.get(f"{self.settings.issuer}/user", headers={
-                "apikey": self.settings.publishable_key,
-                "Authorization": f"Bearer {token}",
-            }, follow_redirects=False)
+            response = self.client.get(
+                f"{self.settings.issuer}/user",
+                headers={
+                    "apikey": self.settings.publishable_key,
+                    "Authorization": f"Bearer {token}",
+                },
+                follow_redirects=False,
+            )
             if response.status_code in {400, 401, 403, 422}:
                 raise _unauthorized()
             if response.status_code != 200:
@@ -186,13 +225,28 @@ class SupabaseAuthenticator:
             raise _unavailable() from None
 
     def _decode(self, token: str, key=None, *, signature: bool):
-        claims = jwt.decode(token, key=key, algorithms=["ES256", "RS256"],
-                            issuer=self.settings.issuer, audience=self.settings.audience,
-                            options={"verify_signature": signature, "verify_iss": True,
-                                     "verify_aud": True, "verify_exp": True, "verify_iat": True,
-                                     "verify_nbf": True, "verify_sub": True,
-                                     "require": ["iss", "aud", "exp", "sub", "iat"]})
-        if type(claims["exp"]) is not int or type(claims["iat"]) is not int or claims["exp"] <= claims["iat"]:
+        claims = jwt.decode(
+            token,
+            key=key,
+            algorithms=["ES256", "RS256"],
+            issuer=self.settings.issuer,
+            audience=self.settings.audience,
+            options={
+                "verify_signature": signature,
+                "verify_iss": True,
+                "verify_aud": True,
+                "verify_exp": True,
+                "verify_iat": True,
+                "verify_nbf": True,
+                "verify_sub": True,
+                "require": ["iss", "aud", "exp", "sub", "iat"],
+            },
+        )
+        if (
+            type(claims["exp"]) is not int
+            or type(claims["iat"]) is not int
+            or claims["exp"] <= claims["iat"]
+        ):
             raise _unauthorized()
         try:
             UUID(claims["sub"])
@@ -233,7 +287,11 @@ class SupabaseAuthenticator:
             user_id = str(UUID(user.get("id", "")))
         except (ValueError, TypeError, AttributeError):
             raise _unavailable() from None
-        if user_id != str(UUID(claims["sub"])) or user.get("is_anonymous") is True or user.get("deleted_at"):
+        if (
+            user_id != str(UUID(claims["sub"]))
+            or user.get("is_anonymous") is True
+            or user.get("deleted_at")
+        ):
             raise _unauthorized()
         banned_until = user.get("banned_until")
         if banned_until:
@@ -257,6 +315,12 @@ class SupabaseAuthenticator:
         except ValueError:
             raise _unavailable() from None
         metadata = user.get("user_metadata")
-        name = (metadata.get("display_name") or metadata.get("full_name")) if isinstance(metadata, dict) else None
-        display_name = name.strip()[:120] if isinstance(name, str) and name.strip() else (email or user_id)
+        name = (
+            (metadata.get("display_name") or metadata.get("full_name"))
+            if isinstance(metadata, dict)
+            else None
+        )
+        display_name = (
+            name.strip()[:120] if isinstance(name, str) and name.strip() else (email or user_id)
+        )
         return Identity(user_id=user_id, email=email, display_name=display_name)

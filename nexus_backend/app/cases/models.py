@@ -73,7 +73,15 @@ class CaseRespond(CaseCommand):
     @field_validator("fields")
     @classmethod
     def bounded_fields(cls, value):
-        if len(value) > 20 or any(not k.strip() or len(k) > 100 or not v.strip() or len(v) > 2000 or "\x00" in k or "\x00" in v for k, v in value.items()):
+        if len(value) > 20 or any(
+            not k.strip()
+            or len(k) > 100
+            or not v.strip()
+            or len(v) > 2000
+            or "\x00" in k
+            or "\x00" in v
+            for k, v in value.items()
+        ):
             raise ValueError("补件字段最多 20 项，每项须填写有效内容")
         return value
 

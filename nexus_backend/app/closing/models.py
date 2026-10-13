@@ -10,11 +10,11 @@ class SnapshotReview(InputModel):
     reason: StrictStr = Field(min_length=3, max_length=1000)
     materials_confirmed: StrictBool
 
-    @field_validator('materials_confirmed')
+    @field_validator("materials_confirmed")
     @classmethod
     def explicit_coverage(cls, value):
         if value is not True:
-            raise ValueError('关期前须明确确认本期资料及银行流水完整性')
+            raise ValueError("关期前须明确确认本期资料及银行流水完整性")
         return value
 
 

@@ -1,4 +1,5 @@
 """Bound receipt HTTP bodies before JSON parsing; no file is persisted here."""
+
 import re
 from starlette.exceptions import HTTPException
 
@@ -8,7 +9,14 @@ class DeliveryBodyLimitMiddleware:
         self.app = app
 
     async def __call__(self, scope, receive, send):
-        if scope["type"] != "http" or scope.get("method") != "POST" or not re.fullmatch(r"/api/books/[^/]+/delivery/(?:exports/[^/]+/receipts(?:/import)?|discrepancies/notes)", scope.get("path", "")):
+        if (
+            scope["type"] != "http"
+            or scope.get("method") != "POST"
+            or not re.fullmatch(
+                r"/api/books/[^/]+/delivery/(?:exports/[^/]+/receipts(?:/import)?|discrepancies/notes)",
+                scope.get("path", ""),
+            )
+        ):
             return await self.app(scope, receive, send)
         consumed = 0
 

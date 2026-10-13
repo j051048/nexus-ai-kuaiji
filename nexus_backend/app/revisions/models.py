@@ -13,23 +13,23 @@ class RevisionSubmit(InputModel):
     reason: StrictStr = Field(min_length=3, max_length=1000)
     idempotency_key: StrictStr = Field(min_length=8, max_length=120)
 
-    @field_validator('reason', 'idempotency_key')
+    @field_validator("reason", "idempotency_key")
     @classmethod
     def trimmed(cls, value):
         if value != value.strip():
-            raise ValueError('修订依据与操作编号不得包含首尾空格')
+            raise ValueError("修订依据与操作编号不得包含首尾空格")
         return value
 
 
 class RevisionReview(InputModel):
     expected_version: int = Field(strict=True, ge=1)
-    decision: Literal['accept', 'reject']
+    decision: Literal["accept", "reject"]
     reason: StrictStr = Field(min_length=3, max_length=1000)
     idempotency_key: StrictStr = Field(min_length=8, max_length=120)
 
-    @field_validator('reason', 'idempotency_key')
+    @field_validator("reason", "idempotency_key")
     @classmethod
     def trimmed(cls, value):
         if value != value.strip():
-            raise ValueError('复核依据与操作编号不得包含首尾空格')
+            raise ValueError("复核依据与操作编号不得包含首尾空格")
         return value

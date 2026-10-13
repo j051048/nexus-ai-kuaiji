@@ -97,7 +97,8 @@ class GatewaySettings:
 
 def _error(status: int, detail: str) -> JSONResponse:
     return JSONResponse(
-        {"detail": detail}, status_code=status,
+        {"detail": detail},
+        status_code=status,
         headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"},
     )
 
@@ -130,7 +131,9 @@ def _target(settings: GatewaySettings, request: Request) -> httpx.URL:
     if any(part in (".", "..") for part in request.scope["path"].split("/")):
         raise ValueError("无效 API 路径")
     query = request.scope.get("query_string", b"")
-    return httpx.URL(settings.backend_origin).copy_with(raw_path=path + (b"?" + query if query else b""))
+    return httpx.URL(settings.backend_origin).copy_with(
+        raw_path=path + (b"?" + query if query else b"")
+    )
 
 
 async def _proxy(app: FastAPI, request: Request) -> Response:
@@ -159,7 +162,13 @@ async def _proxy(app: FastAPI, request: Request) -> Response:
         name = name.lower()
         if name.decode("ascii", errors="ignore") not in REQUEST_HEADERS:
             continue
-        if name in selected or len(value) > 8192 or b"\r" in value or b"\n" in value or b"\x00" in value:
+        if (
+            name in selected
+            or len(value) > 8192
+            or b"\r" in value
+            or b"\n" in value
+            or b"\x00" in value
+        ):
             return _error(400, "请求头格式无效或包含重复身份信息")
         selected.add(name)
         headers.append((name, value))
@@ -168,13 +177,20 @@ async def _proxy(app: FastAPI, request: Request) -> Response:
         # Bound the whole exchange, including a slowly streaming upstream.
         async with asyncio.timeout_at(deadline):
             client: httpx.AsyncClient = app.state.gateway_client
-            async with client.stream(request.method, target, headers=headers, content=content) as upstream:
+            async with client.stream(
+                request.method, target, headers=headers, content=content
+            ) as upstream:
                 if 300 <= upstream.status_code < 400:
                     return _error(502, "会计后端返回了重定向，请由管理员检查后端地址")
                 if upstream.headers.get("content-encoding", "identity").lower() != "identity":
                     return _error(502, "会计后端返回了不支持的传输格式")
                 length = upstream.headers.get("content-length")
-                if length is not None and (len(length) > 20 or not length.isascii() or not length.isdecimal() or int(length) > MAX_RESPONSE_BYTES):
+                if length is not None and (
+                    len(length) > 20
+                    or not length.isascii()
+                    or not length.isdecimal()
+                    or int(length) > MAX_RESPONSE_BYTES
+                ):
                     return _error(502, "会计后端响应超过网关 4 MiB 限制，请缩小查询或导出范围")
                 result = bytearray()
                 async for chunk in upstream.aiter_raw():
@@ -191,13 +207,19 @@ async def _proxy(app: FastAPI, request: Request) -> Response:
                 response_headers["Cache-Control"] = "no-store"
                 response_headers["X-Content-Type-Options"] = "nosniff"
                 body = bytes(result)
-                if request.method != "HEAD" and request.scope["path"] == "/api/auth/config" and upstream.status_code == 200:
+                if (
+                    request.method != "HEAD"
+                    and request.scope["path"] == "/api/auth/config"
+                    and upstream.status_code == 200
+                ):
                     try:
                         config = json.loads(body)
                         if not isinstance(config, dict):
                             raise ValueError("invalid auth config")
                         config["transport_limits"] = TRANSPORT_LIMITS
-                        body = json.dumps(config, ensure_ascii=False, allow_nan=False, separators=(",", ":")).encode("utf-8")
+                        body = json.dumps(
+                            config, ensure_ascii=False, allow_nan=False, separators=(",", ":")
+                        ).encode("utf-8")
                         if len(body) > MAX_RESPONSE_BYTES:
                             raise ValueError("auth config too large")
                     except (UnicodeDecodeError, json.JSONDecodeError, ValueError, RecursionError):
@@ -205,7 +227,9 @@ async def _proxy(app: FastAPI, request: Request) -> Response:
                     response_headers["content-type"] = "application/json"
                 return Response(body, status_code=upstream.status_code, headers=response_headers)
     except (httpx.TimeoutException, TimeoutError):
-        return _error(504, "会计后端请求超时，操作结果尚未确认，请先刷新任务或操作状态再决定是否重试")
+        return _error(
+            504, "会计后端请求超时，操作结果尚未确认，请先刷新任务或操作状态再决定是否重试"
+        )
     except httpx.HTTPError:
         return _error(502, "无法连接会计后端，操作结果尚未确认，请稍后刷新状态")
 
@@ -223,7 +247,9 @@ def create_app(
         # accounting write may already have committed on the durable backend.
         limits = httpx.Limits(max_connections=20, max_keepalive_connections=10)
         async with httpx.AsyncClient(
-            transport=transport if transport is not None else httpx.AsyncHTTPTransport(retries=0, trust_env=False, limits=limits),
+            transport=transport
+            if transport is not None
+            else httpx.AsyncHTTPTransport(retries=0, trust_env=False, limits=limits),
             timeout=httpx.Timeout(effective.timeout_seconds, connect=5, pool=5),
             follow_redirects=False,
             trust_env=False,
@@ -233,8 +259,11 @@ def create_app(
             yield
 
     application = FastAPI(
-        title="会计 API 网关", lifespan=lifespan,
-        docs_url=None, redoc_url=None, openapi_url=None,
+        title="会计 API 网关",
+        lifespan=lifespan,
+        docs_url=None,
+        redoc_url=None,
+        openapi_url=None,
     )
     application.router.redirect_slashes = False
     application.state.gateway_settings = effective

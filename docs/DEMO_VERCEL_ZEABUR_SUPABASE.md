@@ -174,3 +174,7 @@ docker compose --env-file .env.demo.local -f docker-compose.demo.yml exec api py
 Compose 不部署本地 PostgreSQL、Vercel 或 Supabase，它只重现四个后端进程。API 绑定本机 `127.0.0.1:18080`；配合 `vercel dev` 时显式启用网关的本地 HTTP 标志。不要把 Compose 默认 `config` 的完整输出发送给他人，它可能包含密钥。Zeabur 当前不直接部署 Compose；云端使用上述 Git/Dockerfile 四服务操作。
 
 升级前备份数据库与私有原件，远端原件的备份使用 `python scripts/backup_accounting.py backup --configured-storage --destination …`（数据库备份仍需独立管理员维护环境，准确参数见 `--help` 和 [备份说明](BACKUP_RECOVERY.md)），并执行实际恢复演练；停写后显式迁移，再滚动启动 API/后台。API 和三个 worker 都要部署同一代码版本，并使用相同 bucket 和场景配置。此文提供可操作底座；本仓库测试不会替你创建云资源、配置域名或提交真实账务。
+
+## 0.16.0 升级与连接池
+
+新版本运行前须显式执行 PostgreSQL 073–076；API 与三个 worker 使用同一版本。每进程连接池默认 MAX=4，多个服务及副本的 MAX 合计应符合数据库容量。企业资料直接提交通道、数电票 XML、固定样本比较及性能监控见 [第一批改进与升级](STAGE16_MVP_FOUNDATION.md)。

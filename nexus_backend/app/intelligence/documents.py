@@ -65,10 +65,21 @@ def _prepare_image(data: bytes, media_type: str) -> list[PreparedPage]:
         with warnings.catch_warnings():
             warnings.simplefilter("error", Image.DecompressionBombWarning)
             with Image.open(BytesIO(data)) as picture:
-                if picture.format != ALLOWED_IMAGE_FORMATS[media_type] or getattr(picture, "n_frames", 1) != 1:
-                    raise DocumentError("document_invalid", "票据图像格式不匹配或包含多个帧，请人工处理")
-                if picture.width <= 0 or picture.height <= 0 or picture.width * picture.height > MAX_PIXELS:
-                    raise DocumentError("document_too_large", "票据图像超过 2000 万像素，请人工处理")
+                if (
+                    picture.format != ALLOWED_IMAGE_FORMATS[media_type]
+                    or getattr(picture, "n_frames", 1) != 1
+                ):
+                    raise DocumentError(
+                        "document_invalid", "票据图像格式不匹配或包含多个帧，请人工处理"
+                    )
+                if (
+                    picture.width <= 0
+                    or picture.height <= 0
+                    or picture.width * picture.height > MAX_PIXELS
+                ):
+                    raise DocumentError(
+                        "document_too_large", "票据图像超过 2000 万像素，请人工处理"
+                    )
                 picture.load()
                 page = PreparedPage(page=1, image_data_url=_image_data_url(picture.copy()))
         pages = [page]
@@ -86,7 +97,9 @@ def _prepare_pdf_in_worker(data: bytes) -> list[PreparedPage]:
     try:
         import pypdfium2 as pdfium
     except ImportError:
-        raise DocumentError("document_unavailable", "尚未安装 PDF 识别准备依赖，请人工处理") from None
+        raise DocumentError(
+            "document_unavailable", "尚未安装 PDF 识别准备依赖，请人工处理"
+        ) from None
     document = None
     try:
         document = pdfium.PdfDocument(data)
@@ -98,24 +111,37 @@ def _prepare_pdf_in_worker(data: bytes) -> list[PreparedPage]:
             try:
                 page = document[index]
                 width, height = page.get_size()
-                if not all(math.isfinite(dimension) and 0 < dimension <= 20_000 for dimension in (width, height)):
-                    raise DocumentError("document_too_large", "PDF 页面尺寸超出安全范围，请人工处理")
+                if not all(
+                    math.isfinite(dimension) and 0 < dimension <= 20_000
+                    for dimension in (width, height)
+                ):
+                    raise DocumentError(
+                        "document_too_large", "PDF 页面尺寸超出安全范围，请人工处理"
+                    )
                 scale = min(200 / 72, MAX_LONG_EDGE / max(width, height))
                 if math.ceil(width * scale) * math.ceil(height * scale) > MAX_PIXELS:
-                    raise DocumentError("document_too_large", "PDF 页面像素超过安全范围，请人工处理")
+                    raise DocumentError(
+                        "document_too_large", "PDF 页面像素超过安全范围，请人工处理"
+                    )
                 textpage = page.get_textpage()
                 if textpage.count_chars() > MAX_PAGE_TEXT:
-                    raise DocumentError("document_too_large", "PDF 页面文字超过识别限制，请人工处理")
+                    raise DocumentError(
+                        "document_too_large", "PDF 页面文字超过识别限制，请人工处理"
+                    )
                 native_text = textpage.get_text_range()
                 if len(native_text) > MAX_PAGE_TEXT:
-                    raise DocumentError("document_too_large", "PDF 页面文字超过识别限制，请人工处理")
+                    raise DocumentError(
+                        "document_too_large", "PDF 页面文字超过识别限制，请人工处理"
+                    )
                 bitmap = page.render(scale=scale)
                 rendered = bitmap.to_pil()
                 try:
                     data_url = _image_data_url(rendered.copy())
                 finally:
                     rendered.close()
-                pages.append(PreparedPage(page=index + 1, image_data_url=data_url, native_text=native_text))
+                pages.append(
+                    PreparedPage(page=index + 1, image_data_url=data_url, native_text=native_text)
+                )
                 _check_total(pages)
             finally:
                 for resource in (bitmap, textpage, page):
@@ -136,9 +162,13 @@ def _prepare_pdf(data: bytes) -> list[PreparedPage]:
     try:
         result = subprocess.run(
             [sys.executable, "-m", "app.intelligence.documents", "--pdf-worker"],
-            input=data, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-            cwd=Path(__file__).resolve().parents[2], timeout=PDF_TIMEOUT_SECONDS,
-            check=False, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            input=data,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            cwd=Path(__file__).resolve().parents[2],
+            timeout=PDF_TIMEOUT_SECONDS,
+            check=False,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
     except subprocess.TimeoutExpired:
         raise DocumentError("document_timeout", "PDF 处理超时，请人工处理") from None
@@ -179,10 +209,16 @@ if __name__ == "__main__" and sys.argv[1:] == ["--pdf-worker"]:
         if len(worker_data) > MAX_DOCUMENT_BYTES:
             raise DocumentError("document_too_large", "票据附件超过安全处理大小限制")
         worker_pages = _prepare_pdf_in_worker(worker_data)
-        worker_payload = {"pages": [
-            {"page": page.page, "image_data_url": page.image_data_url, "native_text": page.native_text}
-            for page in worker_pages
-        ]}
+        worker_payload = {
+            "pages": [
+                {
+                    "page": page.page,
+                    "image_data_url": page.image_data_url,
+                    "native_text": page.native_text,
+                }
+                for page in worker_pages
+            ]
+        }
     except DocumentError as error:
         worker_payload = {"error": {"code": error.code, "detail": error.detail}}
     sys.stdout.buffer.write(json.dumps(worker_payload, ensure_ascii=False).encode("utf-8"))

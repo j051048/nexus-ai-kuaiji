@@ -19,7 +19,10 @@ class ReceiptLine(InputModel):
     @field_validator("auxiliary_values")
     @classmethod
     def auxiliaries(cls, value):
-        if value is not None and (set(value) - {"department", "employee", "counterparty", "project"} or any(not item.strip() or len(item) > 200 or "\x00" in item for item in value.values())):
+        if value is not None and (
+            set(value) - {"department", "employee", "counterparty", "project"}
+            or any(not item.strip() or len(item) > 200 or "\x00" in item for item in value.values())
+        ):
             raise ValueError("辅助值必须为有效部门、人员、交易对方或项目")
         return value
 

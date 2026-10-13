@@ -1,4 +1,5 @@
 """Explicit, private worker configuration; no old platform environment files."""
+
 from pathlib import Path
 import argparse
 import logging
@@ -25,6 +26,7 @@ def main(ready_callback=None):
     from app.assistant.meter import AssistantMeter
     from app.assistant.service import AssistantService
     from app.assistant.worker import AssistantWorker
+
     parser = argparse.ArgumentParser(description="持久会计助手后台服务")
     parser.add_argument("--env-file", help="显式加载会计配置文件")
     parser.add_argument("--once", action="store_true", help="恢复租约后最多处理一轮对话")
@@ -37,25 +39,41 @@ def main(ready_callback=None):
     url = os.getenv("ACCOUNTING_WORKER_DATABASE_URL", "")
     root = os.getenv("ACCOUNTING_ATTACHMENT_ROOT", "")
     if not url:
-        parser.error("须显式配置 ACCOUNTING_WORKER_DATABASE_URL；原件存储须使用共享 Supabase 或本地持久目录")
+        parser.error(
+            "须显式配置 ACCOUNTING_WORKER_DATABASE_URL；原件存储须使用共享 Supabase 或本地持久目录"
+        )
     production = os.getenv("ACCOUNTING_ENV", "local").lower() == "production" or any(
-        os.getenv(key, "").lower() in {"production", "prod"} for key in ("APP_ENV", "ENV", "ENVIRONMENT"))
-    if production and (not url.startswith(("postgres://", "postgresql://")) or
-                       parse_qs(urlsplit(url).query).get("sslmode", [""])[0] not in {"require", "verify-ca", "verify-full"}):
+        os.getenv(key, "").lower() in {"production", "prod"}
+        for key in ("APP_ENV", "ENV", "ENVIRONMENT")
+    )
+    if production and (
+        not url.startswith(("postgres://", "postgresql://"))
+        or parse_qs(urlsplit(url).query).get("sslmode", [""])[0]
+        not in {"require", "verify-ca", "verify-full"}
+    ):
         parser.error("生产助手须使用独立PostgreSQL worker账号与显式TLS配置")
     worker_started = False
     worker = None
+    db = None
     try:
         db = Database(url)
         storage = create_attachment_store(root)
         storage.verify_private()
-        intelligence = IntelligenceService(db, storage, provider=OpenAICompatibleProvider(AISettings.from_env()))
+        intelligence = IntelligenceService(
+            db, storage, provider=OpenAICompatibleProvider(AISettings.from_env())
+        )
         ledger, business = intelligence.ledger, intelligence.business
         migration = LegacyMigrationService(db, storage)
         ledger.legacy_settlements = LegacySettlementService(db, migration, ledger)
         provider = AssistantProvider(intelligence.provider)
-        service = AssistantService(db, ledger, business, agent_workspace=AgentWorkspaceService(db, ledger, business, None, migration),
-                                   provider=provider, intelligence=intelligence)
+        service = AssistantService(
+            db,
+            ledger,
+            business,
+            agent_workspace=AgentWorkspaceService(db, ledger, business, None, migration),
+            provider=provider,
+            intelligence=intelligence,
+        )
         worker = AssistantWorker(service, provider, AssistantMeter(db, MeterService(db)))
         if args.once:
             try:
@@ -75,11 +93,15 @@ def main(ready_callback=None):
             pass
         return 0
     except Exception:
-        logging.error("会计助手后台启动或执行失败，请检查独立账号、迁移与模型配置；连接及资料内容已隐藏")
+        logging.error(
+            "会计助手后台启动或执行失败，请检查独立账号、迁移与模型配置；连接及资料内容已隐藏"
+        )
         return 1
     finally:
         if worker_started:
             worker.stop()
+        if db:
+            db.close()
 
 
 if __name__ == "__main__":

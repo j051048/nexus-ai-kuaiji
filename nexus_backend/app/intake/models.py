@@ -20,7 +20,7 @@ class IntakeFields(InputModel):
 
 class IntakeCreate(InputModel):
     company_id: StrictStr = Field(min_length=1, max_length=100)
-    department_id: StrictStr = Field(min_length=1, max_length=100)
+    department_id: StrictStr | None = Field(default=None, min_length=1, max_length=100)
     template_id: Literal["reimbursement", "procurement_expense", "daily_cashflow"] = "reimbursement"
     fields: IntakeFields = Field(default_factory=IntakeFields)
     idempotency_key: StrictStr = Field(min_length=8, max_length=120)

@@ -15,7 +15,9 @@ class ConversationCreate(InputModel):
     @field_validator("book_ids", "event_ids")
     @classmethod
     def bounded_ids(cls, value):
-        if len(set(value)) != len(value) or any(not item.strip() or len(item) > 100 for item in value):
+        if len(set(value)) != len(value) or any(
+            not item.strip() or len(item) > 100 for item in value
+        ):
             raise ValueError("范围 ID 必须唯一，且每项为 1–100 字")
         return sorted(value)
 

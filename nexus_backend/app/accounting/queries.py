@@ -3,35 +3,44 @@
 The SQL health flag is a basic accounting summary; approval/export always execute
 the full deterministic and intelligence checks against current evidence.
 """
+
 from .domain import AccountingError
 
 
-def inactive_source_sql(dialect='sqlite', alias='s'):
-    if alias not in {'s', 'peer', 'o'}:
-        raise ValueError('Unknown source alias')
-    if dialect == 'postgres':
+def inactive_source_sql(dialect="sqlite", alias="s"):
+    if alias not in {"s", "peer", "o"}:
+        raise ValueError("Unknown source alias")
+    if dialect == "postgres":
         return f"accounting.source_inactive({alias}.book_id,{alias}.id)"
     return f"(EXISTS(SELECT 1 FROM fact_revision_lineage rl WHERE rl.old_book_id={alias}.book_id AND rl.old_source_id={alias}.id) OR EXISTS(SELECT 1 FROM bank_source_dispositions sd WHERE sd.book_id={alias}.book_id AND sd.source_id={alias}.id))"
 
 
 def page_bounds(limit, offset):
-    if type(limit) is not int or not 1 <= limit <= 100 or type(offset) is not int or not 0 <= offset <= 1_000_000:
+    if (
+        type(limit) is not int
+        or not 1 <= limit <= 100
+        or type(offset) is not int
+        or not 0 <= offset <= 1_000_000
+    ):
         raise AccountingError("分页须为1–100条，偏移不得超过1000000")
 
 
-def health_cte(scope_sql, dialect='sqlite'):
-    revision_blocked = ("accounting.revision_source_blocked(s.book_id,s.id)" if dialect == 'postgres' else
-                        "EXISTS(SELECT 1 FROM fact_revisions fr WHERE fr.old_book_id=s.book_id AND fr.old_source_id=s.id AND fr.state='pending')")
+def health_cte(scope_sql, dialect="sqlite"):
+    revision_blocked = (
+        "accounting.revision_source_blocked(s.book_id,s.id)"
+        if dialect == "postgres"
+        else "EXISTS(SELECT 1 FROM fact_revisions fr WHERE fr.old_book_id=s.book_id AND fr.old_source_id=s.id AND fr.state='pending')"
+    )
     auxiliary_missing = []
-    for key in ('department', 'employee', 'counterparty', 'project'):
-        if dialect == 'postgres':
+    for key in ("department", "employee", "counterparty", "project"):
+        if dialect == "postgres":
             required = f"jsonb_exists(CAST(ac.auxiliary_requirements AS jsonb),'{key}')"
             value = f"jsonb_extract_path_text(CAST(ax.values_json AS jsonb),'{key}')"
         else:
             required = f"EXISTS(SELECT 1 FROM json_each(ac.auxiliary_requirements) r WHERE r.value='{key}')"
             value = f"json_extract(ax.values_json,'$.{key}')"
         auxiliary_missing.append(f"({required} AND trim(COALESCE({value},''))='')")
-    auxiliary_missing = ' OR '.join(auxiliary_missing)
+    auxiliary_missing = " OR ".join(auxiliary_missing)
     return f"""WITH visible_books AS ({scope_sql}),
     totals AS (
       SELECT l.draft_id,l.book_id,COUNT(*) AS line_count,SUM(l.debit_cents) AS debit,
@@ -86,8 +95,21 @@ def health_cte(scope_sql, dialect='sqlite'):
 
 
 def book_filter(name, search):
-    if name not in {'all', 'pending', 'exception', 'approved'} or not isinstance(search, str) or len(search)>120:
+    if (
+        name not in {"all", "pending", "exception", "approved"}
+        or not isinstance(search, str)
+        or len(search) > 120
+    ):
         raise AccountingError("待办筛选参数无效")
-    condition = {'all': '1=1', 'pending': 'pending_count>0', 'exception': 'exception_count>0', 'approved': 'approved_count>0'}[name]
-    escaped = search.strip().lower().replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
-    return condition + " AND (LOWER(name) LIKE ? ESCAPE '\\' OR LOWER(company_name) LIKE ? ESCAPE '\\')", ['%'+escaped+'%', '%'+escaped+'%']
+    condition = {
+        "all": "1=1",
+        "pending": "pending_count>0",
+        "exception": "exception_count>0",
+        "approved": "approved_count>0",
+    }[name]
+    escaped = search.strip().lower().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return (
+        condition
+        + " AND (LOWER(name) LIKE ? ESCAPE '\\' OR LOWER(company_name) LIKE ? ESCAPE '\\')",
+        ["%" + escaped + "%", "%" + escaped + "%"],
+    )

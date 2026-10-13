@@ -9,15 +9,27 @@ def build_efficiency_router(actor_dependency):
         return request.app.state.efficiency
 
     @router.get("/efficiency/sessions")
-    def own(limit: int = Query(default=20, ge=1, le=100), offset: int = Query(default=0, ge=0), current=Depends(actor_dependency), efficiency=Depends(service)):
+    def own(
+        limit: int = Query(default=20, ge=1, le=100),
+        offset: int = Query(default=0, ge=0),
+        current=Depends(actor_dependency),
+        efficiency=Depends(service),
+    ):
         return efficiency.own(current, limit, offset)
 
     @router.post("/efficiency/sessions")
-    def start(payload: SessionStart, current=Depends(actor_dependency), efficiency=Depends(service)):
+    def start(
+        payload: SessionStart, current=Depends(actor_dependency), efficiency=Depends(service)
+    ):
         return efficiency.start(current, payload)
 
     @router.post("/efficiency/sessions/{session_id}/commands")
-    def command(session_id: str, payload: SessionCommand, current=Depends(actor_dependency), efficiency=Depends(service)):
+    def command(
+        session_id: str,
+        payload: SessionCommand,
+        current=Depends(actor_dependency),
+        efficiency=Depends(service),
+    ):
         return efficiency.command(current, session_id, payload)
 
     @router.get("/books/{book_id}/efficiency")

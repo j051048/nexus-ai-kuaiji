@@ -1,7 +1,24 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { clearReviewSession, previewMediaType, readReviewPackage, readReviewWorkspace, saveReviewPackage, saveReviewWorkspace } from './review-session';
+import {
+  clearReviewSession,
+  previewMediaType,
+  readReviewPackage,
+  readReviewWorkspace,
+  saveReviewPackage,
+  saveReviewWorkspace,
+} from './review-session';
 
-const state = { company: 'c1', period: '2026-10', template: 'all', risk: 'all', offset: 20, selected: ['d1'], previewId: 'p1', commandKey: 'key1', packageItems: null };
+const state = {
+  company: 'c1',
+  period: '2026-10',
+  template: 'all',
+  risk: 'all',
+  offset: 20,
+  selected: ['d1'],
+  previewId: 'p1',
+  commandKey: 'key1',
+  packageItems: null,
+};
 describe('复核会话只在当前授权内存范围保留', () => {
   beforeEach(clearReviewSession);
   it('离开页面后保留筛选和选择，读写返回独立副本', () => {
@@ -20,7 +37,15 @@ describe('复核会话只在当前授权内存范围保留', () => {
   });
   it('显式撤权清空工作区与复核包，包选择签名不串用', () => {
     saveReviewWorkspace('scope-a', state);
-    saveReviewPackage('scope-a', { signature: 'sig1', packageId: 'pkg1', selected: ['d1'], prepareKey: 'pk', confirmationKey: 'ck', selectionKey: { signature: '', key: '' }, changed: false });
+    saveReviewPackage('scope-a', {
+      signature: 'sig1',
+      packageId: 'pkg1',
+      selected: ['d1'],
+      prepareKey: 'pk',
+      confirmationKey: 'ck',
+      selectionKey: { signature: '', key: '' },
+      changed: false,
+    });
     expect(readReviewPackage('scope-a', 'sig2')).toBeNull();
     expect(readReviewPackage('scope-a', 'sig1')?.packageId).toBe('pkg1');
     clearReviewSession();

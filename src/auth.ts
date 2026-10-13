@@ -5,20 +5,27 @@ let supabase: SupabaseClient | null = null;
 
 export function configureAuth(config: AuthConfig): SupabaseClient | null {
   void supabase?.auth.stopAutoRefresh();
-  if (config.mode === 'local') { supabase = null; return null; }
-  if (!config.supabase_url || !config.publishable_key) throw new Error('登录服务配置不完整，请联系管理员。');
+  if (config.mode === 'local') {
+    supabase = null;
+    return null;
+  }
+  if (!config.supabase_url || !config.publishable_key)
+    throw new Error('登录服务配置不完整，请联系管理员。');
   supabase = createClient(config.supabase_url, config.publishable_key, {
     auth: { persistSession: false, autoRefreshToken: true, detectSessionInUrl: false },
   });
   return supabase;
 }
 
-export function getAuthClient(): SupabaseClient | null { return supabase; }
+export function getAuthClient(): SupabaseClient | null {
+  return supabase;
+}
 
 export async function currentAccessToken(session: Session): Promise<string> {
   if (session.mode === 'local') return session.token;
   const result = await supabase?.auth.getSession();
-  if (result?.error || !result?.data.session?.access_token) throw new Error('登录已失效，请重新登录。');
+  if (result?.error || !result?.data.session?.access_token)
+    throw new Error('登录已失效，请重新登录。');
   return result.data.session.access_token;
 }
 

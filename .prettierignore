@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.codex/
+artifacts/
+package-lock.json
+*.tsbuildinfo
+docs/
+nexus_backend/
+services/
+deploy/
+.agents/

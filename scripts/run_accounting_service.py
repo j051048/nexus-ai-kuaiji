@@ -29,6 +29,7 @@ class WorkerHealthProbe:
     This is process readiness, not a claim that every company/model/task is
     healthy. Detailed queue heartbeats and exception alarms remain in the app.
     """
+
     def __init__(self, port: int):
         self.port = port
         self._server = None
@@ -58,7 +59,9 @@ class WorkerHealthProbe:
         server = ThreadingHTTPServer(("0.0.0.0", self.port), Handler)
         server.daemon_threads = True
         self._server = server
-        self._thread = threading.Thread(target=server.serve_forever, name="worker-health", daemon=True)
+        self._thread = threading.Thread(
+            target=server.serve_forever, name="worker-health", daemon=True
+        )
         self._thread.start()
 
     def stop(self) -> None:
@@ -88,13 +91,21 @@ def validate_runtime(role: str, env: Mapping[str, str]) -> int:
     url = env.get(key, "").strip()
     try:
         parsed = urlsplit(url)
-        valid = parsed.scheme in {"postgres", "postgresql"} and bool(parsed.hostname and parsed.username)
-        valid = valid and parse_qs(parsed.query).get("sslmode", [""])[0] in {"require", "verify-ca", "verify-full"}
+        valid = parsed.scheme in {"postgres", "postgresql"} and bool(
+            parsed.hostname and parsed.username
+        )
+        valid = valid and parse_qs(parsed.query).get("sslmode", [""])[0] in {
+            "require",
+            "verify-ca",
+            "verify-full",
+        }
         _ = parsed.port
     except (ValueError, TypeError):
         valid = False
     if not valid:
-        raise ValueError(f"{key} 必须为受限 PostgreSQL 账号连接，显式启用 sslmode=require 或证书校验")
+        raise ValueError(
+            f"{key} 必须为受限 PostgreSQL 账号连接，显式启用 sslmode=require 或证书校验"
+        )
     other = "ACCOUNTING_WORKER_DATABASE_URL" if role == "api" else "ACCOUNTING_DATABASE_URL"
     if env.get(other, "").strip():
         raise ValueError(f"当前容器只应配置 {key}；移除不属于该服务的 {other}")
@@ -122,6 +133,7 @@ def main(argv: list[str] | None = None) -> int:
         if not path.is_file():
             parser.error("指定的配置文件不存在")
         from dotenv import load_dotenv
+
         load_dotenv(path, override=False)
     role = args.role or os.getenv("ACCOUNTING_SERVICE_ROLE", "api").strip().lower()
     if role == "api" and args.once:
@@ -133,6 +145,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     if role == "api":
         import uvicorn
+
         # Import string defers application configuration to the serving process.
         uvicorn.run("app.main:app", host="0.0.0.0", port=port, workers=1, proxy_headers=False)
         return 0
@@ -143,8 +156,12 @@ def main(argv: list[str] | None = None) -> int:
     sys.argv = [WORKER_MODULES[role], *(["--once"] if args.once else [])]
     probe = WorkerHealthProbe(port) if not args.once else None
     try:
-        return int(importlib.import_module(WORKER_MODULES[role]).main(
-            ready_callback=probe.start if probe is not None else None) or 0)
+        return int(
+            importlib.import_module(WORKER_MODULES[role]).main(
+                ready_callback=probe.start if probe is not None else None
+            )
+            or 0
+        )
     finally:
         if probe is not None:
             probe.stop()

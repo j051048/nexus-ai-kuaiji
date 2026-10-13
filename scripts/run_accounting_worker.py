@@ -1,4 +1,5 @@
 """Run only the explicit accounting worker configuration, never the legacy environment."""
+
 from pathlib import Path
 import sys
 

@@ -122,6 +122,7 @@ lint_output.txt
 supabase/.temp/
 
 # Vite temp
+.ruff_cache/
 *.tsbuildinfo
 vite.config.ts.timestamp-*
 *.timestamp-*.mjs

@@ -1,4 +1,5 @@
 """Deterministic primitives shared by requests, domain workflows and SQL probes."""
+
 import re
 from datetime import date
 

@@ -2,7 +2,14 @@
 
 from fastapi import APIRouter, Depends, Query, Request
 
-from .requests import ApplyRequest, BankLinkRequest, CompanyAISettings, OCRRequest, ProposalRequest, ResolutionRequest
+from .requests import (
+    ApplyRequest,
+    BankLinkRequest,
+    CompanyAISettings,
+    OCRRequest,
+    ProposalRequest,
+    ResolutionRequest,
+)
 
 
 def build_intelligence_router(actor_dependency):
@@ -16,11 +23,18 @@ def build_intelligence_router(actor_dependency):
         return service.config(current)
 
     @router.get("/companies/{company_id}/intelligence/settings")
-    def company_settings(company_id: str, current=Depends(actor_dependency), service=Depends(intelligence)):
+    def company_settings(
+        company_id: str, current=Depends(actor_dependency), service=Depends(intelligence)
+    ):
         return service.company_settings(current, company_id)
 
     @router.put("/companies/{company_id}/intelligence/settings")
-    def update_company_settings(company_id: str, payload: CompanyAISettings, current=Depends(actor_dependency), service=Depends(intelligence)):
+    def update_company_settings(
+        company_id: str,
+        payload: CompanyAISettings,
+        current=Depends(actor_dependency),
+        service=Depends(intelligence),
+    ):
         return service.company_settings(current, company_id, payload.enabled)
 
     @router.get("/business/events/{event_id}/intelligence")
@@ -28,7 +42,12 @@ def build_intelligence_router(actor_dependency):
         return service.detail(current, event_id)
 
     @router.post("/business/events/{event_id}/ocr")
-    def extract(event_id: str, payload: OCRRequest, current=Depends(actor_dependency), service=Depends(intelligence)):
+    def extract(
+        event_id: str,
+        payload: OCRRequest,
+        current=Depends(actor_dependency),
+        service=Depends(intelligence),
+    ):
         return service.extract(current, event_id, payload)
 
     @router.post("/business/events/{event_id}/reconcile")
@@ -36,29 +55,60 @@ def build_intelligence_router(actor_dependency):
         return service.reconcile(current, event_id)
 
     @router.get("/intelligence/exceptions")
-    def exceptions(company_id: str | None = None, limit: int = Query(50, ge=1, le=100), offset: int = Query(0, ge=0, le=100_000),
-                   current=Depends(actor_dependency), service=Depends(intelligence)):
+    def exceptions(
+        company_id: str | None = None,
+        limit: int = Query(50, ge=1, le=100),
+        offset: int = Query(0, ge=0, le=100_000),
+        current=Depends(actor_dependency),
+        service=Depends(intelligence),
+    ):
         return service.exceptions(current, company_id=company_id, limit=limit, offset=offset)
 
     @router.post("/intelligence/findings/{finding_id}/resolve")
-    def resolve(finding_id: str, payload: ResolutionRequest, current=Depends(actor_dependency), service=Depends(intelligence)):
+    def resolve(
+        finding_id: str,
+        payload: ResolutionRequest,
+        current=Depends(actor_dependency),
+        service=Depends(intelligence),
+    ):
         return service.resolve(current, finding_id, payload.reason)
 
     @router.post("/business/events/{event_id}/bank-links")
-    def link_bank(event_id: str, payload: BankLinkRequest, current=Depends(actor_dependency), service=Depends(intelligence)):
+    def link_bank(
+        event_id: str,
+        payload: BankLinkRequest,
+        current=Depends(actor_dependency),
+        service=Depends(intelligence),
+    ):
         return service.link_bank(current, event_id, payload)
 
     @router.delete("/business/events/{event_id}/bank-links/{source_id}")
-    def unlink_bank(event_id: str, source_id: str, payload: ResolutionRequest,
-                    current=Depends(actor_dependency), service=Depends(intelligence)):
+    def unlink_bank(
+        event_id: str,
+        source_id: str,
+        payload: ResolutionRequest,
+        current=Depends(actor_dependency),
+        service=Depends(intelligence),
+    ):
         return service.unlink_bank(current, event_id, source_id, payload.reason)
 
     @router.post("/books/{book_id}/drafts/{draft_id}/ai-proposals")
-    def propose(book_id: str, draft_id: str, payload: ProposalRequest, current=Depends(actor_dependency), service=Depends(intelligence)):
+    def propose(
+        book_id: str,
+        draft_id: str,
+        payload: ProposalRequest,
+        current=Depends(actor_dependency),
+        service=Depends(intelligence),
+    ):
         return service.propose(current, book_id, draft_id, payload)
 
     @router.post("/intelligence/proposals/{run_id}/apply")
-    def apply(run_id: str, payload: ApplyRequest, current=Depends(actor_dependency), service=Depends(intelligence)):
+    def apply(
+        run_id: str,
+        payload: ApplyRequest,
+        current=Depends(actor_dependency),
+        service=Depends(intelligence),
+    ):
         return service.apply(current, run_id, payload.expected_version)
 
     return router
