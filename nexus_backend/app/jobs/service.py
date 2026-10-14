@@ -43,9 +43,10 @@ class QueueService:
         return self.timestamp()
 
     def configuration_fingerprint(self, media_type=None):
+        from ..intelligence.ocr import engine_enabled
         from ..intelligence.structured import is_structured
 
-        if is_structured(media_type):
+        if is_structured(media_type) or engine_enabled(self.intelligence.provider.settings):
             from ..intelligence.cache import config_key
 
             return config_key(self.intelligence.provider.settings, media_type)

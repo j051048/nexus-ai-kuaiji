@@ -1,0 +1,16 @@
+PaddleOCR
+Copyright (c) 2025 PaddlePaddle Authors. All Rights Reserved.
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+The PaddleOCR initialization and prediction sequence in
+services/paddle_ocr/engine.py is adapted from the official PaddleOCR v3.7.0
+Python OCR example at docs/version3.x/pipeline_usage/OCR.en.md.
+Upstream commit: b03f46425e8ff4442b268ce449e3eef758146cd4
+https://github.com/PaddlePaddle/PaddleOCR/tree/b03f46425e8ff4442b268ce449e3eef758146cd4
+
+Local modifications: fixed CPU SDK/model versions, disabled geometric page
+transformations, bounded response conversion, startup warm-up and internal HTTP
+service. The actual inference implementation is reused through the official SDK;
+unrelated repository modules and model weights are not copied into this repository.
+
+This NOTICE describes local reuse; it is not an endorsement by PaddlePaddle.

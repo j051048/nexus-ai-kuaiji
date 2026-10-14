@@ -1,6 +1,7 @@
 """Scoped, auditable model proposals. Models have no mutation or approval tools."""
 
 import json
+import time
 from datetime import datetime, timezone, timedelta, date
 from urllib.parse import urlsplit
 from uuid import uuid4
@@ -10,10 +11,17 @@ from ..accounting.models import DraftUpdate, money_to_cents
 from ..accounting.queries import inactive_source_sql
 from ..accounting.service import AccountingService, fingerprint, now
 from ..business.service import BusinessService, encode
-from .checks import extraction_checks, reconcile_checks, finding, normalized, invoice_key
-from .documents import prepare_document
+from .checks import reconcile_checks, finding, normalized, invoice_key
+from .documents import prepare_document, preview_page_bytes
 from .models import InvoiceExtraction, JournalSuggestion, ProviderResult
 from .cache import config_key, read_cache, store_cache
+from .ocr import (
+    engine_enabled,
+    extraction_findings,
+    prompt_version,
+    usage_payload,
+    stored_extraction,
+)
 from .structured import (
     is_structured,
     parse_invoice_xml,
@@ -26,7 +34,6 @@ from .provider import (
     AISettings,
     OpenAICompatibleProvider,
     ProviderError,
-    EXTRACTION_PROMPT_VERSION,
     JOURNAL_PROMPT_VERSION,
     effective_settings,
 )
@@ -88,6 +95,10 @@ class IntelligenceService:
             "configured": settings.extraction_available or settings.suggestion_available,
             "structured_ready": True,
             "vision_ready": settings.extraction_available,
+            "ocr_engine": getattr(settings, "ocr_engine", "vision"),
+            "ocr_model": getattr(settings, "paddle_model", "")
+            if engine_enabled(settings)
+            else None,
             "journal_ready": settings.suggestion_available,
             "provider_label": " / ".join(label for label in labels if label) or "尚未配置模型服务",
             "enabled_company_ids": companies,
@@ -309,7 +320,7 @@ class IntelligenceService:
 
     def _finish(self, conn, actor, run, result=None, error=None, cache_hit=False):
         state = "succeeded" if error is None else "failed"
-        usage = result.usage.model_dump() if result and result.usage else {}
+        usage = usage_payload(result, error)
         changed = conn.execute(
             "UPDATE ai_runs SET status=?,result_json=?,usage_json=?,error_code=?,error_detail=?,finished_at=?,cache_hit=? WHERE id=? AND status='running'",
             (
@@ -382,7 +393,7 @@ class IntelligenceService:
                 "einvoice-0.3"
                 if structured
                 else effective_settings(self.provider.settings, "ocr").model,
-                STRUCTURED_VERSION if structured else EXTRACTION_PROMPT_VERSION,
+                STRUCTURED_VERSION if structured else prompt_version(self.provider.settings),
                 attachment_id=attachment["id"],
                 input_version=request.expected_fact_version,
                 provider_name=STRUCTURED_PROVIDER if structured else None,
@@ -392,11 +403,20 @@ class IntelligenceService:
         if not execute:
             return self._public_run(run)
         error, result, pages, cache_hit = None, None, [], False
+        processing_deadline = time.monotonic() + 150
         budget, attempted = self._meter().context(actor, run), False
         try:
             data = self.storage.read(attachment)
             local = parse_invoice_xml(data) if structured else None
-            pages = local.pages if local else prepare_document(data, attachment["media_type"])
+            pages = (
+                local.pages
+                if local
+                else (
+                    prepare_document(data, attachment["media_type"], high_resolution=True)
+                    if engine_enabled(self.provider.settings)
+                    else prepare_document(data, attachment["media_type"])
+                )
+            )
             # Check current access immediately before sending financial evidence.
             with self.db.transaction(write=True, actor=actor, **transaction_options) as conn:
                 current = self.business._event(conn, actor, event_id)
@@ -419,12 +439,7 @@ class IntelligenceService:
                     else read_cache(self.db, conn, actor, current, attachment, cache_key)
                 )
                 if cached and not any(
-                    issue["severity"] == "blocking"
-                    for issue in extraction_checks(
-                        cached.model_dump()["documents"],
-                        [page.page for page in pages],
-                        {page.page: page.native_text for page in pages},
-                    )
+                    issue["severity"] == "blocking" for issue in extraction_findings(cached, pages)
                 ):
                     result = ProviderResult(
                         cached, run["provider"], run["model"], run["prompt_version"], None
@@ -445,15 +460,43 @@ class IntelligenceService:
                         before_model()
                     from ..concurrency.provider import provider_scope
 
+                    def reauthorize():
+                        with self.db.transaction(
+                            write=True, actor=actor, **transaction_options
+                        ) as check_conn:
+                            checked = self.business._event(check_conn, actor, event_id)
+                            self._require(check_conn, actor, checked, "process", enabled=True)
+                            if (
+                                checked["fact_version"] != event["fact_version"]
+                                or config_key(self.provider.settings, attachment["media_type"])
+                                != cache_key
+                            ):
+                                raise AccountingError("业务事实已改变，字段提取未发送", 409)
+                            if execution:
+                                execution.check(check_conn)
+                                execution.inputs(checked, attachment)
+
                     with provider_scope(self.db, actor, event["company_id"]):
-                        result = self.provider.extract_invoice(pages)
+                        result = (
+                            self.provider.extract_invoice(
+                                pages,
+                                authorization_check=reauthorize,
+                                processing_deadline=processing_deadline,
+                            )
+                            if engine_enabled(self.provider.settings)
+                            else self.provider.extract_invoice(pages)
+                        )
+                        if getattr(result.data, "ocr_evidence", None):
+                            result.data.ocr_evidence.attachment_sha256 = attachment["sha256"]
                 finally:
                     after_model = getattr(execution, "after_model", None)
                     if callable(after_model):
                         after_model()
         except ProviderError as caught:
             error = caught
-        except AccountingError:
+        except AccountingError as caught:
+            if getattr(caught, "llm_attempted", None) is False:
+                error = caught
             self._abandon(actor, run["id"])
             raise
         except Exception:
@@ -479,12 +522,7 @@ class IntelligenceService:
                     execution.inputs(current, attachment)
                 finished = self._finish(conn, actor, run, result, error, cache_hit=cache_hit)
                 if finished["status"] == "succeeded":
-                    documents = result.data.model_dump()["documents"]
-                    issues = extraction_checks(
-                        documents,
-                        [page.page for page in pages],
-                        {page.page: page.native_text for page in pages},
-                    )
+                    issues = extraction_findings(result.data, pages)
                     if structured:
                         issues.append(verification_finding())
                     for issue in issues:
@@ -848,6 +886,43 @@ class IntelligenceService:
             self._assessment(conn, actor, event, persist=True)
             self.business._audit(conn, actor, "intelligence.reconcile", event_id, {})
         return self.detail(actor, event_id)
+
+    def evidence_page(self, actor, event_id, run_id, page_number):
+        from .ocr import PREPROCESSING_VERSION
+
+        with self.db.transaction(actor=actor) as conn:
+            event = self.business._event(conn, actor, event_id)
+            run = conn.execute(
+                "SELECT * FROM ai_runs WHERE id=? AND event_id=? AND company_id=? AND kind='ocr' AND status='succeeded'",
+                (run_id, event_id, event["company_id"]),
+            ).fetchone()
+            if not run:
+                raise AccountingError("识别证据不存在或无权访问", 404)
+            evidence = getattr(
+                stored_extraction(json.loads(run["result_json"])), "ocr_evidence", None
+            )
+            if (
+                not evidence
+                or evidence.preprocessing_version != PREPROCESSING_VERSION
+                or page_number not in {p.page for p in evidence.pages}
+            ):
+                raise AccountingError("该识别记录没有可定位的页面证据", 404)
+            attachment = conn.execute(
+                "SELECT * FROM business_attachments WHERE id=? AND event_id=? AND sha256=?",
+                (run["attachment_id"], event_id, evidence.attachment_sha256),
+            ).fetchone()
+            if not attachment:
+                raise AccountingError("原件已改变，不能展示过期定位证据", 409)
+            metadata = dict(attachment)
+        pages = prepare_document(
+            self.storage.read(metadata), metadata["media_type"], high_resolution=True
+        )
+        selected = next((p for p in pages if p.page == page_number), None)
+        if not selected:
+            raise AccountingError("原件页面不存在", 404)
+        with self.db.transaction(actor=actor) as conn:
+            self.business._event(conn, actor, event_id)
+        return preview_page_bytes(selected)
 
     def detail(self, actor, event_id):
         with self.db.transaction(actor=actor) as conn:

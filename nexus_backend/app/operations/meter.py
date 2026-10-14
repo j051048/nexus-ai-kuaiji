@@ -238,8 +238,12 @@ class MeterContext:
         }
         safe = (
             not attempted
+            or getattr(error, "llm_attempted", None) is False
             or error is not None
-            and (error.code in local_rejections or error.retryable)
+            and (
+                getattr(error, "code", None) in local_rejections
+                or getattr(error, "retryable", False)
+            )
         )
         # Cost facts may be recorded after accounting permission is revoked.
         # Only this request's opaque token can settle; no original data is read.

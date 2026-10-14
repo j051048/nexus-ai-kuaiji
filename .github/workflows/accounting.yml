@@ -39,13 +39,15 @@ jobs:
       - run: npm run format:check
       - run: npm run lint
       - run: python -m pip install -r nexus_backend/requirements-dev.txt
-      - run: python -m ruff check nexus_backend/app services/api_gateway scripts
-      - run: python -m ruff format --check nexus_backend/app services/api_gateway scripts
+      - run: python -m ruff check nexus_backend/app services/api_gateway services/paddle_ocr scripts
+      - run: python -m ruff format --check nexus_backend/app services/api_gateway services/paddle_ocr scripts
       - run: python scripts/migrate_accounting.py migrate
       - run: python scripts/migrate_accounting.py provision-login --username accounting_ci
       - run: python scripts/migrate_accounting.py provision-worker-login --username accounting_ci_worker
       - run: npm test
       - run: npm run build
       - run: python -m pytest nexus_backend/tests -q
+      # Boundary tests inject a predictor; CI does not download model weights.
+      - run: python -m pytest services/paddle_ocr/tests -q
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e

@@ -428,7 +428,7 @@ def create_app(
 
     app = FastAPI(
         title="衡账 · 会计 Agent 工作空间",
-        version="0.18.0",
+        version="0.19.0",
         lifespan=lifespan,
         docs_url="/api/docs",
         openapi_url="/api/openapi.json",

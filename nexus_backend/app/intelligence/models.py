@@ -156,6 +156,7 @@ class ProviderResult(Generic[T]):
     model: str
     prompt_version: str
     usage: ProviderUsage | None
+    processing_usage: dict | None = None
 
 
 @dataclass(frozen=True)

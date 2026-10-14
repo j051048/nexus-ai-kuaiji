@@ -4,8 +4,8 @@ import json
 
 from ..accounting.service import fingerprint, now
 from ..business.service import encode
-from .models import InvoiceExtraction
 from .provider import EXTRACTION_PROMPT_VERSION, effective_settings
+from .ocr import engine_enabled, stored_extraction, PREPROCESSING_VERSION, PROMPT_VERSION
 
 PARSER_VERSION = "document-parser-v1"
 CACHE_VERSION = "validated-ocr-cache-v1"
@@ -19,6 +19,16 @@ def config_key(settings, media_type):
             {"parser": STRUCTURED_VERSION, "cache": CACHE_VERSION, "media_type": media_type}
         )
     # Keys are deliberately absent: rotating a secret does not change OCR semantics.
+    independent = None
+    if engine_enabled(settings):
+        independent = {
+            "engine": "paddleocr",
+            "url": settings.paddle_url,
+            "model": settings.paddle_model,
+            "min_score": settings.paddle_min_score,
+            "preprocessing": PREPROCESSING_VERSION,
+            "prompt": PROMPT_VERSION,
+        }
     settings = effective_settings(settings, "ocr")
     return fingerprint(
         {
@@ -29,6 +39,7 @@ def config_key(settings, media_type):
             "parser": PARSER_VERSION,
             "cache": CACHE_VERSION,
             "media_type": media_type,
+            "independent_ocr": independent,
         }
     )
 
@@ -45,7 +56,7 @@ def read_cache(db, conn, actor, event, attachment, key):
             (actor.firm_id, event["company_id"], attachment["sha256"], key),
         ).fetchone()
         value = row["result_json"] if row else None
-    return InvoiceExtraction.model_validate(json.loads(value)) if value else None
+    return stored_extraction(json.loads(value)) if value else None
 
 
 def store_cache(db, conn, actor, event, attachment, key, run):

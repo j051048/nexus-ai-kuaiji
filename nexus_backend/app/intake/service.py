@@ -1,6 +1,7 @@
 """Employee intake is private preparation; confirmed facts use the existing pipeline."""
 
 import json
+import time
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlsplit
 from uuid import uuid4
@@ -11,10 +12,16 @@ from ..accounting.telemetry import tag_authorized_company
 from ..business.models import BusinessEventCreate
 from ..business.service import BusinessService, encode
 from ..business.templates import validate_payload
-from ..intelligence.checks import extraction_checks
 from ..intelligence.cache import config_key, store_cache
 from ..intelligence.documents import prepare_document
-from ..intelligence.models import InvoiceExtraction, ProviderResult
+from ..intelligence.models import ProviderResult
+from ..intelligence.ocr import (
+    engine_enabled,
+    extraction_findings,
+    prompt_version,
+    usage_payload,
+    stored_extraction,
+)
 from ..intelligence.provider import EXTRACTION_PROMPT_VERSION, ProviderError, effective_settings
 from ..intelligence.structured import (
     is_structured,
@@ -355,7 +362,7 @@ class IntakeService:
                     if structured
                     else urlsplit(settings.base_url).hostname or "openai-compatible",
                     "einvoice-0.3" if structured else settings.model,
-                    STRUCTURED_VERSION if structured else EXTRACTION_PROMPT_VERSION,
+                    STRUCTURED_VERSION if structured else prompt_version(self.provider.settings),
                     stamp,
                 ),
             )
@@ -364,10 +371,19 @@ class IntakeService:
             ) | {"kind": "ocr"}
             metadata = dict(attachment)
         budget, attempted, result, error = self.meter.context(actor, run), False, None, None
+        processing_deadline = time.monotonic() + 150
         try:
             data = self.storage.read(metadata)
             local = parse_invoice_xml(data) if structured else None
-            pages = local.pages if local else prepare_document(data, metadata["media_type"])
+            pages = (
+                local.pages
+                if local
+                else (
+                    prepare_document(data, metadata["media_type"], high_resolution=True)
+                    if engine_enabled(self.provider.settings)
+                    else prepare_document(data, metadata["media_type"])
+                )
+            )
             with self.db.transaction(write=True, actor=actor) as conn:
                 current = self._draft(conn, actor, draft_id, editable=True)
                 if (
@@ -383,11 +399,32 @@ class IntakeService:
                 attempted = True
                 from ..concurrency.provider import provider_scope
 
+                def reauthorize():
+                    with self.db.transaction(actor=actor) as check_conn:
+                        checked = self._draft(check_conn, actor, draft_id, editable=True)
+                        if (
+                            not self._enabled(check_conn, checked)
+                            or self._configuration_input(metadata) != digest
+                        ):
+                            raise AccountingError("授权或识别配置已改变，字段提取未发送", 403)
+
                 with provider_scope(self.db, actor, run["company_id"]):
-                    result = self.provider.extract_invoice(pages)
+                    result = (
+                        self.provider.extract_invoice(
+                            pages,
+                            authorization_check=reauthorize,
+                            processing_deadline=processing_deadline,
+                        )
+                        if engine_enabled(self.provider.settings)
+                        else self.provider.extract_invoice(pages)
+                    )
+                    if getattr(result.data, "ocr_evidence", None):
+                        result.data.ocr_evidence.attachment_sha256 = metadata["sha256"]
         except ProviderError as failure:
             error = failure
-        except AccountingError:
+        except AccountingError as caught:
+            if getattr(caught, "llm_attempted", None) is False:
+                error = caught
             self._abandon(actor, run_id)
             raise
         except BaseException:
@@ -403,15 +440,7 @@ class IntakeService:
                     or self._configuration_input(metadata) != digest
                 ):
                     raise AccountingError("企业处理配置已改变，识别结果未发布", 403)
-                checks = (
-                    []
-                    if error
-                    else extraction_checks(
-                        result.data.model_dump()["documents"],
-                        [page.page for page in pages],
-                        {page.page: page.native_text for page in pages},
-                    )
-                )
+                checks = [] if error else extraction_findings(result.data, pages)
                 if structured and not error:
                     checks.append(verification_finding())
                 conn.execute(
@@ -419,7 +448,7 @@ class IntakeService:
                     (
                         "failed" if error else "succeeded",
                         None if error else encode(result.data.model_dump()),
-                        encode(result.usage.model_dump()) if result and result.usage else "{}",
+                        encode(usage_payload(result, error)),
                         error.code if error else "",
                         error.detail if error else "",
                         encode(checks),
@@ -435,7 +464,9 @@ class IntakeService:
             raise
 
     def _configuration_input(self, attachment):
-        if is_structured(dict(attachment).get("media_type", "")):
+        if is_structured(dict(attachment).get("media_type", "")) or engine_enabled(
+            self.provider.settings
+        ):
             return fingerprint(
                 {
                     "sha256": attachment["sha256"],
@@ -517,7 +548,7 @@ class IntakeService:
                     ).fetchone()
                     if not prior:
                         continue
-                    recognized = InvoiceExtraction.model_validate(json.loads(prior["result_json"]))
+                    recognized = stored_extraction(json.loads(prior["result_json"]))
                     transferred, _ = self.intelligence._claim(
                         conn,
                         actor,

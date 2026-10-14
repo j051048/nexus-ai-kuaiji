@@ -18,7 +18,9 @@ from .provider import MAX_INLINE_IMAGE_BYTES, ProviderError
 MAX_DOCUMENT_BYTES = 20 * 1_048_576
 MAX_PIXELS = 20_000_000
 MAX_LONG_EDGE = 2000
+OCR_MAX_LONG_EDGE = 4000
 MAX_PAGES = 6
+MAX_PREVIEW_BYTES = 3 * 1_048_576
 MAX_PAGE_TEXT = 30_000
 PDF_TIMEOUT_SECONDS = 30
 ALLOWED_IMAGE_FORMATS = {"image/jpeg": "JPEG", "image/png": "PNG", "image/webp": "WEBP"}
@@ -29,12 +31,27 @@ class DocumentError(ProviderError):
         super().__init__(code, detail, status=422)
 
 
-def _image_data_url(image: Image.Image) -> str:
+def preview_page_bytes(page: PreparedPage) -> bytes:
+    """Bound gateway responses without moving evidence coordinates or OCR pixels."""
+    data = base64.b64decode(page.image_data_url.split(",", 1)[1], validate=True)
+    if len(data) <= MAX_PREVIEW_BYTES:
+        return data
+    with Image.open(BytesIO(data)) as image:
+        for quality in (80, 65, 50, 35, 20):
+            with BytesIO() as output:
+                image.save(output, format="JPEG", quality=quality, optimize=True)
+                encoded = output.getvalue()
+            if len(encoded) <= MAX_PREVIEW_BYTES:
+                return encoded
+    raise DocumentError("preview_too_large", "原件预览超过网关大小限制，请下载原件核对")
+
+
+def _image_data_url(image: Image.Image, *, long_edge=MAX_LONG_EDGE) -> str:
     # Fresh pixels prevent EXIF, ICC and other uploaded metadata from reaching the supplier.
     original = image
     image = ImageOps.exif_transpose(original)
     original.close()
-    image.thumbnail((MAX_LONG_EDGE, MAX_LONG_EDGE), Image.Resampling.LANCZOS)
+    image.thumbnail((long_edge, long_edge), Image.Resampling.LANCZOS)
     rgb = image.convert("RGB")
     clean = Image.new("RGB", rgb.size, (255, 255, 255))
     if image.mode in {"RGBA", "LA"} or "transparency" in image.info:
@@ -60,7 +77,7 @@ def _check_total(pages: list[PreparedPage]) -> None:
         raise DocumentError("document_too_large", "票据渲染图像总量超过 12 MiB，请人工处理")
 
 
-def _prepare_image(data: bytes, media_type: str) -> list[PreparedPage]:
+def _prepare_image(data: bytes, media_type: str, *, high_resolution=False) -> list[PreparedPage]:
     try:
         with warnings.catch_warnings():
             warnings.simplefilter("error", Image.DecompressionBombWarning)
@@ -81,7 +98,13 @@ def _prepare_image(data: bytes, media_type: str) -> list[PreparedPage]:
                         "document_too_large", "票据图像超过 2000 万像素，请人工处理"
                     )
                 picture.load()
-                page = PreparedPage(page=1, image_data_url=_image_data_url(picture.copy()))
+                page = PreparedPage(
+                    page=1,
+                    image_data_url=_image_data_url(
+                        picture.copy(),
+                        long_edge=OCR_MAX_LONG_EDGE if high_resolution else MAX_LONG_EDGE,
+                    ),
+                )
         pages = [page]
         _check_total(pages)
         return pages
@@ -93,7 +116,7 @@ def _prepare_image(data: bytes, media_type: str) -> list[PreparedPage]:
         raise DocumentError("document_invalid", "票据图像损坏或无法读取，请人工处理") from None
 
 
-def _prepare_pdf_in_worker(data: bytes) -> list[PreparedPage]:
+def _prepare_pdf_in_worker(data: bytes, *, high_resolution=False) -> list[PreparedPage]:
     try:
         import pypdfium2 as pdfium
     except ImportError:
@@ -118,7 +141,8 @@ def _prepare_pdf_in_worker(data: bytes) -> list[PreparedPage]:
                     raise DocumentError(
                         "document_too_large", "PDF 页面尺寸超出安全范围，请人工处理"
                     )
-                scale = min(200 / 72, MAX_LONG_EDGE / max(width, height))
+                long_edge = OCR_MAX_LONG_EDGE if high_resolution else MAX_LONG_EDGE
+                scale = min((300 if high_resolution else 200) / 72, long_edge / max(width, height))
                 if math.ceil(width * scale) * math.ceil(height * scale) > MAX_PIXELS:
                     raise DocumentError(
                         "document_too_large", "PDF 页面像素超过安全范围，请人工处理"
@@ -136,7 +160,7 @@ def _prepare_pdf_in_worker(data: bytes) -> list[PreparedPage]:
                 bitmap = page.render(scale=scale)
                 rendered = bitmap.to_pil()
                 try:
-                    data_url = _image_data_url(rendered.copy())
+                    data_url = _image_data_url(rendered.copy(), long_edge=long_edge)
                 finally:
                     rendered.close()
                 pages.append(
@@ -158,10 +182,15 @@ def _prepare_pdf_in_worker(data: bytes) -> list[PreparedPage]:
             document.close()
 
 
-def _prepare_pdf(data: bytes) -> list[PreparedPage]:
+def _prepare_pdf(data: bytes, *, high_resolution=False) -> list[PreparedPage]:
     try:
         result = subprocess.run(
-            [sys.executable, "-m", "app.intelligence.documents", "--pdf-worker"],
+            [
+                sys.executable,
+                "-m",
+                "app.intelligence.documents",
+                "--pdf-worker-highres" if high_resolution else "--pdf-worker",
+            ],
             input=data,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
@@ -191,24 +220,26 @@ def _prepare_pdf(data: bytes) -> list[PreparedPage]:
         raise DocumentError("document_invalid", "PDF 处理失败，请人工处理") from None
 
 
-def prepare_document(data: bytes, media_type: str) -> list[PreparedPage]:
+def prepare_document(data: bytes, media_type: str, *, high_resolution=False) -> list[PreparedPage]:
     if not isinstance(data, bytes) or not data:
         raise DocumentError("document_invalid", "票据附件为空或格式无效")
     if len(data) > MAX_DOCUMENT_BYTES:
         raise DocumentError("document_too_large", "票据附件超过安全处理大小限制")
     if media_type in ALLOWED_IMAGE_FORMATS:
-        return _prepare_image(data, media_type)
+        return _prepare_image(data, media_type, high_resolution=high_resolution)
     if media_type == "application/pdf" and data.startswith(b"%PDF-"):
-        return _prepare_pdf(data)
+        return _prepare_pdf(data, high_resolution=high_resolution)
     raise DocumentError("document_unsupported", "仅支持单帧 JPEG、PNG、WebP 图像及最多 6 页 PDF")
 
 
-if __name__ == "__main__" and sys.argv[1:] == ["--pdf-worker"]:
+if __name__ == "__main__" and sys.argv[1:] in (["--pdf-worker"], ["--pdf-worker-highres"]):
     try:
         worker_data = sys.stdin.buffer.read(MAX_DOCUMENT_BYTES + 1)
         if len(worker_data) > MAX_DOCUMENT_BYTES:
             raise DocumentError("document_too_large", "票据附件超过安全处理大小限制")
-        worker_pages = _prepare_pdf_in_worker(worker_data)
+        worker_pages = _prepare_pdf_in_worker(
+            worker_data, high_resolution=sys.argv[1] == "--pdf-worker-highres"
+        )
         worker_payload = {
             "pages": [
                 {
