@@ -10,6 +10,7 @@ import {
   X,
 } from 'lucide-react';
 import { useReviewFilters } from './useReviewFilters';
+import { useLocation } from 'react-router-dom';
 import { api, ApiError, errorMessage } from './api';
 import { reviewGroups, reviewSelection, reviewTemplateLabels } from './review-helpers';
 import type { ReviewList, ReviewPreview, ReviewReceipt, ReviewSelection } from './review-types';
@@ -37,6 +38,7 @@ export function ReviewWorkbench({
   onOpenDraft: (bookId: string, draftId: string) => void;
   onChanged?: () => void;
 }) {
+  const bookFilter = (new URLSearchParams(useLocation().search).get('book') ?? '').slice(0, 200);
   const remembered = useRef(readReviewWorkspace(session.scope_key));
   const [list, setList] = useState<ReviewList | null>(null);
   const {
@@ -71,7 +73,7 @@ export function ReviewWorkbench({
   const lastScope = useRef('');
   const authorized = useRef(false),
     inlineQueue = useRef<InlineReviewTarget[]>([]);
-  const scope = `${session.scope_key}:${company}:${period}:${template}:${risk}:${offset}`;
+  const scope = `${session.scope_key}:${bookFilter}:${company}:${period}:${template}:${risk}:${offset}`;
   const scopeRef = useRef(scope);
   scopeRef.current = scope;
   useEffect(() => {
@@ -100,6 +102,7 @@ export function ReviewWorkbench({
       setLoading(true);
       const query = new URLSearchParams({ limit: '20', offset: String(offset), template, risk });
       if (company) query.set('company_id', company);
+      if (bookFilter) query.set('book_id', bookFilter);
       if (period) query.set('period', period);
       try {
         const result = await api<ReviewList>(`/review/drafts?${query}`, session, { signal });
@@ -126,7 +129,7 @@ export function ReviewWorkbench({
         if (active.current && started === epoch.current && !signal?.aborted) setLoading(false);
       }
     },
-    [session, company, period, template, risk, offset, clear],
+    [session, bookFilter, company, period, template, risk, offset, clear],
   );
   useEffect(() => {
     const controller = new AbortController();
@@ -339,6 +342,11 @@ export function ReviewWorkbench({
     );
   return (
     <main className="review-workbench">
+      {bookFilter && (
+        <p className="field-help">
+          当前仅复核链接指定的账套；如需切换其他账套，可返回客户月度进度选择。
+        </p>
+      )}
       <section className="page-heading">
         <div>
           <p className="eyebrow">ONE DESK, MANY COMPANIES</p>

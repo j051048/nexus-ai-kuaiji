@@ -8,6 +8,8 @@ const bookActions: {
   reviewer?: boolean;
   protectChanges?: boolean;
 }[] = [
+  { view: 'balances', label: '参考余额与月度差异', protectChanges: true },
+  { view: 'recurring', label: '固定事项草稿', protectChanges: true },
   { view: 'migration', label: '旧账迁移', protectChanges: true },
   { view: 'settlement', label: '收付款核销', reviewer: true, protectChanges: true },
   { view: 'learning', label: '审核样例与规则', reviewer: true, protectChanges: true },

@@ -1,6 +1,31 @@
-import type { BusinessPayload, BusinessTemplate } from './business-types';
+import type {
+  BusinessContext,
+  BusinessPayload,
+  BusinessScope,
+  BusinessTemplate,
+} from './business-types';
 import { moneyToCents } from './csv';
 import { DEFAULT_ATTACHMENT_BYTES, uploadSizeError } from './transport-limits';
+
+/** Scope hints must come from the selected company's capabilities. The API
+ * remains the authority, including when grants change after this read. */
+export function initialBusinessScope(context: BusinessContext, companyId = ''): BusinessScope {
+  if (companyId) {
+    const company = context.companies.find((item) => item.id === companyId);
+    if (company?.can_finance && context.scopes.company) return 'company';
+    if (context.scopes.accounting) return 'accounting';
+    if (company?.approver_department_ids.length && context.scopes.department) return 'department';
+    return 'own';
+  }
+  return context.scopes.company
+    ? 'company'
+    : context.scopes.department
+      ? 'department'
+      : context.scopes.accounting &&
+          !context.companies.some((company) => company.can_submit && company.role === 'employee')
+        ? 'accounting'
+        : 'own';
+}
 
 export const BUSINESS_TEMPLATES = [
   {

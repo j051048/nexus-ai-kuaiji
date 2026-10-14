@@ -1,13 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import {
   initialBusinessPayload,
+  initialBusinessScope,
   normalizeBusinessPayload,
   MAX_ATTACHMENT_BYTES,
   MAX_TOTAL_ATTACHMENT_BYTES,
   validateAttachment,
   validateBusinessPayload,
 } from './business-forms';
-import type { BusinessPayload, BusinessTemplate } from './business-types';
+import type {
+  BusinessCompany,
+  BusinessContext,
+  BusinessPayload,
+  BusinessTemplate,
+} from './business-types';
 
 function valid(template: BusinessTemplate): BusinessPayload {
   return {
@@ -19,6 +25,61 @@ function valid(template: BusinessTemplate): BusinessPayload {
   };
 }
 describe('business intake boundaries', () => {
+  it('月度资料下钻对选中企业的财务兼会计身份优先企业范围，不漏掉部门审批事项', () => {
+    const company: BusinessCompany = {
+      id: 'selected',
+      name: '合成选中企业',
+      department_id: null,
+      departments: [],
+      can_manage_approvers: false,
+      role: 'finance',
+      can_finance: true,
+      can_submit: true,
+      approver_department_ids: [],
+    };
+    const context: BusinessContext = {
+      companies: [company],
+      templates: [],
+      scopes: { own: true, company: true, department: false, accounting: true },
+    };
+    expect(initialBusinessScope(context, 'selected')).toBe('company');
+  });
+  it('其他企业的财务身份不决定当前企业范围，授权会计仅按会计范围读取', () => {
+    const selected: BusinessCompany = {
+      id: 'selected',
+      name: '合成选中企业',
+      department_id: null,
+      departments: [],
+      can_manage_approvers: false,
+      role: null,
+      can_finance: false,
+      can_submit: false,
+      approver_department_ids: [],
+    };
+    const other: BusinessCompany = {
+      id: 'other',
+      name: '合成其他企业',
+      department_id: null,
+      departments: [],
+      can_manage_approvers: false,
+      role: 'finance',
+      can_finance: true,
+      can_submit: true,
+      approver_department_ids: [],
+    };
+    const context: BusinessContext = {
+      companies: [selected, other],
+      templates: [],
+      scopes: { own: true, company: true, department: false, accounting: true },
+    };
+    expect(initialBusinessScope(context, 'selected')).toBe('accounting');
+    expect(
+      initialBusinessScope(
+        { ...context, scopes: { ...context.scopes, accounting: false } },
+        'selected',
+      ),
+    ).toBe('own');
+  });
   it.each(['reimbursement', 'procurement_expense', 'daily_cashflow'] as BusinessTemplate[])(
     'accepts a valid %s payload with its fixed defaults',
     (template) => {

@@ -229,6 +229,7 @@ class MeterContext:
         usage = result.usage if result else getattr(error, "usage", None)
         local_rejections = {
             "busy",
+            "authorization_changed_before_send",
             "unavailable",
             "document_invalid",
             "document_too_large",

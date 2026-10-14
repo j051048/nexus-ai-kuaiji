@@ -129,7 +129,7 @@ def test_local_http_requires_explicit_admin_flag(url):
 
 @pytest.mark.parametrize("changes", [
     {"response_format": "auto"}, {"timeout_seconds": 0}, {"timeout_seconds": 91}, {"timeout_seconds": float("nan")},
-    {"max_concurrency": 0}, {"max_concurrency": 3}, {"max_concurrency": True}, {"api_key": "secret\nInjected"},
+    {"max_concurrency": 0}, {"max_concurrency": 9}, {"max_concurrency": True}, {"api_key": "secret\nInjected"},
 ])
 def test_invalid_configuration(changes):
     with pytest.raises(ProviderError):

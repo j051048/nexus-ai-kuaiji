@@ -6,7 +6,9 @@
 
 ## 运行
 
-当前版本 `0.16.0` 完成第一批 MVP 改进：URL 工作区及刷新恢复、紧凑连续复核、企业直接资料提交通道、数电票 XML 本地解析、固定样本集版本比较，以及 PostgreSQL 连接池和跨进程性能观测。操作及升级步骤见 [第一批改进说明](docs/STAGE16_MVP_FOUNDATION.md)，测试范围见 [验收记录](docs/VALIDATION_STAGE16_20261014.md)。
+当前版本 `0.17.0` 完成第二批改造：有界跨企业并发与公平调度、客户月度进度矩阵、参考余额与月度差异、独立审批的固定事项草稿。凭证仍由会计复核后导出，T+ 继续使用文件接入底座。操作与 PostgreSQL 077–079 升级见 [第二批改造说明](docs/STAGE17_MULTI_COMPANY_MONTHLY.md)，测试范围见 [第二批验收记录](docs/VALIDATION_STAGE17_20261014.md)。
+
+`0.16.0` 的第一批 MVP 改进包括 URL 工作区及刷新恢复、紧凑连续复核、企业直接资料提交通道、数电票 XML 本地解析、固定样本集版本比较，以及 PostgreSQL 连接池和跨进程性能观测。操作及升级步骤见 [第一批改进说明](docs/STAGE16_MVP_FOUNDATION.md)，测试范围见 [验收记录](docs/VALIDATION_STAGE16_20261014.md)。
 
 第十五阶段加入[全局会计助手](docs/STAGE15_ACCOUNTING_ASSISTANT.md)：本人持续会话、明确企业与账期范围、可配置真实模型对话、当前 OCR 摘要、受控任务预览与确认、共享企业预算及专用后台监控。真实环境另启助手 worker；当前实际模型供应商仍待配置。验证记录见[第十五阶段](docs/VALIDATION_STAGE15_20261013.md)。
 

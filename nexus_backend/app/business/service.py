@@ -313,13 +313,22 @@ class BusinessService:
         with self.db.transaction(actor=actor) as conn:
             return self._event_json(conn, actor, self._event(conn, actor, event_id))
 
-    def list_events(self, actor, scope="own", company_id=None, status=None, limit=50, offset=0):
+    def list_events(
+        self, actor, scope="own", company_id=None, status=None, limit=50, offset=0, period=None
+    ):
         if scope not in {"own", "department", "company", "accounting"}:
             raise AccountingError("业务查看范围不存在")
         if type(limit) is not int or not 1 <= limit <= 100 or type(offset) is not int or offset < 0:
             raise AccountingError("分页参数无效")
         if status is not None and status not in STATUSES:
             raise AccountingError("业务事项状态无效")
+        if period is not None:
+            import re
+
+            if not isinstance(period, str) or not re.fullmatch(
+                r"20[0-9]{2}-(?:0[1-9]|1[0-2])", period
+            ):
+                raise AccountingError("期间格式应为 YYYY-MM")
         with self.db.transaction(actor=actor) as conn:
             self.access.require_user(conn, actor.user_id)
             parts = ["e.firm_id=?", "fc.status='active'"]
@@ -330,6 +339,9 @@ class BusinessService:
             if status:
                 parts.append("e.status=?")
                 params.append(status)
+            if period:
+                parts.append(self.submission.period_sql() + "=?")
+                params.append(period)
             if scope == "own":
                 parts.append(
                     "e.applicant_id=? AND EXISTS(SELECT 1 FROM company_memberships cm WHERE cm.company_id=e.company_id AND cm.user_id=?)"

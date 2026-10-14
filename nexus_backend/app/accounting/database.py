@@ -405,8 +405,18 @@ class Database:
 
     @contextmanager
     def transaction(
-        self, write: bool = False, actor=None, system: bool = False, *, company_id=None
+        self,
+        write: bool = False,
+        actor=None,
+        system: bool = False,
+        *,
+        company_id=None,
+        write_scope="global",
     ):
+        if write_scope not in {"global", "company"}:
+            raise ValueError("写锁范围仅支持 global 或 company")
+        if write_scope == "company" and (not write or actor is None or not company_id or system):
+            raise ValueError("企业写事务必须显式提供 actor、company_id 与 write=True")
         if self.is_postgres and actor is None and not system:
             raise ValueError("PostgreSQL 事务必须提供 actor 或显式使用 system=True 的身份事务")
         if actor is not None and system:
@@ -445,7 +455,14 @@ class Database:
                 )
                 if write:
                     lock_started = perf_counter()
-                    conn.execute("SELECT pg_advisory_xact_lock(?)", (WRITE_LOCK,))
+                    from .locking import write_lock
+
+                    write_lock(
+                        conn,
+                        scope=write_scope,
+                        firm_id=actor.firm_id if actor else None,
+                        company_id=company_id,
+                    )
                     lock_wait_ms = (perf_counter() - lock_started) * 1000
             else:
                 lock_started = perf_counter()

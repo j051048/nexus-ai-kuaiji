@@ -51,10 +51,13 @@ def build_review_router(actor_dependency):
         risk: str = Query(default="all", max_length=40),
         limit: int = Query(default=20, ge=1, le=100),
         offset: int = Query(default=0, ge=0, le=1_000_000),
+        book_id: str | None = Query(default=None, min_length=1, max_length=100),
         current=Depends(actor_dependency),
         service=Depends(review),
     ):
-        return service.list_drafts(current, company_id, period, template, risk, limit, offset)
+        return service.list_drafts(
+            current, company_id, period, template, risk, limit, offset, book_id=book_id
+        )
 
     @router.post("/previews", status_code=201)
     def preview(

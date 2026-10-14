@@ -4,12 +4,12 @@ import type { ReviewWorkspaceSession } from './review-session';
 
 export function readReviewFilters(search: string) {
   const query = new URLSearchParams(search);
-  const period = query.get('review_period') ?? '';
+  const period = query.get('review_period') ?? query.get('period') ?? '';
   const template = query.get('review_template') ?? 'all';
   const risk = query.get('review_risk') ?? 'all';
   const offset = Number(query.get('review_offset') ?? 0);
   return {
-    company: (query.get('review_company') ?? '').slice(0, 200),
+    company: (query.get('review_company') ?? query.get('company') ?? '').slice(0, 200),
     period: /^\d{4}-(0[1-9]|1[0-2])$/.test(period) ? period : '',
     template: ['all', 'bank', 'reimbursement', 'procurement_expense', 'daily_cashflow'].includes(
       template,
@@ -30,7 +30,10 @@ export function useReviewFilters(remembered: ReviewWorkspaceSession | null) {
     query.has('review_period') ||
     query.has('review_template') ||
     query.has('review_risk') ||
-    query.has('review_offset')
+    query.has('review_offset') ||
+    query.has('company') ||
+    query.has('period') ||
+    query.has('book')
       ? readReviewFilters(location.search)
       : (remembered ?? readReviewFilters(''));
   const [company, setCompany] = useState(initial.company);

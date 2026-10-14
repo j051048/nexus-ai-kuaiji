@@ -238,6 +238,15 @@ class LearningService:
                 "captured": False,
                 "reason": "历史款项清偿不作为新收入或费用的普通学习样例",
             }
+        if conn.execute(
+            "SELECT 1 FROM recurring_generations WHERE draft_id=? AND source_id=? AND book_id=?",
+            (draft["id"], source["id"], book["id"]),
+        ).fetchone():
+            return {
+                "id": None,
+                "captured": False,
+                "reason": "明确金额的固定月度事项不作为银行或员工业务的普通分类样例",
+            }
         payload = {
             "occurred_on": source["date"],
             "description": source["description"],

@@ -1,0 +1,295 @@
+"""Paged month views from current grants; no cached completeness claims."""
+
+import json
+import re
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+from ..accounting.domain import AccountingError
+from ..accounting.queries import health_cte, inactive_source_sql, page_bounds
+from ..accounting.service import now
+from ..closing.queries import _json, receipt_valid_sql
+
+
+class MonthlyWorkbenchService:
+    def __init__(self, db, accounting, business, cases):
+        self.db, self.accounting, self.business, self.cases = db, accounting, business, cases
+        self.access = accounting.access
+
+    @staticmethod
+    def _groups(conn, sql, values):
+        return {row["book_id"]: dict(row) for row in conn.execute(sql, values)}
+
+    def list(self, actor, period, search="", limit=20, offset=0):
+        page_bounds(limit, offset)
+        if not isinstance(period, str) or not re.fullmatch(r"20[0-9]{2}-(?:0[1-9]|1[0-2])", period):
+            raise AccountingError("请选择有效的 YYYY-MM 月份")
+        if not isinstance(search, str) or len(search) > 120:
+            raise AccountingError("企业搜索不得超过 120 个字符")
+        escaped = (
+            search.strip().lower().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        )
+        with self.db.transaction(actor=actor) as conn:
+            role = self.access.firm_role(conn, actor)
+            scope, values = self.accounting._summary_scope(actor)
+            if role not in {"owner", "admin"}:
+                scope += (
+                    " AND a.role IS NOT NULL AND (?=1 OR cm.role IN ('owner','admin','finance'))"
+                )
+                values.append(1 if role else 0)
+            scope += " AND b.period=?"
+            values.append(period)
+            no_book = """SELECT NULL AS id,NULL AS name,? AS period,c.id AS company_id,
+                c.name AS company_name,'no_book' AS period_status,NULL AS book_role,
+                cm.role AS company_role FROM companies c
+                JOIN firm_clients fc ON fc.company_id=c.id AND fc.firm_id=? AND fc.status='active'
+                LEFT JOIN company_memberships cm ON cm.company_id=c.id AND cm.user_id=?
+                WHERE ?=1 AND NOT EXISTS(SELECT 1 FROM books b
+                    WHERE b.company_id=c.id AND b.firm_id=fc.firm_id AND b.period=?)"""
+            values.extend(
+                [period, actor.firm_id, actor.user_id, int(role in {"owner", "admin"}), period]
+            )
+            cte = f"WITH visible AS ({scope} UNION ALL {no_book}), filtered AS (SELECT * FROM visible WHERE LOWER(company_name) LIKE ? ESCAPE '\\' OR LOWER(COALESCE(name,'')) LIKE ? ESCAPE '\\')"
+            values.extend(["%" + escaped + "%"] * 2)
+            rows = conn.execute(
+                cte
+                + """ SELECT page.*,(SELECT COUNT(*) FROM filtered) AS total FROM
+                (SELECT 1 AS one) anchor LEFT JOIN
+                (SELECT * FROM filtered ORDER BY company_name,COALESCE(name,''),company_id,id LIMIT ? OFFSET ?) page ON 1=1
+                ORDER BY company_name,COALESCE(name,''),company_id,id""",
+                [*values, limit, offset],
+            ).fetchall()
+            total = rows[0]["total"]
+            rows = [dict(row) for row in rows if row["company_id"] is not None]
+            ids = [row["id"] for row in rows if row["id"]]
+            facts = self._facts(conn, actor, ids, period) if ids else {}
+            public = [self._row(row, role, facts) for row in rows]
+            return {
+                "period": period,
+                "rows": public,
+                "pagination": {
+                    "limit": limit,
+                    "offset": offset,
+                    "total": total,
+                    "has_more": offset + len(public) < total,
+                },
+                "updated_at": now(),
+                "notes": [
+                    "每行是当前授权的企业、账套与月份；同企业多账套分别核对。",
+                    "业务待交按当前企业财务或会计接收入口计数，本人和部门事项在各自入口处理；不能证明客户已交齐资料。",
+                    "交付统计单位是导出批次；核验一致不表示厂商正式过账。",
+                    "月结旧快照仅作历史参考，进入月结页重新预检后才能锁期。",
+                    "人工耗时只累计明确开启且确认活跃的计时；缺少记录表示未测量。",
+                ],
+            }
+
+    def _facts(self, conn, actor, ids, period):
+        marks = ",".join("?" for _ in ids)
+        scope, params = self.accounting._summary_scope(actor)
+        scope += f" AND b.id IN ({marks})"
+        params.extend(ids)
+        health = self._groups(
+            conn,
+            health_cte(scope, self.db.dialect)
+            + """ SELECT v.id AS book_id,
+                SUM(CASE WHEN h.status='draft' AND h.source_inactive=0 THEN 1 ELSE 0 END) AS pending,
+                SUM(CASE WHEN h.status='approved' THEN 1 ELSE 0 END) AS approved,
+                SUM(CASE WHEN h.status='exported' THEN 1 ELSE 0 END) AS exported,
+                SUM(CASE WHEN h.status='draft' AND h.source_inactive=0 AND h.basic_exception=1 THEN 1 ELSE 0 END) AS basic_exceptions
+                FROM visible_books v LEFT JOIN health h ON h.book_id=v.id GROUP BY v.id""",
+            params,
+        )
+        inactive = inactive_source_sql(self.db.dialect)
+        sources = self._groups(
+            conn,
+            f"""SELECT s.book_id,COUNT(*) AS sources,
+                SUM(CASE WHEN trim(COALESCE((SELECT se.evidence_ref FROM source_evidence se
+                    WHERE se.book_id=s.book_id AND se.source_id=s.id ORDER BY se.id DESC LIMIT 1),s.evidence_ref))=''
+                    THEN 1 ELSE 0 END) AS missing
+                FROM sources s WHERE s.book_id IN ({marks}) AND NOT ({inactive}) GROUP BY s.book_id""",
+            ids,
+        )
+        event_month = self.business.submission.period_sql()
+        finance = """EXISTS(SELECT 1 FROM company_memberships cm
+            WHERE cm.company_id=e.company_id AND cm.user_id=? AND cm.role='finance')"""
+        direct = """(e.submission_mode='direct' AND e.status IN ('submitted','returned') AND e.applicant_id<>?
+            AND EXISTS(SELECT 1 FROM books b LEFT JOIN book_access ba ON ba.book_id=b.id AND ba.user_id=?
+                LEFT JOIN company_memberships cm ON cm.company_id=b.company_id AND cm.user_id=?
+                WHERE b.firm_id=e.firm_id AND b.company_id=e.company_id AND b.period=? AND (
+                    EXISTS(SELECT 1 FROM memberships fm WHERE fm.firm_id=b.firm_id AND fm.user_id=? AND fm.role IN ('owner','admin'))
+                    OR ba.role IN ('editor','reviewer') AND (
+                        EXISTS(SELECT 1 FROM memberships fm WHERE fm.firm_id=b.firm_id AND fm.user_id=? AND fm.role IN ('owner','admin','operator','reviewer'))
+                        OR NOT EXISTS(SELECT 1 FROM memberships fm WHERE fm.firm_id=b.firm_id AND fm.user_id=?) AND cm.role IN ('owner','admin','finance')
+                    )
+                )))"""
+        business = {
+            row["company_id"]: row["pending"]
+            for row in conn.execute(
+                f"""SELECT e.company_id,COUNT(*) AS pending FROM business_events e
+                    WHERE e.firm_id=? AND {event_month}=? AND e.status<>'handed_off'
+                    AND e.company_id IN (SELECT b.company_id FROM books b WHERE b.id IN ({marks}))
+                    AND (({finance}) OR {direct}) GROUP BY e.company_id""",
+                [
+                    actor.firm_id,
+                    period,
+                    *ids,
+                    actor.user_id,
+                    actor.user_id,
+                    actor.user_id,
+                    actor.user_id,
+                    period,
+                    actor.user_id,
+                    actor.user_id,
+                    actor.user_id,
+                ],
+            )
+        }
+        case_scope, cp = self.cases._scope_sql(actor)
+        today = datetime.now(ZoneInfo("Asia/Shanghai")).date().isoformat()
+        cases = self._groups(
+            conn,
+            f"""SELECT COALESCE(t.book_id,bm.book_id) AS book_id,COUNT(*) AS open,
+                SUM(CASE WHEN t.state='awaiting_info' THEN 1 ELSE 0 END) AS awaiting_info,
+                SUM(CASE WHEN t.due_on<? THEN 1 ELSE 0 END) AS overdue
+                FROM {self.cases._task_table()} t LEFT JOIN business_mappings bm ON bm.event_id=t.event_id
+                WHERE t.firm_id=? AND t.state<>'closed' AND {case_scope}
+                AND COALESCE(t.book_id,bm.book_id) IN ({marks}) GROUP BY COALESCE(t.book_id,bm.book_id)""",
+            [today, actor.firm_id, *cp, *ids],
+        )
+        json_value, each = _json(self.db.dialect)
+        items = each("r.body_json", "items", "item")
+        reported_status = json_value("item.value", "status")
+        missing_id = json_value("item.value", "external_voucher_id")
+        unknown = f"""(NOT EXISTS(SELECT 1 FROM {items}) OR EXISTS(SELECT 1 FROM {items}
+            WHERE {reported_status} IS NULL OR {reported_status} NOT IN ('accepted','rejected')
+            OR {reported_status}='accepted' AND trim(COALESCE({missing_id},''))=''))"""
+        valid = receipt_valid_sql(self.db.dialect)
+        delivery = self._groups(
+            conn,
+            f"""SELECT x.book_id,
+                SUM(CASE WHEN r.id IS NULL THEN 1 ELSE 0 END) AS unverified,
+                SUM(CASE WHEN r.id IS NOT NULL AND {unknown} THEN 1 ELSE 0 END) AS unknown,
+                SUM(CASE WHEN r.id IS NOT NULL AND NOT {unknown} AND NOT ({valid}) THEN 1 ELSE 0 END) AS differences,
+                SUM(CASE WHEN {valid} THEN 1 ELSE 0 END) AS verified
+                FROM exports x LEFT JOIN delivery_receipts r ON r.export_id=x.id AND r.book_id=x.book_id
+                AND NOT EXISTS(SELECT 1 FROM delivery_receipts newer WHERE newer.export_id=r.export_id AND newer.book_id=r.book_id
+                    AND (newer.created_at>r.created_at OR newer.created_at=r.created_at AND newer.id>r.id))
+                WHERE x.book_id IN ({marks}) GROUP BY x.book_id""",
+            ids,
+        )
+        snapshots = self._groups(
+            conn,
+            f"""SELECT s.book_id,s.id,s.report_json,s.created_at FROM closing_snapshots s
+                WHERE s.book_id IN ({marks}) AND NOT EXISTS(SELECT 1 FROM closing_snapshots newer
+                    WHERE newer.book_id=s.book_id AND (newer.created_at>s.created_at OR newer.created_at=s.created_at AND newer.id>s.id))""",
+            ids,
+        )
+        ledgers = self._groups(
+            conn, f"SELECT book_id,ledger_id FROM ledger_periods WHERE book_id IN ({marks})", ids
+        )
+        timers = self._groups(
+            conn,
+            f"""SELECT book_id,SUM(credited_seconds) AS seconds FROM human_work_sessions
+                WHERE firm_id=? AND book_id IN ({marks}) GROUP BY book_id""",
+            [actor.firm_id, *ids],
+        )
+        audits = self._groups(
+            conn,
+            f"""SELECT book_id,
+                COUNT(DISTINCT CASE WHEN action='draft.approve' THEN object_id ELSE NULL END) AS reviews,
+                SUM(CASE WHEN action IN ('draft.update','closing.review','closing.close','review.confirm') THEN 1 ELSE 0 END) AS manual_actions
+                FROM audit_events WHERE firm_id=? AND book_id IN ({marks}) GROUP BY book_id""",
+            [actor.firm_id, *ids],
+        )
+        return {
+            "health": health,
+            "sources": sources,
+            "business": business,
+            "cases": cases,
+            "delivery": delivery,
+            "snapshots": snapshots,
+            "ledgers": ledgers,
+            "timers": timers,
+            "audits": audits,
+        }
+
+    def _row(self, row, role, facts):
+        book_id = row["id"]
+        permission = self.access.permissions(role, row["book_role"], row["company_role"])
+        permission.pop("read")
+
+        def group(kind):
+            return facts.get(kind, {}).get(book_id, {})
+
+        def count(kind, key):
+            return int(group(kind).get(key) or 0)
+
+        review = bool(book_id and permission["review"])
+        health = {
+            key: count("health", key)
+            for key in ("pending", "approved", "exported", "basic_exceptions")
+        }
+        snapshot = group("snapshots") if review else {}
+        closed = row["period_status"] == "closed"
+        state = "no_book" if not book_id else "closed" if closed else "open"
+        last = json.loads(snapshot["report_json"]) if snapshot else None
+        business_count = facts.get("business", {}).get(row["company_id"])
+        # A zero visible business count cannot establish company completeness.
+        # Staff intake is private and is deliberately not aggregated here.
+        return {
+            "row_key": book_id or "company:" + row["company_id"] + ":" + row["period"],
+            "company_id": row["company_id"],
+            "company_name": row["company_name"],
+            "book_id": book_id,
+            "book_name": row["name"],
+            "ledger_id": group("ledgers").get("ledger_id"),
+            "period": row["period"],
+            "status": state,
+            "permissions": permission,
+            "materials": {
+                "sources": count("sources", "sources") if book_id else None,
+                "missing": count("sources", "missing") if book_id else None,
+                "business_pending": int(business_count) if business_count is not None else None,
+                "intake_pending": None,
+            },
+            "drafts": health if book_id else {key: None for key in health},
+            "exceptions": {
+                key: count("cases", key) if review else None
+                for key in ("open", "awaiting_info", "overdue")
+            },
+            "delivery": {
+                key: count("delivery", key) if review else None
+                for key in ("unverified", "unknown", "differences", "verified")
+            },
+            "closing": {
+                "state": "closed"
+                if closed
+                else "restricted"
+                if not review
+                else "recheck"
+                if snapshot
+                else "not_checked",
+                "blockers": None,
+                "snapshot_id": snapshot.get("id"),
+                "last_check": {
+                    "passed": last["passed"] is True,
+                    "issue_count": last["issue_count"],
+                    "created_at": snapshot["created_at"],
+                }
+                if last
+                else None,
+            },
+            "efficiency": {
+                "reviews": count("audits", "reviews") if review else None,
+                "manual_actions": count("audits", "manual_actions") if review else None,
+                "handling_seconds": group("timers").get("seconds") if review else None,
+            },
+            "data_scope": {
+                "business": "company_finance_or_accounting_reception",
+                "intake": "not_aggregated",
+                "exceptions": "visible_book_cases",
+                "delivery": "export_batches",
+                "efficiency": "explicit_book_sessions",
+            },
+            "warnings": ["未提交资料由资料负责人核对；没有可见待办不表示本月资料齐全。"],
+        }

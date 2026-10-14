@@ -51,6 +51,12 @@ class AssistantWorker:
             try:
                 conn.execute("SET LOCAL ROLE accounting_worker")
                 conn.execute("SET LOCAL search_path TO accounting,pg_catalog")
+                from app.concurrency.settings import SchedulingSettings
+
+                conn.execute(
+                    "SELECT set_config('app.processing_requested_limit',?,true)",
+                    (str(SchedulingSettings.from_env().requested_global_limit),),
+                )
                 marks = ",".join("?" for _ in args)
                 query = (
                     "SELECT row_to_json(t)::text FROM accounting." + name + "(" + marks + ") t"
@@ -150,13 +156,19 @@ class AssistantWorker:
                 ).fetchone()[0]
                 for table in ("assistant_turns", "ocr_jobs", "proposal_jobs")
             )
-            if active >= 2:
+            from app.concurrency.settings import SchedulingSettings
+
+            requested_limit = SchedulingSettings.from_env().requested_global_limit
+            persisted_limit = conn.execute(
+                "SELECT processing_global_limit FROM processing_runtime_limits WHERE singleton=1"
+            ).fetchone()[0]
+            if active >= min(requested_limit, persisted_limit):
                 return None
             conn.execute(
-                "INSERT OR IGNORE INTO assistant_company_schedule(firm_id,company_id) SELECT DISTINCT firm_id,company_id FROM assistant_turns WHERE status='queued'"
+                "INSERT OR IGNORE INTO ocr_company_schedule(firm_id,company_id) SELECT DISTINCT firm_id,company_id FROM assistant_turns WHERE status='queued'"
             )
             rows = conn.execute(
-                """SELECT t.* FROM assistant_turns t JOIN assistant_company_schedule s ON s.firm_id=t.firm_id AND s.company_id=t.company_id
+                """SELECT t.* FROM assistant_turns t JOIN ocr_company_schedule s ON s.firm_id=t.firm_id AND s.company_id=t.company_id
               WHERE t.status='queued' AND t.available_at<=? AND NOT EXISTS(SELECT 1 FROM assistant_turns a WHERE a.firm_id=t.firm_id AND a.company_id=t.company_id AND a.status='running')
               AND NOT EXISTS(SELECT 1 FROM ocr_jobs a WHERE a.firm_id=t.firm_id AND a.company_id=t.company_id AND a.status='running')
               AND NOT EXISTS(SELECT 1 FROM proposal_jobs a WHERE a.firm_id=t.firm_id AND a.company_id=t.company_id AND a.status='running')
@@ -174,10 +186,10 @@ class AssistantWorker:
                     )
                     continue
                 seq = conn.execute(
-                    "SELECT COALESCE(MAX(last_dispatch_seq),0)+1 FROM assistant_company_schedule"
+                    "SELECT COALESCE(MAX(last_dispatch_seq),0)+1 FROM ocr_company_schedule"
                 ).fetchone()[0]
                 conn.execute(
-                    "UPDATE assistant_company_schedule SET last_dispatch_seq=? WHERE firm_id=? AND company_id=?",
+                    "UPDATE ocr_company_schedule SET last_dispatch_seq=? WHERE firm_id=? AND company_id=?",
                     (seq, turn["firm_id"], turn["company_id"]),
                 )
                 token = uuid4().hex
@@ -264,9 +276,12 @@ class AssistantWorker:
                     if not sent:
                         raise AccountingError("助手请求已发送或租约已变化", 409)
             attempted = True
-            result = self.provider.reply(
-                snapshot, turn["question"], json.loads(turn["history_json"])
-            )
+            from app.concurrency.provider import provider_scope
+
+            with provider_scope(self.db, self._actor(turn), turn["company_id"]):
+                result = self.provider.reply(
+                    snapshot, turn["question"], json.loads(turn["history_json"])
+                )
             reply = (
                 result.data
                 if isinstance(result.data, AssistantReply)

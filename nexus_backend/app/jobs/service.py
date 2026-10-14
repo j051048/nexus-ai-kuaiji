@@ -6,7 +6,7 @@ import json
 from time import perf_counter
 from uuid import uuid4
 
-from ..accounting.database import WRITE_LOCK
+from ..concurrency.settings import SchedulingSettings
 from ..accounting.domain import AccountingError
 from ..accounting.service import fingerprint
 from ..intelligence.provider import EXTRACTION_PROMPT_VERSION, ProviderError, effective_settings
@@ -563,14 +563,18 @@ class QueueService:
         return self.get_batch(actor, job["batch_id"])
 
     @contextmanager
-    def worker_transaction(self):
+    def worker_transaction(self, dispatch=False):
         conn = self.db.connect()
         try:
             conn.execute("BEGIN" if self.db.is_postgres else "BEGIN IMMEDIATE")
             if self.db.is_postgres:
                 conn.execute("SET LOCAL ROLE accounting_worker")
                 conn.execute("SET LOCAL search_path TO accounting,pg_catalog")
-                conn.execute("SELECT pg_advisory_xact_lock(?)", (WRITE_LOCK,))
+                conn.execute(
+                    "SELECT accounting.lock_dispatch_write()"
+                    if dispatch
+                    else "SELECT accounting.lock_legacy_write()"
+                )
             yield conn
             conn.commit()
         except Exception:
@@ -596,10 +600,10 @@ class QueueService:
             or type(lease_seconds) is not int
             or not 30 <= lease_seconds <= 600
             or type(concurrency) is not int
-            or concurrency not in {1, 2}
+            or not 1 <= concurrency <= 8
         ):
-            raise ValueError("任务领取须使用有效worker标识、30–600秒租约及1或2并发")
-        with self.worker_transaction() as conn:
+            raise ValueError("任务领取须使用有效worker标识、30–600秒租约及1–8总并发")
+        with self.worker_transaction(dispatch=True) as conn:
             if self.db.is_postgres:
                 row = conn.execute(
                     "SELECT accounting.claim_processing_job(?,?,?)",
@@ -607,6 +611,10 @@ class QueueService:
                 ).fetchone()[0]
                 return row if row else None
             stamp = self.timestamp()
+            persisted_limit = conn.execute(
+                "SELECT processing_global_limit FROM processing_runtime_limits WHERE singleton=1"
+            ).fetchone()[0]
+            concurrency = min(concurrency, persisted_limit)
             self.proposals.refresh_dependencies_sqlite(conn)
             if (
                 conn.execute(

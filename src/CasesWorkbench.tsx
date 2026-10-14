@@ -366,11 +366,15 @@ export function CaseCreatePanel({
 
 export function CasesWorkbench({
   session,
+  companyId = '',
+  bookId = '',
   initialTarget,
   initialCaseId,
   onChanged,
 }: {
   session: Session;
+  companyId?: string;
+  bookId?: string;
   initialTarget?: CaseTarget;
   initialCaseId?: string;
   onChanged?: () => void;
@@ -398,6 +402,8 @@ export function CasesWorkbench({
         mine: String(mine),
       });
       if (state) query.set('state', state);
+      if (companyId) query.set('company_id', companyId);
+      if (bookId) query.set('book_id', bookId);
       try {
         const value = await api<{ cases: CaseTask[]; total: number }>(`/cases?${query}`, session, {
           signal,
@@ -418,7 +424,7 @@ export function CasesWorkbench({
         if (!signal?.aborted && request === epoch.current) setLoading(false);
       }
     },
-    [session, offset, state, overdue, mine, initialCaseId],
+    [session, companyId, bookId, offset, state, overdue, mine, initialCaseId],
   );
   useEffect(() => {
     setTasks([]);
@@ -482,6 +488,11 @@ export function CasesWorkbench({
           )}
         </div>
       </div>
+      {(companyId || bookId) && (
+        <p className="field-help">
+          当前已按选定客户{bookId ? '及账套' : ''}限定异常范围，可从客户月度进度重新选择。
+        </p>
+      )}
       {creating ? (
         <CaseCreatePanel
           session={session}

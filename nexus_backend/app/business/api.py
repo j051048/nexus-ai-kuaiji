@@ -57,10 +57,11 @@ def build_business_router(actor_dependency):
         | None = None,
         limit: int = Query(50, ge=1, le=100),
         offset: int = Query(0, ge=0, le=100000),
+        period: str | None = Query(default=None, pattern=r"^20[0-9]{2}-(?:0[1-9]|1[0-2])$"),
         current=Depends(actor_dependency),
         service=Depends(business),
     ):
-        return service.list_events(current, scope, company_id, status, limit, offset)
+        return service.list_events(current, scope, company_id, status, limit, offset, period=period)
 
     @router.post("/business/events", status_code=201)
     def create_event(

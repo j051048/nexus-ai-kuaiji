@@ -13,6 +13,7 @@ from urllib.parse import parse_qs, urlsplit
 from ..accounting.domain import Actor, AccountingError
 from ..intelligence.requests import OCRRequest, ProposalRequest
 from .service import QueueService
+from ..concurrency.settings import SchedulingSettings
 
 logger = logging.getLogger(__name__)
 
@@ -658,7 +659,9 @@ class QueueWorker:
     def run_once(self):
         self.maintenance(0)
         self.recover()
-        job = self.queue.claim(self.worker_id, self.lease_seconds, self.concurrency)
+        job = self.queue.claim(
+            self.worker_id, self.lease_seconds, SchedulingSettings.from_env().requested_global_limit
+        )
         if not job:
             return False
         self.process(job)
@@ -703,7 +706,11 @@ class QueueWorker:
                         last_monitor = time.monotonic()
                     self.recover()
                     while len(futures) < self.concurrency and not self._stop.is_set():
-                        job = self.queue.claim(self.worker_id, self.lease_seconds, self.concurrency)
+                        job = self.queue.claim(
+                            self.worker_id,
+                            self.lease_seconds,
+                            SchedulingSettings.from_env().requested_global_limit,
+                        )
                         if not job:
                             break
                         futures.add(pool.submit(self.process, job))

@@ -140,6 +140,13 @@ FACT_SCOPES = {
     "settlement_items": "t.book_id=b.id",
     "settlement_allocations": "t.book_id=b.id",
     "settlement_reversals": "t.book_id=b.id",
+    "monthly_baselines": "t.book_id=b.id",
+    "monthly_baseline_confirmations": "t.book_id=b.id",
+    "monthly_checks": "t.book_id=b.id",
+    "monthly_check_closures": "t.book_id=b.id",
+    "recurring_plan_versions": "t.ledger_id IN(SELECT ledger_id FROM ledger_periods WHERE book_id=b.id)",
+    "recurring_plan_approvals": "t.ledger_id IN(SELECT ledger_id FROM ledger_periods WHERE book_id=b.id)",
+    "recurring_generations": "t.book_id=b.id",
 }
 
 

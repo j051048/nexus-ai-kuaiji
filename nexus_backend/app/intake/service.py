@@ -381,7 +381,10 @@ class IntakeService:
                 result = local.result
             else:
                 attempted = True
-                result = self.provider.extract_invoice(pages)
+                from ..concurrency.provider import provider_scope
+
+                with provider_scope(self.db, actor, run["company_id"]):
+                    result = self.provider.extract_invoice(pages)
         except ProviderError as failure:
             error = failure
         except AccountingError:

@@ -3,6 +3,7 @@ import {
   Activity,
   ArrowUpRight,
   Building2,
+  CalendarDays,
   CheckCheck,
   ClipboardCheck,
   Command,
@@ -29,12 +30,14 @@ export type AgentNavigationView =
   | 'queue'
   | 'intelligence'
   | 'operations'
-  | 'revision';
+  | 'revision'
+  | 'monthly';
 
 export function AgentNavigation({
   session,
   current,
   canAccounting,
+  canMonthly = canAccounting,
   canReview,
   canOperations,
   locked,
@@ -48,6 +51,7 @@ export function AgentNavigation({
   session: Session;
   current: string;
   canAccounting: boolean;
+  canMonthly?: boolean;
   canReview: boolean;
   canOperations: boolean;
   locked: boolean;
@@ -225,6 +229,20 @@ export function AgentNavigation({
               <Building2 size={19} />
               <span>
                 客户企业<small>账套与交付</small>
+              </span>
+            </button>
+          )}
+          {canMonthly && (
+            <button
+              aria-label="客户月度进度"
+              className={'nav-item agent-primary-item ' + (current === 'monthly' ? 'active' : '')}
+              disabled={locked}
+              onClick={() => go('monthly')}
+              aria-current={current === 'monthly' ? 'page' : undefined}
+            >
+              <CalendarDays size={19} />
+              <span>
+                客户月度进度<small>跨企业处理矩阵</small>
               </span>
             </button>
           )}

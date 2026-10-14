@@ -97,6 +97,10 @@ from .operations.telemetry_router import build_telemetry_router
 from .closing.service import ClosingService
 from .closing.router import build_closing_router
 from .closing.models import CloseRequest
+from .monthly.service import MonthlyService
+from .monthly.router import build_monthly_router
+from .monthly.workbench import MonthlyWorkbenchService
+from .monthly.workbench_router import build_monthly_workbench_router
 from .revisions.history import SourceHistoryService
 from .revisions.history_router import build_source_history_router
 from .intake.service import IntakeService
@@ -298,6 +302,13 @@ def create_app(
                 application.state.review,
                 application.state.cases,
             )
+            application.state.monthly = MonthlyService(database, application.state.service)
+            application.state.monthly_workbench = MonthlyWorkbenchService(
+                database,
+                application.state.service,
+                application.state.business,
+                application.state.cases,
+            )
             application.state.legacy_migration = LegacyMigrationService(
                 database, application.state.attachment_store
             )
@@ -409,7 +420,7 @@ def create_app(
 
     app = FastAPI(
         title="衡账 · 会计 Agent 工作空间",
-        version="0.15.0",
+        version="0.17.0",
         lifespan=lifespan,
         docs_url="/api/docs",
         openapi_url="/api/openapi.json",
@@ -810,6 +821,8 @@ def create_app(
     app.include_router(build_intake_router(actor))
     app.include_router(build_import_wizard_router(actor))
     app.include_router(build_workspace_router(actor))
+    app.include_router(build_monthly_router(actor))
+    app.include_router(build_monthly_workbench_router(actor))
     app.include_router(build_agent_workspace_router(actor))
     app.include_router(build_assistant_router(actor))
     app.include_router(build_legacy_migration_router(actor))

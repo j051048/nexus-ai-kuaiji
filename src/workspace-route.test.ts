@@ -9,6 +9,8 @@ describe('URL 工作位置只保存标识和筛选，不承担授权', () => {
       view: 'accounting' as const,
       bookId: 'book-一',
       draftId: 'd1',
+      companyId: 'company-a',
+      period: '2026-10',
       filter: 'pending' as const,
     };
     const url = workspaceRouteUrl(route, { companyId: 'company-a', period: '2026-10' });
@@ -34,6 +36,18 @@ describe('URL 工作位置只保存标识和筛选，不承担授权', () => {
     expect(
       readWorkspaceRoute('/workspace/review', '?review_book=b2&review_draft=d1').reviewDraftId,
     ).toBe('d1');
+  });
+  it('跨企业月度下钻保留精确企业、账套与期间，非法月份不会进入查询', () => {
+    const route = readWorkspaceRoute('/workspace/review', '?company=c2&book=b8&period=2026-11');
+    expect(route.companyId).toBe('c2');
+    expect(route.bookId).toBe('b8');
+    expect(route.period).toBe('2026-11');
+    expect(readReviewFilters('?company=c2&period=2026-11')).toMatchObject({
+      company: 'c2',
+      period: '2026-11',
+    });
+    expect(readWorkspaceRoute('/workspace/monthly', '?period=2026-19').period).toBe('');
+    expect(workspaceRouteUrl({ ...route, view: 'balances' })).toContain('/workspace/balances?');
   });
   it('复核筛选在刷新后恢复，并拒绝非法页码及期间', () => {
     expect(

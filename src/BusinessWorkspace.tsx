@@ -30,6 +30,7 @@ import {
   BUSINESS_CATEGORIES,
   BUSINESS_TEMPLATES,
   initialBusinessPayload,
+  initialBusinessScope,
   normalizeBusinessPayload,
   validateAttachment,
   validateBusinessPayload,
@@ -103,6 +104,8 @@ export function BusinessWorkspace({
   initialIntakeId = '',
   initialTemplate,
   initialNew = false,
+  initialCompanyId = '',
+  initialPeriod = '',
 }: {
   session: Session;
   books: Book[];
@@ -115,10 +118,12 @@ export function BusinessWorkspace({
   initialIntakeId?: string;
   initialTemplate?: BusinessTemplate;
   initialNew?: boolean;
+  initialCompanyId?: string;
+  initialPeriod?: string;
 }) {
   const [context, setContext] = useState<BusinessContext | null>(null);
   const [scope, setScope] = useState<BusinessScope>('own');
-  const [companyId, setCompanyId] = useState('');
+  const [companyId, setCompanyId] = useState(initialCompanyId);
   const [status, setStatus] = useState('');
   const [events, setEvents] = useState<BusinessEvent[]>([]);
   const [total, setTotal] = useState(0);
@@ -267,19 +272,18 @@ export function BusinessWorkspace({
     if (!context || defaultScopeSet.current) return;
     defaultScopeSet.current = true;
     if (initialEventId) return;
-    const next: BusinessScope = context.scopes.company
-      ? 'company'
-      : context.scopes.department
-        ? 'department'
-        : context.scopes.accounting &&
-            !context.companies.some((company) => company.can_submit && company.role === 'employee')
-          ? 'accounting'
-          : 'own';
+    const next = initialBusinessScope(context, initialCompanyId);
     setScope(next);
     setStatus(
-      next === 'company' ? 'department_approved' : next === 'department' ? 'submitted' : '',
+      initialCompanyId
+        ? ''
+        : next === 'company'
+          ? 'department_approved'
+          : next === 'department'
+            ? 'submitted'
+            : '',
     );
-  }, [context, initialEventId]);
+  }, [context, initialEventId, initialCompanyId]);
   useEffect(() => {
     if (context && (initialIntakeId || initialNew)) {
       setScope('own');
@@ -297,6 +301,7 @@ export function BusinessWorkspace({
       const query = new URLSearchParams({ scope, limit: '50', offset: String(offset) });
       if (companyId) query.set('company_id', companyId);
       if (status) query.set('status', status);
+      if (initialPeriod) query.set('period', initialPeriod);
       try {
         const result = await api<{ events: BusinessEvent[]; total: number }>(
           `/business/events?${query}`,
@@ -313,7 +318,7 @@ export function BusinessWorkspace({
         if (!signal?.aborted && active.current && epoch === listEpoch.current) setLoading(false);
       }
     },
-    [context, session, scope, companyId, status, offset],
+    [context, session, scope, companyId, initialPeriod, status, offset],
   );
 
   useEffect(() => {
@@ -609,6 +614,11 @@ export function BusinessWorkspace({
           仅显示当前账号获授权的范围
         </p>
       </section>
+      {initialPeriod && (
+        <p className="field-help" role="status">
+          当前按 {initialPeriod} 的业务发生月份筛选。可从客户月度进度切换月份。
+        </p>
+      )}
       <div className={`business-grid ${selected || detailLoading ? 'mobile-detail' : ''}`}>
         <section className="panel business-list-panel">
           <div className="list-tabs">

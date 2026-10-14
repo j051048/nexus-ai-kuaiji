@@ -300,7 +300,7 @@ def test_auto_retry_budget_and_explicit_retry_keep_attempt_history(queue_case):
             conn.execute("UPDATE ocr_jobs SET status='queued',execution_user_id=?,max_attempts=30,current_run_id=NULL,error_code='',error_detail='',finished_at=NULL WHERE id=?", (case.employee.user_id, job["id"]))
 
 
-@pytest.mark.parametrize("lease_seconds,global_limit", [(29, 2), (601, 2), (180, 3), (180, 0)])
+@pytest.mark.parametrize("lease_seconds,global_limit", [(29, 2), (601, 2), (180, 9), (180, 0)])
 def test_worker_dispatch_bounds_are_database_enforced(queue_case, lease_seconds, global_limit):
     with pytest.raises(queue_case.psycopg.errors.InvalidParameterValue):
         with worker(queue_case) as conn:

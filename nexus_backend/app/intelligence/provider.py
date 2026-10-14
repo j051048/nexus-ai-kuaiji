@@ -112,8 +112,8 @@ class AISettings:
             or not 1 <= self.timeout_seconds <= 90
         ):
             raise ProviderError("configuration", "AI 请求超时必须在 1 至 90 秒之间")
-        if type(self.max_concurrency) is not int or not 1 <= self.max_concurrency <= 2:
-            raise ProviderError("configuration", "AI 并发数必须为 1 或 2")
+        if type(self.max_concurrency) is not int or not 1 <= self.max_concurrency <= 8:
+            raise ProviderError("configuration", "AI 并发数必须为 1 至 8")
         if any(
             not isinstance(model, str) or len(model) > 200 or "\n" in model or "\r" in model
             for model in (self.vision_model, self.ocr_model, self.journal_model, self.chat_model)
@@ -376,68 +376,76 @@ class OpenAICompatibleProvider:
             if type(max_tokens) is not int or not 1 <= max_tokens <= 4096:
                 raise ProviderError("context_invalid", "模型输出长度配置无效")
             payload["max_tokens"] = max_tokens
-        if not self._semaphore.acquire(blocking=False):
-            raise ProviderError("busy", "识别服务繁忙，请稍后重试")
-        owned_client = self._client is None
-        client = self._client or httpx.Client(
-            timeout=settings.timeout_seconds,
-            follow_redirects=False,
-            trust_env=False,
-        )
-        try:
-            started = time.monotonic()
-            with client.stream(
-                "POST",
-                settings.base_url + "/chat/completions",
-                json=payload,
-                headers={
-                    "Authorization": "Bearer " + settings.api_key,
-                    "Accept": "application/json",
-                    "Accept-Encoding": "identity",
-                },
-                timeout=settings.timeout_seconds,
-                follow_redirects=False,
-            ) as response:
-                if 300 <= response.status_code < 400:
-                    raise ProviderError("redirect", "AI 接口返回重定向，已拒绝转发票据")
-                if response.status_code != 200:
-                    raise ProviderError(
-                        "http_error",
-                        "AI 服务暂时不可用，请稍后重试或人工处理",
-                        retryable=response.status_code == 429,
-                    )
-                if response.headers.get("content-encoding", "identity").lower() != "identity":
-                    raise ProviderError("invalid_response", "AI 服务响应编码无效，需人工处理")
-                content_length = response.headers.get("content-length")
-                if (
-                    content_length
-                    and content_length.isdigit()
-                    and int(content_length) > MAX_RESPONSE_BYTES
-                ):
-                    raise ProviderError("response_too_large", "AI 服务响应超过大小限制")
-                buffer = bytearray()
-                # MockTransport may supply an already buffered response. Real HTTP transports
-                # stay unconsumed under client.stream and are always read incrementally.
-                chunks = (
-                    (response.content,)
-                    if response.is_stream_consumed
-                    else response.iter_raw(chunk_size=16_384)
+        from ..concurrency.provider import provider_capacity
+
+        with provider_capacity(
+            settings.base_url, self.settings.max_concurrency, settings.timeout_seconds
+        ):
+            if not self._semaphore.acquire(blocking=False):
+                raise ProviderError("busy", "识别服务繁忙，请稍后重试")
+            owned_client = self._client is None
+            client = None
+            try:
+                client = self._client or httpx.Client(
+                    timeout=settings.timeout_seconds,
+                    follow_redirects=False,
+                    trust_env=False,
                 )
-                for chunk in chunks:
-                    if time.monotonic() - started > settings.timeout_seconds:
-                        raise ProviderError("timeout", "AI 服务请求超时，请人工处理或稍后重试")
-                    if len(buffer) + len(chunk) > MAX_RESPONSE_BYTES:
+                started = time.monotonic()
+                with client.stream(
+                    "POST",
+                    settings.base_url + "/chat/completions",
+                    json=payload,
+                    headers={
+                        "Authorization": "Bearer " + settings.api_key,
+                        "Accept": "application/json",
+                        "Accept-Encoding": "identity",
+                    },
+                    timeout=settings.timeout_seconds,
+                    follow_redirects=False,
+                ) as response:
+                    if 300 <= response.status_code < 400:
+                        raise ProviderError("redirect", "AI 接口返回重定向，已拒绝转发票据")
+                    if response.status_code != 200:
+                        raise ProviderError(
+                            "http_error",
+                            "AI 服务暂时不可用，请稍后重试或人工处理",
+                            retryable=response.status_code == 429,
+                        )
+                    if response.headers.get("content-encoding", "identity").lower() != "identity":
+                        raise ProviderError("invalid_response", "AI 服务响应编码无效，需人工处理")
+                    content_length = response.headers.get("content-length")
+                    if (
+                        content_length
+                        and content_length.isdigit()
+                        and int(content_length) > MAX_RESPONSE_BYTES
+                    ):
                         raise ProviderError("response_too_large", "AI 服务响应超过大小限制")
-                    buffer.extend(chunk)
-            return self._parse(bytes(buffer), output_type, model, prompt_version)
-        except httpx.TimeoutException:
-            raise ProviderError("timeout", "AI 服务请求超时，请人工处理或稍后重试") from None
-        except httpx.HTTPError:
-            raise ProviderError("network_error", "AI 服务连接失败，请人工处理或稍后重试") from None
-        finally:
-            if owned_client:
-                client.close()
-            self._semaphore.release()
+                    buffer = bytearray()
+                    # MockTransport may supply an already buffered response. Real HTTP transports
+                    # stay unconsumed under client.stream and are always read incrementally.
+                    chunks = (
+                        (response.content,)
+                        if response.is_stream_consumed
+                        else response.iter_raw(chunk_size=16_384)
+                    )
+                    for chunk in chunks:
+                        if time.monotonic() - started > settings.timeout_seconds:
+                            raise ProviderError("timeout", "AI 服务请求超时，请人工处理或稍后重试")
+                        if len(buffer) + len(chunk) > MAX_RESPONSE_BYTES:
+                            raise ProviderError("response_too_large", "AI 服务响应超过大小限制")
+                        buffer.extend(chunk)
+                return self._parse(bytes(buffer), output_type, model, prompt_version)
+            except httpx.TimeoutException:
+                raise ProviderError("timeout", "AI 服务请求超时，请人工处理或稍后重试") from None
+            except httpx.HTTPError:
+                raise ProviderError(
+                    "network_error", "AI 服务连接失败，请人工处理或稍后重试"
+                ) from None
+            finally:
+                if owned_client and client is not None:
+                    client.close()
+                self._semaphore.release()
 
     @staticmethod
     def _parse(

@@ -20,11 +20,16 @@ export const workspaceViews = [
   'queue',
   'intelligence',
   'operations',
+  'monthly',
+  'balances',
+  'recurring',
 ] as const;
 export type WorkspaceView = (typeof workspaceViews)[number];
 export interface WorkspaceRoute {
   view: WorkspaceView;
   bookId: string;
+  companyId: string;
+  period: string;
   draftId: string;
   filter: 'all' | 'pending' | 'exception' | 'approved';
   listTab: 'drafts' | 'sources' | 'exports';
@@ -57,6 +62,8 @@ const identifiers = {
 export const emptyWorkspaceRoute: WorkspaceRoute = {
   view: 'home',
   bookId: '',
+  companyId: '',
+  period: '',
   draftId: '',
   filter: 'all',
   listTab: 'drafts',
@@ -82,6 +89,9 @@ export function readWorkspaceRoute(pathname: string, search: string): WorkspaceR
   const view = pathname.match(/^\/workspace\/([^/]+)\/?$/)?.[1];
   if (workspaceViews.includes(view as WorkspaceView)) route.view = view as WorkspaceView;
   const query = new URLSearchParams(search);
+  route.companyId = safeId(query.get('company'));
+  const period = query.get('period') ?? '';
+  route.period = /^20\d{2}-(0[1-9]|1[0-2])$/.test(period) ? period : '';
   for (const [field, name] of Object.entries(identifiers)) {
     route[field as keyof typeof identifiers] = safeId(query.get(name));
   }
@@ -121,6 +131,8 @@ export function workspaceRouteUrl(
   if (route.filter !== 'all') query.set('filter', route.filter);
   if (route.listTab !== 'drafts') query.set('tab', route.listTab);
   if (route.search) query.set('search', route.search);
+  if (route.companyId) query.set('company', route.companyId);
+  if (route.period) query.set('period', route.period);
   if (route.bookId && metadata?.companyId) query.set('company', metadata.companyId);
   if (route.bookId && metadata?.period) query.set('period', metadata.period);
   const suffix = query.toString();

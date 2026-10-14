@@ -331,7 +331,12 @@ class IntelligenceService:
         return conn.execute("SELECT * FROM ai_runs WHERE id=?", (run["id"],)).fetchone()
 
     def extract(self, actor, event_id, request, execution=None):
-        with self.db.transaction(write=True, actor=actor) as conn:
+        transaction_options = (
+            {"company_id": execution.job["company_id"], "write_scope": "company"}
+            if execution
+            else {}
+        )
+        with self.db.transaction(write=True, actor=actor, **transaction_options) as conn:
             event = self.business._event(conn, actor, event_id)
             self._require(conn, actor, event, "process", enabled=True)
             if request.expected_fact_version is None:
@@ -393,7 +398,7 @@ class IntelligenceService:
             local = parse_invoice_xml(data) if structured else None
             pages = local.pages if local else prepare_document(data, attachment["media_type"])
             # Check current access immediately before sending financial evidence.
-            with self.db.transaction(write=True, actor=actor) as conn:
+            with self.db.transaction(write=True, actor=actor, **transaction_options) as conn:
                 current = self.business._event(conn, actor, event_id)
                 self._require(conn, actor, current, "process", enabled=True)
                 if (
@@ -438,7 +443,10 @@ class IntelligenceService:
                     before_model = getattr(execution, "before_model", None)
                     if callable(before_model):
                         before_model()
-                    result = self.provider.extract_invoice(pages)
+                    from ..concurrency.provider import provider_scope
+
+                    with provider_scope(self.db, actor, event["company_id"]):
+                        result = self.provider.extract_invoice(pages)
                 finally:
                     after_model = getattr(execution, "after_model", None)
                     if callable(after_model):
@@ -453,7 +461,7 @@ class IntelligenceService:
         finally:
             budget.finish(result, error, attempted)
         try:
-            with self.db.transaction(write=True, actor=actor) as conn:
+            with self.db.transaction(write=True, actor=actor, **transaction_options) as conn:
                 current = self.business._event(conn, actor, event_id)
                 self._require(conn, actor, current, "process", enabled=True)
                 if (
@@ -1153,7 +1161,10 @@ class IntelligenceService:
                 before_model = getattr(execution, "before_model", None)
                 if callable(before_model):
                     before_model()
-                result = self.provider.suggest_journal(context)
+                from ..concurrency.provider import provider_scope
+
+                with provider_scope(self.db, actor, run["company_id"]):
+                    result = self.provider.suggest_journal(context)
             finally:
                 after_model = getattr(execution, "after_model", None)
                 if callable(after_model):

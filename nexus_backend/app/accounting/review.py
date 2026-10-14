@@ -51,7 +51,15 @@ class ReviewService:
         return scope, values, role
 
     def list_drafts(
-        self, actor, company_id=None, period=None, template="all", risk="all", limit=20, offset=0
+        self,
+        actor,
+        company_id=None,
+        period=None,
+        template="all",
+        risk="all",
+        limit=20,
+        offset=0,
+        book_id=None,
     ):
         page_bounds(limit, offset)
         if template not in {
@@ -87,6 +95,7 @@ class ReviewService:
             predicate, filters = "1=1", []
             for column, value in (
                 ("company_id", company_id),
+                ("book_id", book_id),
                 ("period", period),
                 ("business_template", None if template == "all" else template),
                 ("review_risk", None if risk == "all" else risk),

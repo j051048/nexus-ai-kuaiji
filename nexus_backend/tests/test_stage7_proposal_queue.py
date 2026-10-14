@@ -331,7 +331,7 @@ def test_proposal_retry_input_requires_reason():
         ProposalRetryRequest(idempotency_key="stage7-key-white-reason", reason="   ")
 
 
-@pytest.mark.parametrize("concurrency", [0, 3, 500, True])
+@pytest.mark.parametrize("concurrency", [0, 9, 500, True])
 def test_claim_cannot_bypass_configured_maximum_even_when_called_directly(proposal_case, concurrency):
     with pytest.raises(ValueError):
         proposal_case.queue.claim("bounded-worker", concurrency=concurrency)
