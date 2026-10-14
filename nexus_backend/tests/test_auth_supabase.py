@@ -92,6 +92,17 @@ def test_jwks_is_cached_but_online_user_is_verified_for_each_request(keys):
     assert [request.url.path for request in requests] == ["/auth/v1/.well-known/jwks.json", "/auth/v1/user", "/auth/v1/user"]
 
 
+@pytest.mark.parametrize("algorithm", ["RS256", "ES256", "HS256"])
+def test_admin_assurance_comes_only_from_verified_token_claims(keys, algorithm):
+    authenticator, _ = auth(keys)
+    verified = sign(keys, algorithm=algorithm, payload=claims(aal="aal2"))
+    assert authenticator.authenticate(verified).aal == "aal2"
+    untrusted = sign(keys, algorithm=algorithm, payload=claims(user_metadata={"aal": "aal2"}))
+    assert authenticator.authenticate(untrusted).aal == "aal1"
+    unknown = sign(keys, algorithm=algorithm, payload=claims(aal="owner"))
+    assert authenticator.authenticate(unknown).aal == "aal1"
+
+
 @pytest.mark.parametrize("algorithm", ["RS256", "HS256"])
 @pytest.mark.parametrize("change", [
     {"iss": "https://attacker.supabase.co/auth/v1"},

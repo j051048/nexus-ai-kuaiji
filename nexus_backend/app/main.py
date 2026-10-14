@@ -18,6 +18,7 @@ from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from .auth import AuthSettings, AuthError, Identity, SupabaseAuthenticator
+from .auth.admin_security import allow_firm_signup, requires_admin_mfa
 from .accounting.database import Database
 from .agent_workspace.service import AgentWorkspaceService
 from .agent_workspace.router import build_agent_workspace_router
@@ -28,6 +29,10 @@ from .assistant.actions import AssistantActionService
 from .assistant.worker import AssistantWorker
 from .assistant.router import build_assistant_router
 from .accounting.directory import DirectoryService
+from .accounting.admin_service import AdminService
+from .accounting.admin_router import build_admin_router
+from .accounting.admin_identity import AdminIdentityService
+from .accounting.admin_identity_router import build_admin_identity_router
 from .accounting.models import (
     ApprovalRequest,
     BookCreate,
@@ -168,6 +173,7 @@ def create_app(
     assistant_provider=None,
 ):
     settings = auth_settings or AuthSettings.from_env()
+    firm_signup_enabled = allow_firm_signup(settings.mode, os.environ)
     path = (
         db_path
         or os.getenv("ACCOUNTING_DATABASE_URL")
@@ -237,6 +243,8 @@ def create_app(
             application.state.service.ledgers = application.state.ledgers
             application.state.catalog = CatalogService(database)
             application.state.directory = DirectoryService(database)
+            application.state.admin = AdminService(database)
+            application.state.admin_identity = AdminIdentityService(database)
             application.state.business = BusinessService(database)
             application.state.revisions = FactRevisionService(
                 database, application.state.business, application.state.service
@@ -420,7 +428,7 @@ def create_app(
 
     app = FastAPI(
         title="衡账 · 会计 Agent 工作空间",
-        version="0.17.0",
+        version="0.18.0",
         lifespan=lifespan,
         docs_url="/api/docs",
         openapi_url="/api/openapi.json",
@@ -470,6 +478,18 @@ def create_app(
                     )
                 except AuthError as error:
                     return JSONResponse({"detail": error.detail}, status_code=error.status)
+                if (
+                    requires_admin_mfa(request.url.path, request.method)
+                    and request.state.identity.aal != "aal2"
+                ):
+                    return JSONResponse(
+                        {
+                            "detail": "管理操作需要二次验证，请进入管理后台完成验证",
+                            "code": "admin_mfa_required",
+                        },
+                        status_code=403,
+                        headers={"Cache-Control": "no-store"},
+                    )
         response = await call_next(request)
         private = "private" in {
             part.strip().lower() for part in response.headers.get("Cache-Control", "").split(",")
@@ -570,6 +590,8 @@ def create_app(
     @app.get("/api/auth/config")
     def auth_config():
         config = settings.public_config()
+        config["allow_firm_signup"] = firm_signup_enabled
+        config["admin_requires_mfa"] = settings.mode == "supabase"
         if settings.mode == "local":
             config["personas"] = [
                 {"id": row["id"], "label": row["label"]} for row in PERSONAS.values()
@@ -625,6 +647,8 @@ def create_app(
 
     @app.post("/api/firms", status_code=201)
     def create_firm(payload: FirmCreate, current=Depends(identity), dirs=Depends(directory)):
+        if not firm_signup_enabled:
+            raise AccountingError("当前环境仅允许管理员开通事务所，请联系管理人员", 403)
         if settings.mode == "supabase":
             dirs.register_identity(current)
         return dirs.create_firm(current.user_id, payload)
@@ -817,6 +841,8 @@ def create_app(
     ):
         return dirs.create_department(current, company_id, payload)
 
+    app.include_router(build_admin_router(actor))
+    app.include_router(build_admin_identity_router(actor, identity))
     app.include_router(build_business_router(actor))
     app.include_router(build_intake_router(actor))
     app.include_router(build_import_wizard_router(actor))

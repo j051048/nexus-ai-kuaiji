@@ -80,7 +80,7 @@ class AgentWorkspaceService:
             FROM migration_jobs j JOIN migration_projects p ON p.id=j.project_id AND p.firm_id=j.firm_id AND p.company_id=j.company_id
               JOIN visible_books b ON b.id=p.book_id WHERE {migration_scope}
           ),runs AS (SELECT raw_runs.*,c.name AS company_name,
-            CASE WHEN needs_attention=1 THEN 'attention' WHEN status IN ('waiting','queued','running','retry_wait') THEN 'active' ELSE 'done' END AS bucket
+            CASE WHEN raw_runs.needs_attention=1 THEN 'attention' WHEN raw_runs.status IN ('waiting','queued','running','retry_wait') THEN 'active' ELSE 'done' END AS bucket
             FROM raw_runs JOIN companies c ON c.id=raw_runs.company_id)
         """
         return cte, [*event_params, *edit_params, *book_params, *review_params, *migration_params]

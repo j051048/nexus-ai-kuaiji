@@ -1,4 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   ArrowDownLeft,
   ArrowRight,
@@ -61,6 +62,10 @@ type Filter = 'all' | 'pending' | 'exception' | 'approved';
 const BusinessWorkspace = lazy(() =>
   import('./BusinessWorkspace').then((module) => ({ default: module.BusinessWorkspace })),
 );
+const AdminWorkspace = lazy(() => import('./AdminWorkspace'));
+const AdminMfaGate = lazy(() => import('./AdminMfaGate'));
+const AccountActivation = lazy(() => import('./AccountActivation'));
+const AccountRecovery = lazy(() => import('./AccountRecovery'));
 const ChineseImportWizard = lazy(() => import('./ChineseImportWizard'));
 const InlineReviewDrawer = lazy(() =>
   import('./InlineReviewDrawer').then((module) => ({ default: module.InlineReviewDrawer })),
@@ -162,6 +167,12 @@ const roleLabels: Record<FirmRole, string> = {
 };
 
 export default function App() {
+  const location = useLocation();
+  const routerNavigate = useNavigate();
+  const adminMode = /^\/admin(?:\/|$)/.test(location.pathname);
+  const activationMode = location.pathname === '/account-activation';
+  const recoveryMode = location.pathname === '/account-recovery';
+  const [adminBusy, setAdminBusy] = useState(false);
   const [homeView, setHomeView] = useState(true);
   const [runsView, setRunsView] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
@@ -351,7 +362,13 @@ export default function App() {
     exportRequest.current = null;
   }, []);
   const auth = useAccountingAuth(clearWorkspace);
-  const { session, me } = auth;
+  const { me } = auth;
+  // Keep one authenticated identity while unmounting all accounting selections
+  // and suppressing workspace fetches in the separate administration surface.
+  const session = adminMode || activationMode || recoveryMode ? null : auth.session;
+  useEffect(() => {
+    if (adminMode || activationMode || recoveryMode) clearWorkspace();
+  }, [adminMode, activationMode, recoveryMode, clearWorkspace]);
   const sessionScope = useRef<string | null>(null);
   sessionScope.current = session?.scope_key ?? null;
   useEffect(() => {
@@ -1015,6 +1032,7 @@ export default function App() {
         ? { companyId: storedDetail.book.company_id, period: storedDetail.book.period }
         : undefined,
     locked:
+      adminBusy ||
       !!busy ||
       businessBusy ||
       reviewDirty ||
@@ -1111,9 +1129,86 @@ export default function App() {
     },
   });
 
+  if (recoveryMode)
+    return (
+      <Suspense
+        fallback={
+          <div className="loading-block">
+            <Spinner />
+            正在打开密码找回…
+          </div>
+        }
+      >
+        <AccountRecovery
+          key={location.hash || location.key}
+          config={auth.config}
+          onLogout={auth.logout}
+        />
+      </Suspense>
+    );
+  if (activationMode)
+    return (
+      <Suspense
+        fallback={
+          <div className="loading-block">
+            <Spinner />
+            正在打开账号激活…
+          </div>
+        }
+      >
+        <AccountActivation
+          key={location.hash || location.key}
+          config={auth.config}
+          session={auth.session}
+          loading={auth.loading}
+          error={auth.error}
+          onLogin={auth.login}
+          onRefresh={auth.refreshIdentity}
+          onLogout={auth.logout}
+        />
+      </Suspense>
+    );
+  if (adminMode && auth.session && me)
+    return (
+      <Suspense
+        fallback={
+          <div className="loading-block">
+            <Spinner />
+            正在打开管理后台…
+          </div>
+        }
+      >
+        {routeGuard.blocked && (
+          <RouteLeaveDialog
+            canDiscard={false}
+            onStay={routeGuard.cancel}
+            onLeave={routeGuard.proceed}
+          />
+        )}
+        <AdminMfaGate
+          key={auth.session.scope_key}
+          required={
+            auth.config?.admin_requires_mfa === true &&
+            (me.permissions.manage_admin === true || me.permissions.manage_firm)
+          }
+          onVerified={auth.refreshIdentity}
+          onLogout={auth.logout}
+        >
+          <AdminWorkspace
+            session={auth.session}
+            me={me}
+            loading={auth.loading}
+            onLogout={auth.logout}
+            onSwitchFirm={auth.switchFirm}
+            onBusyChange={setAdminBusy}
+          />
+        </AdminMfaGate>
+      </Suspense>
+    );
   if (!session)
     return (
       <AuthScreen
+        admin={adminMode}
         config={auth.config}
         loading={auth.loading}
         error={auth.error}
@@ -1129,6 +1224,7 @@ export default function App() {
         error={auth.error}
         onCreate={auth.createFirm}
         onLogout={auth.logout}
+        allowCreate={auth.config?.allow_firm_signup === true || auth.config?.mode === 'local'}
       />
     );
   const canSeeAccounting =
@@ -1510,6 +1606,17 @@ export default function App() {
         }
         footer={
           <>
+            {(me?.permissions.manage_admin || me?.permissions.manage_firm) && (
+              <button
+                className="help-link"
+                disabled={navigationLocked || commandOpen}
+                onClick={() => void routerNavigate('/admin')}
+              >
+                <ShieldCheck size={16} />
+                组织管理后台
+                <ArrowUpRight size={13} />
+              </button>
+            )}
             {session.mode === 'local' && !!auth.config?.personas?.length && (
               <label className="persona-switch">
                 <span>切换验证身份</span>
@@ -1697,7 +1804,8 @@ export default function App() {
         >
           {homeView ? (
             <WorkspaceHome
-              key={session.scope_key}
+              key={`${session.scope_key}:${workCompany}`}
+              initialCompanyId={workCompany}
               session={session}
               profile={profile}
               profileError={profileError}

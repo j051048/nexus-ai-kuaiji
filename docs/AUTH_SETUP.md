@@ -10,7 +10,7 @@
 
 ## 使用独立 Supabase 项目
 
-先为少数试点企业新建独立项目；不要接原 AI 中控平台数据库或沿用旧账号。开启 Email / Password 登录。试点阶段可以关闭公开注册，手动准备少量测试用户；忘记密码、邀请和邮箱确认所需邮件能力由后续正式开户流程配置。[官方密码登录说明](https://supabase.com/docs/guides/auth/passwords)
+先为少数试点企业新建独立项目；不要接原 AI 中控平台数据库或沿用旧账号。开启 Email / Password 登录，关闭公开注册。管理员通过 `/admin` 生成一次性激活链接，交给对应人员本人激活；默认不发送邮件。忘记密码邮件与 MFA 丢失后的身份核验恢复由部署方另行配置。[官方密码登录说明](https://supabase.com/docs/guides/auth/passwords)
 
 从项目的 API Keys 配置取得 **publishable key**；旧项目的 **anon key** 也可兼容。不要填入 `sb_secret_...` 或 `service_role`，配置校验会拒绝这两类密钥。publishable / anon 是可以给前端的公开配置；数据库密码始终只放后端环境。[官方 API Keys 说明](https://supabase.com/docs/guides/getting-started/api-keys)
 
@@ -30,25 +30,29 @@ $env:ACCOUNTING_SEED = '0'
 
 ## 少数试点用户的开通顺序
 
-1. 管理员在 Supabase Dashboard 的 **Authentication → Users** 手动创建 Email / Password 测试账号，并确认其邮箱状态。采用“创建用户”，避免使用“发送邀请邮件”；本轮代码不会代建远端账号或发邀请。请为每个人使用独立账号。[官方用户管理说明](https://supabase.com/docs/guides/auth/managing-user-data)
-2. 首个事务所负责人登录会计工作台，在应用中初始化自己的事务所。这个操作只能为当前已验证用户建立新事务所及负责人关系，不能领取已有事务所。
-3. 其他会计和企业人员先登录一次，使应用记录其已验证的用户 ID / 邮箱。已有负责人随后在应用授权界面分配成员角色、客户企业或具体账套范围。
+1. 部署人员在迁移完成后，使用 `scripts/bootstrap_admin.py` 一次性初始化负责人。管理员数据库连接仅用于维护终端，不放到 API、worker 或前端。密码使用隐藏输入，已有身份不会被重置密码。详见[管理后台与初始化步骤](STAGE18_ADMIN_WORKSPACE.md)。
+2. 负责人打开 `/admin`，用本人邮箱与密码登录，完成 Supabase TOTP 二次验证。真实模式默认 `ACCOUNTING_ALLOW_FIRM_SIGNUP=0`，未授权用户只能等待开户，不能自行创建事务所。
+3. 负责人创建客户企业和部门，按岗位开通账号。API 服务配置 `ACCOUNTING_SUPABASE_ADMIN_KEY` 与 `ACCOUNTING_PUBLIC_APP_URL` 后，可生成无邮件激活链接。新用户通过链接自行设置密码；已有用户使用原账号登录并确认加入。原有“添加已有成员”入口仍支持已登录登记过的身份。
 4. 录入人员只获得所需客户 / 账套的录入范围；会计复核者取得单独审核权限。不要为方便试点把所有人设为负责人。
 5. 先用虚构流水走通导入 → 建议 → 审核 → 导出。再用两个试点账号交叉验证：非授权账套不可读取、录入者不可审核、撤权后不可继续访问。
 
 Supabase user metadata 只可用于显示姓名。`user_metadata.role`、`app_metadata.firm_id` 或 JWT 中自定义的部门字段，都不替代应用的成员、企业和账套授权。邮箱是授权查找线索，实际关系绑定经过认证的用户 ID。
 
+若首次激活中断在邮箱验证完成、密码尚未设置之间，用户可从登录页或激活页进入 `/account-recovery`，**由本人明确点击**发送密码重置邮件。配置 Supabase SMTP，并在 Auth 的 Redirect URLs 中添加前端的完整 `/account-recovery` 地址（例如 `https://kuaiji.flydao.top/account-recovery`）。回跳凭据只在内存中消费并从地址栏清除；管理员不能给已有账号生成可直接登录的重置链接。收件服务未配置时，需由运维完成邮箱恢复配置后重试，不会自动改密或放开权限。
+
 应用授权 API：
 
 | 操作 | 接口 | 约束 |
 | --- | --- | --- |
-| 初始化新事务所 | `POST /api/firms`，`{name}` | 当前已验证用户成为新事务所负责人 |
+| 初始化新事务所 | `POST /api/firms`，`{name}` | 真实模式默认关闭；显式开启时仍要求二次验证 |
 | 查看事务所成员 | `GET /api/firm/members` | 必须有事务所管理权限 |
 | 授予事务所成员 | `PUT /api/firm/members`，`{email,role}` | 目标先登录一次；角色为 `admin/operator/reviewer/viewer` |
 | 授予账套范围 | `PUT /api/books/{book_id}/members/{user_id}`，`{role}` | 角色为 `editor/reviewer/viewer`，授予者须具备该范围的管理权 |
 | 授予企业范围 | `PUT /api/companies/{company_id}/members`，`{email,role,department_id?}` | 企业角色为 `owner/admin/finance/employee`，部门关系限制在该企业 |
 
 事务所负责人可管理本事务所账套。一般成员的事务所角色并不自动授予所有账套；具体账套角色决定可读取、录入、审核的范围。企业成员关系也不能把普通企业员工提升成事务所会计。
+
+`/api/admin` 管理接口，以及原有人员、部门、账套、长期账套管理人和旧账迁移授权写接口，均要求已验证 JWT 的 `aal2`。普通业务录入、本人接受邀请与会计复核保持原有身份和范围校验。MFA 只提高登录可信度，不授予任何组织或账套权限。管理员专用 Supabase 密钥仅存于 API 服务环境；`GET /api/auth/config` 不返回该密钥。
 
 ## 服务端校验和故障处理
 

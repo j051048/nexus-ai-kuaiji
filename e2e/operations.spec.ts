@@ -41,11 +41,18 @@ test('真实本地费用监控：管理员设置预算，财务只读，员工�
     await page.setViewportSize({ width: 1440, height: 1100 });
     await page.screenshot({ path: 'artifacts/operations-local-no-provider.png', fullPage: true });
     await page.getByLabel('切换验证身份').selectOption('finance');
+    await expect(page.getByRole('heading', { name: '财务工作台', exact: true })).toBeVisible();
+    let financeTelemetryRequests = 0;
+    page.on('request', requestValue => {
+      if (new URL(requestValue.url()).pathname.endsWith('/telemetry')) financeTelemetryRequests++;
+    });
     await openManagement(page); await page.getByRole('button', { name: '费用与运行监控', exact: true }).click();
     await page.getByLabel('监控客户企业').selectOption({ label: companyName });
     await expect(page.getByText('额度控制已开启', { exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: '设置预算策略', exact: true })).toHaveCount(0);
     await expect(page.getByRole('button', { name: '核定此项费用', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('region', { name: '企业运行性能', exact: true })).toHaveCount(0);
+    expect(financeTelemetryRequests).toBe(0);
     await page.getByLabel('切换验证身份').selectOption('employee');
     await expect(page.getByRole('heading', { name: '我的工作台', exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: '费用与运行监控', exact: true })).toHaveCount(0);

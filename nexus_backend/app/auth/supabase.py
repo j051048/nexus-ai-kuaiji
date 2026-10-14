@@ -36,6 +36,8 @@ class Identity:
     user_id: str
     email: str | None
     display_name: str
+    # Provider-verified assurance only; user-editable metadata is never trusted.
+    aal: str = "aal1"
 
 
 @dataclass(frozen=True)
@@ -323,4 +325,9 @@ class SupabaseAuthenticator:
         display_name = (
             name.strip()[:120] if isinstance(name, str) and name.strip() else (email or user_id)
         )
-        return Identity(user_id=user_id, email=email, display_name=display_name)
+        return Identity(
+            user_id=user_id,
+            email=email,
+            display_name=display_name,
+            aal="aal2" if claims.get("aal") == "aal2" else "aal1",
+        )

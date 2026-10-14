@@ -64,17 +64,18 @@ def test_replay_versions_and_parallel_session_cannot_inflate_time(service, book)
 
 def test_current_book_scope_and_creator_are_both_required(service, book):
     efficiency = EfficiencyService(service.db)
-    row = efficiency.start(LOCAL_ACTOR, start(book))
+    # Revoke an explicitly assigned reviewer; owner demotion is now forbidden.
+    creator = add_actor(service, user_id="efficiency-creator", firm_id=LOCAL_ACTOR.firm_id, role="reviewer", book_id=book)
+    row = efficiency.start(creator, start(book))
     colleague = add_actor(service, user_id="efficiency-colleague", firm_id=LOCAL_ACTOR.firm_id, role="reviewer", book_id=book)
     with pytest.raises(AccountingError):
         efficiency.command(colleague, row["id"], command(row, "pause"))
     assert efficiency.own(colleague)["total"] == 0
     with service.db.transaction(write=True) as conn:
-        conn.execute("UPDATE memberships SET role='reviewer' WHERE firm_id=? AND user_id=?", (LOCAL_ACTOR.firm_id, LOCAL_ACTOR.user_id))
-        conn.execute("DELETE FROM book_access WHERE book_id=? AND user_id=?", (book, LOCAL_ACTOR.user_id))
-    assert efficiency.own(LOCAL_ACTOR)["total"] == 0
+        conn.execute("DELETE FROM book_access WHERE book_id=? AND user_id=?", (book, creator.user_id))
+    assert efficiency.own(creator)["total"] == 0
     with pytest.raises(AccountingError):
-        efficiency.command(LOCAL_ACTOR, row["id"], command(row, "pause"))
+        efficiency.command(creator, row["id"], command(row, "pause"))
 
 
 def test_employee_records_only_own_business_and_cannot_read_book_metrics(business):

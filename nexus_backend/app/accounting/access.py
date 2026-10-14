@@ -41,7 +41,7 @@ class AccessControl:
         self.require_user(conn, actor.user_id)
         company = conn.execute(
             "SELECT c.* FROM companies c JOIN firm_clients fc ON fc.company_id=c.id "
-            "WHERE c.id=? AND fc.firm_id=? AND fc.status='active'",
+            "WHERE c.id=? AND fc.firm_id=? AND fc.status='active' AND c.status='active'",
             (company_id, actor.firm_id),
         ).fetchone()
         if not company:
@@ -67,7 +67,7 @@ class AccessControl:
             "SELECT b.*,c.name AS company_name,p.status AS period_status FROM books b "
             "JOIN companies c ON c.id=b.company_id JOIN firm_clients fc ON fc.company_id=b.company_id AND fc.firm_id=b.firm_id "
             "JOIN periods p ON p.book_id=b.id AND p.period=b.period "
-            "WHERE b.id=? AND b.firm_id=? AND fc.status='active'",
+            "WHERE b.id=? AND b.firm_id=? AND fc.status='active' AND c.status='active'",
             (book_id, actor.firm_id),
         ).fetchone()
         if not book:

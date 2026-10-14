@@ -24,7 +24,7 @@ class TestIdentityProvider:
     def __init__(self):
         suffix = uuid4().hex
         self.identities = {
-            key: Identity(str(uuid4()), f"{key}-{suffix}@example.test", f"测试{key}")
+            key: Identity(str(uuid4()), f"{key}-{suffix}@example.test", f"测试{key}", aal="aal2")
             for key in ("owner", "operator", "reviewer", "viewer", "employee", "stranger")
         }
 
@@ -35,7 +35,10 @@ class TestIdentityProvider:
 
 
 @pytest.fixture
-def client():
+def client(monkeypatch):
+    # This fixture intentionally exercises self-service firm creation. The real
+    # deployment is invitation-only by default and separately tested below.
+    monkeypatch.setenv("ACCOUNTING_ALLOW_FIRM_SIGNUP", "1")
     migrate(ADMIN)
     provider = TestIdentityProvider()
     settings = AuthSettings(mode="supabase", supabase_url="https://isolated-auth.example.test", publishable_key="sb_publishable_test_only")
@@ -49,6 +52,38 @@ def client():
 
 def headers(token, firm=None):
     return {"Authorization": f"Bearer {token}", **({"X-Firm-Id": firm} if firm else {})}
+
+
+def test_management_http_denies_password_only_session_without_blocking_business(client):
+    firm, company, book = setup_books(client)
+    original = client.provider.identities["owner"]
+    client.provider.identities["owner"] = Identity(original.user_id, original.email, original.display_name)
+    weak = headers("owner", firm)
+    for method, path, body in [
+        ("GET", "/api/admin/companies", None),
+        ("POST", "/api/companies", {"name": "不能创建"}),
+        ("POST", "/api/books", {"name": "不能隐式创建企业", "period": "2026-10"}),
+        ("PUT", f"/api/companies/{company}/members", {"email": client.provider.identities["employee"].email, "role": "employee"}),
+        ("POST", f"/api/books/{book}/ledger/managers", {"user_id": original.user_id, "role": "manager"}),
+        ("POST", f"/api/books/{book}/legacy-migrations/project/access", {"user_id": original.user_id, "can_review": True}),
+        ("DELETE", f"/api/books/{book}/legacy-migrations/project/access/user", None),
+    ]:
+        response = client.request(method, path, headers=weak, json=body)
+        assert response.status_code == 403
+        assert response.json()["code"] == "admin_mfa_required"
+    assert client.get("/api/me", headers=weak).status_code == 200
+    assert client.get("/api/workbench", headers=weak).status_code == 200
+
+
+def test_production_firm_signup_is_closed_without_explicit_opt_in(client, monkeypatch):
+    monkeypatch.delenv("ACCOUNTING_ALLOW_FIRM_SIGNUP", raising=False)
+    settings = AuthSettings(mode="supabase", supabase_url="https://isolated-auth.example.test", publishable_key="sb_publishable_test_only")
+    app = create_app(RUNTIME, seed=False, auth_settings=settings, authenticator=client.provider)
+    with TestClient(app, base_url="http://127.0.0.1", client=("127.0.0.1", 43210)) as closed:
+        assert closed.get("/api/auth/config").json()["allow_firm_signup"] is False
+        response = closed.post("/api/firms", headers=headers("owner"), json={"name": "禁止自行开通"})
+        assert response.status_code == 403
+        assert "仅允许管理员" in response.json()["detail"]
 
 
 def setup_books(client):

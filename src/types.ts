@@ -24,6 +24,8 @@ export interface AuthConfig {
   publishable_key?: string;
   personas?: { id: string; label: string }[];
   transport_limits?: TransportLimits;
+  admin_requires_mfa?: boolean;
+  allow_firm_signup?: boolean;
 }
 export interface Firm {
   id: string;
@@ -34,7 +36,13 @@ export interface Me {
   user: { id: string; name: string; email: string };
   firms: Firm[];
   current_firm_id: string | null;
-  permissions: { manage_firm: boolean; create_company: boolean; create_book: boolean };
+  permissions: {
+    manage_firm: boolean;
+    create_company: boolean;
+    create_book: boolean;
+    manage_admin?: boolean;
+    create_firm?: boolean;
+  };
   mode: 'local' | 'supabase';
 }
 export interface Company {

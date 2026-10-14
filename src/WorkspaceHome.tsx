@@ -53,6 +53,7 @@ export function WorkspaceHome({
   onRuns,
   revision,
   paused = false,
+  initialCompanyId = '',
 }: {
   session: Session;
   profile: WorkspaceProfile | null;
@@ -65,10 +66,11 @@ export function WorkspaceHome({
   onRuns?: () => void;
   revision: number;
   paused?: boolean;
+  initialCompanyId?: string;
 }) {
   const [bucket, setBucket] = useState<'action' | 'waiting'>('action');
   const [kind, setKind] = useState<TaskKind | ''>('');
-  const [company, setCompany] = useState('');
+  const [company, setCompany] = useState(initialCompanyId);
   const [offset, setOffset] = useState(0);
   const [sort, setSort] = useState<WorkspaceSort>('priority');
   const [density, setDensity] = useState<WorkspaceDensity>('list');
@@ -172,7 +174,7 @@ export function WorkspaceHome({
     setViews([]);
     setBucket('action');
     setKind('');
-    setCompany('');
+    setCompany(initialCompanyId);
     setOffset(0);
     setSort('priority');
     setDensity('list');
@@ -189,7 +191,7 @@ export function WorkspaceHome({
       epoch.current++;
       openingController.current?.abort();
     };
-  }, [session.scope_key]);
+  }, [session.scope_key, initialCompanyId]);
   useEffect(() => {
     const timeout = setTimeout(() => {
       setSearch(query.trim());

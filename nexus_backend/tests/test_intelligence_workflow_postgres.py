@@ -29,7 +29,7 @@ def pg_ai(business_case, tmp_path):
     raw = business_case
     tax_id = "PG" + uuid4().hex
     with raw.psycopg.connect(ADMIN_URL) as conn:
-        conn.execute("UPDATE accounting.companies SET tax_id=%s WHERE id=%s", (tax_id, raw.company))
+        conn.execute("UPDATE accounting.companies SET tax_id=%s,version=version+1 WHERE id=%s", (tax_id, raw.company))
     storage = AttachmentStore(tmp_path / "postgres-private")
     provider = FakeProvider(invoice_document(invoice_number="PG-" + uuid4().hex, buyer_tax_id=tax_id))
     intelligence = IntelligenceService(raw.db, storage, provider)

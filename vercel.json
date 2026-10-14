@@ -8,7 +8,11 @@
       "devCommand": "npm run dev -- --port $PORT",
       "outputDirectory": "dist",
       "rewrites": [
-        { "source": "/workspace/:path*", "destination": "/index.html" }
+        { "source": "/workspace/:path*", "destination": "/index.html" },
+        { "source": "/admin", "destination": "/index.html" },
+        { "source": "/admin/:path*", "destination": "/index.html" },
+        { "source": "/account-activation", "destination": "/index.html" },
+        { "source": "/account-recovery", "destination": "/index.html" }
       ]
     },
     "api_gateway": {

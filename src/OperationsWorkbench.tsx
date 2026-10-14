@@ -424,11 +424,13 @@ export function OperationsWorkbench({
         overview && (
           <>
             <OperationsBudgetSummary overview={overview} />
-            <OperationsPerformance
-              key={`${session.scope_key}:${companyId}`}
-              session={session}
-              companyId={companyId}
-            />
+            {canManage && (
+              <OperationsPerformance
+                key={`${session.scope_key}:${companyId}`}
+                session={session}
+                companyId={companyId}
+              />
+            )}
             <section className="operations-health-grid" aria-label="后台与核对运行状况">
               <article className="panel">
                 <Activity size={20} />

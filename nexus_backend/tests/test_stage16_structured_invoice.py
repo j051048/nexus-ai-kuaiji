@@ -168,22 +168,45 @@ def test_xml_durable_batch_restarts_and_finishes_without_provider(queue_case):
 
 def test_xml_sqlite_upgrade_preserves_existing_originals_runs_and_foreign_keys(tmp_path, monkeypatch):
     from app.accounting import database
+    from app.business.storage import AttachmentStore
+    from test_business_api import attachment_bytes
+
     original = database.migration_files
     monkeypatch.setattr(database, "migration_files", lambda dialect: [path for path in original(dialect) if int(path.name.split("_")[0]) < 58])
-    c = ai_case.__wrapped__(tmp_path)
-    service = intake(c)
-    draft = attach_intake(c, service, create_intake(c, service))
-    run = service.recognize(c.actors["employee"], draft["id"], draft["attachments"][0]["id"], IntakeRecognize(expected_version=draft["version"], idempotency_key="pre-xml-upgrade"))
-    event = service.complete(c.actors["employee"], draft["id"], confirmed(draft))["event"]
+    # Build the historical 057 contract directly. Modern directory/ACL code
+    # requires newer admin columns and must never run against an old schema.
+    legacy = database.Database(tmp_path / "pre-xml.db")
+    storage = AttachmentStore(tmp_path / "pre-xml-originals")
+    attachment = storage.put("synthetic-original.png", "image/png", attachment_bytes())
+    stamp = "2026-10-14T00:00:00+00:00"
+    with legacy.transaction(write=True) as conn:
+        def insert(table, **fields):
+            conn.execute(f"INSERT INTO {table}({','.join(fields)}) VALUES({','.join('?' for _ in fields)})", tuple(fields.values()))
+        insert("users", id="legacy-user", name="合成历史员工")
+        insert("firms", id="legacy-firm", name="合成历史事务所", created_by="legacy-user")
+        insert("memberships", firm_id="legacy-firm", user_id="legacy-user", role="owner")
+        insert("companies", id="legacy-company", name="合成历史企业")
+        insert("firm_clients", firm_id="legacy-firm", company_id="legacy-company", status="active")
+        insert("departments", id="legacy-department", company_id="legacy-company", name="合成历史部门")
+        insert("company_memberships", company_id="legacy-company", user_id="legacy-user", role="employee", department_id="legacy-department")
+        scope = {"firm_id": "legacy-firm", "company_id": "legacy-company"}
+        insert("business_events", id="legacy-event", **scope, department_id="legacy-department", applicant_id="legacy-user", template_id="reimbursement", payload="{}", created_at=stamp, updated_at=stamp)
+        insert("intake_drafts", id="legacy-intake", **scope, department_id="legacy-department", created_by="legacy-user", template_id="reimbursement", fields_json="{}", create_key="legacy-create", create_fingerprint="a" * 64, created_at=stamp, updated_at=stamp)
+        original_fields = {key: attachment[key] for key in ("id", "storage_key", "filename", "media_type", "sha256", "size_bytes")}
+        insert("intake_attachments", intake_id="legacy-intake", **scope, **original_fields, created_by="legacy-user", created_at=stamp)
+        insert("business_attachments", event_id="legacy-event", **scope, **original_fields, created_by="legacy-user", created_at=stamp)
+        insert("intake_runs", id="legacy-run", intake_id="legacy-intake", attachment_id=attachment["id"], **scope, created_by="legacy-user", input_fingerprint="b" * 64, idempotency_key="pre-xml-upgrade", status="succeeded", result_json='{"documents":[]}', provider="synthetic-provider", model="synthetic-model", prompt_version="synthetic-prompt", created_at=stamp, finished_at=stamp)
+        conn.execute("UPDATE intake_drafts SET status='completed',version=2,event_id='legacy-event',completion_key='legacy-complete',completion_fingerprint=? WHERE id='legacy-intake'", ("c" * 64,))
+    legacy.close()
     monkeypatch.setattr(database, "migration_files", original)
-    upgraded = database.Database(c.db.path)
+    upgraded = database.Database(legacy.path)
     with upgraded.transaction() as conn:
         assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
-        assert conn.execute("SELECT result_json FROM intake_runs WHERE id=?", (run["id"],)).fetchone()[0]
-        before = conn.execute("SELECT * FROM intake_attachments WHERE id=?", (draft["attachments"][0]["id"],)).fetchone()
-        transferred = conn.execute("SELECT * FROM business_attachments WHERE event_id=?", (event["id"],)).fetchone()
-        assert before["sha256"] == transferred["sha256"] == draft["attachments"][0]["sha256"]
-        assert before["storage_key"] == transferred["storage_key"] and c.storage.read(before)
+        assert conn.execute("SELECT result_json FROM intake_runs WHERE id='legacy-run'").fetchone()[0]
+        before = conn.execute("SELECT * FROM intake_attachments WHERE id=?", (attachment["id"],)).fetchone()
+        transferred = conn.execute("SELECT * FROM business_attachments WHERE event_id='legacy-event'").fetchone()
+        assert before["sha256"] == transferred["sha256"] == attachment["sha256"]
+        assert before["storage_key"] == transferred["storage_key"] and storage.read(before)
     with pytest.raises(sqlite3.IntegrityError, match="immutable"):
         with upgraded.transaction(write=True) as conn:
             conn.execute("UPDATE intake_attachments SET media_type='application/xml' WHERE id=?", (before["id"],))

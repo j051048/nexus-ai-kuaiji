@@ -196,6 +196,27 @@ export function useAccountingAuth(clearWorkspace: () => void) {
     }
   }
 
+  async function refreshIdentity() {
+    const client = getAuthClient();
+    if (!client) return;
+    setLoading(true);
+    setError('');
+    try {
+      const { data, error: sessionError } = await client.auth.getSession();
+      if (sessionError || !data.session) throw new Error('登录已失效，请重新登录。');
+      await loadIdentity(
+        'supabase',
+        data.session.access_token,
+        sessionRef.current?.firm_id ?? undefined,
+      );
+    } catch (failure) {
+      setError(errorMessage(failure));
+      throw failure;
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return {
     config,
     session,
@@ -209,5 +230,6 @@ export function useAccountingAuth(clearWorkspace: () => void) {
     createFirm,
     persona,
     choosePersona,
+    refreshIdentity,
   };
 }

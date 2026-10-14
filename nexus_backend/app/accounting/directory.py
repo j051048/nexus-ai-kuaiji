@@ -53,6 +53,14 @@ class DirectoryService:
             selected = firm_id if firm_id is not None else next(iter(available), None)
             role = available[selected]["role"] if selected else None
             manager = role in FIRM_MANAGERS
+            company_admin = bool(
+                selected
+                and conn.execute(
+                    "SELECT 1 FROM company_memberships cm JOIN firm_clients fc ON fc.company_id=cm.company_id "
+                    "WHERE fc.firm_id=? AND fc.status='active' AND cm.user_id=? AND cm.role IN ('owner','admin') LIMIT 1",
+                    (selected, user_id),
+                ).fetchone()
+            )
             return {
                 "mode": mode,
                 "user": {"id": user["id"], "name": user["name"], "email": user["email"]},
@@ -60,6 +68,7 @@ class DirectoryService:
                 "current_firm_id": selected,
                 "permissions": {
                     "manage_firm": manager,
+                    "manage_admin": manager or company_admin,
                     "create_company": manager,
                     "create_book": manager,
                 },
@@ -96,8 +105,20 @@ class DirectoryService:
     def _audit(conn, actor, action, object_id, details, book_id=None):
         import json
 
+        company_id = details.get("company_id")
+        if (
+            company_id is None
+            and action.startswith("company.")
+            and action in {"company.create", "company.update", "company.status"}
+        ):
+            company_id = object_id
+        if company_id is None and book_id:
+            book = conn.execute(
+                "SELECT company_id FROM books WHERE id=? AND firm_id=?", (book_id, actor.firm_id)
+            ).fetchone()
+            company_id = book["company_id"] if book else None
         conn.execute(
-            "INSERT INTO audit_events(firm_id,book_id,user_id,action,object_id,details,created_at) VALUES(?,?,?,?,?,?,?)",
+            "INSERT INTO audit_events(firm_id,book_id,user_id,action,object_id,details,created_at,company_id) VALUES(?,?,?,?,?,?,?,?)",
             (
                 actor.firm_id,
                 book_id,
@@ -106,6 +127,7 @@ class DirectoryService:
                 object_id,
                 json.dumps(details, ensure_ascii=False),
                 now(),
+                company_id,
             ),
         )
 
@@ -158,12 +180,32 @@ class DirectoryService:
                 "INSERT INTO firm_clients(firm_id,company_id,status) VALUES(?,?,'active')",
                 (actor.firm_id, company_id),
             )
-            self._audit(conn, actor, "company.create", company_id, request.model_dump())
+            self._audit(
+                conn,
+                actor,
+                "company.create",
+                company_id,
+                {
+                    **request.model_dump(),
+                    "company_id": company_id,
+                    "before": None,
+                    "after": {
+                        "id": company_id,
+                        **request.model_dump(),
+                        "status": "active",
+                        "version": 1,
+                    },
+                    "reason": "管理员新建客户企业",
+                },
+            )
             return {
                 "id": company_id,
                 "name": request.name,
                 "tax_id": request.tax_id,
                 "can_manage": True,
+                "status": "active",
+                "version": 1,
+                "can_change_status": True,
             }
 
     def list_firm_members(self, actor):
@@ -191,7 +233,18 @@ class DirectoryService:
                 "INSERT INTO memberships(firm_id,user_id,role) VALUES(?,?,?) ON CONFLICT(firm_id,user_id) DO UPDATE SET role=excluded.role",
                 (actor.firm_id, user["id"], request.role),
             )
-            self._audit(conn, actor, "firm.member.grant", user["id"], {"role": request.role})
+            self._audit(
+                conn,
+                actor,
+                "firm.member.grant",
+                user["id"],
+                {
+                    "role": request.role,
+                    "before": dict(existing) if existing else None,
+                    "after": {"role": request.role},
+                    "reason": "管理员设置事务所成员职责",
+                },
+            )
             return {
                 "user_id": user["id"],
                 "name": user["name"],
@@ -216,7 +269,17 @@ class DirectoryService:
             conn.execute(
                 "DELETE FROM memberships WHERE firm_id=? AND user_id=?", (actor.firm_id, user_id)
             )
-            self._audit(conn, actor, "firm.member.revoke", user_id, {})
+            self._audit(
+                conn,
+                actor,
+                "firm.member.revoke",
+                user_id,
+                {
+                    "before": dict(existing),
+                    "after": None,
+                    "reason": "管理员撤销事务所成员职责及所属账套授权",
+                },
+            )
             return {"revoked": True}
 
     def list_book_members(self, actor, book_id):
@@ -246,16 +309,36 @@ class DirectoryService:
                 )
             if self.access.firm_role(conn, actor) not in FIRM_MANAGERS and member:
                 raise AccountingError("企业管理员只能分配本企业成员，事务所人员由事务所管理", 403)
+            if self.access.firm_role(conn, actor) not in FIRM_MANAGERS and user_id == actor.user_id:
+                raise AccountingError("企业管理员不能变更自己的账套权限，请联系事务所管理员", 403)
+            existing = conn.execute(
+                "SELECT role FROM book_access WHERE book_id=? AND user_id=?", (book_id, user_id)
+            ).fetchone()
             conn.execute(
                 "INSERT INTO book_access(book_id,firm_id,user_id,role) VALUES(?,?,?,?) ON CONFLICT(book_id,user_id) DO UPDATE SET role=excluded.role",
                 (book_id, actor.firm_id, user_id, request.role),
             )
-            self._audit(conn, actor, "book.member.grant", user_id, {"role": request.role}, book_id)
+            self._audit(
+                conn,
+                actor,
+                "book.member.grant",
+                user_id,
+                {
+                    "company_id": book["company_id"],
+                    "role": request.role,
+                    "before": dict(existing) if existing else None,
+                    "after": {"role": request.role},
+                    "reason": "管理员设置账套授权",
+                },
+                book_id,
+            )
             return {"user_id": user_id, "role": request.role}
 
     def revoke_book_member(self, actor, book_id, user_id):
         with self.db.transaction(write=True, actor=actor) as conn:
-            self.access.book(conn, actor, book_id, "manage")
+            book = self.access.book(conn, actor, book_id, "manage")
+            if self.access.firm_role(conn, actor) not in FIRM_MANAGERS and user_id == actor.user_id:
+                raise AccountingError("企业管理员不能变更自己的账套权限，请联系事务所管理员", 403)
             if (
                 self.access.firm_role(conn, actor) not in FIRM_MANAGERS
                 and conn.execute(
@@ -264,11 +347,26 @@ class DirectoryService:
                 ).fetchone()
             ):
                 raise AccountingError("企业管理员不能撤销事务所人员的账套授权", 403)
+            existing = conn.execute(
+                "SELECT role FROM book_access WHERE book_id=? AND user_id=?", (book_id, user_id)
+            ).fetchone()
             conn.execute(
                 "DELETE FROM book_access WHERE book_id=? AND firm_id=? AND user_id=?",
                 (book_id, actor.firm_id, user_id),
             )
-            self._audit(conn, actor, "book.member.revoke", user_id, {}, book_id)
+            self._audit(
+                conn,
+                actor,
+                "book.member.revoke",
+                user_id,
+                {
+                    "company_id": book["company_id"],
+                    "before": dict(existing) if existing else None,
+                    "after": None,
+                    "reason": "管理员撤销账套授权",
+                },
+                book_id,
+            )
             return {"revoked": True}
 
     def list_company_members(self, actor, company_id):
@@ -295,7 +393,7 @@ class DirectoryService:
                 ).fetchone():
                     raise AccountingError("事务所人员的企业身份由事务所管理员管理", 403)
             existing = conn.execute(
-                "SELECT role FROM company_memberships WHERE company_id=? AND user_id=?",
+                "SELECT role,department_id FROM company_memberships WHERE company_id=? AND user_id=?",
                 (company_id, user["id"]),
             ).fetchone()
             if (
@@ -326,6 +424,9 @@ class DirectoryService:
                     "company_id": company_id,
                     "role": request.role,
                     "department_id": request.department_id,
+                    "before": dict(existing) if existing else None,
+                    "after": {"role": request.role, "department_id": request.department_id},
+                    "reason": "管理员设置企业成员职责",
                 },
             )
             return {
@@ -342,7 +443,7 @@ class DirectoryService:
             if user_id == actor.user_id:
                 raise AccountingError("不能在该入口撤销当前企业管理身份", 409)
             existing = conn.execute(
-                "SELECT role FROM company_memberships WHERE company_id=? AND user_id=?",
+                "SELECT role,department_id FROM company_memberships WHERE company_id=? AND user_id=?",
                 (company_id, user_id),
             ).fetchone()
             if not existing:
@@ -366,7 +467,18 @@ class DirectoryService:
                 "DELETE FROM company_memberships WHERE company_id=? AND user_id=?",
                 (company_id, user_id),
             )
-            self._audit(conn, actor, "company.member.revoke", user_id, {"company_id": company_id})
+            self._audit(
+                conn,
+                actor,
+                "company.member.revoke",
+                user_id,
+                {
+                    "company_id": company_id,
+                    "before": dict(existing),
+                    "after": None,
+                    "reason": "管理员移除企业成员及关联企业权限",
+                },
+            )
             return {"revoked": True}
 
     def list_departments(self, actor, company_id):

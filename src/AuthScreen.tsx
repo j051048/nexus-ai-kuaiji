@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   ArrowRight,
   Building2,
@@ -15,12 +16,14 @@ export function AuthScreen({
   error,
   onLogin,
   onRetry,
+  admin = false,
 }: {
   config: AuthConfig | null;
   loading: boolean;
   error: string;
   onLogin: (email: string, password: string) => Promise<void>;
   onRetry: () => Promise<void>;
+  admin?: boolean;
 }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -62,9 +65,21 @@ export function AuthScreen({
           <span className="auth-symbol">
             <LockKeyhole size={25} />
           </span>
-          <p className="eyebrow">YOUR ACCOUNTING WORKSPACE</p>
-          <h2>{config?.mode === 'supabase' ? '登录会计工作空间' : '连接会计工作空间'}</h2>
-          <p className="auth-intro">使用管理员为你开通的账户，访问获授权的企业与账套。</p>
+          <p className="eyebrow">
+            {admin ? 'ORGANIZATION ADMINISTRATION' : 'YOUR ACCOUNTING WORKSPACE'}
+          </p>
+          <h2>
+            {admin
+              ? '登录组织管理后台'
+              : config?.mode === 'supabase'
+                ? '登录会计工作空间'
+                : '连接会计工作空间'}
+          </h2>
+          <p className="auth-intro">
+            {admin
+              ? '使用同一工作账号，管理获授权的企业、人员和账套。'
+              : '使用管理员为你开通的账户，访问获授权的企业与账套。'}
+          </p>
           {error && (
             <p className="auth-error" role="alert">
               <TriangleAlert size={17} />
@@ -75,7 +90,9 @@ export function AuthScreen({
             <form
               onSubmit={(event) => {
                 event.preventDefault();
-                void onLogin(email.trim(), password);
+                const submitted = password;
+                setPassword('');
+                void onLogin(email.trim(), submitted);
               }}
             >
               <label className="field-label" htmlFor="login-email">
@@ -114,10 +131,10 @@ export function AuthScreen({
                 ) : (
                   <ArrowRight size={16} />
                 )}
-                登录工作空间
+                {admin ? '登录管理后台' : '登录工作空间'}
               </button>
               <p className="auth-account-help">
-                还没有账户或忘记密码？请联系管理员。
+                还没有账户？请联系管理员。<Link to="/account-recovery">忘记密码</Link>
                 <br />
                 关闭或刷新页面后需重新登录。
               </p>
@@ -134,6 +151,9 @@ export function AuthScreen({
             </button>
           )}
           <p className="auth-footer">中国大陆企业 · 人民币 · 辅助记账验证</p>
+          <Link className="text-button" to={admin ? '/' : '/admin'}>
+            {admin ? '返回工作台登录' : '管理员入口'}
+          </Link>
         </div>
       </section>
     </div>
@@ -146,12 +166,14 @@ export function NoAuthorization({
   error,
   onCreate,
   onLogout,
+  allowCreate = false,
 }: {
   name: string;
   loading: boolean;
   error: string;
   onCreate: (name: string) => Promise<void>;
   onLogout: () => Promise<void>;
+  allowCreate?: boolean;
 }) {
   const [firmName, setFirmName] = useState('');
   return (
@@ -163,37 +185,43 @@ export function NoAuthorization({
       <h1>尚未获得企业或事务所授权</h1>
       <p>
         {name}，请让管理员将你的登录邮箱加入工作空间。
-        <br />
-        如果你负责新建事务所，可以在这里创建独立的工作空间。
+        {allowCreate && (
+          <>
+            <br />
+            如果你负责新建事务所，可以在这里创建独立的工作空间。
+          </>
+        )}
       </p>
       {error && (
         <p className="auth-error" role="alert">
           {error}
         </p>
       )}
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (firmName.trim()) void onCreate(firmName.trim());
-        }}
-      >
-        <label className="field-label" htmlFor="first-firm-name">
-          事务所名称
-        </label>
-        <input
-          id="first-firm-name"
-          value={firmName}
-          onChange={(event) => setFirmName(event.target.value)}
-          maxLength={120}
-          placeholder="请输入事务所名称"
-          disabled={loading}
-          required
-        />
-        <button className="button primary" disabled={loading || !firmName.trim()}>
-          {loading ? <LoaderCircle className="spinner" size={16} /> : <Building2 size={16} />}
-          创建事务所
-        </button>
-      </form>
+      {allowCreate && (
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (firmName.trim()) void onCreate(firmName.trim());
+          }}
+        >
+          <label className="field-label" htmlFor="first-firm-name">
+            事务所名称
+          </label>
+          <input
+            id="first-firm-name"
+            value={firmName}
+            onChange={(event) => setFirmName(event.target.value)}
+            maxLength={120}
+            placeholder="请输入事务所名称"
+            disabled={loading}
+            required
+          />
+          <button className="button primary" disabled={loading || !firmName.trim()}>
+            {loading ? <LoaderCircle className="spinner" size={16} /> : <Building2 size={16} />}
+            创建事务所
+          </button>
+        </form>
+      )}
       <button className="text-button" disabled={loading} onClick={() => void onLogout()}>
         退出登录
       </button>
