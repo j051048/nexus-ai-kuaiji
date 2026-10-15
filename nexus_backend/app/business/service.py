@@ -72,7 +72,12 @@ class BusinessService:
 
     def _ledger_books(self, conn, actor):
         role = self.access.firm_role(conn, actor)
-        sql = """SELECT b.id FROM books b
+        return [row["id"] for row in self._ledger_book_rows(conn, actor, role)]
+
+    @staticmethod
+    def _ledger_book_rows(conn, actor, role):
+        sql = """SELECT b.id,b.company_id FROM books b
+            JOIN companies c ON c.id=b.company_id AND c.status='active'
             JOIN firm_clients fc ON fc.company_id=b.company_id AND fc.firm_id=b.firm_id AND fc.status='active'
             LEFT JOIN book_access a ON a.book_id=b.id AND a.firm_id=b.firm_id AND a.user_id=?
             LEFT JOIN company_memberships cm ON cm.company_id=b.company_id AND cm.user_id=?
@@ -81,30 +86,21 @@ class BusinessService:
         if role not in FIRM_MANAGERS:
             sql += " AND a.role IS NOT NULL AND (?=1 OR cm.role IN ('owner','admin','finance'))"
             values.append(1 if role else 0)
-        return [row["id"] for row in conn.execute(sql, values)]
+        return conn.execute(sql, values).fetchall()
 
     def context(self, actor: Actor):
         with self.db.transaction(actor=actor) as conn:
             firm_role = self.access.firm_role(conn, actor)
             companies = []
-            ledger_ids = self._ledger_books(conn, actor)
-            ledger_companies = (
-                {
-                    row["company_id"]
-                    for row in conn.execute(
-                        "SELECT DISTINCT company_id FROM books WHERE id IN ("
-                        + ",".join("?" for _ in ledger_ids)
-                        + ")",
-                        ledger_ids,
-                    )
-                }
-                if ledger_ids
-                else set()
-            )
+            ledger_rows = self._ledger_book_rows(conn, actor, firm_role)
+            ledger_companies = {row["company_id"] for row in ledger_rows}
+            visible = []
             for row in conn.execute(
-                "SELECT c.id,c.name,cm.role,cm.department_id FROM companies c "
+                "SELECT c.id,c.name,cm.role,cm.department_id,p.mode,p.version,p.reason,p.updated_at FROM companies c "
                 "JOIN firm_clients fc ON fc.company_id=c.id AND fc.firm_id=? AND fc.status='active' "
-                "LEFT JOIN company_memberships cm ON cm.company_id=c.id AND cm.user_id=? ORDER BY c.name,c.id",
+                "LEFT JOIN company_memberships cm ON cm.company_id=c.id AND cm.user_id=? "
+                "LEFT JOIN business_submission_policies p ON p.company_id=c.id AND p.firm_id=fc.firm_id "
+                "WHERE c.status='active' ORDER BY c.name,c.id",
                 (actor.firm_id, actor.user_id),
             ):
                 if (
@@ -113,16 +109,45 @@ class BusinessService:
                     and row["id"] not in ledger_companies
                 ):
                     continue
-                approver_ids = self._approver_departments(conn, actor, row["id"])
-                departments = (
-                    self._departments(conn, row["id"])
-                    if row["role"] or firm_role in FIRM_MANAGERS
-                    else []
+                visible.append(row)
+
+            # Only fetch details for authorized companies. Ledger-only readers
+            # retain their narrower view: no employee department directory.
+            department_companies = [
+                row["id"] for row in visible if row["role"] or firm_role in FIRM_MANAGERS
+            ]
+            departments_by_company, approvers_by_company = {}, {}
+            if department_companies:
+                marks = ",".join("?" for _ in department_companies)
+                for department in conn.execute(
+                    "SELECT company_id,id,name FROM departments WHERE company_id IN ("
+                    + marks
+                    + ") ORDER BY name,id",
+                    department_companies,
+                ):
+                    departments_by_company.setdefault(department["company_id"], []).append(
+                        {"id": department["id"], "name": department["name"]}
+                    )
+                for approver in conn.execute(
+                    "SELECT da.company_id,da.department_id FROM department_approvers da "
+                    "JOIN company_memberships cm ON cm.company_id=da.company_id AND cm.user_id=da.user_id "
+                    "WHERE da.firm_id=? AND da.user_id=? AND da.company_id IN (" + marks + ")",
+                    [actor.firm_id, actor.user_id, *department_companies],
+                ):
+                    approvers_by_company.setdefault(approver["company_id"], []).append(
+                        approver["department_id"]
+                    )
+            for row in visible:
+                departments = departments_by_company.get(row["id"], [])
+                approver_ids = approvers_by_company.get(row["id"], [])
+                policy = (
+                    {key: row[key] for key in ("mode", "version", "reason", "updated_at")}
+                    if row["mode"] is not None
+                    else {"mode": "department", "version": 0, "reason": "", "updated_at": None}
                 )
-                policy = self.submission.current(conn, actor.firm_id, row["id"])
                 companies.append(
                     {
-                        **dict(row),
+                        **{key: row[key] for key in ("id", "name", "role", "department_id")},
                         "ledger_available": row["id"] in ledger_companies,
                         "departments": departments,
                         "approver_department_ids": approver_ids,
@@ -145,7 +170,7 @@ class BusinessService:
                     "own": True,
                     "department": any(row["approver_department_ids"] for row in companies),
                     "company": any(row["can_finance"] for row in companies),
-                    "accounting": bool(ledger_ids),
+                    "accounting": bool(ledger_rows),
                 },
             }
 

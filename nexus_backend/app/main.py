@@ -19,7 +19,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from .auth import AuthSettings, AuthError, Identity, SupabaseAuthenticator
 from .auth.admin_security import allow_firm_signup, requires_admin_mfa
-from .accounting.database import Database
+from .accounting.database import Database, DatabaseCapacityError
 from .agent_workspace.service import AgentWorkspaceService
 from .agent_workspace.router import build_agent_workspace_router
 from .assistant.service import AssistantService
@@ -551,6 +551,14 @@ def create_app(
     def service(request: Request):
         return request.app.state.service
 
+    @app.exception_handler(DatabaseCapacityError)
+    async def handle_database_capacity(request, error):
+        return JSONResponse(
+            {"detail": "账务数据服务繁忙，请稍后重试", "code": "database_busy"},
+            status_code=503,
+            headers={"Retry-After": "2"},
+        )
+
     @app.exception_handler(psycopg.OperationalError)
     @app.exception_handler(sqlite3.OperationalError)
     async def handle_database_unavailable(request, error):
@@ -578,10 +586,7 @@ def create_app(
     ):
         if settings.mode == "local" and firm_id is None:
             return Actor(current.user_id, LOCAL_ACTOR.firm_id)
-        profile = dirs.me(current.user_id, firm_id, settings.mode)
-        if not profile["current_firm_id"]:
-            raise AccountingError("尚未获得事务所或客户企业授权，请创建事务所或联系管理员", 403)
-        return Actor(current.user_id, profile["current_firm_id"])
+        return dirs.resolve_actor(current.user_id, firm_id)
 
     def book_actor(book_id: str, current=Depends(actor), svc=Depends(service)):
         svc.require_access(current, book_id)

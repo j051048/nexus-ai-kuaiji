@@ -17,6 +17,10 @@ MIGRATIONS = Path(__file__).resolve().parents[2] / "migrations"
 WRITE_LOCK = 6_420_031_786_281_903_101
 
 
+class DatabaseCapacityError(RuntimeError):
+    """A bounded pool is busy; callers can retry without exposing its DSN."""
+
+
 def migration_files(dialect):
     return sorted((MIGRATIONS / dialect).glob("[0-9][0-9][0-9]_*.sql"))
 
@@ -189,9 +193,15 @@ class Database:
         if self._closed:
             raise RuntimeError("数据库已关闭")
         if self.is_postgres:
+            from psycopg_pool import PoolTimeout, TooManyRequests
+
             pool = self._postgres_pool()
             try:
                 return PostgresConnection(pool.getconn(), pool)
+            except (PoolTimeout, TooManyRequests):
+                raise DatabaseCapacityError(
+                    "数据库连接池等待超时或等待队列已满，请稍后重试"
+                ) from None
             except Exception:
                 # Pool errors may contain host/user data; API/log callers only
                 # receive a useful generic diagnostic, never the supplied DSN.

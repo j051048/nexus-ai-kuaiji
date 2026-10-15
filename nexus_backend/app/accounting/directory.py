@@ -74,6 +74,34 @@ class DirectoryService:
                 },
             }
 
+    def resolve_actor(self, user_id, firm_id=None):
+        """Resolve current authorization in one RLS-scoped read, without a profile.
+
+        Preserve /me's default order: firm memberships first, then client firms,
+        each ordered by name/id. Never cache this result across requests.
+        """
+        with self.db.transaction(actor=Actor(user_id, "")) as conn:
+            row = conn.execute(
+                "WITH workspaces AS ("
+                "SELECT f.id,f.name,0 AS priority FROM firms f "
+                "JOIN memberships m ON m.firm_id=f.id WHERE m.user_id=? "
+                "UNION ALL "
+                "SELECT DISTINCT f.id,f.name,1 AS priority FROM firms f "
+                "JOIN firm_clients fc ON fc.firm_id=f.id AND fc.status='active' "
+                "JOIN company_memberships cm ON cm.company_id=fc.company_id WHERE cm.user_id=?"
+                ") SELECT u.id AS user_id,w.id AS firm_id FROM users u "
+                "LEFT JOIN workspaces w ON (CAST(? AS TEXT) IS NULL OR w.id=?) "
+                "WHERE u.id=? AND u.active=1 ORDER BY w.priority,w.name,w.id LIMIT 1",
+                (user_id, user_id, firm_id, firm_id, user_id),
+            ).fetchone()
+            if not row:
+                raise AccountingError("账号未激活或已停用", 403)
+            if not row["firm_id"]:
+                if firm_id is not None:
+                    raise AccountingError("未获得该事务所工作空间授权", 403)
+                raise AccountingError("尚未获得事务所或客户企业授权，请创建事务所或联系管理员", 403)
+            return Actor(user_id, row["firm_id"])
+
     def create_firm(self, user_id, request: FirmCreate):
         actor = Actor(user_id, "")
         with self.db.transaction(write=True, actor=actor) as conn:

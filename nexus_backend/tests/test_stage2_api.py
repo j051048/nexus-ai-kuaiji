@@ -151,3 +151,27 @@ def test_same_identity_switches_independent_firms_without_data_leak(client):
     assert client.get("/api/workbench", headers=headers("owner", second)).json()["books"] == []
     assert client.get(f"/api/books/{first_book}", headers=headers("owner", second)).status_code == 404
     assert client.get(f"/api/books/{first_book}", headers=headers("owner", first)).status_code == 200
+
+
+def test_actor_workspace_revocation_rejects_same_authenticated_session(client):
+    firm, company, _ = setup_books(client)
+    owner = headers("owner", firm)
+    identity = client.provider.identities["employee"]
+    assert (
+        client.put(
+            f"/api/companies/{company}/members",
+            headers=owner,
+            json={"email": identity.email, "role": "employee"},
+        ).status_code
+        == 200
+    )
+    employee = headers("employee", firm)
+    assert client.get("/api/business/context", headers=employee).status_code == 200
+    assert (
+        client.delete(
+            f"/api/companies/{company}/members/{identity.user_id}", headers=owner
+        ).status_code
+        == 200
+    )
+    denied = client.get("/api/business/context", headers=employee)
+    assert denied.status_code == 403 and "工作空间授权" in denied.json()["detail"]

@@ -7,7 +7,7 @@ import os
 
 import pytest
 
-from app.accounting.database import Database
+from app.accounting.database import Database, DatabaseCapacityError
 from app.accounting.models import BookCreate
 from app.accounting.service import AccountingService
 from test_postgres_integration import ADMIN_URL, APP_URL, case, peer, postgres
@@ -69,7 +69,7 @@ def test_pool_wait_timeout_returns_cleanly_and_releases_capacity(case, monkeypat
     db = Database(APP_URL)
     try:
         held = db.connect()
-        with pytest.raises(RuntimeError, match="连接池等待超时") as caught:
+        with pytest.raises(DatabaseCapacityError, match="连接池等待超时") as caught:
             db.connect()
         assert APP_URL not in str(caught.value)
         held.close()
