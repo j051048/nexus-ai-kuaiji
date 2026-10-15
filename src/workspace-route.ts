@@ -25,6 +25,23 @@ export const workspaceViews = [
   'recurring',
 ] as const;
 export type WorkspaceView = (typeof workspaceViews)[number];
+/** Only these screens consume the selected accounting book in the app shell.
+ * Independent task, business and review screens fetch their own current scope. */
+export function workspaceUsesBook(view: WorkspaceView): boolean {
+  return ![
+    'home',
+    'runs',
+    'business',
+    'review',
+    'cases',
+    'revision',
+    'operations',
+    'queue',
+    'intelligence',
+    'monthly',
+  ].includes(view);
+}
+
 export interface WorkspaceRoute {
   view: WorkspaceView;
   bookId: string;

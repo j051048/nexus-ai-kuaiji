@@ -1,6 +1,7 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+from app.accounting.access import FIRM_MANAGERS
 from app.accounting.domain import AccountingError
 from app.accounting.queries import inactive_source_sql, page_bounds
 from app.closing.queries import receipt_valid_sql
@@ -50,21 +51,58 @@ class WorkspaceService:
         self.access = accounting.access
 
     def profile(self, actor):
-        context = self.business.context(actor)
-        summary = self.accounting.workbench(actor, limit=1)["stats"]
+        # The home screen needs capabilities, not voucher health or department
+        # directories. Resolve current grants once in this read transaction;
+        # never reuse another request's permissions or accounting snapshots.
         with self.db.transaction(actor=actor) as conn:
-            self.access.require_user(conn, actor.user_id)
-            scope, params, firm_role = self.review._review_scope(conn, actor)
-            can_review = bool(
-                conn.execute("SELECT 1 FROM (" + scope + ") v LIMIT 1", params).fetchone()
+            firm_role = self.access.firm_role(conn, actor)
+            manager = firm_role in FIRM_MANAGERS
+            scope, params = self.accounting._summary_scope(actor)
+            scope += " AND c.status='active'"
+            if not manager:
+                scope += (
+                    " AND a.role IS NOT NULL AND (?=1 OR cm.role IN ('owner','admin','finance'))"
+                )
+                params.append(1 if firm_role else 0)
+            books = conn.execute(scope, params).fetchall()
+            ledger_companies = {row["company_id"] for row in books}
+            can_review = any(
+                self.access.permissions(firm_role, row["book_role"], row["company_role"])["review"]
+                for row in books
             )
-        companies = context["companies"]
-        can_finance = any(c["can_finance"] for c in companies)
-        can_approve = any(c["approver_department_ids"] for c in companies)
-        can_submit = any(c["can_submit"] for c in companies)
-        can_manage = firm_role in {"owner", "admin"} or any(
-            c["can_manage_approvers"] for c in companies
-        )
+            rows = conn.execute(
+                """SELECT c.id,c.name,cm.role,cm.department_id,
+                    COALESCE(p.mode,'department') AS submission_mode,
+                    EXISTS(SELECT 1 FROM departments d WHERE d.company_id=c.id) AS has_department,
+                    EXISTS(SELECT 1 FROM department_approvers da
+                        JOIN company_memberships member ON member.company_id=da.company_id
+                            AND member.user_id=da.user_id
+                        WHERE da.firm_id=fc.firm_id AND da.company_id=c.id
+                            AND da.user_id=?) AS can_approve
+                    FROM companies c
+                    JOIN firm_clients fc ON fc.company_id=c.id AND fc.firm_id=? AND fc.status='active'
+                    LEFT JOIN company_memberships cm ON cm.company_id=c.id AND cm.user_id=?
+                    LEFT JOIN business_submission_policies p ON p.company_id=c.id AND p.firm_id=fc.firm_id
+                    WHERE c.status='active' ORDER BY c.name,c.id""",
+                (actor.user_id, actor.firm_id, actor.user_id),
+            ).fetchall()
+            companies = [
+                row for row in rows if manager or row["role"] or row["id"] in ledger_companies
+            ]
+            can_finance = any(row["role"] == "finance" for row in companies)
+            can_approve = any(row["can_approve"] for row in companies)
+            can_submit = any(
+                row["role"] in {"owner", "admin", "finance"}
+                if row["submission_mode"] == "direct"
+                else bool(
+                    row["role"]
+                    and (
+                        row["department_id"] or row["role"] != "employee" and row["has_department"]
+                    )
+                )
+                for row in companies
+            )
+            can_manage = manager or any(row["role"] in {"owner", "admin"} for row in companies)
         # The firm's accounting role is primary; a company's finance member
         # keeps the finance workflow even when additionally allowed to review.
         role = (
@@ -88,10 +126,11 @@ class WorkspaceService:
             "can_approve": can_approve,
             "can_finance": can_finance,
             "can_review": can_review,
-            "can_accounting": summary["book_count"] > 0,
+            "can_accounting": bool(books),
             "can_manage": can_manage,
+            "can_operations": can_manage or can_finance,
             "companies": [{"id": c["id"], "name": c["name"]} for c in companies],
-            "book_count": summary["book_count"],
+            "book_count": len(books),
         }
 
     def _query(self, conn, actor):

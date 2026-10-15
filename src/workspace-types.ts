@@ -9,6 +9,7 @@ export type WorkspaceProfile = {
   can_review: boolean;
   can_accounting: boolean;
   can_manage: boolean;
+  can_operations?: boolean;
   companies: { id: string; name: string }[];
   book_count: number;
 };

@@ -833,198 +833,199 @@ class BusinessService:
 
     def handoff(self, actor, event_id, request: HandoffRequest):
         with self.db.transaction(write=True, actor=actor) as conn:
+            receipt = self._handoff_in_transaction(conn, actor, event_id, request)
+        # History, attachments and presentation permissions need no write lock.
+        # Read under a new live authorization check after committing the atomic
+        # source/draft/job receipt; a revoked reader must not receive old data.
+        with self.db.transaction(actor=actor) as conn:
+            self.access.book(conn, actor, receipt["book_id"], "edit")
             event = self._event(conn, actor, event_id)
-            member = self._membership(conn, actor, event["company_id"])
-            direct = event["submission_mode"] == "direct"
-            if direct and not self.submission.can_receive(conn, actor, event):
-                raise AccountingError("需要独立的授权会计接收直接提交资料", 403)
-            if not direct and (not member or member["role"] != "finance"):
-                raise AccountingError("需要企业财务权限才能移交会计", 403)
-            book = self.access.book(conn, actor, request.book_id, "edit")
-            if book["company_id"] != event["company_id"]:
-                raise AccountingError("目标账套不属于事项所在企业", 403)
-            digest = fingerprint(
-                {
-                    "event_id": event_id,
-                    "book_id": request.book_id,
-                    "submitted_version": event["submitted_version"],
-                }
-            )
-            existing_key = conn.execute(
-                "SELECT * FROM business_mappings WHERE firm_id=? AND idempotency_key=?",
-                (actor.firm_id, request.idempotency_key),
-            ).fetchone()
-            existing_event = conn.execute(
-                "SELECT * FROM business_mappings WHERE event_id=?", (event_id,)
-            ).fetchone()
-            if existing_key or existing_event:
-                mapping = existing_key or existing_event
-                if (
-                    mapping["event_id"] != event_id
-                    or mapping["request_fingerprint"] != digest
-                    or mapping["idempotency_key"] != request.idempotency_key
-                ):
-                    raise AccountingError("移交幂等键或已移交的目标内容不一致", 409)
-                job = conn.execute(
-                    "SELECT id FROM proposal_jobs WHERE book_id=? AND draft_id=? ORDER BY created_at,id LIMIT 1",
-                    (mapping["book_id"], mapping["draft_id"]),
-                ).fetchone()
-                return {
-                    "event": self._event_json(conn, actor, event),
-                    "book_id": mapping["book_id"],
-                    "source_id": mapping["source_id"],
-                    "draft_id": mapping["draft_id"],
-                    "automatic_job": {"id": job["id"]} if job else None,
-                }
-            self._version(event, request.expected_version)
-            if event["status"] != ("submitted" if direct else "finance_approved"):
-                raise AccountingError("事项必须完成部门与财务审批后才能移交", 409)
-            if book["period_status"] != "open":
-                raise AccountingError("目标会计期间已关闭，不可移交", 403)
-            snapshot = conn.execute(
-                "SELECT * FROM business_versions WHERE event_id=? AND event_version=?",
-                (event_id, event["submitted_version"]),
-            ).fetchone()
-            if not snapshot:
-                raise AccountingError("提交快照不存在，不能移交", 409)
-            payload = json.loads(snapshot["payload"])
-            if payload["occurred_on"][:7] != book["period"]:
-                raise AccountingError("业务发生日期不属于目标会计期间")
-            amount = money_to_cents(payload["amount"])
-            source_id, draft_id = uuid4().hex, uuid4().hex
-            evidence = f"business:{event_id}:{event['submitted_version']}"
-            conn.execute(
-                "INSERT INTO sources(id,book_id,external_id,source_name,date,description,counterparty,amount_cents,direction,evidence_ref,fingerprint,source_kind) VALUES(?,?,?,?,?,?,?,?,?,?,?,'business')",
-                (
-                    source_id,
-                    request.book_id,
-                    evidence,
-                    "企业业务事项",
-                    payload["occurred_on"],
-                    payload["description"],
-                    payload["counterparty"],
-                    amount,
-                    payload["direction"],
-                    evidence,
-                    fingerprint({"payload": payload, "evidence_ref": evidence}),
-                ),
-            )
-            from ..accounting.catalog import CatalogService
+            return {"event": self._event_json(conn, actor, event), **receipt}
 
-            catalog = CatalogService(self.db)
-            configured = None
-            template_pending = ""
-            try:
-                configured = catalog.generate_in_transaction(
-                    conn,
-                    actor,
-                    request.book_id,
-                    event["template_id"],
-                    payload,
-                    amount,
-                    {
-                        "department_id": event["department_id"],
-                        "applicant_id": event["applicant_id"],
-                    },
-                )
-            except AccountingError as error:
-                # Tax formulas consume verified invoice amounts after OCR;
-                # handoff still preserves the approved business facts now.
-                if "拆分税额模板要求" not in str(error):
-                    raise
-                template_pending = (
-                    "企业拆分税额模板等待票据识别和金额核对；当前保留空草稿，须处理完成后复核。"
-                )
-            lines = (
-                configured["lines"]
-                if configured is not None
-                else []
-                if template_pending
-                else self._proposal(event["template_id"], payload, amount)
-            )
-            available = {
-                row["code"]
-                for row in conn.execute(
-                    "SELECT code FROM accounts WHERE book_id=? AND active=1", (request.book_id,)
-                )
+    def _handoff_in_transaction(self, conn, actor, event_id, request):
+        event = self._event(conn, actor, event_id)
+        member = self._membership(conn, actor, event["company_id"])
+        direct = event["submission_mode"] == "direct"
+        if direct and not self.submission.can_receive(conn, actor, event):
+            raise AccountingError("需要独立的授权会计接收直接提交资料", 403)
+        if not direct and (not member or member["role"] != "finance"):
+            raise AccountingError("需要企业财务权限才能移交会计", 403)
+        book = self.access.book(conn, actor, request.book_id, "edit")
+        if book["company_id"] != event["company_id"]:
+            raise AccountingError("目标账套不属于事项所在企业", 403)
+        digest = fingerprint(
+            {
+                "event_id": event_id,
+                "book_id": request.book_id,
+                "submitted_version": event["submitted_version"],
             }
-            # 账套自定义科目缺失时保留可用一侧，让会计补充，不默默建立科目。
-            lines = [line for line in lines if line[0] in available]
-            explanation = (
-                f"来自业务事项 {event_id} 的提交版本 {event['submitted_version']}，"
-                + (
-                    "经企业授权直接提交，由独立会计接收；"
-                    if direct
-                    else "已完成部门和企业财务审批；"
-                )
-                + "按固定模板及费用类别生成候选分录。附件 SHA-256 仅用于追溯提交资料，未验证单据真实性。"
-                "未判定税额、收入确认或业务实质，须由会计独立复核。"
-            )
-            if configured is not None:
-                explanation = configured["explanation"] + "；" + "；".join(configured["issues"])
-            elif template_pending:
-                explanation = template_pending
-            conn.execute(
-                "INSERT INTO drafts(id,book_id,source_id,description,status,version,explanation) VALUES(?,?,?,?,'draft',1,?)",
-                (draft_id, request.book_id, source_id, payload["description"], explanation),
-            )
-            conn.executemany(
-                "INSERT INTO draft_lines(draft_id,book_id,ordinal,account_code,debit_cents,credit_cents) VALUES(?,?,?,?,?,?)",
-                [
-                    (draft_id, request.book_id, ordinal, *line)
-                    for ordinal, line in enumerate(lines, 1)
-                ],
-            )
-            conn.execute(
-                "INSERT INTO business_mappings(event_id,firm_id,company_id,book_id,source_id,draft_id,submitted_version,idempotency_key,request_fingerprint,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
-                (
-                    event_id,
-                    actor.firm_id,
-                    event["company_id"],
-                    request.book_id,
-                    source_id,
-                    draft_id,
-                    event["submitted_version"],
-                    request.idempotency_key,
-                    digest,
-                    actor.user_id,
-                    now(),
-                ),
-            )
-            if configured is not None:
-                catalog.save_auxiliaries_in_transaction(
-                    conn, actor, request.book_id, draft_id, configured["auxiliaries"]
-                )
-            self._bump(conn, actor, event, "handed_off")
-            self._action(conn, actor, event, "handoff", "handoff")
-            self._audit(
+        )
+        existing_key = conn.execute(
+            "SELECT * FROM business_mappings WHERE firm_id=? AND idempotency_key=?",
+            (actor.firm_id, request.idempotency_key),
+        ).fetchone()
+        existing_event = conn.execute(
+            "SELECT * FROM business_mappings WHERE event_id=?", (event_id,)
+        ).fetchone()
+        if existing_key or existing_event:
+            mapping = existing_key or existing_event
+            if (
+                mapping["event_id"] != event_id
+                or mapping["request_fingerprint"] != digest
+                or mapping["idempotency_key"] != request.idempotency_key
+            ):
+                raise AccountingError("移交幂等键或已移交的目标内容不一致", 409)
+            job = conn.execute(
+                "SELECT id FROM proposal_jobs WHERE book_id=? AND draft_id=? ORDER BY created_at,id LIMIT 1",
+                (mapping["book_id"], mapping["draft_id"]),
+            ).fetchone()
+            return {
+                "book_id": mapping["book_id"],
+                "source_id": mapping["source_id"],
+                "draft_id": mapping["draft_id"],
+                "automatic_job": {"id": job["id"]} if job else None,
+            }
+        self._version(event, request.expected_version)
+        if event["status"] != ("submitted" if direct else "finance_approved"):
+            raise AccountingError("事项必须完成部门与财务审批后才能移交", 409)
+        if book["period_status"] != "open":
+            raise AccountingError("目标会计期间已关闭，不可移交", 403)
+        snapshot = conn.execute(
+            "SELECT * FROM business_versions WHERE event_id=? AND event_version=?",
+            (event_id, event["submitted_version"]),
+        ).fetchone()
+        if not snapshot:
+            raise AccountingError("提交快照不存在，不能移交", 409)
+        payload = json.loads(snapshot["payload"])
+        if payload["occurred_on"][:7] != book["period"]:
+            raise AccountingError("业务发生日期不属于目标会计期间")
+        amount = money_to_cents(payload["amount"])
+        source_id, draft_id = uuid4().hex, uuid4().hex
+        evidence = f"business:{event_id}:{event['submitted_version']}"
+        conn.execute(
+            "INSERT INTO sources(id,book_id,external_id,source_name,date,description,counterparty,amount_cents,direction,evidence_ref,fingerprint,source_kind) VALUES(?,?,?,?,?,?,?,?,?,?,?,'business')",
+            (
+                source_id,
+                request.book_id,
+                evidence,
+                "企业业务事项",
+                payload["occurred_on"],
+                payload["description"],
+                payload["counterparty"],
+                amount,
+                payload["direction"],
+                evidence,
+                fingerprint({"payload": payload, "evidence_ref": evidence}),
+            ),
+        )
+        from ..accounting.catalog import CatalogService
+
+        catalog = CatalogService(self.db)
+        configured = None
+        template_pending = ""
+        try:
+            configured = catalog.generate_in_transaction(
                 conn,
                 actor,
-                "business.handoff",
-                event_id,
-                {
-                    "book_id": request.book_id,
-                    "source_id": source_id,
-                    "draft_id": draft_id,
-                    "submitted_version": event["submitted_version"],
-                },
                 request.book_id,
+                event["template_id"],
+                payload,
+                amount,
+                {
+                    "department_id": event["department_id"],
+                    "applicant_id": event["applicant_id"],
+                },
             )
-            current_event = self._event(conn, actor, event_id)
-            automatic = None
-            if getattr(self, "proposal_queue", None) is not None:
-                current_draft = conn.execute(
-                    "SELECT * FROM drafts WHERE id=? AND book_id=?", (draft_id, request.book_id)
-                ).fetchone()
-                automatic = self.proposal_queue.enqueue_in_transaction(
-                    conn, actor, current_event, book, current_draft
-                )
-            # Handoff returns a stable task identity. Live progress belongs to
-            # the task endpoint, so a retry returns the same command receipt.
-            return {
-                "event": self._event_json(conn, actor, current_event),
+        except AccountingError as error:
+            # Tax formulas consume verified invoice amounts after OCR;
+            # handoff still preserves the approved business facts now.
+            if "拆分税额模板要求" not in str(error):
+                raise
+            template_pending = (
+                "企业拆分税额模板等待票据识别和金额核对；当前保留空草稿，须处理完成后复核。"
+            )
+        lines = (
+            configured["lines"]
+            if configured is not None
+            else []
+            if template_pending
+            else self._proposal(event["template_id"], payload, amount)
+        )
+        available = {
+            row["code"]
+            for row in conn.execute(
+                "SELECT code FROM accounts WHERE book_id=? AND active=1", (request.book_id,)
+            )
+        }
+        # 账套自定义科目缺失时保留可用一侧，让会计补充，不默默建立科目。
+        lines = [line for line in lines if line[0] in available]
+        explanation = (
+            f"来自业务事项 {event_id} 的提交版本 {event['submitted_version']}，"
+            + ("经企业授权直接提交，由独立会计接收；" if direct else "已完成部门和企业财务审批；")
+            + "按固定模板及费用类别生成候选分录。附件 SHA-256 仅用于追溯提交资料，未验证单据真实性。"
+            "未判定税额、收入确认或业务实质，须由会计独立复核。"
+        )
+        if configured is not None:
+            explanation = configured["explanation"] + "；" + "；".join(configured["issues"])
+        elif template_pending:
+            explanation = template_pending
+        conn.execute(
+            "INSERT INTO drafts(id,book_id,source_id,description,status,version,explanation) VALUES(?,?,?,?,'draft',1,?)",
+            (draft_id, request.book_id, source_id, payload["description"], explanation),
+        )
+        conn.executemany(
+            "INSERT INTO draft_lines(draft_id,book_id,ordinal,account_code,debit_cents,credit_cents) VALUES(?,?,?,?,?,?)",
+            [(draft_id, request.book_id, ordinal, *line) for ordinal, line in enumerate(lines, 1)],
+        )
+        conn.execute(
+            "INSERT INTO business_mappings(event_id,firm_id,company_id,book_id,source_id,draft_id,submitted_version,idempotency_key,request_fingerprint,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                event_id,
+                actor.firm_id,
+                event["company_id"],
+                request.book_id,
+                source_id,
+                draft_id,
+                event["submitted_version"],
+                request.idempotency_key,
+                digest,
+                actor.user_id,
+                now(),
+            ),
+        )
+        if configured is not None:
+            catalog.save_auxiliaries_in_transaction(
+                conn, actor, request.book_id, draft_id, configured["auxiliaries"]
+            )
+        self._bump(conn, actor, event, "handed_off")
+        self._action(conn, actor, event, "handoff", "handoff")
+        self._audit(
+            conn,
+            actor,
+            "business.handoff",
+            event_id,
+            {
                 "book_id": request.book_id,
                 "source_id": source_id,
                 "draft_id": draft_id,
-                "automatic_job": {"id": automatic["id"]} if automatic else None,
-            }
+                "submitted_version": event["submitted_version"],
+            },
+            request.book_id,
+        )
+        current_event = self._event(conn, actor, event_id)
+        automatic = None
+        if getattr(self, "proposal_queue", None) is not None:
+            current_draft = conn.execute(
+                "SELECT * FROM drafts WHERE id=? AND book_id=?", (draft_id, request.book_id)
+            ).fetchone()
+            automatic = self.proposal_queue.enqueue_in_transaction(
+                conn, actor, current_event, book, current_draft
+            )
+        # Handoff returns a stable task identity. Live progress belongs to
+        # the task endpoint, so a retry returns the same command receipt.
+        return {
+            "book_id": request.book_id,
+            "source_id": source_id,
+            "draft_id": draft_id,
+            "automatic_job": {"id": automatic["id"]} if automatic else None,
+        }

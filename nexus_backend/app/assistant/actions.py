@@ -518,15 +518,15 @@ class AssistantActionService:
             "created_at": row["created_at"],
         }
 
-    def _json(self, conn, actor, conversation, row):
+    def _json(self, conn, actor, conversation, row, *, receipts=None, stamp=None):
         snapshot = json.loads(row["snapshot_json"])
-        receipt = self._receipt_row(conn, row)
+        receipt = receipts.get(row["id"]) if receipts is not None else self._receipt_row(conn, row)
         state = (
             "executed"
             if receipt
             else "expired"
             if datetime.fromisoformat(row["expires_at"])
-            <= datetime.fromisoformat(self._stamp(conn))
+            <= datetime.fromisoformat(stamp or self._stamp(conn))
             else "ready"
             if row["item_count"]
             else "empty"
@@ -639,8 +639,26 @@ class AssistantActionService:
                 "SELECT *" + where + " ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?",
                 (*args, limit, offset),
             ).fetchall()
+            # A page uses one database timestamp and one receipt read, rather
+            # than two network round trips per unexecuted plan. Progress in an
+            # executed receipt is still loaded live under current permissions.
+            receipts, stamp = {}, self._stamp(conn) if rows else None
+            if rows:
+                receipts = {
+                    row["plan_id"]: row
+                    for row in conn.execute(
+                        "SELECT * FROM assistant_action_receipts WHERE conversation_id=? "
+                        "AND firm_id=? AND created_by=? AND plan_id IN ("
+                        + ",".join("?" for _ in rows)
+                        + ")",
+                        (*args, *(row["id"] for row in rows)),
+                    )
+                }
             return {
-                "plans": [self._json(conn, actor, conversation, row) for row in rows],
+                "plans": [
+                    self._json(conn, actor, conversation, row, receipts=receipts, stamp=stamp)
+                    for row in rows
+                ],
                 "pagination": {
                     "total": total,
                     "limit": limit,

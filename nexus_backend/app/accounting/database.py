@@ -121,6 +121,35 @@ class PostgresConnection:
         self._require_open()
         return self.raw.execute(postgres_sql(statement), parameters)
 
+    def begin(self, *, write=False, role="accounting_app", user_id="", firm_id=""):
+        """Install transaction-local identity in one pooler-compatible round trip.
+
+        ClientCursor uses the simple query protocol, not pipeline/prepared
+        statements. Values remain psycopg-bound; only allowlisted roles and
+        fixed transaction clauses are composed. Never expose a connection to
+        domain code before every setup statement has completed successfully.
+        """
+        self._require_open()
+        if role not in {"accounting_app", "accounting_system", "accounting_worker"}:
+            raise ValueError("数据库事务角色不受支持")
+        from psycopg import ClientCursor
+        from psycopg.pq import TransactionStatus
+
+        if self.raw.info.transaction_status != TransactionStatus.IDLE:
+            raise RuntimeError("数据库连接已有未完成事务")
+        begin = "BEGIN" if write else "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY"
+        with ClientCursor(self.raw) as cursor:
+            cursor.execute(
+                begin
+                + "; SET LOCAL ROLE "
+                + role
+                + "; SET LOCAL search_path TO accounting,pg_catalog; "
+                "SELECT set_config('app.user_id',%s,true),set_config('app.firm_id',%s,true)",
+                (user_id, firm_id),
+            )
+            while cursor.nextset():
+                pass
+
     def executemany(self, statement, parameters):
         self._require_open()
         cursor = self.raw.cursor()
@@ -293,14 +322,8 @@ class Database:
         """
         with closing(self.connect()) as conn:
             try:
-                conn.execute("BEGIN" if self.is_postgres else "BEGIN IMMEDIATE")
                 if self.is_postgres:
-                    conn.execute("SET LOCAL ROLE accounting_app")
-                    conn.execute("SET LOCAL search_path TO accounting,pg_catalog")
-                    conn.execute(
-                        "SELECT set_config('app.user_id',?,true),set_config('app.firm_id',?,true)",
-                        (actor.user_id, actor.firm_id),
-                    )
+                    conn.begin(write=True, user_id=actor.user_id, firm_id=actor.firm_id)
                     conn.execute(
                         "SELECT accounting.save_transaction_bucket("
                         + ",".join("?" for _ in payload)
@@ -308,6 +331,7 @@ class Database:
                         payload,
                     )
                 else:
+                    conn.execute("BEGIN IMMEDIATE")
                     from .access import AccessControl
 
                     AccessControl().company(conn, actor, payload[1])
@@ -450,18 +474,11 @@ class Database:
         metric_token = transaction_scope.set(companies)
         try:
             if self.is_postgres:
-                conn.execute(
-                    "BEGIN" if write else "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY"
-                )
-                conn.execute(
-                    "SET LOCAL ROLE accounting_system"
-                    if system
-                    else "SET LOCAL ROLE accounting_app"
-                )
-                conn.execute("SET LOCAL search_path TO accounting,pg_catalog")
-                conn.execute(
-                    "SELECT set_config('app.user_id',?,true),set_config('app.firm_id',?,true)",
-                    (getattr(actor, "user_id", ""), getattr(actor, "firm_id", "")),
+                conn.begin(
+                    write=write,
+                    role="accounting_system" if system else "accounting_app",
+                    user_id=getattr(actor, "user_id", ""),
+                    firm_id=getattr(actor, "firm_id", ""),
                 )
                 if write:
                     lock_started = perf_counter()

@@ -56,14 +56,8 @@ def _release_process_slot(key, request_id):
 def _slot(db, actor, company_id, supplier, request_id, lease):
     with closing(db.connect()) as conn:
         try:
-            conn.execute("BEGIN" if db.is_postgres else "BEGIN IMMEDIATE")
             if db.is_postgres:
-                conn.execute("SET LOCAL ROLE accounting_app")
-                conn.execute("SET LOCAL search_path TO accounting,pg_catalog")
-                conn.execute(
-                    "SELECT set_config('app.user_id',?,true),set_config('app.firm_id',?,true)",
-                    (actor.user_id, actor.firm_id),
-                )
+                conn.begin(write=True, user_id=actor.user_id, firm_id=actor.firm_id)
                 try:
                     result = conn.execute(
                         "SELECT accounting.acquire_provider_slot(?,?,?,?)",
@@ -80,6 +74,7 @@ def _slot(db, actor, company_id, supplier, request_id, lease):
                         ) from None
                     raise
             else:
+                conn.execute("BEGIN IMMEDIATE")
                 from ..accounting.access import AccessControl
 
                 AccessControl().company(conn, actor, company_id)
@@ -119,16 +114,11 @@ def _slot(db, actor, company_id, supplier, request_id, lease):
 def _release(db, actor, request_id):
     with closing(db.connect()) as conn:
         try:
-            conn.execute("BEGIN" if db.is_postgres else "BEGIN IMMEDIATE")
             if db.is_postgres:
-                conn.execute("SET LOCAL ROLE accounting_app")
-                conn.execute("SET LOCAL search_path TO accounting,pg_catalog")
-                conn.execute(
-                    "SELECT set_config('app.user_id',?,true),set_config('app.firm_id',?,true)",
-                    (actor.user_id, actor.firm_id),
-                )
+                conn.begin(write=True, user_id=actor.user_id, firm_id=actor.firm_id)
                 conn.execute("SELECT accounting.release_provider_slot(?)", (request_id,))
             else:
+                conn.execute("BEGIN IMMEDIATE")
                 conn.execute(
                     "DELETE FROM provider_request_slots WHERE id=? AND firm_id=? AND user_id=?",
                     (request_id, actor.firm_id, actor.user_id),

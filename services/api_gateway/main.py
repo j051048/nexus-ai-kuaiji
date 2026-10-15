@@ -22,6 +22,7 @@ from starlette.responses import JSONResponse, Response
 MAX_FILE_BYTES = 3 * 1024 * 1024
 MAX_REQUEST_BYTES = 4 * 1024 * 1024
 MAX_RESPONSE_BYTES = 4 * 1024 * 1024
+MAX_AUTH_CONFIG_DEPTH = 64
 TRANSPORT_LIMITS = {
     "max_file_bytes": MAX_FILE_BYTES,
     "max_request_bytes": MAX_REQUEST_BYTES,
@@ -101,6 +102,25 @@ def _error(status: int, detail: str) -> JSONResponse:
         status_code=status,
         headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"},
     )
+
+
+def _check_auth_config_depth(config: dict) -> None:
+    # JSON's C decoder/encoder recursion budget varies by Python version and
+    # process settings. Apply a fixed policy before re-encoding the config.
+    # Iterators keep traversal memory bounded by depth, even for wide objects;
+    # strings (including brackets and escaped quotes) are scalar values.
+    stack = [(iter(config.values()), 1)]
+    while stack:
+        children, depth = stack[-1]
+        try:
+            value = next(children)
+        except StopIteration:
+            stack.pop()
+            continue
+        if isinstance(value, (dict, list)):
+            if depth >= MAX_AUTH_CONFIG_DEPTH:
+                raise ValueError("auth config too deeply nested")
+            stack.append((iter(value.values() if isinstance(value, dict) else value), depth + 1))
 
 
 async def _read_request(request: Request) -> bytes | Response:
@@ -216,6 +236,7 @@ async def _proxy(app: FastAPI, request: Request) -> Response:
                         config = json.loads(body)
                         if not isinstance(config, dict):
                             raise ValueError("invalid auth config")
+                        _check_auth_config_depth(config)
                         config["transport_limits"] = TRANSPORT_LIMITS
                         body = json.dumps(
                             config, ensure_ascii=False, allow_nan=False, separators=(",", ":")

@@ -55,7 +55,7 @@ import { AccountingBookToolbar } from './AccountingBookToolbar';
 import { Reviewer } from './VoucherReviewer';
 import { useWorkspaceRoute } from './useWorkspaceRoute';
 import { RouteLeaveDialog } from './RouteLeaveDialog';
-import type { WorkspaceRoute } from './workspace-route';
+import { workspaceUsesBook, type WorkspaceRoute } from './workspace-route';
 import type { MonthlyDestination } from './monthly-workbench-types';
 
 type Filter = 'all' | 'pending' | 'exception' | 'approved';
@@ -369,6 +369,24 @@ export default function App() {
   useEffect(() => {
     if (adminMode || activationMode || recoveryMode) clearWorkspace();
   }, [adminMode, activationMode, recoveryMode, clearWorkspace]);
+  const routeView: WorkspaceRoute['view'] = homeView
+    ? 'home'
+    : runsView
+      ? 'runs'
+      : (stage8View ??
+        (catalogView
+          ? 'catalog'
+          : operationsView
+            ? 'operations'
+            : queueView
+              ? 'queue'
+              : intelligenceView
+                ? 'intelligence'
+                : businessView
+                  ? 'business'
+                  : 'accounting'));
+  const routeUsesBook = workspaceUsesBook(routeView);
+
   const sessionScope = useRef<string | null>(null);
   sessionScope.current = session?.scope_key ?? null;
   useEffect(() => {
@@ -434,7 +452,9 @@ export default function App() {
 
   useEffect(() => {
     setOperationsCompanies([]);
-    if (!session?.firm_id || sessionScope.current !== session.scope_key) return;
+    // A current capability bit controls navigation. Load the company list only
+    // in its own workspace, so it cannot compete with the home inbox for DB slots.
+    if (!operationsView || !session?.firm_id || sessionScope.current !== session.scope_key) return;
     const controller = new AbortController();
     void api<{ companies: OperationsCompany[] }>('/operations/companies', session, {
       signal: controller.signal,
@@ -446,7 +466,7 @@ export default function App() {
         if (!controller.signal.aborted) setOperationsCompanies([]);
       });
     return () => controller.abort();
-  }, [session]);
+  }, [session, operationsView]);
 
   const workbenchPath = useCallback(
     () =>
@@ -537,13 +557,24 @@ export default function App() {
   );
 
   useEffect(() => {
+    if (!routeUsesBook) {
+      setBootLoading(false);
+      return;
+    }
     const controller = new AbortController();
     void initialize(controller.signal);
-    return () => controller.abort();
-  }, [initialize]);
+    return () => {
+      controller.abort();
+      workbenchReadEpoch.current++;
+    };
+  }, [initialize, routeUsesBook]);
 
   useEffect(() => {
-    if (!session || !bookId) return;
+    if (!routeUsesBook || !session || !bookId) {
+      setDetail(null);
+      setBookLoading(false);
+      return;
+    }
     const controller = new AbortController();
     const requestEpoch = ++bookReadEpoch.current,
       scope = session.scope_key;
@@ -595,7 +626,7 @@ export default function App() {
           setBookLoading(false);
       });
     return () => controller.abort();
-  }, [bookId, session, bookPath]);
+  }, [bookId, session, bookPath, routeUsesBook]);
 
   useEffect(() => {
     if (!notice || notice.kind === 'error') return;
@@ -606,7 +637,7 @@ export default function App() {
   useEffect(() => {
     setExportHistory([]);
     setHistoryError('');
-    if (!session || !bookId || listTab !== 'exports') return;
+    if (routeView !== 'accounting' || !session || !bookId || listTab !== 'exports') return;
     const controller = new AbortController();
     setHistoryLoading(true);
     void api<{ exports: { id: string; count: number; filename: string; created_at: string }[] }>(
@@ -624,7 +655,7 @@ export default function App() {
         if (!controller.signal.aborted) setHistoryLoading(false);
       });
     return () => controller.abort();
-  }, [bookId, session, listTab, storedDetail]);
+  }, [bookId, session, listTab, storedDetail, routeView]);
 
   async function refresh(id: string) {
     if (!session || sessionScope.current !== session.scope_key) return;
@@ -747,7 +778,7 @@ export default function App() {
     setQueueView(false);
     setIntelligenceView(false);
     setBusinessView(false);
-    if (bookId === id)
+    if (routeUsesBook && bookId === id)
       void refresh(id).catch((error) => {
         if (sessionScope.current === session.scope_key && bookIdRef.current === id) {
           setBookError(errorMessage(error));
@@ -756,7 +787,7 @@ export default function App() {
       });
     // A target outside the current twenty-book page must be brought into the
     // authorized workbench page before the membership guard can select it.
-    void initialize(undefined, id);
+    if (routeUsesBook) void initialize(undefined, id);
   }
 
   function acceptMutatedDraft(id: string, draft: Draft) {
@@ -875,7 +906,7 @@ export default function App() {
   const filteredBooks = workbench?.books ?? [];
   const detail = filteredBooks.some((book) => book.id === bookId) ? storedDetail : null;
   useEffect(() => {
-    if (busy || bootLoading || !workbench) return;
+    if (!routeUsesBook || busy || bootLoading || !workbench) return;
     if (!filteredBooks.some((book) => book.id === bookId)) {
       setDetail(null);
       if (pendingReview.current?.bookId === bookId || focusBookRef.current === bookId) {
@@ -892,12 +923,17 @@ export default function App() {
       setSelectedIds([]);
       setBookId(filteredBooks[0]?.id ?? '');
     }
-  }, [filter, search, workbench, bookId, busy, bootLoading, bookLoading]);
+  }, [filter, search, workbench, bookId, busy, bootLoading, bookLoading, routeUsesBook]);
   const drafts = detail?.drafts ?? [];
   const activeDraft = draftId ? drafts.find((draft) => draft.id === draftId) : drafts[0];
   useEffect(() => {
     setDraftError('');
-    if (!session || !activeDraft || activeDraft.detail_loaded !== false) {
+    if (
+      routeView !== 'accounting' ||
+      !session ||
+      !activeDraft ||
+      activeDraft.detail_loaded !== false
+    ) {
       setDraftLoading(false);
       return;
     }
@@ -958,6 +994,7 @@ export default function App() {
     activeDraft?.version,
     activeDraft?.detail_loaded,
     storedDetail,
+    routeView,
   ]);
 
   const approvedDraftIds = drafts
@@ -976,34 +1013,6 @@ export default function App() {
     window.addEventListener('accounting:review-dirty', changed);
     return () => window.removeEventListener('accounting:review-dirty', changed);
   }, []);
-  const routeView: WorkspaceRoute['view'] = homeView
-    ? 'home'
-    : runsView
-      ? 'runs'
-      : (stage8View ??
-        (catalogView
-          ? 'catalog'
-          : operationsView
-            ? 'operations'
-            : queueView
-              ? 'queue'
-              : intelligenceView
-                ? 'intelligence'
-                : businessView
-                  ? 'business'
-                  : 'accounting'));
-  const routeUsesBook = ![
-    'home',
-    'runs',
-    'business',
-    'review',
-    'cases',
-    'revision',
-    'operations',
-    'queue',
-    'intelligence',
-    'monthly',
-  ].includes(routeView);
   const workspaceRoute: WorkspaceRoute = {
     view: routeView,
     bookId: routeUsesBook ? bookId : workBook,
@@ -1118,11 +1127,11 @@ export default function App() {
       setBookOffset(0);
       setDraftOffset(0);
       setSourceOffset(0);
-      if (route.bookId) {
+      if (route.bookId && workspaceUsesBook(route.view)) {
         setDetail(null);
         setBookId(route.bookId);
-        void initialize(undefined, route.bookId);
-        if (route.bookId === bookId)
+        if (routeUsesBook) void initialize(undefined, route.bookId);
+        if (routeUsesBook && route.bookId === bookId)
           void refresh(route.bookId).catch((failure) => setBookError(errorMessage(failure)));
       }
       if (route.view === 'home') setWorkspaceRevision((value) => value + 1);
@@ -1315,21 +1324,21 @@ export default function App() {
       focusBookRef.current = target.bookId;
       setFilter('approved');
       setListTab('drafts');
-      void initialize(undefined, target.bookId);
+      if (routeUsesBook) void initialize(undefined, target.bookId);
     } else if (target.type === 'delivery' && target.bookId) {
       navigate('accounting');
       setBookId(target.bookId);
       focusBookRef.current = target.bookId;
       setDeliveryTarget(target.id);
       setStage8View('delivery');
-      void initialize(undefined, target.bookId);
+      if (routeUsesBook) void initialize(undefined, target.bookId);
     } else if (target.type === 'migration' && target.bookId) {
       navigate('accounting');
       setBookId(target.bookId);
       focusBookRef.current = target.bookId;
       setMigrationTarget(target.id);
       setStage8View('migration');
-      void initialize(undefined, target.bookId);
+      if (routeUsesBook) void initialize(undefined, target.bookId);
     } else if (target.type === 'alert') {
       navigate('operations');
       setOperationsTarget(target.id);
@@ -1359,10 +1368,10 @@ export default function App() {
     setWorkCompany(target.companyId);
     setWorkPeriod(target.period);
     setWorkBook(['review', 'cases', 'business'].includes(target.view) ? (target.bookId ?? '') : '');
-    if (target.bookId) {
+    if (target.bookId && workspaceUsesBook(target.view)) {
       setBookId(target.bookId);
       focusBookRef.current = target.bookId;
-      void initialize(undefined, target.bookId);
+      if (routeUsesBook) void initialize(undefined, target.bookId);
     }
     if (['delivery', 'closing', 'efficiency', 'balances', 'recurring'].includes(target.view))
       setStage8View(target.view as typeof stage8View);
@@ -1375,7 +1384,7 @@ export default function App() {
     !operationsView &&
     !queueView &&
     !intelligenceView &&
-    (businessView || !canSeeAccounting);
+    (businessView || (!!profile && !canSeeAccounting));
   async function openAgentRun(route: AgentRoute) {
     const currentSession = session;
     if (navigationLocked || !currentSession) return;
@@ -1390,7 +1399,7 @@ export default function App() {
       focusBookRef.current = route.book_id;
       setMigrationTarget(route.id);
       setStage8View('migration');
-      void initialize(undefined, route.book_id);
+      if (routeUsesBook) void initialize(undefined, route.book_id);
       return;
     }
     if (route.type === 'ocr') {
@@ -1425,7 +1434,7 @@ export default function App() {
     navigate('accounting', fromAssistant);
     setBookId(book.id);
     focusBookRef.current = book.id;
-    void initialize(undefined, book.id);
+    if (routeUsesBook) void initialize(undefined, book.id);
   }
   function openGlobalAssistant() {
     if (navigationLocked || modal || commandOpen) return;
@@ -1577,7 +1586,10 @@ export default function App() {
         canAccounting={canSeeAccounting}
         canMonthly={canSeeAccounting || !!profile?.can_manage}
         canReview={!!profile?.can_review}
-        canOperations={operationsCompanies.length > 0 || !!me?.permissions.manage_firm}
+        canOperations={
+          profile?.can_operations ??
+          (!!profile?.can_manage || !!profile?.can_finance || !!me?.permissions.manage_firm)
+        }
         locked={navigationLocked || !!modal || commandOpen}
         onNavigate={navigate}
         onAccountingFilter={(value) => {

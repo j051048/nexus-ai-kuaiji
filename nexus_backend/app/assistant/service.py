@@ -107,27 +107,46 @@ class AssistantService:
         ).fetchone()
         if not row:
             raise AccountingError("对话不存在或当前范围已失去授权", 404)
-        result = self._conversation_json(row)
-        self._check_refs(conn, actor, result)
-        return result
+        # The predicate checks the owner and *every* current scope reference,
+        # including revoked memberships. Do not repeat the same per-reference
+        # authorization queries just to read immutable history or a plan list.
+        # Snapshot reads independently load and authorize the current records.
+        return self._conversation_json(row)
 
     def _check_refs(self, conn, actor, conversation):
-        self.access.company(conn, actor, conversation["company_id"])
-        for book_id in conversation["book_ids"]:
-            book = self.access.book(conn, actor, book_id)
-            if book["company_id"] != conversation["company_id"]:
-                raise AccountingError("对话账套不属于当前企业", 404)
+        company = self.access.company(conn, actor, conversation["company_id"])
+        books = {}
+        if conversation["book_ids"]:
+            scope, params = book_read_scope(actor)
+            rows = conn.execute(
+                "SELECT b.*,p.status AS period_status FROM books b "
+                "JOIN periods p ON p.book_id=b.id AND p.period=b.period "
+                "WHERE b.company_id=? AND b.id IN ("
+                + ",".join("?" for _ in conversation["book_ids"])
+                + ") AND "
+                + scope,
+                [conversation["company_id"], *conversation["book_ids"], *params],
+            ).fetchall()
+            books = {row["id"]: row for row in rows}
+            if set(books) != set(conversation["book_ids"]):
+                raise AccountingError("对话账套不存在或无权访问", 404)
+        events = {}
         for event_id in conversation["event_ids"]:
             event = self.business._event(conn, actor, event_id)
             if event["company_id"] != conversation["company_id"]:
                 raise AccountingError("对话事项不属于当前企业", 404)
+            events[event_id] = event
+        draft = None
         if conversation.get("draft_id"):
             draft = conn.execute(
-                "SELECT 1 FROM drafts WHERE id=? AND book_id=?",
+                "SELECT * FROM drafts WHERE id=? AND book_id=?",
                 (conversation["draft_id"], conversation["book_ids"][0]),
             ).fetchone()
             if not draft:
                 raise AccountingError("对话凭证不存在或无权访问", 404)
+        # These rows are reused only by this immediate snapshot construction,
+        # never stored on the service/actor or reused after a write or request.
+        return company, books, events, draft
 
     def choices(self, actor, company_id, event_q="", limit=20, offset=0):
         page_bounds(limit, offset)
@@ -243,8 +262,7 @@ class AssistantService:
             }
 
     def snapshot_in_transaction(self, conn, actor, conversation):
-        self._check_refs(conn, actor, conversation)
-        company = self.access.company(conn, actor, conversation["company_id"])
+        company, books, events, draft_row = self._check_refs(conn, actor, conversation)
         context = {
             "company_id": company["id"],
             "company_name": company["name"],
@@ -256,22 +274,33 @@ class AssistantService:
             "notice": "资料是当前已保存事实的摘要，附带状态和版本。未提供的数据不得推断，金额计算由后台确定性程序完成。",
         }
         basis = {"books": [], "events": [], "draft": None}
+        draft_counts, source_totals = {}, {}
+        if books:
+            placeholders = ",".join("?" for _ in books)
+            for row in conn.execute(
+                "SELECT book_id,status,COUNT(*) AS total FROM drafts WHERE book_id IN ("
+                + placeholders
+                + ") GROUP BY book_id,status ORDER BY book_id,status",
+                list(books),
+            ):
+                draft_counts.setdefault(row["book_id"], {})[row["status"]] = row["total"]
+            source_totals = {
+                row["book_id"]: row
+                for row in conn.execute(
+                    "SELECT book_id,COUNT(*) AS total,COALESCE(SUM(amount_cents),0) AS amount "
+                    "FROM sources WHERE book_id IN (" + placeholders + ") GROUP BY book_id",
+                    list(books),
+                )
+            }
         for book_id in conversation["book_ids"]:
-            book = self.access.book(conn, actor, book_id)
-            totals = conn.execute(
-                "SELECT status,COUNT(*) AS total FROM drafts WHERE book_id=? GROUP BY status ORDER BY status",
-                (book_id,),
-            ).fetchall()
-            sources = conn.execute(
-                "SELECT COUNT(*) AS total,COALESCE(SUM(amount_cents),0) AS amount FROM sources WHERE book_id=?",
-                (book_id,),
-            ).fetchone()
+            book = books[book_id]
+            sources = source_totals.get(book_id, {"total": 0, "amount": 0})
             item = {
                 "id": book_id,
                 "name": book["name"],
                 "period": book["period"],
                 "period_status": book["period_status"],
-                "draft_counts": {r["status"]: r["total"] for r in totals},
+                "draft_counts": draft_counts.get(book_id, {}),
                 "source_count": sources["total"],
                 "source_gross_total": cents_to_money(sources["amount"]),
             }
@@ -287,7 +316,7 @@ class AssistantService:
                 }
             )
         for event_id in conversation["event_ids"]:
-            event = self.business._event(conn, actor, event_id)
+            event = events[event_id]
             payload = json.loads(event["payload"])
             item = {
                 "id": event_id,
@@ -332,7 +361,7 @@ class AssistantService:
                 )
             assessment_fingerprint = None
             if self.intelligence:
-                latest = self.intelligence._latest(conn, event)
+                latest = self.intelligence._latest(conn, event, excluded=superseded)
                 documents = []
                 for attachment in attachments[:20]:
                     run = latest.get(attachment["id"])
@@ -364,7 +393,9 @@ class AssistantService:
                         )
                 item["documents"] = documents[:20]
                 item["documents_truncated"] = len(documents) > 20 or len(attachments) > 20
-                assessment = self.intelligence._assessment(conn, actor, event, persist=False)
+                assessment = self.intelligence._assessment(
+                    conn, actor, event, persist=False, latest=latest, attachments=attachments
+                )
                 assessment_fingerprint = assessment["fingerprint"]
                 item["checks"] = [
                     {
@@ -403,10 +434,7 @@ class AssistantService:
             )
         if conversation["draft_id"]:
             book_id, draft_id = conversation["book_ids"][0], conversation["draft_id"]
-            row = conn.execute(
-                "SELECT * FROM drafts WHERE id=? AND book_id=?", (draft_id, book_id)
-            ).fetchone()
-            draft = self.accounting._draft_json(conn, row, actor)
+            draft = self.accounting._draft_json(conn, draft_row, actor)
             context["draft"] = {
                 key: draft[key]
                 for key in (

@@ -20,6 +20,7 @@ def conversation_scope(db, actor, alias="c"):
     books, book_args = book_read_scope(actor)
     events, event_args = event_scope(actor)
     sql = f"""{alias}.firm_id=? AND {alias}.created_by=? AND EXISTS(SELECT 1 FROM users u WHERE u.id=? AND u.active=1)
+      AND EXISTS(SELECT 1 FROM companies co WHERE co.id={alias}.company_id AND co.status='active')
       AND EXISTS(SELECT 1 FROM firm_clients fc WHERE fc.firm_id={alias}.firm_id AND fc.company_id={alias}.company_id AND fc.status='active')
       AND (EXISTS(SELECT 1 FROM memberships fm WHERE fm.firm_id={alias}.firm_id AND fm.user_id=? AND fm.role IN ('owner','admin'))
         OR EXISTS(SELECT 1 FROM company_memberships cm WHERE cm.company_id={alias}.company_id AND cm.user_id=?)

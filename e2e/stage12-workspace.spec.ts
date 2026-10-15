@@ -2,6 +2,8 @@ import { expect, test } from '@playwright/test';
 import { choosePersona, openNavigation } from './ui-navigation';
 
 test('四种真实验证身份按主业务角色进入待办首页，兼有复核权的财务仍先核验业务', async ({ page, request }) => {
+  // This case includes fixture creation and four real identity changes on the cold dev server.
+  test.setTimeout(90_000);
   const owner = await (await request.get('/api/session?persona=accountant')).json();
   const finance = await (await request.get('/api/session?persona=finance')).json();
   const ownerHeaders = { Authorization: `Bearer ${owner.token}` }, financeHeaders = { Authorization: `Bearer ${finance.token}` };
@@ -19,7 +21,7 @@ test('四种真实验证身份按主业务角色进入待办首页，兼有复�
     expect(profile.role).toBe(role);
     if (persona === 'finance') expect(profile.can_review).toBe(true);
     await choosePersona(page, persona);
-    await expect(page.getByRole('heading', { name: title, exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: title, exact: true })).toBeVisible({ timeout: 15_000 });
     await openNavigation(page);
     await expect(home).toHaveAttribute('aria-current', 'page');
     await expect(page.getByLabel('我的工作概览')).toBeVisible();

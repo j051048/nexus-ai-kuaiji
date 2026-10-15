@@ -47,10 +47,8 @@ class AssistantWorker:
 
     def _private(self, name, args=(), rows=False):
         with closing(self.db.connect()) as conn:
-            conn.execute("BEGIN")
             try:
-                conn.execute("SET LOCAL ROLE accounting_worker")
-                conn.execute("SET LOCAL search_path TO accounting,pg_catalog")
+                conn.begin(write=True, role="accounting_worker")
                 from app.concurrency.settings import SchedulingSettings
 
                 conn.execute(

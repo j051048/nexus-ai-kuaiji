@@ -22,6 +22,22 @@ class DirectoryService:
 
     def register_identity(self, identity):
         # Called only after the configured authentication provider has verified identity.
+        email = (identity.email or "").lower()
+        with self.db.transaction(system=True) as conn:
+            existing = conn.execute(
+                "SELECT active,name,email FROM users WHERE id=?", (identity.user_id,)
+            ).fetchone()
+            if existing and not existing["active"]:
+                raise AccountingError("账号已停用，请联系管理员", 403)
+            if (
+                existing
+                and existing["name"] == identity.display_name
+                and existing["email"] == email
+            ):
+                # Ordinary /me reads must not queue behind accounting writes.
+                # The following profile/domain request still checks live grants;
+                # changed or new identities recheck active state under the lock.
+                return
         with self.db.transaction(write=True, system=True) as conn:
             existing = conn.execute(
                 "SELECT active FROM users WHERE id=?", (identity.user_id,)
@@ -30,7 +46,7 @@ class DirectoryService:
                 raise AccountingError("账号已停用，请联系管理员", 403)
             conn.execute(
                 "INSERT INTO users(id,name,email) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,email=excluded.email",
-                (identity.user_id, identity.display_name, (identity.email or "").lower()),
+                (identity.user_id, identity.display_name, email),
             )
 
     def me(self, user_id, firm_id=None, mode="supabase"):

@@ -318,11 +318,39 @@ def test_browser_host_is_never_parsed_to_construct_upstream_target(host):
     assert response.text == "https://accounting.synthetic.test:8443/api/health"
 
 
-def test_deeply_nested_login_configuration_fails_safely():
+@pytest.mark.parametrize("recursion_limit", [1000, 10000])
+def test_deeply_nested_login_configuration_fails_safely(recursion_limit):
     body = (b'{"nested":' + b"[" * 1500 + b"0" + b"]" * 1500 + b"}")
+    previous = sys.getrecursionlimit()
+    try:
+        sys.setrecursionlimit(recursion_limit)
+        with client(lambda request: upstream(body)) as browser:
+            response = browser.get("/api/auth/config")
+    finally:
+        sys.setrecursionlimit(previous)
+    assert response.status_code == 502
+
+
+@pytest.mark.parametrize("encoding", ["utf-8", "utf-16", "utf-32"])
+@pytest.mark.parametrize("container", ["array", "object"])
+@pytest.mark.parametrize("extra_depth,status", [(0, 200), (1, 502)])
+def test_login_configuration_has_a_fixed_container_depth_limit(encoding, container, extra_depth, status):
+    depth = gateway.MAX_AUTH_CONFIG_DEPTH - 1 + extra_depth
+    start, end = ("[", "]") if container == "array" else ('{"value":', "}")
+    body = ('{"nested":' + start * depth + "0" + end * depth + "}").encode(encoding)
     with client(lambda request: upstream(body)) as browser:
         response = browser.get("/api/auth/config")
-    assert response.status_code == 502
+    assert response.status_code == status
+    if status == 200:
+        assert response.json()["transport_limits"] == gateway.TRANSPORT_LIMITS
+
+
+def test_login_configuration_depth_does_not_count_brackets_inside_strings():
+    original = {"mode": "supabase", "nested": {"description": '[{\\"}]' * 1500}}
+    with client(lambda request: upstream(json.dumps(original).encode())) as browser:
+        response = browser.get("/api/auth/config")
+    assert response.status_code == 200
+    assert response.json() == {**original, "transport_limits": gateway.TRANSPORT_LIMITS}
 
 
 def test_request_reading_shares_whole_exchange_deadline_and_is_not_forwarded():

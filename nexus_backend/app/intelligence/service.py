@@ -560,7 +560,7 @@ class IntelligenceService:
             ),
         )
 
-    def _latest(self, conn, event):
+    def _latest(self, conn, event, *, excluded=None):
         rows = conn.execute(
             "SELECT r.* FROM ai_runs r WHERE r.event_id=? AND r.kind='ocr' AND NOT EXISTS(SELECT 1 FROM ai_runs newer WHERE newer.event_id=r.event_id AND newer.kind='ocr' AND newer.attachment_id=r.attachment_id AND (newer.created_at>r.created_at OR (newer.created_at=r.created_at AND newer.id>r.id))) ORDER BY r.attachment_id",
             (event["id"],),
@@ -568,20 +568,26 @@ class IntelligenceService:
         latest = {}
         from .current_evidence import superseded_ids
 
-        excluded = superseded_ids(self.db, conn, event)
+        if excluded is None:
+            excluded = superseded_ids(self.db, conn, event)
         for row in rows:
             if row["attachment_id"] not in excluded:
                 latest.setdefault(row["attachment_id"], row)
         return latest
 
-    def _bank_data(self, conn, actor, event):
-        mapping = self._mapping(conn, event)
-        if not mapping:
-            return [], []
-        try:
-            self.access.book(conn, actor, mapping["book_id"])
-        except AccountingError:
-            return [], []
+    def _bank_data(self, conn, actor, event, *, book_context=None):
+        if book_context is None:
+            mapping = self._mapping(conn, event)
+            if not mapping:
+                return [], []
+            try:
+                book = self.access.book(conn, actor, mapping["book_id"])
+            except AccountingError:
+                return [], []
+        else:
+            mapping, book = book_context
+            if not mapping or not book:
+                return [], []
         payload = json.loads(event["payload"])
         select = "SELECT s.*,d.status AS draft_status,l.event_id AS linked_event_id FROM sources s LEFT JOIN drafts d ON d.source_id=s.id AND d.book_id=s.book_id LEFT JOIN ai_bank_links l ON l.bank_source_id=s.id AND l.book_id=s.book_id WHERE s.book_id=? AND s.source_kind='bank'"
         links = [
@@ -615,14 +621,74 @@ class IntelligenceService:
                 candidates.append(dict(source))
         return candidates[:30], links
 
-    def _assessment(self, conn, actor, event, persist=False):
-        latest = self._latest(conn, event)
-        from .current_evidence import current_attachments
+    def _duplicate_invoice_runs(self, conn, actor, event, keys):
+        """Read latest results together, authorize only actual invoice matches.
 
-        attachments = current_attachments(
-            self.db, conn, event, self.business._attachments(conn, event["id"])
-        )
-        documents, issues, references = [], [], []
+        No identity or evidence is cached across calls. PostgreSQL RLS filters
+        this query as well; the domain visibility check remains necessary for
+        SQLite and for matching direct-submission/ledger access precisely.
+        """
+        if not keys:
+            return []
+        rows = conn.execute(
+            "SELECT r.* FROM ai_runs r JOIN business_events e ON e.id=r.event_id "
+            "WHERE e.firm_id=? AND e.company_id=? AND e.id<>? AND r.kind='ocr' "
+            "AND r.status='succeeded' AND NOT EXISTS(SELECT 1 FROM ai_runs newer "
+            "WHERE newer.event_id=r.event_id AND newer.kind='ocr' "
+            "AND newer.attachment_id=r.attachment_id AND (newer.created_at>r.created_at "
+            "OR (newer.created_at=r.created_at AND newer.id>r.id)))",
+            (actor.firm_id, event["company_id"], event["id"]),
+        ).fetchall()
+        from .current_evidence import superseded_ids
+
+        visibility, matches = {}, []
+        for run in rows:
+            if not keys.intersection(
+                invoice_key(document) for document in json.loads(run["result_json"])["documents"]
+            ):
+                continue
+            event_id = run["event_id"]
+            if event_id not in visibility:
+                other = conn.execute(
+                    "SELECT * FROM business_events WHERE id=? AND firm_id=? AND company_id=?",
+                    (event_id, actor.firm_id, event["company_id"]),
+                ).fetchone()
+                visibility[event_id] = (
+                    superseded_ids(self.db, conn, other)
+                    if other is not None and self.business._visible(conn, actor, other)
+                    else None
+                )
+            excluded = visibility[event_id]
+            if excluded is not None and run["attachment_id"] not in excluded:
+                matches.append(run["id"])
+        return matches
+
+    def _assessment(self, conn, actor, event, persist=False, *, latest=None, attachments=None):
+        # Optional evidence is reused only within an already-authorized caller's
+        # current transaction. Persisting callers always collect fresh evidence.
+        from .current_evidence import superseded_ids
+
+        if persist or latest is None or attachments is None:
+            excluded = superseded_ids(self.db, conn, event)
+            if persist or latest is None:
+                latest = self._latest(conn, event, excluded=excluded)
+            if persist or attachments is None:
+                attachments = [
+                    item
+                    for item in self.business._attachments(conn, event["id"])
+                    if item["id"] not in excluded
+                ]
+        documents, issues, references, document_evidence = [], [], [], []
+        successful_ids = [run["id"] for run in latest.values() if run["status"] == "succeeded"]
+        extraction_findings_by_run = {}
+        if successful_ids:
+            marks = ",".join("?" for _ in successful_ids)
+            for row in conn.execute(
+                "SELECT run_id,code,severity,payload_json FROM ai_findings WHERE event_id=? "
+                "AND run_id IN (" + marks + ")",
+                [event["id"], *successful_ids],
+            ):
+                extraction_findings_by_run.setdefault(row["run_id"], []).append(row)
         queued = conn.execute(
             "SELECT id,attachment_id,status,attempt_count FROM ocr_jobs WHERE event_id=? AND status IN ('queued','running','retry_wait','interrupted') ORDER BY id",
             (event["id"],),
@@ -660,10 +726,10 @@ class IntelligenceService:
                 continue
             result = json.loads(run["result_json"])
             documents.extend(result["documents"])
-            references.append({"attachment_id": attachment["id"], "extraction_id": run["id"]})
-            for row in conn.execute(
-                "SELECT code,severity,payload_json FROM ai_findings WHERE run_id=?", (run["id"],)
-            ):
+            reference = {"attachment_id": attachment["id"], "extraction_id": run["id"]}
+            references.append(reference)
+            document_evidence.extend({**document, **reference} for document in result["documents"])
+            for row in extraction_findings_by_run.get(run["id"], []):
                 issues.append(
                     {
                         "code": row["code"],
@@ -678,16 +744,16 @@ class IntelligenceService:
         case_revision = self.ledger._case_guard().evidence_revision_in_transaction(
             conn, actor, event_id=event["id"]
         )
-        mapping_for_cases = self._mapping(conn, event)
-        if mapping_for_cases:
+        mapping, book, current_source = self._mapping(conn, event), None, None
+        if mapping:
             try:
-                self.access.book(conn, actor, mapping_for_cases["book_id"])
-                case_source = conn.execute(
+                book = self.access.book(conn, actor, mapping["book_id"])
+                current_source = conn.execute(
                     "SELECT * FROM sources WHERE id=? AND book_id=?",
-                    (mapping_for_cases["source_id"], mapping_for_cases["book_id"]),
+                    (mapping["source_id"], mapping["book_id"]),
                 ).fetchone()
                 if self.ledger._case_guard().blocking_issues_in_transaction(
-                    conn, actor, case_source
+                    conn, actor, current_source
                 ):
                     issues.append(
                         finding(
@@ -703,33 +769,17 @@ class IntelligenceService:
             "SELECT tax_id FROM companies WHERE id=?", (event["company_id"],)
         ).fetchone()
         issues.extend(reconcile_checks(payload, documents, company["tax_id"] if company else ""))
-        duplicate_context = []
         keys = {invoice_key(document) for document in documents if invoice_key(document)}
-        if keys:
-            for other in conn.execute(
-                "SELECT * FROM business_events WHERE firm_id=? AND company_id=? AND id<>?",
-                (actor.firm_id, event["company_id"], event["id"]),
-            ):
-                if not self.business._visible(conn, actor, other):
-                    continue
-                for other_run in self._latest(conn, other).values():
-                    if other_run["status"] == "succeeded":
-                        overlapping = keys & {
-                            invoice_key(document)
-                            for document in json.loads(other_run["result_json"])["documents"]
-                            if invoice_key(document)
-                        }
-                        if overlapping:
-                            duplicate_context.append(other_run["id"])
-            if duplicate_context:
-                issues.append(
-                    finding(
-                        "duplicate_invoice_other_event",
-                        "在当前授权范围内发现其他事项使用相同销售方及发票号码，请核对是否重复报销或记账",
-                        match_count=len(duplicate_context),
-                    )
+        duplicate_context = self._duplicate_invoice_runs(conn, actor, event, keys)
+        if duplicate_context:
+            issues.append(
+                finding(
+                    "duplicate_invoice_other_event",
+                    "在当前授权范围内发现其他事项使用相同销售方及发票号码，请核对是否重复报销或记账",
+                    match_count=len(duplicate_context),
                 )
-        candidates, links = self._bank_data(conn, actor, event)
+            )
+        candidates, links = self._bank_data(conn, actor, event, book_context=(mapping, book))
         linked_blocks = []
         for bank in links:
             if self.ledger._case_guard().blocking_issues_in_transaction(conn, actor, bank):
@@ -789,14 +839,8 @@ class IntelligenceService:
                 "supplements": supplemental,
             }
         )
-        mapping = self._mapping(conn, event)
-        if mapping:
+        if mapping and book:
             try:
-                self.access.book(conn, actor, mapping["book_id"])
-                current_source = conn.execute(
-                    "SELECT * FROM sources WHERE id=? AND book_id=?",
-                    (mapping["source_id"], mapping["book_id"]),
-                ).fetchone()
                 if current_source and self.ledger._source_state_issues(conn, current_source):
                     issues.append(
                         finding(
@@ -836,24 +880,7 @@ class IntelligenceService:
                 self._record_finding(
                     conn, event, None, issue, fingerprint({"context": digest, "issue": issue})
                 )
-        active = []
-        for issue in issues:
-            key = fingerprint({"context": digest, "issue": issue})
-            row = conn.execute(
-                "SELECT * FROM ai_findings WHERE event_id=? AND code=? AND fingerprint=?",
-                (event["id"], issue["code"], key),
-            ).fetchone()
-            active.append(
-                self._finding_json(conn, row)
-                if row
-                else {
-                    "id": None,
-                    "event_id": event["id"],
-                    **issue,
-                    "resolved": False,
-                    "resolution_reason": None,
-                }
-            )
+        active = self._active_findings(conn, event, issues, digest)
         if persist:
             from ..operations.service import record_exception_snapshot
 
@@ -861,11 +888,52 @@ class IntelligenceService:
         return {
             "findings": active,
             "documents": documents,
+            "document_evidence": document_evidence,
+            "supplements": supplemental,
             "references": references,
             "bank_candidates": candidates,
             "links": links,
             "fingerprint": digest,
         }
+
+    @staticmethod
+    def _active_findings(conn, event, issues, digest):
+        """Resolve all current finding IDs and latest reviews in one round trip."""
+        if not issues:
+            return []
+        keyed = [(issue, fingerprint({"context": digest, "issue": issue})) for issue in issues]
+        marks = ",".join("?" for _ in keyed)
+        saved = {
+            (row["code"], row["fingerprint"]): row
+            for row in conn.execute(
+                "SELECT f.*,r.reason AS latest_review_reason FROM ai_findings f "
+                "LEFT JOIN ai_finding_reviews r ON r.id=(SELECT latest.id FROM ai_finding_reviews latest "
+                "WHERE latest.finding_id=f.id ORDER BY latest.created_at DESC,latest.id DESC LIMIT 1) "
+                "WHERE f.event_id=? AND f.fingerprint IN (" + marks + ")",
+                [event["id"], *(key for _, key in keyed)],
+            )
+        }
+        active = []
+        for issue, key in keyed:
+            row = saved.get((issue["code"], key))
+            if row is None:
+                active.append(
+                    {
+                        "id": None,
+                        "event_id": event["id"],
+                        **issue,
+                        "resolved": False,
+                        "resolution_reason": None,
+                    }
+                )
+                continue
+            value = dict(row)
+            reason = value.pop("latest_review_reason")
+            value["payload"] = json.loads(value.pop("payload_json"))
+            value.pop("fingerprint")
+            value.update(resolved=reason is not None, resolution_reason=reason)
+            active.append(value)
+        return active
 
     @staticmethod
     def _finding_json(conn, row):
@@ -1048,14 +1116,7 @@ class IntelligenceService:
             )
         ]
         assessment = self._assessment(conn, actor, event)
-        documents = []
-        for ref in assessment["references"]:
-            run = conn.execute(
-                "SELECT result_json FROM ai_runs WHERE id=?", (ref["extraction_id"],)
-            ).fetchone()
-            documents.extend(
-                {**document, **ref} for document in json.loads(run["result_json"])["documents"]
-            )
+        documents = assessment["document_evidence"]
         master_context = self.ledger._ledger_guard().context_in_transaction(
             conn, actor, event["company_id"], json.loads(event["payload"]), book_id
         )
@@ -1094,9 +1155,7 @@ class IntelligenceService:
             "accounts": accounts,
             "documents": documents,
             "master_data": master_context,
-            "supplements": self.ledger._case_guard().accepted_context_in_transaction(
-                conn, actor, event["id"]
-            ),
+            "supplements": assessment["supplements"],
             "templates": [
                 {
                     "id": item["id"],

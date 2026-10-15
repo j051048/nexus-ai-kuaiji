@@ -17,10 +17,10 @@ class AssistantMonitor:
     def _transaction(self):
         conn = self.db.connect()
         try:
-            conn.execute("BEGIN" if self.db.is_postgres else "BEGIN IMMEDIATE")
             if self.db.is_postgres:
-                conn.execute("SET LOCAL ROLE accounting_worker")
-                conn.execute("SET LOCAL search_path TO accounting,pg_catalog")
+                conn.begin(write=True, role="accounting_worker")
+            else:
+                conn.execute("BEGIN IMMEDIATE")
             yield conn
             conn.commit()
         except Exception:
