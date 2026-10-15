@@ -13,6 +13,10 @@ from app.business.storage import MAX_REQUEST_BYTES
 def client(tmp_path):
     app = create_app(tmp_path / "workflow.db", seed=True, attachment_root=tmp_path / "private")
     with TestClient(app, base_url="http://127.0.0.1", client=("127.0.0.1", 5678)) as client:
+        # Isolate deterministic approvals without OCR. AI-specific fixtures
+        # explicitly enable processing when exercising recognition/model guards.
+        with app.state.service.db.transaction(write=True) as conn:
+            conn.execute("UPDATE ai_company_settings SET enabled=0")
         yield client
 
 

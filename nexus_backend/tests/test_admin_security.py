@@ -24,6 +24,10 @@ from app.auth.admin_security import allow_firm_signup, requires_admin_mfa
     ("POST", "/api/books/book/ledger/managers"),
     ("POST", "/api/books/book/legacy-migrations/project/access"),
     ("DELETE", "/api/books/book/legacy-migrations/project/access/user"),
+    ("PATCH", "/api/admin/companies/company/ai-control"),
+    ("PUT", "/api/admin/companies/company/ai-control/policy"),
+    ("PUT", "/api/companies/company/intelligence/settings"),
+    ("PUT", "/api/operations/companies/company/policy/"),
 ])
 def test_both_management_entrypoints_require_assurance(method, path):
     assert requires_admin_mfa(path, method)
@@ -37,6 +41,10 @@ def test_both_management_entrypoints_require_assurance(method, path):
     ("POST", "/api/books/book/drafts/draft/approve"),
     ("POST", "/api/books/book/exports"),
     ("OPTIONS", "/api/admin/account-requests"),
+    ("GET", "/api/companies/company/intelligence/settings"),
+    ("GET", "/api/operations/companies/company/overview"),
+    ("POST", "/api/business/events/event/ocr"),
+    ("POST", "/api/assistant/conversations/conversation/turns"),
 ])
 def test_recipient_and_normal_accounting_flows_keep_existing_authorization(method, path):
     assert not requires_admin_mfa(path, method)

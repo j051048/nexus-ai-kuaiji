@@ -7,10 +7,12 @@ from app.accounting.models import ApprovalRequest, ExportRequest, ImportRequest
 from app.accounting.domain import AccountingError
 from app.accounting.seed import LOCAL_ACTOR
 from app.reconciliation.service import ReconciliationService
+from app.intelligence.service import IntelligenceService
 from test_accounting import service, book, row
 from test_business import business, approved, handoff
 from test_stage9_bank_imports import statement
 from test_stage9_reconciliation import selection, command
+from test_intelligence_workflow import FakeProvider
 
 
 def by_external(service, actor, book_id, external):
@@ -76,6 +78,10 @@ def test_new_known_different_accounts_are_not_suspected_duplicates(service, book
 
 def test_linked_legacy_then_new_identity_blocks_business_until_distinguished(business):
     c = business
+    # This scenario verifies manual bank/source review without model inference.
+    IntelligenceService(c.db, storage=None, provider=FakeProvider()).company_settings(
+        c.manager, c.company["id"], enabled=False
+    )
     event = handoff(c, approved(c, template="procurement_expense", payment_status="paid"))
     facts = {"date": "2026-10-03", "counterparty": "耗材商店", "description": "办公用品采购", "amount": "0.30"}
     c.ledger.import_sources(c.manager, c.book["id"], ImportRequest(source_name="旧导入", rows=[row(external_id="legacy-linked", **facts)]))

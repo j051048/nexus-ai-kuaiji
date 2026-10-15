@@ -46,7 +46,7 @@ def test_http_admin_permissions_lifecycle_and_export_boundary(client):
     assert status.status_code == 200, status.text
     assert client.get(path, headers=owner).json()["books"][0]["id"] == book
     assert client.get(f"/api/books/{book}", headers=owner).status_code == 404
-    assert client.get("/api/admin/audit?company_id=" + company, headers=owner).json()["total"] == 4
+    assert client.get("/api/admin/audit?company_id=" + company, headers=owner).json()["total"] == 5
     assert (
         client.post(
             path + "/status",

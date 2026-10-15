@@ -12,6 +12,11 @@ from test_stage9_reconciliation import banks
 
 
 def setup(c, amount="0.30", bank_amounts=("0.30",)):
+    # Isolate deterministic settlement arithmetic and learning scope with the
+    # legacy manual-evidence workflow; OCR gates are tested independently.
+    with c.db.transaction(write=True, actor=c.manager) as conn:
+        conn.execute("UPDATE ai_company_settings SET enabled=0 WHERE firm_id=? AND company_id=?",
+                     (c.manager.firm_id, c.company["id"]))
     original = handoff(c, approved(c, template="procurement_expense", amount=amount))
     master = LedgersService(c.db)
     party = master.create_entity(c.manager,c.book["id"],EntityCreate(kind="counterparty",code="SUPPLIER-001",name="耗材商店"))

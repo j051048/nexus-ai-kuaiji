@@ -34,6 +34,9 @@ def guard_case(request):
                                reviewer=raw.actors["accountant"], ledger=raw.ledger, company=raw.company["id"], book=raw.book["id"])
         case.business = raw.service
     case.ai = IntelligenceService(case.db, None, provider=OpenAICompatibleProvider(AISettings()))
+    # This suite compares an explicitly paused legacy ledger against enabling
+    # its OCR guard. Product defaults are independently covered as enabled.
+    case.ai.company_settings(case.owner, case.company, enabled=False)
     return case
 
 
@@ -110,7 +113,7 @@ def link_bank(case, event, bank):
                      (bank["source_id"], case.reviewer.firm_id, case.company, event["id"], case.book, case.reviewer.user_id, now()))
 
 
-def test_ledger_company_policy_defaults_off_and_preserves_existing_review_export(guard_case):
+def test_ledger_explicit_pause_preserves_existing_review_export(guard_case):
     case = guard_case
     _, draft_id, _ = business_draft(case)
     assert draft_value(case, draft_id)["issues"] == []

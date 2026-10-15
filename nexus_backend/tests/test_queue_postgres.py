@@ -35,8 +35,8 @@ def worker(case):
 def queue_case(business_case):
     case = business_case
     with case.psycopg.connect(ADMIN_URL) as conn:
-        conn.execute("INSERT INTO accounting.ai_company_settings VALUES(%s,%s,1,%s,%s)", (case.owner.firm_id, case.company, case.owner.user_id, now()))
-        conn.execute("INSERT INTO accounting.ai_company_settings VALUES(%s,%s,1,%s,%s)", (case.owner.firm_id, case.other_company, case.owner.user_id, now()))
+        conn.execute("INSERT INTO accounting.ai_company_settings VALUES(%s,%s,1,%s,%s) ON CONFLICT(firm_id,company_id) DO UPDATE SET enabled=1,updated_by=excluded.updated_by,updated_at=excluded.updated_at", (case.owner.firm_id, case.company, case.owner.user_id, now()))
+        conn.execute("INSERT INTO accounting.ai_company_settings VALUES(%s,%s,1,%s,%s) ON CONFLICT(firm_id,company_id) DO UPDATE SET enabled=1,updated_by=excluded.updated_by,updated_at=excluded.updated_at", (case.owner.firm_id, case.other_company, case.owner.user_id, now()))
     yield case
     # Preserve immutable test history, but leave no dispatchable test tasks.
     with case.psycopg.connect(ADMIN_URL) as conn:

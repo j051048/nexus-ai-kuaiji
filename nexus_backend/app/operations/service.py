@@ -181,7 +181,7 @@ class OperationsService:
         ).fetchone()
         return dict(row) if row else dict(DEFAULT_POLICY)
 
-    def policy(self, actor, company_id, request=None):
+    def policy(self, actor, company_id, request=None, *, reason=None):
         with self.db.transaction(
             write=request is not None, actor=actor, company_id=company_id
         ) as conn:
@@ -243,8 +243,25 @@ class OperationsService:
                     "ocr_reserve": request.ocr_reserve,
                     "proposal_reserve": request.proposal_reserve,
                     "chat_reserve": cents_to_money(raw["chat_reserve_micro"] // 10_000),
+                    **({"reason": reason} if reason is not None else {}),
                 },
             )
+            if reason is not None:
+                from ..accounting.directory import DirectoryService
+
+                DirectoryService._audit(
+                    conn,
+                    actor,
+                    "admin.ai.policy",
+                    company_id,
+                    {
+                        "company_id": company_id,
+                        "reason": reason,
+                        "version": raw["version"],
+                        "quota_enabled": bool(raw["quota_enabled"]),
+                        "monthly_limit": request.monthly_limit,
+                    },
+                )
             self._refresh_alerts(conn, actor.firm_id, company_id)
             return self._policy_json(raw, manager)
 

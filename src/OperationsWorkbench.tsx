@@ -1,6 +1,7 @@
 import { OperationsPerformance } from './OperationsPerformance';
 import { operatingKindLabel } from './operations-helpers';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Activity,
   CheckCircle2,
@@ -424,6 +425,13 @@ export function OperationsWorkbench({
         overview && (
           <>
             <OperationsBudgetSummary overview={overview} />
+            {canManage && (
+              <p className="field-help">
+                发现用量异常时，可在
+                <Link to={`/admin/organizations/${encoded(companyId)}?tab=ai`}>企业 AI 管理</Link>
+                中暂停处理或设置费用上限；管理操作需完成二次验证。
+              </p>
+            )}
             {canManage && (
               <OperationsPerformance
                 key={`${session.scope_key}:${companyId}`}

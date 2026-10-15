@@ -337,4 +337,4 @@ def test_admin_http_contract_rejects_unknown_fields_invalid_status_and_stale_ver
             ).status_code
             == 409
         )
-        assert client.get("/api/admin/audit?company_id=" + case.company["id"]).json()["total"] == 2
+        assert client.get("/api/admin/audit?company_id=" + case.company["id"]).json()["total"] == 3

@@ -21,6 +21,11 @@ def setup_direct(case):
 
 def test_direct_submit_without_department_receive_review_export_and_idempotence(business):
     case = business
+    # This scenario verifies the manual direct-submission approval boundary;
+    # current OCR evidence guards are covered by the enabled-AI suites.
+    with case.db.transaction(write=True, actor=case.manager) as conn:
+        conn.execute('UPDATE ai_company_settings SET enabled=0 WHERE firm_id=? AND company_id=?',
+                     (case.manager.firm_id, case.company['id']))
     boss = setup_direct(case)
     row = case.service.create(boss, BusinessEventCreate(company_id=case.company['id'], template_id='reimbursement', payload=payload()))
     assert row['submission_mode']=='direct' and row['department_id'] is None

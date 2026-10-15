@@ -69,11 +69,11 @@ def test_config_only_exposes_public_ready_information(client):
     assert response.headers["cache-control"] == "no-store"
 
 
-def test_company_opt_in_and_employee_cannot_reconfigure(client):
+def test_company_default_on_and_employee_cannot_reconfigure(client):
     employee, event = uploaded_event(client)
     path = f"/api/companies/{event['company_id']}/intelligence/settings"
     before = client.get(path, headers=employee)
-    assert before.status_code == 200 and before.json() == {"enabled": False, "can_manage": False}
+    assert before.status_code == 200 and before.json() == {"enabled": True, "can_manage": False}
     assert client.put(path, headers=employee, json={"enabled": True}).status_code == 403
     owner = auth(client, "accountant")
     assert client.put(path, headers=owner, json={"enabled": True}).json() == {"enabled": True, "can_manage": True}
@@ -86,9 +86,10 @@ def test_scoped_ocr_and_idempotent_model_request_keeps_source_private(client):
     employee, event = uploaded_event(client)
     path = f"/api/business/events/{event['id']}"
     body = {"attachment_id": event["attachments"][0]["id"], "expected_version": event["version"], "idempotency_key": "http-ocr-one"}
-    assert client.post(path + "/ocr", headers=employee, json=body).status_code == 403
     owner = auth(client, "accountant")
     settings = f"/api/companies/{event['company_id']}/intelligence/settings"
+    assert client.put(settings, headers=owner, json={"enabled": False}).status_code == 200
+    assert client.post(path + "/ocr", headers=employee, json=body).status_code == 403
     assert client.put(settings, headers=owner, json={"enabled": True}).status_code == 200
     response = client.post(path + "/ocr", headers=employee, json=body)
     assert response.status_code == 200, response.text

@@ -243,6 +243,9 @@ class DirectoryService:
                 "INSERT INTO firm_clients(firm_id,company_id,status) VALUES(?,?,'active')",
                 (actor.firm_id, company_id),
             )
+            from .ai_defaults import ensure_company_ai_default
+
+            ensure_company_ai_default(conn, actor, company_id)
             self._audit(
                 conn,
                 actor,

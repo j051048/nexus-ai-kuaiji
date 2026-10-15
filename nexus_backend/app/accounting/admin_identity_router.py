@@ -31,8 +31,11 @@ def build_admin_identity_router(actor_dependency, identity_dependency):
 
     @router.post("/{request_id}/retry")
     def retry(
-        request_id: str, response: Response, payload: AccountRequestRetry | None = None,
-        current=Depends(actor_dependency), svc=Depends(service)
+        request_id: str,
+        response: Response,
+        payload: AccountRequestRetry | None = None,
+        current=Depends(actor_dependency),
+        svc=Depends(service),
     ):
         response.headers["Cache-Control"] = "no-store"
         return svc.retry(current, request_id, payload.initial_password if payload else None)

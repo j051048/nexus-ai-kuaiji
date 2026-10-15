@@ -74,7 +74,7 @@ class AssistantService:
         info["model_available"] = info["supplier_configured"] and info["company_enabled"]
         if info["supplier_configured"] and not info["company_enabled"]:
             info["notice"] = (
-                "当前企业尚未开启模型处理，请由企业或事务所管理员启用；不会向模型发送资料。"
+                "管理员已暂停该企业AI处理；不会向模型发送资料。请联系企业或事务所管理员核对用量后恢复。"
             )
         return info
 

@@ -192,6 +192,25 @@ export function GlobalAccountingAssistant({
       options?.model_available ??
       false)
     : (options?.model_available ?? false);
+  const companyAIEnabled =
+    current?.company_enabled ?? current?.context.company_enabled ?? options?.company_enabled;
+  const supplierConfigured =
+    current?.supplier_configured ??
+    current?.context.supplier_configured ??
+    options?.supplier_configured;
+  const modelUnavailableNotice =
+    companyAIEnabled === false
+      ? '该企业AI已由管理员暂停，请联系管理员恢复。历史会话和人工复核流程继续可用。'
+      : current?.notice ||
+        current?.context.notice ||
+        options?.notice ||
+        '会计对话服务尚未配置，请联系系统管理员。';
+  const modelUnavailablePlaceholder =
+    companyAIEnabled === false
+      ? '该企业AI已暂停，请联系管理员恢复'
+      : supplierConfigured === false
+        ? '会计对话服务尚未配置，请联系系统管理员'
+        : modelUnavailableNotice;
   const companyName =
     current?.context.company_name ||
     options?.company_name ||
@@ -1142,8 +1161,7 @@ export function GlobalAccountingAssistant({
             {options && !modelAvailable && (
               <p className="ga-config-note">
                 <TriangleAlert size={15} />
-                {options.notice ||
-                  '对话模型尚未配置。可以保存资料范围并查看历史，配置后再开始模型问答。'}
+                {modelUnavailableNotice}
               </p>
             )}
             <button
@@ -1514,10 +1532,7 @@ export function GlobalAccountingAssistant({
                   {!modelAvailable && (
                     <p className="ga-config-note">
                       <TriangleAlert size={14} />
-                      {current.notice ||
-                        current.context.notice ||
-                        options?.notice ||
-                        '会计对话模型尚未配置，暂不能发送模型问答。'}
+                      {modelUnavailableNotice}
                     </p>
                   )}
                   <form
@@ -1539,7 +1554,7 @@ export function GlobalAccountingAssistant({
                       placeholder={
                         modelAvailable
                           ? '核对资料、解释依据，或让助手准备任务…'
-                          : '配置对话模型后可开始提问'
+                          : modelUnavailablePlaceholder
                       }
                       onChange={(event) => setQuestion(event.target.value)}
                       onKeyDown={(event) => {

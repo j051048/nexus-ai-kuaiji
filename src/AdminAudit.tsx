@@ -23,6 +23,9 @@ const auditLabels: Record<string, string> = {
   'admin.account.failed': '账号开通失败',
   'admin.account.cancel': '撤销账号邀请',
   'admin.account.accept': '成员接受授权',
+  'admin.ai.configure': '企业AI暂停与恢复',
+  'admin.ai.policy': '调整AI费用限额与提醒',
+  'admin.ai.default_enabled': '企业AI默认开启',
 };
 
 export function AdminAudit({ session, companyId }: { session: Session; companyId?: string }) {

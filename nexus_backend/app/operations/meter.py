@@ -230,6 +230,7 @@ class MeterContext:
         local_rejections = {
             "busy",
             "authorization_changed_before_send",
+            "processing_paused_before_send",
             "unavailable",
             "document_invalid",
             "document_too_large",

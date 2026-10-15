@@ -1,10 +1,12 @@
 """Administrative metadata access never opens suspended companies' ledgers."""
 
 import json
+from urllib.parse import urlsplit
 
 from .access import AccessControl, FIRM_MANAGERS
 from .directory import DirectoryService
 from .domain import AccountingError
+from .service import now
 
 
 class AdminService:
@@ -164,6 +166,149 @@ class AdminService:
                 "pending_counts": pending,
             }
 
+    @staticmethod
+    def _ai_control_metadata(company, settings, intelligence, chat, *, active):
+        from ..intelligence.provider import effective_settings
+
+        stored = dict(settings) if settings else {}
+        provider = getattr(intelligence.provider, "settings", None)
+        ocr_ready = bool(getattr(provider, "extraction_available", False))
+        journal_ready = bool(getattr(provider, "suggestion_available", False))
+        chat_ready = bool(getattr(chat, "available", False))
+        labels = []
+        for scenario, available, source in (
+            ("ocr", ocr_ready, provider),
+            ("journal", journal_ready, provider),
+            ("chat", chat_ready, getattr(chat, "settings", None)),
+        ):
+            if not available:
+                continue
+            try:
+                label = urlsplit(effective_settings(source, scenario).base_url).hostname
+            except (AttributeError, TypeError, ValueError):
+                label = None
+            if label and label not in labels:
+                labels.append(label)
+        return {
+            "company": {key: company[key] for key in ("id", "name", "status", "version")},
+            "active": active,
+            "ai": {
+                "enabled": bool(stored.get("enabled", False)),
+                "updated_at": stored.get("updated_at"),
+                "can_manage": active,
+                "provider_label": " / ".join(labels)
+                or (
+                    "已配置模型服务"
+                    if ocr_ready or journal_ready or chat_ready
+                    else "尚未配置模型服务"
+                ),
+                "ocr_ready": ocr_ready,
+                "journal_ready": journal_ready,
+                "chat_ready": chat_ready,
+                "configured": ocr_ready or journal_ready or chat_ready,
+            },
+        }
+
+    def ai_control(self, actor, company_id, intelligence, operations, chat=None, *, period=None):
+        # Suspended company access is metadata-only for firm managers. It must
+        # never reopen operations, private evidence, costs or ledger queries.
+        with self.db.transaction(actor=actor) as conn:
+            company = self.require_admin_company(conn, actor, company_id)
+            link = conn.execute(
+                "SELECT status FROM firm_clients WHERE firm_id=? AND company_id=?",
+                (actor.firm_id, company_id),
+            ).fetchone()
+            active = company["status"] == "active" and link["status"] == "active"
+            if active:
+                self.access.company(conn, actor, company_id, manage=True)
+            settings = conn.execute(
+                "SELECT enabled,updated_at FROM ai_company_settings WHERE firm_id=? AND company_id=?",
+                (actor.firm_id, company_id),
+            ).fetchone()
+            metadata = self._ai_control_metadata(
+                company, settings, intelligence, chat, active=active
+            )
+        if not active:
+            return {
+                **metadata,
+                "period": period,
+                "currency": "CNY",
+                "policy": None,
+                "usage": None,
+                "queue": None,
+                "exceptions": None,
+                "workers": None,
+                "assistant": None,
+                "alerts": [],
+                "costs": [],
+                "can_manage_budget": False,
+                "monitor": None,
+            }
+        overview = operations.overview(actor, company_id, period=period)
+        usage = dict(overview["usage"])
+        input_tokens, output_tokens = usage.get("input_tokens"), usage.get("output_tokens")
+        usage["total_tokens"] = (
+            input_tokens + output_tokens
+            if input_tokens is not None and output_tokens is not None
+            else None
+        )
+        return {**overview, **metadata, "usage": usage}
+
+    def update_ai_control(self, actor, company_id, request, intelligence, chat=None):
+        with self.db.transaction(write=True, actor=actor, company_id=company_id) as conn:
+            company = self.access.company(conn, actor, company_id, manage=True)
+            if company["version"] != request.expected_company_version:
+                raise AccountingError("企业资料或状态已改变，请刷新后重试", 409)
+            row = conn.execute(
+                "SELECT enabled,updated_at FROM ai_company_settings WHERE firm_id=? AND company_id=?",
+                (actor.firm_id, company_id),
+            ).fetchone()
+            enabled, updated_at = bool(row and row["enabled"]), row["updated_at"] if row else None
+            if request.expected_enabled != enabled or request.expected_updated_at != updated_at:
+                raise AccountingError("企业 AI 开关已更新，请刷新后重试", 409)
+            stamp = (
+                conn.execute(
+                    "SELECT to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS.US\"+00:00\"')"
+                ).fetchone()[0]
+                if self.db.is_postgres
+                else now()
+            )
+            conn.execute(
+                "INSERT INTO ai_company_settings(firm_id,company_id,enabled,updated_by,updated_at) "
+                "VALUES(?,?,?,?,?) ON CONFLICT(firm_id,company_id) DO UPDATE SET "
+                "enabled=excluded.enabled,updated_by=excluded.updated_by,updated_at=excluded.updated_at",
+                (actor.firm_id, company_id, int(request.enabled), actor.user_id, stamp),
+            )
+            DirectoryService._audit(
+                conn,
+                actor,
+                "admin.ai.configure",
+                company_id,
+                {
+                    "company_id": company_id,
+                    "before_enabled": enabled,
+                    "enabled": request.enabled,
+                    "reason": request.reason,
+                    "company_version": company["version"],
+                },
+            )
+            return self._ai_control_metadata(
+                company,
+                {"enabled": request.enabled, "updated_at": stamp},
+                intelligence,
+                chat,
+                active=True,
+            )
+
+    def update_ai_policy(self, actor, company_id, request, operations):
+        from ..operations.requests import PolicyRequest
+
+        with self.db.transaction(actor=actor) as conn:
+            self.access.company(conn, actor, company_id, manage=True)
+        # Reason is audit data, never a model_company_policies storage field.
+        policy = PolicyRequest.model_validate(request.model_dump(exclude={"reason"}))
+        return operations.policy(actor, company_id, policy, reason=request.reason)
+
     def _pending_counts(self, conn, actor, company_id):
         from ..business.submission import SubmissionPolicyService
         from ..cases.service import CaseService
@@ -263,6 +408,10 @@ class AdminService:
             if result.rowcount != 1:
                 raise AccountingError("企业状态已更新，请刷新后重试", 409)
             after = {**before, "status": request.status, "version": before["version"] + 1}
+            if request.status == "active":
+                from .ai_defaults import ensure_company_ai_default
+
+                ensure_company_ai_default(conn, actor, company_id, source="company_reactivated")
             DirectoryService._audit(
                 conn,
                 actor,

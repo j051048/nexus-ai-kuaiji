@@ -75,8 +75,9 @@ def test_read_only_views_do_not_create_findings(client):
     assert result.status_code == 200 and all(item["id"] for item in result.json()["findings"])
 
 
-def test_unenabled_company_keeps_previous_flow_and_no_supplier_cost(client):
+def test_explicitly_paused_company_keeps_previous_flow_and_no_supplier_cost(client):
     employee, event = uploaded_event(client)
+    assert client.put(f"/api/companies/{event['company_id']}/intelligence/settings", headers=auth(client, "accountant"), json={"enabled": False}).status_code == 200
     detail = client.get(f"/api/business/events/{event['id']}/intelligence", headers=employee).json()
     assert detail["enabled"] is False and detail["runs"] == [] and detail["findings"] == []
     result = client.post(f"/api/business/events/{event['id']}/ocr", headers=employee, json=body(event))

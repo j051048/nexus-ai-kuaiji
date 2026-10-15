@@ -80,8 +80,11 @@ class AdminIdentityService:
         # This is provisioning readiness, not scope authorization. A policy
         # change must never prevent viewing/cancelling an old failed request or
         # replaying an already completed request without restoring its grant.
-        if (target["provisioning_mode"] == "password" and target["company_role"] == "employee"
-                and not target["department_id"]):
+        if (
+            target["provisioning_mode"] == "password"
+            and target["company_role"] == "employee"
+            and not target["department_id"]
+        ):
             policy = conn.execute(
                 "SELECT mode FROM business_submission_policies WHERE firm_id=? AND company_id=?",
                 (actor.firm_id, target["company_id"]),
@@ -132,8 +135,11 @@ class AdminIdentityService:
 
     def create(self, actor, request):
         payload = request.model_dump(exclude={"idempotency_key", "initial_password"})
-        fingerprint_payload = {key: value for key, value in payload.items()
-                               if key != "provisioning_mode" or value != "activation"}
+        fingerprint_payload = {
+            key: value
+            for key, value in payload.items()
+            if key != "provisioning_mode" or value != "activation"
+        }
         fingerprint = hashlib.sha256(
             json.dumps(fingerprint_payload, sort_keys=True, ensure_ascii=False).encode()
         ).hexdigest()
@@ -205,7 +211,9 @@ class AdminIdentityService:
             self._validate_password_department(conn, actor, row)
             password_mode = row["provisioning_mode"] == "password"
             if password_mode and initial_password is None:
-                raise AccountingError("请重新输入初始密码后重试；此前已创建的账号仍沿用首次密码", 422)
+                raise AccountingError(
+                    "请重新输入初始密码后重试；此前已创建的账号仍沿用首次密码", 422
+                )
             if not password_mode and initial_password is not None:
                 raise AccountingError("激活邀请不能携带初始密码", 422)
             if row["lease_until"] > int(time.time()):
@@ -213,8 +221,14 @@ class AdminIdentityService:
             conn.execute(
                 "UPDATE admin_account_requests SET status='pending',attempts=attempts+1,error='',"
                 "token_digest=?,expires_at=?,lease_token=?,lease_until=?,updated_at=? WHERE id=?",
-                ("" if password_mode else digest, 0 if password_mode else int(time.time()) + 3600,
-                 lease, int(time.time()) + 180, now(), request_id),
+                (
+                    "" if password_mode else digest,
+                    0 if password_mode else int(time.time()) + 3600,
+                    lease,
+                    int(time.time()) + 180,
+                    now(),
+                    request_id,
+                ),
             )
             original = dict(row)
         try:
@@ -254,11 +268,16 @@ class AdminIdentityService:
         # Provider verified this new identity; a local profile alone carries no
         # company or ledger grant. Recheck both administrators after the remote
         # call, then publish the grant and terminal request in one transaction.
-        self.directory.register_identity(Identity(result["user_id"], original["email"], original["name"]))
+        self.directory.register_identity(
+            Identity(result["user_id"], original["email"], original["name"])
+        )
         with self.db.transaction(write=True, actor=actor) as conn:
             row = self._get(conn, actor, request_id)
-            if (row["lease_token"] != lease or row["status"] != "pending"
-                    or row["lease_until"] <= int(time.time())):
+            if (
+                row["lease_token"] != lease
+                or row["status"] != "pending"
+                or row["lease_until"] <= int(time.time())
+            ):
                 response = {"request": self._public(row)}
                 if row["status"] == "completed":
                     response["password_already_created"] = True
@@ -274,15 +293,24 @@ class AdminIdentityService:
                 (result["user_id"], result["user_id"], now(), request_id),
             )
             self.directory._audit(
-                conn, actor, "admin.account.password_created", request_id,
-                {"company_id": row["company_id"], "created_user_id": result["user_id"],
-                 "role": row["company_role"], "department_id": row["department_id"],
-                 "password_already_created": bool(result.get("password_already_created"))},
+                conn,
+                actor,
+                "admin.account.password_created",
+                request_id,
+                {
+                    "company_id": row["company_id"],
+                    "created_user_id": result["user_id"],
+                    "role": row["company_role"],
+                    "department_id": row["department_id"],
+                    "password_already_created": bool(result.get("password_already_created")),
+                },
             )
             return {
-                "request": self._public(conn.execute(
-                    "SELECT * FROM admin_account_requests WHERE id=?", (request_id,)
-                ).fetchone()),
+                "request": self._public(
+                    conn.execute(
+                        "SELECT * FROM admin_account_requests WHERE id=?", (request_id,)
+                    ).fetchone()
+                ),
                 "password_already_created": bool(result.get("password_already_created")),
             }
 

@@ -108,7 +108,7 @@ def test_ai_settings_management_does_not_open_employee_originals(business_case):
     run_id = ocr_run(case, event_id, attachment_id)
     finish(case, run_id)
     with case.db.transaction(write=True, actor=case.owner) as conn:
-        conn.execute("INSERT INTO ai_company_settings VALUES(?,?,1,?,?)", (case.owner.firm_id, case.company, case.owner.user_id, STAMP))
+        conn.execute("INSERT INTO ai_company_settings VALUES(?,?,1,?,?) ON CONFLICT(firm_id,company_id) DO UPDATE SET enabled=1,updated_by=excluded.updated_by,updated_at=excluded.updated_at", (case.owner.firm_id, case.company, case.owner.user_id, STAMP))
     for actor in (case.employee, case.approver, case.finance, case.owner, case.company_owner, case.viewer):
         with case.db.transaction(actor=actor) as conn:
             assert conn.execute("SELECT enabled FROM ai_company_settings WHERE company_id=?", (case.company,)).fetchone()[0] == 1

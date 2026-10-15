@@ -111,9 +111,7 @@ class WorkspaceService:
             if row["submission_mode"] == "direct"
             else bool(
                 row["role"]
-                and (
-                    row["department_id"] or row["role"] != "employee" and row["has_department"]
-                )
+                and (row["department_id"] or row["role"] != "employee" and row["has_department"])
             )
             for row in companies
         )
@@ -511,10 +509,7 @@ class WorkspaceService:
             "updated": "updated_at DESC,priority",
         }[sort]
         rows = conn.execute(
-            query
-            + ", filtered_tasks AS (SELECT *"
-            + base
-            + "), task_counts AS (SELECT "
+            query + ", filtered_tasks AS (SELECT *" + base + "), task_counts AS (SELECT "
             "COALESCE(SUM(CASE WHEN bucket='action' THEN 1 ELSE 0 END),0) AS _action_count,"
             "COALESCE(SUM(CASE WHEN bucket='waiting' THEN 1 ELSE 0 END),0) AS _waiting_count "
             "FROM tasks), matching_count AS (SELECT COUNT(*) AS _total FROM filtered_tasks),"
@@ -523,9 +518,7 @@ class WorkspaceService:
             + ",kind,ref LIMIT ? OFFSET ?) "
             "SELECT t.*,c.name AS company_name,n._total,k._action_count,k._waiting_count "
             "FROM matching_count n CROSS JOIN task_counts k LEFT JOIN task_page t ON 1=1 "
-            "LEFT JOIN companies c ON c.id=t.company_id ORDER BY "
-            + order
-            + ",kind,ref",
+            "LEFT JOIN companies c ON c.id=t.company_id ORDER BY " + order + ",kind,ref",
             [*params, *filters, limit, offset],
         ).fetchall()
         # A metadata row survives an empty page, including offset past the last

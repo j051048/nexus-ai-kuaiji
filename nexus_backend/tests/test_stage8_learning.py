@@ -164,6 +164,11 @@ def test_book_scope_blocks_employee_other_book_and_editor_publish(business):
 
 def test_business_review_sample_has_fact_snapshot_and_safe_candidate(business):
     c = business
+    # Isolate learning from an explicitly manual business review; OCR evidence
+    # validation has its own enabled-processing regression suites.
+    with c.db.transaction(write=True, actor=c.manager) as conn:
+        conn.execute("UPDATE ai_company_settings SET enabled=0 WHERE firm_id=? AND company_id=?",
+                     (c.manager.firm_id, c.company["id"]))
     learning = LearningService(c.db)
     c.ledger.learning = learning
     event = approved(c, template="procurement_expense", payment_status="paid")
@@ -182,6 +187,11 @@ def test_business_review_sample_has_fact_snapshot_and_safe_candidate(business):
 def test_tax_split_candidate_requires_known_evidence_amounts(business, recognized):
     """Explicit synthetic OCR fixture and human-approved amounts, no network."""
     c = business
+    # This historical fixture supplies only the amounts needed by learning,
+    # not a full OCR document. It intentionally uses the manual-review path.
+    with c.db.transaction(write=True, actor=c.manager) as conn:
+        conn.execute("UPDATE ai_company_settings SET enabled=0 WHERE firm_id=? AND company_id=?",
+                     (c.manager.firm_id, c.company["id"]))
     learning = LearningService(c.db)
     c.ledger.learning = learning
     CatalogService(c.db).create_account(c.manager, c.book["id"], AccountDefinition(code="2221.01", name="客户会计明确配置税额科目"))

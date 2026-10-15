@@ -10,10 +10,15 @@ test('后台企业创建、修订、暂停、恢复及归档保留历史，刷�
   page,
   request,
 }) => {
+  // The first local navigation includes Vite's cold CSS and lazy module transforms.
+  // This case verifies administration behavior; production timing has its own benchmark.
+  test.setTimeout(60_000);
   const name = `管理验证企业-${crypto.randomUUID().slice(0, 8)}`;
   const headers = await ownerHeaders(request);
   await page.goto('/admin');
-  await expect(page.getByRole('heading', { name: '企业管理', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '企业管理', exact: true })).toBeVisible({
+    timeout: 15_000,
+  });
   await page.getByRole('button', { name: '新建企业', exact: true }).click();
   let dialog = page.getByRole('dialog', { name: '新建企业', exact: true });
   await dialog.getByLabel('企业名称', { exact: true }).fill(name);
@@ -56,7 +61,10 @@ test('后台企业创建、修订、暂停、恢复及归档保留历史，刷�
   result = await (await request.get(`/api/admin/companies/${id}`, { headers })).json();
   expect(result.company.version).toBe(5);
   await page.getByRole('tab', { name: '操作记录', exact: true }).click();
-  await expect(page.locator('.admin-audit-event')).toHaveCount(5);
+  await expect(page.locator('.admin-audit-event')).toHaveCount(6);
+  await expect(
+    page.locator('.admin-audit-event').filter({ hasText: '企业AI默认开启' }),
+  ).toHaveCount(1);
   await page.getByRole('button', { name: '企业列表', exact: true }).click();
   await page.getByLabel('搜索企业', { exact: true }).fill(name);
   await page.getByRole('button', { name: '查询', exact: true }).click();

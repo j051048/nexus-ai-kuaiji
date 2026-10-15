@@ -162,6 +162,11 @@ def test_sql_sample_insert_rejects_manufactured_negative_snapshot(learned, field
 
 def test_sql_business_sample_facts_cannot_be_relabelled(business_case):
     case = business_case
+    # The truth-projection test uses manual synthetic business evidence; it
+    # does not exercise recognition or weaken the enabled OCR review guard.
+    with case.db.transaction(write=True, actor=case.owner) as conn:
+        conn.execute('UPDATE ai_company_settings SET enabled=0 WHERE firm_id=? AND company_id=?',
+                     (case.owner.firm_id, case.company))
     business, learning = BusinessService(case.db), LearningService(case.db)
     case.service.learning = learning
     event = business.create(case.employee, BusinessEventCreate(company_id=case.company, template_id='procurement_expense', payload={

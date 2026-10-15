@@ -659,9 +659,7 @@ def create_app(
     ):
         from .workspace.bootstrap import home_bootstrap
 
-        return home_bootstrap(
-            dirs, request.app.state.workspace, current, firm_id, settings.mode
-        )
+        return home_bootstrap(dirs, request.app.state.workspace, current, firm_id, settings.mode)
 
     @app.post("/api/firms", status_code=201)
     def create_firm(payload: FirmCreate, current=Depends(identity), dirs=Depends(directory)):

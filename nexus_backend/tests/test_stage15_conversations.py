@@ -66,7 +66,7 @@ def assistant_case(c, actor=None):
     service = AssistantService(c.db, c.ledger, c.service, provider=provider)
     actor = actor or c.actors["accountant"]
     with c.db.transaction(write=True, actor=c.manager) as conn:
-        conn.execute("INSERT INTO ai_company_settings(firm_id,company_id,enabled,updated_by,updated_at) VALUES(?,?,1,?,?)", (c.manager.firm_id, c.company["id"], c.manager.user_id, now()))
+        conn.execute("INSERT INTO ai_company_settings(firm_id,company_id,enabled,updated_by,updated_at) VALUES(?,?,1,?,?) ON CONFLICT(firm_id,company_id) DO UPDATE SET enabled=1,updated_by=excluded.updated_by,updated_at=excluded.updated_at", (c.manager.firm_id, c.company["id"], c.manager.user_id, now()))
     return SimpleNamespace(source=c, db=c.db, provider=provider, meter=meter, service=service, actor=actor, worker=AssistantWorker(service, provider, meter), company=c.company["id"], book=c.book["id"])
 
 
@@ -230,7 +230,7 @@ def test_model_unconfigured_and_company_opt_out_are_explicit(business):
     c.provider.available = True
     with c.db.transaction(write=True, actor=business.manager) as conn:
         conn.execute("UPDATE ai_company_settings SET enabled=0 WHERE firm_id=? AND company_id=?", (c.actor.firm_id, c.company))
-    with pytest.raises(AccountingError, match="尚未开启"):
+    with pytest.raises(AccountingError, match="管理员已暂停"):
         question(c, thread)
     assert c.provider.calls == 0
 

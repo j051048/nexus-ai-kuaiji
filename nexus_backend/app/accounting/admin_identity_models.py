@@ -14,7 +14,9 @@ class AccountRequestCreate(InputModel):
     department_id: StrictStr | None = Field(default=None, min_length=1, max_length=100)
     firm_role: Literal["admin", "operator", "reviewer", "viewer"] | None = None
     provisioning_mode: Literal["activation", "password"] = "activation"
-    initial_password: SecretStr | None = Field(default=None, min_length=12, max_length=128, repr=False)
+    initial_password: SecretStr | None = Field(
+        default=None, min_length=12, max_length=128, repr=False
+    )
 
     @field_validator("initial_password", mode="before")
     @classmethod
@@ -45,7 +47,9 @@ class AccountRequestCreate(InputModel):
 
 
 class AccountRequestRetry(InputModel):
-    initial_password: SecretStr | None = Field(default=None, min_length=12, max_length=128, repr=False)
+    initial_password: SecretStr | None = Field(
+        default=None, min_length=12, max_length=128, repr=False
+    )
 
     _password_is_string = field_validator("initial_password", mode="before")(
         AccountRequestCreate.password_is_string.__func__

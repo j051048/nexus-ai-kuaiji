@@ -131,6 +131,9 @@ class AccountingService:
                     "INSERT INTO firm_clients(firm_id,company_id,status) VALUES(?,?,'active')",
                     (actor.firm_id, company_id),
                 )
+                from .ai_defaults import ensure_company_ai_default
+
+                ensure_company_ai_default(conn, actor, company_id, source="legacy_book_create")
             book_id = uuid4().hex
             conn.execute(
                 "INSERT INTO books(id,firm_id,name,period,company_id) VALUES(?,?,?,?,?)",

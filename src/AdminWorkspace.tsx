@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -27,6 +27,8 @@ import {
   type CompanyStatus,
 } from './admin-types';
 import './admin.css';
+
+const AdminAIControls = lazy(() => import('./AdminAIControls'));
 
 export default function AdminWorkspace({
   session,
@@ -427,10 +429,21 @@ function CompanyDetail({
   onBack: () => void;
   onWork: () => void;
 }) {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const requestedTab = new URLSearchParams(location.search).get('tab') ?? 'members';
+  const initialTab = ['members', 'departments', 'books', 'ai', 'audit'].includes(requestedTab)
+    ? requestedTab
+    : 'members';
   const [detail, setDetail] = useState<AdminCompanyDetail>();
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState('members');
+  const [tab, setTab] = useState(initialTab);
+  useEffect(() => setTab(initialTab), [initialTab, companyId]);
+  function changeTab(value: string) {
+    setTab(value);
+    void navigate({ pathname: location.pathname, search: `?tab=${value}` }, { replace: true });
+  }
   const [edit, setEdit] = useState(false);
   const [targetStatus, setTargetStatus] = useState<CompanyStatus>();
   const [busy, setBusy] = useState(false);
@@ -579,6 +592,7 @@ function CompanyDetail({
                 ['members', '人员与权限'],
                 ['departments', '部门与审批'],
                 ['books', '账套分工'],
+                ['ai', 'AI用量与控制'],
                 ['audit', '操作记录'],
               ].map(([key, label]) => (
                 <button
@@ -586,7 +600,7 @@ function CompanyDetail({
                   role="tab"
                   aria-selected={tab === key}
                   disabled={busy}
-                  onClick={() => setTab(key)}
+                  onClick={() => changeTab(key)}
                 >
                   {label}
                 </button>
@@ -595,6 +609,24 @@ function CompanyDetail({
             <section className="admin-panel" role="tabpanel">
               {tab === 'audit' ? (
                 <AdminAudit session={session} companyId={companyId} />
+              ) : tab === 'ai' ? (
+                <Suspense
+                  fallback={
+                    <div className="loading-block">
+                      <Spinner />
+                      正在打开企业AI控制…
+                    </div>
+                  }
+                >
+                  <AdminAIControls
+                    key={`${session.scope_key}:${companyId}`}
+                    session={session}
+                    companyId={companyId}
+                    companyName={detail.company.name}
+                    onBusy={changedBusy}
+                    onAudit={() => changeTab('audit')}
+                  />
+                </Suspense>
               ) : tab === 'departments' ? (
                 detail.company.status === 'active' ? (
                   <BusinessOrganization

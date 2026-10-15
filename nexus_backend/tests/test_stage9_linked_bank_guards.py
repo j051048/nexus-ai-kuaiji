@@ -25,6 +25,11 @@ def stable_bank(c, transaction):
 
 
 def linked(c):
+    # Keep this file's explicitly model-disabled manual review path independent
+    # of the product default; all duplicate/case blockers must still apply.
+    IntelligenceService(c.db, storage=None, provider=FakeProvider()).company_settings(
+        c.manager, c.company['id'], enabled=False
+    )
     mapped = paid(c)
     stable_bank(c, 'transaction-one')
     service = ReconciliationService(c.db)

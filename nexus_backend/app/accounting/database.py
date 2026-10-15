@@ -12,7 +12,10 @@ from time import perf_counter
 from threading import Lock
 
 from .telemetry import (
-    SharedTransactionMetrics, TransactionMetrics, transaction_scope, transaction_actor,
+    SharedTransactionMetrics,
+    TransactionMetrics,
+    transaction_scope,
+    transaction_actor,
 )
 
 MIGRATIONS = Path(__file__).resolve().parents[2] / "migrations"

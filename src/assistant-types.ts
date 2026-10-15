@@ -30,6 +30,8 @@ export interface AssistantScopeOptions {
   events: AssistantEventOption[];
   pagination?: Pagination;
   model_available?: boolean;
+  company_enabled?: boolean;
+  supplier_configured?: boolean;
   notice?: string;
 }
 export interface AssistantConversation {
@@ -85,6 +87,8 @@ export interface AssistantContext {
   evidence: AssistantEvidence[];
   input_fingerprint: string;
   model_available?: boolean;
+  company_enabled?: boolean;
+  supplier_configured?: boolean;
   notice?: string;
 }
 export interface AssistantConversationDetail {
@@ -92,6 +96,8 @@ export interface AssistantConversationDetail {
   turns: AssistantTurn[];
   context: AssistantContext;
   model_available?: boolean;
+  company_enabled?: boolean;
+  supplier_configured?: boolean;
   notice?: string;
 }
 export interface AssistantMessage {

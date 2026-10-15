@@ -400,10 +400,13 @@ def test_scoped_snapshot_helper_preserves_age_and_avoids_noop_rewrite(meter_case
     with case.db.transaction(actor=case.owner) as conn:
         updated = dict(conn.execute("SELECT * FROM ops_exception_snapshots WHERE event_id=?", (event_id,)).fetchone())
         assert updated["oldest_opened_at"] == old["oldest_opened_at"] and updated["updated_at"] != old["updated_at"]
-    # Default AI policy is off, so old stored summaries do not become backlog.
+    # Explicitly paused processing excludes stored summaries from actionable
+    # backlog. New companies now start enabled by default.
+    with case.psycopg.connect(ADMIN_URL) as conn:
+        conn.execute("UPDATE accounting.ai_company_settings SET enabled=0 WHERE firm_id=%s AND company_id=%s", (case.owner.firm_id, case.company))
     assert metrics(case)["exceptions"]["blocking_events"] == 0
     with case.psycopg.connect(ADMIN_URL) as conn:
-        conn.execute("INSERT INTO accounting.ai_company_settings VALUES(%s,%s,1,%s,%s)", (case.owner.firm_id, case.company, case.owner.user_id, old["updated_at"]))
+        conn.execute("INSERT INTO accounting.ai_company_settings VALUES(%s,%s,1,%s,%s) ON CONFLICT(firm_id,company_id) DO UPDATE SET enabled=1,updated_by=excluded.updated_by,updated_at=excluded.updated_at", (case.owner.firm_id, case.company, case.owner.user_id, old["updated_at"]))
     assert metrics(case)["exceptions"]["blocking_events"] == 1
     assert metrics(case)["exceptions"]["updated_at"] == updated["updated_at"]
 
@@ -431,7 +434,7 @@ def test_snapshot_backlog_excludes_already_approved_mapping(meter_case):
     event_id = full_event(case)
     _, draft_id = handoff(case, event_id)
     with case.psycopg.connect(ADMIN_URL) as conn:
-        conn.execute("INSERT INTO accounting.ai_company_settings VALUES(%s,%s,1,%s,%s)", (case.owner.firm_id, case.company, case.owner.user_id, "2026-10-13T00:00:00+00:00"))
+        conn.execute("INSERT INTO accounting.ai_company_settings VALUES(%s,%s,1,%s,%s) ON CONFLICT(firm_id,company_id) DO UPDATE SET enabled=1,updated_by=excluded.updated_by,updated_at=excluded.updated_at", (case.owner.firm_id, case.company, case.owner.user_id, "2026-10-13T00:00:00+00:00"))
     with case.db.transaction(write=True, actor=case.employee) as conn:
         assert conn.execute("SELECT accounting.record_ops_exception_snapshot(?,1,0,NULL,'review-required')", (event_id,)).fetchone()[0]
     assert metrics(case)["exceptions"]["blocking_events"] == 1

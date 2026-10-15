@@ -4,7 +4,12 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, Query, Request
 
-from .admin_models import AdminCompanyStatus, AdminCompanyUpdate
+from .admin_models import (
+    AdminAIControlUpdate,
+    AdminAIPolicyUpdate,
+    AdminCompanyStatus,
+    AdminCompanyUpdate,
+)
 
 
 def build_admin_router(actor_dependency):
@@ -12,6 +17,15 @@ def build_admin_router(actor_dependency):
 
     def admin(request: Request):
         return request.app.state.admin
+
+    def intelligence(request: Request):
+        return request.app.state.intelligence
+
+    def operations(request: Request):
+        return request.app.state.operations
+
+    def assistant_provider(request: Request):
+        return getattr(request.app.state, "assistant_provider", None)
 
     @router.get("/companies")
     def companies(
@@ -29,6 +43,41 @@ def build_admin_router(actor_dependency):
     @router.get("/companies/{company_id}")
     def company(company_id: str, current=Depends(actor_dependency), service=Depends(admin)):
         return service.get_company(current, company_id)
+
+    @router.get("/companies/{company_id}/ai-control")
+    def ai_control(
+        company_id: str,
+        period: str | None = Query(
+            default=None, min_length=7, max_length=7, pattern=r"^20[0-9]{2}-(?:0[1-9]|1[0-2])$"
+        ),
+        current=Depends(actor_dependency),
+        service=Depends(admin),
+        ai=Depends(intelligence),
+        ops=Depends(operations),
+        chat=Depends(assistant_provider),
+    ):
+        return service.ai_control(current, company_id, ai, ops, chat, period=period)
+
+    @router.patch("/companies/{company_id}/ai-control")
+    def update_ai_control(
+        company_id: str,
+        payload: AdminAIControlUpdate,
+        current=Depends(actor_dependency),
+        service=Depends(admin),
+        ai=Depends(intelligence),
+        chat=Depends(assistant_provider),
+    ):
+        return service.update_ai_control(current, company_id, payload, ai, chat)
+
+    @router.put("/companies/{company_id}/ai-control/policy")
+    def update_ai_policy(
+        company_id: str,
+        payload: AdminAIPolicyUpdate,
+        current=Depends(actor_dependency),
+        service=Depends(admin),
+        ops=Depends(operations),
+    ):
+        return service.update_ai_policy(current, company_id, payload, ops)
 
     @router.patch("/companies/{company_id}")
     def update_company(

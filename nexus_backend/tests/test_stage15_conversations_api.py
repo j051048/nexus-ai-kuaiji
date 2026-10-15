@@ -68,5 +68,10 @@ def test_employee_http_event_scope_and_company_switch_never_reuses_private_threa
         # to that company still shows none of the first company's conversations.
         switched = client.get("/api/assistant/conversations", params={"company_id": other["company_id"]}, headers=employee)
         assert switched.status_code == 200 and switched.json()["pagination"]["total"] == 0 and switched.json()["conversations"] == []
+        # Companies now default to enabled. Explicitly pause this company to
+        # exercise the refusal path without changing normal request semantics.
+        paused = client.put(f"/api/companies/{event['company_id']}/intelligence/settings", headers=accountant, json={"enabled": False})
+        assert paused.status_code == 200, paused.text
         rejected = client.post(f"/api/assistant/conversations/{thread['id']}/turns", headers=employee, json={"question": "解释事项", "expected_scope_version": 1, "idempotency_key": uuid4().hex})
         assert rejected.status_code == 409
+        assert "管理员已暂停" in rejected.json()["detail"]

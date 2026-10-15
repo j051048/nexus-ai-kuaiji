@@ -192,16 +192,20 @@ class SupabaseAdmin:
             try:
                 user = self._user(
                     self._request(
-                        "POST", "/admin/users",
+                        "POST",
+                        "/admin/users",
                         body={
-                            "email": email, "password": password, "email_confirm": True,
+                            "email": email,
+                            "password": password,
+                            "email_confirm": True,
                             "user_metadata": {"display_name": name},
                             "app_metadata": {
                                 "accounting_provision_request": request_id,
                                 "accounting_provision_mode": "password",
                             },
                         },
-                    ), email,
+                    ),
+                    email,
                 )
             except AccountingError:
                 user = self.find_user(email)
@@ -216,7 +220,11 @@ class SupabaseAdmin:
             or not user.get("email_confirmed_at")
         ):
             raise AccountingError("该邮箱已有账号，请改用激活邀请或成员授权；不会修改已有密码", 409)
-        return {"user_id": user["id"], "existing_user": False, "password_already_created": recovered}
+        return {
+            "user_id": user["id"],
+            "existing_user": False,
+            "password_already_created": recovered,
+        }
 
     def bootstrap_user(self, email, name, password):
         """Explicit operator bootstrap only; existing users' passwords stay intact."""

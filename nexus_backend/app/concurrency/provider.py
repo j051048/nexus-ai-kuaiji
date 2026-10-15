@@ -58,6 +58,7 @@ def _slot(db, actor, company_id, supplier, request_id, lease):
         try:
             if db.is_postgres:
                 conn.begin(write=True, user_id=actor.user_id, firm_id=actor.firm_id)
+                _require_processing(conn, actor, company_id)
                 try:
                     result = conn.execute(
                         "SELECT accounting.acquire_provider_slot(?,?,?,?)",
@@ -78,6 +79,7 @@ def _slot(db, actor, company_id, supplier, request_id, lease):
                 from ..accounting.access import AccessControl
 
                 AccessControl().company(conn, actor, company_id)
+                _require_processing(conn, actor, company_id)
                 conn.execute(
                     "DELETE FROM provider_request_slots WHERE lease_until<=strftime('%s','now')"
                 )
@@ -109,6 +111,24 @@ def _slot(db, actor, company_id, supplier, request_id, lease):
         except BaseException:
             conn.rollback()
             raise
+
+
+def _require_processing(conn, actor, company_id):
+    # Recheck at the actual shared transport boundary, after earlier domain and
+    # quota checks. A pause committed before this point must prevent the next
+    # supplier request, including a second Paddle OCR/field-extraction stage.
+    enabled = conn.execute(
+        "SELECT enabled FROM ai_company_settings WHERE firm_id=? AND company_id=?",
+        (actor.firm_id, company_id),
+    ).fetchone()
+    if not enabled or not enabled[0]:
+        from ..intelligence.provider import ProviderError
+
+        error = ProviderError(
+            "processing_paused_before_send", "管理员已暂停该企业AI处理，未向供应商发送资料", 403
+        )
+        error.llm_attempted = False
+        raise error
 
 
 def _release(db, actor, request_id):

@@ -10,7 +10,10 @@ def home_bootstrap(directory, workspace, identity, firm_id=None, mode="supabase"
     for attempt in range(2):
         with workspace.db.transaction(actor=Actor(identity.user_id, "")) as conn:
             me = directory.me_in_connection(
-                conn, identity.user_id, firm_id, mode,
+                conn,
+                identity.user_id,
+                firm_id,
+                mode,
                 identity=identity if mode == "supabase" else None,
             )
             if me is not None:

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   CheckCircle2,
   FileSearch,
@@ -1095,6 +1096,13 @@ export function IntelligenceCompanySettings({
       <p>
         开启后，获授权人员可将该企业上传的附件与业务事项发送至系统管理员配置的模型服务，提取票据字段并生成分录建议。
       </p>
+      {settings?.can_manage && (
+        <p className="field-help">
+          企业默认开启 AI。暂停、恢复与费用限制可在
+          <Link to={`/admin/organizations/${encoded(companyId)}?tab=ai`}>企业 AI 管理</Link>
+          中统一设置；管理操作需完成二次验证。
+        </p>
+      )}
       <p className="field-help">
         当前服务：{config?.configured ? config.provider_label : '等待管理员配置'}
         。所有结果均需人工核对，会计审核后方可导出。
@@ -1107,7 +1115,7 @@ export function IntelligenceCompanySettings({
       {settings ? (
         <div className="intelligence-setting-action">
           <span className={`badge ${settings.enabled ? 'approved' : 'draft'}`}>
-            {settings.enabled ? '该企业已开启' : '该企业未开启'}
+            {settings.enabled ? '该企业已开启' : '管理员已暂停'}
           </span>
           {settings.can_manage && (
             <button
