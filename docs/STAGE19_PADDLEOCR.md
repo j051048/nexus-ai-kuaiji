@@ -43,6 +43,8 @@ ACCOUNTING_PADDLEOCR_ALLOWED_HOST=
 
 `URL` 为源站，不包含 `/v1/recognize`、用户名、密码或查询参数。生产优先使用 HTTPS；如容器私有网络使用 HTTP，必须显式设置 `ALLOW_HTTP=1` 并将 `ALLOWED_HOST` 设置为 URL 中完全相同的主机名。禁止把此服务令牌放进 `VITE_` 变量或浏览器请求。
 
+使用 Zeabur 管理 API 时，须读回并确认服务本身的 `rootDirectory=services/paddle_ocr`，不能只依赖部署 specification 中的同名字段；错误的仓库根上下文会让 `COPY requirements.lock` 失败。将 Watch Paths 单独设为 `/services/paddle_ocr`，避免业务后端或文档变更重建推理镜像。Root Directory 与 Watch Paths 是两个配置项，见 [Zeabur 监控路径说明](https://zeabur.com/docs/en-US/deploy/config/watch-paths)。
+
 `ACCOUNTING_AI_OCR_*` 继续配置结构化字段模型。Paddle 模式下该模型基于文字提取字段，原有模型费用预留和企业额度限制继续生效。访问令牌轮换不改变识别语义；OCR 模型、阈值、预处理或字段提示版本改变会使旧缓存与待执行任务配置失效，需按新配置重新处理。
 
 回退方式是将所有业务进程的 `ACCOUNTING_OCR_ENGINE` 一致改回 `vision` 后重启，保留历史独立识别证据。系统不会在 Paddle 失败后悄悄改用另一条视觉接口发送附件。
