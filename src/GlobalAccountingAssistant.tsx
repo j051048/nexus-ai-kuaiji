@@ -66,6 +66,7 @@ export interface GlobalAccountingAssistantProps {
   onOpenTask?: (receipt: AssistantActionReceipt) => void;
 }
 type Loaded<T> = { key: string; value: T };
+type DetailRead = { key: string; controller: AbortController; promise: Promise<void> };
 function encode(value: string) {
   return encodeURIComponent(value);
 }
@@ -154,18 +155,26 @@ export function GlobalAccountingAssistant({
   const epoch = useRef(0),
     bootEpoch = useRef(0),
     detailEpoch = useRef(0),
+    detailRead = useRef<DetailRead | null>(null),
     scopeController = useRef(new AbortController()),
     mutationBusy = useRef(false),
     closeRef = useRef(onClose);
   closeRef.current = onClose;
   const requestKeys = useRef(new Map<string, { signature: string; id: string }>());
+  const invalidateDetailRead = useCallback(() => {
+    detailEpoch.current++;
+    detailRead.current?.controller.abort();
+    detailRead.current = null;
+  }, []);
+  useEffect(() => invalidateDetailRead, [invalidateDetailRead]);
   const closing = useRef(false);
   const closeAssistant = useCallback(() => {
     if (!closing.current) {
       closing.current = true;
+      invalidateDetailRead();
       closeRef.current();
     }
-  }, []);
+  }, [invalidateDetailRead]);
   const current = detail?.key === detailKey ? detail.value : null;
   const currentMessages = messages?.key === detailKey ? messages.value : null;
   const options = scopeOptions?.key === scopeKey ? scopeOptions.value : null;
@@ -240,7 +249,7 @@ export function GlobalAccountingAssistant({
   const clearSensitive = useCallback(() => {
     epoch.current++;
     bootEpoch.current++;
-    detailEpoch.current++;
+    invalidateDetailRead();
     scopeController.current.abort();
     scopeController.current = new AbortController();
     mutationBusy.current = false;
@@ -261,7 +270,7 @@ export function GlobalAccountingAssistant({
     setBusy(false);
     setRevoked(true);
     requestKeys.current.clear();
-  }, []);
+  }, [invalidateDetailRead]);
   useEffect(() => {
     const revoke = () => {
       clearSensitive();
@@ -330,7 +339,7 @@ export function GlobalAccountingAssistant({
     scopeController.current.abort();
     scopeController.current = new AbortController();
     epoch.current++;
-    detailEpoch.current++;
+    invalidateDetailRead();
     setScopeOptions(null);
     setConversations(null);
     setDetail(null);
@@ -348,8 +357,9 @@ export function GlobalAccountingAssistant({
     requestKeys.current.clear();
     return () => {
       scopeController.current.abort();
+      invalidateDetailRead();
     };
-  }, [scopeKey]);
+  }, [scopeKey, invalidateDetailRead]);
   useEffect(() => {
     if (!companyId || revoked) return;
     const controller = new AbortController(),
@@ -428,59 +438,86 @@ export function GlobalAccountingAssistant({
     void loadHistory();
   }, [loadHistory]);
   const loadConversation = useCallback(
-    async (initial = false) => {
+    async (initial = false, force = false) => {
       if (!conversationId || revoked) return;
+      const key = `${detailKey}:${messageOffset}:${planOffset}`;
+      const pending = detailRead.current;
+      // Polling must not supersede a slow read of the same authorized page.
+      // Writes and explicit refreshes bypass this join to discard pre-write snapshots.
+      if (!force && pending?.key === key && !pending.controller.signal.aborted)
+        return pending.promise;
+      pending?.controller.abort();
+      const controller = new AbortController();
       const started = detailKey,
         generation = ++detailEpoch.current,
-        signal = scopeController.current.signal;
+        signal = AbortSignal.any([scopeController.current.signal, controller.signal]);
+      const reading: DetailRead = { key, controller, promise: Promise.resolve() };
+      detailRead.current = reading;
       if (initial) {
         setLoading(true);
         setError('');
       }
-      try {
-        const values = await Promise.all([
-          api<AssistantConversationDetail>(
-            `/assistant/conversations/${encode(conversationId)}`,
-            session,
-            { signal },
-          ),
-          api<AssistantMessages>(
-            `/assistant/conversations/${encode(conversationId)}/messages?limit=100&offset=${messageOffset}`,
-            session,
-            { signal },
-          ),
-          api<AssistantActionPage>(
-            `/assistant/conversations/${encode(conversationId)}/actions?limit=20&offset=${planOffset}`,
-            session,
-            { signal },
-          ),
-        ]);
-        if (signal.aborted || started !== liveDetail.current || generation !== detailEpoch.current)
-          return;
-        if (
-          !assistantDetailMatches(values[0], companyId, conversationId) ||
-          values[2].plans.some((plan) => !assistantPlanMatches(plan, values[0].conversation))
-        ) {
-          setDetail(null);
-          setMessages(null);
-          setPlans([]);
-          setQuestion('');
-          throw new Error('会话或任务资料范围已变化，请关闭后重新读取。');
+      reading.promise = (async () => {
+        try {
+          const values = await Promise.all([
+            api<AssistantConversationDetail>(
+              `/assistant/conversations/${encode(conversationId)}`,
+              session,
+              { signal },
+            ),
+            api<AssistantMessages>(
+              `/assistant/conversations/${encode(conversationId)}/messages?limit=100&offset=${messageOffset}`,
+              session,
+              { signal },
+            ),
+            api<AssistantActionPage>(
+              `/assistant/conversations/${encode(conversationId)}/actions?limit=20&offset=${planOffset}`,
+              session,
+              { signal },
+            ),
+          ]);
+          if (
+            signal.aborted ||
+            started !== liveDetail.current ||
+            generation !== detailEpoch.current
+          )
+            return;
+          if (
+            !assistantDetailMatches(values[0], companyId, conversationId) ||
+            values[2].plans.some((plan) => !assistantPlanMatches(plan, values[0].conversation))
+          ) {
+            setDetail(null);
+            setMessages(null);
+            setPlans([]);
+            setQuestion('');
+            throw new Error('会话或任务资料范围已变化，请关闭后重新读取。');
+          }
+          setDetail({ key: started, value: values[0] });
+          setMessages({ key: started, value: values[1] });
+          setPlans(values[2].plans);
+          setActionPagination(values[2].pagination);
+        } catch (failure) {
+          if (
+            signal.aborted ||
+            started !== liveDetail.current ||
+            generation !== detailEpoch.current
+          )
+            return;
+          if (failure instanceof ApiError && [401, 403, 404].includes(failure.status))
+            clearSensitive();
+          setError(errorMessage(failure));
+        } finally {
+          if (
+            !signal.aborted &&
+            started === liveDetail.current &&
+            generation === detailEpoch.current
+          )
+            setLoading(false);
+          if (detailRead.current === reading) detailRead.current = null;
+          controller.abort();
         }
-        setDetail({ key: started, value: values[0] });
-        setMessages({ key: started, value: values[1] });
-        setPlans(values[2].plans);
-        setActionPagination(values[2].pagination);
-      } catch (failure) {
-        if (signal.aborted || started !== liveDetail.current || generation !== detailEpoch.current)
-          return;
-        if (failure instanceof ApiError && [401, 403, 404].includes(failure.status))
-          clearSensitive();
-        setError(errorMessage(failure));
-      } finally {
-        if (!signal.aborted && started === liveDetail.current && generation === detailEpoch.current)
-          setLoading(false);
-      }
+      })();
+      return reading.promise;
     },
     [
       conversationId,
@@ -500,7 +537,7 @@ export function GlobalAccountingAssistant({
     setQuestion('');
     setNotice('');
     setError('');
-    if (conversationId) void loadConversation(true);
+    if (conversationId) void loadConversation(true, true);
   }, [conversationId, messageOffset, loadConversation]);
   useEffect(() => {
     if (!conversationId || revoked) return;
@@ -572,7 +609,7 @@ export function GlobalAccountingAssistant({
     setError('');
   }
   function startNew() {
-    detailEpoch.current++;
+    invalidateDetailRead();
     setConversationId(null);
     setDetail(null);
     setMessages(null);
@@ -587,12 +624,21 @@ export function GlobalAccountingAssistant({
   }
   function openConversation(row: AssistantConversation) {
     if (row.company_id !== companyId) return;
-    detailEpoch.current++;
+    invalidateDetailRead();
+    setDetail(null);
+    setMessages(null);
+    setPlans([]);
+    setActionPagination(null);
+    setQuestion('');
+    setNotice('');
+    setError('');
     setMessageOffset(0);
     setPlanOffset(0);
     setConversationId(row.id);
     setCreating(false);
     setShowHistory(false);
+    if (row.id === conversationId && messageOffset === 0 && planOffset === 0)
+      void loadConversation(true, true);
   }
   function createConversation() {
     if (
@@ -665,7 +711,7 @@ export function GlobalAccountingAssistant({
               }
             : previous,
         );
-        void loadConversation();
+        void loadConversation(false, true);
       },
     );
   }
@@ -694,6 +740,10 @@ export function GlobalAccountingAssistant({
         }
         requestKeys.current.delete(`preview:${kind}`);
         setPlans((previous) => [...previous.filter((row) => row.id !== plan.id), plan]);
+        invalidateDetailRead();
+        setPlanOffset(0);
+        // New previews are on the first page; its effect uses the new offset.
+        if (planOffset === 0) void loadConversation(false, true);
       },
     );
   }
@@ -726,7 +776,7 @@ export function GlobalAccountingAssistant({
           ),
         );
         setNotice('任务已登记。会计审核与导出继续在原工作流完成。');
-        void loadConversation();
+        void loadConversation(false, true);
       },
     );
   }
@@ -745,7 +795,7 @@ export function GlobalAccountingAssistant({
         ),
       () => {
         setNotice('取消请求已登记，已发送的模型请求仍需核对执行结果与费用。');
-        void loadConversation();
+        void loadConversation(false, true);
       },
     );
   }
@@ -846,7 +896,7 @@ export function GlobalAccountingAssistant({
                 disabled={busy}
                 onClick={() => {
                   setError('');
-                  if (conversationId) void loadConversation(true);
+                  if (conversationId) void loadConversation(true, true);
                   else void loadHistory();
                 }}
               >

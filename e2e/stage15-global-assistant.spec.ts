@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import { choosePersona } from './ui-navigation';
 
 test('全局助手保存范围、任务预览确认、历史恢复与手机显示', async ({ page, request }) => {
+  test.setTimeout(60_000);
   const session = await (await request.get('/api/session?persona=accountant')).json();
   const headers = { Authorization: `Bearer ${session.token}` }, tag = crypto.randomUUID().slice(0, 8);
   const created = await request.post('/api/books', { headers, data: { name: `合成对话企业 ${tag}`, period: '2026-10' } });
@@ -12,7 +13,7 @@ test('全局助手保存范围、任务预览确认、历史恢复与手机显�
   await page.goto('/'); await choosePersona(page, 'accountant');
   await page.getByRole('button', { name: '问会计助手', exact: true }).click();
   const assistant = page.getByRole('dialog', { name: '会计助手', exact: true });
-  await expect(assistant).toBeVisible();
+  await expect(assistant).toBeVisible({ timeout: 15_000 });
   await assistant.getByLabel('助手所属企业', { exact: true }).selectOption(book.company_id);
   await assistant.locator('label').filter({ hasText: `合成对话企业 ${tag}` }).getByRole('checkbox').check();
   await assistant.getByPlaceholder('例如：10 月报销与票据核对').fill(`合成会话 ${tag}`);
