@@ -1,4 +1,4 @@
-import type { Pagination, Session } from './types';
+import type { Me, Pagination, Session } from './types';
 export type WorkspaceRole =
   'accountant' | 'finance' | 'approver' | 'employee' | 'manager' | 'viewer';
 export type WorkspaceProfile = {
@@ -52,6 +52,15 @@ export type WorkspaceTasks = {
   tasks: WorkspaceTask[];
   counts: Partial<Record<'action' | 'waiting', number>>;
   pagination: Pagination;
+};
+export type WorkspaceBootstrap = {
+  me: Me;
+  profile: WorkspaceProfile | null;
+  tasks: WorkspaceTasks | null;
+};
+/** A single authorized response, retained only until the first home mount. */
+export type WorkspaceHomeBootstrap = Omit<WorkspaceBootstrap, 'me'> & {
+  scope_key: string;
 };
 export type WorkspaceCompanies = {
   companies: { id: string; name: string; task_count: number }[];

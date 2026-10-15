@@ -20,7 +20,7 @@ def test_home_profile_matches_existing_scopes_under_rls(business_case, monkeypat
         with count_statements(c.db, monkeypatch) as statements:
             value = service.profile(actor)
         assert value == expected
-        assert len(statements) <= 4
+        assert len(statements) == 1
         assert not any("draft_lines" in query or "FROM drafts" in query for query in statements)
     assert [row["id"] for row in service.profile(c.employee)["companies"]] == [c.company]
     assert service.profile(c.reviewer)["can_operations"] is False

@@ -22,7 +22,10 @@ class AgentWorkspaceService:
         # History needs an explicit project grant intersected with current book
         # authority; owning a firm alone does not authorize historical archives.
         book_sql, book_params = self.accounting._summary_scope(actor)
-        role = self.access.firm_role(conn, actor)
+        # The review projection already resolves the active user and current
+        # firm membership. Share that request-local result instead of asking
+        # for the same grants again before constructing the other branches.
+        reviews, review_params, role = self.workspace.review._review_scope(conn, actor)
         if role not in {"owner", "admin"}:
             book_sql += (
                 " AND a.role IS NOT NULL AND (?=1 OR cm.role IN ('owner','admin','finance'))"
@@ -43,7 +46,6 @@ class AgentWorkspaceService:
             migration_params = [actor.user_id] * 3
             expected_total = "json_extract(j.checkpoint_json,'$.metadata.expected_record_count')"
             expected_valid = f"json_type(j.checkpoint_json,'$.metadata.expected_record_count')='integer' AND {expected_total}>=0"
-        reviews, review_params, _ = self.workspace.review._review_scope(conn, actor)
         description = (
             "(e.payload)::jsonb->>'description'"
             if self.db.is_postgres
@@ -90,7 +92,6 @@ class AgentWorkspaceService:
         if state not in {"active", "attention", "done", "all"} or len(q) > 200:
             raise AccountingError("运行筛选参数无效")
         with self.db.transaction(actor=actor) as conn:
-            self.access.require_user(conn, actor.user_id)
             query, params = self._run_query(conn, actor)
             clauses, filters = ["1=1"], []
             if state != "all":
@@ -174,7 +175,6 @@ class AgentWorkspaceService:
 
     def summary(self, actor):
         with self.db.transaction(actor=actor) as conn:
-            self.access.require_user(conn, actor.user_id)
             query, params = self._run_query(conn, actor)
             rows = conn.execute(
                 query
@@ -200,7 +200,6 @@ class AgentWorkspaceService:
         if len(q) > 200:
             raise AccountingError("企业搜索文字过长")
         with self.db.transaction(actor=actor) as conn:
-            self.access.require_user(conn, actor.user_id)
             query, params = self._run_query(conn, actor)
             predicate = " WHERE company_name LIKE ? ESCAPE '!'" if q.strip() else ""
             args = [*params, *([self.workspace._search(q)] if q.strip() else [])]

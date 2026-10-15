@@ -1,18 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { api, errorMessage, setApiScope } from './api';
+import { api, ApiError, errorMessage, setApiScope } from './api';
 import { configureAuth, getAuthClient, loginError } from './auth';
 import type { AuthConfig, Firm, Me, Session } from './types';
+import type { WorkspaceBootstrap, WorkspaceHomeBootstrap } from './workspace-types';
 
-export function useAccountingAuth(clearWorkspace: () => void) {
+export function useAccountingAuth(clearWorkspace: () => void, bootstrapHome = true) {
   const [config, setConfig] = useState<AuthConfig | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [me, setMe] = useState<Me | null>(null);
+  const [homeBootstrap, setHomeBootstrap] = useState<WorkspaceHomeBootstrap | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [persona, setPersona] = useState('accountant');
   const sessionRef = useRef<Session | null>(null);
   const generation = useRef(0);
   const unsubscribe = useRef<(() => void) | null>(null);
+  const bootstrapHomeRef = useRef(bootstrapHome);
+  bootstrapHomeRef.current = bootstrapHome;
 
   const clearSession = useCallback(() => {
     generation.current += 1;
@@ -21,6 +25,7 @@ export function useAccountingAuth(clearWorkspace: () => void) {
     clearWorkspace();
     setSession(null);
     setMe(null);
+    setHomeBootstrap(null);
   }, [clearWorkspace]);
 
   const loadIdentity = useCallback(
@@ -38,7 +43,17 @@ export function useAccountingAuth(clearWorkspace: () => void) {
         scope_key: crypto.randomUUID(),
       };
       setApiScope(candidate);
-      const identity = await api<Me>('/me', candidate, { signal });
+      let bootstrap: WorkspaceBootstrap | null = null;
+      if (bootstrapHomeRef.current) {
+        try {
+          bootstrap = await api<WorkspaceBootstrap>('/workspace/bootstrap', candidate, { signal });
+        } catch (failure) {
+          // During a rolling deployment the old API may not have this route.
+          // Authentication, permission and provider failures must still fail closed.
+          if (!(failure instanceof ApiError) || failure.status !== 404) throw failure;
+        }
+      }
+      const identity = bootstrap?.me ?? (await api<Me>('/me', candidate, { signal }));
       if (signal?.aborted || attempt !== generation.current) return;
       const firm = identity.firms.find((item) => item.id === identity.current_firm_id);
       const next: Session = {
@@ -52,10 +67,19 @@ export function useAccountingAuth(clearWorkspace: () => void) {
       setApiScope(next);
       sessionRef.current = next;
       setMe(identity);
+      setHomeBootstrap(
+        bootstrap
+          ? { scope_key: next.scope_key, profile: bootstrap.profile, tasks: bootstrap.tasks }
+          : null,
+      );
       setSession(next);
     },
     [clearSession],
   );
+
+  const consumeHomeBootstrap = useCallback((scopeKey: string) => {
+    setHomeBootstrap((current) => (current?.scope_key === scopeKey ? null : current));
+  }, []);
 
   const initialize = useCallback(
     async (signal?: AbortSignal) => {
@@ -221,6 +245,8 @@ export function useAccountingAuth(clearWorkspace: () => void) {
     config,
     session,
     me,
+    homeBootstrap,
+    consumeHomeBootstrap,
     loading,
     error,
     initialize,

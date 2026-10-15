@@ -28,8 +28,6 @@ import {
 import { api, errorMessage } from './api';
 import { AuthScreen, NoAuthorization } from './AuthScreen';
 import { useAccountingAuth } from './useAccountingAuth';
-import { AccessManagement } from './AccessManagement';
-import { ProposalTasksPanel } from './ProposalTasksPanel';
 import { ActivityTimer } from './ActivityTimer';
 import { WorkspaceHome } from './WorkspaceHome';
 import { AgentNavigation, type AgentNavigationView } from './AgentNavigation';
@@ -52,13 +50,21 @@ import { EmptyState, Modal, PageControls, Spinner, StatCard } from './AppPrimiti
 import { AssistantDialog, NewBookModal } from './AppDialogs';
 import { AccountingBookList } from './AccountingBookList';
 import { AccountingBookToolbar } from './AccountingBookToolbar';
-import { Reviewer } from './VoucherReviewer';
 import { useWorkspaceRoute } from './useWorkspaceRoute';
 import { RouteLeaveDialog } from './RouteLeaveDialog';
-import { workspaceUsesBook, type WorkspaceRoute } from './workspace-route';
+import { readWorkspaceRoute, workspaceUsesBook, type WorkspaceRoute } from './workspace-route';
 import type { MonthlyDestination } from './monthly-workbench-types';
 
 type Filter = 'all' | 'pending' | 'exception' | 'approved';
+const AccessManagement = lazy(() =>
+  import('./AccessManagement').then((module) => ({ default: module.AccessManagement })),
+);
+const ProposalTasksPanel = lazy(() =>
+  import('./ProposalTasksPanel').then((module) => ({ default: module.ProposalTasksPanel })),
+);
+const Reviewer = lazy(() =>
+  import('./VoucherReviewer').then((module) => ({ default: module.Reviewer })),
+);
 const BusinessWorkspace = lazy(() =>
   import('./BusinessWorkspace').then((module) => ({ default: module.BusinessWorkspace })),
 );
@@ -173,7 +179,9 @@ export default function App() {
   const activationMode = location.pathname === '/account-activation';
   const recoveryMode = location.pathname === '/account-recovery';
   const [adminBusy, setAdminBusy] = useState(false);
-  const [homeView, setHomeView] = useState(true);
+  const [homeView, setHomeView] = useState(
+    () => readWorkspaceRoute(location.pathname, location.search).view === 'home',
+  );
   const [runsView, setRunsView] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
   const [globalAssistant, setGlobalAssistant] = useState<AssistantInitialContext | null>(null);
@@ -182,7 +190,7 @@ export default function App() {
     draftId: string;
     version: number;
   } | null>(null);
-  const [profile, setProfile] = useState<WorkspaceProfile | null>(null);
+  const [storedProfile, setProfile] = useState<WorkspaceProfile | null>(null);
   const [profileError, setProfileError] = useState('');
   const [workspaceRevision, setWorkspaceRevision] = useState(0);
   const [workCompany, setWorkCompany] = useState('');
@@ -285,6 +293,9 @@ export default function App() {
     setNotice(null);
   }, [stage8View, businessView, bookId]);
   const bookIdRef = useRef(bookId);
+  const hadWorkspaceIdentity = useRef(false);
+  const loginLocation = useRef(location);
+  loginLocation.current = location;
   const actionLock = useRef(false);
   const workbenchReadEpoch = useRef(0),
     bookReadEpoch = useRef(0),
@@ -299,7 +310,11 @@ export default function App() {
     setGlobalAssistant(null);
     inlineContext.current = null;
     clearReviewSession();
-    setHomeView(true);
+    setHomeView(
+      hadWorkspaceIdentity.current ||
+        readWorkspaceRoute(loginLocation.current.pathname, loginLocation.current.search).view ===
+          'home',
+    );
     setMigrationTarget('');
     setOperationsTarget('');
     setProfile(null);
@@ -361,14 +376,53 @@ export default function App() {
     actionLock.current = false;
     exportRequest.current = null;
   }, []);
-  const auth = useAccountingAuth(clearWorkspace);
+  const loginRoute = readWorkspaceRoute(location.pathname, location.search);
+  const auth = useAccountingAuth(
+    clearWorkspace,
+    homeView &&
+      loginRoute.view === 'home' &&
+      !loginRoute.companyId &&
+      !adminMode &&
+      !activationMode &&
+      !recoveryMode,
+  );
   const { me } = auth;
   // Keep one authenticated identity while unmounting all accounting selections
   // and suppressing workspace fetches in the separate administration surface.
   const session = adminMode || activationMode || recoveryMode ? null : auth.session;
+  if (session) hadWorkspaceIdentity.current = true;
+  const homeBootstrap =
+    session && auth.homeBootstrap?.scope_key === session.scope_key ? auth.homeBootstrap : null;
+  const profile = storedProfile ?? homeBootstrap?.profile ?? null;
+  const bootstrapProfile = useRef<{
+    scope_key: string;
+    profile: WorkspaceProfile | null;
+  } | null>(null);
+  // The child consumes task data in its mount effect. Preserve this scope's
+  // profile until the parent has applied it, including React's effect replay.
+  if (homeBootstrap)
+    bootstrapProfile.current = {
+      scope_key: homeBootstrap.scope_key,
+      profile: homeBootstrap.profile,
+    };
+  if (bootstrapProfile.current?.scope_key !== session?.scope_key) bootstrapProfile.current = null;
+  const restoredRouteScope = useRef('');
   useEffect(() => {
-    if (adminMode || activationMode || recoveryMode) clearWorkspace();
-  }, [adminMode, activationMode, recoveryMode, clearWorkspace]);
+    if (adminMode || activationMode || recoveryMode) {
+      clearWorkspace();
+      if (auth.session) auth.consumeHomeBootstrap(auth.session.scope_key);
+    }
+  }, [
+    adminMode,
+    activationMode,
+    recoveryMode,
+    clearWorkspace,
+    auth.session,
+    auth.consumeHomeBootstrap,
+  ]);
+  useEffect(() => {
+    if (!homeView && homeBootstrap) auth.consumeHomeBootstrap(homeBootstrap.scope_key);
+  }, [homeView, homeBootstrap, auth.consumeHomeBootstrap]);
   const routeView: WorkspaceRoute['view'] = homeView
     ? 'home'
     : runsView
@@ -422,10 +476,15 @@ export default function App() {
   ]);
   const profileEpoch = useRef(0);
   const loadProfile = useCallback(
-    async (signal?: AbortSignal) => {
+    async (signal?: AbortSignal, useBootstrap = false) => {
       if (!session?.firm_id) return;
       const epoch = ++profileEpoch.current,
         scope = session.scope_key;
+      if (useBootstrap && bootstrapProfile.current?.scope_key === scope) {
+        setProfile(bootstrapProfile.current.profile);
+        setProfileError('');
+        return;
+      }
       try {
         const value = await api<WorkspaceProfile>('/workspace/profile', session, { signal });
         if (!signal?.aborted && sessionScope.current === scope && epoch === profileEpoch.current) {
@@ -443,7 +502,7 @@ export default function App() {
   );
   useEffect(() => {
     const controller = new AbortController();
-    void loadProfile(controller.signal);
+    void loadProfile(controller.signal, true);
     return () => {
       controller.abort();
       profileEpoch.current++;
@@ -1056,6 +1115,11 @@ export default function App() {
       !intelligenceBusy &&
       !reviewNavigationLoading,
     onRestore: (route) => {
+      const initialHome =
+        restoredRouteScope.current !== session?.scope_key &&
+        bootstrapProfile.current?.scope_key === session?.scope_key &&
+        !route.companyId;
+      restoredRouteScope.current = session?.scope_key ?? '';
       setHomeView(route.view === 'home');
       setRunsView(route.view === 'runs');
       setBusinessView(route.view === 'business');
@@ -1134,7 +1198,7 @@ export default function App() {
         if (routeUsesBook && route.bookId === bookId)
           void refresh(route.bookId).catch((failure) => setBookError(errorMessage(failure)));
       }
-      if (route.view === 'home') setWorkspaceRevision((value) => value + 1);
+      if (route.view === 'home' && !initialHome) setWorkspaceRevision((value) => value + 1);
     },
   });
 
@@ -1821,6 +1885,8 @@ export default function App() {
               session={session}
               profile={profile}
               profileError={profileError}
+              initialTasks={homeBootstrap?.tasks ?? null}
+              onInitialTasksConsumed={() => auth.consumeHomeBootstrap(session.scope_key)}
               onRetryProfile={() => void loadProfile()}
               revision={workspaceRevision}
               paused={navigationLocked}
@@ -2281,15 +2347,24 @@ export default function App() {
                           }}
                         />
                         {detail?.book.permissions.edit && (
-                          <ProposalTasksPanel
-                            key={session.scope_key + ':' + bookId}
-                            session={session}
-                            bookId={bookId}
-                            companyId={detail.book.company_id}
-                            paused={reviewDirty || !!busy}
-                            onBusyChange={changeBusinessBusy}
-                            onChanged={() => refresh(bookId)}
-                          />
+                          <Suspense
+                            fallback={
+                              <div className="loading-block">
+                                <Spinner />
+                                正在读取后台任务…
+                              </div>
+                            }
+                          >
+                            <ProposalTasksPanel
+                              key={session.scope_key + ':' + bookId}
+                              session={session}
+                              bookId={bookId}
+                              companyId={detail.book.company_id}
+                              paused={reviewDirty || !!busy}
+                              onBusyChange={changeBusinessBusy}
+                              onChanged={() => refresh(bookId)}
+                            />
+                          </Suspense>
                         )}
                         <div className="list-tabs">
                           <div role="tablist" aria-label="账套数据">
@@ -2666,57 +2741,67 @@ export default function App() {
                           正在核对当前凭证…
                         </div>
                       ) : !bookLoading && detail && activeDraft ? (
-                        <Reviewer
-                          key={`${session.scope_key}:${bookId}:${activeDraft.id}`}
-                          session={session}
-                          draft={activeDraft}
-                          detail={detail}
-                          busy={busy}
-                          externalBusy={!!operationBusy}
-                          onAssistant={() =>
-                            setAssistantTarget({
-                              bookId,
-                              draftId: activeDraft.id,
-                              version: activeDraft.version,
-                            })
+                        <Suspense
+                          fallback={
+                            <div className="loading-block">
+                              <Spinner />
+                              正在打开凭证复核…
+                            </div>
                           }
-                          onDirtyChange={changeReviewDirty}
-                          onIntelligenceBusyChange={changeIntelligenceBusy}
-                          onIntelligenceChanged={() => refresh(bookId)}
-                          onOpenBatch={(id) => {
-                            setQueueTarget(id);
-                            setQueueView(true);
-                            setIntelligenceView(false);
-                            setBusinessView(false);
-                          }}
-                          onOpenCase={(target) => {
-                            setBusinessView(false);
-                            setCatalogView(false);
-                            setCaseTarget(target);
-                            setStage8View('cases');
-                          }}
-                          onSave={saveDraft}
-                          onApprove={approveDraft}
-                          onBusinessEvidence={() => {
-                            if (!reviewDirty) setInlineTarget({ bookId, draftId: activeDraft.id });
-                          }}
-                          onEvidence={async (evidenceRef) => {
-                            if (!session) return;
-                            const id = bookId;
-                            await runAction('evidence', async () => {
-                              await api(
-                                `/books/${encodeURIComponent(id)}/sources/${encodeURIComponent(activeDraft.source_id)}/evidence`,
-                                session,
-                                { method: 'POST', body: { evidence_ref: evidenceRef } },
-                              );
-                              await refresh(id);
-                              setNotice({
-                                kind: 'success',
-                                text: '凭据引用已补充，请人工核对对应文件的真实性与完整性。',
+                        >
+                          <Reviewer
+                            key={`${session.scope_key}:${bookId}:${activeDraft.id}`}
+                            session={session}
+                            draft={activeDraft}
+                            detail={detail}
+                            busy={busy}
+                            externalBusy={!!operationBusy}
+                            onAssistant={() =>
+                              setAssistantTarget({
+                                bookId,
+                                draftId: activeDraft.id,
+                                version: activeDraft.version,
+                              })
+                            }
+                            onDirtyChange={changeReviewDirty}
+                            onIntelligenceBusyChange={changeIntelligenceBusy}
+                            onIntelligenceChanged={() => refresh(bookId)}
+                            onOpenBatch={(id) => {
+                              setQueueTarget(id);
+                              setQueueView(true);
+                              setIntelligenceView(false);
+                              setBusinessView(false);
+                            }}
+                            onOpenCase={(target) => {
+                              setBusinessView(false);
+                              setCatalogView(false);
+                              setCaseTarget(target);
+                              setStage8View('cases');
+                            }}
+                            onSave={saveDraft}
+                            onApprove={approveDraft}
+                            onBusinessEvidence={() => {
+                              if (!reviewDirty)
+                                setInlineTarget({ bookId, draftId: activeDraft.id });
+                            }}
+                            onEvidence={async (evidenceRef) => {
+                              if (!session) return;
+                              const id = bookId;
+                              await runAction('evidence', async () => {
+                                await api(
+                                  `/books/${encodeURIComponent(id)}/sources/${encodeURIComponent(activeDraft.source_id)}/evidence`,
+                                  session,
+                                  { method: 'POST', body: { evidence_ref: evidenceRef } },
+                                );
+                                await refresh(id);
+                                setNotice({
+                                  kind: 'success',
+                                  text: '凭据引用已补充，请人工核对对应文件的真实性与完整性。',
+                                });
                               });
-                            });
-                          }}
-                        />
+                            }}
+                          />
+                        </Suspense>
                       ) : (
                         <EmptyState
                           title={bookLoading ? '正在载入凭证' : '选择一张凭证开始复核'}
@@ -2864,14 +2949,23 @@ export default function App() {
         />
       )}
       {modal === 'access' && me?.permissions.manage_firm && (
-        <AccessManagement
-          session={session}
-          books={workbench?.books ?? []}
-          onClose={() => setModal(null)}
-          onChanged={async () => {
-            await initialize();
-          }}
-        />
+        <Suspense
+          fallback={
+            <div className="loading-block" role="status">
+              <Spinner />
+              正在读取权限管理…
+            </div>
+          }
+        >
+          <AccessManagement
+            session={session}
+            books={workbench?.books ?? []}
+            onClose={() => setModal(null)}
+            onChanged={async () => {
+              await initialize();
+            }}
+          />
+        </Suspense>
       )}
       {modal === 'import' && detail && (
         <Suspense

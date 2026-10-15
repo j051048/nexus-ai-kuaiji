@@ -14,6 +14,7 @@ from test_business_postgres import ADMIN_URL, APP_URL, business_case, business_p
 from test_queue_postgres import queue_case, enqueue
 from test_stage8_cases_postgres import prepare as prepare_case
 from test_stage9_delivery_postgres import prepare as prepare_delivery
+from test_stage19_request_reads import count_statements
 
 pytestmark = pytest.mark.skipif(not ADMIN_URL or not APP_URL, reason='需要专用 PostgreSQL 管理员与受限运行连接')
 
@@ -23,7 +24,7 @@ def workspace(c):
     return WorkspaceService(c.db, c.service, business, ReviewService(c.db, c.service), CaseService(c.db, business))
 
 
-def test_pg_workspace_current_role_and_authorization_before_count_and_limit(business_case):
+def test_pg_workspace_current_role_and_authorization_before_count_and_limit(business_case, monkeypatch):
     c, service = business_case, workspace(business_case)
     assert service.profile(c.employee)['role'] == 'employee'
     assert service.profile(c.approver)['role'] == 'approver'
@@ -33,12 +34,17 @@ def test_pg_workspace_current_role_and_authorization_before_count_and_limit(busi
     owned = [insert_event(c) for _ in range(3)]
     seen = []
     for offset in range(3):
-        value = service.list(c.employee, bucket='all', limit=1, offset=offset)
+        with count_statements(c.db, monkeypatch) as statements:
+            value = service.list(c.employee, bucket='all', limit=1, offset=offset)
+        assert len(statements) == 2
         assert value['pagination']['total'] == 3
         seen.extend(row['ref'] for row in value['tasks'])
         assert not any(ref in json.dumps(value) for ref in hidden)
     assert set(seen) == set(owned)
     assert service.list(c.employee, bucket='all', company_id=c.other_company)['tasks'] == []
+    empty_page = service.list(c.employee, bucket='all', offset=100)
+    assert empty_page['tasks'] == [] and empty_page['pagination']['total'] == 3
+    assert empty_page['counts'] == {'action': 3}
 
 
 def test_pg_workspace_supplement_recipient_is_private_under_native_case_source_check(business_case):

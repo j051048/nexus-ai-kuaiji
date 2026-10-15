@@ -12,6 +12,22 @@ from time import time
 from uuid import uuid4
 
 transaction_scope = ContextVar("accounting_transaction_scope", default=None)
+transaction_actor = ContextVar("accounting_transaction_actor", default=None)
+
+
+def tag_authorized_firm(actor):
+    """Attribute a just-resolved workspace without changing database authority.
+
+    Only identity discovery transactions may acquire their first firm tag.
+    Callers must first validate the selected firm against current grants.
+    Database.transaction resets this request-local value on every exit path.
+    """
+    current = transaction_actor.get()
+    if current is None or current.user_id != actor.user_id or not actor.firm_id:
+        raise ValueError("事务统计身份与已授权事务所不一致")
+    if current.firm_id and current.firm_id != actor.firm_id:
+        raise ValueError("事务统计不可切换至其他事务所")
+    transaction_actor.set(actor)
 
 
 def tag_authorized_company(company_id):

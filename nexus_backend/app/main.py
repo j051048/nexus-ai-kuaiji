@@ -650,6 +650,19 @@ def create_app(
             dirs.register_identity(current)
         return dirs.me(current.user_id, firm_id, settings.mode)
 
+    @app.get("/api/workspace/bootstrap")
+    def workspace_bootstrap(
+        request: Request,
+        current=Depends(identity),
+        firm_id: str | None = Header(default=None, alias="X-Firm-Id"),
+        dirs=Depends(directory),
+    ):
+        from .workspace.bootstrap import home_bootstrap
+
+        return home_bootstrap(
+            dirs, request.app.state.workspace, current, firm_id, settings.mode
+        )
+
     @app.post("/api/firms", status_code=201)
     def create_firm(payload: FirmCreate, current=Depends(identity), dirs=Depends(directory)):
         if not firm_signup_enabled:

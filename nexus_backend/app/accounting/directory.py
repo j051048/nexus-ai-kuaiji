@@ -51,44 +51,63 @@ class DirectoryService:
 
     def me(self, user_id, firm_id=None, mode="supabase"):
         with self.db.transaction(actor=Actor(user_id, "")) as conn:
-            user = self.access.require_user(conn, user_id)
-            firms = conn.execute(
-                "SELECT f.id,f.name,m.role FROM firms f JOIN memberships m ON m.firm_id=f.id WHERE m.user_id=? ORDER BY f.name,f.id",
-                (user_id,),
-            ).fetchall()
-            available = {row["id"]: dict(row) for row in firms}
-            clients = conn.execute(
-                "SELECT DISTINCT f.id,f.name FROM firms f JOIN firm_clients fc ON fc.firm_id=f.id AND fc.status='active' "
-                "JOIN company_memberships cm ON cm.company_id=fc.company_id WHERE cm.user_id=? ORDER BY f.name,f.id",
-                (user_id,),
-            ).fetchall()
-            for row in clients:
-                available.setdefault(row["id"], {**dict(row), "role": "client_employee"})
-            if firm_id is not None and firm_id not in available:
-                raise AccountingError("未获得该事务所工作空间授权", 403)
-            selected = firm_id if firm_id is not None else next(iter(available), None)
-            role = available[selected]["role"] if selected else None
-            manager = role in FIRM_MANAGERS
-            company_admin = bool(
-                selected
-                and conn.execute(
-                    "SELECT 1 FROM company_memberships cm JOIN firm_clients fc ON fc.company_id=cm.company_id "
-                    "WHERE fc.firm_id=? AND fc.status='active' AND cm.user_id=? AND cm.role IN ('owner','admin') LIMIT 1",
-                    (selected, user_id),
-                ).fetchone()
-            )
-            return {
-                "mode": mode,
-                "user": {"id": user["id"], "name": user["name"], "email": user["email"]},
-                "firms": list(available.values()),
-                "current_firm_id": selected,
-                "permissions": {
-                    "manage_firm": manager,
-                    "manage_admin": manager or company_admin,
-                    "create_company": manager,
-                    "create_book": manager,
-                },
-            }
+            return self.me_in_connection(conn, user_id, firm_id, mode)
+
+    def me_in_connection(self, conn, user_id, firm_id=None, mode="supabase", *, identity=None):
+        """Read live identity/grants in the caller's restricted read snapshot.
+
+        A provider-verified changed/new identity returns None so the caller can
+        leave the read transaction before synchronizing it. Disabled users are
+        always rejected, never treated as new registrations.
+        """
+        if identity is not None and identity.user_id != user_id:
+            raise ValueError("身份与当前读取账号不一致")
+        user = conn.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
+        if user and not user["active"]:
+            raise AccountingError("账号未激活或已停用", 403)
+        if identity is not None and (
+            not user
+            or user["name"] != identity.display_name
+            or user["email"] != (identity.email or "").lower()
+        ):
+            return None
+        if not user:
+            raise AccountingError("账号未激活或已停用", 403)
+        # Select available workspaces and their management capability together.
+        # Memberships keep their existing precedence over client-only access.
+        firms = conn.execute(
+            "WITH workspaces AS ("
+            "SELECT f.id,f.name,m.role,0 AS priority FROM firms f "
+            "JOIN memberships m ON m.firm_id=f.id WHERE m.user_id=? "
+            "UNION ALL SELECT DISTINCT f.id,f.name,'client_employee',1 FROM firms f "
+            "JOIN firm_clients fc ON fc.firm_id=f.id AND fc.status='active' "
+            "JOIN company_memberships cm ON cm.company_id=fc.company_id WHERE cm.user_id=?"
+            "), ranked AS (SELECT workspaces.*,ROW_NUMBER() OVER(PARTITION BY id ORDER BY priority) AS ordinal FROM workspaces) "
+            "SELECT r.id,r.name,r.role,EXISTS(SELECT 1 FROM company_memberships cm "
+            "JOIN firm_clients fc ON fc.company_id=cm.company_id WHERE fc.firm_id=r.id "
+            "AND fc.status='active' AND cm.user_id=? AND cm.role IN ('owner','admin')) AS company_admin "
+            "FROM ranked r WHERE ordinal=1 ORDER BY r.priority,r.name,r.id",
+            (user_id, user_id, user_id),
+        ).fetchall()
+        available = {row["id"]: {key: row[key] for key in ("id", "name", "role")} for row in firms}
+        if firm_id is not None and firm_id not in available:
+            raise AccountingError("未获得该事务所工作空间授权", 403)
+        selected = firm_id if firm_id is not None else next(iter(available), None)
+        role = available[selected]["role"] if selected else None
+        manager = role in FIRM_MANAGERS
+        company_admin = any(row["id"] == selected and row["company_admin"] for row in firms)
+        return {
+            "mode": mode,
+            "user": {"id": user["id"], "name": user["name"], "email": user["email"]},
+            "firms": list(available.values()),
+            "current_firm_id": selected,
+            "permissions": {
+                "manage_firm": manager,
+                "manage_admin": manager or company_admin,
+                "create_company": manager,
+                "create_book": manager,
+            },
+        }
 
     def resolve_actor(self, user_id, firm_id=None):
         """Resolve current authorization in one RLS-scoped read, without a profile.

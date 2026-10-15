@@ -117,7 +117,7 @@ def test_profile_uses_one_bounded_read_transaction_without_voucher_health(
     monkeypatch.setattr(service.accounting, "workbench", forbidden)
     with count_statements(c.db, monkeypatch) as statements:
         result = service.profile(c.manager)
-    assert len(statements) <= 4
+    assert len(statements) == 1
     assert len(result["companies"]) == extra_companies + 2
     assert result["book_count"] == 2
     assert not any("draft_lines" in query or "FROM drafts" in query for query in statements)

@@ -51,58 +51,73 @@ class WorkspaceService:
         self.access = accounting.access
 
     def profile(self, actor):
-        # The home screen needs capabilities, not voucher health or department
-        # directories. Resolve current grants once in this read transaction;
-        # never reuse another request's permissions or accounting snapshots.
         with self.db.transaction(actor=actor) as conn:
-            firm_role = self.access.firm_role(conn, actor)
-            manager = firm_role in FIRM_MANAGERS
-            scope, params = self.accounting._summary_scope(actor)
-            scope += " AND c.status='active'"
-            if not manager:
-                scope += (
-                    " AND a.role IS NOT NULL AND (?=1 OR cm.role IN ('owner','admin','finance'))"
-                )
-                params.append(1 if firm_role else 0)
-            books = conn.execute(scope, params).fetchall()
-            ledger_companies = {row["company_id"] for row in books}
-            can_review = any(
-                self.access.permissions(firm_role, row["book_role"], row["company_role"])["review"]
-                for row in books
-            )
-            rows = conn.execute(
-                """SELECT c.id,c.name,cm.role,cm.department_id,
+            return self.profile_in_connection(conn, actor)
+
+    def profile_in_connection(self, conn, actor):
+        # One projection resolves the live actor, grants, company choices and
+        # book capabilities. It remains inside the caller's RLS transaction;
+        # no authorization or accounting snapshot survives this request.
+        scope, params = self.accounting._summary_scope(actor)
+        scope += """ AND c.status='active' AND EXISTS(SELECT 1 FROM active_actor aa
+            WHERE aa.firm_role IN ('owner','admin') OR (a.role IS NOT NULL
+              AND (aa.firm_role IS NOT NULL OR cm.role IN ('owner','admin','finance'))))"""
+        rows = conn.execute(
+            """WITH active_actor AS (SELECT u.id,m.role AS firm_role FROM users u
+                LEFT JOIN memberships m ON m.user_id=u.id AND m.firm_id=?
+                WHERE u.id=? AND u.active=1), visible_books AS ("""
+            + scope
+            + """), book_capabilities AS (
+                SELECT b.company_id,COUNT(*) AS book_count,
+                  MAX(CASE WHEN aa.firm_role IN ('owner','admin') OR
+                    (b.book_role='reviewer' AND (aa.firm_role='reviewer'
+                      OR (aa.firm_role IS NULL AND b.company_role='finance')))
+                    THEN 1 ELSE 0 END) AS can_review
+                FROM visible_books b CROSS JOIN active_actor aa GROUP BY b.company_id
+              ), visible_companies AS (
+                SELECT c.id,c.name,cm.role,cm.department_id,
                     COALESCE(p.mode,'department') AS submission_mode,
                     EXISTS(SELECT 1 FROM departments d WHERE d.company_id=c.id) AS has_department,
                     EXISTS(SELECT 1 FROM department_approvers da
                         JOIN company_memberships member ON member.company_id=da.company_id
                             AND member.user_id=da.user_id
                         WHERE da.firm_id=fc.firm_id AND da.company_id=c.id
-                            AND da.user_id=?) AS can_approve
+                            AND da.user_id=?) AS can_approve,
+                    COALESCE(b.book_count,0) AS book_count,
+                    COALESCE(b.can_review,0) AS can_review
                     FROM companies c
                     JOIN firm_clients fc ON fc.company_id=c.id AND fc.firm_id=? AND fc.status='active'
                     LEFT JOIN company_memberships cm ON cm.company_id=c.id AND cm.user_id=?
                     LEFT JOIN business_submission_policies p ON p.company_id=c.id AND p.firm_id=fc.firm_id
-                    WHERE c.status='active' ORDER BY c.name,c.id""",
-                (actor.user_id, actor.firm_id, actor.user_id),
-            ).fetchall()
-            companies = [
-                row for row in rows if manager or row["role"] or row["id"] in ledger_companies
-            ]
-            can_finance = any(row["role"] == "finance" for row in companies)
-            can_approve = any(row["can_approve"] for row in companies)
-            can_submit = any(
-                row["role"] in {"owner", "admin", "finance"}
-                if row["submission_mode"] == "direct"
-                else bool(
-                    row["role"]
-                    and (
-                        row["department_id"] or row["role"] != "employee" and row["has_department"]
-                    )
+                    LEFT JOIN book_capabilities b ON b.company_id=c.id
+                    CROSS JOIN active_actor aa
+                    WHERE c.status='active' AND (aa.firm_role IN ('owner','admin')
+                      OR cm.role IS NOT NULL OR b.company_id IS NOT NULL)
+              ) SELECT aa.firm_role AS _firm_role,c.* FROM active_actor aa
+                LEFT JOIN visible_companies c ON 1=1 ORDER BY c.name,c.id""",
+            (actor.firm_id, actor.user_id, *params, actor.user_id, actor.firm_id, actor.user_id),
+        ).fetchall()
+        if not rows:
+            raise AccountingError("账号未激活或已停用", 403)
+        firm_role = rows[0]["_firm_role"]
+        manager = firm_role in FIRM_MANAGERS
+        companies = [row for row in rows if row["id"] is not None]
+        book_count = sum(row["book_count"] for row in companies)
+        can_review = any(row["can_review"] for row in companies)
+        can_finance = any(row["role"] == "finance" for row in companies)
+        can_approve = any(row["can_approve"] for row in companies)
+        can_submit = any(
+            row["role"] in {"owner", "admin", "finance"}
+            if row["submission_mode"] == "direct"
+            else bool(
+                row["role"]
+                and (
+                    row["department_id"] or row["role"] != "employee" and row["has_department"]
                 )
-                for row in companies
             )
-            can_manage = manager or any(row["role"] in {"owner", "admin"} for row in companies)
+            for row in companies
+        )
+        can_manage = manager or any(row["role"] in {"owner", "admin"} for row in companies)
         # The firm's accounting role is primary; a company's finance member
         # keeps the finance workflow even when additionally allowed to review.
         role = (
@@ -126,11 +141,11 @@ class WorkspaceService:
             "can_approve": can_approve,
             "can_finance": can_finance,
             "can_review": can_review,
-            "can_accounting": bool(books),
+            "can_accounting": bool(book_count),
             "can_manage": can_manage,
             "can_operations": can_manage or can_finance,
             "companies": [{"id": c["id"], "name": c["name"]} for c in companies],
-            "book_count": len(books),
+            "book_count": book_count,
         }
 
     def _query(self, conn, actor):
@@ -443,6 +458,24 @@ class WorkspaceService:
         sort="priority",
         q="",
     ):
+        with self.db.transaction(actor=actor) as conn:
+            return self.list_in_connection(
+                conn, actor, bucket, kind, company_id, limit, offset, ref, sort, q
+            )
+
+    def list_in_connection(
+        self,
+        conn,
+        actor,
+        bucket="action",
+        kind=None,
+        company_id=None,
+        limit=20,
+        offset=0,
+        ref=None,
+        sort="priority",
+        q="",
+    ):
         page_bounds(limit, offset)
         if (
             bucket not in {"action", "waiting", "all"}
@@ -452,71 +485,85 @@ class WorkspaceService:
             or len(q) > 200
         ):
             raise AccountingError("待办筛选参数无效")
-        with self.db.transaction(actor=actor) as conn:
-            self.access.require_user(conn, actor.user_id)
-            query, params = self._query(conn, actor)
-            where, filters = ["1=1"], []
-            for col, value in (
-                ("bucket", None if bucket == "all" else bucket),
-                ("kind", kind),
-                ("company_id", company_id),
-                ("ref", ref),
-            ):
-                if value is not None:
-                    where.append(col + "=?")
-                    filters.append(value)
-            if q.strip():
-                where.append(
-                    "(title LIKE ? ESCAPE '!' OR company_id IN (SELECT id FROM companies WHERE name LIKE ? ESCAPE '!'))"
-                )
-                filters.extend([self._search(q)] * 2)
-            base = " FROM tasks WHERE " + " AND ".join(where)
-            total = conn.execute(query + "SELECT count(*)" + base, [*params, *filters]).fetchone()[
-                0
-            ]
-            counts = conn.execute(
-                query + "SELECT bucket,count(*) AS total FROM tasks GROUP BY bucket", params
-            ).fetchall()
-            order = {
-                "priority": "priority,COALESCE(due_on,'9999-12-31'),updated_at DESC",
-                "due": "COALESCE(due_on,'9999-12-31'),priority,updated_at DESC",
-                "amount": "CASE WHEN amount_cents IS NULL THEN 1 ELSE 0 END,amount_cents DESC,priority,updated_at DESC",
-                "updated": "updated_at DESC,priority",
-            }[sort]
-            rows = conn.execute(
-                query
-                + "SELECT t.*,c.name AS company_name FROM (SELECT *"
-                + base
-                + " ORDER BY "
-                + order
-                + ",kind,ref LIMIT ? OFFSET ?) t JOIN companies c ON c.id=t.company_id",
-                [*params, *filters, limit, offset],
-            ).fetchall()
-            today = datetime.now(ZoneInfo("Asia/Shanghai")).date().isoformat()
-            tasks = []
-            for row in rows:
-                item = dict(row)
-                item["key"] = item["kind"] + ":" + item["ref"]
-                amount = item.pop("amount_cents")
-                # PostgreSQL SUM(bigint) yields Decimal; aggregate task totals
-                # can exceed the single-transaction amount ceiling. Their
-                # input is still exclusively validated integer cents.
-                cents = int(amount) if amount is not None else None
-                item["amount"] = f"{cents // 100}.{cents % 100:02d}" if cents is not None else None
-                item["overdue"] = bool(item["due_on"] and item["due_on"] < today)
-                if item["kind"] == "alert":
-                    item["title"] = ALERTS.get(item["title"], "待处理运行告警")
-                tasks.append(item)
-            return {
-                "tasks": tasks,
-                "counts": {r["bucket"]: r["total"] for r in counts},
-                "pagination": {
-                    "total": total,
-                    "limit": limit,
-                    "offset": offset,
-                    "has_more": offset + limit < total,
-                },
-            }
+        # _query resolves the active user and current firm role through the
+        # review scope; do not repeat that identical authorization round trip.
+        query, params = self._query(conn, actor)
+        where, filters = ["1=1"], []
+        for col, value in (
+            ("bucket", None if bucket == "all" else bucket),
+            ("kind", kind),
+            ("company_id", company_id),
+            ("ref", ref),
+        ):
+            if value is not None:
+                where.append(col + "=?")
+                filters.append(value)
+        if q.strip():
+            where.append(
+                "(title LIKE ? ESCAPE '!' OR company_id IN (SELECT id FROM companies WHERE name LIKE ? ESCAPE '!'))"
+            )
+            filters.extend([self._search(q)] * 2)
+        base = " FROM tasks WHERE " + " AND ".join(where)
+        order = {
+            "priority": "priority,COALESCE(due_on,'9999-12-31'),updated_at DESC",
+            "due": "COALESCE(due_on,'9999-12-31'),priority,updated_at DESC",
+            "amount": "CASE WHEN amount_cents IS NULL THEN 1 ELSE 0 END,amount_cents DESC,priority,updated_at DESC",
+            "updated": "updated_at DESC,priority",
+        }[sort]
+        rows = conn.execute(
+            query
+            + ", filtered_tasks AS (SELECT *"
+            + base
+            + "), task_counts AS (SELECT "
+            "COALESCE(SUM(CASE WHEN bucket='action' THEN 1 ELSE 0 END),0) AS _action_count,"
+            "COALESCE(SUM(CASE WHEN bucket='waiting' THEN 1 ELSE 0 END),0) AS _waiting_count "
+            "FROM tasks), matching_count AS (SELECT COUNT(*) AS _total FROM filtered_tasks),"
+            " task_page AS (SELECT * FROM filtered_tasks ORDER BY "
+            + order
+            + ",kind,ref LIMIT ? OFFSET ?) "
+            "SELECT t.*,c.name AS company_name,n._total,k._action_count,k._waiting_count "
+            "FROM matching_count n CROSS JOIN task_counts k LEFT JOIN task_page t ON 1=1 "
+            "LEFT JOIN companies c ON c.id=t.company_id ORDER BY "
+            + order
+            + ",kind,ref",
+            [*params, *filters, limit, offset],
+        ).fetchall()
+        # A metadata row survives an empty page, including offset past the last
+        # task. PostgreSQL materializes the reused authorized task projection
+        # once rather than recomputing its RLS-heavy branches three times.
+        total = rows[0]["_total"]
+        counts = {
+            bucket: rows[0]["_" + bucket + "_count"]
+            for bucket in ("action", "waiting")
+            if rows[0]["_" + bucket + "_count"]
+        }
+        today = datetime.now(ZoneInfo("Asia/Shanghai")).date().isoformat()
+        tasks = []
+        for row in rows:
+            if row["ref"] is None:
+                continue
+            item = {key: row[key] for key in row.keys() if not key.startswith("_")}
+            item["key"] = item["kind"] + ":" + item["ref"]
+            amount = item.pop("amount_cents")
+            # PostgreSQL SUM(bigint) yields Decimal; aggregate task totals
+            # can exceed the single-transaction amount ceiling. Their
+            # input is still exclusively validated integer cents.
+            cents = int(amount) if amount is not None else None
+            item["amount"] = f"{cents // 100}.{cents % 100:02d}" if cents is not None else None
+            item["overdue"] = bool(item["due_on"] and item["due_on"] < today)
+            if item["kind"] == "alert":
+                item["title"] = ALERTS.get(item["title"], "待处理运行告警")
+            tasks.append(item)
+        return {
+            "tasks": tasks,
+            "counts": counts,
+            "pagination": {
+                "total": total,
+                "limit": limit,
+                "offset": offset,
+                "has_more": offset + limit < total,
+            },
+        }
 
     @staticmethod
     def _search(value):

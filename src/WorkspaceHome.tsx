@@ -54,6 +54,8 @@ export function WorkspaceHome({
   revision,
   paused = false,
   initialCompanyId = '',
+  initialTasks = null,
+  onInitialTasksConsumed,
 }: {
   session: Session;
   profile: WorkspaceProfile | null;
@@ -67,6 +69,8 @@ export function WorkspaceHome({
   revision: number;
   paused?: boolean;
   initialCompanyId?: string;
+  initialTasks?: WorkspaceTasks | null;
+  onInitialTasksConsumed?: () => void;
 }) {
   const [bucket, setBucket] = useState<'action' | 'waiting'>('action');
   const [kind, setKind] = useState<TaskKind | ''>('');
@@ -78,8 +82,13 @@ export function WorkspaceHome({
   const [search, setSearch] = useState('');
   const [views, setViews] = useState<SavedWorkspaceView[]>([]);
   const [viewNotice, setViewNotice] = useState('');
-  const [value, setValue] = useState<WorkspaceTasks | null>(null);
+  const firstTasks = useRef(initialCompanyId ? null : initialTasks);
+  const initialTasksConsumed = useRef(false);
+  const consumeInitialTasks = useRef(onInitialTasksConsumed);
+  consumeInitialTasks.current = onInitialTasksConsumed;
+  const [value, setValue] = useState<WorkspaceTasks | null>(firstTasks.current);
   const [summary, setSummary] = useState<AgentSummary | null>(null);
+  const [summaryError, setSummaryError] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [opening, setOpening] = useState('');
@@ -90,8 +99,12 @@ export function WorkspaceHome({
   const alive = useRef(true);
   const scope = useRef(session.scope_key);
   scope.current = session.scope_key;
-  const dataScope = useRef('');
-  const dataFilter = useRef('');
+  const dataScope = useRef(firstTasks.current ? session.scope_key : '');
+  const dataFilter = useRef(
+    firstTasks.current
+      ? JSON.stringify([session.scope_key, 'action', '', '', 0, 'priority', ''])
+      : '',
+  );
   const summaryScope = useRef('');
   const openingLock = useRef(false);
   const openingController = useRef<AbortController | null>(null);
@@ -107,6 +120,7 @@ export function WorkspaceHome({
 
   const load = useCallback(
     async (signal?: AbortSignal) => {
+      firstTasks.current = null;
       const request = ++epoch.current;
       const started = session.scope_key;
       setLoading(true);
@@ -168,7 +182,7 @@ export function WorkspaceHome({
 
   useEffect(() => {
     alive.current = true;
-    setValue(null);
+    setValue(firstTasks.current);
     setSummary(null);
     setOpenError('');
     setViews([]);
@@ -200,6 +214,13 @@ export function WorkspaceHome({
     return () => clearTimeout(timeout);
   }, [query]);
   useEffect(() => {
+    if (!initialTasksConsumed.current) {
+      initialTasksConsumed.current = true;
+      consumeInitialTasks.current?.();
+    }
+    // Keep the initial response only inside this mounted view. React's development
+    // effect replay must not turn one bootstrap into duplicate authorized reads.
+    if (firstTasks.current && revision === 0 && filterKey === dataFilter.current) return;
     const controller = new AbortController();
     setValue(null);
     void load(controller.signal);
@@ -207,11 +228,12 @@ export function WorkspaceHome({
       controller.abort();
       epoch.current++;
     };
-  }, [load, revision]);
+  }, [load, revision, filterKey]);
   useEffect(() => {
     const controller = new AbortController();
     const started = session.scope_key;
     setSummary(null);
+    setSummaryError('');
     void api<AgentSummary>('/agent-workspace/summary', session, { signal: controller.signal })
       .then((next) => {
         if (alive.current && scope.current === started && !controller.signal.aborted) {
@@ -222,6 +244,7 @@ export function WorkspaceHome({
       .catch((caught) => {
         if (alive.current && scope.current === started && !controller.signal.aborted) {
           setSummary(null);
+          setSummaryError(errorMessage(caught));
           if (caught instanceof ApiError && [401, 403, 404].includes(caught.status)) {
             setValue(null);
             setPrivacyRevision((value) => value + 1);
@@ -433,6 +456,14 @@ export function WorkspaceHome({
           </button>
         )}
       </section>
+      {summaryError && (
+        <p className="workspace-view-notice" role="status">
+          后台运行概览暂未更新，待办仍可继续处理。
+          <button className="text-button" onClick={() => setRefreshTick((value) => value + 1)}>
+            重试运行概览
+          </button>
+        </p>
+      )}
       <section className="panel workspace-inbox">
         <div className="workspace-inbox-heading">
           <div>

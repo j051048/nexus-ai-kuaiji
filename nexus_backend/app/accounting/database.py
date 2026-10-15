@@ -11,7 +11,9 @@ from pathlib import Path
 from time import perf_counter
 from threading import Lock
 
-from .telemetry import SharedTransactionMetrics, TransactionMetrics, transaction_scope
+from .telemetry import (
+    SharedTransactionMetrics, TransactionMetrics, transaction_scope, transaction_actor,
+)
 
 MIGRATIONS = Path(__file__).resolve().parents[2] / "migrations"
 WRITE_LOCK = 6_420_031_786_281_903_101
@@ -472,6 +474,7 @@ class Database:
         outcome = "rolled_back"
         companies = {company_id} if company_id else set()
         metric_token = transaction_scope.set(companies)
+        actor_token = transaction_actor.set(actor)
         try:
             if self.is_postgres:
                 conn.begin(
@@ -503,10 +506,12 @@ class Database:
             conn.rollback()
             raise
         finally:
-            conn.close()
+            metric_actor = transaction_actor.get()
             transaction_scope.reset(metric_token)
+            transaction_actor.reset(actor_token)
+            conn.close()
             self.metrics.record(
-                firm_id=getattr(actor, "firm_id", None),
+                firm_id=getattr(metric_actor, "firm_id", None),
                 company_id=next(iter(companies)) if len(companies) == 1 else None,
                 write=write,
                 outcome=outcome,
@@ -515,7 +520,7 @@ class Database:
                 transaction_ms=(perf_counter() - connected) * 1000,
             )
             self.shared_metrics.record(
-                actor=actor,
+                actor=metric_actor,
                 company_id=next(iter(companies)) if len(companies) == 1 else None,
                 write=write,
                 outcome=outcome,
