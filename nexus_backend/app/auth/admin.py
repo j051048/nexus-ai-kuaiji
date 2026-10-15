@@ -177,6 +177,47 @@ class SupabaseAdmin:
             raise AccountingError("未能生成安全激活链接，请重试", 503)
         return {"user_id": user["id"], "existing_user": False, "token_hash": token_hash}
 
+    def provision_password(self, email, name, request_id, password):
+        """Create a new managed account; never change an existing identity's password.
+
+        The server-written request marker recovers a lost creation response. A
+        retry keeps the first password, including when a different one is supplied.
+        This Admin API operation does not send an invitation or confirmation email.
+        """
+        if not isinstance(password, str) or not 12 <= len(password) <= 128:
+            raise AccountingError("初始密码须为 12–128 个字符", 422)
+        user = self.find_user(email)
+        recovered = user is not None
+        if user is None:
+            try:
+                user = self._user(
+                    self._request(
+                        "POST", "/admin/users",
+                        body={
+                            "email": email, "password": password, "email_confirm": True,
+                            "user_metadata": {"display_name": name},
+                            "app_metadata": {
+                                "accounting_provision_request": request_id,
+                                "accounting_provision_mode": "password",
+                            },
+                        },
+                    ), email,
+                )
+            except AccountingError:
+                user = self.find_user(email)
+                if user is None:
+                    raise
+                recovered = True
+        user = self._user(user, email)
+        metadata = user.get("app_metadata") or {}
+        if (
+            metadata.get("accounting_provision_request") != request_id
+            or metadata.get("accounting_provision_mode") != "password"
+            or not user.get("email_confirmed_at")
+        ):
+            raise AccountingError("该邮箱已有账号，请改用激活邀请或成员授权；不会修改已有密码", 409)
+        return {"user_id": user["id"], "existing_user": False, "password_already_created": recovered}
+
     def bootstrap_user(self, email, name, password):
         """Explicit operator bootstrap only; existing users' passwords stay intact."""
         user = self.find_user(email)

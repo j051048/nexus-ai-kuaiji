@@ -155,3 +155,8 @@ export interface AssistantActionPage {
   plans: AssistantActionPlan[];
   pagination: Pagination;
 }
+export interface AssistantConversationWorkspace {
+  detail: AssistantConversationDetail;
+  messages: AssistantMessages;
+  actions: AssistantActionPage;
+}

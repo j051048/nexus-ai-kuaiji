@@ -1,7 +1,8 @@
-"""Durable, scoped account invitations with recipient acceptance.
+"""Durable, scoped invitations and new employee password provisioning.
 
 Supabase operations run outside DB transactions. Activation secrets are returned
-once and only their digests are persisted. No password is accepted by this API.
+once and only their digests are persisted. Initial passwords exist only for the
+duration of a request; neither passwords nor their hashes are persisted locally.
 """
 
 import hashlib
@@ -13,6 +14,7 @@ from urllib.parse import urlencode
 from uuid import uuid4
 
 from app.auth.admin import SupabaseAdmin
+from app.auth.supabase import Identity
 
 from .access import AccessControl, FIRM_MANAGERS
 from .directory import DirectoryService
@@ -37,6 +39,7 @@ class AdminIdentityService:
             "company_role",
             "department_id",
             "firm_role",
+            "provisioning_mode",
             "status",
             "attempts",
             "error",
@@ -71,6 +74,20 @@ class AdminIdentityService:
         creator = conn.execute("SELECT email FROM users WHERE id=?", (actor.user_id,)).fetchone()
         if creator["email"].lower() == target["email"]:
             raise AccountingError("不能通过开户邀请变更自己的权限", 403)
+
+    @staticmethod
+    def _validate_password_department(conn, actor, target):
+        # This is provisioning readiness, not scope authorization. A policy
+        # change must never prevent viewing/cancelling an old failed request or
+        # replaying an already completed request without restoring its grant.
+        if (target["provisioning_mode"] == "password" and target["company_role"] == "employee"
+                and not target["department_id"]):
+            policy = conn.execute(
+                "SELECT mode FROM business_submission_policies WHERE firm_id=? AND company_id=?",
+                (actor.firm_id, target["company_id"]),
+            ).fetchone()
+            if not policy or policy["mode"] == "department":
+                raise AccountingError("部门审批模式下请先建立部门，并为员工分配所属部门后开户", 422)
 
     def _get(self, conn, actor, request_id):
         row = conn.execute(
@@ -114,9 +131,11 @@ class AdminIdentityService:
             }
 
     def create(self, actor, request):
-        payload = request.model_dump(exclude={"idempotency_key"})
+        payload = request.model_dump(exclude={"idempotency_key", "initial_password"})
+        fingerprint_payload = {key: value for key, value in payload.items()
+                               if key != "provisioning_mode" or value != "activation"}
         fingerprint = hashlib.sha256(
-            json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()
+            json.dumps(fingerprint_payload, sort_keys=True, ensure_ascii=False).encode()
         ).hexdigest()
         with self.db.transaction(write=True, actor=actor) as conn:
             self._authorize(conn, actor, payload)
@@ -127,13 +146,17 @@ class AdminIdentityService:
             if prior:
                 if prior["fingerprint"] != fingerprint:
                     raise AccountingError("同一开户请求编号不能用于不同人员或权限", 409)
-                return {"request": self._public(prior)}
+                result = {"request": self._public(prior)}
+                if prior["provisioning_mode"] == "password" and prior["status"] == "completed":
+                    result["password_already_created"] = True
+                return result
+            self._validate_password_department(conn, actor, payload)
             request_id = uuid4().hex
             timestamp = now()
             conn.execute(
                 "INSERT INTO admin_account_requests(id,firm_id,created_by,idempotency_key,fingerprint,name,email,"
-                "company_id,company_role,department_id,firm_role,status,created_at,updated_at) "
-                "VALUES(?,?,?,?,?,?,?,?,?,?,?,'pending',?,?)",
+                "company_id,company_role,department_id,firm_role,provisioning_mode,status,created_at,updated_at) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,'pending',?,?)",
                 (
                     request_id,
                     actor.firm_id,
@@ -146,6 +169,7 @@ class AdminIdentityService:
                     request.company_role,
                     request.department_id,
                     request.firm_role,
+                    request.provisioning_mode,
                     timestamp,
                     timestamp,
                 ),
@@ -159,37 +183,59 @@ class AdminIdentityService:
                     "company_id": request.company_id,
                     "email": request.email,
                     "role": request.company_role or request.firm_role,
+                    "provisioning_mode": request.provisioning_mode,
                 },
             )
-        return self.retry(actor, request_id)
+        return self.retry(actor, request_id, request.initial_password)
 
-    def retry(self, actor, request_id):
+    def retry(self, actor, request_id, initial_password=None):
         secret = secrets.token_urlsafe(32)
         digest = hashlib.sha256(secret.encode()).hexdigest()
         lease = uuid4().hex
         with self.db.transaction(write=True, actor=actor) as conn:
             row = self._get(conn, actor, request_id)
             if row["status"] == "completed":
-                return {"request": self._public(row)}
+                response = {"request": self._public(row)}
+                if row["provisioning_mode"] == "password":
+                    response["password_already_created"] = True
+                return response
             if row["status"] == "cancelled":
                 raise AccountingError("邀请已撤销，请创建新的开户请求", 409)
             self._originator_authorized(actor, row)
+            self._validate_password_department(conn, actor, row)
+            password_mode = row["provisioning_mode"] == "password"
+            if password_mode and initial_password is None:
+                raise AccountingError("请重新输入初始密码后重试；此前已创建的账号仍沿用首次密码", 422)
+            if not password_mode and initial_password is not None:
+                raise AccountingError("激活邀请不能携带初始密码", 422)
             if row["lease_until"] > int(time.time()):
                 return {"request": self._public(row)}
             conn.execute(
                 "UPDATE admin_account_requests SET status='pending',attempts=attempts+1,error='',"
                 "token_digest=?,expires_at=?,lease_token=?,lease_until=?,updated_at=? WHERE id=?",
-                (digest, int(time.time()) + 3600, lease, int(time.time()) + 180, now(), request_id),
+                ("" if password_mode else digest, 0 if password_mode else int(time.time()) + 3600,
+                 lease, int(time.time()) + 180, now(), request_id),
             )
             original = dict(row)
         try:
-            result = self.provider.provision(original["email"], original["name"], request_id)
+            if password_mode:
+                password = initial_password.get_secret_value()
+                try:
+                    result = self.provider.provision_password(
+                        original["email"], original["name"], request_id, password
+                    )
+                finally:
+                    del password
+            else:
+                result = self.provider.provision(original["email"], original["name"], request_id)
         except AccountingError as error:
             return self._finish(actor, request_id, lease, error=error.detail)
         except Exception:
             return self._finish(
                 actor, request_id, lease, error="开户暂未完成，可安全重试；尚未授予权限"
             )
+        if password_mode:
+            return self._finish_password(actor, request_id, lease, original, result)
         response = self._finish(actor, request_id, lease, result=result)
         if response.pop("_issued", False):
             fragment = {
@@ -203,6 +249,42 @@ class AdminIdentityService:
                 self.provider.public_app_url + "/account-activation#" + urlencode(fragment)
             )
         return response
+
+    def _finish_password(self, actor, request_id, lease, original, result):
+        # Provider verified this new identity; a local profile alone carries no
+        # company or ledger grant. Recheck both administrators after the remote
+        # call, then publish the grant and terminal request in one transaction.
+        self.directory.register_identity(Identity(result["user_id"], original["email"], original["name"]))
+        with self.db.transaction(write=True, actor=actor) as conn:
+            row = self._get(conn, actor, request_id)
+            if (row["lease_token"] != lease or row["status"] != "pending"
+                    or row["lease_until"] <= int(time.time())):
+                response = {"request": self._public(row)}
+                if row["status"] == "completed":
+                    response["password_already_created"] = True
+                return response
+            self._originator_authorized(actor, row)
+            if row["provisioning_mode"] != "password" or result["existing_user"]:
+                raise AccountingError("开户方式或身份不匹配，尚未授予企业权限", 409)
+            self._validate_password_department(conn, actor, row)
+            self._grant(conn, actor, row, result["user_id"])
+            conn.execute(
+                "UPDATE admin_account_requests SET status='completed',provider_user_id=?,completed_by=?,"
+                "existing_user=0,error='',lease_token='',lease_until=0,updated_at=? WHERE id=?",
+                (result["user_id"], result["user_id"], now(), request_id),
+            )
+            self.directory._audit(
+                conn, actor, "admin.account.password_created", request_id,
+                {"company_id": row["company_id"], "created_user_id": result["user_id"],
+                 "role": row["company_role"], "department_id": row["department_id"],
+                 "password_already_created": bool(result.get("password_already_created"))},
+            )
+            return {
+                "request": self._public(conn.execute(
+                    "SELECT * FROM admin_account_requests WHERE id=?", (request_id,)
+                ).fetchone()),
+                "password_already_created": bool(result.get("password_already_created")),
+            }
 
     def _finish(self, actor, request_id, lease, result=None, error=None):
         # Authorization may have been revoked while Auth was processing. In that
@@ -268,6 +350,7 @@ class AdminIdentityService:
     def _verify_recipient(row, identity, token):
         valid = (
             row
+            and row["provisioning_mode"] == "activation"
             and row["provider_user_id"] == identity.user_id
             and row["email"] == (identity.email or "").lower()
             and hmac.compare_digest(row["token_digest"], hashlib.sha256(token.encode()).hexdigest())

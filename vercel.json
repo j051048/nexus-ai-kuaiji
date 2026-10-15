@@ -21,7 +21,8 @@
       "entrypoint": "main:app",
       "functions": {
         "main.py": {
-          "maxDuration": 120
+          "maxDuration": 120,
+          "regions": ["icn1"]
         }
       }
     }

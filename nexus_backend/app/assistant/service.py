@@ -473,19 +473,23 @@ class AssistantService:
     def detail(self, actor, conversation_id):
         with self.db.transaction(actor=actor) as conn:
             conversation = self._conversation(conn, actor, conversation_id)
-            context = self.snapshot_in_transaction(conn, actor, conversation)
-            turns = conn.execute(
-                "SELECT "
-                + TURN_PUBLIC
-                + " FROM assistant_turns WHERE conversation_id=? ORDER BY created_at DESC,id LIMIT 20",
-                (conversation_id,),
-            ).fetchall()
-            return {
-                "conversation": conversation,
-                "context": context,
-                "turns": [self._turn_json(r) for r in turns],
-                **self._availability(conn, actor, conversation["company_id"]),
-            }
+            return self._detail_in_transaction(conn, actor, conversation)
+
+    def _detail_in_transaction(self, conn, actor, conversation):
+        conversation_id = conversation["id"]
+        context = self.snapshot_in_transaction(conn, actor, conversation)
+        turns = conn.execute(
+            "SELECT "
+            + TURN_PUBLIC
+            + " FROM assistant_turns WHERE conversation_id=? ORDER BY created_at DESC,id LIMIT 20",
+            (conversation_id,),
+        ).fetchall()
+        return {
+            "conversation": conversation,
+            "context": context,
+            "turns": [self._turn_json(r) for r in turns],
+            **self._availability(conn, actor, conversation["company_id"]),
+        }
 
     @staticmethod
     def _turn_json(row):
@@ -533,33 +537,67 @@ class AssistantService:
         page_bounds(limit, offset)
         with self.db.transaction(actor=actor) as conn:
             self._conversation(conn, actor, conversation_id)
-            total = conn.execute(
-                "SELECT COUNT(*) FROM assistant_messages WHERE conversation_id=?",
-                (conversation_id,),
-            ).fetchone()[0]
-            rows = conn.execute(
-                "SELECT m.id,m.turn_id,m.role,m.content_json,m.created_at,t.input_fingerprint,t.snapshot_json FROM assistant_messages m JOIN assistant_turns t ON t.id=m.turn_id AND t.conversation_id=m.conversation_id WHERE m.conversation_id=? ORDER BY m.created_at DESC,m.id DESC LIMIT ? OFFSET ?",
-                (conversation_id, limit, offset),
-            ).fetchall()
-            messages = []
-            for r in reversed(rows):
-                content = json.loads(r["content_json"])
-                references = set(content.get("citation_ids", []))
-                citations = [
-                    item
-                    for item in json.loads(r["snapshot_json"])["evidence"]
-                    if item["id"] in references
-                ]
-                messages.append(
-                    {
-                        key: r[key]
-                        for key in ("id", "turn_id", "role", "created_at", "input_fingerprint")
-                    }
-                    | {"content": content, "citations": citations}
-                )
+            return self._messages_in_transaction(conn, conversation_id, limit, offset)
+
+    def _messages_in_transaction(self, conn, conversation_id, limit, offset):
+        total = conn.execute(
+            "SELECT COUNT(*) FROM assistant_messages WHERE conversation_id=?",
+            (conversation_id,),
+        ).fetchone()[0]
+        rows = conn.execute(
+            "SELECT m.id,m.turn_id,m.role,m.content_json,m.created_at,t.input_fingerprint,t.snapshot_json FROM assistant_messages m JOIN assistant_turns t ON t.id=m.turn_id AND t.conversation_id=m.conversation_id WHERE m.conversation_id=? ORDER BY m.created_at DESC,m.id DESC LIMIT ? OFFSET ?",
+            (conversation_id, limit, offset),
+        ).fetchall()
+        messages = []
+        for r in reversed(rows):
+            content = json.loads(r["content_json"])
+            references = set(content.get("citation_ids", []))
+            citations = [
+                item
+                for item in json.loads(r["snapshot_json"])["evidence"]
+                if item["id"] in references
+            ]
+            messages.append(
+                {
+                    key: r[key]
+                    for key in ("id", "turn_id", "role", "created_at", "input_fingerprint")
+                }
+                | {"content": content, "citations": citations}
+            )
+        return {
+            "messages": messages,
+            "pagination": self._pagination(total, limit, offset, len(rows)),
+        }
+
+    def workspace(
+        self,
+        actor,
+        conversation_id,
+        actions,
+        *,
+        message_limit=100,
+        message_offset=0,
+        action_limit=20,
+        action_offset=0,
+    ):
+        """One live authorization and read snapshot for the visible conversation.
+
+        The authorized conversation is request-local. It is never retained on
+        the service or reused after this transaction, a write, or a scope change.
+        Existing individual endpoints continue to authorize independently.
+        """
+        page_bounds(message_limit, message_offset)
+        actions.validate_page(action_limit, action_offset)
+        with self.db.transaction(actor=actor) as conn:
+            conversation = self._conversation(conn, actor, conversation_id)
             return {
-                "messages": messages,
-                "pagination": self._pagination(total, limit, offset, len(rows)),
+                "detail": self._detail_in_transaction(conn, actor, conversation),
+                "messages": self._messages_in_transaction(
+                    conn, conversation_id, message_limit, message_offset
+                ),
+                "actions": actions.list_in_transaction(
+                    conn, actor, conversation, action_limit, action_offset
+                ),
             }
 
     def enqueue(self, actor, conversation_id, body: TurnCreate):

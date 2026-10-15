@@ -47,6 +47,7 @@ import type {
   AssistantConversation,
   AssistantConversationDetail,
   AssistantConversationPage,
+  AssistantConversationWorkspace,
   AssistantEvidence,
   AssistantInitialContext,
   AssistantMessages,
@@ -403,40 +404,47 @@ export function GlobalAccountingAssistant({
       controller.abort();
     };
   }, [companyId, scopeKey, eventQuery, eventOffset, revoked, session, clearSensitive]);
-  const loadHistory = useCallback(async () => {
-    if (!companyId || revoked) return;
-    const started = scopeKey,
-      signal = scopeController.current.signal;
-    try {
-      const value = await api<AssistantConversationPage>(
-        '/assistant/conversations?' +
-          new URLSearchParams({
-            company_id: companyId,
-            limit: '20',
-            offset: String(historyOffset),
-          }),
-        session,
-        { signal },
-      );
-      if (!signal.aborted && started === liveScope.current)
-        setConversations({
-          key: started,
-          value: {
-            ...value,
-            conversations: value.conversations.filter((row) => row.company_id === companyId),
-          },
-        });
-    } catch (failure) {
-      if (!signal.aborted && started === liveScope.current) {
-        if (failure instanceof ApiError && [401, 403, 404].includes(failure.status))
-          clearSensitive();
-        setError(errorMessage(failure));
+  const loadHistory = useCallback(
+    async (requestSignal?: AbortSignal) => {
+      if (!companyId || revoked) return;
+      const started = scopeKey,
+        signal = requestSignal ?? scopeController.current.signal;
+      try {
+        const value = await api<AssistantConversationPage>(
+          '/assistant/conversations?' +
+            new URLSearchParams({
+              company_id: companyId,
+              limit: '20',
+              offset: String(historyOffset),
+            }),
+          session,
+          { signal },
+        );
+        if (!signal.aborted && started === liveScope.current)
+          setConversations({
+            key: started,
+            value: {
+              ...value,
+              conversations: value.conversations.filter((row) => row.company_id === companyId),
+            },
+          });
+      } catch (failure) {
+        if (!signal.aborted && started === liveScope.current) {
+          if (failure instanceof ApiError && [401, 403, 404].includes(failure.status))
+            clearSensitive();
+          setError(errorMessage(failure));
+        }
       }
-    }
-  }, [companyId, scopeKey, historyOffset, revoked, session, clearSensitive]);
+    },
+    [companyId, scopeKey, historyOffset, revoked, session, clearSensitive],
+  );
   useEffect(() => {
-    void loadHistory();
-  }, [loadHistory]);
+    if (!showHistory) return;
+    const controller = new AbortController();
+    setConversations(null);
+    void loadHistory(AbortSignal.any([controller.signal, scopeController.current.signal]));
+    return () => controller.abort();
+  }, [loadHistory, showHistory]);
   const loadConversation = useCallback(
     async (initial = false, force = false) => {
       if (!conversationId || revoked) return;
@@ -459,23 +467,48 @@ export function GlobalAccountingAssistant({
       }
       reading.promise = (async () => {
         try {
-          const values = await Promise.all([
-            api<AssistantConversationDetail>(
-              `/assistant/conversations/${encode(conversationId)}`,
+          let workspace: AssistantConversationWorkspace;
+          try {
+            workspace = await api<AssistantConversationWorkspace>(
+              `/assistant/conversations/${encode(conversationId)}/workspace?` +
+                new URLSearchParams({
+                  message_limit: '100',
+                  message_offset: String(messageOffset),
+                  action_limit: '20',
+                  action_offset: String(planOffset),
+                }),
               session,
               { signal },
-            ),
-            api<AssistantMessages>(
-              `/assistant/conversations/${encode(conversationId)}/messages?limit=100&offset=${messageOffset}`,
-              session,
-              { signal },
-            ),
-            api<AssistantActionPage>(
-              `/assistant/conversations/${encode(conversationId)}/actions?limit=20&offset=${planOffset}`,
-              session,
-              { signal },
-            ),
-          ]);
+            );
+          } catch (failure) {
+            // During a rolling release an older API may not have this route.
+            // A missing resource or revoked scope must not retry legacy reads.
+            if (
+              !(failure instanceof ApiError) ||
+              failure.status !== 404 ||
+              failure.message !== 'Not Found'
+            )
+              throw failure;
+            const values = await Promise.all([
+              api<AssistantConversationDetail>(
+                `/assistant/conversations/${encode(conversationId)}`,
+                session,
+                { signal },
+              ),
+              api<AssistantMessages>(
+                `/assistant/conversations/${encode(conversationId)}/messages?limit=100&offset=${messageOffset}`,
+                session,
+                { signal },
+              ),
+              api<AssistantActionPage>(
+                `/assistant/conversations/${encode(conversationId)}/actions?limit=20&offset=${planOffset}`,
+                session,
+                { signal },
+              ),
+            ]);
+            workspace = { detail: values[0], messages: values[1], actions: values[2] };
+          }
+          const values = [workspace.detail, workspace.messages, workspace.actions] as const;
           if (
             signal.aborted ||
             started !== liveDetail.current ||
@@ -671,7 +704,6 @@ export function GlobalAccountingAssistant({
         const row = 'conversation' in value ? value.conversation : value;
         requestKeys.current.delete('create');
         openConversation(row);
-        void loadHistory();
       },
     );
   }
@@ -839,7 +871,6 @@ export function GlobalAccountingAssistant({
               disabled={!companyId || revoked || busy}
               onClick={() => {
                 setShowHistory((value) => !value);
-                void loadHistory();
               }}
             >
               <History size={18} />
@@ -932,6 +963,12 @@ export function GlobalAccountingAssistant({
               </button>
             </div>
             <p className="ga-help">{companyName} · 历史会话每次打开都会重新检查资料授权。</p>
+            {!history && !error && (
+              <div className="ga-loading" role="status">
+                <LoaderCircle className="spin" size={20} />
+                <p>正在读取我的会话…</p>
+              </div>
+            )}
             {history?.conversations.map((row) => (
               <button className="ga-history-row" key={row.id} onClick={() => openConversation(row)}>
                 <MessageSquareText size={17} />

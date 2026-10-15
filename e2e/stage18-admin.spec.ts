@@ -216,6 +216,7 @@ test('开户失败可重试，激活链接仅临时显示，撤销邀请不会�
   await page.goto(`/admin/organizations/${company.id}`);
   await page.getByRole('button', { name: '开通账号', exact: true }).click();
   let dialog = page.getByRole('dialog', { name: '开通账号', exact: true });
+  await dialog.getByRole('radio', { name: /本人激活/ }).check();
   await dialog.getByLabel('姓名', { exact: true }).fill(record.name);
   await dialog.getByLabel('登录邮箱', { exact: true }).fill(record.email);
   await expect(dialog.locator('input[type=password]')).toHaveCount(0);

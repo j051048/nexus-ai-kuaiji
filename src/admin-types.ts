@@ -42,6 +42,7 @@ export interface AccountRequest {
   email: string;
   name: string;
   status: 'pending' | 'awaiting_activation' | 'completed' | 'failed' | 'cancelled';
+  provisioning_mode?: 'activation' | 'password';
   company_role?: string;
   firm_role?: string;
   error?: string;

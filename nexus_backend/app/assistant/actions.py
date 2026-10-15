@@ -622,7 +622,8 @@ class AssistantActionService:
                 conn, actor, conversation, self._plan(conn, actor, conversation, plan_id)
             )
 
-    def list(self, actor, conversation_id, limit=20, offset=0):
+    @staticmethod
+    def validate_page(limit, offset):
         if (
             type(limit) is not int
             or not 1 <= limit <= 20
@@ -630,43 +631,55 @@ class AssistantActionService:
             or not 0 <= offset <= 100000
         ):
             raise AccountingError("操作历史每页 1–20 项，分页范围无效", 422)
+
+    def list(self, actor, conversation_id, limit=20, offset=0):
+        self.validate_page(limit, offset)
         with self.db.transaction(actor=actor) as conn:
             conversation = self._conversation(conn, actor, conversation_id)
-            where = " FROM assistant_action_plans WHERE conversation_id=? AND firm_id=? AND created_by=?"
-            args = (conversation_id, actor.firm_id, actor.user_id)
-            total = conn.execute("SELECT COUNT(*)" + where, args).fetchone()[0]
-            rows = conn.execute(
-                "SELECT *" + where + " ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?",
-                (*args, limit, offset),
-            ).fetchall()
-            # A page uses one database timestamp and one receipt read, rather
-            # than two network round trips per unexecuted plan. Progress in an
-            # executed receipt is still loaded live under current permissions.
-            receipts, stamp = {}, self._stamp(conn) if rows else None
-            if rows:
-                receipts = {
-                    row["plan_id"]: row
-                    for row in conn.execute(
-                        "SELECT * FROM assistant_action_receipts WHERE conversation_id=? "
-                        "AND firm_id=? AND created_by=? AND plan_id IN ("
-                        + ",".join("?" for _ in rows)
-                        + ")",
-                        (*args, *(row["id"] for row in rows)),
-                    )
-                }
-            return {
-                "plans": [
-                    self._json(conn, actor, conversation, row, receipts=receipts, stamp=stamp)
-                    for row in rows
-                ],
-                "pagination": {
-                    "total": total,
-                    "limit": limit,
-                    "offset": offset,
-                    "has_more": offset + len(rows) < total,
-                    "next_offset": offset + len(rows) if offset + len(rows) < total else None,
-                },
+            return self.list_in_transaction(conn, actor, conversation, limit, offset)
+
+    def list_in_transaction(self, conn, actor, conversation, limit=20, offset=0):
+        # Only reuse a conversation already authorized in this same transaction.
+        # Receipt progress is still read live under that transaction's RLS scope.
+        self.validate_page(limit, offset)
+        conversation_id = conversation["id"]
+        where = (
+            " FROM assistant_action_plans WHERE conversation_id=? AND firm_id=? AND created_by=?"
+        )
+        args = (conversation_id, actor.firm_id, actor.user_id)
+        total = conn.execute("SELECT COUNT(*)" + where, args).fetchone()[0]
+        rows = conn.execute(
+            "SELECT *" + where + " ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?",
+            (*args, limit, offset),
+        ).fetchall()
+        # A page uses one database timestamp and one receipt read, rather
+        # than two network round trips per unexecuted plan. Progress in an
+        # executed receipt is still loaded live under current permissions.
+        receipts, stamp = {}, self._stamp(conn) if rows else None
+        if rows:
+            receipts = {
+                row["plan_id"]: row
+                for row in conn.execute(
+                    "SELECT * FROM assistant_action_receipts WHERE conversation_id=? "
+                    "AND firm_id=? AND created_by=? AND plan_id IN ("
+                    + ",".join("?" for _ in rows)
+                    + ")",
+                    (*args, *(row["id"] for row in rows)),
+                )
             }
+        return {
+            "plans": [
+                self._json(conn, actor, conversation, row, receipts=receipts, stamp=stamp)
+                for row in rows
+            ],
+            "pagination": {
+                "total": total,
+                "limit": limit,
+                "offset": offset,
+                "has_more": offset + len(rows) < total,
+                "next_offset": offset + len(rows) if offset + len(rows) < total else None,
+            },
+        }
 
     def confirm(self, actor, conversation_id, plan_id, request: ActionConfirm):
         with self.db.transaction(write=True, actor=actor) as conn:

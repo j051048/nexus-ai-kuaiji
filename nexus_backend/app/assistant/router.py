@@ -43,6 +43,27 @@ def build_assistant_router(actor_dependency):
     def detail(conversation_id: str, current=Depends(actor_dependency), assistant=Depends(service)):
         return assistant.detail(current, conversation_id)
 
+    @router.get("/conversations/{conversation_id}/workspace")
+    def workspace(
+        conversation_id: str,
+        message_limit: int = Query(100, ge=1, le=100),
+        message_offset: int = Query(0, ge=0, le=1_000_000),
+        action_limit: int = Query(20, ge=1, le=20),
+        action_offset: int = Query(0, ge=0, le=100_000),
+        current=Depends(actor_dependency),
+        assistant=Depends(service),
+        action_service=Depends(actions),
+    ):
+        return assistant.workspace(
+            current,
+            conversation_id,
+            action_service,
+            message_limit=message_limit,
+            message_offset=message_offset,
+            action_limit=action_limit,
+            action_offset=action_offset,
+        )
+
     @router.get("/conversations/{conversation_id}/messages")
     def messages(
         conversation_id: str,

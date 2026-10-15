@@ -318,6 +318,107 @@
   gap: 9px;
   margin-top: 4px;
 }
+.admin-account-modes {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.admin-account-modes legend {
+  font-size: 13px;
+  color: #5c7062;
+  margin-bottom: 10px;
+}
+.admin-account-modes label {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 13px;
+  border: 1px solid #dce4dc;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.admin-account-modes label:has(input:checked) {
+  border-color: #6e947a;
+  background: #f2f6ef;
+}
+.admin-account-modes input {
+  width: auto;
+  margin: 3px 0 0;
+  flex-shrink: 0;
+  accent-color: #245441;
+}
+.admin-account-modes span {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.admin-account-modes strong {
+  font-size: 13px;
+  font-weight: 600;
+  color: #345c43;
+}
+.admin-account-modes small {
+  font-size: 11px;
+  line-height: 1.7;
+  color: #7c887e;
+}
+.admin-role-preview {
+  display: flex;
+  gap: 10px;
+  padding: 14px;
+  border-left: 2px solid #7a9c77;
+  background: #f7f8f4;
+  color: #42664d;
+}
+.admin-role-preview svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.admin-role-preview strong {
+  font-size: 12px;
+  font-weight: 600;
+}
+.admin-role-preview p {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.85;
+  color: #7c887a;
+}
+.admin-account-delivery h3 {
+  margin: 0 0 12px;
+  color: #345c43;
+  font-size: 16px;
+}
+.admin-account-delivery p {
+  font-size: 12px;
+  color: #6c7d6d;
+  line-height: 1.85;
+}
+.admin-account-delivery dl {
+  margin: 20px 0;
+  border-block: 1px solid #e2e8de;
+  padding: 8px 0;
+}
+.admin-account-delivery dl > div {
+  display: grid;
+  grid-template-columns: 74px minmax(0, 1fr);
+  gap: 10px;
+  padding: 9px 0;
+  font-size: 12px;
+}
+.admin-account-delivery dt {
+  color: #8a9487;
+}
+.admin-account-delivery dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.admin-account-delivery a {
+  color: #345c43;
+}
 .admin-checkbox {
   display: flex;
   gap: 10px;
@@ -584,6 +685,9 @@
   }
   .admin-form {
     padding: 20px;
+  }
+  .admin-account-modes {
+    grid-template-columns: 1fr;
   }
   .admin-request {
     flex-wrap: wrap;
