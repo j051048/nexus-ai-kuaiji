@@ -6,7 +6,6 @@ from uuid import uuid4
 import pytest
 
 from app.accounting.domain import AccountingError
-from app.operations.service import OperationsService
 from test_business import business
 from test_stage12_workspace import workspace
 from test_stage19_request_reads import count_statements
@@ -51,8 +50,9 @@ def previous_profile(service, actor):
         "can_manage": manage,
         "companies": [{"id": c["id"], "name": c["name"]} for c in companies],
         "book_count": summary["book_count"],
-        "can_operations": manage
-        or bool(OperationsService(service.db, None).companies(actor)["companies"]),
+        # 代账包干制后 /api/operations 仅向事务所管理层开放，can_operations 仍是
+        # 兼容字段：企业财务保留该位（历史契约），运行工作区由 can_firm_operations 控制。
+        "can_operations": manage or finance,
         "can_firm_operations": role in {"owner", "admin"},
     }
 

@@ -77,7 +77,8 @@ export default function AdminAIControls({
   const canControl = overview?.ai.can_manage === true;
   // 代账包干制：预算与费用策略是事务所内部管理项，客户企业管理员只能暂停/恢复外发。
   const canBudget = firmManager && canControl && overview?.can_manage_budget === true;
-  const percentage = overview ? budgetPercentage(overview) : null;
+  // 客户侧响应为元数据级（无 usage/policy），进度只在事务所视图里计算。
+  const percentage = firmManager && overview ? budgetPercentage(overview) : null;
 
   const clearSensitive = useCallback(() => {
     epoch.current++;

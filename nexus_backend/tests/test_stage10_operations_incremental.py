@@ -22,7 +22,7 @@ def test_dirty_batch_is_bounded_and_rechecks_deadlines(ops_case):
     c.clock.advance(61)
     with c.db.transaction(write=True) as conn:
         assert c.operations.refresh_pending(conn, batch_limit=1, deadline_limit=1) == 1
-    assert "worker_unavailable" in open_codes(c.operations.overview(c.actors["finance"], c.company["id"]))
+    assert "worker_unavailable" in open_codes(c.operations.overview(c.manager, c.company["id"]))
 
 
 def test_heartbeat_never_requires_company_scan(ops_case, monkeypatch):

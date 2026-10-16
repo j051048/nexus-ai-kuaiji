@@ -100,10 +100,17 @@ def test_http_pg_ai_control_company_scope_cas_and_immediate_revoke(client):
         == 409
     )
     refreshed = client.get(path, headers=company_admin).json()
+    # 代账包干制：费用限额由事务所维护，客户企业管理员提交策略会被拒绝。
     quota = client.put(
         path + "/policy",
         headers=company_admin,
-        json={**policy_body(), "reason": "企业管理员批准本月上限"},
+        json={**policy_body(), "reason": "企业管理员尝试批准本月上限"},
+    )
+    assert quota.status_code == 403, quota.text
+    quota = client.put(
+        path + "/policy",
+        headers=owner,
+        json={**policy_body(), "reason": "事务所批准本月上限"},
     )
     assert quota.status_code == 200, quota.text
     audit = client.get(
@@ -112,7 +119,7 @@ def test_http_pg_ai_control_company_scope_cas_and_immediate_revoke(client):
         params={"company_id": company, "action": "admin.ai.policy"},
     )
     assert audit.status_code == 200 and audit.json()["total"] == 1, audit.text
-    assert audit.json()["events"][0]["details"]["reason"] == "企业管理员批准本月上限"
+    assert audit.json()["events"][0]["details"]["reason"] == "事务所批准本月上限"
     assert (
         client.delete(
             f"/api/companies/{company}/members/{identity.user_id}", headers=owner

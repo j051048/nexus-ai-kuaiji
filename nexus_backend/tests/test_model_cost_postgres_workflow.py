@@ -45,7 +45,8 @@ def test_actual_pg_worker_meter_result_and_quota_scope(pg_cost):
     assert overview["usage"]["reserved_cost"] == "0.000000"
     assert overview["usage"]["input_tokens"] == 1000 and overview["workers"]["available"]
     assert case.queue.get_batch(case.actors["employee"], batch["id"])["progress"]["succeeded"] == 1
-    assert case.operations.companies(case.actors["employee"]) == {"companies": []}
+    with pytest.raises(Exception):
+        case.operations.companies(case.actors["employee"])
     assert event["id"] not in str(overview) and event["attachments"][0]["id"] not in str(overview)
 
 
@@ -89,7 +90,10 @@ def test_pg_unknown_cost_is_held_and_only_budget_manager_can_reconcile(pg_cost):
     case.provider.usage = None
     event = create_event(case)
     assert extract(case, event)["status"] == "succeeded"
-    view = case.operations.overview(case.actors["finance"], case.company["id"])
+    # 代账包干制：客户企业财务不再有运行监控入口，费用明细改由事务所管理员读取。
+    with pytest.raises(Exception):
+        case.operations.overview(case.actors["finance"], case.company["id"])
+    view = case.operations.overview(case.manager, case.company["id"])
     cost = view["costs"][0]
     assert cost["state"] == "uncertain" and view["usage"]["exposure"] == "0.100000"
     assert view["usage"]["input_tokens"] is None and view["usage"]["estimated_cost"] is None

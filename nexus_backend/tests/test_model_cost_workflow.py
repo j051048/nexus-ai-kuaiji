@@ -99,10 +99,12 @@ def test_company_operations_visibility_and_budget_permission_do_not_grant_origin
     case = cost_case
     event = create_event(case)
     assert any(company["id"] == case.company["id"] for company in case.operations.companies(case.manager)["companies"])
-    finance = case.operations.companies(case.actors["finance"])["companies"]
-    assert len(finance) == 1 and finance[0]["id"] == case.company["id"] and not finance[0]["can_manage_budget"]
-    for role in ("employee", "approver", "accountant"):
-        assert case.operations.companies(case.actors[role]) == {"companies": []}
+    # 代账包干制：预算与运行监控收归事务所管理层，客户企业角色（含企业财务）
+    # 与无管理权的会计都不再持有只读入口。
+    for role in ("employee", "approver", "finance", "accountant"):
+        with pytest.raises(AccountingError) as listed:
+            case.operations.companies(case.actors[role])
+        assert listed.value.status == 403
         with pytest.raises(AccountingError):
             case.operations.overview(case.actors[role], case.company["id"])
     with pytest.raises(AccountingError):
@@ -168,9 +170,11 @@ def test_missing_usage_holds_reserve_until_manager_records_manual_confirmation(c
     uncertain = cost_rows(case)[0]
     assert uncertain["state"] == "uncertain" and uncertain["estimated_micro"] is None
     assert uncertain["reserved_micro"] == 100_000
-    finance = case.operations.overview(case.actors["finance"], case.company["id"])
-    assert finance["usage"]["uncertain_requests"] == 1 and finance["usage"]["exposure"] == "0.100000"
-    assert not finance["costs"][0]["can_reconcile"] and event["id"] not in str(finance)
+    with pytest.raises(AccountingError):
+        case.operations.overview(case.actors["finance"], case.company["id"])
+    view = case.operations.overview(case.manager, case.company["id"])
+    assert view["usage"]["uncertain_requests"] == 1 and view["usage"]["exposure"] == "0.100000"
+    assert view["costs"][0]["can_reconcile"] and event["id"] not in str(view)
     request = ReconcileRequest(expected_version=uncertain["version"], confirmed_cost="0.03", reason="合成供应商结算证据已核对，人工确认费用")
     with pytest.raises(AccountingError):
         case.operations.reconcile(case.actors["finance"], uncertain["id"], request)
@@ -349,7 +353,9 @@ def test_recording_cost_after_actor_revocation_does_not_reopen_evidence(cost_cas
     assert cost_rows(case)[0]["state"] == "estimated" and cost_rows(case)[0]["estimated_micro"] == 11
     with pytest.raises(AccountingError):
         case.intelligence.detail(case.actors["employee"], event["id"])
-    assert case.operations.companies(case.actors["employee"]) == {"companies": []}
+    with pytest.raises(AccountingError) as denied:
+        case.operations.companies(case.actors["employee"])
+    assert denied.value.status == 403
     assert case.operations.overview(case.manager, case.company["id"])["usage"]["estimated_cost"] == "0.000011"
 
 
@@ -389,25 +395,28 @@ def test_unknown_charge_alert_can_be_acknowledged_without_releasing_budget(cost_
     context, _ = claimed_context(case)
     before_send(case, context)
     context.finish(result=SimpleNamespace(usage=None), attempted=True)
-    viewed = case.operations.refresh(case.actors["finance"], case.company["id"])
+    # 代账包干制：提醒处置与费用核对都由事务所管理层完成，客户侧无入口。
+    with pytest.raises(AccountingError):
+        case.operations.refresh(case.actors["finance"], case.company["id"])
+    viewed = case.operations.refresh(case.manager, case.company["id"])
     assert {alert["code"] for alert in viewed["alerts"] if alert["state"] == "open"} == {"usage_uncertain", "budget_exhausted"}
     alert = next(alert for alert in viewed["alerts"] if alert["code"] == "usage_uncertain")
     version = alert["version"]
     case.clock.advance(10)
-    refreshed = case.operations.refresh(case.actors["finance"], case.company["id"])
+    refreshed = case.operations.refresh(case.manager, case.company["id"])
     same = next(row for row in refreshed["alerts"] if row["id"] == alert["id"])
     assert same["version"] == version and same["last_seen_at"] != alert["last_seen_at"]
-    ack = case.operations.acknowledge(case.actors["finance"], alert["id"], AcknowledgeRequest(expected_version=version, reason="企业财务已知晓，等待管理员核对供应商结算"))
+    ack = case.operations.acknowledge(case.manager, alert["id"], AcknowledgeRequest(expected_version=version, reason="事务所已核对通知，等待结算凭据确认费用"))
     assert ack["state"] == "acknowledged"
-    still = case.operations.refresh(case.actors["finance"], case.company["id"])
+    still = case.operations.refresh(case.manager, case.company["id"])
     assert next(row for row in still["alerts"] if row["id"] == alert["id"])["version"] == ack["version"]
     assert still["usage"]["exposure"] == "0.100000" and cost_rows(case)[0]["state"] == "uncertain"
     with case.db.transaction() as conn:
         reason = conn.execute("SELECT reason FROM ops_alert_actions WHERE alert_id=?", (alert["id"],)).fetchone()[0]
-    assert "等待管理员核对" in reason
+    assert "等待结算凭据" in reason
     cost = cost_rows(case)[0]
     case.operations.reconcile(case.manager, cost["id"], ReconcileRequest(expected_version=cost["version"], confirmed_cost="0.01", reason="管理员根据合成结算凭据核定"))
-    resolved = case.operations.overview(case.actors["finance"], case.company["id"])
+    resolved = case.operations.overview(case.manager, case.company["id"])
     assert all(row["state"] == "resolved" for row in resolved["alerts"])
     assert resolved["usage"]["exposure"] == "0.010000"
 
@@ -419,14 +428,14 @@ def test_new_cost_risk_reopens_acknowledged_alert_and_rejects_old_ack_version(co
     before_send(case, first)
     first.finish(result=SimpleNamespace(usage=None), attempted=True)
     alert = next(row for row in case.operations.refresh(case.manager, case.company["id"])["alerts"] if row["code"] == "usage_uncertain")
-    ack = case.operations.acknowledge(case.actors["finance"], alert["id"], AcknowledgeRequest(expected_version=alert["version"], reason="已知晓第一条待核定成本"))
+    ack = case.operations.acknowledge(case.manager, alert["id"], AcknowledgeRequest(expected_version=alert["version"], reason="值班管理员已核对第一条待核定成本"))
     second, _ = claimed_context(case)
     before_send(case, second)
     second.finish(result=SimpleNamespace(usage=None), attempted=True)
     reopened = next(row for row in case.operations.refresh(case.manager, case.company["id"])["alerts"] if row["id"] == alert["id"])
     assert reopened["state"] == "open" and reopened["version"] > ack["version"]
     with pytest.raises(AccountingError) as stale:
-        case.operations.acknowledge(case.actors["finance"], alert["id"], AcknowledgeRequest(expected_version=ack["version"], reason="尝试用旧版本消除新增风险"))
+        case.operations.acknowledge(case.manager, alert["id"], AcknowledgeRequest(expected_version=ack["version"], reason="尝试用旧版本消除新增风险"))
     assert stale.value.status == 409
 
 
@@ -439,7 +448,7 @@ def test_get_overview_is_read_only_and_expired_sent_cost_is_refreshed_conservati
     before = cost_rows(case)[0]
     view = case.operations.overview(case.manager, case.company["id"])
     assert view["costs"][0]["state"] == "sent" and cost_rows(case)[0]["version"] == before["version"]
-    refreshed = case.operations.refresh(case.actors["finance"], case.company["id"])
+    refreshed = case.operations.refresh(case.manager, case.company["id"])
     assert refreshed["costs"][0]["state"] == "uncertain"
     assert refreshed["usage"]["exposure"] == "0.100000"
     assert cost_rows(case)[0]["version"] == before["version"] + 1
@@ -453,7 +462,7 @@ def test_queue_wait_and_worker_heartbeat_alerts_follow_actual_conditions(cost_ca
     batch = case.queue.enqueue(case.actors["employee"], BatchRequest(company_id=case.company["id"], items=[{
         "event_id": event["id"], "attachment_id": event["attachments"][0]["id"], "expected_version": event["version"],
     }], idempotency_key="operations-pending-heartbeat"))
-    missing = case.operations.refresh(case.actors["finance"], case.company["id"])
+    missing = case.operations.refresh(case.manager, case.company["id"])
     assert any(row["code"] == "worker_unavailable" and row["state"] == "open" for row in missing["alerts"])
     with case.queue.worker_transaction() as conn:
         case.operations.maintenance(conn, "synthetic-heartbeat-worker", 0, "idle")
@@ -461,15 +470,15 @@ def test_queue_wait_and_worker_heartbeat_alerts_follow_actual_conditions(cost_ca
     assert healthy["workers"]["available"]
     assert next(row for row in healthy["alerts"] if row["code"] == "worker_unavailable")["state"] == "resolved"
     case.clock.advance(61)
-    slow = case.operations.refresh(case.actors["finance"], case.company["id"])
+    slow = case.operations.refresh(case.manager, case.company["id"])
     assert any(row["code"] == "queue_wait" and row["state"] == "open" for row in slow["alerts"])
     assert slow["workers"]["available"]
     case.clock.advance(30)
-    stale = case.operations.refresh(case.actors["finance"], case.company["id"])
+    stale = case.operations.refresh(case.manager, case.company["id"])
     assert not stale["workers"]["available"]
     assert next(row for row in stale["alerts"] if row["code"] == "worker_unavailable")["state"] == "open"
     case.queue.cancel_job(case.actors["employee"], batch["jobs"][0]["id"], "合成任务不再需要处理，明确取消")
-    cleared = case.operations.refresh(case.actors["finance"], case.company["id"])
+    cleared = case.operations.refresh(case.manager, case.company["id"])
     assert all(row["state"] == "resolved" for row in cleared["alerts"])
     assert case.provider.extract_calls == 0
 
@@ -576,21 +585,22 @@ def test_http_company_scopes_and_cost_permissions_keep_raw_employee_evidence_pri
     client = operations_http
     employee, department, finance, accountant = [http_auth(client, role) for role in ("employee", "department", "finance", "accountant")]
     event, company = http_create(client, employee)
-    for restricted in (employee, department):
-        response = client.get("/api/operations/companies", headers=restricted)
-        assert response.status_code == 200 and response.json() == {"companies": []}
-        assert client.get(f"/api/operations/companies/{company['id']}/overview", headers=restricted).status_code == 404
+    # 代账包干制：模型费用与运行监控是事务所的生产资料，客户企业角色（含企业
+    # 财务）在接口层不再有只读入口，事务所以外一律 403。
+    for restricted in (employee, department, finance):
+        assert client.get("/api/operations/companies", headers=restricted).status_code == 403
+        assert (
+            client.get(
+                f"/api/operations/companies/{company['id']}/overview", headers=restricted
+            ).status_code
+            == 403
+        )
     all_companies = client.get("/api/operations/companies", headers=accountant).json()["companies"]
-    # The local persona is deliberately assigned to all three fictional
-    # companies. Remove two grants through the real management endpoint.
-    for other_company in all_companies:
-        if other_company["id"] != company["id"]:
-            response = client.delete(f"/api/companies/{other_company['id']}/members/local-business-finance", headers=accountant)
-            assert response.status_code == 200, response.text
-    finance_companies = client.get("/api/operations/companies", headers=finance).json()["companies"]
-    assert len(finance_companies) == 1 and not finance_companies[0]["can_manage_budget"]
     other = next(row for row in all_companies if row["id"] != company["id"])
-    assert client.get(f"/api/operations/companies/{other['id']}/overview", headers=finance).status_code == 404
+    assert (
+        client.get(f"/api/operations/companies/{other['id']}/overview", headers=finance).status_code
+        == 403
+    )
     overview = client.get(f"/api/operations/companies/{company['id']}/overview", headers=accountant)
     assert overview.status_code == 200 and event["id"] not in overview.text
     assert event["attachments"][0]["id"] not in overview.text and "test-only-not-a-secret" not in overview.text
@@ -598,7 +608,7 @@ def test_http_company_scopes_and_cost_permissions_keep_raw_employee_evidence_pri
     url = f"/api/operations/companies/{company['id']}/policy"
     body = {"expected_version": 0, "quota_enabled": True, "monthly_limit": "0.01", "ocr_reserve": "0.01", "proposal_reserve": "0.01"}
     assert client.put(url, headers=finance, json=body).status_code == 403
-    assert client.put(url, headers=employee, json=body).status_code == 404
+    assert client.put(url, headers=employee, json=body).status_code == 403
     saved = client.put(url, headers=accountant, json=body)
     assert saved.status_code == 200 and saved.json()["monthly_limit"] == "0.01", saved.text
     assert client.put(url, headers=accountant, json=body).status_code == 409
@@ -622,43 +632,76 @@ def test_http_quota_refuses_second_send_finance_ack_and_manager_manual_cost_conf
     assert reused.status_code == 200 and reused.json()["cache_hit"] == 1 and client.provider.extract_calls == 1
     refused = client.post(url, headers=employee, json={**request, "idempotency_key": "http-paid-ocr-refused", "force_refresh": True})
     assert refused.status_code == 429 and client.provider.extract_calls == 1, refused.text
-    refresh = client.post(f"/api/operations/companies/{company['id']}/refresh", headers=finance)
+    assert (
+        client.post(f"/api/operations/companies/{company['id']}/refresh", headers=finance).status_code
+        == 403
+    )
+    refresh = client.post(f"/api/operations/companies/{company['id']}/refresh", headers=accountant)
     assert refresh.status_code == 200, refresh.text
     view = refresh.json()
     assert view["usage"]["estimated_cost"] == "0.010000" and view["usage"]["available"] == "0.000000"
     assert len(view["costs"]) == 1 and view["costs"][0]["estimated_cost"] == "0.010000"
     alert = next(row for row in view["alerts"] if row["code"] == "budget_exhausted")
-    acknowledged = client.post(f"/api/operations/alerts/{alert['id']}/acknowledge", headers=finance,
-                               json={"expected_version": alert["version"], "reason": "财务已知晓预算耗尽，交管理者核对供应商结算"})
+    assert (
+        client.post(
+            f"/api/operations/alerts/{alert['id']}/acknowledge",
+            headers=finance,
+            json={"expected_version": alert["version"], "reason": "企业财务不再持有运行监控入口"},
+        ).status_code
+        == 403
+    )
+    acknowledged = client.post(f"/api/operations/alerts/{alert['id']}/acknowledge", headers=accountant,
+                               json={"expected_version": alert["version"], "reason": "事务所已核对预算耗尽，待供应商结算确认"})
     assert acknowledged.status_code == 200 and acknowledged.json()["state"] == "acknowledged"
     cost = view["costs"][0]
     reconcile_url = f"/api/operations/costs/{cost['id']}/reconcile"
     confirmed = {"expected_version": cost["version"], "confirmed_cost": "0.00", "reason": "管理者核对合成供应商结算单明确确认未收费"}
     assert client.post(reconcile_url, headers=finance, json=confirmed).status_code == 403
-    assert client.post(reconcile_url, headers=employee, json=confirmed).status_code == 404
+    assert client.post(reconcile_url, headers=employee, json=confirmed).status_code == 403
     received = client.post(reconcile_url, headers=accountant, json=confirmed)
     assert received.status_code == 200 and received.json()["confirmed_cost"] == "0.000000", received.text
     assert received.json()["estimated_cost"] == "0.010000"
-    updated = client.get(f"/api/operations/companies/{company['id']}/overview", headers=finance).json()
+    assert (
+        client.get(f"/api/operations/companies/{company['id']}/overview", headers=finance).status_code
+        == 403
+    )
+    updated = client.get(f"/api/operations/companies/{company['id']}/overview", headers=accountant).json()
     assert updated["usage"]["available"] == "0.010000" and updated["usage"]["confirmed_cost"] == "0.000000"
     assert next(row for row in updated["alerts"] if row["id"] == alert["id"])["state"] == "resolved"
     assert client.provider.extract_calls == 1
 
 
 @pytest.mark.parametrize("role", ["owner", "admin"])
-def test_company_managers_can_manage_budget_without_firm_membership_or_original_access(cost_case, role):
+def test_company_managers_have_no_operations_or_budget_surface_and_no_original_access(
+    cost_case, role
+):
+    """代账包干制：预算与运行监控收归事务所，客户企业管理者不再持有运行入口。"""
     case = cost_case
     identity = SimpleNamespace(user_id="ops-company-" + uuid4().hex, display_name="企业预算管理者", email="ops-" + uuid4().hex + "@example.test")
     case.directory.register_identity(identity)
     case.directory.grant_company_member(case.manager, case.company["id"], CompanyMemberGrant(email=identity.email, role=role))
     actor = Actor(identity.user_id, case.manager.firm_id)
     event = create_event(case)
-    listed = case.operations.companies(actor)["companies"]
-    assert len(listed) == 1 and listed[0]["can_manage_budget"]
-    changed = case.operations.policy(actor, case.company["id"], PolicyRequest(expected_version=0, quota_enabled=True, monthly_limit="1.00", ocr_reserve="0.10", proposal_reserve="0.10"))
-    assert changed["can_manage"] and changed["quota_enabled"]
-    with pytest.raises(AccountingError):
-        case.operations.overview(actor, case.other_company["id"])
+    for denied in (
+        lambda: case.operations.companies(actor),
+        lambda: case.operations.policy(actor, case.company["id"]),
+        lambda: case.operations.overview(actor, case.company["id"]),
+        lambda: case.operations.overview(actor, case.other_company["id"]),
+        lambda: case.operations.policy(
+            actor,
+            case.company["id"],
+            PolicyRequest(
+                expected_version=0,
+                quota_enabled=True,
+                monthly_limit="1.00",
+                ocr_reserve="0.10",
+                proposal_reserve="0.10",
+            ),
+        ),
+    ):
+        with pytest.raises(AccountingError) as blocked:
+            denied()
+        assert blocked.value.status == 403
     with pytest.raises(AccountingError):
         case.intelligence.detail(actor, event["id"])
 
@@ -677,7 +720,7 @@ def test_task_failure_frequency_opens_site_alert_and_known_model_cost_is_preserv
     case.provider.failure = failure
     for index in range(3):
         assert worker.run_once()
-        view = case.operations.overview(case.actors["finance"], case.company["id"])
+        view = case.operations.overview(case.manager, case.company["id"])
         assert view["queue"]["recent_failures"] == index + 1
         if index < 2:
             assert not any(alert["code"] == "task_failures" and alert["state"] == "open" for alert in view["alerts"])

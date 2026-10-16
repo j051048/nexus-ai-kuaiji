@@ -217,8 +217,11 @@ class AdminService:
     def ai_control(self, actor, company_id, intelligence, operations, chat=None, *, period=None):
         # Suspended company access is metadata-only for firm managers. It must
         # never reopen operations, private evidence, costs or ledger queries.
+        # 代账包干制：企业侧只保留隐私授权开关与外发告知；用量、费用、策略与
+        # 运行明细仅事务所管理层可见，因此非事务所管理员的读取同样是元数据级。
         with self.db.transaction(actor=actor) as conn:
             company = self.require_admin_company(conn, actor, company_id)
+            manager = self.access.firm_role(conn, actor) in FIRM_MANAGERS
             link = conn.execute(
                 "SELECT status FROM firm_clients WHERE firm_id=? AND company_id=?",
                 (actor.firm_id, company_id),
@@ -233,7 +236,7 @@ class AdminService:
             metadata = self._ai_control_metadata(
                 company, settings, intelligence, chat, active=active
             )
-        if not active:
+        if not active or not manager:
             return {
                 **metadata,
                 "period": period,
@@ -309,6 +312,8 @@ class AdminService:
         from ..operations.requests import PolicyRequest
 
         with self.db.transaction(actor=actor) as conn:
+            if self.access.firm_role(conn, actor) not in FIRM_MANAGERS:
+                raise AccountingError("费用限额与运行策略仅由事务所管理层管理", 403)
             self.access.company(conn, actor, company_id, manage=True)
         # Reason is audit data, never a model_company_policies storage field.
         policy = PolicyRequest.model_validate(request.model_dump(exclude={"reason"}))

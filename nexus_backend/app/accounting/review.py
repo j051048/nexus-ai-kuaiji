@@ -15,6 +15,9 @@ from .review_models import ReviewConfirmRequest, ReviewPreviewRequest
 from .service import AccountingService, fingerprint, now
 
 
+_UNSET_ROLE = object()
+
+
 class ReviewService:
     def __init__(self, db, accounting=None):
         self.db = db
@@ -39,8 +42,11 @@ class ReviewService:
             for row in rows
         }
 
-    def _review_scope(self, conn, actor):
-        role = self.access.firm_role(conn, actor)
+    def _review_scope(self, conn, actor, role=_UNSET_ROLE):
+        # Callers that already resolved the live firm role in the same
+        # transaction pass it in; no second identity round trip.
+        if role is _UNSET_ROLE:
+            role = self.access.firm_role(conn, actor)
         scope, values = self.accounting._summary_scope(actor)
         if role not in {"owner", "admin"}:
             scope += " AND a.role='reviewer'"

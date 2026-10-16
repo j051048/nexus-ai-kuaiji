@@ -13,7 +13,6 @@ from ..business.service import BusinessService, encode
 from ..intelligence.provider import effective_settings
 from .pricing import decimal_micro, micro_decimal
 
-OPS_ROLES = {"owner", "admin", "finance"}
 HELD_STATES = {"reserved", "sent", "uncertain"}
 QUEUE_STATES = (
     "queued",
@@ -133,29 +132,27 @@ class OperationsService:
         self.access = AccessControl()
 
     def _company(self, conn, actor, company_id, manage=False):
+        # 代账包干制：模型费用与运行监控是事务所的生产资料，只向事务所管理层
+        # 开放；客户企业角色（含只读财务）不再获得该工作区，接口层同步收紧。
+        if self.access.firm_role(conn, actor) not in FIRM_MANAGERS:
+            raise AccountingError("费用与运行监控仅向事务所管理层开放", 403)
         company = self.access.company(conn, actor, company_id)
-        firm_role = self.access.firm_role(conn, actor)
-        company_role = self.access.company_role(conn, actor, company_id)
-        manager = firm_role in FIRM_MANAGERS or company_role in {"owner", "admin"}
-        if not manager and company_role not in OPS_ROLES:
-            raise AccountingError("企业运行信息不存在或无权访问", 404)
-        if manage and not manager:
-            raise AccountingError("需要企业管理员或事务所管理员权限", 403)
-        return company, manager
+        return company, True
 
     def companies(self, actor):
         with self.db.transaction(actor=actor) as conn:
-            manager = self.access.firm_role(conn, actor) in FIRM_MANAGERS
+            if self.access.firm_role(conn, actor) not in FIRM_MANAGERS:
+                raise AccountingError("费用与运行监控仅向事务所管理层开放", 403)
             rows = conn.execute(
-                "SELECT c.id,c.name,m.role FROM companies c JOIN firm_clients f ON f.company_id=c.id LEFT JOIN company_memberships m ON m.company_id=c.id AND m.user_id=? WHERE f.firm_id=? AND f.status='active' AND (?=1 OR m.role IN ('owner','admin','finance')) ORDER BY c.name,c.id",
-                (actor.user_id, actor.firm_id, int(manager)),
+                "SELECT c.id,c.name FROM companies c JOIN firm_clients f ON f.company_id=c.id WHERE f.firm_id=? AND f.status='active' ORDER BY c.name,c.id",
+                (actor.firm_id,),
             )
             return {
                 "companies": [
                     {
                         "id": row["id"],
                         "name": row["name"],
-                        "can_manage_budget": manager or row["role"] in {"owner", "admin"},
+                        "can_manage_budget": True,
                     }
                     for row in rows
                 ]

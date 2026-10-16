@@ -151,13 +151,86 @@ class WorkspaceService:
             "book_count": book_count,
         }
 
+    def _task_gates(self, conn, actor):
+        """Resolve the live firm role plus capability probes for pruning.
+
+        One statement replaces the former role lookup, so a task page keeps the
+        same number of database round trips. The probes only drop branches that
+        provably yield no rows for the current live grants; they can never widen
+        visibility. Every kept branch keeps its own authorization predicate and
+        PostgreSQL FORCE RLS remains the final authority.
+        """
+        row = conn.execute(
+            """SELECT m.role AS firm_role,
+              EXISTS(SELECT 1 FROM memberships fm WHERE fm.firm_id=? AND fm.user_id=? AND fm.role='reviewer') AS firm_reviewer,
+              EXISTS(SELECT 1 FROM company_memberships cm WHERE cm.user_id=?) AS company_member,
+              EXISTS(SELECT 1 FROM company_memberships cm WHERE cm.user_id=? AND cm.role IN ('owner','admin')) AS company_manager,
+              EXISTS(SELECT 1 FROM company_memberships cm WHERE cm.user_id=? AND cm.role='finance') AS finance,
+              EXISTS(SELECT 1 FROM department_approvers da WHERE da.firm_id=? AND da.user_id=?) AS approver,
+              EXISTS(SELECT 1 FROM book_access ba WHERE ba.firm_id=? AND ba.user_id=?) AS book_access,
+              EXISTS(SELECT 1 FROM book_access ba WHERE ba.firm_id=? AND ba.user_id=? AND ba.role='reviewer') AS book_reviewer
+            FROM users u LEFT JOIN memberships m ON m.user_id=u.id AND m.firm_id=?
+            WHERE u.id=? AND u.active=1""",
+            (
+                actor.firm_id,
+                actor.user_id,
+                actor.user_id,
+                actor.user_id,
+                actor.user_id,
+                actor.firm_id,
+                actor.user_id,
+                actor.firm_id,
+                actor.user_id,
+                actor.firm_id,
+                actor.user_id,
+                actor.firm_id,
+                actor.user_id,
+            ),
+        ).fetchone()
+        if not row:
+            raise AccountingError("账号未激活或已停用", 403)
+        firm_manager = row["firm_role"] in FIRM_MANAGERS
+        # Superset of every edit-scope holder: firm managers, company managers,
+        # company finance or any explicit book assignment.
+        book_worker = (
+            firm_manager
+            or bool(row["company_manager"])
+            or bool(row["finance"])
+            or bool(row["book_access"])
+            or bool(row["firm_reviewer"])
+        )
+        # review_books is empty exactly when the actor has no manager or
+        # reviewer grant, so review/export/delivery cannot yield rows.
+        reviewer = firm_manager or bool(row["firm_reviewer"]) or bool(row["book_reviewer"])
+        member = bool(row["company_member"]) or bool(row["approver"]) or book_worker
+        manager = firm_manager or bool(row["company_manager"])
+        any_task = member or reviewer
+        gates = {
+            "intake": member,
+            "business": member,
+            "approval": bool(row["approver"]),
+            "finance": bool(row["finance"]),
+            "handoff": book_worker,
+            "case": any_task,
+            "review": reviewer,
+            "export": reviewer,
+            "delivery": reviewer,
+            "ocr": any_task,
+            "proposal": book_worker,
+            "alert": manager,
+            "material": any_task,
+            "migration": book_worker,
+        }
+        return row["firm_role"], gates
+
     def _query(self, conn, actor):
         # Authorization is part of every branch, before count, sort and limit.
         # PostgreSQL additionally retains FORCE RLS. No cached role/assignment
         # and no client supplied list of companies is treated as authority.
         events, ep = event_scope(actor)
         edits, bp = book_edit_scope(actor)
-        reviews, rp, _ = self.review._review_scope(conn, actor)
+        firm_role, gates = self._task_gates(conn, actor)
+        reviews, rp, _ = self.review._review_scope(conn, actor, role=firm_role)
         case_scope, cp = self.cases._scope_sql(actor)
         params = [*ep, *rp, *bp, actor.firm_id, *cp]
         ctes = f"""WITH visible_events AS (SELECT e.* FROM business_events e WHERE {events}),
@@ -187,6 +260,8 @@ class WorkspaceService:
         parts = []
 
         def branch(kind, table, where, values=None, args=()):
+            if not gates.get(kind, True):
+                return
             fields = {
                 "kind": f"'{kind}'",
                 "ref": "e.id",
@@ -223,6 +298,16 @@ class WorkspaceService:
                 + where
             )
             params.extend(args)
+
+        # A fully pruned actor (for example a revoked employee) still needs one
+        # valid empty projection so counts, pagination and the single-statement
+        # contract keep working without resurrecting any branch.
+        if not any(gates.values()):
+            parts.append(
+                "SELECT "
+                + ",".join("NULL AS " + column for column in columns)
+                + " FROM (SELECT 1) AS empty_projection WHERE 1=0"
+            )
 
         def business_title(column, fallback):
             # Only used within already authorized event/intake branches.
@@ -440,13 +525,14 @@ class WorkspaceService:
         )
         from app.legacy_migration.workspace import workspace_branch
 
-        migration_sql, migration_params = workspace_branch(self.db, actor)
-        parts.append(
-            "SELECT migration_task.*,NULL AS amount_cents FROM ("
-            + migration_sql
-            + ") migration_task"
-        )
-        params.extend(migration_params)
+        if gates.get("migration", True):
+            migration_sql, migration_params = workspace_branch(self.db, actor)
+            parts.append(
+                "SELECT migration_task.*,NULL AS amount_cents FROM ("
+                + migration_sql
+                + ") migration_task"
+            )
+            params.extend(migration_params)
         # A request can exist before any business event. Visibility and action
         # ownership are resolved before counts/pagination, like other branches.
         branch(

@@ -173,6 +173,14 @@ def test_company_admin_only_controls_own_company_and_warm_access_dies_on_revoke(
     )
     actor = Actor(identity.user_id, c.manager.firm_id)
     assert read(c, actor)["ai"]["can_manage"]
+    # 代账包干制：客户企业管理员只得到隐私授权元数据，用量与策略不再下发，
+    # 费用限额也只能由事务所管理层维护。
+    company_view = read(c, actor)
+    assert company_view["usage"] is None and company_view["policy"] is None
+    assert company_view["costs"] == [] and company_view["can_manage_budget"] is False
+    with pytest.raises(AccountingError) as policy_denied:
+        admin(c).update_ai_policy(actor, c.company["id"], policy_request(), c.operations)
+    assert policy_denied.value.status == 403
     with pytest.raises(AccountingError) as cross:
         admin(c).ai_control(actor, c.other_company["id"], c.intelligence, c.operations)
     assert cross.value.status in (403, 404)

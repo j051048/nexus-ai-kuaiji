@@ -47,6 +47,44 @@ def test_home_task_page_and_totals_share_one_authorized_projection(business, mon
     assert revoked["pagination"]["total"] == 0
 
 
+def test_client_tasks_prune_heavy_branches_without_widening_visibility(business):
+    """代账包干制下客户端首页只编译必要分支；事务所视图保持完整且授权不变。"""
+    c, service = business, workspace(business)
+    create(c, description="本人待填写")
+    employee = c.actors["employee"]
+    with c.db.transaction(actor=employee) as conn:
+        query, _ = service._query(conn, employee)
+    assert (
+        "SELECT 'intake' AS kind" in query
+        and "SELECT 'case' AS kind" in query
+        and "SELECT 'material' AS kind" in query
+    )
+    for heavy in (
+        "SELECT 'review' AS kind",
+        "SELECT 'export' AS kind",
+        "SELECT 'delivery' AS kind",
+        "SELECT 'proposal' AS kind",
+        "SELECT 'alert' AS kind",
+        "SELECT 'finance' AS kind",
+        "SELECT 'approval' AS kind",
+    ):
+        assert heavy not in query, heavy
+    assert "migration_task" not in query
+    manager = c.manager
+    with c.db.transaction(actor=manager) as conn:
+        full_query, _ = service._query(conn, manager)
+    for kept in (
+        "SELECT 'review' AS kind",
+        "SELECT 'export' AS kind",
+        "SELECT 'proposal' AS kind",
+        "SELECT 'alert' AS kind",
+    ):
+        assert kept in full_query, kept
+    assert "migration_task" in full_query
+    tasks = service.list(employee, bucket="all")
+    assert any(task["kind"] == "business" for task in tasks["tasks"])
+
+
 def test_connection_helpers_share_snapshot_but_not_authorization_between_requests(
     business, monkeypatch
 ):
