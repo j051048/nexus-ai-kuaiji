@@ -8,6 +8,7 @@ export const workspaceViews = [
   'learning',
   'reconciliation',
   'delivery',
+  'briefing',
   'ledger',
   'integration',
   'revision',

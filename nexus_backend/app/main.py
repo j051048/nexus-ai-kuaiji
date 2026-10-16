@@ -108,6 +108,7 @@ from .monthly.router import build_monthly_router
 from .monthly.workbench import MonthlyWorkbenchService
 from .monthly.workbench_router import build_monthly_workbench_router
 from .monthly.batch import MonthlyBatchService
+from .monthly.briefing import BriefingService
 from .service_plans.service import ServicePlansService
 from .service_plans.router import build_service_plans_router
 from .service_plans.attachments import MaterialAttachmentService, build_material_attachments_router
@@ -340,6 +341,9 @@ def create_app(
                 application.state.service,
                 application.state.service_plans,
                 application.state.cases,
+            )
+            application.state.monthly_briefing = BriefingService(
+                database, application.state.service
             )
             application.state.legacy_migration = LegacyMigrationService(
                 database, application.state.attachment_store

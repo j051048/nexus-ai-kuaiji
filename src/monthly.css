@@ -595,3 +595,163 @@ button.monthly-progress-cell:hover {
   font-size: 12px;
   line-height: 1.7;
 }
+
+.briefing {
+  padding: 24px 28px 48px;
+  max-width: 900px;
+  margin: 0 auto;
+  display: grid;
+  gap: 16px;
+}
+.briefing-card {
+  display: grid;
+  gap: 22px;
+  padding: 26px 28px 30px;
+  border: 1px solid #e0e6da;
+  border-radius: 12px;
+  background: #fffefa;
+}
+.briefing-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+.briefing-heading h1 {
+  font-size: 24px;
+  margin: 6px 0 8px;
+}
+.briefing-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid #cfe0c8;
+  background: #eef5ea;
+  color: #2f5b39;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.briefing-flows {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.briefing-flow {
+  display: grid;
+  gap: 6px;
+  padding: 16px 18px;
+  border-radius: 9px;
+  border: 1px solid #e0e6da;
+  background: #fbfcf9;
+}
+.briefing-flow span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #6c7d70;
+  font-size: 12px;
+}
+.briefing-flow strong {
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+  color: #2f4a33;
+}
+.briefing-flow.income strong {
+  color: #2f6b3f;
+}
+.briefing-flow.expense strong {
+  color: #8d5b38;
+}
+.briefing-basis {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: #77836f;
+  font-size: 12px;
+}
+.briefing-top h2,
+.briefing-risks h2 {
+  font-size: 15px;
+  margin: 0 0 10px;
+  color: #33402f;
+}
+.briefing-top ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.briefing-top li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid #e8ece3;
+  border-radius: 8px;
+  background: #fbfcf9;
+}
+.briefing-top li span {
+  display: grid;
+  gap: 2px;
+  color: #33402f;
+}
+.briefing-top li small {
+  color: #7c8778;
+}
+.briefing-top li strong {
+  font-variant-numeric: tabular-nums;
+  color: #2f4a33;
+}
+.briefing-balances {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.briefing-balances > div {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+  border: 1px solid #e8ece3;
+  border-radius: 9px;
+}
+.briefing-balances span {
+  color: #6c7d70;
+  font-size: 12px;
+}
+.briefing-balances strong {
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
+  color: #2f4a33;
+}
+.briefing-balances small {
+  color: #8d6d38;
+  line-height: 1.6;
+}
+.briefing-risks ul {
+  margin: 0;
+  padding-left: 18px;
+  color: #6f5b3a;
+  line-height: 1.8;
+  font-size: 13px;
+}
+.briefing-notes p {
+  margin: 4px 0;
+  color: #77836f;
+  font-size: 12px;
+  line-height: 1.7;
+}
+@media (max-width: 760px) {
+  .briefing {
+    padding: 16px 14px 40px;
+  }
+  .briefing-card {
+    padding: 20px 16px 24px;
+  }
+  .briefing-flows,
+  .briefing-balances {
+    grid-template-columns: 1fr;
+  }
+}

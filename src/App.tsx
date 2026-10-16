@@ -77,6 +77,7 @@ const workspaceViewLabels: Partial<Record<WorkspaceView, string>> = {
   ledger: '长期账套与主数据',
   reconciliation: '流水与业务匹配',
   delivery: '导入回执核验',
+  briefing: '月度财税简报',
   learning: '审核样例与企业规则',
   catalog: '科目与模板',
 };
@@ -131,6 +132,9 @@ const ReconciliationWorkbench = lazy(() =>
 );
 const DeliveryWorkbench = lazy(() =>
   import('./DeliveryWorkbench').then((module) => ({ default: module.DeliveryWorkbench })),
+);
+const MonthlyBriefing = lazy(() =>
+  import('./MonthlyBriefing').then((module) => ({ default: module.MonthlyBriefing })),
 );
 const SettlementWorkbench = lazy(() =>
   import('./SettlementWorkbench').then((module) => ({ default: module.SettlementWorkbench })),
@@ -2069,6 +2073,13 @@ export default function App() {
               initialExportId={deliveryTarget}
               onBack={() => setRouteView('accounting')}
               onBusyChange={changeBusinessBusy}
+            />
+          ) : routeView === 'briefing' && bookId ? (
+            <MonthlyBriefing
+              key={session.scope_key + ':' + bookId}
+              session={session}
+              bookId={bookId}
+              onBack={() => setRouteView('accounting')}
             />
           ) : routeView === 'review' ? (
             <ReviewWorkbench

@@ -12,6 +12,9 @@ def build_monthly_workbench_router(actor_dependency):
     def batch(request: Request):
         return request.app.state.monthly_batch
 
+    def briefing(request: Request):
+        return request.app.state.monthly_briefing
+
     @router.get("/workbench")
     def workbench(
         period: str = Query(pattern=r"^20[0-9]{2}-(?:0[1-9]|1[0-2])$"),
@@ -30,5 +33,13 @@ def build_monthly_workbench_router(actor_dependency):
         monthly=Depends(batch),
     ):
         return monthly.open_month(current, payload)
+
+    @router.get("/books/{book_id}/briefing")
+    def book_briefing(
+        book_id: str,
+        current=Depends(actor_dependency),
+        service=Depends(briefing),
+    ):
+        return service.briefing(current, book_id)
 
     return router

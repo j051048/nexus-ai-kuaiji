@@ -30,6 +30,7 @@ export function bookPipelineStep(
   if (view === 'reconciliation' || view === 'settlement') return 'matching';
   if (view === 'balances' || view === 'closing') return 'closing';
   if (view === 'delivery' || view === 'integration') return 'delivery';
+  if (view === 'briefing') return 'delivery';
   return null;
 }
 
@@ -54,7 +55,10 @@ const pipelineGroups: { label: string; actions: BookAction[] }[] = [
   },
   {
     label: '⑤ 交付与导出',
-    actions: [{ view: 'integration', label: '财务软件接入', protectChanges: true }],
+    actions: [
+      { view: 'briefing', label: '月度财税简报', protectChanges: true },
+      { view: 'integration', label: '财务软件接入', protectChanges: true },
+    ],
   },
 ];
 
