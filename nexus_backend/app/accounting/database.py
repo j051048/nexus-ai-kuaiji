@@ -1,6 +1,7 @@
 """SQLite demo and explicitly migrated, restricted PostgreSQL runtime."""
 
 import hashlib
+import logging
 import os
 import re
 import sqlite3
@@ -20,6 +21,13 @@ from .telemetry import (
 
 MIGRATIONS = Path(__file__).resolve().parents[2] / "migrations"
 WRITE_LOCK = 6_420_031_786_281_903_101
+COMPATIBILITY_INC = "incremental"
+COMPATIBILITY_BREAKING = "breaking"
+COMPATIBILITY_PATTERN = re.compile(
+    r"^\s*--\s*compatibility\s*:\s*(incremental|breaking)\s*$", re.I | re.M
+)
+
+logger = logging.getLogger(__name__)
 
 
 class DatabaseCapacityError(RuntimeError):
@@ -34,6 +42,19 @@ def migration_digest(path):
     return hashlib.sha256(
         path.read_text(encoding="utf-8").replace("\r\n", "\n").encode()
     ).hexdigest()
+
+
+def migration_compatibility(path):
+    """Expand-and-contract classification; unknown or unmarked files stay breaking.
+
+    A migration that only adds tables, columns, indexes or functions can be
+    declared ``-- compatibility: incremental`` so a previously deployed image
+    may keep starting (with a warning) while the database is ahead of its code.
+    Anything else defaults to ``breaking`` and still refuses to start.
+    """
+    head = path.read_text(encoding="utf-8")[:2048]
+    match = COMPATIBILITY_PATTERN.search(head)
+    return match.group(1).lower() if match else COMPATIBILITY_BREAKING
 
 
 class CompatibleRow(Mapping):
@@ -385,8 +406,33 @@ class Database:
                     )
                 }
                 files = migration_files("postgres")
-                if set(records) - {int(path.name.split("_", 1)[0]) for path in files}:
-                    raise RuntimeError("数据库包含当前代码未知的迁移版本，请先更新代码")
+                unknown = set(records) - {int(path.name.split("_", 1)[0]) for path in files}
+                if unknown:
+                    has_column = bool(
+                        conn.execute(
+                            "SELECT 1 FROM information_schema.columns "
+                            "WHERE table_schema='accounting' AND table_name='schema_migrations' "
+                            "AND column_name='compatibility'"
+                        ).fetchone()
+                    )
+                    compatibility = {}
+                    if has_column:
+                        marks = ",".join("?" for _ in unknown)
+                        compatibility = {
+                            row["version"]: row["compatibility"]
+                            for row in conn.execute(
+                                "SELECT version,compatibility FROM accounting.schema_migrations "
+                                "WHERE version IN (" + marks + ")",
+                                tuple(sorted(unknown)),
+                            )
+                        }
+                    if any(compatibility.get(version) != COMPATIBILITY_INC for version in unknown):
+                        raise RuntimeError("数据库包含当前代码未知的迁移版本，请先更新代码")
+                    logger.warning(
+                        "数据库包含更高版本且声明为兼容增量的迁移 %s，按向前兼容策略继续启动；"
+                        "回滚旧镜像前请确认这些迁移仅新增表、列、索引或函数",
+                        sorted(unknown),
+                    )
                 for path in files:
                     version = int(path.name.split("_", 1)[0])
                     if records.get(version) != migration_digest(path):
@@ -412,8 +458,26 @@ class Database:
             files = migration_files("sqlite")
             known = {int(path.name.split("_", 1)[0]) for path in files}
             existing = {row[0] for row in conn.execute("SELECT version FROM schema_migrations")}
-            if existing - known:
-                raise RuntimeError("SQLite 包含当前代码未知的迁移版本，请先更新代码")
+            unknown = existing - known
+            if unknown:
+                columns = {row[1] for row in conn.execute("PRAGMA table_info(schema_migrations)")}
+                compatibility = {}
+                if "compatibility" in columns:
+                    marks = ",".join("?" for _ in unknown)
+                    compatibility = {
+                        row[0]: row[1]
+                        for row in conn.execute(
+                            "SELECT version,compatibility FROM schema_migrations "
+                            "WHERE version IN (" + marks + ")",
+                            tuple(sorted(unknown)),
+                        )
+                    }
+                if any(compatibility.get(version) != COMPATIBILITY_INC for version in unknown):
+                    raise RuntimeError("SQLite 包含当前代码未知的迁移版本，请先更新代码")
+                logger.warning(
+                    "SQLite 数据库包含更高版本且声明为兼容增量的迁移 %s，按向前兼容策略继续启动",
+                    sorted(unknown),
+                )
             for path in files:
                 version = int(path.name.split("_", 1)[0])
                 checksum = migration_digest(path)
@@ -431,10 +495,20 @@ class Database:
                     conn.executescript("BEGIN IMMEDIATE;\n" + path.read_text(encoding="utf-8"))
                     if conn.execute("PRAGMA foreign_key_check").fetchall():
                         raise RuntimeError(f"SQLite 迁移 {version} 后发现外键不一致，已回滚")
-                    conn.execute(
-                        "INSERT INTO schema_migrations(version,checksum) VALUES(?,?)",
-                        (version, checksum),
-                    )
+                    columns = {
+                        row[1] for row in conn.execute("PRAGMA table_info(schema_migrations)")
+                    }
+                    if "compatibility" in columns:
+                        conn.execute(
+                            "INSERT INTO schema_migrations(version,checksum,compatibility) "
+                            "VALUES(?,?,?)",
+                            (version, checksum, migration_compatibility(path)),
+                        )
+                    else:
+                        conn.execute(
+                            "INSERT INTO schema_migrations(version,checksum) VALUES(?,?)",
+                            (version, checksum),
+                        )
                     conn.execute(f"PRAGMA user_version={version}")
                     conn.commit()
                 except Exception:

@@ -22,8 +22,10 @@ def test_home_task_page_and_totals_share_one_authorized_projection(business, mon
     actor = c.actors["employee"]
 
     with count_statements(c.db, monkeypatch) as statements:
-        first = service.list(actor, bucket="all", limit=1)
-    assert len(statements) == 2  # Live actor/role, then one authorized projection.
+        with c.db.transaction(actor=actor) as conn:
+            first = service.list_in_connection(conn, actor, bucket="all", limit=1)
+    # 实时角色/授权、投影新鲜度检查，然后一条授权投影语句同时给出计数与分页。
+    assert len(statements) == 3
     assert first["pagination"] == {"total": 2, "limit": 1, "offset": 0, "has_more": True}
     assert first["counts"] == {"action": 1, "waiting": 1}
     assert hidden["id"] not in json.dumps(first)
@@ -95,7 +97,8 @@ def test_connection_helpers_share_snapshot_but_not_authorization_between_request
         with c.db.transaction(actor=actor) as conn:
             profile = service.profile_in_connection(conn, actor)
             tasks = service.list_in_connection(conn, actor)
-    assert len(statements) == 3
+    # profile 一条 + 任务侧：实时角色、投影新鲜度检查、授权投影各一条。
+    assert len(statements) == 4
     assert profile["can_submit"] and tasks["pagination"]["total"] == 1
     with c.db.transaction(write=True, actor=c.manager) as conn:
         conn.execute("UPDATE users SET active=0 WHERE id=?", (actor.user_id,))

@@ -30,6 +30,15 @@ class ServicePlansService:
             raise AccountingError("账套尚未关联长期账套", 409)
         return {**book, "ledger_id": ledger["ledger_id"]}
 
+    def _company_of_book(self, actor, book_id):
+        """Resolve the book's company up front for a company-scoped write lock."""
+        with self.db.transaction(actor=actor) as conn:
+            return self._book(conn, actor, book_id)["company_id"]
+
+    def _company_of_request(self, actor, request_id):
+        with self.db.transaction(actor=actor) as conn:
+            return self._request(conn, actor, request_id)["company_id"]
+
     def _audit(self, conn, actor, book, action, object_id, details):
         conn.execute(
             "INSERT INTO audit_events(firm_id,book_id,company_id,user_id,action,object_id,details,created_at) VALUES(?,?,?,?,?,?,?,?)",
@@ -168,7 +177,10 @@ class ServicePlansService:
             }
 
     def save_plan(self, actor, book_id, request):
-        with self.db.transaction(write=True, actor=actor) as conn:
+        company_id = self._company_of_book(actor, book_id)
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             book = self._book(conn, actor, book_id, write=True)
             prior = self._plan(conn, book_id)
             if (prior["version"] if prior else 0) != request.expected_version:
@@ -219,7 +231,10 @@ class ServicePlansService:
         """
         if source_book_id == target_book_id:
             raise AccountingError("继承来源与目标期间必须不同", 409)
-        with self.db.transaction(write=True, actor=actor) as conn:
+        company_id = self._company_of_book(actor, target_book_id)
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             source = self._book(conn, actor, source_book_id)
             target = self._book(conn, actor, target_book_id, write=True)
             if source["company_id"] != target["company_id"]:
@@ -296,7 +311,10 @@ class ServicePlansService:
         return f"{year + (month - 1) // 12:04d}-{(month - 1) % 12 + 1:02d}-{day:02d}"
 
     def create_template(self, actor, book_id, request):
-        with self.db.transaction(write=True, actor=actor) as conn:
+        company_id = self._company_of_book(actor, book_id)
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             book = self._book(conn, actor, book_id, write=True)
             items = [item.model_dump() for item in request.items]
             candidates = self._candidates(conn, actor, book)
@@ -332,7 +350,10 @@ class ServicePlansService:
             return self._template(row)
 
     def generate(self, actor, book_id, template_id, request):
-        with self.db.transaction(write=True, actor=actor) as conn:
+        company_id = self._company_of_book(actor, book_id)
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             book = self._book(conn, actor, book_id, write=True)
             template = conn.execute(
                 "SELECT * FROM material_templates WHERE id=? AND ledger_id=?",
@@ -700,7 +721,10 @@ class ServicePlansService:
             if request.attachment_ids
             else []
         )
-        with self.db.transaction(write=True, actor=actor) as conn:
+        company_id = self._company_of_request(actor, request_id)
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             row = self._request(conn, actor, request_id, submit=True)
             prior = self._public(conn, actor, row)
             if prior["version"] != request.expected_version:
@@ -749,7 +773,10 @@ class ServicePlansService:
                 if not self.attachments:
                     raise AccountingError("独立资料原件存储尚未配置", 409)
                 verified_files = self.attachments.verify(actor, request_id, file_ids, review=True)
-        with self.db.transaction(write=True, actor=actor) as conn:
+        company_id = self._company_of_request(actor, request_id)
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             row = self._request(conn, actor, request_id, review=True)
             prior = self._public(conn, actor, row)
             if prior["version"] != request.expected_version:

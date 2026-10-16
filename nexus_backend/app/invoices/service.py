@@ -136,7 +136,9 @@ class InvoiceImportService:
         return matched
 
     def _commit(self, actor, book, stored, parsed):
-        with self.db.transaction(write=True, actor=actor) as conn:
+        with self.db.transaction(
+            write=True, actor=actor, company_id=book["company_id"], write_scope="company"
+        ) as conn:
             self.access.require_user(conn, actor.user_id)
             company = conn.execute(
                 "SELECT tax_id FROM companies WHERE id=?", (book["company_id"],)

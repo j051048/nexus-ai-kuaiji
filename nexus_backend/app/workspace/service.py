@@ -1,4 +1,5 @@
 from datetime import datetime
+import logging
 from zoneinfo import ZoneInfo
 
 from app.accounting.access import FIRM_MANAGERS
@@ -6,6 +7,17 @@ from app.accounting.domain import AccountingError
 from app.accounting.queries import inactive_source_sql, page_bounds
 from app.closing.queries import receipt_valid_sql
 from app.jobs.visibility import book_edit_scope, event_scope
+from .projection import (
+    companies_missing_state,
+    dirty_companies,
+    projection_clean,
+    refresh_company,
+)
+
+logger = logging.getLogger(__name__)
+
+# 每次交互请求最多重建的企业数；其余企业回退实时查询，由后续请求继续收敛。
+PROJECTION_REFRESH_PER_REQUEST = 5
 
 
 KINDS = {
@@ -222,6 +234,502 @@ class WorkspaceService:
             "migration": book_worker,
         }
         return row["firm_role"], gates
+
+    def _prepare_projection(self, actor):
+        """Rebuild up to the per-request budget of dirty companies.
+
+        投影只是加速层：清理失败只记录告警，读取路径会回退实时查询。
+        """
+        try:
+            with self.db.transaction(actor=actor) as conn:
+                pending = dirty_companies(conn, actor, PROJECTION_REFRESH_PER_REQUEST)
+                missing = (
+                    companies_missing_state(
+                        conn, actor, PROJECTION_REFRESH_PER_REQUEST - len(pending)
+                    )
+                    if len(pending) < PROJECTION_REFRESH_PER_REQUEST
+                    else []
+                )
+            if not pending and not missing:
+                return
+            with self.db.transaction(write=True, system=True) as conn:
+                for firm_id, company_id in [*pending, *missing]:
+                    state = conn.execute(
+                        "SELECT revision,built_revision FROM workspace_projection_state "
+                        "WHERE firm_id=? AND company_id=?",
+                        (firm_id, company_id),
+                    ).fetchone()
+                    if state and state["built_revision"] >= state["revision"]:
+                        continue
+                    refresh_company(conn, self.db, firm_id, company_id)
+        except Exception:
+            logger.warning("统一待办投影暂未重建，读取路径已回退实时查询")
+
+    def _projected_query(self, conn, actor):
+        """Same task projection as _query, served from the materialized rows.
+
+        条件分两类：与操作者无关的结构条件已在刷新时冻结；此处只保留实时授权
+        谓词（成员、部门审批、账套授权、复核范围）与随状态变化的展示字段。
+        """
+        events, ep = event_scope(actor)
+        edits, bp = book_edit_scope(actor)
+        firm_role, gates = self._task_gates(conn, actor)
+        reviews, rp, _ = self.review._review_scope(conn, actor, role=firm_role)
+        params = [*ep, *rp, *bp]
+        ctes = f"""WITH visible_events AS (SELECT e.* FROM business_events e WHERE {events}),
+          review_books AS ({reviews}),
+          edit_books AS (SELECT b.* FROM books b WHERE {edits})"""
+        columns = [
+            "kind",
+            "ref",
+            "company_id",
+            "book_id",
+            "event_id",
+            "draft_id",
+            "batch_id",
+            "title",
+            "state",
+            "priority",
+            "due_on",
+            "updated_at",
+            "bucket",
+            "action_label",
+            "responsible",
+            "amount_cents",
+        ]
+        parts = []
+
+        def branch(kind, select_list, where, args=()):
+            if not gates.get(kind, True):
+                return
+            parts.append(
+                "SELECT "
+                + ",".join(value + " AS " + column for value, column in zip(select_list, columns))
+                + " FROM workspace_task_projections p WHERE "
+                + where
+            )
+            params.extend(args)
+
+        branch(
+            "intake",
+            [
+                "'intake'",
+                "p.ref",
+                "p.company_id",
+                "NULL",
+                "NULL",
+                "NULL",
+                "NULL",
+                "p.title",
+                "p.state",
+                "2",
+                "NULL",
+                "p.updated_at",
+                "'action'",
+                "'继续录入'",
+                "'我'",
+                "NULL",
+            ],
+            "p.kind='intake' AND p.state='draft' AND p.firm_id=? AND p.created_by=? "
+            "AND EXISTS(SELECT 1 FROM firm_clients fc WHERE fc.firm_id=p.firm_id "
+            "AND fc.company_id=p.company_id AND fc.status='active') "
+            "AND EXISTS(SELECT 1 FROM company_memberships cm WHERE cm.company_id=p.company_id "
+            "AND cm.user_id=? AND (cm.role<>'employee' OR cm.department_id=p.department_id))",
+            (actor.firm_id, actor.user_id, actor.user_id),
+        )
+        branch(
+            "business",
+            [
+                "'business'",
+                "p.ref",
+                "p.company_id",
+                "NULL",
+                "p.ref",
+                "NULL",
+                "NULL",
+                "p.title",
+                "p.state",
+                "CASE WHEN p.state='returned' THEN 1 ELSE 2 END",
+                "NULL",
+                "p.updated_at",
+                "CASE WHEN p.state IN ('draft','returned') THEN 'action' ELSE 'waiting' END",
+                "CASE WHEN p.state='returned' THEN '修改并重提' WHEN p.state='draft' "
+                "THEN '继续填写' ELSE '查看进度' END",
+                "CASE WHEN p.state='submitted' AND p.submission_mode='direct' THEN '授权会计' "
+                "WHEN p.state='submitted' THEN '部门审批人' WHEN p.state='department_approved' "
+                "THEN '企业财务' WHEN p.state='finance_approved' THEN '企业财务移交' ELSE '我' END",
+                "p.amount_cents",
+            ],
+            "p.kind='business' AND p.state<>'handed_off' AND p.firm_id=? AND p.applicant_id=? "
+            "AND EXISTS(SELECT 1 FROM company_memberships cm WHERE cm.company_id=p.company_id "
+            "AND cm.user_id=?)",
+            (actor.firm_id, actor.user_id, actor.user_id),
+        )
+        branch(
+            "approval",
+            [
+                "'approval'",
+                "p.ref",
+                "p.company_id",
+                "NULL",
+                "p.ref",
+                "NULL",
+                "NULL",
+                "p.title",
+                "p.state",
+                "2",
+                "NULL",
+                "p.updated_at",
+                "'action'",
+                "'审批事项'",
+                "'我'",
+                "p.amount_cents",
+            ],
+            "p.kind='approval' AND p.submission_mode='department' AND p.state='submitted' "
+            "AND p.applicant_id<>? AND EXISTS(SELECT 1 FROM department_approvers da "
+            "JOIN company_memberships cm ON cm.company_id=da.company_id AND cm.user_id=da.user_id "
+            "WHERE da.firm_id=? AND da.company_id=p.company_id AND da.department_id=p.department_id "
+            "AND da.user_id=?)",
+            (actor.user_id, actor.firm_id, actor.user_id),
+        )
+        period = self.business.submission.period_sql("be")
+        branch(
+            "handoff",
+            [
+                "'handoff'",
+                "p.ref",
+                "p.company_id",
+                "NULL",
+                "p.ref",
+                "NULL",
+                "NULL",
+                "p.title",
+                "p.state",
+                "2",
+                "NULL",
+                "p.updated_at",
+                "'action'",
+                "'接收并生成草稿'",
+                "'授权会计'",
+                "p.amount_cents",
+            ],
+            "p.kind='handoff' AND p.submission_mode='direct' AND p.state='submitted' "
+            "AND p.applicant_id<>? AND EXISTS(SELECT 1 FROM business_events be "
+            "WHERE be.id=p.event_id AND EXISTS(SELECT 1 FROM edit_books b "
+            f"WHERE b.company_id=p.company_id AND b.period={period}))",
+            (actor.user_id,),
+        )
+        branch(
+            "finance",
+            [
+                "'finance'",
+                "p.ref",
+                "p.company_id",
+                "NULL",
+                "p.ref",
+                "NULL",
+                "NULL",
+                "p.title",
+                "p.state",
+                "2",
+                "NULL",
+                "p.updated_at",
+                "'action'",
+                "'核验资料'",
+                "'我'",
+                "p.amount_cents",
+            ],
+            "p.kind='finance' AND p.state='department_approved' AND p.applicant_id<>? "
+            "AND EXISTS(SELECT 1 FROM company_memberships cm WHERE cm.company_id=p.company_id "
+            "AND cm.user_id=? AND cm.role='finance')",
+            (actor.user_id, actor.user_id),
+        )
+        branch(
+            "handoff",
+            [
+                "'handoff'",
+                "p.ref",
+                "p.company_id",
+                "NULL",
+                "p.ref",
+                "NULL",
+                "NULL",
+                "p.title",
+                "p.state",
+                "2",
+                "NULL",
+                "p.updated_at",
+                "'action'",
+                "'选择账套并移交'",
+                "'我'",
+                "p.amount_cents",
+            ],
+            "p.kind='handoff' AND p.state='finance_approved' "
+            "AND EXISTS(SELECT 1 FROM company_memberships cm WHERE cm.company_id=p.company_id "
+            "AND cm.user_id=? AND cm.role='finance')",
+            (actor.user_id,),
+        )
+
+        scope, _ = self.cases._scope_sql(actor)
+        scope = scope.replace("t.", "p.").replace("p.kind", "p.ref_kind")
+        recipient = "p.ref_kind='supplement' AND p.recipient_id=? AND p.state='awaiting_info'"
+        independent = (
+            "NOT EXISTS(SELECT 1 FROM case_responses r WHERE r.case_id=p.ref AND r.created_by=? "
+            "AND NOT EXISTS(SELECT 1 FROM case_responses newer WHERE newer.case_id=r.case_id "
+            "AND (newer.created_at>r.created_at OR newer.created_at=r.created_at "
+            "AND newer.id>r.id)))"
+        )
+        manager = (
+            "(EXISTS(SELECT 1 FROM review_books rb WHERE rb.id=COALESCE(p.book_id,"
+            "(SELECT bm.book_id FROM business_mappings bm WHERE bm.event_id=p.event_id))) "
+            "OR EXISTS(SELECT 1 FROM visible_events be JOIN company_memberships cm "
+            "ON cm.company_id=be.company_id WHERE be.id=p.event_id AND cm.user_id=? "
+            "AND cm.role='finance' AND be.applicant_id<>?))"
+        )
+        collector = (
+            "(p.event_id IS NULL AND p.assignee_id=? AND EXISTS(SELECT 1 FROM edit_books eb "
+            "JOIN company_memberships cm ON cm.company_id=eb.company_id WHERE eb.id=p.book_id "
+            "AND cm.user_id=? AND cm.role='finance'))"
+        )
+        actionable = (
+            f"(({recipient}) OR ({collector} AND p.state='open') OR ({manager} "
+            "AND p.state IN ('open','in_review','response_submitted') "
+            "AND (p.assignee_id IS NULL OR p.assignee_id=?) AND " + independent + "))"
+        )
+        branch(
+            "case",
+            [
+                "'case'",
+                "p.ref",
+                "p.company_id",
+                "NULL",
+                "NULL",
+                "NULL",
+                "NULL",
+                "p.title",
+                "p.state",
+                "CASE p.ref_detail WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 ELSE 2 END",
+                "p.due_on",
+                "p.updated_at",
+                f"CASE WHEN p.source_open=1 AND {actionable} THEN 'action' ELSE 'waiting' END",
+                "'打开处理任务'",
+                "CASE WHEN p.state='awaiting_info' THEN '资料提供人' ELSE '任务处理人' END",
+                "NULL",
+            ],
+            "p.kind='case' AND p.state IN ('open','awaiting_info','response_submitted','in_review') "
+            "AND (" + scope + ")",
+            (actor.user_id,) * 21,
+        )
+        branch(
+            "review",
+            [
+                "'review'",
+                "p.ref",
+                "p.company_id",
+                "p.book_id",
+                "p.event_id",
+                "p.draft_id",
+                "NULL",
+                "p.title",
+                "p.state",
+                "2",
+                "NULL",
+                "p.updated_at",
+                "'action'",
+                "'同屏复核'",
+                "'会计复核员'",
+                "p.amount_cents",
+            ],
+            "p.kind='review' AND p.state='draft' "
+            "AND EXISTS(SELECT 1 FROM review_books rb WHERE rb.id=p.book_id) "
+            "AND (p.applicant_id IS NULL OR p.applicant_id<>?)",
+            (actor.user_id,),
+        )
+        branch(
+            "export",
+            [
+                "'export'",
+                "p.ref",
+                "p.company_id",
+                "p.book_id",
+                "NULL",
+                "NULL",
+                "NULL",
+                "p.title",
+                "p.state",
+                "2",
+                "NULL",
+                "p.updated_at",
+                "'action'",
+                "'导出已审核凭证'",
+                "'会计交付人'",
+                "p.amount_cents",
+            ],
+            "p.kind='export' AND p.state='approved' "
+            "AND EXISTS(SELECT 1 FROM review_books rb WHERE rb.id=p.book_id)",
+        )
+        ocr_open = (
+            "NOT EXISTS(SELECT 1 FROM business_mappings frozen JOIN drafts d "
+            "ON d.id=frozen.draft_id AND d.book_id=frozen.book_id JOIN periods p2 "
+            "ON p2.book_id=frozen.book_id WHERE frozen.event_id=p.event_id "
+            "AND (d.status<>'draft' OR p2.status<>'open'))"
+        )
+        processor = (
+            "(EXISTS(SELECT 1 FROM company_memberships cm WHERE cm.company_id=p.company_id "
+            "AND cm.user_id=? AND (p.applicant_id=? OR cm.role='finance' OR "
+            "EXISTS(SELECT 1 FROM department_approvers da WHERE da.firm_id=p.firm_id "
+            "AND da.company_id=p.company_id AND da.department_id=p.department_id "
+            "AND da.user_id=?))) OR EXISTS(SELECT 1 FROM edit_books eb WHERE eb.id=p.book_id))"
+        )
+        branch(
+            "ocr",
+            [
+                "'ocr'",
+                "p.ref",
+                "p.company_id",
+                "NULL",
+                "p.event_id",
+                "NULL",
+                "p.batch_id",
+                "p.title",
+                "p.state",
+                "CASE WHEN p.state IN ('failed','interrupted') THEN 1 ELSE 2 END",
+                "NULL",
+                "p.updated_at",
+                f"CASE WHEN p.state IN ('failed','interrupted','stale') AND {ocr_open} "
+                f"AND {processor} THEN 'action' ELSE 'waiting' END",
+                "'查看识别任务'",
+                "'当前任务经办人'",
+                "p.amount_cents",
+            ],
+            "p.kind='ocr' AND p.state IN ('queued','running','retry_wait','failed',"
+            "'interrupted','stale') AND " + processor,
+            (actor.user_id,) * 6,
+        )
+        branch(
+            "proposal",
+            [
+                "'proposal'",
+                "p.ref",
+                "p.company_id",
+                "p.book_id",
+                "p.event_id",
+                "p.draft_id",
+                "NULL",
+                "p.title",
+                "p.state",
+                "1",
+                "NULL",
+                "p.updated_at",
+                "CASE WHEN p.state IN ('needs_attention','failed','interrupted','stale') "
+                "THEN 'action' ELSE 'waiting' END",
+                "'处理生成任务'",
+                "'账套经办人'",
+                "p.amount_cents",
+            ],
+            "p.kind='proposal' AND p.state IN ('waiting','queued','running','retry_wait',"
+            "'needs_attention','failed','interrupted','stale') "
+            "AND EXISTS(SELECT 1 FROM edit_books b WHERE b.id=p.book_id)",
+        )
+        branch(
+            "delivery",
+            [
+                "'delivery'",
+                "p.ref",
+                "p.company_id",
+                "p.book_id",
+                "NULL",
+                "NULL",
+                "NULL",
+                "p.title",
+                "p.state",
+                "2",
+                "NULL",
+                "p.updated_at",
+                "'action'",
+                "'核验导入回执'",
+                "'会计交付人'",
+                "NULL",
+            ],
+            "p.kind='delivery' AND EXISTS(SELECT 1 FROM review_books rb WHERE rb.id=p.book_id)",
+        )
+        alert_manager = (
+            "(EXISTS(SELECT 1 FROM memberships m WHERE m.firm_id=p.firm_id AND m.user_id=? "
+            "AND m.role IN ('owner','admin')) OR EXISTS(SELECT 1 FROM company_memberships cm "
+            "WHERE cm.company_id=p.company_id AND cm.user_id=? AND cm.role IN ('owner','admin')))"
+        )
+        branch(
+            "alert",
+            [
+                "'alert'",
+                "p.ref",
+                "p.company_id",
+                "NULL",
+                "NULL",
+                "NULL",
+                "NULL",
+                "p.title",
+                "p.state",
+                "CASE WHEN p.ref_detail='critical' THEN 0 ELSE 1 END",
+                "NULL",
+                "p.updated_at",
+                "'action'",
+                "'处理运行告警'",
+                "'企业 / 事务所管理员'",
+                "NULL",
+            ],
+            "p.kind='alert' AND p.state='open' AND " + alert_manager + " AND p.firm_id=? "
+            "AND EXISTS(SELECT 1 FROM firm_clients fc WHERE fc.firm_id=p.firm_id "
+            "AND fc.company_id=p.company_id AND fc.status='active')",
+            (actor.user_id, actor.user_id, actor.firm_id),
+        )
+        branch(
+            "material",
+            [
+                "'material'",
+                "p.ref",
+                "p.company_id",
+                "CASE WHEN EXISTS(SELECT 1 FROM edit_books eb WHERE eb.id=p.book_id) "
+                "THEN p.book_id ELSE NULL END",
+                "NULL",
+                "NULL",
+                "NULL",
+                "p.title",
+                "p.state",
+                "2",
+                "p.due_on",
+                "p.updated_at",
+                "CASE WHEN p.state='submitted' AND (p.created_by=? OR NOT EXISTS("
+                "SELECT 1 FROM review_books rb WHERE rb.id=p.book_id)) "
+                "THEN 'waiting' ELSE 'action' END",
+                "CASE WHEN p.state='submitted' THEN '查看资料验收' ELSE '提供本期资料' END",
+                "CASE WHEN p.state='submitted' THEN '独立验收人' ELSE '本人资料请求' END",
+                "NULL",
+            ],
+            "p.kind='material' AND p.firm_id=? AND ((p.assignee_id=? AND EXISTS("
+            "SELECT 1 FROM company_memberships mm WHERE mm.company_id=p.company_id "
+            "AND mm.user_id=?) AND p.state IN ('pending','returned','submitted')) "
+            "OR (p.state='submitted' AND p.created_by<>? AND EXISTS("
+            "SELECT 1 FROM review_books rb WHERE rb.id=p.book_id)))",
+            (actor.user_id, actor.firm_id, actor.user_id, actor.user_id, actor.user_id),
+        )
+        from app.legacy_migration.workspace import workspace_branch
+
+        if gates.get("migration", True):
+            migration_sql, migration_params = workspace_branch(self.db, actor)
+            parts.append(
+                "SELECT migration_task.*,NULL AS amount_cents FROM ("
+                + migration_sql
+                + ") migration_task"
+            )
+            params.extend(migration_params)
+        if not parts:
+            parts.append(
+                "SELECT "
+                + ",".join("NULL AS " + column for column in columns)
+                + " FROM (SELECT 1) AS empty_projection WHERE 1=0"
+            )
+        return ctes + ", tasks AS (" + " UNION ALL ".join(parts) + ") ", params
 
     def _query(self, conn, actor):
         # Authorization is part of every branch, before count, sort and limit.
@@ -577,10 +1085,22 @@ class WorkspaceService:
         ref=None,
         sort="priority",
         q="",
+        use_projection=True,
     ):
+        self._prepare_projection(actor)
         with self.db.transaction(actor=actor) as conn:
             return self.list_in_connection(
-                conn, actor, bucket, kind, company_id, limit, offset, ref, sort, q
+                conn,
+                actor,
+                bucket,
+                kind,
+                company_id,
+                limit,
+                offset,
+                ref,
+                sort,
+                q,
+                use_projection,
             )
 
     def list_in_connection(
@@ -595,6 +1115,7 @@ class WorkspaceService:
         ref=None,
         sort="priority",
         q="",
+        use_projection=True,
     ):
         page_bounds(limit, offset)
         if (
@@ -607,7 +1128,10 @@ class WorkspaceService:
             raise AccountingError("待办筛选参数无效")
         # _query resolves the active user and current firm role through the
         # review scope; do not repeat that identical authorization round trip.
-        query, params = self._query(conn, actor)
+        projected = use_projection and projection_clean(conn, actor)
+        query, params = (
+            self._projected_query(conn, actor) if projected else self._query(conn, actor)
+        )
         where, filters = ["1=1"], []
         for col, value in (
             ("bucket", None if bucket == "all" else bucket),
@@ -684,13 +1208,18 @@ class WorkspaceService:
     def _search(value):
         return "%" + value.strip().replace("!", "!!").replace("%", "!%").replace("_", "!_") + "%"
 
-    def companies(self, actor, q="", limit=20, offset=0):
+    def companies(self, actor, q="", limit=20, offset=0, use_projection=True):
         page_bounds(limit, offset)
         if len(q) > 200:
             raise AccountingError("企业搜索文字过长")
+        self._prepare_projection(actor)
         with self.db.transaction(actor=actor) as conn:
             self.access.require_user(conn, actor.user_id)
-            query, params = self._query(conn, actor)
+            query, params = (
+                self._projected_query(conn, actor)
+                if use_projection and projection_clean(conn, actor)
+                else self._query(conn, actor)
+            )
             search = " WHERE c.name LIKE ? ESCAPE '!'" if q.strip() else ""
             args = [*params, *([self._search(q)] if q.strip() else [])]
             choices = (

@@ -88,6 +88,11 @@ class IntakeService:
         if draft["version"] != expected:
             raise AccountingError("录入草稿已更新，请重新读取后核对", 409)
 
+    def _company_of(self, actor, draft_id):
+        """Resolve the draft's company up front for a company-scoped write lock."""
+        with self.db.transaction(actor=actor) as conn:
+            return self._draft(conn, actor, draft_id)["company_id"]
+
     def _attachments(self, conn, draft_id):
         return conn.execute(
             "SELECT * FROM intake_attachments WHERE intake_id=? ORDER BY created_at,id", (draft_id,)
@@ -175,7 +180,10 @@ class IntakeService:
             return {"drafts": [self._json(conn, actor, row) for row in rows]}
 
     def get(self, actor, draft_id):
-        with self.db.transaction(write=True, actor=actor) as conn:
+        company_id = self._company_of(actor, draft_id)
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             self._draft(conn, actor, draft_id)
             cutoff = (datetime.now(timezone.utc) - timedelta(minutes=3)).isoformat()
             expired = conn.execute(
@@ -194,7 +202,9 @@ class IntakeService:
 
     def create(self, actor, request):
         digest = fingerprint(request.model_dump(exclude={"idempotency_key"}))
-        with self.db.transaction(write=True, actor=actor, company_id=request.company_id) as conn:
+        with self.db.transaction(
+            write=True, actor=actor, company_id=request.company_id, write_scope="company"
+        ) as conn:
             self._membership(conn, actor, request.company_id, request.department_id, preparing=True)
             prior = conn.execute(
                 "SELECT * FROM intake_drafts WHERE firm_id=? AND created_by=? AND create_key=?",
@@ -224,7 +234,10 @@ class IntakeService:
             return self._json(conn, actor, self._draft(conn, actor, draft_id))
 
     def update(self, actor, draft_id, request):
-        with self.db.transaction(write=True, actor=actor) as conn:
+        company_id = self._company_of(actor, draft_id)
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             draft = self._draft(conn, actor, draft_id, editable=True)
             self._version(draft, request.expected_version)
             conn.execute(
@@ -244,7 +257,10 @@ class IntakeService:
             self._version(self._draft(conn, actor, draft_id, editable=True), version)
 
     def add_attachment(self, actor, draft_id, version, metadata):
-        with self.db.transaction(write=True, actor=actor) as conn:
+        company_id = self._company_of(actor, draft_id)
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             draft = self._draft(conn, actor, draft_id, editable=True)
             self._version(draft, version)
             attachments = self._attachments(conn, draft_id)
@@ -295,7 +311,10 @@ class IntakeService:
         return self.storage.read(metadata), metadata
 
     def recognize(self, actor, draft_id, attachment_id, request):
-        with self.db.transaction(write=True, actor=actor) as conn:
+        company_id = self._company_of(actor, draft_id)
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             draft = self._draft(conn, actor, draft_id, editable=True)
             self._version(draft, request.expected_version)
             if not self._enabled(conn, draft):
@@ -384,7 +403,9 @@ class IntakeService:
                     else prepare_document(data, metadata["media_type"])
                 )
             )
-            with self.db.transaction(write=True, actor=actor) as conn:
+            with self.db.transaction(
+                write=True, actor=actor, company_id=company_id, write_scope="company"
+            ) as conn:
                 current = self._draft(conn, actor, draft_id, editable=True)
                 if (
                     not self._enabled(conn, current)
@@ -433,7 +454,9 @@ class IntakeService:
         finally:
             budget.finish(result, error, attempted)
         try:
-            with self.db.transaction(write=True, actor=actor) as conn:
+            with self.db.transaction(
+                write=True, actor=actor, company_id=company_id, write_scope="company"
+            ) as conn:
                 current = self._draft(conn, actor, draft_id, editable=True)
                 if (
                     not self._enabled(conn, current)
@@ -486,7 +509,16 @@ class IntakeService:
 
     def _abandon(self, actor, run_id):
         try:
-            with self.db.transaction(write=True, actor=actor) as conn:
+            with self.db.transaction(actor=actor) as conn:
+                row = conn.execute(
+                    "SELECT company_id FROM intake_runs WHERE id=? AND firm_id=?",
+                    (run_id, actor.firm_id),
+                ).fetchone()
+            if not row:
+                return
+            with self.db.transaction(
+                write=True, actor=actor, company_id=row["company_id"], write_scope="company"
+            ) as conn:
                 if self.db.is_postgres:
                     conn.execute("SELECT accounting.abandon_intake_run(?)", (run_id,))
                 else:
@@ -501,7 +533,10 @@ class IntakeService:
         if not request.fields_confirmed:
             raise AccountingError("请核对原件并确认日期、金额和交易对方等字段", 422)
         digest = fingerprint(request.model_dump(exclude={"idempotency_key", "expected_version"}))
-        with self.db.transaction(write=True, actor=actor) as conn:
+        company_id = self._company_of(actor, draft_id)
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             draft = self._draft(conn, actor, draft_id)
             if draft["status"] == "completed":
                 if (

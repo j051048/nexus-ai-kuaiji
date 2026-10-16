@@ -18,6 +18,45 @@ from ..concurrency.settings import SchedulingSettings
 logger = logging.getLogger(__name__)
 
 
+def verify_worker_login(db):
+    """PostgreSQL workers must log in as the separately provisioned restricted role."""
+    if not db.is_postgres:
+        return
+    with closing(db.connect()) as conn:
+        permitted = conn.execute(
+            "SELECT pg_has_role(session_user,'accounting_worker','MEMBER')"
+        ).fetchone()[0]
+        if not permitted:
+            raise RuntimeError(
+                "后台处理须使用独立 accounting_worker 登录，API运行账号不能领取跨企业任务"
+            )
+        principal = conn.execute(
+            "SELECT rolsuper,rolbypassrls,rolcreatedb,rolcreaterole,rolinherit "
+            "FROM pg_roles WHERE rolname=session_user"
+        ).fetchone()
+        parents = [
+            row[0]
+            for row in conn.execute(
+                "SELECT parent.rolname FROM pg_auth_members m "
+                "JOIN pg_roles parent ON parent.oid=m.roleid "
+                "JOIN pg_roles child ON child.oid=m.member WHERE child.rolname=session_user"
+            )
+        ]
+        if any(
+            principal[key]
+            for key in (
+                "rolsuper",
+                "rolbypassrls",
+                "rolcreatedb",
+                "rolcreaterole",
+                "rolinherit",
+            )
+        ) or set(parents) != {"accounting_app", "accounting_worker"}:
+            raise RuntimeError(
+                "worker登录必须为独立受限账号，仅授予accounting_app与accounting_worker且禁止继承或角色管理权限"
+            )
+
+
 class QueueExecution:
     def __init__(self, queue, job):
         self.queue, self.job = queue, job
@@ -346,37 +385,7 @@ class QueueWorker:
         self._stop = threading.Event()
         self._thread = None
         self._operations = None
-        if self.queue.db.is_postgres:
-            with closing(self.queue.db.connect()) as conn:
-                permitted = conn.execute(
-                    "SELECT pg_has_role(session_user,'accounting_worker','MEMBER')"
-                ).fetchone()[0]
-                if not permitted:
-                    raise RuntimeError(
-                        "后台处理须使用独立 accounting_worker 登录，API运行账号不能领取跨企业任务"
-                    )
-                principal = conn.execute(
-                    "SELECT rolsuper,rolbypassrls,rolcreatedb,rolcreaterole,rolinherit FROM pg_roles WHERE rolname=session_user"
-                ).fetchone()
-                parents = [
-                    row[0]
-                    for row in conn.execute(
-                        "SELECT parent.rolname FROM pg_auth_members m JOIN pg_roles parent ON parent.oid=m.roleid JOIN pg_roles child ON child.oid=m.member WHERE child.rolname=session_user"
-                    )
-                ]
-                if any(
-                    principal[key]
-                    for key in (
-                        "rolsuper",
-                        "rolbypassrls",
-                        "rolcreatedb",
-                        "rolcreaterole",
-                        "rolinherit",
-                    )
-                ) or set(parents) != {"accounting_app", "accounting_worker"}:
-                    raise RuntimeError(
-                        "worker登录必须为独立受限账号，仅授予accounting_app与accounting_worker且禁止继承或角色管理权限"
-                    )
+        verify_worker_login(self.queue.db)
 
     def recover(self):
         return self.queue.recover()

@@ -410,8 +410,22 @@ class CaseService:
         with self.db.transaction(actor=actor) as conn:
             return self._json(conn, actor, self._case(conn, actor, case_id))
 
+    def _company_of_case(self, actor, case_id):
+        """Resolve the case's company up front for a company-scoped write lock."""
+        with self.db.transaction(actor=actor) as conn:
+            return self._case(conn, actor, case_id)["company_id"]
+
+    def _company_of_source(self, actor, payload):
+        with self.db.transaction(actor=actor) as conn:
+            if payload.event_id:
+                return self.business._event(conn, actor, payload.event_id)["company_id"]
+            return self.access.book(conn, actor, payload.book_id)["company_id"]
+
     def create(self, actor, payload):
-        with self.db.transaction(write=True, actor=actor) as conn:
+        company_id = self._company_of_source(actor, payload)
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             self.access.require_user(conn, actor.user_id)
             event = (
                 self.business._event(conn, actor, payload.event_id) if payload.event_id else None
@@ -513,7 +527,10 @@ class CaseService:
             return self._json(conn, actor, self._case(conn, actor, case_id))
 
     def command(self, actor, case_id, operation, payload):
-        with self.db.transaction(write=True, actor=actor) as conn:
+        company_id = self._company_of_case(actor, case_id)
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             row = self._case(conn, actor, case_id, manage=operation != "respond")
             digest, prior = self._receipt(conn, actor, case_id, operation, payload)
             if prior:
@@ -724,7 +741,10 @@ class CaseService:
             idempotency_key=idempotency_key,
             reason="上传补件原件：" + stored["filename"],
         )
-        with self.db.transaction(write=True, actor=actor) as conn:
+        company_id = self._company_of_case(actor, case_id)
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             row = self._case(conn, actor, case_id)
             digest = fingerprint(
                 {

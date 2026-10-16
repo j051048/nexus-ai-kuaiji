@@ -186,6 +186,11 @@ class BusinessService:
         tag_authorized_company(event["company_id"])
         return event
 
+    def _company_of_event(self, actor, event_id):
+        """Resolve the event's company up front for a company-scoped write lock."""
+        with self.db.transaction(actor=actor) as conn:
+            return self._event(conn, actor, event_id)["company_id"]
+
     def _visible(self, conn, actor, event):
         if event["status"] in {"submitted", "returned"} and self.submission.can_receive(
             conn, actor, event
@@ -486,7 +491,9 @@ class BusinessService:
             else None
         )
         if conn is None:
-            with self.db.transaction(write=True, actor=actor) as transaction:
+            with self.db.transaction(
+                write=True, actor=actor, company_id=request.company_id, write_scope="company"
+            ) as transaction:
                 return self.create(actor, request, transaction)
         member = self._membership(conn, actor, request.company_id)
         if not member:
@@ -545,7 +552,10 @@ class BusinessService:
         return self._event_json(conn, actor, self._event(conn, actor, event_id))
 
     def update(self, actor, event_id, request: BusinessEventUpdate):
-        with self.db.transaction(write=True, actor=actor) as conn:
+        company_id = self._company_of_event(actor, event_id)
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             event = self._event(conn, actor, event_id)
             self._require_edit(conn, actor, event, request.expected_version)
             payload = request.payload.model_dump()
@@ -566,7 +576,10 @@ class BusinessService:
 
     def add_attachment(self, actor, event_id, expected_version, metadata, conn=None):
         if conn is None:
-            with self.db.transaction(write=True, actor=actor) as transaction:
+            company_id = self._company_of_event(actor, event_id)
+            with self.db.transaction(
+                write=True, actor=actor, company_id=company_id, write_scope="company"
+            ) as transaction:
                 return self.add_attachment(actor, event_id, expected_version, metadata, transaction)
         event = self._event(conn, actor, event_id)
         self._require_edit(conn, actor, event, expected_version)
@@ -622,7 +635,10 @@ class BusinessService:
 
     def submit(self, actor, event_id, expected_version, conn=None):
         if conn is None:
-            with self.db.transaction(write=True, actor=actor) as transaction:
+            company_id = self._company_of_event(actor, event_id)
+            with self.db.transaction(
+                write=True, actor=actor, company_id=company_id, write_scope="company"
+            ) as transaction:
                 return self.submit(actor, event_id, expected_version, transaction)
         event = self._event(conn, actor, event_id)
         self._require_edit(conn, actor, event, expected_version)
@@ -712,7 +728,10 @@ class BusinessService:
         )
 
     def _approve(self, actor, event_id, expected_version, stage):
-        with self.db.transaction(write=True, actor=actor) as conn:
+        company_id = self._company_of_event(actor, event_id)
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             event = self._event(conn, actor, event_id)
             self._version(event, expected_version)
             capability = "department_approve" if stage == "department" else "finance_approve"
@@ -741,7 +760,10 @@ class BusinessService:
         return self._approve(actor, event_id, expected_version, "finance")
 
     def return_event(self, actor, event_id, request: ReturnRequest):
-        with self.db.transaction(write=True, actor=actor) as conn:
+        company_id = self._company_of_event(actor, event_id)
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             event = self._event(conn, actor, event_id)
             self._version(event, request.expected_version)
             if not self._permissions(conn, actor, event)["return"]:
@@ -779,7 +801,9 @@ class BusinessService:
             return {"approvers": [dict(row) for row in rows]}
 
     def grant_department_approver(self, actor, company_id, department_id, user_id):
-        with self.db.transaction(write=True, actor=actor) as conn:
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             self._manage_department(conn, actor, company_id, department_id)
             if not conn.execute(
                 "SELECT 1 FROM company_memberships cm JOIN users u ON u.id=cm.user_id WHERE cm.company_id=? AND cm.user_id=? AND u.active=1",
@@ -800,7 +824,9 @@ class BusinessService:
             return {"user_id": user_id, "company_id": company_id, "department_id": department_id}
 
     def revoke_department_approver(self, actor, company_id, department_id, user_id):
-        with self.db.transaction(write=True, actor=actor) as conn:
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             self._manage_department(conn, actor, company_id, department_id)
             conn.execute(
                 "DELETE FROM department_approvers WHERE firm_id=? AND company_id=? AND department_id=? AND user_id=?",
@@ -832,7 +858,10 @@ class BusinessService:
         return lines
 
     def handoff(self, actor, event_id, request: HandoffRequest):
-        with self.db.transaction(write=True, actor=actor) as conn:
+        company_id = self._company_of_event(actor, event_id)
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             receipt = self._handoff_in_transaction(conn, actor, event_id, request)
         # History, attachments and presentation permissions need no write lock.
         # Read under a new live authorization check after committing the atomic

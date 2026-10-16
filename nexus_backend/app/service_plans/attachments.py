@@ -197,8 +197,21 @@ class MaterialAttachmentService:
         with self.db.transaction(actor=actor) as conn:
             self._uploadable(conn, actor, request_id, expected_version)
 
+    def _company_of(self, actor, request_id):
+        with self.db.transaction(actor=actor) as conn:
+            row = conn.execute(
+                "SELECT company_id FROM material_requests WHERE id=? AND firm_id=?",
+                (request_id, actor.firm_id),
+            ).fetchone()
+        if not row:
+            raise AccountingError("资料请求不存在或无权访问", 404)
+        return row["company_id"]
+
     def add(self, actor, request_id, expected_version, stored):
-        with self.db.transaction(write=True, actor=actor) as conn:
+        company_id = self._company_of(actor, request_id)
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             row = self._uploadable(conn, actor, request_id, expected_version)
             previous = conn.execute(
                 "SELECT * FROM material_attachments WHERE request_id=? AND sha256=? AND filename=? AND media_type=?",

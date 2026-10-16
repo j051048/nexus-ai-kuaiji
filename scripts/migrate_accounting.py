@@ -12,7 +12,21 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "nexus_backend"))
-from app.accounting.database import WRITE_LOCK, migration_digest, migration_files  # noqa: E402
+from app.accounting.database import (  # noqa: E402
+    WRITE_LOCK,
+    migration_compatibility,
+    migration_digest,
+    migration_files,
+)
+
+
+def has_compatibility_column(conn):
+    return bool(
+        conn.execute(
+            "SELECT 1 FROM information_schema.columns WHERE table_schema='accounting' "
+            "AND table_name='schema_migrations' AND column_name='compatibility'"
+        ).fetchone()
+    )
 
 
 def admin_connection(url):
@@ -61,10 +75,17 @@ def migrate(url):
                         raise ValueError(f"迁移 {version} 校验不符，禁止修改已应用的迁移文件")
                     continue
                 conn.execute(path.read_text(encoding="utf-8"), prepare=False)
-                conn.execute(
-                    "INSERT INTO accounting.schema_migrations(version,checksum) VALUES(%s,%s)",
-                    (version, checksum),
-                )
+                if has_compatibility_column(conn):
+                    conn.execute(
+                        "INSERT INTO accounting.schema_migrations(version,checksum,compatibility) "
+                        "VALUES(%s,%s,%s)",
+                        (version, checksum, migration_compatibility(path)),
+                    )
+                else:
+                    conn.execute(
+                        "INSERT INTO accounting.schema_migrations(version,checksum) VALUES(%s,%s)",
+                        (version, checksum),
+                    )
                 applied.append(version)
             # This metadata table exists before 001; migration makes all tables
             # FORCE RLS. Runtime only reads versions, never changes them.

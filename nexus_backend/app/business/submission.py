@@ -30,7 +30,9 @@ class SubmissionPolicyService:
     def update(self, actor, company_id, request):
         from .service import encode
 
-        with self.db.transaction(write=True, actor=actor) as conn:
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             self.access.company(conn, actor, company_id, manage=True)
             previous = self.current(conn, actor.firm_id, company_id)
             if previous["version"] != request.expected_version:

@@ -151,11 +151,16 @@ def test_handoff_response_reauthorizes_after_commit_and_retry_recovers_receipt(
     event = approved(case)
     original_transaction = case.db.transaction
     revoked_once = False
+    wrote = False
 
     @contextmanager
     def revoke_before_response(*args, **kwargs):
-        nonlocal revoked_once
-        if not kwargs.get("write", False) and not revoked_once:
+        nonlocal revoked_once, wrote
+        # 企业写事务开始前会有一次公司预读；撤权必须注入在「写入已提交、
+        # 响应读取尚未开始」之间，才能验证回执先提交、响应再授权的语义。
+        if kwargs.get("write", False):
+            wrote = True
+        elif wrote and not revoked_once:
             revoked_once = True
             with closing(case.db.connect()) as conn:
                 if revoke == "user":
