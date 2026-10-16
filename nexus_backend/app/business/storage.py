@@ -186,7 +186,8 @@ class AttachmentBodyLimitMiddleware:
             scope["type"] == "http"
             and scope.get("method") == "POST"
             and re.fullmatch(
-                r"/api/(?:business/events|intake/drafts)/[^/]+/attachments", scope.get("path", "")
+                r"/api/(?:business/events|intake/drafts|material-requests)/[^/]+/attachments",
+                scope.get("path", ""),
             )
         )
         if not limited:

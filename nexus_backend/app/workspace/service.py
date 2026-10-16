@@ -22,6 +22,7 @@ KINDS = {
     "delivery",
     "alert",
     "migration",
+    "material",
 }
 TEMPLATES = {
     "reimbursement": "报销",
@@ -442,6 +443,37 @@ class WorkspaceService:
             + ") migration_task"
         )
         params.extend(migration_params)
+        # A request can exist before any business event. Visibility and action
+        # ownership are resolved before counts/pagination, like other branches.
+        branch(
+            "material",
+            "material_requests e JOIN companies mc ON mc.id=e.company_id AND mc.status='active' "
+            "JOIN firm_clients mfc ON mfc.company_id=e.company_id AND mfc.firm_id=e.firm_id AND mfc.status='active' "
+            + (
+                ""
+                if self.db.is_postgres
+                else "JOIN periods mp ON mp.book_id=e.book_id AND mp.period=e.period AND mp.status='open' "
+            )
+            + "LEFT JOIN material_request_actions ma ON ma.request_id=e.id "
+            "AND ma.version=(SELECT MAX(mx.version) FROM material_request_actions mx WHERE mx.request_id=e.id)",
+            ("accounting.service_material_open(e.id) AND " if self.db.is_postgres else "")
+            + "e.firm_id=? AND ((e.assignee_user_id=? AND EXISTS(SELECT 1 FROM company_memberships mm "
+            "WHERE mm.company_id=e.company_id AND mm.user_id=?) AND COALESCE(ma.state,'pending') IN ('pending','returned','submitted')) "
+            "OR (ma.state='submitted' AND ma.created_by<>? AND EXISTS(SELECT 1 FROM review_books rb WHERE rb.id=e.book_id)))",
+            {
+                "event_id": "NULL",
+                "book_id": "CASE WHEN EXISTS(SELECT 1 FROM edit_books eb WHERE eb.id=e.book_id) THEN e.book_id ELSE NULL END",
+                "title": "e.title",
+                "state": "COALESCE(ma.state,'pending')",
+                "due_on": "e.due_on",
+                "updated_at": "COALESCE(ma.created_at,e.created_at)",
+                "bucket": "CASE WHEN ma.state='submitted' AND (ma.created_by=? OR NOT EXISTS(SELECT 1 FROM review_books rb WHERE rb.id=e.book_id)) THEN 'waiting' ELSE 'action' END",
+                "action_label": "CASE WHEN ma.state='submitted' THEN '查看资料验收' ELSE '提供本期资料' END",
+                "responsible": "CASE WHEN ma.state='submitted' THEN '独立验收人' ELSE '本人资料请求' END",
+            },
+            # SELECT placeholders precede the WHERE clause placeholders.
+            (actor.user_id, actor.firm_id, actor.user_id, actor.user_id, actor.user_id),
+        )
         return ctes + ", tasks AS (" + " UNION ALL ".join(parts) + ") ", params
 
     def list(

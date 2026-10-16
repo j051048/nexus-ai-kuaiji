@@ -40,6 +40,7 @@ import type {
 } from './assistant-types';
 import { clearReviewSession } from './review-session';
 import { roleCopy, taskDestination } from './workspace-types';
+import { workspaceExperience } from './workspace-experience';
 import type { WorkspaceProfile, WorkspaceTask } from './workspace-types';
 import type { BusinessTemplate } from './business-types';
 import type { OperationsCompany } from './operations-types';
@@ -69,6 +70,12 @@ const BusinessWorkspace = lazy(() =>
   import('./BusinessWorkspace').then((module) => ({ default: module.BusinessWorkspace })),
 );
 const AdminWorkspace = lazy(() => import('./AdminWorkspace'));
+const ServicePlanPanel = lazy(() =>
+  import('./ServicePlanPanel').then((module) => ({ default: module.ServicePlanPanel })),
+);
+const ServicePlanMaterials = lazy(() =>
+  import('./ServicePlanMaterials').then((module) => ({ default: module.ServicePlanMaterials })),
+);
 const AdminMfaGate = lazy(() => import('./AdminMfaGate'));
 const AccountActivation = lazy(() => import('./AccountActivation'));
 const AccountRecovery = lazy(() => import('./AccountRecovery'));
@@ -202,6 +209,7 @@ export default function App() {
   const [intakeTemplate, setIntakeTemplate] = useState<BusinessTemplate | undefined>();
   const [newIntake, setNewIntake] = useState(false);
   const [initialCaseId, setInitialCaseId] = useState('');
+  const [materialTarget, setMaterialTarget] = useState('');
   const [deliveryTarget, setDeliveryTarget] = useState('');
   const [proposalTarget, setProposalTarget] = useState('');
   const inlineContext = useRef<{
@@ -235,6 +243,9 @@ export default function App() {
     | 'monthly'
     | 'balances'
     | 'recurring'
+    | 'service'
+    | 'materials'
+    | 'portfolio'
     | null
   >(null);
   const [caseTarget, setCaseTarget] = useState<
@@ -323,6 +334,7 @@ export default function App() {
     setIntakeTemplate(undefined);
     setNewIntake(false);
     setInitialCaseId('');
+    setMaterialTarget('');
     setDeliveryTarget('');
     setProposalTarget('');
     setInlineTarget(null);
@@ -1091,12 +1103,13 @@ export default function App() {
     proposalId: proposalTarget,
     reviewBookId: inlineTarget?.bookId ?? '',
     reviewDraftId: inlineTarget?.draftId ?? '',
+    materialId: routeView === 'materials' ? materialTarget : '',
   };
   const routeGuard = useWorkspaceRoute({
     scope: session?.firm_id ? session.scope_key : undefined,
     value: workspaceRoute,
     metadata:
-      storedDetail?.book.id === bookId
+      routeUsesBook && storedDetail?.book.id === bookId
         ? { companyId: storedDetail.book.company_id, period: storedDetail.book.period }
         : undefined,
     locked:
@@ -1145,6 +1158,9 @@ export default function App() {
           'monthly',
           'balances',
           'recurring',
+          'service',
+          'materials',
+          'portfolio',
         ].includes(route.view)
           ? (route.view as typeof stage8View)
           : null,
@@ -1162,12 +1178,17 @@ export default function App() {
       setMonthlyDirty(false);
       setWorkCompany(route.companyId);
       setWorkPeriod(route.period);
-      setWorkBook(['review', 'cases', 'business'].includes(route.view) ? route.bookId : '');
+      setWorkBook(
+        ['review', 'cases', 'business', 'service', 'materials'].includes(route.view)
+          ? route.bookId
+          : '',
+      );
       setBusinessBusy(false);
       setSelectedIds([]);
       setBusinessTarget(route.eventId);
       setIntakeTarget(route.intakeId);
       setInitialCaseId(route.caseId);
+      setMaterialTarget(route.materialId);
       setQueueTarget(route.batchId);
       setQueueJobTarget(route.jobId);
       setMigrationTarget(route.migrationId);
@@ -1303,6 +1324,7 @@ export default function App() {
   const canSeeAccounting =
     profile?.can_accounting ??
     (!!stats?.book_count && !['client_employee', 'client_member'].includes(session.role ?? ''));
+  const experience = workspaceExperience(profile);
   const navigationLocked =
     !!busy ||
     businessBusy ||
@@ -1335,8 +1357,8 @@ export default function App() {
     setOperationsView(view === 'operations');
     setCatalogView(false);
     setStage8View(
-      ['review', 'cases', 'revision', 'monthly'].includes(view)
-        ? (view as 'review' | 'cases' | 'revision' | 'monthly')
+      ['review', 'cases', 'revision', 'monthly', 'materials', 'portfolio'].includes(view)
+        ? (view as typeof stage8View)
         : null,
     );
     setBusinessTarget('');
@@ -1351,6 +1373,7 @@ export default function App() {
     setQueueJobTarget('');
     setCaseTarget(undefined);
     setInitialCaseId('');
+    setMaterialTarget('');
     setDeliveryTarget('');
     if (view === 'accounting') {
       setFilter('all');
@@ -1363,6 +1386,13 @@ export default function App() {
   function openWorkspaceTask(task: WorkspaceTask) {
     if (navigationLocked) return;
     const target = taskDestination(task);
+    if (target.type === 'material') {
+      navigate('materials');
+      setMaterialTarget(target.id);
+      setWorkCompany(task.company_id);
+      setWorkBook(profile?.can_accounting ? (task.book_id ?? '') : '');
+      return;
+    }
     if (target.type === 'review' && target.bookId) {
       setInlineTarget({ bookId: target.bookId, draftId: target.id });
       return;
@@ -1571,9 +1601,15 @@ export default function App() {
     },
     {
       id: 'business',
-      label: '业务事项',
+      label: experience.businessLabel,
       description: '录入、补件与审批进度',
       run: () => navigate('business'),
+    },
+    {
+      id: 'materials',
+      label: '资料清单',
+      description: '本月待交、待补充及待验收资料',
+      run: () => navigate('materials'),
     },
     {
       id: 'runs',
@@ -1613,7 +1649,7 @@ export default function App() {
           },
         ]
       : []),
-  ];
+  ].filter((command) => command.id !== 'runs' || experience.processing);
 
   return (
     <div className="app-shell agent-shell">
@@ -1627,27 +1663,31 @@ export default function App() {
       <AgentNavigation
         session={session}
         current={
-          stage8View === 'monthly'
-            ? 'monthly'
-            : runsView
-              ? 'runs'
-              : homeView
-                ? 'home'
-                : showBusiness
-                  ? 'business'
-                  : stage8View === 'review'
-                    ? 'review'
-                    : stage8View === 'cases'
-                      ? 'cases'
-                      : queueView
-                        ? 'queue'
-                        : intelligenceView
-                          ? 'intelligence'
-                          : operationsView
-                            ? 'operations'
-                            : 'accounting'
+          stage8View === 'materials' || stage8View === 'portfolio'
+            ? stage8View
+            : stage8View === 'monthly' || stage8View === 'service'
+              ? 'monthly'
+              : runsView
+                ? 'runs'
+                : homeView
+                  ? 'home'
+                  : showBusiness
+                    ? 'business'
+                    : stage8View === 'review'
+                      ? 'review'
+                      : stage8View === 'cases'
+                        ? 'cases'
+                        : queueView
+                          ? 'queue'
+                          : intelligenceView
+                            ? 'intelligence'
+                            : operationsView
+                              ? 'operations'
+                              : 'accounting'
         }
         canAccounting={canSeeAccounting}
+        canProcessing={experience.processing}
+        businessLabel={experience.businessLabel}
         canMonthly={canSeeAccounting || !!profile?.can_manage}
         canReview={!!profile?.can_review}
         canOperations={
@@ -1770,55 +1810,61 @@ export default function App() {
             工作空间
             <ChevronRight size={13} />
             <span>
-              {stage8View === 'monthly'
-                ? '客户月度进度'
-                : stage8View === 'balances'
-                  ? '参考余额与月度差异'
-                  : stage8View === 'recurring'
-                    ? '固定事项草稿'
-                    : runsView
-                      ? '后台运行'
-                      : homeView
-                        ? '我的待办'
-                        : stage8View === 'migration'
-                          ? '旧账迁移'
-                          : stage8View === 'quality'
-                            ? '试点评测'
-                            : stage8View === 'settlement'
-                              ? '收付款核销'
-                              : stage8View === 'closing'
-                                ? '月结预检'
-                                : stage8View === 'revision'
-                                  ? '事实修订与调整'
-                                  : stage8View === 'efficiency'
-                                    ? '人工效率'
-                                    : stage8View === 'integration'
-                                      ? '财务软件接入'
-                                      : stage8View === 'ledger'
-                                        ? '长期账套与主数据'
-                                        : stage8View === 'reconciliation'
-                                          ? '流水与业务匹配'
-                                          : stage8View === 'delivery'
-                                            ? '导入回执核验'
-                                            : stage8View === 'review'
-                                              ? '跨企业批量复核'
-                                              : stage8View === 'cases'
-                                                ? '异常与补件'
-                                                : stage8View === 'learning'
-                                                  ? '审核样例与企业规则'
-                                                  : catalogView
-                                                    ? '科目与模板'
-                                                    : operationsView
-                                                      ? '费用与运行监控'
-                                                      : queueView
-                                                        ? '票据处理任务'
-                                                        : intelligenceView
-                                                          ? '票据核对异常'
-                                                          : showBusiness
-                                                            ? '业务事项'
-                                                            : navItems.find(
-                                                                (item) => item.id === filter,
-                                                              )?.label}
+              {stage8View === 'service'
+                ? '月度服务单'
+                : stage8View === 'materials'
+                  ? '资料清单'
+                  : stage8View === 'portfolio'
+                    ? '客户人工投入'
+                    : stage8View === 'monthly'
+                      ? '客户月度进度'
+                      : stage8View === 'balances'
+                        ? '参考余额与月度差异'
+                        : stage8View === 'recurring'
+                          ? '固定事项草稿'
+                          : runsView
+                            ? '后台运行'
+                            : homeView
+                              ? '我的待办'
+                              : stage8View === 'migration'
+                                ? '旧账迁移'
+                                : stage8View === 'quality'
+                                  ? '试点评测'
+                                  : stage8View === 'settlement'
+                                    ? '收付款核销'
+                                    : stage8View === 'closing'
+                                      ? '月结预检'
+                                      : stage8View === 'revision'
+                                        ? '事实修订与调整'
+                                        : stage8View === 'efficiency'
+                                          ? '人工效率'
+                                          : stage8View === 'integration'
+                                            ? '财务软件接入'
+                                            : stage8View === 'ledger'
+                                              ? '长期账套与主数据'
+                                              : stage8View === 'reconciliation'
+                                                ? '流水与业务匹配'
+                                                : stage8View === 'delivery'
+                                                  ? '导入回执核验'
+                                                  : stage8View === 'review'
+                                                    ? '跨企业批量复核'
+                                                    : stage8View === 'cases'
+                                                      ? '异常与补件'
+                                                      : stage8View === 'learning'
+                                                        ? '审核样例与企业规则'
+                                                        : catalogView
+                                                          ? '科目与模板'
+                                                          : operationsView
+                                                            ? '费用与运行监控'
+                                                            : queueView
+                                                              ? '票据处理任务'
+                                                              : intelligenceView
+                                                                ? '票据核对异常'
+                                                                : showBusiness
+                                                                  ? '业务事项'
+                                                                  : navItems.find(
+                                                                      (item) => item.id === filter,
+                                                                    )?.label}
             </span>
           </div>
           <div className="agent-topbar-actions">
@@ -1858,7 +1904,15 @@ export default function App() {
             !operationsView &&
             !queueView &&
             !intelligenceView &&
-            !['review', 'cases', 'revision', 'monthly'].includes(stage8View ?? '')
+            ![
+              'review',
+              'cases',
+              'revision',
+              'monthly',
+              'service',
+              'materials',
+              'portfolio',
+            ].includes(stage8View ?? '')
               ? bookId
               : undefined
           }
@@ -1913,6 +1967,71 @@ export default function App() {
               onPeriodChange={setWorkPeriod}
               onOpen={openMonthlyTarget}
               revision={workspaceRevision}
+              onOpenServicePlan={(target) => {
+                if (navigationLocked) return;
+                navigate('monthly');
+                setStage8View('service');
+                setWorkBook(target.bookId);
+                setWorkCompany(target.companyId);
+                setWorkPeriod(target.period);
+              }}
+            />
+          ) : stage8View === 'service' ? (
+            <main className="monthly-workbench">
+              <button
+                className="text-button"
+                disabled={businessBusy || monthlyDirty}
+                onClick={() => navigate('monthly')}
+              >
+                返回客户月度进度
+              </button>
+              {workBook && workCompany && workPeriod ? (
+                <ServicePlanPanel
+                  key={`${session.scope_key}:${workBook}`}
+                  session={session}
+                  bookId={workBook}
+                  companyId={workCompany}
+                  companyName={
+                    profile?.companies.find((company) => company.id === workCompany)?.name ?? ''
+                  }
+                  period={workPeriod}
+                  revision={workspaceRevision}
+                  onBusyChange={changeBusinessBusy}
+                  onDirtyChange={changeMonthlyDirty}
+                  onChanged={() => setWorkspaceRevision((n) => n + 1)}
+                />
+              ) : (
+                <p className="field-help">请从客户月度进度选择具体账套和月份。</p>
+              )}
+            </main>
+          ) : stage8View === 'materials' ? (
+            <main className="monthly-workbench">
+              <ServicePlanMaterials
+                key={`${session.scope_key}:${workBook}:${materialTarget}`}
+                session={session}
+                companyId={workCompany}
+                period={workPeriod}
+                bookId={workBook || undefined}
+                initialRequestId={materialTarget}
+                revision={workspaceRevision}
+                onBusyChange={changeBusinessBusy}
+                onDirtyChange={changeMonthlyDirty}
+                onChanged={() => setWorkspaceRevision((n) => n + 1)}
+              />
+            </main>
+          ) : stage8View === 'portfolio' ? (
+            <EfficiencyWorkbench
+              key={session.scope_key + ':portfolio'}
+              session={session}
+              onBusyChange={changeBusinessBusy}
+              onBack={() => navigate('home')}
+              onOpenBook={(id) => {
+                navigate('accounting');
+                setBookId(id);
+                focusBookRef.current = id;
+                setStage8View('efficiency');
+                if (routeUsesBook) void initialize(undefined, id);
+              }}
             />
           ) : stage8View === 'balances' && bookId ? (
             <MonthlyReconciliationWorkbench

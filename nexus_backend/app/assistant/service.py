@@ -10,6 +10,7 @@ from app.accounting.service import fingerprint, now
 from app.jobs.visibility import event_scope
 from .models import ConversationCreate, TurnCreate
 from .scope import book_read_scope, conversation_scope
+from .snapshot_reads import AssistantSnapshotReads
 
 
 def encode(value):
@@ -131,11 +132,22 @@ class AssistantService:
             if set(books) != set(conversation["book_ids"]):
                 raise AccountingError("对话账套不存在或无权访问", 404)
         events = {}
-        for event_id in conversation["event_ids"]:
-            event = self.business._event(conn, actor, event_id)
-            if event["company_id"] != conversation["company_id"]:
-                raise AccountingError("对话事项不属于当前企业", 404)
-            events[event_id] = event
+        if conversation["event_ids"]:
+            rows = conn.execute(
+                "SELECT e.* FROM business_events e JOIN firm_clients fc ON "
+                "fc.firm_id=e.firm_id AND fc.company_id=e.company_id AND fc.status='active' "
+                "WHERE e.firm_id=? AND e.company_id=? AND e.id IN ("
+                + ",".join("?" for _ in conversation["event_ids"])
+                + ")",
+                [actor.firm_id, conversation["company_id"], *conversation["event_ids"]],
+            ).fetchall()
+            events = {event["id"]: event for event in rows}
+            # Keep the exact business visibility predicate, including direct
+            # intake before handoff. Bulk IDs alone never establish access.
+            if set(events) != set(conversation["event_ids"]) or any(
+                not self.business._visible(conn, actor, event) for event in rows
+            ):
+                raise AccountingError("对话事项不存在或无权访问", 404)
         draft = None
         if conversation.get("draft_id"):
             draft = conn.execute(
@@ -275,6 +287,29 @@ class AssistantService:
         }
         basis = {"books": [], "events": [], "draft": None}
         draft_counts, source_totals = {}, {}
+        attachments_by_event, runs_by_event = {}, {}
+        if events:
+            marks = ",".join("?" for _ in events)
+            for row in conn.execute(
+                "SELECT event_id,id,filename,media_type,sha256,size_bytes,created_at,created_by "
+                "FROM business_attachments WHERE event_id IN ("
+                + marks
+                + ") ORDER BY created_at,id",
+                list(events),
+            ):
+                attachment = dict(row)
+                event_id = attachment.pop("event_id")
+                attachments_by_event.setdefault(event_id, []).append(attachment)
+            if self.intelligence:
+                for row in conn.execute(
+                    "SELECT r.* FROM ai_runs r WHERE r.event_id IN (" + marks + ") "
+                    "AND r.kind='ocr' AND NOT EXISTS(SELECT 1 FROM ai_runs newer "
+                    "WHERE newer.event_id=r.event_id AND newer.kind='ocr' "
+                    "AND newer.attachment_id=r.attachment_id AND (newer.created_at>r.created_at "
+                    "OR (newer.created_at=r.created_at AND newer.id>r.id))) ORDER BY r.event_id,r.attachment_id",
+                    list(events),
+                ):
+                    runs_by_event.setdefault(row["event_id"], {})[row["attachment_id"]] = row
         if books:
             placeholders = ",".join("?" for _ in books)
             for row in conn.execute(
@@ -344,7 +379,7 @@ class AssistantService:
 
             superseded = superseded_ids(self.db, conn, event)
             attachments = [
-                r for r in self.business._attachments(conn, event_id) if r["id"] not in superseded
+                r for r in attachments_by_event.get(event_id, []) if r["id"] not in superseded
             ]
             # Only identifiers and hashes of current files, never full raw text,
             # paths, bytes, employee bank details or unrelated event histories.
@@ -361,7 +396,11 @@ class AssistantService:
                 )
             assessment_fingerprint = None
             if self.intelligence:
-                latest = self.intelligence._latest(conn, event, excluded=superseded)
+                latest = {
+                    key: row
+                    for key, row in runs_by_event.get(event_id, {}).items()
+                    if key not in superseded
+                }
                 documents = []
                 for attachment in attachments[:20]:
                     run = latest.get(attachment["id"])
@@ -477,7 +516,7 @@ class AssistantService:
 
     def _detail_in_transaction(self, conn, actor, conversation):
         conversation_id = conversation["id"]
-        context = self.snapshot_in_transaction(conn, actor, conversation)
+        context = self.snapshot_in_transaction(AssistantSnapshotReads(conn), actor, conversation)
         turns = conn.execute(
             "SELECT "
             + TURN_PUBLIC
@@ -598,6 +637,111 @@ class AssistantService:
                 "actions": actions.list_in_transaction(
                     conn, actor, conversation, action_limit, action_offset
                 ),
+            }
+
+    def progress(self, actor, conversation_id, *, action_offset=0):
+        """A private change cursor, never an accounting input fingerprint.
+
+        Each poll reauthorizes every conversation reference. No OCR documents,
+        questions, answers, storage paths or lease/worker data are returned.
+        The client reads the full workspace after a change and periodically for
+        unrelated facts; enqueue and task confirmation always revalidate facts.
+        """
+        page_bounds(20, action_offset)
+        if action_offset > 100000:
+            raise AccountingError("操作历史分页范围无效", 422)
+        with self.db.transaction(actor=actor) as conn:
+            conversation = self._conversation(conn, actor, conversation_id)
+            turns = [
+                dict(row)
+                for row in conn.execute(
+                    "SELECT id,status,updated_at FROM assistant_turns WHERE conversation_id=? "
+                    "ORDER BY created_at DESC,id LIMIT 20",
+                    (conversation_id,),
+                )
+            ]
+            messages = dict(
+                conn.execute(
+                    "SELECT COUNT(*) AS total,MAX(created_at) AS newest,MAX(id) AS newest_id "
+                    "FROM assistant_messages WHERE conversation_id=?",
+                    (conversation_id,),
+                ).fetchone()
+            )
+            rows = conn.execute(
+                "SELECT p.id,p.kind,p.expires_at,r.result_json FROM assistant_action_plans p "
+                "LEFT JOIN assistant_action_receipts r ON r.plan_id=p.id "
+                "WHERE p.conversation_id=? AND p.firm_id=? AND p.created_by=? "
+                "ORDER BY p.created_at DESC,p.id DESC LIMIT 20 OFFSET ?",
+                (conversation_id, actor.firm_id, actor.user_id, action_offset),
+            ).fetchall()
+            plans, identifiers = [], {"ocr": set(), "proposal": set()}
+            for row in rows:
+                result = json.loads(row["result_json"]) if row["result_json"] else None
+                plans.append(
+                    {"id": row["id"], "expires_at": row["expires_at"], "receipt": bool(result)}
+                )
+                kind = {"ocr_batch": "ocr", "proposal_batch": "proposal"}.get(row["kind"])
+                if kind and result:
+                    identifiers[kind].update(item["id"] for item in result.get("jobs", []))
+            jobs = []
+            for kind, ids in identifiers.items():
+                if not ids:
+                    continue
+                visibility, params = event_scope(actor)
+                # Direct-intake accountants can receive submitted/returned
+                # records before the first ledger mapping exists.
+                from app.jobs.visibility import book_edit_scope
+
+                books, book_params = book_edit_scope(actor)
+                period = self.business.submission.period_sql("e")
+                visibility = (
+                    "("
+                    + visibility
+                    + ") OR (e.submission_mode='direct' "
+                    + (
+                        "AND e.status IN ('submitted','returned') AND e.applicant_id<>? "
+                        "AND EXISTS(SELECT 1 FROM books b WHERE b.company_id=e.company_id "
+                        "AND b.period=" + period + " AND " + books + "))"
+                    )
+                )
+                jobs.extend(
+                    {"kind": kind, **dict(row)}
+                    for row in conn.execute(
+                        f"SELECT j.id,j.status,j.updated_at FROM {kind}_jobs j "
+                        "JOIN business_events e ON e.id=j.event_id AND e.firm_id=j.firm_id "
+                        "WHERE j.firm_id=? AND j.company_id=? AND j.id IN ("
+                        + ",".join("?" for _ in ids)
+                        + ") AND ("
+                        + visibility
+                        + ") ORDER BY j.id",
+                        [
+                            actor.firm_id,
+                            conversation["company_id"],
+                            *sorted(ids),
+                            *params,
+                            actor.user_id,
+                            *book_params,
+                        ],
+                    )
+                )
+            availability = self._availability(conn, actor, conversation["company_id"])
+            basis = {
+                "turns": turns,
+                "messages": messages,
+                "plans": plans,
+                "jobs": jobs,
+                "availability": availability,
+                "scope_version": conversation["scope_version"],
+            }
+            return {
+                "conversation_id": conversation_id,
+                "company_id": conversation["company_id"],
+                "scope_version": conversation["scope_version"],
+                "revision": fingerprint(basis),
+                "active": any(
+                    row["status"] in {"queued", "running", "retry_wait"} for row in turns + jobs
+                ),
+                **availability,
             }
 
     def enqueue(self, actor, conversation_id, body: TurnCreate):

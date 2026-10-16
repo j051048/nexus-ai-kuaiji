@@ -47,6 +47,7 @@ import type {
   AssistantConversation,
   AssistantConversationDetail,
   AssistantConversationPage,
+  AssistantConversationProgress,
   AssistantConversationWorkspace,
   AssistantEvidence,
   AssistantInitialContext,
@@ -162,6 +163,7 @@ export function GlobalAccountingAssistant({
     closeRef = useRef(onClose);
   closeRef.current = onClose;
   const requestKeys = useRef(new Map<string, { signature: string; id: string }>());
+  const progressRevision = useRef<string | null>(null);
   const invalidateDetailRead = useCallback(() => {
     detailEpoch.current++;
     detailRead.current?.controller.abort();
@@ -290,6 +292,7 @@ export function GlobalAccountingAssistant({
     setBusy(false);
     setRevoked(true);
     requestKeys.current.clear();
+    progressRevision.current = null;
   }, [invalidateDetailRead]);
   useEffect(() => {
     const revoke = () => {
@@ -589,16 +592,69 @@ export function GlobalAccountingAssistant({
     setQuestion('');
     setNotice('');
     setError('');
+    progressRevision.current = null;
     if (conversationId) void loadConversation(true, true);
   }, [conversationId, messageOffset, loadConversation]);
   useEffect(() => {
     if (!conversationId || revoked) return;
-    const timer = window.setInterval(
-      () => {
-        if (document.visibilityState === 'visible') void loadConversation();
-      },
-      activeTurn || activeTask ? 3000 : 15000,
-    );
+    const captured = detailKey,
+      controller = new AbortController(),
+      signal = AbortSignal.any([controller.signal, scopeController.current.signal]);
+    let reading = false,
+      legacy = false,
+      lastFull = Date.now();
+    const poll = async () => {
+      if (reading || document.visibilityState !== 'visible') return;
+      reading = true;
+      try {
+        // A cheap, freshly authorized cursor makes completed responses visible
+        // sooner. Full facts are still refreshed periodically and on focus.
+        if (legacy || Date.now() - lastFull >= 30_000) {
+          await loadConversation();
+          lastFull = Date.now();
+          return;
+        }
+        const progress = await api<AssistantConversationProgress>(
+          `/assistant/conversations/${encode(conversationId)}/progress?action_offset=${planOffset}`,
+          session,
+          { signal },
+        );
+        if (signal.aborted || captured !== liveDetail.current) return;
+        if (
+          progress.company_id !== companyId ||
+          progress.conversation_id !== conversationId ||
+          progress.scope_version !== 1
+        ) {
+          clearSensitive();
+          setError('会话资料范围已变化，请关闭后重新读取。');
+          return;
+        }
+        if (progressRevision.current !== progress.revision) {
+          await loadConversation();
+          if (!signal.aborted && captured === liveDetail.current) {
+            progressRevision.current = progress.revision;
+            lastFull = Date.now();
+          }
+        }
+      } catch (failure) {
+        if (signal.aborted || captured !== liveDetail.current) return;
+        if (
+          failure instanceof ApiError &&
+          failure.status === 404 &&
+          failure.message === 'Not Found'
+        ) {
+          legacy = true;
+          await loadConversation();
+        } else {
+          if (failure instanceof ApiError && [401, 403, 404].includes(failure.status))
+            clearSensitive();
+          setError(errorMessage(failure));
+        }
+      } finally {
+        reading = false;
+      }
+    };
+    const timer = window.setInterval(() => void poll(), activeTurn || activeTask ? 1000 : 15000);
     const foreground = () => {
       if (document.visibilityState === 'visible') void loadConversation();
     };
@@ -606,10 +662,22 @@ export function GlobalAccountingAssistant({
     document.addEventListener('visibilitychange', foreground);
     return () => {
       window.clearInterval(timer);
+      controller.abort();
       window.removeEventListener('focus', foreground);
       document.removeEventListener('visibilitychange', foreground);
     };
-  }, [conversationId, activeTurn?.id, activeTask, revoked, loadConversation]);
+  }, [
+    conversationId,
+    companyId,
+    detailKey,
+    planOffset,
+    session,
+    activeTurn?.id,
+    activeTask,
+    revoked,
+    loadConversation,
+    clearSensitive,
+  ]);
   useEffect(() => {
     if (messageOffset === 0)
       transcript.current?.scrollTo({ top: transcript.current.scrollHeight, behavior: 'auto' });

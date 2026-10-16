@@ -32,6 +32,13 @@ const task = (overrides: Partial<WorkspaceTask> = {}): WorkspaceTask => ({
 });
 
 describe('统一待办精确目标', () => {
+  it('周期资料按请求标识打开，提交状态不会误显示为部门审批', () => {
+    expect(taskDestination(task({ kind: 'material', ref: 'request-2', book_id: null }))).toEqual({
+      type: 'material',
+      id: 'request-2',
+    });
+    expect(taskStateLabel({ kind: 'material', state: 'submitted' })).toBe('待独立验收');
+  });
   it('旧账迁移筛选有中文标签，目标保留当前项目与账套而不借用业务或凭证 ID', () => {
     expect(taskLabels.migration).toBe('旧账迁移');
     expect(

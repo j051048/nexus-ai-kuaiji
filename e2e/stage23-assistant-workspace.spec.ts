@@ -3,6 +3,14 @@ import { choosePersona } from './ui-navigation';
 
 test.setTimeout(60_000);
 
+// Keep the rolling-upgrade/slow full-read contract. Stage25 separately checks
+// the new progress cursor; an older API has only the workspace endpoint.
+test.beforeEach(async ({ page }) => {
+  await page.route(/\/api\/assistant\/conversations\/[^/]+\/progress\?/, async (route) => {
+    await route.fulfill({ status: 404, json: { detail: 'Not Found' } });
+  });
+});
+
 function deferred() {
   let resolve!: () => void;
   const promise = new Promise<void>((done) => {

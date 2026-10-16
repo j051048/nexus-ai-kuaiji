@@ -1,0 +1,119 @@
+.onboarding-heading {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+.onboarding-heading > div {
+  flex: 1;
+  min-width: 210px;
+}
+.onboarding-heading h2 {
+  margin: 5px 0 9px;
+  font-size: 23px;
+  color: #20392e;
+}
+.onboarding-heading p {
+  color: #68776e;
+  line-height: 1.65;
+}
+.onboarding-heading label {
+  display: grid;
+  gap: 7px;
+  font-size: 12px;
+  color: #68776e;
+}
+.onboarding-heading input {
+  min-width: 145px;
+  max-width: 100%;
+}
+.onboarding-progress {
+  padding: 18px 20px;
+  border-left: 3px solid #44664e;
+  background: #eef3ed;
+  margin: 20px 0;
+  display: grid;
+  gap: 6px;
+}
+.onboarding-progress span {
+  color: #68776e;
+  font-size: 13px;
+}
+.onboarding-steps {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.onboarding-steps li {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  padding: 20px 0;
+  border-bottom: 1px solid #e3e8df;
+}
+.onboarding-steps li > div {
+  flex: 1;
+  min-width: 0;
+}
+.onboarding-steps li p {
+  margin: 7px 0 0;
+  color: #68776e;
+  line-height: 1.65;
+  font-size: 13px;
+}
+.onboarding-steps li small {
+  margin-left: 9px;
+  color: #68776e;
+  font-weight: 400;
+}
+.onboarding-step-icon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid #d6ded3;
+  border-radius: 50%;
+  color: #8a9488;
+  flex-shrink: 0;
+}
+.onboarding-steps .complete .onboarding-step-icon {
+  background: #285943;
+  color: white;
+  border-color: #285943;
+}
+.admin-setup-prompt {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: #edf3ec;
+  border: 1px solid #d4dfd0;
+  border-radius: 9px;
+  padding: 13px 17px;
+  margin-bottom: 18px;
+  color: #3a5743;
+}
+@media (max-width: 640px) {
+  .onboarding-heading {
+    gap: 12px;
+  }
+  .onboarding-heading > div {
+    flex-basis: 100%;
+  }
+  .onboarding-steps li {
+    align-items: flex-start;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .onboarding-steps li > div {
+    flex-basis: calc(100% - 45px);
+  }
+  .onboarding-steps li > button {
+    margin-left: 42px;
+    min-height: 40px;
+  }
+  .admin-setup-prompt {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

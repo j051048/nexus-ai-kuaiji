@@ -27,8 +27,13 @@ test('四种真实验证身份按主业务角色进入待办首页，兼有复�
     await expect(page.getByLabel('我的工作概览')).toBeVisible();
     await expect(page.getByLabel('筛选待办类型')).toBeVisible();
     await openNavigation(page);
-    await expect(page.locator('summary').filter({ hasText: /^处理记录与管理$/ })).toBeVisible();
-    await expect(page.locator('summary').filter({ hasText: /^处理记录与管理$/ }).locator('..')).not.toHaveAttribute('open', '');
+    if (profile.can_accounting || profile.can_finance || profile.can_manage) {
+      await expect(page.locator('summary').filter({ hasText: /^处理记录与管理$/ })).toBeVisible();
+      await expect(page.locator('summary').filter({ hasText: /^处理记录与管理$/ }).locator('..')).not.toHaveAttribute('open', '');
+    } else {
+      await expect(page.locator('summary').filter({ hasText: /^处理记录与管理$/ })).toHaveCount(0);
+      await expect(page.getByRole('button', { name: '后台运行', exact: true })).toHaveCount(0);
+    }
     if (persona === 'employee' || persona === 'department') {
       await expect(page.getByRole('button', { name: '导入流水', exact: true })).toHaveCount(0);
       await expect(page.getByRole('navigation', { name: '主导航', exact: true }).getByRole('button', { name: '跨企业批量复核', exact: true })).toHaveCount(0);

@@ -31,7 +31,9 @@ export type AgentNavigationView =
   | 'intelligence'
   | 'operations'
   | 'revision'
-  | 'monthly';
+  | 'monthly'
+  | 'materials'
+  | 'portfolio';
 
 export function AgentNavigation({
   session,
@@ -40,6 +42,8 @@ export function AgentNavigation({
   canMonthly = canAccounting,
   canReview,
   canOperations,
+  canProcessing = false,
+  businessLabel = '业务事项',
   locked,
   firmSelector,
   footer,
@@ -54,6 +58,8 @@ export function AgentNavigation({
   canMonthly?: boolean;
   canReview: boolean;
   canOperations: boolean;
+  canProcessing?: boolean;
+  businessLabel?: string;
   locked: boolean;
   firmSelector: ReactNode;
   footer: ReactNode;
@@ -246,26 +252,36 @@ export function AgentNavigation({
               </span>
             </button>
           )}
-          <button
-            aria-label="后台运行"
-            className={'nav-item agent-primary-item ' + (current === 'runs' ? 'active' : '')}
-            disabled={locked}
-            onClick={() => go('runs')}
-            aria-current={current === 'runs' ? 'page' : undefined}
-          >
-            <Activity size={19} />
-            <span>
-              后台运行<small>执行进度与接管</small>
-            </span>
-          </button>
+          {canProcessing && (
+            <button
+              aria-label="后台运行"
+              className={'nav-item agent-primary-item ' + (current === 'runs' ? 'active' : '')}
+              disabled={locked}
+              onClick={() => go('runs')}
+              aria-current={current === 'runs' ? 'page' : undefined}
+            >
+              <Activity size={19} />
+              <span>
+                后台运行<small>执行进度与接管</small>
+              </span>
+            </button>
+          )}
           <div className="agent-work-shortcuts" aria-label="工作快捷入口">
+            <button
+              className={'nav-item ' + (current === 'materials' ? 'selected' : '')}
+              disabled={locked}
+              onClick={() => go('materials')}
+            >
+              <FileCheck2 size={16} />
+              <span>资料清单</span>
+            </button>
             <button
               className={'nav-item ' + (current === 'business' ? 'selected' : '')}
               disabled={locked}
               onClick={() => go('business')}
             >
               <FileText size={16} />
-              <span>业务事项</span>
+              <span>{businessLabel}</span>
             </button>
             <button
               className={'nav-item ' + (current === 'cases' ? 'selected' : '')}
@@ -291,10 +307,6 @@ export function AgentNavigation({
           <details className="nav-group" open={current === 'accounting'}>
             <summary>会计工作区</summary>
             <nav aria-label="会计协作">
-              <button className="nav-item" disabled={locked} onClick={() => go('accounting')}>
-                <LayoutDashboard size={16} />
-                <span>会计工作台</span>
-              </button>
               <button
                 className="nav-item"
                 disabled={locked}
@@ -328,25 +340,33 @@ export function AgentNavigation({
             </nav>
           </details>
         )}
-        <details className="nav-group agent-management-group">
-          <summary>处理记录与管理</summary>
-          <nav aria-label="处理记录与管理">
-            <button className="nav-item" disabled={locked} onClick={() => go('intelligence')}>
-              <FileSearch size={16} />
-              <span>票据核对异常</span>
-            </button>
-            <button className="nav-item" disabled={locked} onClick={() => go('queue')}>
-              <Layers3 size={16} />
-              <span>票据处理任务</span>
-            </button>
-            {canOperations && (
-              <button className="nav-item" disabled={locked} onClick={() => go('operations')}>
-                <Activity size={16} />
-                <span>费用与运行监控</span>
+        {canProcessing && (
+          <details className="nav-group agent-management-group">
+            <summary>处理记录与管理</summary>
+            <nav aria-label="处理记录与管理">
+              <button className="nav-item" disabled={locked} onClick={() => go('intelligence')}>
+                <FileSearch size={16} />
+                <span>票据核对异常</span>
               </button>
-            )}
-          </nav>
-        </details>
+              <button className="nav-item" disabled={locked} onClick={() => go('queue')}>
+                <Layers3 size={16} />
+                <span>票据处理任务</span>
+              </button>
+              {canOperations && (
+                <button className="nav-item" disabled={locked} onClick={() => go('operations')}>
+                  <Activity size={16} />
+                  <span>费用与运行监控</span>
+                </button>
+              )}
+              {canAccounting && (
+                <button className="nav-item" disabled={locked} onClick={() => go('portfolio')}>
+                  <CalendarDays size={16} />
+                  <span>客户人工投入</span>
+                </button>
+              )}
+            </nav>
+          </details>
+        )}
         <div className="agent-sidebar-note">
           <ShieldCheck size={14} />
           <span>原件留存 · 会计复核后导出</span>

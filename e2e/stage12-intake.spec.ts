@@ -10,7 +10,10 @@ test('员工一体化原件上传、服务端草稿恢复和独立部门审批',
   await choosePersona(page, 'employee');
   await openBusiness(page);
   await page.getByRole('button', { name: '录入业务事项', exact: true }).click();
-  await page.getByLabel('事项客户企业').selectOption({ label: '青屿设计（虚构示例）' });
+  const companyInput = page.getByLabel('事项客户企业');
+  if (await companyInput.evaluate((node) => node.tagName === 'SELECT'))
+    await companyInput.selectOption({ label: '青屿设计（虚构示例）' });
+  else await expect(companyInput).toContainText('青屿设计（虚构示例）');
   await page.getByLabel('一体化录入上传附件').setInputFiles([receipt, contract]);
   await expect(page.getByText(receipt.name, { exact: true })).toBeVisible();
   await expect(page.getByText(contract.name, { exact: true })).toBeVisible();

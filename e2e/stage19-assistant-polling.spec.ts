@@ -5,6 +5,9 @@ test.setTimeout(60_000);
 
 // Exercise rolling upgrades against an older API; new workspace reads have their own tests.
 test.beforeEach(async ({ page }) => {
+  await page.route(/\/api\/assistant\/conversations\/[^/]+\/progress\?/, async (route) => {
+    await route.fulfill({ status: 404, json: { detail: 'Not Found' } });
+  });
   await page.route(/\/api\/assistant\/conversations\/[^/]+\/workspace\?/, async (route) => {
     await route.fulfill({ status: 404, json: { detail: 'Not Found' } });
   });

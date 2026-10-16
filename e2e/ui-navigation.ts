@@ -15,12 +15,12 @@ export async function choosePersona(page: Page, persona: string) {
 
 export async function openBusiness(page: Page) {
   await openNavigation(page);
-  await page.getByRole('navigation', { name: '主导航', exact: true }).getByRole('button', { name: '业务事项', exact: true }).click();
+  await page.getByRole('navigation', { name: '主导航', exact: true }).getByRole('button', { name: /^(业务事项|我的提交|部门事项)$/ }).click();
 }
 
 export async function openAccounting(page: Page) {
-  await expand(page, '会计工作区');
-  await page.getByRole('navigation', { name: '会计协作', exact: true }).getByRole('button', { name: '会计工作台', exact: true }).click();
+  await openNavigation(page);
+  await page.getByRole('navigation', { name: '主导航', exact: true }).getByRole('button', { name: '客户企业', exact: true }).click();
   await expect(page.getByLabel('搜索企业名称')).toBeVisible();
 }
 

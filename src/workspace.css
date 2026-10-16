@@ -3,6 +3,21 @@
   margin: 0 auto;
   padding: 30px 36px 40px;
 }
+.workspace-simple .workspace-summary {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.workspace-company-identity {
+  padding: 9px 12px;
+  color: #526653;
+  border-left: 2px solid #d6dfd1;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 480px) {
+  .workspace-simple .workspace-summary {
+    grid-template-columns: 1fr;
+  }
+}
 .workspace-heading {
   display: flex;
   justify-content: space-between;

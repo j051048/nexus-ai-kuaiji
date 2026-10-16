@@ -106,6 +106,9 @@ from .monthly.service import MonthlyService
 from .monthly.router import build_monthly_router
 from .monthly.workbench import MonthlyWorkbenchService
 from .monthly.workbench_router import build_monthly_workbench_router
+from .service_plans.service import ServicePlansService
+from .service_plans.router import build_service_plans_router
+from .service_plans.attachments import MaterialAttachmentService, build_material_attachments_router
 from .revisions.history import SourceHistoryService
 from .revisions.history_router import build_source_history_router
 from .intake.service import IntakeService
@@ -311,6 +314,12 @@ def create_app(
                 application.state.cases,
             )
             application.state.monthly = MonthlyService(database, application.state.service)
+            application.state.service_plans = ServicePlansService(
+                database, application.state.service, application.state.business
+            )
+            application.state.service_plans.attachments = MaterialAttachmentService(
+                application.state.service_plans, application.state.attachment_store
+            )
             application.state.monthly_workbench = MonthlyWorkbenchService(
                 database,
                 application.state.service,
@@ -865,6 +874,8 @@ def create_app(
     app.include_router(build_workspace_router(actor))
     app.include_router(build_monthly_router(actor))
     app.include_router(build_monthly_workbench_router(actor))
+    app.include_router(build_service_plans_router(actor))
+    app.include_router(build_material_attachments_router(actor))
     app.include_router(build_agent_workspace_router(actor))
     app.include_router(build_assistant_router(actor))
     app.include_router(build_legacy_migration_router(actor))

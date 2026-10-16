@@ -51,6 +51,23 @@ export interface MonthlyClientRow {
     handling_seconds: number | null;
   };
   permissions: { edit: boolean; review: boolean; export: boolean; manage: boolean };
+  service_plan?: {
+    version: number;
+    lead_user_id: string | null;
+    reviewer_user_id: string | null;
+    backup_user_id: string | null;
+    contact_user_id: string | null;
+    lead_name?: string | null;
+    reviewer_name?: string | null;
+    due_on: string;
+  } | null;
+  material_requests?: {
+    total: number | null;
+    pending: number | null;
+    submitted: number | null;
+    accepted: number | null;
+    required_pending: number | null;
+  } | null;
   warnings: string[];
 }
 export interface MonthlyClients {

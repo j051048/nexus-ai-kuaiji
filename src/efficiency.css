@@ -2,6 +2,44 @@
   max-width: 1260px;
   margin: 0 auto;
 }
+.efficiency-measurement {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.8;
+  margin-bottom: 24px;
+}
+.efficiency-measurement svg {
+  flex: 0 0 auto;
+  margin-top: 3px;
+}
+.efficiency-book-count,
+.efficiency-book-list small {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 6px;
+}
+.efficiency-book-list {
+  padding: 0;
+  list-style: none;
+  min-width: 210px;
+}
+.efficiency-book-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+.efficiency-pagination {
+  justify-content: flex-end;
+  padding: 16px 0;
+  font-size: 12px;
+}
 .efficiency-actions,
 .efficiency-controls {
   display: flex;
@@ -167,5 +205,59 @@
   .efficiency-evidence dl > div {
     flex-direction: column;
     gap: 5px;
+  }
+}
+@media (max-width: 740px) {
+  .efficiency-portfolio .page-heading {
+    display: block;
+  }
+  .efficiency-portfolio .page-heading h1 {
+    max-width: none;
+    font-size: 26px;
+  }
+  .efficiency-portfolio .page-heading .efficiency-actions {
+    margin-top: 20px;
+  }
+  .efficiency-portfolio .efficiency-history {
+    padding: 16px;
+  }
+  .efficiency-portfolio .efficiency-table {
+    overflow: visible;
+  }
+  .efficiency-portfolio table,
+  .efficiency-portfolio tbody {
+    display: block;
+  }
+  .efficiency-portfolio thead {
+    display: none;
+  }
+  .efficiency-portfolio tbody tr {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    padding: 18px 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .efficiency-portfolio tbody td {
+    border: 0;
+    padding: 0;
+    white-space: normal;
+  }
+  .efficiency-portfolio tbody td:first-child,
+  .efficiency-portfolio tbody td:last-child {
+    grid-column: 1 / -1;
+  }
+  .efficiency-portfolio tbody td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    color: var(--muted);
+    font-size: 11px;
+    margin-bottom: 6px;
+  }
+  .efficiency-portfolio .efficiency-book-list {
+    min-width: 0;
+  }
+  .efficiency-portfolio .efficiency-pagination {
+    justify-content: flex-start;
   }
 }

@@ -11,12 +11,31 @@ import {
 } from './efficiency-helpers';
 import type { EfficiencyOverview, WorkActivity, WorkSession } from './efficiency-helpers';
 import './efficiency.css';
+import { EfficiencyPortfolio } from './EfficiencyPortfolio';
 
 const encoded = encodeURIComponent;
 const message = (error: unknown) =>
   error instanceof Error ? error.message : '计时状态未确认，请刷新读取当前记录。';
 
 export function EfficiencyWorkbench({
+  onOpenBook,
+  ...props
+}: {
+  session: Session;
+  bookId?: string;
+  eventId?: string;
+  onBack?: () => void;
+  onBusyChange?: (busy: boolean) => void;
+  onOpenBook?: (bookId: string) => void;
+}) {
+  return props.bookId || props.eventId ? (
+    <BookEfficiencyWorkbench {...props} />
+  ) : (
+    <EfficiencyPortfolio session={props.session} onBack={props.onBack} onOpenBook={onOpenBook} />
+  );
+}
+
+function BookEfficiencyWorkbench({
   session,
   bookId,
   eventId,

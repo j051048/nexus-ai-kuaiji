@@ -319,8 +319,15 @@ def create_service_event(case, template="reimbursement", **changes):
 def test_business_postgres_real_service_templates_bridge_review_and_export(business_case, template, changes, credit):
     from app.accounting.models import ApprovalRequest, ExportRequest
     from app.business.models import HandoffRequest
+    from app.intelligence.service import IntelligenceService
 
     case = business_case
+    # This test covers the administrator-selected manual accounting fallback.
+    # AI defaults on; without a real extraction, the normal AI guard must keep
+    # blocking approval. Pause explicitly instead of relying on a missing row.
+    intelligence = IntelligenceService(case.db, None)
+    assert intelligence.company_settings(case.owner, case.company)["enabled"] is True
+    assert intelligence.company_settings(case.owner, case.company, False)["enabled"] is False
     service, event = create_service_event(case, template, **changes)
     request = HandoffRequest(expected_version=event["version"], book_id=case.book, idempotency_key="bridge-" + event["id"])
     result = service.handoff(case.finance, event["id"], request)

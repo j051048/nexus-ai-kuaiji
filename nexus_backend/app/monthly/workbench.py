@@ -201,6 +201,35 @@ class MonthlyWorkbenchService:
                 FROM audit_events WHERE firm_id=? AND book_id IN ({marks}) GROUP BY book_id""",
             [actor.firm_id, *ids],
         )
+        service_plans = self._groups(
+            conn,
+            f"""SELECT p.*,labels.lead_name,labels.reviewer_name FROM service_plan_versions p
+                LEFT JOIN LATERAL accounting.service_plan_labels(p.book_id) labels ON true
+                WHERE p.book_id IN ({marks})
+                AND p.version=(SELECT max(v.version) FROM service_plan_versions v WHERE v.book_id=p.book_id)"""
+            if self.db.is_postgres
+            else f"""SELECT p.*,lead.name AS lead_name,reviewer.name AS reviewer_name FROM service_plan_versions p
+                LEFT JOIN users lead ON lead.id=p.lead_user_id LEFT JOIN users reviewer ON reviewer.id=p.reviewer_user_id WHERE p.book_id IN ({marks})
+                AND p.version=(SELECT max(v.version) FROM service_plan_versions v WHERE v.book_id=p.book_id)""",
+            ids,
+        )
+        current = (
+            "accounting.service_material_current(r.id)"
+            if self.db.is_postgres
+            else "EXISTS(SELECT 1 FROM service_material_currentness c WHERE c.request_id=r.id AND c.is_current=1)"
+        )
+        materials = self._groups(
+            conn,
+            f"""SELECT r.book_id,COUNT(*) AS total,
+                SUM(CASE WHEN COALESCE(a.state,'pending') IN('pending','returned') THEN 1 ELSE 0 END) AS pending,
+                SUM(CASE WHEN a.state='submitted' THEN 1 ELSE 0 END) AS submitted,
+                SUM(CASE WHEN a.state='accepted' AND {current} THEN 1 ELSE 0 END) AS accepted,
+                SUM(CASE WHEN r.required=1 AND NOT ({current}) THEN 1 ELSE 0 END) AS required_pending
+                FROM material_requests r LEFT JOIN material_request_actions a ON a.request_id=r.id
+                AND a.version=(SELECT max(v.version) FROM material_request_actions v WHERE v.request_id=r.id)
+                WHERE r.book_id IN ({marks}) GROUP BY r.book_id""",
+            ids,
+        )
         return {
             "health": health,
             "sources": sources,
@@ -211,6 +240,8 @@ class MonthlyWorkbenchService:
             "ledgers": ledgers,
             "timers": timers,
             "audits": audits,
+            "service_plans": service_plans,
+            "material_requests": materials,
         }
 
     def _row(self, row, role, facts):
@@ -284,6 +315,27 @@ class MonthlyWorkbenchService:
                 "manual_actions": count("audits", "manual_actions") if review else None,
                 "handling_seconds": group("timers").get("seconds") if review else None,
             },
+            "service_plan": {
+                key: group("service_plans").get(key)
+                for key in (
+                    "version",
+                    "lead_user_id",
+                    "lead_name",
+                    "reviewer_user_id",
+                    "reviewer_name",
+                    "backup_user_id",
+                    "contact_user_id",
+                    "due_on",
+                )
+            }
+            if permission["edit"] and group("service_plans")
+            else None,
+            "material_requests": {
+                key: count("material_requests", key)
+                for key in ("total", "pending", "submitted", "accepted", "required_pending")
+            }
+            if permission["edit"]
+            else None,
             "data_scope": {
                 "business": "company_finance_or_accounting_reception",
                 "intake": "not_aggregated",

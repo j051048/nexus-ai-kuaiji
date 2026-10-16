@@ -26,7 +26,8 @@ export type TaskKind =
   | 'export'
   | 'delivery'
   | 'alert'
-  | 'migration';
+  | 'migration'
+  | 'material';
 export type WorkspaceTask = {
   key: string;
   kind: TaskKind;
@@ -134,6 +135,18 @@ export function formatTaskAmount(value: string | null | undefined): string {
 }
 
 export function taskStateLabel(task: Pick<WorkspaceTask, 'kind' | 'state'>): string {
+  if (task.kind === 'material') {
+    return (
+      (
+        {
+          pending: '待提供资料',
+          submitted: '待独立验收',
+          returned: '待补充重提',
+          accepted: '已验收',
+        } as Record<string, string>
+      )[task.state] ?? '状态待核实'
+    );
+  }
   if (task.state === 'draft') return task.kind === 'review' ? '待会计复核' : '待完善';
   const labels: Record<string, string> = {
     submitted: '待部门审批',
@@ -165,6 +178,7 @@ export function taskStateLabel(task: Pick<WorkspaceTask, 'kind' | 'state'>): str
     done: '已完成',
     resolved: '已处理',
     unknown: '状态待核实',
+    pending: '待提供资料',
   };
   return labels[task.state] ?? '状态待核实';
 }
@@ -193,9 +207,12 @@ export const taskLabels: Record<TaskKind, string> = {
   delivery: '交付核验',
   alert: '运行告警',
   migration: '旧账迁移',
+  material: '周期资料',
 };
 export function taskDestination(task: WorkspaceTask) {
   switch (task.kind) {
+    case 'material':
+      return { type: 'material' as const, id: task.ref };
     case 'intake':
       return { type: 'intake' as const, id: task.ref };
     case 'business':

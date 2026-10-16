@@ -44,6 +44,15 @@ def build_admin_router(actor_dependency):
     def company(company_id: str, current=Depends(actor_dependency), service=Depends(admin)):
         return service.get_company(current, company_id)
 
+    @router.get("/companies/{company_id}/onboarding")
+    def onboarding(
+        company_id: str,
+        period: str = Query(pattern=r"^20[0-9]{2}-(?:0[1-9]|1[0-2])$"),
+        current=Depends(actor_dependency),
+        service=Depends(admin),
+    ):
+        return service.onboarding(current, company_id, period)
+
     @router.get("/companies/{company_id}/ai-control")
     def ai_control(
         company_id: str,

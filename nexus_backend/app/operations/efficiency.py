@@ -2,11 +2,13 @@
 
 from datetime import datetime, timezone
 import json
+import re
 from uuid import uuid4
 
 from ..accounting.access import AccessControl
 from ..accounting.domain import AccountingError
 from ..accounting.service import fingerprint
+from ..accounting.queries import page_bounds
 from ..business.service import BusinessService, encode
 
 HEARTBEAT_CAP_SECONDS = 60
@@ -304,4 +306,120 @@ class EfficiencyService:
                     "company_rule_covered": "首次审核前记录了企业规则应用；不代表最终采用了全部规则分录",
                     "human": "用户明确开启计时且持续确认活跃的累计时间；不推算未计时工时",
                 },
+            }
+
+    def portfolio(self, actor, period, *, company_id=None, limit=20, offset=0):
+        """Paged enterprise/month samples, restricted before count or aggregation.
+
+        Only current review-capable books participate. Employee entry sessions
+        without a book are intentionally excluded; no private event is joined
+        merely because the accountant can review a different company book.
+        """
+        page_bounds(limit, offset)
+        if not isinstance(period, str) or not re.fullmatch(r"20[0-9]{2}-(0[1-9]|1[0-2])", period):
+            raise AccountingError("请选择有效月份", 422)
+        with self.db.transaction(actor=actor) as conn:
+            self.access.require_user(conn, actor.user_id)
+            scope = """b.firm_id=? AND b.period=? AND c.status='active'
+                AND EXISTS(SELECT 1 FROM firm_clients fc WHERE fc.firm_id=b.firm_id
+                  AND fc.company_id=b.company_id AND fc.status='active')
+                AND (EXISTS(SELECT 1 FROM memberships fm WHERE fm.firm_id=b.firm_id
+                  AND fm.user_id=? AND fm.role IN ('owner','admin'))
+                OR EXISTS(SELECT 1 FROM book_access ba WHERE ba.book_id=b.id AND ba.firm_id=b.firm_id
+                  AND ba.user_id=? AND ba.role='reviewer'
+                  AND (EXISTS(SELECT 1 FROM memberships fm WHERE fm.firm_id=b.firm_id
+                    AND fm.user_id=? AND fm.role='reviewer')
+                  OR (NOT EXISTS(SELECT 1 FROM memberships fm WHERE fm.firm_id=b.firm_id AND fm.user_id=?)
+                    AND EXISTS(SELECT 1 FROM company_memberships cm WHERE cm.company_id=b.company_id
+                      AND cm.user_id=? AND cm.role='finance')))))"""
+            args = [actor.firm_id, period, *([actor.user_id] * 5)]
+            if company_id:
+                # An explicit unauthorized enterprise remains opaque even when
+                # an actor can see similarly named companies in another scope.
+                self.access.company(conn, actor, company_id)
+                scope += " AND b.company_id=?"
+                args.append(company_id)
+            base = " FROM books b JOIN companies c ON c.id=b.company_id WHERE " + scope
+            total = conn.execute("SELECT COUNT(DISTINCT c.id)" + base, args).fetchone()[0]
+            companies = conn.execute(
+                "SELECT DISTINCT c.id,c.name" + base + " ORDER BY c.name,c.id LIMIT ? OFFSET ?",
+                [*args, limit, offset],
+            ).fetchall()
+            items = []
+            if companies:
+                company_ids = [row["id"] for row in companies]
+                marks = ",".join("?" for _ in company_ids)
+                books = conn.execute(
+                    "SELECT b.id,b.company_id,b.name,b.period"
+                    + base
+                    + " AND c.id IN ("
+                    + marks
+                    + ") ORDER BY b.company_id,b.name,b.id",
+                    [*args, *company_ids],
+                ).fetchall()
+                ids = [row["id"] for row in books]
+                marks = ",".join("?" for _ in ids)
+                samples = {
+                    row["book_id"]: row
+                    for row in conn.execute(
+                        "SELECT book_id,COUNT(*) AS count,SUM(credited_seconds) AS seconds "
+                        "FROM human_work_sessions WHERE firm_id=? AND book_id IN ("
+                        + marks
+                        + ") GROUP BY book_id",
+                        [actor.firm_id, *ids],
+                    )
+                }
+                drafts = {
+                    row["book_id"]: row
+                    for row in conn.execute(
+                        "SELECT book_id,COUNT(*) AS count,SUM(CASE WHEN status IN ('approved','exported') "
+                        "THEN 1 ELSE 0 END) AS reviewed FROM drafts WHERE book_id IN ("
+                        + marks
+                        + ") GROUP BY book_id",
+                        ids,
+                    )
+                }
+                by_company = {}
+                for book in books:
+                    sample, draft = samples.get(book["id"]), drafts.get(book["id"])
+                    by_company.setdefault(book["company_id"], []).append(
+                        {
+                            "book_id": book["id"],
+                            "name": book["name"],
+                            "session_count": sample["count"] if sample else 0,
+                            "credited_seconds": int(sample["seconds"]) if sample else None,
+                            "draft_count": draft["count"] if draft else 0,
+                            "reviewed_drafts": int(draft["reviewed"]) if draft else 0,
+                        }
+                    )
+                for company in companies:
+                    entries = by_company[company["id"]]
+                    count = sum(book["session_count"] for book in entries)
+                    items.append(
+                        {
+                            "company_id": company["id"],
+                            "company_name": company["name"],
+                            "period": period,
+                            "books": entries,
+                            "session_count": count,
+                            "credited_seconds": sum(
+                                book["credited_seconds"] or 0 for book in entries
+                            )
+                            if count
+                            else None,
+                            "reviewed_drafts": sum(book["reviewed_drafts"] for book in entries),
+                            "draft_count": sum(book["draft_count"] for book in entries),
+                        }
+                    )
+            return {
+                "items": items,
+                "pagination": {
+                    "total": total,
+                    "limit": limit,
+                    "offset": offset,
+                    "has_more": offset + len(items) < total,
+                },
+                "period": period,
+                "measurement": "explicit_book_sessions",
+                "notice": "仅汇总当前有复核权限账套的已确认计时；未计时为暂无样本，不推算总工时、节省率或正确率。月份按账套会计期间归属，包含为该期间后续实际处理的计时；未关联账套的员工录入计时未计入。",
             }

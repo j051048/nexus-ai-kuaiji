@@ -140,12 +140,16 @@ def test_pg_company_admin_audit_scope_and_nonactive_access(case):
     admin = peer(case, company_role="admin")
     other = DirectoryService(case.db).create_company(case.actor, CompanyCreate(name="同所另一企业"))
     service = AdminService(case.db)
+    before = service.audit(admin)
+    # New organizations now have their own audited AI default. Retain that
+    # evidence while measuring the one explicit company update below.
+    assert all(event["company_id"] == case.company for event in before["events"])
     service.update_company(
         case.actor,
         case.company,
         AdminCompanyUpdate(name="目标企业", expected_version=1, reason="更名"),
     )
-    assert service.audit(admin)["total"] == 1
+    assert service.audit(admin)["total"] == before["total"] + 1
     assert service.audit(admin)["events"][0]["details"]["after"]["name"] == "目标企业"
     with case.db.transaction(actor=admin) as conn:
         assert not conn.execute(

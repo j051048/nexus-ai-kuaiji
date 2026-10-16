@@ -15,6 +15,23 @@ class TelemetryService:
             self.operations._company(conn, actor, company_id, manage=True)
             shared = self._shared(conn, actor, company_id)
             runtime = self._queue(conn, actor, company_id)
+            if self.db.is_postgres:
+                limits = conn.execute(
+                    "SELECT accounting.processing_capacity(?)", (company_id,)
+                ).fetchone()[0]
+            else:
+                row = conn.execute(
+                    "SELECT * FROM processing_runtime_limits WHERE singleton=1"
+                ).fetchone()
+                limits = {
+                    key: row[key]
+                    for key in (
+                        "processing_global_limit",
+                        "provider_global_limit",
+                        "provider_default_limit",
+                    )
+                }
+                limits["company_model_concurrency"] = 1
         metrics = self.db.metrics.snapshot(firm_id=actor.firm_id, company_id=company_id)
         return {
             "company_id": company_id,
@@ -22,7 +39,7 @@ class TelemetryService:
             "shared_transactions": shared,
             "queue_runtime": runtime,
             "pool": self.db.pool_snapshot(),
-            "limits": {"global_model_concurrency": 2, "company_model_concurrency": 1},
+            "limits": {**limits, "global_model_concurrency": limits["processing_global_limit"]},
             "measurement": "事务分桶汇总 API 与各 worker 的已标记企业事务，约5秒刷新；排队及执行耗时来自持久任务时间。未标记企业、调度器全局事务不归属企业；样本达到上限时吞吐为下限。连接池指标仅当前进程。",
         }
 

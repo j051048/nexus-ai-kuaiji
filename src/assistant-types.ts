@@ -166,3 +166,10 @@ export interface AssistantConversationWorkspace {
   messages: AssistantMessages;
   actions: AssistantActionPage;
 }
+export interface AssistantConversationProgress {
+  conversation_id: string;
+  company_id: string;
+  scope_version: number;
+  revision: string;
+  active: boolean;
+}

@@ -42,6 +42,7 @@ export function IntakeWizard({
   onBusyChange,
   initialDraftId = '',
   initialTemplate = 'reimbursement',
+  lockedCompanyId = '',
 }: {
   session: Session;
   context: BusinessContext;
@@ -50,8 +51,12 @@ export function IntakeWizard({
   onBusyChange: (value: boolean) => void;
   initialDraftId?: string;
   initialTemplate?: BusinessTemplate;
+  /** A material request may only resume or submit drafts of its own company. */
+  lockedCompanyId?: string;
 }) {
-  const companies = context.companies.filter((company) => company.can_submit);
+  const companies = context.companies.filter(
+    (company) => company.can_submit && (!lockedCompanyId || company.id === lockedCompanyId),
+  );
   const dialog = useRef<HTMLDialogElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const photoInput = useRef<HTMLInputElement>(null);
@@ -87,7 +92,10 @@ export function IntakeWizard({
     const controller = new AbortController();
     void api<{ drafts: IntakeDraft[] }>('/intake/drafts', session, { signal: controller.signal })
       .then((value) => {
-        if (active.current) setSavedDrafts(value.drafts);
+        if (active.current)
+          setSavedDrafts(
+            value.drafts.filter((item) => !lockedCompanyId || item.company_id === lockedCompanyId),
+          );
       })
       .catch((failure) => {
         if (!controller.signal.aborted) setError(errorMessage(failure));
@@ -96,7 +104,7 @@ export function IntakeWizard({
       active.current = false;
       controller.abort();
     };
-  }, [session]);
+  }, [session, lockedCompanyId]);
   useEffect(() => {
     if (initialDraftId) void resume(initialDraftId);
   }, [initialDraftId]);
@@ -106,6 +114,8 @@ export function IntakeWizard({
   }, [busy, onBusyChange]);
 
   function adopt(value: IntakeDraft, replaceFields = false) {
+    if (lockedCompanyId && value.company_id !== lockedCompanyId)
+      throw new Error('当前资料请求只接受所属企业的事项，请重新选择草稿。');
     draftRef.current = value;
     setDraft(value);
     setCompany(value.company_id);
@@ -126,6 +136,8 @@ export function IntakeWizard({
   }
   async function persist() {
     if (!companyId || (!direct && !departmentId)) throw new Error('请先选择企业和所属部门。');
+    if (lockedCompanyId && companyId !== lockedCompanyId)
+      throw new Error('当前资料请求的企业范围已变更，请重新进入。');
     const signature = JSON.stringify({
       template_id: templateRef.current,
       fields: fieldRef.current,
@@ -244,6 +256,7 @@ export function IntakeWizard({
     if (draftRef.current) setSaveState('模板已切换，通用信息保留，等待保存…');
   }
   function chooseCompany(value: string) {
+    if (lockedCompanyId && value !== lockedCompanyId) return;
     setCompany(value);
     setDepartment(companies.find((item) => item.id === value)?.department_id ?? '');
   }
@@ -251,11 +264,15 @@ export function IntakeWizard({
     await run('resume', async () => {
       const value = await api<IntakeDraft>(`/intake/drafts/${encodeURIComponent(id)}`, session);
       if (!active.current) return;
+      if (lockedCompanyId && value.company_id !== lockedCompanyId)
+        throw new Error('该草稿不属于当前资料请求的企业。');
       if (value.status === 'completed' && value.event_id) {
         const event = await api<BusinessEvent>(
           `/business/events/${encodeURIComponent(value.event_id)}`,
           session,
         );
+        if (lockedCompanyId && event.company_id !== lockedCompanyId)
+          throw new Error('该事项不属于当前资料请求的企业。');
         if (active.current) {
           completionRef.current = true;
           onCompleted(event);
@@ -456,36 +473,49 @@ export function IntakeWizard({
         <div className="intake-company-grid">
           <label>
             <span className="field-label">客户企业</span>
-            <select
-              aria-label="事项客户企业"
-              value={companyId}
-              disabled={!!draft || !!busy || !!pendingCreate.current}
-              onChange={(event) => chooseCompany(event.target.value)}
-            >
-              {companies.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name}
-                </option>
-              ))}
-            </select>
+            {companies.length === 1 && (lockedCompanyId || company?.role === 'employee') ? (
+              <span aria-label="事项客户企业" className="intake-identity-summary">
+                {company?.name}
+              </span>
+            ) : (
+              <select
+                aria-label="事项客户企业"
+                value={companyId}
+                disabled={!!draft || !!busy || !!pendingCreate.current}
+                onChange={(event) => chooseCompany(event.target.value)}
+              >
+                {companies.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+            )}
           </label>
           <label>
             <span className="field-label">{direct ? '所属部门（可选）' : '业务所属部门'}</span>
-            <select
-              aria-label="事项所属部门"
-              value={departmentId}
-              disabled={
-                !!draft || !!busy || !!pendingCreate.current || company?.role === 'employee'
-              }
-              onChange={(event) => setDepartment(event.target.value)}
-            >
-              <option value="">选择部门</option>
-              {company?.departments.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name}
-                </option>
-              ))}
-            </select>
+            {company?.role === 'employee' && company.department_id ? (
+              <span aria-label="事项所属部门" className="intake-identity-summary">
+                {company.departments.find((item) => item.id === departmentId)?.name ??
+                  '当前所属部门'}
+              </span>
+            ) : (
+              <select
+                aria-label="事项所属部门"
+                value={departmentId}
+                disabled={
+                  !!draft || !!busy || !!pendingCreate.current || company?.role === 'employee'
+                }
+                onChange={(event) => setDepartment(event.target.value)}
+              >
+                <option value="">选择部门</option>
+                {company?.departments.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+            )}
           </label>
         </div>
         <div className="intake-two-column">

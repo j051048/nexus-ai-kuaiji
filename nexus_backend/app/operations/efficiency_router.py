@@ -8,6 +8,19 @@ def build_efficiency_router(actor_dependency):
     def service(request: Request):
         return request.app.state.efficiency
 
+    @router.get("/efficiency/portfolio")
+    def portfolio(
+        period: str = Query(pattern=r"^20[0-9]{2}-(?:0[1-9]|1[0-2])$"),
+        company_id: str | None = Query(None, min_length=1, max_length=100),
+        limit: int = Query(20, ge=1, le=100),
+        offset: int = Query(0, ge=0, le=1_000_000),
+        current=Depends(actor_dependency),
+        efficiency=Depends(service),
+    ):
+        return efficiency.portfolio(
+            current, period, company_id=company_id, limit=limit, offset=offset
+        )
+
     @router.get("/efficiency/sessions")
     def own(
         limit: int = Query(default=20, ge=1, le=100),

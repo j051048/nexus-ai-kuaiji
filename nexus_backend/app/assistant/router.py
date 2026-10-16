@@ -74,6 +74,15 @@ def build_assistant_router(actor_dependency):
     ):
         return assistant.messages(current, conversation_id, limit, offset)
 
+    @router.get("/conversations/{conversation_id}/progress")
+    def progress(
+        conversation_id: str,
+        action_offset: int = Query(0, ge=0, le=100_000),
+        current=Depends(actor_dependency),
+        assistant=Depends(service),
+    ):
+        return assistant.progress(current, conversation_id, action_offset=action_offset)
+
     @router.post("/conversations/{conversation_id}/turns", status_code=202)
     def enqueue(
         conversation_id: str,

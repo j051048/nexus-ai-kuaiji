@@ -29,6 +29,7 @@ import {
 import './admin.css';
 
 const AdminAIControls = lazy(() => import('./AdminAIControls'));
+const AdminOnboarding = lazy(() => import('./AdminOnboarding'));
 
 export default function AdminWorkspace({
   session,
@@ -432,7 +433,9 @@ function CompanyDetail({
   const location = useLocation();
   const navigate = useNavigate();
   const requestedTab = new URLSearchParams(location.search).get('tab') ?? 'members';
-  const initialTab = ['members', 'departments', 'books', 'ai', 'audit'].includes(requestedTab)
+  const initialTab = ['setup', 'members', 'departments', 'books', 'ai', 'audit'].includes(
+    requestedTab,
+  )
     ? requestedTab
     : 'members';
   const [detail, setDetail] = useState<AdminCompanyDetail>();
@@ -587,8 +590,21 @@ function CompanyDetail({
                 。业务处理与授权变更已停止，原始资料和操作历史继续保留。
               </p>
             )}
+            {detail.company.status === 'active' && tab !== 'setup' && (
+              <div className="admin-setup-prompt">
+                <span>首次接入或人员变动后，按清单核对提交、审批与会计分工。</span>
+                <button
+                  className="button secondary small"
+                  disabled={busy}
+                  onClick={() => changeTab('setup')}
+                >
+                  查看开通清单
+                </button>
+              </div>
+            )}
             <div className="admin-tabs" role="tablist" aria-label="企业管理内容">
               {[
+                ['setup', '开通清单'],
                 ['members', '人员与权限'],
                 ['departments', '部门与审批'],
                 ['books', '账套分工'],
@@ -607,7 +623,27 @@ function CompanyDetail({
               ))}
             </div>
             <section className="admin-panel" role="tabpanel">
-              {tab === 'audit' ? (
+              {tab === 'setup' ? (
+                <Suspense
+                  fallback={
+                    <div className="loading-block">
+                      <Spinner />
+                      正在打开开通清单…
+                    </div>
+                  }
+                >
+                  <AdminOnboarding
+                    key={`${session.scope_key}:${companyId}`}
+                    session={session}
+                    companyId={companyId}
+                    onOpen={(target) => {
+                      if (target === 'company') setEdit(true);
+                      else if (target === 'work') onWork();
+                      else changeTab(target);
+                    }}
+                  />
+                </Suspense>
+              ) : tab === 'audit' ? (
                 <AdminAudit session={session} companyId={companyId} />
               ) : tab === 'ai' ? (
                 <Suspense

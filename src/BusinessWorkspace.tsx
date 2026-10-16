@@ -640,24 +640,26 @@ export function BusinessWorkspace({
                 ))}
             </div>
           </div>
-          <div className="business-batch-toolbar">
-            <span>本页已上传附件可按企业批量识别</span>
-            <button
-              type="button"
-              className="button secondary small"
-              disabled={
-                !!busy ||
-                loading ||
-                !events.some(
-                  (event) => event.permissions.process_intelligence && event.attachments.length,
-                )
-              }
-              onClick={() => setBatchOpen(true)}
-            >
-              <Receipt size={14} />
-              批量识别本页票据
-            </button>
-          </div>
+          {events.some((event) => event.permissions.process_intelligence) && (
+            <div className="business-batch-toolbar">
+              <span>本页已上传附件可按企业批量识别</span>
+              <button
+                type="button"
+                className="button secondary small"
+                disabled={
+                  !!busy ||
+                  loading ||
+                  !events.some(
+                    (event) => event.permissions.process_intelligence && event.attachments.length,
+                  )
+                }
+                onClick={() => setBatchOpen(true)}
+              >
+                <Receipt size={14} />
+                批量识别本页票据
+              </button>
+            </div>
+          )}
           <div className="business-filters">
             <label>
               <span>客户企业</span>

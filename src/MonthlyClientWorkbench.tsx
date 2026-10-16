@@ -6,6 +6,7 @@ import {
   LoaderCircle,
   RefreshCw,
   Search,
+  ClipboardList,
 } from 'lucide-react';
 import type { Session } from './types';
 import { durationLabel } from './efficiency-helpers';
@@ -22,6 +23,7 @@ import type {
 } from './monthly-workbench-types';
 import { useMonthlyData } from './useMonthlyData';
 import './monthly.css';
+import './service-plan.css';
 
 function ProgressCell({
   label,
@@ -64,12 +66,19 @@ export function MonthlyClientWorkbench({
   onPeriodChange,
   onOpen,
   revision = 0,
+  onOpenServicePlan,
 }: {
   session: Session;
   period: string;
   onPeriodChange: (period: string) => void;
   onOpen: (target: MonthlyDestination) => void;
   revision?: number;
+  onOpenServicePlan?: (target: {
+    bookId: string;
+    companyId: string;
+    companyName: string;
+    period: string;
+  }) => void;
 }) {
   const [query, setQuery] = useState(''),
     [search, setSearch] = useState(''),
@@ -200,6 +209,50 @@ export function MonthlyClientWorkbench({
                         <p>{row.warnings.join('；')}</p>
                       </details>
                     ) : null}
+                    {onOpenServicePlan && row.book_id && (
+                      <>
+                        {row.service_plan ? (
+                          <p className="monthly-service-summary">
+                            主办{' '}
+                            {row.service_plan.lead_name ??
+                              (row.service_plan.lead_user_id ? '已指派' : '尚未指派')}{' '}
+                            · 截止 {row.service_plan.due_on}
+                          </p>
+                        ) : row.permissions.edit ||
+                          row.permissions.review ||
+                          row.permissions.manage ? (
+                          <p className="monthly-service-summary">本月分工待建立</p>
+                        ) : null}
+                        {row.material_requests && (
+                          <p className="monthly-service-summary">
+                            必需资料待完成 {monthlyCount(row.material_requests.required_pending)} ·
+                            待验收 {monthlyCount(row.material_requests.submitted)}
+                          </p>
+                        )}
+                        <button
+                          type="button"
+                          className="text-button monthly-service-entry"
+                          disabled={
+                            revoked ||
+                            !(
+                              row.permissions.edit ||
+                              row.permissions.review ||
+                              row.permissions.manage
+                            )
+                          }
+                          onClick={() =>
+                            onOpenServicePlan({
+                              bookId: row.book_id!,
+                              companyId: row.company_id,
+                              companyName: row.company_name,
+                              period: row.period,
+                            })
+                          }
+                        >
+                          <ClipboardList size={12} /> 本月服务单与资料
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
                 <ProgressCell

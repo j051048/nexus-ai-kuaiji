@@ -14,6 +14,11 @@ class AdminService:
         self.db = db
         self.access = AccessControl()
 
+    def onboarding(self, actor, company_id, period):
+        from .onboarding import company_onboarding
+
+        return company_onboarding(self, actor, company_id, period)
+
     def require_admin(self, conn, actor):
         role = self.access.firm_role(conn, actor)
         if role in FIRM_MANAGERS:

@@ -39,6 +39,7 @@ import type {
 import type { AgentSummary } from './agent-workspace-types';
 import type { Session } from './types';
 import type { BusinessTemplate } from './business-types';
+import { workspaceExperience } from './workspace-experience';
 import './workspace.css';
 
 export function WorkspaceHome({
@@ -73,6 +74,7 @@ export function WorkspaceHome({
   onInitialTasksConsumed?: () => void;
 }) {
   const [bucket, setBucket] = useState<'action' | 'waiting'>('action');
+  const experience = workspaceExperience(profile);
   const [kind, setKind] = useState<TaskKind | ''>('');
   const [company, setCompany] = useState(initialCompanyId);
   const [offset, setOffset] = useState(0);
@@ -234,6 +236,8 @@ export function WorkspaceHome({
     const started = session.scope_key;
     setSummary(null);
     setSummaryError('');
+    summaryScope.current = '';
+    if (!experience.processing) return () => controller.abort();
     void api<AgentSummary>('/agent-workspace/summary', session, { signal: controller.signal })
       .then((next) => {
         if (alive.current && scope.current === started && !controller.signal.aborted) {
@@ -253,7 +257,7 @@ export function WorkspaceHome({
         }
       });
     return () => controller.abort();
-  }, [session, revision, refreshTick]);
+  }, [session, revision, refreshTick, experience.processing]);
 
   async function open(task: WorkspaceTask) {
     if (paused || openingLock.current) return;
@@ -326,7 +330,7 @@ export function WorkspaceHome({
   const first = bucket === 'action' ? rows[0] : undefined;
   const waiting = visibleSummary ? visibleSummary.counts.active : null;
   return (
-    <main className="workspace-home">
+    <main className={'workspace-home' + (experience.simple ? ' workspace-simple' : '')}>
       <header className="workspace-heading">
         <div>
           <p className="workspace-kicker">
@@ -338,6 +342,8 @@ export function WorkspaceHome({
         <div className="workspace-header-actions">
           <button
             className="button secondary workspace-refresh"
+            aria-label="刷新工作台"
+            title="刷新工作台"
             disabled={loading || locked}
             onClick={() => {
               onRetryProfile();
@@ -410,7 +416,7 @@ export function WorkspaceHome({
             需要我处理
           </span>
           <strong>{visibleValue ? (visibleValue.counts.action ?? 0) : '—'}</strong>
-          <small>审批 · 异常 · 复核</small>
+          <small>{experience.actionHint}</small>
         </button>
         <button
           className={bucket === 'waiting' ? 'active' : ''}
@@ -422,22 +428,26 @@ export function WorkspaceHome({
         >
           <span>
             <Clock3 size={16} />
-            等待他人 / 后台
+            {experience.waitingLabel}
           </span>
           <strong>{visibleValue ? (visibleValue.counts.waiting ?? 0) : '—'}</strong>
           <small>保留当前办理进度</small>
         </button>
-        <button className="workspace-runtime-link" disabled={locked || !onRuns} onClick={onRuns}>
-          <span>
-            <Layers3 size={16} />
-            Agent 后台
-          </span>
-          <strong>{waiting ?? '—'}</strong>
-          <small>
-            {visibleSummary ? `${visibleSummary.counts.attention} 项需要介入` : '读取真实运行状态'}
-            <ArrowRight size={13} />
-          </small>
-        </button>
+        {experience.processing && (
+          <button className="workspace-runtime-link" disabled={locked || !onRuns} onClick={onRuns}>
+            <span>
+              <Layers3 size={16} />
+              Agent 后台
+            </span>
+            <strong>{waiting ?? '—'}</strong>
+            <small>
+              {visibleSummary
+                ? `${visibleSummary.counts.attention} 项需要介入`
+                : '读取真实运行状态'}
+              <ArrowRight size={13} />
+            </small>
+          </button>
+        )}
         {profile?.can_accounting && (
           <button
             className="workspace-accounting-shortcuts"
@@ -539,23 +549,29 @@ export function WorkspaceHome({
               }}
             >
               <option value="">全部事项类型</option>
-              {Object.entries(taskLabels).map(([key, label]) => (
-                <option key={key} value={key}>
-                  {label}
-                </option>
-              ))}
+              {Object.entries(taskLabels)
+                .filter(([key]) => !experience.kinds || experience.kinds.includes(key as TaskKind))
+                .map(([key, label]) => (
+                  <option key={key} value={key}>
+                    {label}
+                  </option>
+                ))}
             </select>
           </label>
-          <AgentCompanyPicker
-            session={session}
-            value={company}
-            disabled={locked}
-            revision={revision + privacyRevision}
-            onChange={(id) => {
-              setCompany(id);
-              setOffset(0);
-            }}
-          />
+          {profile?.companies.length === 1 && experience.simple && !company ? (
+            <span className="workspace-company-identity">{profile.companies[0].name}</span>
+          ) : (
+            <AgentCompanyPicker
+              session={session}
+              value={company}
+              disabled={locked}
+              revision={revision + privacyRevision}
+              onChange={(id) => {
+                setCompany(id);
+                setOffset(0);
+              }}
+            />
+          )}
           <label className="workspace-select">
             <span className="sr-only">排序</span>
             <select

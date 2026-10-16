@@ -37,6 +37,16 @@ describe('URL 工作位置只保存标识和筛选，不承担授权', () => {
       readWorkspaceRoute('/workspace/review', '?review_book=b2&review_draft=d1').reviewDraftId,
     ).toBe('d1');
   });
+  it('月度服务与本人资料请求保留准确标识，刷新不借用上一账套', () => {
+    const service = readWorkspaceRoute('/workspace/service', '?company=c2&book=b2&period=2026-10');
+    expect(workspaceRouteUrl(service)).toContain('/workspace/service?book=b2');
+    expect(service.companyId).toBe('c2');
+    const material = readWorkspaceRoute('/workspace/materials', '?material=request-2&company=c2');
+    expect(material.materialId).toBe('request-2');
+    expect(material.bookId).toBe('');
+    const url = new URL(workspaceRouteUrl(material), 'https://example.test');
+    expect(readWorkspaceRoute(url.pathname, url.search)).toEqual(material);
+  });
   it('跨企业月度下钻保留精确企业、账套与期间，非法月份不会进入查询', () => {
     const route = readWorkspaceRoute('/workspace/review', '?company=c2&book=b8&period=2026-11');
     expect(route.companyId).toBe('c2');

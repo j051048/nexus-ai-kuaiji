@@ -23,6 +23,9 @@ export const workspaceViews = [
   'monthly',
   'balances',
   'recurring',
+  'service',
+  'materials',
+  'portfolio',
 ] as const;
 export type WorkspaceView = (typeof workspaceViews)[number];
 /** Only these screens consume the selected accounting book in the app shell.
@@ -39,6 +42,9 @@ export function workspaceUsesBook(view: WorkspaceView): boolean {
     'queue',
     'intelligence',
     'monthly',
+    'service',
+    'materials',
+    'portfolio',
   ].includes(view);
 }
 
@@ -61,6 +67,7 @@ export interface WorkspaceRoute {
   proposalId: string;
   reviewBookId: string;
   reviewDraftId: string;
+  materialId: string;
 }
 const identifiers = {
   bookId: 'book',
@@ -75,6 +82,7 @@ const identifiers = {
   proposalId: 'proposal',
   reviewBookId: 'review_book',
   reviewDraftId: 'review_draft',
+  materialId: 'material',
 } as const;
 export const emptyWorkspaceRoute: WorkspaceRoute = {
   view: 'home',
@@ -95,6 +103,7 @@ export const emptyWorkspaceRoute: WorkspaceRoute = {
   proposalId: '',
   reviewBookId: '',
   reviewDraftId: '',
+  materialId: '',
 };
 function safeId(value: string | null): string {
   return value && value.length <= 200 && !/[\u0000-\u001f\u007f]/.test(value) ? value : '';
