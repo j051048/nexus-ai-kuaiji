@@ -1840,6 +1840,7 @@ export default function App() {
                 setWorkCompany(target.companyId);
                 setWorkPeriod(target.period);
               }}
+              canBatchOpen={!!me?.permissions.manage_firm}
             />
           ) : routeView === 'service' ? (
             <main className="monthly-workbench">

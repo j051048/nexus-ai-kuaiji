@@ -3,6 +3,7 @@ import {
   ArrowUpRight,
   Building2,
   CalendarDays,
+  CalendarPlus,
   LoaderCircle,
   RefreshCw,
   Search,
@@ -21,6 +22,7 @@ import type {
   MonthlyClientRow,
   MonthlyDestination,
 } from './monthly-workbench-types';
+import { MonthlyBatchDialog } from './MonthlyBatchDialog';
 import { useMonthlyData } from './useMonthlyData';
 import './monthly.css';
 import './service-plan.css';
@@ -67,6 +69,7 @@ export function MonthlyClientWorkbench({
   onOpen,
   revision = 0,
   onOpenServicePlan,
+  canBatchOpen = false,
 }: {
   session: Session;
   period: string;
@@ -79,10 +82,12 @@ export function MonthlyClientWorkbench({
     companyName: string;
     period: string;
   }) => void;
+  canBatchOpen?: boolean;
 }) {
   const [query, setQuery] = useState(''),
     [search, setSearch] = useState(''),
     [offset, setOffset] = useState(0);
+  const [batchOpen, setBatchOpen] = useState(false);
   const selectedPeriod = validMonthlyPeriod(period) ? period : new Date().toISOString().slice(0, 7);
   const path =
     '/monthly/workbench?' +
@@ -110,14 +115,26 @@ export function MonthlyClientWorkbench({
             按授权账套查看真实资料、草稿、异常与交付。优先进入需要人工处理的环节。
           </p>
         </div>
-        <button
-          className="button secondary"
-          disabled={loading || revoked}
-          onClick={() => void load()}
-        >
-          <RefreshCw size={15} />
-          刷新进度
-        </button>
+        <div className="monthly-heading-actions">
+          {canBatchOpen && (
+            <button
+              className="button primary"
+              disabled={loading || revoked}
+              onClick={() => setBatchOpen(true)}
+            >
+              <CalendarPlus size={15} />
+              批量开期
+            </button>
+          )}
+          <button
+            className="button secondary"
+            disabled={loading || revoked}
+            onClick={() => void load()}
+          >
+            <RefreshCw size={15} />
+            刷新进度
+          </button>
+        </div>
       </section>
       <form
         className="monthly-toolbar"
@@ -349,6 +366,15 @@ export function MonthlyClientWorkbench({
           </p>
         </>
       ) : null}
+      {batchOpen && (
+        <MonthlyBatchDialog
+          session={session}
+          period={selectedPeriod}
+          initialSearch={search}
+          onClose={() => setBatchOpen(false)}
+          onOpened={() => void load()}
+        />
+      )}
     </main>
   );
 }

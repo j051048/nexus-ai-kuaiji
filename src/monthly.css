@@ -473,3 +473,125 @@ button.monthly-progress-cell:hover {
     grid-template-columns: 1fr;
   }
 }
+
+.monthly-heading-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.batch-dialog {
+  display: grid;
+  gap: 14px;
+}
+.batch-dialog label {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  color: #46584a;
+}
+.batch-dialog input,
+.batch-dialog textarea {
+  font: inherit;
+  padding: 9px 11px;
+  border: 1px solid #d7dcd1;
+  border-radius: 7px;
+  background: #fffefa;
+  min-height: 36px;
+}
+.batch-dialog textarea {
+  min-height: 72px;
+  resize: vertical;
+}
+.batch-checkbox {
+  display: flex !important;
+  align-items: center;
+  gap: 8px;
+  grid-template-columns: none;
+}
+.batch-checkbox input {
+  min-height: 0;
+  width: 16px;
+  height: 16px;
+}
+.batch-info {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 7px;
+  background: #f4f7ef;
+  color: #3c4c3c;
+  font-size: 13px;
+  line-height: 1.7;
+}
+.batch-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.batch-summary {
+  margin: 0 0 12px;
+  font-weight: 600;
+  color: #2f4a33;
+}
+.batch-rows {
+  display: grid;
+  gap: 10px;
+  max-height: 320px;
+  overflow: auto;
+  padding-right: 2px;
+}
+.batch-row {
+  border: 1px solid #e0e6da;
+  border-radius: 8px;
+  padding: 12px 14px;
+  background: #fffefa;
+}
+.batch-row.blocked {
+  border-color: #e7dece;
+  background: #faf7f0;
+}
+.batch-row header {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+}
+.batch-row p {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: #4d5b4d;
+  line-height: 1.6;
+}
+.batch-badge {
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid #cfd8c8;
+  color: #3f5942;
+  background: #eef5ea;
+  white-space: nowrap;
+}
+.batch-badge.skipped {
+  background: #f2f3ef;
+  color: #5c665c;
+  border-color: #dcdfd8;
+}
+.batch-badge.blocked {
+  background: #faf3e6;
+  color: #8d6d38;
+  border-color: #e7dece;
+}
+.batch-message {
+  color: #6c5b3a;
+}
+.batch-warning {
+  color: #8d6d38;
+}
+.batch-notes {
+  margin: 12px 0 0;
+  padding-left: 18px;
+  color: #5a675a;
+  font-size: 12px;
+  line-height: 1.7;
+}

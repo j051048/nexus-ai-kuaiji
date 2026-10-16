@@ -210,6 +210,91 @@ class ServicePlansService:
             )
         return self.overview(actor, book_id)
 
+    def inherit_plan(self, actor, source_book_id, target_book_id, reason):
+        """Copy the latest source plan onto an opened target period.
+
+        The copy re-evaluates current candidates and never grants access:
+        fields whose assignee lost the required capability are dropped and
+        reported. Idempotent when the target already has a plan version.
+        """
+        if source_book_id == target_book_id:
+            raise AccountingError("继承来源与目标期间必须不同", 409)
+        with self.db.transaction(write=True, actor=actor) as conn:
+            source = self._book(conn, actor, source_book_id)
+            target = self._book(conn, actor, target_book_id, write=True)
+            if source["company_id"] != target["company_id"]:
+                raise AccountingError("继承来源必须与目标期间属于同一企业", 409)
+            if source["ledger_id"] != target["ledger_id"]:
+                raise AccountingError("继承来源与目标期间必须属于同一长期账套", 409)
+            existing = self._plan(conn, target_book_id)
+            if existing:
+                return {"copied": False, "dropped": [], "reason": "already_planned", "version": existing["version"]}
+            prior = self._plan(conn, source_book_id)
+            if not prior:
+                return {"copied": False, "dropped": [], "reason": "source_without_plan"}
+            candidates = {row["user_id"]: row for row in self._candidates(conn, actor, target)}
+            dropped, fields = [], {}
+            for field, capability in (
+                ("lead_user_id", "can_lead"),
+                ("reviewer_user_id", "can_review"),
+                ("backup_user_id", "can_lead"),
+                ("contact_user_id", "can_contact"),
+            ):
+                value = prior[field]
+                if value and (value not in candidates or not candidates[value][capability]):
+                    dropped.append(field)
+                    value = None
+                fields[field] = value
+            if fields["lead_user_id"] and fields["lead_user_id"] == fields["reviewer_user_id"]:
+                dropped.append("reviewer_user_id")
+                fields["reviewer_user_id"] = None
+            due_on = self._shifted_due(prior["due_on"], target["period"])
+            version = 1
+            conn.execute(
+                "INSERT INTO service_plan_versions(book_id,firm_id,company_id,version,lead_user_id,reviewer_user_id,backup_user_id,contact_user_id,due_on,notes,reason,updated_by,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (
+                    target_book_id,
+                    actor.firm_id,
+                    target["company_id"],
+                    version,
+                    fields["lead_user_id"],
+                    fields["reviewer_user_id"],
+                    fields["backup_user_id"],
+                    fields["contact_user_id"],
+                    due_on,
+                    prior["notes"] or "",
+                    reason,
+                    actor.user_id,
+                    now(),
+                ),
+            )
+            self._audit(
+                conn,
+                actor,
+                target,
+                "service_plan.inherit",
+                target_book_id,
+                {
+                    "source_book_id": source_book_id,
+                    "version": version,
+                    "dropped": dropped,
+                    "due_on": due_on,
+                    "reason": reason,
+                },
+            )
+            return {"copied": True, "dropped": dropped, "version": version}
+
+    @staticmethod
+    def _shifted_due(due_on, period):
+        """Carry the source cutoff day into the month after the target period."""
+        year, month = map(int, period.split("-"))
+        try:
+            day = min(int(str(due_on)[8:10]), 28)
+        except (TypeError, ValueError):
+            day = 10
+        month += 1
+        return f"{year + (month - 1) // 12:04d}-{(month - 1) % 12 + 1:02d}-{day:02d}"
+
     def create_template(self, actor, book_id, request):
         with self.db.transaction(write=True, actor=actor) as conn:
             book = self._book(conn, actor, book_id, write=True)

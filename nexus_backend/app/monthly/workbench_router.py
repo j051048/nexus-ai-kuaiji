@@ -1,11 +1,16 @@
 from fastapi import APIRouter, Depends, Query, Request
 
+from .batch import BatchOpen
+
 
 def build_monthly_workbench_router(actor_dependency):
     router = APIRouter(prefix="/api/monthly", tags=["客户月度进度"])
 
     def service(request: Request):
         return request.app.state.monthly_workbench
+
+    def batch(request: Request):
+        return request.app.state.monthly_batch
 
     @router.get("/workbench")
     def workbench(
@@ -17,5 +22,13 @@ def build_monthly_workbench_router(actor_dependency):
         monthly=Depends(service),
     ):
         return monthly.list(current, period, search, limit, offset)
+
+    @router.post("/batch/open")
+    def batch_open(
+        payload: BatchOpen,
+        current=Depends(actor_dependency),
+        monthly=Depends(batch),
+    ):
+        return monthly.open_month(current, payload)
 
     return router
