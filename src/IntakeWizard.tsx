@@ -14,6 +14,7 @@ import {
   X,
 } from 'lucide-react';
 import { api, apiBlob, ApiError, errorMessage } from './api';
+import { prepareDirectUpload } from './upload-client';
 import {
   BUSINESS_CATEGORIES,
   BUSINESS_TEMPLATES,
@@ -297,8 +298,10 @@ export function IntakeWizard({
           current.attachments.reduce((sum, item) => sum + item.size_bytes, 0),
         );
         if (validation) throw new Error(`${file.name}：${validation}`);
+        const direct = await prepareDirectUpload(session, file, 'intake_attachment');
         const data = new FormData();
-        data.append('file', file);
+        if (direct) data.append('upload_id', direct);
+        else data.append('file', file);
         current = await api<IntakeDraft>(
           `/intake/drafts/${encodeURIComponent(current.id)}/attachments?expected_version=${current.version}`,
           session,

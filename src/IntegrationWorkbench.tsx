@@ -34,6 +34,22 @@ type Overview = {
 };
 type Intent = { id: string; package: unknown };
 
+const VENDOR_TEMPLATES = [
+  { id: 'neutral', label: '中性模板（可直接导入）', filename: 'tplus-reference-template.json' },
+  { id: 'yonyou_tplus', label: '用友 T+ 导出参考', filename: 'yonyou-tplus-reference.json' },
+  {
+    id: 'kingdee_jingdouyun',
+    label: '金蝶精斗云导出参考',
+    filename: 'kingdee-jingdouyun-reference.json',
+  },
+  {
+    id: 'kingdee_yunxingchen',
+    label: '金蝶云·星辰导出参考',
+    filename: 'kingdee-yunxingchen-reference.json',
+  },
+  { id: 'ningmengyun', label: '柠檬云导出参考', filename: 'ningmengyun-reference.json' },
+] as const;
+
 function download(value: unknown, filename: string) {
   const url = URL.createObjectURL(
     new Blob([JSON.stringify(value, null, 2)], { type: 'application/json;charset=utf-8' }),
@@ -66,7 +82,8 @@ export function IntegrationWorkbench({
   const [mappings, setMappings] = useState(''),
     [auxiliaries, setAuxiliaries] = useState(''),
     [reason, setReason] = useState(''),
-    [exportId, setExportId] = useState('');
+    [exportId, setExportId] = useState(''),
+    [vendor, setVendor] = useState<string>('neutral');
   const [file, setFile] = useState<File | null>(null),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(''),
@@ -370,18 +387,40 @@ export function IntegrationWorkbench({
               科目、往来、项目、银行账户、凭证与余额按来源编号保留。中性模板需按客户实际导出文件转换；导入的凭证与余额只作核对参考。
             </p>
             <div className="integration-actions">
+              <label className="integration-vendor">
+                目标软件
+                <select
+                  aria-label="选择目标软件"
+                  value={vendor}
+                  disabled={busy || !data.can_review || !data.configuration}
+                  onChange={(e) => {
+                    setVendor(e.target.value);
+                    changed();
+                  }}
+                >
+                  {VENDOR_TEMPLATES.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <button
                 className="button secondary"
                 disabled={busy || !data.can_review || !data.configuration}
                 onClick={() =>
                   void run(async () => {
-                    const value = await api(`${base}/template`, session);
-                    if (live.current) download(value, 'tplus-reference-template.json');
+                    const choice =
+                      VENDOR_TEMPLATES.find((item) => item.id === vendor) ?? VENDOR_TEMPLATES[0];
+                    const query =
+                      vendor === 'neutral' ? '' : `?vendor=${encodeURIComponent(vendor)}`;
+                    const value = await api(`${base}/template${query}`, session);
+                    if (live.current) download(value, choice.filename);
                   })
                 }
               >
                 <Download size={15} />
-                下载中性模板
+                {vendor === 'neutral' ? '下载中性模板' : '下载转换参考'}
               </button>
               <label className="integration-file">
                 <FileUp size={15} />
@@ -405,6 +444,11 @@ export function IntegrationWorkbench({
                 预览导入
               </button>
             </div>
+            {vendor !== 'neutral' && (
+              <p className="field-help">
+                转换参考给出该软件导出列与中性字段的对照；请先按对照整理成中性模板，再“预览导入”。
+              </p>
+            )}
             {preview && (
               <div className="integration-preview">
                 <h3>

@@ -22,6 +22,7 @@ import {
   reconciliationSelectionIssue,
   reconciliationSelectionTotal,
 } from './reconciliation-helpers';
+import { InvoiceImportsPanel } from './InvoiceImportsPanel';
 import './reconciliation.css';
 
 export function ReconciliationWorkbench({
@@ -563,6 +564,7 @@ export function ReconciliationWorkbench({
           )}
         </section>
       </div>
+      <InvoiceImportsPanel session={session} bookId={bookId} onBusyChange={onBusyChange} />
     </main>
   );
 }

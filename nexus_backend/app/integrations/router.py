@@ -28,8 +28,13 @@ def build_integrations_router(actor_dependency):
         return svc.configure(actor, book_id, payload)
 
     @router.get("/template")
-    def template(book_id: str, actor=Depends(actor_dependency), svc=Depends(service)):
-        return svc.template(actor, book_id)
+    def template(
+        book_id: str,
+        vendor: str | None = Query(default=None, max_length=40),
+        actor=Depends(actor_dependency),
+        svc=Depends(service),
+    ):
+        return svc.template(actor, book_id, vendor)
 
     @router.post("/imports", status_code=201)
     def preview(

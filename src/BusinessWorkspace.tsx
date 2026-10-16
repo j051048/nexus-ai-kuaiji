@@ -24,6 +24,7 @@ import {
   X,
 } from 'lucide-react';
 import { api, apiBlob, ApiError, errorMessage } from './api';
+import { prepareDirectUpload } from './upload-client';
 import { formatMoney } from './csv';
 import { uploadLimitLabel } from './transport-limits';
 import {
@@ -471,16 +472,19 @@ export function BusinessWorkspace({
       setError(validation);
       return;
     }
-    const data = new FormData();
-    data.append('file', file);
     await run(
       'upload',
-      () =>
-        api<BusinessEvent>(
+      async () => {
+        const direct = await prepareDirectUpload(session, file, 'event_attachment');
+        const data = new FormData();
+        if (direct) data.append('upload_id', direct);
+        else data.append('file', file);
+        return await api<BusinessEvent>(
           `/business/events/${encoded(selected.id)}/attachments?expected_version=${selected.version}`,
           session,
           { method: 'POST', body: data },
-        ),
+        );
+      },
       '附件已上传并保存原始文件，请核对后提交。',
     );
     if (attachmentInput.current) attachmentInput.current.value = '';

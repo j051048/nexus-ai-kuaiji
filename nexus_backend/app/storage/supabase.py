@@ -130,6 +130,27 @@ class SupabaseBlobBackend:
             unknown_upload=True,
         )
 
+    def sign_upload(self, key, expires_in):
+        """One short-lived signed upload URL for exactly this new object key."""
+        check_key(key)
+        self.verify_private()
+        raw = self._request(
+            "POST",
+            "/object/upload/sign/" + self.settings.bucket + "/" + key,
+            payload={"expiresIn": int(expires_in)},
+        )
+        try:
+            value = json.loads(raw, object_pairs_hook=_unique_object)
+        except (ValueError, UnicodeError):
+            raise AccountingError("私有存储签名响应无效", 503) from None
+        url = value.get("url") if isinstance(value, dict) else None
+        if not isinstance(url, str) or not url.startswith("/object/upload/sign/"):
+            raise AccountingError("私有存储签名响应无效", 503)
+        return {
+            "url": self.settings.supabase_url.rstrip("/") + "/storage/v1" + url,
+            "expires_in": int(expires_in),
+        }
+
     def read(self, key, max_bytes):
         check_key(key)
         self.verify_private()

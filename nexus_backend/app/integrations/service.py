@@ -22,6 +22,189 @@ def encode(value):
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 
+NEUTRAL_USAGE = "按 column_mapping 把该软件的导出文件整理为 neutral.records，再通过“预览导入”上传。"
+VENDOR_REFERENCES = {
+    "yonyou_tplus": {
+        "label": "用友 T+（畅捷通）",
+        "notes": [
+            "在 T+ 总账中按期间导出“科目余额表”和“凭证列表”，导出为 Excel 后另存为 CSV。",
+            "余额表的期初/本期发生/期末列按借贷方向分别对应 neutral 的 debit/credit；一次导入只放一个期间。",
+        ],
+        "column_mapping": {
+            "balance": {
+                "vendor_columns": [
+                    "科目编码",
+                    "科目名称",
+                    "期初余额",
+                    "本期借方发生",
+                    "本期贷方发生",
+                    "期末余额",
+                ],
+                "neutral_fields": {
+                    "kind": "balance",
+                    "code": "科目编码",
+                    "name": "科目名称",
+                    "debit": "本期借方发生",
+                    "credit": "本期贷方发生",
+                    "period": "导出期间，统一填 YYYY-MM",
+                    "source_ref": "导出文件名 + 行号",
+                },
+            },
+            "voucher": {
+                "vendor_columns": [
+                    "凭证日期",
+                    "凭证字号",
+                    "摘要",
+                    "科目编码",
+                    "借方金额",
+                    "贷方金额",
+                ],
+                "neutral_fields": {
+                    "kind": "voucher",
+                    "external_id": "凭证字号",
+                    "code": "科目编码",
+                    "debit": "借方金额",
+                    "credit": "贷方金额",
+                    "source_ref": "摘要 + 行号",
+                },
+            },
+        },
+    },
+    "kingdee_jingdouyun": {
+        "label": "金蝶精斗云（云会计）",
+        "notes": [
+            "在精斗云“账簿-科目余额表/凭证”导出 Excel 后另存为 CSV；余额表按“本期发生额”两列取 debit/credit。",
+        ],
+        "column_mapping": {
+            "balance": {
+                "vendor_columns": [
+                    "科目代码",
+                    "科目名称",
+                    "期初余额",
+                    "本期发生额借方",
+                    "本期发生额贷方",
+                    "期末余额",
+                ],
+                "neutral_fields": {
+                    "kind": "balance",
+                    "code": "科目代码",
+                    "name": "科目名称",
+                    "debit": "本期发生额借方",
+                    "credit": "本期发生额贷方",
+                    "period": "导出期间，统一填 YYYY-MM",
+                    "source_ref": "导出文件名 + 行号",
+                },
+            },
+            "voucher": {
+                "vendor_columns": [
+                    "凭证日期",
+                    "凭证字",
+                    "凭证号",
+                    "摘要",
+                    "科目代码",
+                    "借方金额",
+                    "贷方金额",
+                ],
+                "neutral_fields": {
+                    "kind": "voucher",
+                    "external_id": "凭证字 + 凭证号",
+                    "code": "科目代码",
+                    "debit": "借方金额",
+                    "credit": "贷方金额",
+                    "source_ref": "摘要 + 行号",
+                },
+            },
+        },
+    },
+    "kingdee_yunxingchen": {
+        "label": "金蝶云·星辰",
+        "notes": [
+            "星辰的科目余额表带“方向”列，请按方向把余额换算为借/贷列再对应 neutral 的 debit/credit。",
+            "凭证导出使用“借方本位币金额/贷方本位币金额”两列。",
+        ],
+        "column_mapping": {
+            "balance": {
+                "vendor_columns": [
+                    "科目编码",
+                    "科目名称",
+                    "方向",
+                    "期初余额",
+                    "本期发生额借方",
+                    "本期发生额贷方",
+                    "期末余额",
+                ],
+                "neutral_fields": {
+                    "kind": "balance",
+                    "code": "科目编码",
+                    "name": "科目名称",
+                    "debit": "本期发生额借方（按方向列核对）",
+                    "credit": "本期发生额贷方（按方向列核对）",
+                    "period": "导出期间，统一填 YYYY-MM",
+                    "source_ref": "导出文件名 + 行号",
+                },
+            },
+            "voucher": {
+                "vendor_columns": [
+                    "凭证日期",
+                    "凭证字",
+                    "凭证号",
+                    "摘要",
+                    "科目编码",
+                    "借方本位币金额",
+                    "贷方本位币金额",
+                ],
+                "neutral_fields": {
+                    "kind": "voucher",
+                    "external_id": "凭证字 + 凭证号",
+                    "code": "科目编码",
+                    "debit": "借方本位币金额",
+                    "credit": "贷方本位币金额",
+                    "source_ref": "摘要 + 行号",
+                },
+            },
+        },
+    },
+    "ningmengyun": {
+        "label": "柠檬云财务",
+        "notes": [
+            "柠檬云“账簿-科目余额表/凭证汇总”导出 Excel 后另存为 CSV；余额表的本期借方/贷方直接对应 debit/credit。",
+        ],
+        "column_mapping": {
+            "balance": {
+                "vendor_columns": [
+                    "科目编码",
+                    "科目名称",
+                    "期初余额",
+                    "本期借方",
+                    "本期贷方",
+                    "期末余额",
+                ],
+                "neutral_fields": {
+                    "kind": "balance",
+                    "code": "科目编码",
+                    "name": "科目名称",
+                    "debit": "本期借方",
+                    "credit": "本期贷方",
+                    "period": "导出期间，统一填 YYYY-MM",
+                    "source_ref": "导出文件名 + 行号",
+                },
+            },
+            "voucher": {
+                "vendor_columns": ["日期", "凭证号", "摘要", "科目编码", "借方金额", "贷方金额"],
+                "neutral_fields": {
+                    "kind": "voucher",
+                    "external_id": "凭证号",
+                    "code": "科目编码",
+                    "debit": "借方金额",
+                    "credit": "贷方金额",
+                    "source_ref": "摘要 + 行号",
+                },
+            },
+        },
+    },
+}
+
+
 class FinancialBridgeService:
     def __init__(self, db):
         self.db, self.access, self.delivery = db, AccessControl(), DeliveryService(db)
@@ -177,13 +360,13 @@ class FinancialBridgeService:
             )
             return {"version": version, "live_enabled": False}
 
-    def template(self, actor, book_id):
+    def template(self, actor, book_id, vendor=None):
         with self.db.transaction(actor=actor) as conn:
             book, ledger_id = self._scope(conn, actor, book_id, True)
             config = self._configuration(conn, ledger_id)
             if not config:
                 raise AccountingError("请先配置外部账套标识与映射", 409)
-            return {
+            neutral = {
                 "schema": "hengzhang.tplus.reference.v1",
                 "book_id": book_id,
                 "company_id": book["company_id"],
@@ -202,6 +385,20 @@ class FinancialBridgeService:
                     }
                 ],
             }
+        if vendor in (None, "", "neutral"):
+            return neutral
+        profile = VENDOR_REFERENCES.get(vendor)
+        if not profile:
+            raise AccountingError("暂不支持该软件的导出参考，请使用中性模板", 404)
+        return {
+            "schema": "hengzhang.vendor-reference.v1",
+            "vendor": vendor,
+            "label": profile["label"],
+            "notes": profile["notes"],
+            "column_mapping": profile["column_mapping"],
+            "neutral": neutral,
+            "usage": NEUTRAL_USAGE,
+        }
 
     @staticmethod
     def _parse(request, book, config):

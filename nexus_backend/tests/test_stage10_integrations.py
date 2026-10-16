@@ -99,3 +99,24 @@ def test_missing_mapping_blocks_package_and_no_partial_intent(service, book):
     with pytest.raises(AccountingError, match='缺少外部映射'):
         bridge.prepare_export(LOCAL_ACTOR, book, BridgeExport(export_id=exported['id'], configuration_version=1, reason='测试', idempotency_key='missing-map-intent'))
     assert bridge.overview(LOCAL_ACTOR, book)['outbox'] == []
+
+def test_vendor_reference_templates_cover_native_exports_without_changing_neutral(service, book):
+    bridge = FinancialBridgeService(service.db)
+    bridge.configure(LOCAL_ACTOR, book, config())
+    neutral = bridge.template(LOCAL_ACTOR, book)
+    assert bridge.template(LOCAL_ACTOR, book, 'neutral') == neutral
+    for vendor in ('yonyou_tplus', 'kingdee_jingdouyun', 'kingdee_yunxingchen', 'ningmengyun'):
+        reference = bridge.template(LOCAL_ACTOR, book, vendor)
+        assert reference['schema'] == 'hengzhang.vendor-reference.v1'
+        assert reference['vendor'] == vendor and reference['label']
+        assert reference['neutral'] == neutral
+        assert reference['notes'] and reference['usage']
+        for export_kind in ('balance', 'voucher'):
+            mapping = reference['column_mapping'][export_kind]
+            assert mapping['vendor_columns'] and mapping['neutral_fields']
+            assert mapping['neutral_fields']['code']
+    with pytest.raises(AccountingError, match='中性模板'):
+        bridge.template(LOCAL_ACTOR, book, 'unknown-vendor')
+    document = bridge.template(LOCAL_ACTOR, book, 'yonyou_tplus')
+    with pytest.raises(AccountingError, match='中性'):
+        bridge.preview_import(LOCAL_ACTOR, book, request(document, 'vendor-reference-not-importable'))

@@ -9,6 +9,7 @@ import {
   X,
 } from 'lucide-react';
 import { api, apiBlob, errorMessage } from './api';
+import { prepareDirectUpload } from './upload-client';
 import type { Session } from './types';
 import { uploadLimitLabel, uploadSizeError } from './transport-limits';
 import { caseCanClose, caseMissingFields, caseReasonError, caseStateLabels } from './case-types';
@@ -213,12 +214,14 @@ export function CasePanel({
       expected_version: String(task.version),
       idempotency_key: commandKey(signature),
     });
-    const body = new FormData();
-    body.append('file', file);
     lock.current = true;
     setBusy(true);
     setError('');
     try {
+      const direct = await prepareDirectUpload(session, file, 'case_attachment');
+      const body = new FormData();
+      if (direct) body.append('upload_id', direct);
+      else body.append('file', file);
       const result = await api<CaseTask>(
         `/cases/${encodeURIComponent(task.id)}/attachments?${query}`,
         session,

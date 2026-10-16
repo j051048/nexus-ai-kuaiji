@@ -11,7 +11,7 @@ from xml.etree.ElementTree import ParseError
 
 from defusedxml.common import DefusedXmlException
 
-from fastapi import APIRouter, Depends, File, Query, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile
 from fastapi.responses import Response
 
 from ..accounting.domain import AccountingError
@@ -333,13 +333,23 @@ def build_material_attachments_router(actor_dependency):
         request_id: str,
         request: Request,
         expected_version: int = Query(..., ge=1),
-        file: UploadFile = File(...),
+        file: UploadFile | None = File(default=None),
+        upload_id: str | None = Form(default=None),
         actor=Depends(actor_dependency),
         attachments=Depends(service),
     ):
+        claimed = bool(upload_id)
+        uploads = request.app.state.uploads if claimed else None
         stored = None
         try:
             attachments.require_upload(actor, request_id, expected_version)
+            if claimed:
+                stored = uploads.take(actor, upload_id, "material_attachment")
+                result = attachments.add(actor, request_id, expected_version, stored)
+                uploads.confirm(actor, upload_id)
+                return result
+            if file is None:
+                raise AccountingError("请选择文件，或先完成大文件上传校验", 422)
             data = file.file.read(MAX_FILE_BYTES + 1)
             name, detected = validate_material_original(file.filename, file.content_type, data)
             stored = attachments.store.put_original(name, detected, data)
@@ -348,11 +358,16 @@ def build_material_attachments_router(actor_dependency):
                 attachments.store.discard(stored)
             return result
         except AccountingError:
+            if claimed:
+                if stored:
+                    uploads.release(actor, upload_id)
+                raise
             if stored:
                 attachments.store.discard(stored)
             raise
         finally:
-            file.file.close()
+            if file is not None:
+                file.file.close()
 
     @router.get("/{request_id}/attachments/{attachment_id}/content")
     def download(

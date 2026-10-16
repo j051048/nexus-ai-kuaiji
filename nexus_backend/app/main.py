@@ -112,6 +112,9 @@ from .monthly.briefing import BriefingService
 from .service_plans.service import ServicePlansService
 from .service_plans.router import build_service_plans_router
 from .service_plans.attachments import MaterialAttachmentService, build_material_attachments_router
+from .uploads import UploadIntentService, build_uploads_router
+from .invoices.router import build_invoice_imports_router
+from .invoices.service import InvoiceImportService
 from .revisions.history import SourceHistoryService
 from .revisions.history_router import build_source_history_router
 from .intake.service import IntakeService
@@ -277,6 +280,12 @@ def create_app(
                 storage_path, settings=storage_settings
             )
             await run_in_threadpool(application.state.attachment_store.verify_private)
+            application.state.uploads = UploadIntentService(
+                database, application.state.attachment_store
+            )
+            application.state.invoice_imports = InvoiceImportService(
+                database, application.state.attachment_store, application.state.uploads
+            )
             application.state.source_history = SourceHistoryService(
                 database, application.state.attachment_store
             )
@@ -916,6 +925,8 @@ def create_app(
     app.include_router(build_monthly_workbench_router(actor))
     app.include_router(build_service_plans_router(actor))
     app.include_router(build_material_attachments_router(actor))
+    app.include_router(build_uploads_router(actor))
+    app.include_router(build_invoice_imports_router(actor))
     app.include_router(build_agent_workspace_router(actor))
     app.include_router(build_assistant_router(actor))
     app.include_router(build_legacy_migration_router(actor))

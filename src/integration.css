@@ -103,6 +103,13 @@
   width: auto;
   max-width: 500px;
 }
+.integration-vendor {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #5b5b46;
+}
 .integration-file {
   max-width: 300px;
 }

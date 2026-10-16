@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { CheckCircle2, FileCheck2, Paperclip, RefreshCw, Upload, X } from 'lucide-react';
 import { api, apiBlob, ApiError, errorMessage } from './api';
+import { prepareDirectUpload } from './upload-client';
 import { PageControls, Spinner } from './AppPrimitives';
 import { IntakeWizard } from './IntakeWizard';
 import type { BusinessContext, BusinessEvent } from './business-types';
@@ -345,8 +346,10 @@ function MaterialRequestEditor({
       for (const file of chosen) {
         const issue = materialAttachmentIssue(file, currentFiles);
         if (issue) throw new Error(`${file.name}：${issue}`);
+        const direct = await prepareDirectUpload(session, file, 'material_attachment');
         const form = new FormData();
-        form.append('file', file);
+        if (direct) form.append('upload_id', direct);
+        else form.append('file', file);
         const result = await api<{ attachment: MaterialAttachment; version: number }>(
           `/material-requests/${encodeURIComponent(request.id)}/attachments?expected_version=${request.version}`,
           session,

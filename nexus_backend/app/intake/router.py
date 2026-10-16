@@ -1,6 +1,6 @@
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, File, Query, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile
 from fastapi.responses import Response
 
 from ..accounting.domain import AccountingError
@@ -42,14 +42,25 @@ def build_intake_router(actor_dependency):
     @router.post("/drafts/{draft_id}/attachments")
     def upload(
         draft_id: str,
+        request: Request,
         expected_version: int = Query(..., ge=1),
-        file: UploadFile = File(...),
+        file: UploadFile | None = File(default=None),
+        upload_id: str | None = Form(default=None),
         current=Depends(actor_dependency),
         intake=Depends(service),
     ):
+        claimed = bool(upload_id)
+        uploads = request.app.state.uploads if claimed else None
         stored = None
         try:
             intake.require_upload(current, draft_id, expected_version)
+            if claimed:
+                stored = uploads.take(current, upload_id, "intake_attachment")
+                result = intake.add_attachment(current, draft_id, expected_version, stored)
+                uploads.confirm(current, upload_id)
+                return result
+            if file is None:
+                raise AccountingError("请选择文件，或先完成大文件上传校验", 422)
             stored = intake.storage.put(
                 file.filename, file.content_type, file.file.read(MAX_FILE_BYTES + 1)
             )
@@ -58,11 +69,16 @@ def build_intake_router(actor_dependency):
                 intake.storage.discard(stored)
             return result
         except AccountingError:
+            if claimed:
+                if stored:
+                    uploads.release(current, upload_id)
+                raise
             if stored:
                 intake.storage.discard(stored)
             raise
         finally:
-            file.file.close()
+            if file is not None:
+                file.file.close()
 
     @router.get("/attachments/{attachment_id}/content")
     def download(attachment_id: str, current=Depends(actor_dependency), intake=Depends(service)):

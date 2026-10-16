@@ -1,0 +1,132 @@
+.invoice-imports {
+  border-top: 3px solid #8a6d3b;
+}
+.invoice-imports-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 4px 0 14px;
+}
+.invoice-imports-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px dashed #c9d2c6;
+  border-radius: 3px;
+  padding: 9px 12px;
+  color: #40543f;
+  font-size: 12px;
+  cursor: pointer;
+  max-width: 460px;
+}
+.invoice-imports-file span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.invoice-imports-file input {
+  display: none;
+}
+.invoice-imports-empty {
+  color: #718071;
+  font-size: 12px;
+  margin: 6px 0;
+}
+.invoice-imports-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid #e2e7df;
+}
+.invoice-imports-batch {
+  width: 100%;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid #e2e7df;
+  border-left: 3px solid transparent;
+  text-align: left;
+  padding: 12px;
+  cursor: pointer;
+  display: grid;
+  gap: 4px;
+}
+.invoice-imports-batch:hover,
+.invoice-imports-batch.selected {
+  background: #f2f6ed;
+  border-left-color: #4e7457;
+}
+.invoice-imports-batch strong {
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+}
+.invoice-imports-batch span,
+.invoice-imports-batch small {
+  color: #647568;
+  font-size: 10.5px;
+}
+.invoice-imports-notes {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  color: #43523f;
+  font-size: 11px;
+  padding: 12px 0;
+  border-bottom: 1px solid #e2e7df;
+}
+.invoice-imports-hint {
+  color: #a26b28;
+}
+.invoice-imports-warnings {
+  font-size: 11.5px;
+  color: #7a5b2f;
+  padding: 8px 0;
+}
+.invoice-imports-warnings ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  max-height: 180px;
+  overflow: auto;
+}
+.invoice-imports-table {
+  overflow-x: auto;
+}
+.invoice-imports-table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11.5px;
+}
+.invoice-imports-table th,
+.invoice-imports-table td {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid #e6ebe3;
+  vertical-align: top;
+}
+.invoice-imports-table th {
+  color: #647568;
+  font-weight: 700;
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+.invoice-imports-table td.numeric {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.invoice-imports-void td {
+  color: #9b9484;
+  text-decoration: line-through;
+}
+.invoice-imports-tag {
+  font-style: normal;
+  margin-left: 6px;
+  font-size: 9.5px;
+  border: 1px solid #c9b487;
+  color: #8a6d3b;
+  border-radius: 2px;
+  padding: 1px 4px;
+}
+.invoice-imports-tag.red {
+  border-color: #c98a8a;
+  color: #a04444;
+}

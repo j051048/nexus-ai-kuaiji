@@ -1,6 +1,6 @@
 from typing import Literal
 from urllib.parse import quote
-from fastapi import APIRouter, Depends, File, Query, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile
 from fastapi.responses import Response
 from app.accounting.domain import AccountingError
 from app.business.storage import MAX_FILE_BYTES
@@ -105,13 +105,25 @@ def build_cases_router(actor_dependency):
         request: Request,
         expected_version: int = Query(..., ge=1),
         idempotency_key: str = Query(..., min_length=8, max_length=120),
-        file: UploadFile = File(...),
+        file: UploadFile | None = File(default=None),
+        upload_id: str | None = Form(default=None),
         actor=Depends(actor_dependency),
         cases=Depends(service),
     ):
+        claimed = bool(upload_id)
+        uploads = request.app.state.uploads if claimed else None
         stored = None
         try:
             cases.require_upload(actor, case_id, expected_version, idempotency_key)
+            if claimed:
+                stored = uploads.take(actor, upload_id, "case_attachment")
+                result = cases.add_attachment(
+                    actor, case_id, expected_version, idempotency_key, stored
+                )
+                uploads.confirm(actor, upload_id)
+                return result["case"]
+            if file is None:
+                raise AccountingError("请选择文件，或先完成大文件上传校验", 422)
             data = file.file.read(MAX_FILE_BYTES + 1)
             stored = request.app.state.attachment_store.put(file.filename, file.content_type, data)
             result = cases.add_attachment(actor, case_id, expected_version, idempotency_key, stored)
@@ -119,10 +131,15 @@ def build_cases_router(actor_dependency):
                 request.app.state.attachment_store.discard(stored)
             return result["case"]
         except AccountingError:
+            if claimed:
+                if stored:
+                    uploads.release(actor, upload_id)
+                raise
             if stored:
                 request.app.state.attachment_store.discard(stored)
             raise
         finally:
-            file.file.close()
+            if file is not None:
+                file.file.close()
 
     return router
