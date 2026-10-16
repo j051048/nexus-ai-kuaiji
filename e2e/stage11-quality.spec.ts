@@ -1,4 +1,4 @@
-import { openAccounting, openBookTools } from './ui-navigation';
+import { openAccounting, openManagement } from './ui-navigation';
 import { expect, test } from '@playwright/test';
 
 test('评测标准须两位会计核对，未覆盖不能算通过，评测不修改已审凭证', async ({ page, request }) => {
@@ -15,7 +15,7 @@ test('评测标准须两位会计核对，未覆盖不能算通过，评测不�
   const ledger = await (await request.get(`/api/books/${book.id}`, { headers })).json(), draft = ledger.drafts[0];
   expect((await request.post(`/api/books/${book.id}/drafts/${draft.id}/approve`, { headers, data: { expected_version: draft.version } })).status()).toBe(200);
   await page.goto('/'); await openAccounting(page); await page.getByLabel('搜索企业名称').fill(name); await page.getByRole('listitem').filter({ hasText: name }).click();
-  await openBookTools(page); await page.getByRole('button', { name: '试点评测', exact: true }).click();
+  await openManagement(page); await page.getByRole('button', { name: '试点评测', exact: true }).click();
   await expect(page.getByRole('heading', { name: '用经过独立核对的业务，检验自动化。', exact: true })).toBeVisible();
   await page.locator('.quality-grid .quality-card').first().getByRole('button').filter({ hasText: party }).click();
   await page.getByLabel('评测标准核对依据', { exact: true }).fill('按合成归档票据核对日期、金额、交易方和已审核分录');
@@ -26,7 +26,7 @@ test('评测标准须两位会计核对，未覆盖不能算通过，评测不�
   expect((await request.post(`/api/books/${book.id}/quality/standards/${standard.id}/confirm`, { headers, data: { evidence_checked: true, reason: '自证应该被拒绝' } })).status()).toBe(409);
   await page.getByLabel('切换验证身份').selectOption('finance');
   await openAccounting(page); await page.getByLabel('搜索企业名称').fill(name); await page.getByRole('listitem').filter({ hasText: name }).click();
-  await openBookTools(page); await page.getByRole('button', { name: '试点评测', exact: true }).click();
+  await openManagement(page); await page.getByRole('button', { name: '试点评测', exact: true }).click();
   await page.locator('.quality-standard .quality-row').filter({ hasText: party }).click();
   await page.getByLabel('评测标准核对依据', { exact: true }).fill('作为另一位会计独立核对合成原件，确认此标准');
   await page.getByLabel('我已独立核对原件、字段答案及最终分录', { exact: true }).check();

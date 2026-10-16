@@ -50,13 +50,46 @@ import type { Book, BookDetail, Draft, FirmRole, JournalLine, Session, Workbench
 import { EmptyState, Modal, PageControls, Spinner, StatCard } from './AppPrimitives';
 import { AssistantDialog, NewBookModal } from './AppDialogs';
 import { AccountingBookList } from './AccountingBookList';
-import { AccountingBookToolbar } from './AccountingBookToolbar';
+import { AccountingBookToolbar, bookPipelineStep } from './AccountingBookToolbar';
 import { useWorkspaceRoute } from './useWorkspaceRoute';
 import { RouteLeaveDialog } from './RouteLeaveDialog';
-import { readWorkspaceRoute, workspaceUsesBook, type WorkspaceRoute } from './workspace-route';
+import {
+  readWorkspaceRoute,
+  workspaceUsesBook,
+  type WorkspaceRoute,
+  type WorkspaceView,
+} from './workspace-route';
 import type { MonthlyDestination } from './monthly-workbench-types';
 
 type Filter = 'all' | 'pending' | 'exception' | 'approved';
+const workspaceViewLabels: Partial<Record<WorkspaceView, string>> = {
+  home: '我的待办',
+  runs: '后台运行',
+  business: '业务事项',
+  review: '跨企业批量复核',
+  cases: '异常与补件',
+  queue: '票据处理任务',
+  intelligence: '票据核对异常',
+  operations: '费用与运行监控',
+  revision: '事实修订与调整',
+  monthly: '客户月度进度',
+  service: '月度服务单',
+  materials: '资料清单',
+  portfolio: '客户人工投入',
+  balances: '参考余额与月度差异',
+  recurring: '固定事项草稿',
+  migration: '旧账迁移',
+  quality: '试点评测',
+  settlement: '收付款核销',
+  closing: '月结预检',
+  efficiency: '人工效率',
+  integration: '财务软件接入',
+  ledger: '长期账套与主数据',
+  reconciliation: '流水与业务匹配',
+  delivery: '导入回执核验',
+  learning: '审核样例与企业规则',
+  catalog: '科目与模板',
+};
 const AccessManagement = lazy(() =>
   import('./AccessManagement').then((module) => ({ default: module.AccessManagement })),
 );
@@ -186,10 +219,9 @@ export default function App() {
   const activationMode = location.pathname === '/account-activation';
   const recoveryMode = location.pathname === '/account-recovery';
   const [adminBusy, setAdminBusy] = useState(false);
-  const [homeView, setHomeView] = useState(
-    () => readWorkspaceRoute(location.pathname, location.search).view === 'home',
+  const [routeView, setRouteView] = useState<WorkspaceView>(() =>
+    readWorkspaceRoute(location.pathname, location.search).view === 'home' ? 'home' : 'accounting',
   );
-  const [runsView, setRunsView] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
   const [globalAssistant, setGlobalAssistant] = useState<AssistantInitialContext | null>(null);
   const [assistantTarget, setAssistantTarget] = useState<{
@@ -221,33 +253,6 @@ export default function App() {
   const [inlineTarget, setInlineTarget] = useState<{ bookId: string; draftId: string } | null>(
     null,
   );
-  const [businessView, setBusinessView] = useState(false);
-  const [intelligenceView, setIntelligenceView] = useState(false);
-  const [queueView, setQueueView] = useState(false);
-  const [operationsView, setOperationsView] = useState(false);
-  const [catalogView, setCatalogView] = useState(false);
-  const [stage8View, setStage8View] = useState<
-    | 'review'
-    | 'cases'
-    | 'learning'
-    | 'reconciliation'
-    | 'delivery'
-    | 'ledger'
-    | 'integration'
-    | 'revision'
-    | 'efficiency'
-    | 'closing'
-    | 'settlement'
-    | 'quality'
-    | 'migration'
-    | 'monthly'
-    | 'balances'
-    | 'recurring'
-    | 'service'
-    | 'materials'
-    | 'portfolio'
-    | null
-  >(null);
   const [caseTarget, setCaseTarget] = useState<
     { eventId?: string; bookId?: string; draftId?: string; title?: string } | undefined
   >();
@@ -302,7 +307,7 @@ export default function App() {
   const [notice, setNotice] = useState<Notice>(null);
   useEffect(() => {
     setNotice(null);
-  }, [stage8View, businessView, bookId]);
+  }, [routeView, bookId]);
   const bookIdRef = useRef(bookId);
   const hadWorkspaceIdentity = useRef(false);
   const loginLocation = useRef(location);
@@ -315,16 +320,17 @@ export default function App() {
   bookIdRef.current = bookId;
 
   const clearWorkspace = useCallback(() => {
-    setRunsView(false);
     setCommandOpen(false);
     setAssistantTarget(null);
     setGlobalAssistant(null);
     inlineContext.current = null;
     clearReviewSession();
-    setHomeView(
+    setRouteView(
       hadWorkspaceIdentity.current ||
         readWorkspaceRoute(loginLocation.current.pathname, loginLocation.current.search).view ===
-          'home',
+          'home'
+        ? 'home'
+        : 'accounting',
     );
     setMigrationTarget('');
     setOperationsTarget('');
@@ -346,14 +352,8 @@ export default function App() {
     workbenchReadEpoch.current++;
     bookReadEpoch.current++;
     draftReadEpoch.current++;
-    setBusinessView(false);
-    setIntelligenceView(false);
-    setQueueView(false);
     setQueueTarget('');
     setQueueJobTarget('');
-    setStage8View(null);
-    setCatalogView(false);
-    setOperationsView(false);
     setOperationsCompanies([]);
     setIntelligenceBusy(false);
     setBusinessTarget('');
@@ -391,7 +391,7 @@ export default function App() {
   const loginRoute = readWorkspaceRoute(location.pathname, location.search);
   const auth = useAccountingAuth(
     clearWorkspace,
-    homeView &&
+    routeView === 'home' &&
       loginRoute.view === 'home' &&
       !loginRoute.companyId &&
       !adminMode &&
@@ -406,6 +406,9 @@ export default function App() {
   const homeBootstrap =
     session && auth.homeBootstrap?.scope_key === session.scope_key ? auth.homeBootstrap : null;
   const profile = storedProfile ?? homeBootstrap?.profile ?? null;
+  // 代账包干制：模型费用与运行监控是事务所内部的生产资料，客户企业侧不展示；
+  // can_operations 仅保留给接口兼容，导航与工作区渲染都以事务所管理层能力位为准。
+  const canFirmOperations = profile?.can_firm_operations ?? !!me?.permissions.manage_firm;
   const bootstrapProfile = useRef<{
     scope_key: string;
     profile: WorkspaceProfile | null;
@@ -433,24 +436,8 @@ export default function App() {
     auth.consumeHomeBootstrap,
   ]);
   useEffect(() => {
-    if (!homeView && homeBootstrap) auth.consumeHomeBootstrap(homeBootstrap.scope_key);
-  }, [homeView, homeBootstrap, auth.consumeHomeBootstrap]);
-  const routeView: WorkspaceRoute['view'] = homeView
-    ? 'home'
-    : runsView
-      ? 'runs'
-      : (stage8View ??
-        (catalogView
-          ? 'catalog'
-          : operationsView
-            ? 'operations'
-            : queueView
-              ? 'queue'
-              : intelligenceView
-                ? 'intelligence'
-                : businessView
-                  ? 'business'
-                  : 'accounting'));
+    if (routeView !== 'home' && homeBootstrap) auth.consumeHomeBootstrap(homeBootstrap.scope_key);
+  }, [routeView, homeBootstrap, auth.consumeHomeBootstrap]);
   const routeUsesBook = workspaceUsesBook(routeView);
 
   const sessionScope = useRef<string | null>(null);
@@ -525,7 +512,13 @@ export default function App() {
     setOperationsCompanies([]);
     // A current capability bit controls navigation. Load the company list only
     // in its own workspace, so it cannot compete with the home inbox for DB slots.
-    if (!operationsView || !session?.firm_id || sessionScope.current !== session.scope_key) return;
+    if (
+      !canFirmOperations ||
+      routeView !== 'operations' ||
+      !session?.firm_id ||
+      sessionScope.current !== session.scope_key
+    )
+      return;
     const controller = new AbortController();
     void api<{ companies: OperationsCompany[] }>('/operations/companies', session, {
       signal: controller.signal,
@@ -537,7 +530,7 @@ export default function App() {
         if (!controller.signal.aborted) setOperationsCompanies([]);
       });
     return () => controller.abort();
-  }, [session, operationsView]);
+  }, [session, routeView, canFirmOperations]);
 
   const workbenchPath = useCallback(
     () =>
@@ -826,7 +819,6 @@ export default function App() {
 
   function openDraftInBook(id: string, targetDraftId: string) {
     if (!session || sessionScope.current !== session.scope_key || !targetDraftId) return;
-    setHomeView(false);
     workbenchReadEpoch.current++;
     bookReadEpoch.current++;
     draftReadEpoch.current++;
@@ -843,12 +835,7 @@ export default function App() {
     setFilter('all');
     setSearch('');
     setBookId(id);
-    setStage8View(null);
-    setCatalogView(false);
-    setOperationsView(false);
-    setQueueView(false);
-    setIntelligenceView(false);
-    setBusinessView(false);
+    setRouteView('accounting');
     if (routeUsesBook && bookId === id)
       void refresh(id).catch((error) => {
         if (sessionScope.current === session.scope_key && bookIdRef.current === id) {
@@ -1133,38 +1120,7 @@ export default function App() {
         bootstrapProfile.current?.scope_key === session?.scope_key &&
         !route.companyId;
       restoredRouteScope.current = session?.scope_key ?? '';
-      setHomeView(route.view === 'home');
-      setRunsView(route.view === 'runs');
-      setBusinessView(route.view === 'business');
-      setQueueView(route.view === 'queue');
-      setOperationsView(route.view === 'operations');
-      setIntelligenceView(route.view === 'intelligence');
-      setCatalogView(route.view === 'catalog');
-      setStage8View(
-        [
-          'review',
-          'cases',
-          'learning',
-          'reconciliation',
-          'delivery',
-          'ledger',
-          'integration',
-          'revision',
-          'efficiency',
-          'closing',
-          'settlement',
-          'quality',
-          'migration',
-          'monthly',
-          'balances',
-          'recurring',
-          'service',
-          'materials',
-          'portfolio',
-        ].includes(route.view)
-          ? (route.view as typeof stage8View)
-          : null,
-      );
+      setRouteView(route.view);
       if (!route.reviewDraftId || route.view !== 'review') {
         inlineContext.current?.onClose();
         inlineContext.current = null;
@@ -1349,17 +1305,25 @@ export default function App() {
         modal)
     )
       return;
-    setHomeView(view === 'home');
-    setRunsView(view === 'runs');
-    setBusinessView(view === 'business');
-    setQueueView(view === 'queue');
-    setIntelligenceView(view === 'intelligence');
-    setOperationsView(view === 'operations');
-    setCatalogView(false);
-    setStage8View(
-      ['review', 'cases', 'revision', 'monthly', 'materials', 'portfolio'].includes(view)
-        ? (view as typeof stage8View)
-        : null,
+    if (view === 'quality' && !bookId) return;
+    setRouteView(
+      [
+        'home',
+        'runs',
+        'business',
+        'queue',
+        'intelligence',
+        'operations',
+        'review',
+        'cases',
+        'revision',
+        'monthly',
+        'materials',
+        'portfolio',
+        'quality',
+      ].includes(view)
+        ? (view as WorkspaceView)
+        : 'accounting',
     );
     setBusinessTarget('');
     setWorkCompany('');
@@ -1424,14 +1388,14 @@ export default function App() {
       setBookId(target.bookId);
       focusBookRef.current = target.bookId;
       setDeliveryTarget(target.id);
-      setStage8View('delivery');
+      setRouteView('delivery');
       if (routeUsesBook) void initialize(undefined, target.bookId);
     } else if (target.type === 'migration' && target.bookId) {
       navigate('accounting');
       setBookId(target.bookId);
       focusBookRef.current = target.bookId;
       setMigrationTarget(target.id);
-      setStage8View('migration');
+      setRouteView('migration');
       if (routeUsesBook) void initialize(undefined, target.bookId);
     } else if (target.type === 'alert') {
       navigate('operations');
@@ -1468,17 +1432,11 @@ export default function App() {
       if (routeUsesBook) void initialize(undefined, target.bookId);
     }
     if (['delivery', 'closing', 'efficiency', 'balances', 'recurring'].includes(target.view))
-      setStage8View(target.view as typeof stage8View);
+      setRouteView(target.view as WorkspaceView);
     if (target.filter) setFilter(target.filter);
   }
   const showBusiness =
-    !runsView &&
-    !stage8View &&
-    !catalogView &&
-    !operationsView &&
-    !queueView &&
-    !intelligenceView &&
-    (businessView || (!!profile && !canSeeAccounting));
+    routeView === 'business' || (routeView === 'accounting' && !!profile && !canSeeAccounting);
   async function openAgentRun(route: AgentRoute) {
     const currentSession = session;
     if (navigationLocked || !currentSession) return;
@@ -1492,7 +1450,7 @@ export default function App() {
       setBookId(route.book_id);
       focusBookRef.current = route.book_id;
       setMigrationTarget(route.id);
-      setStage8View('migration');
+      setRouteView('migration');
       if (routeUsesBook) void initialize(undefined, route.book_id);
       return;
     }
@@ -1663,37 +1621,33 @@ export default function App() {
       <AgentNavigation
         session={session}
         current={
-          stage8View === 'materials' || stage8View === 'portfolio'
-            ? stage8View
-            : stage8View === 'monthly' || stage8View === 'service'
-              ? 'monthly'
-              : runsView
-                ? 'runs'
-                : homeView
-                  ? 'home'
-                  : showBusiness
-                    ? 'business'
-                    : stage8View === 'review'
-                      ? 'review'
-                      : stage8View === 'cases'
-                        ? 'cases'
-                        : queueView
-                          ? 'queue'
-                          : intelligenceView
-                            ? 'intelligence'
-                            : operationsView
-                              ? 'operations'
-                              : 'accounting'
+          routeView === 'service'
+            ? 'monthly'
+            : routeView === 'accounting' && showBusiness
+              ? 'business'
+              : [
+                    'home',
+                    'runs',
+                    'review',
+                    'cases',
+                    'queue',
+                    'intelligence',
+                    'operations',
+                    'monthly',
+                    'materials',
+                    'portfolio',
+                    'quality',
+                  ].includes(routeView)
+                ? routeView
+                : 'accounting'
         }
         canAccounting={canSeeAccounting}
         canProcessing={experience.processing}
         businessLabel={experience.businessLabel}
         canMonthly={canSeeAccounting || !!profile?.can_manage}
         canReview={!!profile?.can_review}
-        canOperations={
-          profile?.can_operations ??
-          (!!profile?.can_manage || !!profile?.can_finance || !!me?.permissions.manage_firm)
-        }
+        canQuality={!!profile?.can_review && !!bookId}
+        canOperations={canFirmOperations}
         locked={navigationLocked || !!modal || commandOpen}
         onNavigate={navigate}
         onAccountingFilter={(value) => {
@@ -1810,61 +1764,10 @@ export default function App() {
             工作空间
             <ChevronRight size={13} />
             <span>
-              {stage8View === 'service'
-                ? '月度服务单'
-                : stage8View === 'materials'
-                  ? '资料清单'
-                  : stage8View === 'portfolio'
-                    ? '客户人工投入'
-                    : stage8View === 'monthly'
-                      ? '客户月度进度'
-                      : stage8View === 'balances'
-                        ? '参考余额与月度差异'
-                        : stage8View === 'recurring'
-                          ? '固定事项草稿'
-                          : runsView
-                            ? '后台运行'
-                            : homeView
-                              ? '我的待办'
-                              : stage8View === 'migration'
-                                ? '旧账迁移'
-                                : stage8View === 'quality'
-                                  ? '试点评测'
-                                  : stage8View === 'settlement'
-                                    ? '收付款核销'
-                                    : stage8View === 'closing'
-                                      ? '月结预检'
-                                      : stage8View === 'revision'
-                                        ? '事实修订与调整'
-                                        : stage8View === 'efficiency'
-                                          ? '人工效率'
-                                          : stage8View === 'integration'
-                                            ? '财务软件接入'
-                                            : stage8View === 'ledger'
-                                              ? '长期账套与主数据'
-                                              : stage8View === 'reconciliation'
-                                                ? '流水与业务匹配'
-                                                : stage8View === 'delivery'
-                                                  ? '导入回执核验'
-                                                  : stage8View === 'review'
-                                                    ? '跨企业批量复核'
-                                                    : stage8View === 'cases'
-                                                      ? '异常与补件'
-                                                      : stage8View === 'learning'
-                                                        ? '审核样例与企业规则'
-                                                        : catalogView
-                                                          ? '科目与模板'
-                                                          : operationsView
-                                                            ? '费用与运行监控'
-                                                            : queueView
-                                                              ? '票据处理任务'
-                                                              : intelligenceView
-                                                                ? '票据核对异常'
-                                                                : showBusiness
-                                                                  ? '业务事项'
-                                                                  : navItems.find(
-                                                                      (item) => item.id === filter,
-                                                                    )?.label}
+              {routeView === 'accounting' && showBusiness
+                ? '业务事项'
+                : (workspaceViewLabels[routeView] ??
+                  navItems.find((item) => item.id === filter)?.label)}
             </span>
           </div>
           <div className="agent-topbar-actions">
@@ -1898,28 +1801,11 @@ export default function App() {
         <ActivityTimer
           key={session.scope_key}
           session={session}
-          enabled={!homeView && !runsView && stage8View !== 'efficiency'}
-          bookId={
-            !showBusiness &&
-            !operationsView &&
-            !queueView &&
-            !intelligenceView &&
-            ![
-              'review',
-              'cases',
-              'revision',
-              'monthly',
-              'service',
-              'materials',
-              'portfolio',
-            ].includes(stage8View ?? '')
-              ? bookId
-              : undefined
-          }
+          enabled={routeView !== 'home' && routeView !== 'runs' && routeView !== 'efficiency'}
+          bookId={workspaceUsesBook(routeView) ? bookId : undefined}
           onOpen={() => {
             if (busy || businessBusy || reviewDirty || monthlyDirty) return;
-            setHomeView(false);
-            setStage8View('efficiency');
+            setRouteView('efficiency');
           }}
         />
         <Suspense
@@ -1932,7 +1818,7 @@ export default function App() {
             </main>
           }
         >
-          {homeView ? (
+          {routeView === 'home' ? (
             <WorkspaceHome
               key={`${session.scope_key}:${workCompany}`}
               initialCompanyId={workCompany}
@@ -1950,7 +1836,7 @@ export default function App() {
               onReview={() => navigate('review')}
               onRuns={() => navigate('runs')}
             />
-          ) : runsView ? (
+          ) : routeView === 'runs' ? (
             <AgentActivityWorkspace
               key={session.scope_key}
               session={session}
@@ -1959,7 +1845,7 @@ export default function App() {
               onBack={() => navigate('home')}
               onBusyChange={changeBusinessBusy}
             />
-          ) : stage8View === 'monthly' ? (
+          ) : routeView === 'monthly' ? (
             <MonthlyClientWorkbench
               key={session.scope_key}
               session={session}
@@ -1970,13 +1856,13 @@ export default function App() {
               onOpenServicePlan={(target) => {
                 if (navigationLocked) return;
                 navigate('monthly');
-                setStage8View('service');
+                setRouteView('service');
                 setWorkBook(target.bookId);
                 setWorkCompany(target.companyId);
                 setWorkPeriod(target.period);
               }}
             />
-          ) : stage8View === 'service' ? (
+          ) : routeView === 'service' ? (
             <main className="monthly-workbench">
               <button
                 className="text-button"
@@ -2004,7 +1890,7 @@ export default function App() {
                 <p className="field-help">请从客户月度进度选择具体账套和月份。</p>
               )}
             </main>
-          ) : stage8View === 'materials' ? (
+          ) : routeView === 'materials' ? (
             <main className="monthly-workbench">
               <ServicePlanMaterials
                 key={`${session.scope_key}:${workBook}:${materialTarget}`}
@@ -2019,7 +1905,7 @@ export default function App() {
                 onChanged={() => setWorkspaceRevision((n) => n + 1)}
               />
             </main>
-          ) : stage8View === 'portfolio' ? (
+          ) : routeView === 'portfolio' ? (
             <EfficiencyWorkbench
               key={session.scope_key + ':portfolio'}
               session={session}
@@ -2029,16 +1915,16 @@ export default function App() {
                 navigate('accounting');
                 setBookId(id);
                 focusBookRef.current = id;
-                setStage8View('efficiency');
+                setRouteView('efficiency');
                 if (routeUsesBook) void initialize(undefined, id);
               }}
             />
-          ) : stage8View === 'balances' && bookId ? (
+          ) : routeView === 'balances' && bookId ? (
             <MonthlyReconciliationWorkbench
               key={session.scope_key + ':' + bookId}
               session={session}
               bookId={bookId}
-              onBack={() => setStage8View(null)}
+              onBack={() => setRouteView('accounting')}
               onBusyChange={changeBusinessBusy}
               onDirtyChange={changeMonthlyDirty}
               onChanged={() => {
@@ -2046,12 +1932,12 @@ export default function App() {
                 setWorkspaceRevision((n) => n + 1);
               }}
             />
-          ) : stage8View === 'recurring' && bookId ? (
+          ) : routeView === 'recurring' && bookId ? (
             <RecurringEntries
               key={session.scope_key + ':' + bookId}
               session={session}
               bookId={bookId}
-              onBack={() => setStage8View(null)}
+              onBack={() => setRouteView('accounting')}
               onBusyChange={changeBusinessBusy}
               onDirtyChange={changeMonthlyDirty}
               onOpenDraft={(id) => openDraftInBook(bookId, id)}
@@ -2060,7 +1946,7 @@ export default function App() {
                 setWorkspaceRevision((n) => n + 1);
               }}
             />
-          ) : stage8View === 'migration' && bookId ? (
+          ) : routeView === 'migration' && bookId ? (
             <LegacyMigrationWorkspace
               key={session.scope_key + ':' + bookId}
               session={session}
@@ -2068,7 +1954,7 @@ export default function App() {
               initialProjectId={migrationTarget || undefined}
               onBack={() => {
                 setMigrationTarget('');
-                setStage8View(null);
+                setRouteView('accounting');
               }}
               onBusyChange={changeBusinessBusy}
               onOpenDraft={openDraftInBook}
@@ -2077,33 +1963,33 @@ export default function App() {
                 setWorkspaceRevision((n) => n + 1);
               }}
             />
-          ) : stage8View === 'quality' && bookId ? (
+          ) : routeView === 'quality' && bookId ? (
             <QualityWorkbench
               key={session.scope_key + ':' + bookId}
               session={session}
               bookId={bookId}
-              onBack={() => setStage8View(null)}
+              onBack={() => setRouteView('accounting')}
               onBusyChange={changeBusinessBusy}
               onOpenDraft={openDraftInBook}
             />
-          ) : stage8View === 'settlement' && bookId ? (
+          ) : routeView === 'settlement' && bookId ? (
             <SettlementWorkbench
               key={session.scope_key + ':' + bookId}
               session={session}
               bookId={bookId}
-              onBack={() => setStage8View(null)}
+              onBack={() => setRouteView('accounting')}
               onBusyChange={changeBusinessBusy}
               onChanged={() => {
                 void refresh(bookId);
               }}
               onOpenDraft={(id) => openDraftInBook(bookId, id)}
             />
-          ) : stage8View === 'closing' && bookId ? (
+          ) : routeView === 'closing' && bookId ? (
             <ClosingWorkbench
               key={session.scope_key + ':' + bookId}
               session={session}
               bookId={bookId}
-              onBack={() => setStage8View(null)}
+              onBack={() => setRouteView('accounting')}
               onBusyChange={changeBusinessBusy}
               onChanged={() => {
                 void refresh(bookId);
@@ -2114,18 +2000,17 @@ export default function App() {
                   openDraftInBook(issue.bookId, issue.id);
                 } else if (issue.type === 'event') {
                   setBusinessTarget(issue.id);
-                  setStage8View(null);
-                  setBusinessView(true);
+                  setRouteView('business');
                 } else if (issue.type === 'export') {
                   setDeliveryTarget(issue.id);
-                  setStage8View('delivery');
+                  setRouteView('delivery');
                 } else if (issue.type === 'revision') {
                   setBusinessTarget('');
-                  setStage8View('revision');
+                  setRouteView('revision');
                 } else if (issue.type === 'case') {
                   setCaseTarget(undefined);
                   setInitialCaseId(issue.id);
-                  setStage8View('cases');
+                  setRouteView('cases');
                 } else if (issue.type === 'proposal_job') {
                   setProposalTarget(issue.id);
                 } else if (issue.type === 'ocr_job') {
@@ -2137,18 +2022,17 @@ export default function App() {
                       if (sessionScope.current !== session.scope_key) return;
                       setQueueTarget(job.batch_id);
                       setQueueJobTarget(issue.id);
-                      setStage8View(null);
-                      setQueueView(true);
+                      setRouteView('queue');
                     })
                     .catch((error) => setNotice({ kind: 'error', text: errorMessage(error) }));
                 } else {
-                  setStage8View(null);
+                  setRouteView('accounting');
                   setFilter('all');
                   void refresh(issue.bookId);
                 }
               }}
             />
-          ) : stage8View === 'revision' ? (
+          ) : routeView === 'revision' ? (
             <RevisionWorkbench
               key={session.scope_key + ':' + businessTarget}
               session={session}
@@ -2158,55 +2042,55 @@ export default function App() {
                 if (bookId) void refresh(bookId);
               }}
             />
-          ) : stage8View === 'efficiency' && bookId ? (
+          ) : routeView === 'efficiency' && bookId ? (
             <EfficiencyWorkbench
               key={session.scope_key + ':' + bookId}
               session={session}
               bookId={bookId}
-              onBack={() => setStage8View(null)}
+              onBack={() => setRouteView('accounting')}
               onBusyChange={changeBusinessBusy}
             />
-          ) : stage8View === 'integration' && bookId ? (
+          ) : routeView === 'integration' && bookId ? (
             <IntegrationWorkbench
               key={session.scope_key + ':' + bookId}
               session={session}
               bookId={bookId}
-              onBack={() => setStage8View(null)}
+              onBack={() => setRouteView('accounting')}
               onBusyChange={changeBusinessBusy}
             />
-          ) : stage8View === 'ledger' && bookId ? (
+          ) : routeView === 'ledger' && bookId ? (
             <LedgerWorkspace
               key={session.scope_key + ':' + bookId}
               session={session}
               bookId={bookId}
-              onBack={() => setStage8View(null)}
+              onBack={() => setRouteView('accounting')}
               onBusyChange={changeBusinessBusy}
               onChanged={() => {
                 void refresh(bookId);
                 void initialize();
               }}
             />
-          ) : stage8View === 'reconciliation' && bookId ? (
+          ) : routeView === 'reconciliation' && bookId ? (
             <ReconciliationWorkbench
               key={session.scope_key + ':' + bookId}
               session={session}
               bookId={bookId}
-              onBack={() => setStage8View(null)}
+              onBack={() => setRouteView('accounting')}
               onBusyChange={changeBusinessBusy}
               onChanged={() => {
                 void refresh(bookId);
               }}
             />
-          ) : stage8View === 'delivery' && bookId ? (
+          ) : routeView === 'delivery' && bookId ? (
             <DeliveryWorkbench
               key={session.scope_key + ':' + bookId + ':' + deliveryTarget}
               session={session}
               bookId={bookId}
               initialExportId={deliveryTarget}
-              onBack={() => setStage8View(null)}
+              onBack={() => setRouteView('accounting')}
               onBusyChange={changeBusinessBusy}
             />
-          ) : stage8View === 'review' ? (
+          ) : routeView === 'review' ? (
             <ReviewWorkbench
               key={session.scope_key + ':' + workCompany + ':' + workPeriod + ':' + workBook}
               session={session}
@@ -2215,7 +2099,7 @@ export default function App() {
               onOpenDraft={openDraftInBook}
               onOpenInline={openInlineReview}
             />
-          ) : stage8View === 'cases' ? (
+          ) : routeView === 'cases' ? (
             <CasesWorkbench
               key={
                 session.scope_key +
@@ -2237,25 +2121,25 @@ export default function App() {
                 if (bookId) void refresh(bookId);
               }}
             />
-          ) : stage8View === 'learning' && bookId ? (
+          ) : routeView === 'learning' && bookId ? (
             <LearningWorkbench
               key={session.scope_key + ':' + bookId}
               session={session}
               bookId={bookId}
-              onBack={() => setStage8View(null)}
+              onBack={() => setRouteView('accounting')}
               onBusyChange={changeBusinessBusy}
               onChanged={() => refresh(bookId)}
             />
-          ) : catalogView && bookId ? (
+          ) : routeView === 'catalog' && bookId ? (
             <CatalogWorkbench
               key={session.scope_key + ':' + bookId}
               session={session}
               bookId={bookId}
-              onBack={() => setCatalogView(false)}
+              onBack={() => setRouteView('accounting')}
               onBusyChange={changeBusinessBusy}
               onChanged={() => refresh(bookId)}
             />
-          ) : operationsView ? (
+          ) : routeView === 'operations' && canFirmOperations ? (
             <OperationsWorkbench
               key={session.scope_key + ':' + operationsTarget}
               session={session}
@@ -2266,7 +2150,13 @@ export default function App() {
               }
               onBusyChange={changeBusinessBusy}
             />
-          ) : queueView ? (
+          ) : routeView === 'operations' ? (
+            <main>
+              <EmptyState title="费用与运行监控由事务所管理" icon={<ShieldCheck size={26} />}>
+                该工作区只向事务所管理层开放。企业侧可在“组织管理后台”的智能识别页签中，查看或暂停本企业的资料外发。
+              </EmptyState>
+            </main>
+          ) : routeView === 'queue' ? (
             <QueueWorkbench
               key={`${session.scope_key}:${queueTarget}`}
               session={session}
@@ -2274,19 +2164,17 @@ export default function App() {
               initialJobId={queueJobTarget}
               onBusyChange={changeBusinessBusy}
               onOpenEvent={(id) => {
-                setQueueView(false);
                 setBusinessTarget(id);
-                setBusinessView(true);
+                setRouteView('business');
               }}
             />
-          ) : intelligenceView ? (
+          ) : routeView === 'intelligence' ? (
             <IntelligenceWorkbench
               key={session.scope_key}
               session={session}
               onOpenEvent={(id) => {
-                setIntelligenceView(false);
                 setBusinessTarget(id);
-                setBusinessView(true);
+                setRouteView('business');
               }}
             />
           ) : showBusiness ? (
@@ -2314,20 +2202,16 @@ export default function App() {
               initialEventId={businessTarget}
               onOpenBatch={(id) => {
                 setQueueTarget(id);
-                setQueueView(true);
-                setBusinessView(false);
-                setIntelligenceView(false);
+                setRouteView('queue');
               }}
               onBusyChange={changeBusinessBusy}
               onOpenRevision={(eventId) => {
                 setBusinessTarget(eventId);
-                setBusinessView(false);
-                setStage8View('revision');
+                setRouteView('revision');
               }}
               onOpenCase={(target) => {
-                setBusinessView(false);
                 setCaseTarget(target);
-                setStage8View('cases');
+                setRouteView('cases');
               }}
               onOpenDraft={openDraftInBook}
             />
@@ -2456,14 +2340,12 @@ export default function App() {
                           busy={!!busy}
                           loading={bookLoading}
                           dirty={reviewDirty}
+                          activeStep={bookPipelineStep(routeView, listTab)}
                           onImport={() => {
                             setNotice(null);
                             setModal('import');
                           }}
-                          onWorkspace={(view) => {
-                            if (view === 'catalog') setCatalogView(true);
-                            else setStage8View(view as typeof stage8View);
-                          }}
+                          onWorkspace={(view) => setRouteView(view)}
                         />
                         {detail?.book.permissions.edit && (
                           <Suspense
@@ -2887,15 +2769,11 @@ export default function App() {
                             onIntelligenceChanged={() => refresh(bookId)}
                             onOpenBatch={(id) => {
                               setQueueTarget(id);
-                              setQueueView(true);
-                              setIntelligenceView(false);
-                              setBusinessView(false);
+                              setRouteView('queue');
                             }}
                             onOpenCase={(target) => {
-                              setBusinessView(false);
-                              setCatalogView(false);
                               setCaseTarget(target);
-                              setStage8View('cases');
+                              setRouteView('cases');
                             }}
                             onSave={saveDraft}
                             onApprove={approveDraft}
@@ -3136,7 +3014,7 @@ export default function App() {
             queue={
               inlineContext.current?.scope === session.scope_key
                 ? inlineContext.current.queue
-                : homeView
+                : routeView === 'home'
                   ? []
                   : drafts.map((d) => ({ book_id: bookId, draft_id: d.id }))
             }

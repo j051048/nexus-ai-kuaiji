@@ -1,4 +1,4 @@
-import { openAccounting, openBookTools } from './ui-navigation';
+import { openAccounting, openBookSettings } from './ui-navigation';
 import { expect, test, type APIRequestContext } from '@playwright/test';
 
 type Headers = { Authorization: string };
@@ -84,7 +84,7 @@ test('真实审核样例与规则 UI：原最终分录、真实反例评估、�
   const ruleId = initial.rules[0].id, negativeSample = initial.samples.find((sample: { counterparty: string }) => sample.counterparty === negativeParty);
   await page.goto('/'); await openAccounting(page); await page.getByLabel('搜索企业名称').fill(marker);
   await page.getByRole('listitem').filter({ hasText: current.name }).click();
-  await openBookTools(page); await page.getByRole('button', { name: '审核样例与规则', exact: true }).click();
+  await openBookSettings(page); await page.getByRole('button', { name: '审核样例与规则', exact: true }).click();
   await expect(page.getByRole('heading', { name: '把修正，变成下一次的依据。', exact: true })).toBeVisible();
   const sample = page.locator('.learning-sample').filter({ hasText: positiveParty });
   await sample.getByRole('button', { name: '查看原处理与修正', exact: true }).click();

@@ -1,4 +1,4 @@
-import { openAccounting, openBookTools } from './ui-navigation';
+import { openAccounting, openBookSettings } from './ui-navigation';
 import { expect, test } from '@playwright/test';
 
 test('稳定企业规则去重、真实使用与人工修改在工作台可追溯', async ({ page, request }) => {
@@ -24,7 +24,7 @@ test('稳定企业规则去重、真实使用与人工修改在工作台可追�
   const rule = data.rules[0], negative = data.samples.find((item: { counterparty: string }) => item.counterparty !== party);
   expect(rule.definition.conditions.counterparty_id).toBe(entity.id); expect(rule.sample_ids).toHaveLength(1);
   await page.goto('/'); await openAccounting(page); await page.getByLabel('搜索企业名称').fill(marker); await page.getByRole('listitem').filter({ hasText: name }).click();
-  await openBookTools(page); await page.getByRole('button', { name: '审核样例与规则', exact: true }).click();
+  await openBookSettings(page); await page.getByRole('button', { name: '审核样例与规则', exact: true }).click();
   await expect(page.getByLabel('企业规则治理')).toContainText('有效往来方');
   await page.locator('.learning-rule-choice').filter({ hasText: party }).click();
   await page.getByRole('button', { name: '修订为待发布版本', exact: true }).click();

@@ -32,6 +32,7 @@ async function expand(page: Page, label: string) {
 }
 
 export async function openBookTools(page: Page) { await expand(page, '更多账套操作'); }
+export async function openBookSettings(page: Page) { await expand(page, '账套设置'); }
 export async function openManagement(page: Page) { await expand(page, '处理记录与管理'); }
 
 export async function previewPastedStatement(page: Page, content: string, bank = '虚构银行-1234', namespace = 'bank-statement') {

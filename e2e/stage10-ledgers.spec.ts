@@ -1,4 +1,4 @@
-import { openAccounting, openBookTools } from './ui-navigation';
+import { openAccounting, openBookSettings } from './ui-navigation';
 import { expect, test } from '@playwright/test';
 
 test('长期账套新期与主数据保留独立会计授权及原始月份', async ({ page, request }) => {
@@ -7,7 +7,7 @@ test('长期账套新期与主数据保留独立会计授权及原始月份', as
   let response = await request.post('/api/books', { headers, data: { name, period: '2026-10' } }); expect(response.status()).toBe(201); const book = await response.json();
   await page.goto('/'); await page.getByLabel('切换验证身份').selectOption('accountant');
   await openAccounting(page); await page.getByLabel('搜索企业名称').fill(name); await page.getByRole('listitem').filter({ hasText: name }).click();
-  await openBookTools(page); await page.getByRole('button', { name: '长期账套与主数据', exact: true }).click();
+  await openBookSettings(page); await page.getByRole('button', { name: '长期账套与主数据', exact: true }).click();
   await expect(page.getByRole('heading', { name: '一家企业，一份持续的账务档案。', exact: true })).toBeVisible();
   await page.getByLabel('新期间', { exact: true }).fill('2026-11');
   await page.getByRole('button', { name: '创建独立的新期间', exact: true }).click();

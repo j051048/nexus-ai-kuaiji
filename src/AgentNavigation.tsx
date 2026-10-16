@@ -30,6 +30,7 @@ export type AgentNavigationView =
   | 'queue'
   | 'intelligence'
   | 'operations'
+  | 'quality'
   | 'revision'
   | 'monthly'
   | 'materials'
@@ -42,6 +43,7 @@ export function AgentNavigation({
   canMonthly = canAccounting,
   canReview,
   canOperations,
+  canQuality = false,
   canProcessing = false,
   businessLabel = '业务事项',
   locked,
@@ -58,6 +60,7 @@ export function AgentNavigation({
   canMonthly?: boolean;
   canReview: boolean;
   canOperations: boolean;
+  canQuality?: boolean;
   canProcessing?: boolean;
   businessLabel?: string;
   locked: boolean;
@@ -352,6 +355,16 @@ export function AgentNavigation({
                 <Layers3 size={16} />
                 <span>票据处理任务</span>
               </button>
+              {canQuality && (
+                <button
+                  className={'nav-item ' + (current === 'quality' ? 'selected' : '')}
+                  disabled={locked}
+                  onClick={() => go('quality')}
+                >
+                  <ShieldCheck size={16} />
+                  <span>试点评测</span>
+                </button>
+              )}
               {canOperations && (
                 <button className="nav-item" disabled={locked} onClick={() => go('operations')}>
                   <Activity size={16} />

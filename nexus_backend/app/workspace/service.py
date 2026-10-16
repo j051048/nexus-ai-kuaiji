@@ -143,6 +143,10 @@ class WorkspaceService:
             "can_accounting": bool(book_count),
             "can_manage": can_manage,
             "can_operations": can_manage or can_finance,
+            # Firm-manager-only entry for the firm's own production (model cost
+            # and run monitoring) surface. Kept additive so existing clients that
+            # read can_operations stay compatible.
+            "can_firm_operations": bool(manager),
             "companies": [{"id": c["id"], "name": c["name"]} for c in companies],
             "book_count": book_count,
         }

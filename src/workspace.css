@@ -275,6 +275,78 @@
 .book-more-menu button {
   justify-content: flex-start;
 }
+.book-more-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.book-more-group + .book-more-group {
+  border-top: 1px solid #e7eae2;
+  padding-top: 8px;
+}
+.book-more-group-label {
+  padding: 2px 4px 0;
+  font-size: 12px;
+  color: #6f7a6e;
+}
+.book-settings {
+  position: relative;
+}
+.book-settings > summary {
+  cursor: pointer;
+  list-style: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.book-settings[open] {
+  z-index: 3;
+}
+.book-settings .book-more-menu {
+  position: absolute;
+  right: 0;
+  top: 42px;
+  width: 240px;
+  padding: 10px;
+  box-shadow: 0 10px 35px #10281b25;
+  border: 1px solid #d7dcd1;
+  border-radius: 8px;
+  background: #fffefa;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.book-settings .book-more-menu button {
+  justify-content: flex-start;
+}
+.book-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.book-step {
+  padding: 4px 10px;
+  border: 1px solid #d7dcd1;
+  border-radius: 999px;
+  background: #fffefa;
+  color: #33402f;
+  font-size: 12px;
+  cursor: pointer;
+}
+.book-step:hover:not(:disabled) {
+  border-color: #adcf9d;
+}
+.book-step.active {
+  border-color: #2f6b3f;
+  background: #eef5ea;
+  color: #1f4a2c;
+  font-weight: 600;
+}
+.book-step:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
 .toolbar-primary {
   display: flex;
   align-items: center;
@@ -382,6 +454,9 @@
     margin: 4px 0;
   }
   .book-more-actions .book-more-menu {
+    width: 220px;
+  }
+  .book-settings .book-more-menu {
     width: 220px;
   }
   .toolbar-primary {

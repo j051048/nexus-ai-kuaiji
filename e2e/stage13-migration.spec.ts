@@ -1,12 +1,12 @@
 import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
-import { choosePersona, openAccounting, openBookTools } from './ui-navigation';
+import { choosePersona, openAccounting, openBookSettings } from './ui-navigation';
 
 async function openMigration(page: Page, bookName: string) {
   await openAccounting(page);
   await page.getByLabel('搜索企业名称').fill(bookName);
   await page.getByRole('listitem').filter({ hasText: bookName }).click();
-  await openBookTools(page);
+  await openBookSettings(page);
   await page.getByRole('button', { name: '旧账迁移', exact: true }).click();
   await expect(page.getByRole('heading', { name: '把旧账接清楚，再开始新月份。', exact: true })).toBeVisible();
 }

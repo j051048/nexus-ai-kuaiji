@@ -6,7 +6,7 @@ const periodParts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai'
 const period = `${periodParts.find(part => part.type === 'year')?.value}-${periodParts.find(part => part.type === 'month')?.value}`;
 const policyFields = ['quota_enabled', 'monthly_limit', 'ocr_reserve', 'proposal_reserve', 'chat_reserve', 'failure_threshold', 'failure_window_minutes', 'backlog_threshold', 'backlog_age_minutes', 'queue_wait_minutes', 'worker_stale_seconds'];
 
-test('真实本地费用监控：管理员设置预算，财务只读，员工与部门人员无入口', async ({ page, request }) => {
+test('真实本地费用监控：管理员设置预算，客户侧无入口且深链不渲染，员工与部门人员无入口', async ({ page, request }) => {
   await page.goto('/');
   await openManagement(page); await page.getByRole('button', { name: '费用与运行监控', exact: true }).click();
   const sessionResponse = await request.get('/api/session?persona=accountant');
@@ -46,12 +46,16 @@ test('真实本地费用监控：管理员设置预算，财务只读，员工�
     page.on('request', requestValue => {
       if (new URL(requestValue.url()).pathname.endsWith('/telemetry')) financeTelemetryRequests++;
     });
-    await openManagement(page); await page.getByRole('button', { name: '费用与运行监控', exact: true }).click();
-    await page.getByLabel('监控客户企业').selectOption({ label: companyName });
-    await expect(page.getByText('额度控制已开启', { exact: true })).toBeVisible();
-    await expect(page.getByRole('button', { name: '设置预算策略', exact: true })).toHaveCount(0);
-    await expect(page.getByRole('button', { name: '核定此项费用', exact: true })).toHaveCount(0);
-    await expect(page.getByRole('region', { name: '企业运行性能', exact: true })).toHaveCount(0);
+    // 代账包干制：费用与运行监控是事务所内部工作区，客户侧导航不再提供入口。
+    await openManagement(page);
+    await expect(page.getByRole('button', { name: '费用与运行监控', exact: true })).toHaveCount(0);
+    await page.evaluate(() => {
+      window.history.pushState({}, '', '/workspace/operations');
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    });
+    await expect(page.getByText('费用与运行监控由事务所管理', { exact: true })).toBeVisible();
+    await expect(page.getByLabel('监控客户企业')).toHaveCount(0);
+    await expect(page.getByText('额度控制已开启', { exact: true })).toHaveCount(0);
     expect(financeTelemetryRequests).toBe(0);
     await page.getByLabel('切换验证身份').selectOption('employee');
     await expect(page.getByRole('heading', { name: '我的工作台', exact: true })).toBeVisible();
@@ -133,9 +137,9 @@ test('显式合成监控响应：未知费用不置零，提醒处置和账单�
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({ path: 'artifacts/operations-synthetic-monitor-ui.png', fullPage: true });
   await page.getByLabel('切换验证身份').selectOption('finance');
-  await openManagement(page); await page.getByRole('button', { name: '费用与运行监控', exact: true }).click();
-  await expect(page.getByRole('button', { name: '核定此项费用', exact: true })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: '设置预算策略', exact: true })).toHaveCount(0);
+  await openManagement(page);
+  await expect(page.getByRole('button', { name: '费用与运行监控', exact: true })).toHaveCount(0);
+  await expect(page.getByText('合成费用示例（非供应商账单）', { exact: true })).toHaveCount(0);
   await page.getByLabel('切换验证身份').selectOption('employee');
   await expect(page.getByText('合成费用示例（非供应商账单）', { exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: '费用与运行监控', exact: true })).toHaveCount(0);

@@ -1,4 +1,4 @@
-import { openAccounting, openBookTools } from './ui-navigation';
+import { openAccounting, openBookSettings } from './ui-navigation';
 import { expect, test } from '@playwright/test';
 
 test('第七阶段真实客户配置：科目预览导入、固定模板演算与版本修订', async ({ page, request }) => {
@@ -9,7 +9,7 @@ test('第七阶段真实客户配置：科目预览导入、固定模板演算�
   await page.goto('/');
   await openAccounting(page); await page.getByLabel('搜索企业名称').fill('第七阶段配置验证');
   await page.getByRole('listitem').filter({ hasText: book.name }).click();
-  await openBookTools(page); await page.getByRole('button', { name: '科目与模板', exact: true }).click();
+  await openBookSettings(page); await page.getByRole('button', { name: '科目与模板', exact: true }).click();
   await expect(page.getByRole('heading', { name: '把企业的账，配置清楚。', exact: true })).toBeVisible();
   await page.getByRole('button', { name: '导入 / 维护科目', exact: true }).click();
   const chartDialog = page.getByRole('dialog', { name: '维护客户科目', exact: true });
@@ -95,7 +95,7 @@ test('第七阶段真实关闭期间：配置只读，科目与模板 API 不能
   const rejected = await request.post(`/api/books/${book.id}/catalog/accounts`, { headers, data: { code: '9999', name: '关闭期间不得建立' } }); expect(rejected.status()).toBe(403);
   await page.goto('/'); await openAccounting(page); await page.getByLabel('搜索企业名称').fill('第七阶段关闭期间验证');
   await page.getByRole('listitem').filter({ hasText: book.name }).click();
-  await openBookTools(page); await page.getByRole('button', { name: '科目与模板', exact: true }).click();
+  await openBookSettings(page); await page.getByRole('button', { name: '科目与模板', exact: true }).click();
   await expect(page.getByRole('heading', { name: '企业科目', exact: false })).toBeVisible();
   await expect(page.getByRole('button', { name: '导入 / 维护科目', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: '配置模板', exact: true })).toHaveCount(0);

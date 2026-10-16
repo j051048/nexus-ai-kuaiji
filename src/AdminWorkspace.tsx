@@ -187,6 +187,7 @@ export default function AdminWorkspace({
                 key={companyId}
                 session={session}
                 companyId={companyId}
+                firmManager={me.permissions.manage_firm === true}
                 onBusy={setBusy}
                 onBack={() => go('/admin')}
                 onWork={() => go(`/workspace/home?company=${encodeURIComponent(companyId)}`)}
@@ -420,12 +421,14 @@ function CompanyList({
 function CompanyDetail({
   session,
   companyId,
+  firmManager,
   onBusy,
   onBack,
   onWork,
 }: {
   session: Session;
   companyId: string;
+  firmManager: boolean;
   onBusy: (busy: boolean) => void;
   onBack: () => void;
   onWork: () => void;
@@ -608,7 +611,7 @@ function CompanyDetail({
                 ['members', '人员与权限'],
                 ['departments', '部门与审批'],
                 ['books', '账套分工'],
-                ['ai', 'AI用量与控制'],
+                ['ai', firmManager ? 'AI用量与控制' : '智能识别与隐私'],
                 ['audit', '操作记录'],
               ].map(([key, label]) => (
                 <button
@@ -659,6 +662,7 @@ function CompanyDetail({
                     session={session}
                     companyId={companyId}
                     companyName={detail.company.name}
+                    firmManager={firmManager}
                     onBusy={changedBusy}
                     onAudit={() => changeTab('audit')}
                   />

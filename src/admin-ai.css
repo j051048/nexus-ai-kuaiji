@@ -156,6 +156,18 @@
   padding-top: 23px;
   margin-top: 24px;
 }
+.admin-ai-external {
+  padding: 22px;
+  border: 1px solid #dce5d7;
+  border-radius: 8px;
+  margin-top: 24px;
+  background: #fbfcf9;
+}
+.admin-ai-external h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
 .admin-ai-alerts h3 {
   display: flex;
   align-items: center;

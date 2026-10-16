@@ -53,6 +53,7 @@ def previous_profile(service, actor):
         "book_count": summary["book_count"],
         "can_operations": manage
         or bool(OperationsService(service.db, None).companies(actor)["companies"]),
+        "can_firm_operations": role in {"owner", "admin"},
     }
 
 
