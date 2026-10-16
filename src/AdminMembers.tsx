@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Plus, ShieldCheck, Trash2, UserPlus } from 'lucide-react';
+import { ArrowLeftRight, Plus, ShieldCheck, Trash2, UserPlus } from 'lucide-react';
 import { api, errorMessage } from './api';
 import { EmptyState, Modal, Spinner } from './AppPrimitives';
 import type { Book, CompanyRole, Member, Session } from './types';
 import type { Department, SubmissionPolicy } from './business-types';
 import { adminRoleLabels, type AccountRequest, type AdminCompany } from './admin-types';
+import { MemberHandoverDialog } from './MemberHandoverDialog';
 
 export function AdminMembers({
   session,
@@ -45,6 +46,7 @@ export function AdminMembers({
   }>();
   const [eligible, setEligible] = useState<Member<string>[]>([]);
   const [requestRevision, setRequestRevision] = useState(0);
+  const [handoverFrom, setHandoverFrom] = useState<Member<string>>();
   const route =
     kind === 'firm'
       ? '/firm/members'
@@ -248,6 +250,25 @@ export function AdminMembers({
                     ))}
                   </select>
                 )}
+                {kind === 'firm' && (
+                  <button
+                    className="icon-button"
+                    aria-label={`工作交接 ${member.email || member.name}`}
+                    disabled={
+                      busy ||
+                      disabled ||
+                      member.role === 'owner' ||
+                      member.user_id === session.user_id
+                    }
+                    onClick={() => {
+                      setError('');
+                      setNotice('');
+                      setHandoverFrom(member);
+                    }}
+                  >
+                    <ArrowLeftRight size={16} />
+                  </button>
+                )}
                 <button
                   className="icon-button"
                   aria-label={`撤销 ${member.email || member.name} 的授权`}
@@ -276,6 +297,22 @@ export function AdminMembers({
           onCompleted={async () => {
             await reload();
             await onChanged?.();
+          }}
+        />
+      )}
+      {handoverFrom && (
+        <MemberHandoverDialog
+          session={session}
+          from={handoverFrom}
+          candidates={members.filter(
+            (member) =>
+              member.user_id !== handoverFrom.user_id &&
+              ['owner', 'admin', 'operator', 'reviewer'].includes(member.role),
+          )}
+          onClose={() => setHandoverFrom(undefined)}
+          onDone={() => {
+            setNotice('工作交接已完成，账套分工与待处理任务按结果更新。');
+            void reload();
           }}
         />
       )}

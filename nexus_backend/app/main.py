@@ -33,6 +33,7 @@ from .accounting.admin_service import AdminService
 from .accounting.admin_router import build_admin_router
 from .accounting.admin_identity import AdminIdentityService
 from .accounting.admin_identity_router import build_admin_identity_router
+from .accounting.handover import HandoverRequest, HandoverService
 from .accounting.models import (
     ApprovalRequest,
     BookCreate,
@@ -334,6 +335,12 @@ def create_app(
                 application.state.service_plans,
                 application.state.business,
             )
+            application.state.handover = HandoverService(
+                database,
+                application.state.service,
+                application.state.service_plans,
+                application.state.cases,
+            )
             application.state.legacy_migration = LegacyMigrationService(
                 database, application.state.attachment_store
             )
@@ -593,6 +600,9 @@ def create_app(
     def directory(request: Request):
         return request.app.state.directory
 
+    def handover(request: Request):
+        return request.app.state.handover
+
     def identity(request: Request):
         return request.state.identity
 
@@ -824,6 +834,24 @@ def create_app(
     @app.delete("/api/firm/members/{user_id}")
     def revoke_firm_member(user_id: str, current=Depends(actor), dirs=Depends(directory)):
         return dirs.revoke_firm_member(current, user_id)
+
+    @app.get("/api/firm/members/{user_id}/handover")
+    def handover_preview(
+        user_id: str,
+        to: str = Query(min_length=1, max_length=100),
+        current=Depends(actor),
+        service=Depends(handover),
+    ):
+        return service.preview(current, user_id, to)
+
+    @app.post("/api/firm/members/{user_id}/handover")
+    def handover_execute(
+        user_id: str,
+        payload: HandoverRequest,
+        current=Depends(actor),
+        service=Depends(handover),
+    ):
+        return service.execute(current, user_id, payload)
 
     @app.get("/api/books/{book_id}/members")
     def book_members(book_id: str, current=Depends(actor), dirs=Depends(directory)):

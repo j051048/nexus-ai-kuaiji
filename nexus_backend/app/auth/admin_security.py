@@ -19,6 +19,7 @@ def requires_admin_mfa(path: str, method: str) -> bool:
         # Legacy book creation can also initialize a company when no ID is supplied.
         path in {"/api/firms", "/api/companies", "/api/books"}
         or re.fullmatch(r"/api/firm/members(?:/[^/]+)?", path)
+        or re.fullmatch(r"/api/firm/members/[^/]+/handover", path)
         or re.fullmatch(r"/api/books/[^/]+/members(?:/[^/]+)?", path)
         or re.fullmatch(r"/api/books/[^/]+/ledger/managers", path)
         or re.fullmatch(r"/api/books/[^/]+/legacy-migrations/[^/]+/access(?:/[^/]+)?", path)
