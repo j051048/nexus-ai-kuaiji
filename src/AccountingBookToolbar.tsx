@@ -86,7 +86,7 @@ export function AccountingBookToolbar({
   dirty: boolean;
   activeStep?: BookPipelineStep | null;
   onImport: () => void;
-  onWorkspace: (view: WorkspaceView) => void;
+  onWorkspace: (view: WorkspaceView, step?: BookPipelineStep) => void;
 }) {
   const blocked = (action: BookAction) =>
     !book ||
@@ -118,7 +118,7 @@ export function AccountingBookToolbar({
               className={'book-step' + (activeStep === step.id ? ' active' : '')}
               disabled={!book || busy || loading || dirty}
               aria-current={activeStep === step.id ? 'step' : undefined}
-              onClick={() => onWorkspace(step.view)}
+              onClick={() => onWorkspace(step.view, step.id)}
             >
               {step.label}
             </button>

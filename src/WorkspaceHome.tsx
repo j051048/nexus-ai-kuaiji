@@ -484,30 +484,34 @@ export function WorkspaceHome({
             </h2>
           </div>
           <div className="workspace-view-tools">
-            <div className="workspace-density" role="group" aria-label="待办显示密度">
-              <button
-                className={density === 'list' ? 'active' : ''}
-                aria-label="清单视图"
-                aria-pressed={density === 'list'}
-                disabled={locked}
-                onClick={() => setDensity('list')}
-              >
-                <List size={16} />
-              </button>
-              <button
-                className={density === 'table' ? 'active' : ''}
-                aria-label="紧凑表格视图"
-                aria-pressed={density === 'table'}
-                disabled={locked}
-                onClick={() => setDensity('table')}
-              >
-                <Table2 size={16} />
-              </button>
-            </div>
-            <button className="button secondary small" disabled={locked} onClick={saveView}>
-              <Save size={14} />
-              保存视图
-            </button>
+            {!experience.simple && (
+              <>
+                <div className="workspace-density" role="group" aria-label="待办显示密度">
+                  <button
+                    className={density === 'list' ? 'active' : ''}
+                    aria-label="清单视图"
+                    aria-pressed={density === 'list'}
+                    disabled={locked}
+                    onClick={() => setDensity('list')}
+                  >
+                    <List size={16} />
+                  </button>
+                  <button
+                    className={density === 'table' ? 'active' : ''}
+                    aria-label="紧凑表格视图"
+                    aria-pressed={density === 'table'}
+                    disabled={locked}
+                    onClick={() => setDensity('table')}
+                  >
+                    <Table2 size={16} />
+                  </button>
+                </div>
+                <button className="button secondary small" disabled={locked} onClick={saveView}>
+                  <Save size={14} />
+                  保存视图
+                </button>
+              </>
+            )}
             {first && (
               <button
                 className="button primary small"
@@ -572,26 +576,28 @@ export function WorkspaceHome({
               }}
             />
           )}
-          <label className="workspace-select">
-            <span className="sr-only">排序</span>
-            <select
-              aria-label="待办排序"
-              value={sort}
-              disabled={locked}
-              onChange={(event) => {
-                setSort(event.target.value as WorkspaceSort);
-                setOffset(0);
-              }}
-            >
-              {Object.entries(workspaceSortLabels).map(([key, label]) => (
-                <option key={key} value={key}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </label>
+          {!experience.simple && (
+            <label className="workspace-select">
+              <span className="sr-only">排序</span>
+              <select
+                aria-label="待办排序"
+                value={sort}
+                disabled={locked}
+                onChange={(event) => {
+                  setSort(event.target.value as WorkspaceSort);
+                  setOffset(0);
+                }}
+              >
+                {Object.entries(workspaceSortLabels).map(([key, label]) => (
+                  <option key={key} value={key}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
         </div>
-        {!!views.length && (
+        {!experience.simple && !!views.length && (
           <div className="workspace-saved-views" aria-label="常用工作视图">
             <span>常用视图</span>
             {views.map((view, index) => (

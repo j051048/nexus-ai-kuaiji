@@ -295,7 +295,12 @@ export function BookWorkspaceShell({
                     setNotice(null);
                     onOpenImport();
                   }}
-                  onWorkspace={(view) => setRouteView(view)}
+                  onWorkspace={(view, step) => {
+                    // 第①步回到“原始流水”，第③步回到“凭证队列”，避免同名视图停留旧标签。
+                    if (step === 'intake') setListTab('sources');
+                    else if (step === 'queue') setListTab('drafts');
+                    setRouteView(view);
+                  }}
                 />
                 {detail?.book.permissions.edit && (
                   <Suspense
