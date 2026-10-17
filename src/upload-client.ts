@@ -74,3 +74,11 @@ export async function prepareUploadIntent(
   await api(`/uploads/${encodeURIComponent(intent.id)}/complete`, session, { method: 'POST' });
   return intent.id;
 }
+
+/** 附件写入的字段契约：直传凭证走 upload_id，普通文件走 file。 */
+export function attachmentForm(file: File, directUploadId: string | null): FormData {
+  const data = new FormData();
+  if (directUploadId) data.append('upload_id', directUploadId);
+  else data.append('file', file);
+  return data;
+}

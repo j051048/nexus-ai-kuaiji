@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useScopedQuery } from './useScopedQuery';
 import { ArrowLeft, ShieldCheck, TrendingDown, TrendingUp, Wallet } from 'lucide-react';
 import { api, errorMessage } from './api';
 import { EmptyState, Spinner } from './AppPrimitives';
@@ -38,28 +38,11 @@ export function MonthlyBriefing({
   bookId: string;
   onBack: () => void;
 }) {
-  const [data, setData] = useState<Briefing | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  useEffect(() => {
-    const controller = new AbortController();
-    setLoading(true);
-    setData(null);
-    setError('');
-    void api<Briefing>(`/monthly/books/${encodeURIComponent(bookId)}/briefing`, session, {
-      signal: controller.signal,
-    })
-      .then((value) => {
-        if (!controller.signal.aborted) setData(value);
-      })
-      .catch((failure) => {
-        if (!controller.signal.aborted) setError(errorMessage(failure));
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
-      });
-    return () => controller.abort();
-  }, [session, bookId]);
+  const { data, loading, error } = useScopedQuery(
+    (signal) =>
+      api<Briefing>(`/monthly/books/${encodeURIComponent(bookId)}/briefing`, session, { signal }),
+    `${session.scope_key}:${bookId}`,
+  );
 
   return (
     <main className="briefing">
