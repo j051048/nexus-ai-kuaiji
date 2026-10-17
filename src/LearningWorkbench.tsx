@@ -44,12 +44,14 @@ export function LearningWorkbench({
   onBack,
   onBusyChange,
   onChanged,
+  embedded = false,
 }: {
   session: Session;
   bookId: string;
   onBack: () => void;
   onBusyChange?: (busy: boolean) => void;
   onChanged?: () => void;
+  embedded?: boolean;
 }) {
   const [overview, setOverview] = useState<LearningOverview | null>(null),
     [accounts, setAccounts] = useState<Account[]>([]);
@@ -325,9 +327,29 @@ export function LearningWorkbench({
     setError('');
   }
 
+  const Wrapper = embedded ? 'div' : 'main';
   return (
-    <main className="learning-workbench">
-      <section className="page-heading">
+    <Wrapper className={'learning-workbench' + (embedded ? ' embedded' : '')}>
+      {embedded ? (
+        <section className="book-embedded-heading">
+          <div>
+            <h2>审核样例与规则</h2>
+            <p>从已审核凭证积累样例，经过正反例评估后才会被用于后续草稿。</p>
+          </div>
+          <button
+            className="button secondary small"
+            disabled={busy || loading || !!editor || !!command}
+            onClick={() => {
+              setEvaluation(null);
+              void load();
+            }}
+          >
+            <RefreshCw size={15} />
+            读取最新状态
+          </button>
+        </section>
+      ) : (
+        <section className="page-heading">
         <div>
           <p className="eyebrow">REVIEWED EXPERIENCE</p>
           <h1>把修正，变成下一次的依据。</h1>
@@ -355,7 +377,8 @@ export function LearningWorkbench({
             读取最新状态
           </button>
         </div>
-      </section>
+        </section>
+      )}
       {error && !editor && !command && (
         <p className="inline-error" role="alert">
           <TriangleAlert size={16} />
@@ -774,7 +797,7 @@ export function LearningWorkbench({
           }}
         />
       )}
-    </main>
+    </Wrapper>
   );
 }
 

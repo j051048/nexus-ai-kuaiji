@@ -33,10 +33,12 @@ export function MonthlyBriefing({
   session,
   bookId,
   onBack,
+  embedded = false,
 }: {
   session: Session;
   bookId: string;
   onBack: () => void;
+  embedded?: boolean;
 }) {
   const { data, loading, error } = useScopedQuery(
     (signal) =>
@@ -44,13 +46,21 @@ export function MonthlyBriefing({
     `${session.scope_key}:${bookId}`,
   );
 
+  const Wrapper = embedded ? 'div' : 'main';
   return (
-    <main className="briefing">
-      <div className="briefing-actions">
+    <Wrapper className={'briefing' + (embedded ? ' embedded' : '')}>
+      <div className={embedded ? 'book-embedded-heading' : 'briefing-actions'}>
+        {embedded ? (
+          <div>
+            <h2>月度财税简报</h2>
+            <p>已锁期账套的一页纸经营概览，可打印或导出 PDF。</p>
+          </div>
+        ) : (
         <button className="text-button" onClick={onBack}>
           <ArrowLeft size={14} />
           返回账套
         </button>
+        )}
         <button
           type="button"
           className="button secondary small"
@@ -165,6 +175,6 @@ export function MonthlyBriefing({
           </footer>
         </article>
       ) : null}
-    </main>
+    </Wrapper>
   );
 }

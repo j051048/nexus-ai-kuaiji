@@ -121,6 +121,7 @@ export function LegacyMigrationWorkspace({
   onBusyChange,
   onChanged,
   onOpenDraft,
+  embedded = false,
 }: {
   session: Session;
   bookId: string;
@@ -129,6 +130,7 @@ export function LegacyMigrationWorkspace({
   onBusyChange?: (busy: boolean) => void;
   onChanged?: () => void;
   onOpenDraft?: (bookId: string, draftId: string) => void;
+  embedded?: boolean;
 }) {
   const base = `/books/${encoded(bookId)}/legacy-migrations`;
   const [list, setList] = useState<MigrationList | null>(null);
@@ -954,9 +956,19 @@ export function LegacyMigrationWorkspace({
     !frozen &&
     detail.target.period_status !== 'closed';
 
+  const Wrapper = embedded ? 'div' : 'main';
   return (
-    <main className="legacy-migration-workspace">
-      <header className="legacy-migration-heading">
+    <Wrapper className={'legacy-migration-workspace' + (embedded ? ' embedded' : '')}>
+      {embedded ? (
+        <section className="book-embedded-heading">
+          <div>
+            <h2>旧账迁移与接管</h2>
+            <p>原始资料、历史凭证和接管依据独立留存，只处理需要会计判断的差异。</p>
+          </div>
+          <span className="legacy-migration-mode">文件接入</span>
+        </section>
+      ) : (
+        <header className="legacy-migration-heading">
         <div>
           <p className="eyebrow">旧账迁移 · 企业接管</p>
           <h1>把旧账接清楚，再开始新月份。</h1>
@@ -966,7 +978,8 @@ export function LegacyMigrationWorkspace({
           <ArrowLeft size={16} />
           返回账套
         </button>
-      </header>
+        </header>
+      )}
       <section className="legacy-migration-boundary" aria-label="迁移范围">
         <ShieldCheck size={22} />
         <div>
@@ -2520,7 +2533,7 @@ export function LegacyMigrationWorkspace({
           }}
         />
       )}
-    </main>
+    </Wrapper>
   );
 }
 

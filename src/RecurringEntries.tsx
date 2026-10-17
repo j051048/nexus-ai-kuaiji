@@ -25,6 +25,7 @@ type Props = {
   onBusyChange?: (busy: boolean) => void;
   onDirtyChange?: (dirty: boolean) => void;
   onChanged?: () => void;
+  embedded?: boolean;
 };
 export function RecurringEntries(props: Props) {
   return <RecurringContent key={props.session.scope_key + ':' + props.bookId} {...props} />;
@@ -37,6 +38,7 @@ function RecurringContent({
   onBusyChange,
   onDirtyChange,
   onChanged,
+  embedded = false,
 }: Props) {
   const { data, loading, error, revoked, load } = useMonthlyData<MonthlyOverview>(
     session,
@@ -107,9 +109,22 @@ function RecurringContent({
     );
     setOpen(true);
   }
+  const Wrapper = embedded ? 'div' : 'main';
   return (
-    <main className="monthly-workbench">
-      <section className="page-heading">
+    <Wrapper className={'monthly-workbench' + (embedded ? ' embedded' : '')}>
+      {embedded ? (
+        <section className="book-embedded-heading">
+          <div>
+            <h2>固定事项草稿</h2>
+            <p>复用明确科目、金额、期间与原件；独立审批后每月生成一次未审草稿。</p>
+          </div>
+          <button className="button secondary small" disabled={locked} onClick={() => void load()}>
+            <RefreshCw size={15} />
+            刷新计划
+          </button>
+        </section>
+      ) : (
+        <section className="page-heading">
         <div>
           <p className="eyebrow">RECURRING / REVIEWED TEMPLATES</p>
           <h1>重复事项，复用明确的处理方案。</h1>
@@ -126,7 +141,8 @@ function RecurringContent({
             刷新计划
           </button>
         </div>
-      </section>
+        </section>
+      )}
       {(error || command.error) && (
         <p className="inline-error" role="alert">
           {error || command.error}
@@ -467,6 +483,6 @@ function RecurringContent({
           </p>
         </>
       ) : null}
-    </main>
+    </Wrapper>
   );
 }

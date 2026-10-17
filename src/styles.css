@@ -687,6 +687,17 @@ h1 {
   container-type: inline-size;
   min-width: 0;
 }
+.settlement-workbench.embedded,
+.briefing.embedded,
+.integration-workbench.embedded,
+.catalog-workbench.embedded,
+.learning-workbench.embedded,
+.ledger-workspace.embedded,
+.legacy-migration-workspace.embedded {
+  max-width: none;
+  margin: 0;
+  padding: 0 18px 18px;
+}
 .book-embedded-heading {
   display: flex;
   justify-content: space-between;

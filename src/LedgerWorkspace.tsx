@@ -15,12 +15,14 @@ export function LedgerWorkspace({
   onBack,
   onBusyChange,
   onChanged,
+  embedded = false,
 }: {
   session: Session;
   bookId: string;
   onBack: () => void;
   onBusyChange?: (busy: boolean) => void;
   onChanged?: () => void;
+  embedded?: boolean;
 }) {
   const [data, setData] = useState<LedgerOverview | null>(null),
     [busy, setBusy] = useState(false),
@@ -117,9 +119,26 @@ export function LedgerWorkspace({
   }
   const choose = (value: string[], id: string, checked: boolean) =>
     checked ? [...value, id] : value.filter((item) => item !== id);
+  const Wrapper = embedded ? 'div' : 'main';
   return (
-    <main className="ledger-workspace">
-      <section className="page-heading">
+    <Wrapper className={'ledger-workspace' + (embedded ? ' embedded' : '')}>
+      {embedded ? (
+        <section className="book-embedded-heading">
+          <div>
+            <h2>长期账套与主数据</h2>
+            <p>用稳定身份连接跨月凭证、往来方、项目、银行账户与权限。</p>
+          </div>
+          <button
+            className="button secondary small"
+            disabled={busy}
+            onClick={() => void run(async () => '已读取最新权限与配置。')}
+          >
+            <RefreshCw size={15} />
+            刷新
+          </button>
+        </section>
+      ) : (
+        <section className="page-heading">
         <div>
           <p className="eyebrow">CONTINUITY OF THE BOOKS</p>
           <h1>一家企业，一份持续的账务档案。</h1>
@@ -140,7 +159,8 @@ export function LedgerWorkspace({
             刷新
           </button>
         </div>
-      </section>
+        </section>
+      )}
       {error && (
         <p className="inline-error" role="alert">
           {error}
@@ -601,6 +621,6 @@ export function LedgerWorkspace({
           )}
         </>
       )}
-    </main>
+    </Wrapper>
   );
 }

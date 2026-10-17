@@ -66,11 +66,13 @@ export function IntegrationWorkbench({
   bookId,
   onBack,
   onBusyChange,
+  embedded = false,
 }: {
   session: Session;
   bookId: string;
   onBack: () => void;
   onBusyChange?: (busy: boolean) => void;
+  embedded?: boolean;
 }) {
   const base = `/books/${encodeURIComponent(bookId)}/integrations/tplus`;
   const [data, setData] = useState<Overview | null>(null),
@@ -239,9 +241,22 @@ export function IntegrationWorkbench({
       }
     });
   }
+  const Wrapper = embedded ? 'div' : 'main';
   return (
-    <main className="integration-workbench">
-      <header className="integration-heading">
+    <Wrapper className={'integration-workbench' + (embedded ? ' embedded' : '')}>
+      {embedded ? (
+        <section className="book-embedded-heading">
+          <div>
+            <h2>财务软件接入</h2>
+            <p>核验账套、科目和辅助映射，保留客户导出资料与已审核凭证交付包。</p>
+          </div>
+          <span className="integration-offline">
+            <Link2 size={15} />
+            文件模式
+          </span>
+        </section>
+      ) : (
+        <header className="integration-heading">
         <button className="button secondary small" disabled={busy} onClick={onBack}>
           <ArrowLeft size={15} />
           返回账套
@@ -253,7 +268,8 @@ export function IntegrationWorkbench({
           <Link2 size={15} />
           文件模式 · 真实连接未启用
         </span>
-      </header>
+        </header>
+      )}
       {error && (
         <div role="alert" className="inline-error">
           {error}
@@ -583,6 +599,6 @@ export function IntegrationWorkbench({
           )}
         </>
       )}
-    </main>
+    </Wrapper>
   );
 }

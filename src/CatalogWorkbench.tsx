@@ -39,12 +39,14 @@ export function CatalogWorkbench({
   onBack,
   onBusyChange,
   onChanged,
+  embedded = false,
 }: {
   session: Session;
   bookId: string;
   onBack: () => void;
   onBusyChange?: (value: boolean) => void;
   onChanged?: () => void;
+  embedded?: boolean;
 }) {
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [loading, setLoading] = useState(false);
@@ -199,9 +201,26 @@ export function CatalogWorkbench({
       if (current()) setBusy(false);
     }
   }
+  const Wrapper = embedded ? 'div' : 'main';
   return (
-    <main className="catalog-workbench">
-      <section className="page-heading">
+    <Wrapper className={'catalog-workbench' + (embedded ? ' embedded' : '')}>
+      {embedded ? (
+        <section className="book-embedded-heading">
+          <div>
+            <h2>科目与记账模板</h2>
+            <p>客户科目、辅助核算与记账模板在这里维护，所有变更保留版本。</p>
+          </div>
+          <button
+            className="button secondary small"
+            disabled={busy || loading || !bookId}
+            onClick={() => void load()}
+          >
+            <RefreshCw size={15} />
+            读取最新配置
+          </button>
+        </section>
+      ) : (
+        <section className="page-heading">
         <div>
           <p className="eyebrow">A CHART THAT FITS THE BUSINESS</p>
           <h1>把企业的账，配置清楚。</h1>
@@ -222,7 +241,8 @@ export function CatalogWorkbench({
             读取最新配置
           </button>
         </div>
-      </section>
+        </section>
+      )}
       <section className="catalog-scope">
         <label>
           <span>客户账套</span>
@@ -421,7 +441,7 @@ export function CatalogWorkbench({
           onSave={() => perform(true)}
         />
       )}
-    </main>
+    </Wrapper>
   );
 }
 

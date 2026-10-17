@@ -1957,37 +1957,6 @@ export default function App() {
                 if (routeUsesBook) void initialize(undefined, id);
               }}
             />
-          ) : routeView === 'recurring' && bookId ? (
-            <RecurringEntries
-              key={session.scope_key + ':' + bookId}
-              session={session}
-              bookId={bookId}
-              onBack={() => setRouteView('accounting')}
-              onBusyChange={changeBusinessBusy}
-              onDirtyChange={changeMonthlyDirty}
-              onOpenDraft={(id) => openDraftInBook(bookId, id)}
-              onChanged={() => {
-                void refresh(bookId);
-                setWorkspaceRevision((n) => n + 1);
-              }}
-            />
-          ) : routeView === 'migration' && bookId ? (
-            <LegacyMigrationWorkspace
-              key={session.scope_key + ':' + bookId}
-              session={session}
-              bookId={bookId}
-              initialProjectId={migrationTarget || undefined}
-              onBack={() => {
-                setMigrationTarget('');
-                setRouteView('accounting');
-              }}
-              onBusyChange={changeBusinessBusy}
-              onOpenDraft={openDraftInBook}
-              onChanged={() => {
-                void refresh(bookId);
-                setWorkspaceRevision((n) => n + 1);
-              }}
-            />
           ) : routeView === 'quality' && bookId ? (
             <QualityWorkbench
               key={session.scope_key + ':' + bookId}
@@ -1996,18 +1965,6 @@ export default function App() {
               onBack={() => setRouteView('accounting')}
               onBusyChange={changeBusinessBusy}
               onOpenDraft={openDraftInBook}
-            />
-          ) : routeView === 'settlement' && bookId ? (
-            <SettlementWorkbench
-              key={session.scope_key + ':' + bookId}
-              session={session}
-              bookId={bookId}
-              onBack={() => setRouteView('accounting')}
-              onBusyChange={changeBusinessBusy}
-              onChanged={() => {
-                void refresh(bookId);
-              }}
-              onOpenDraft={(id) => openDraftInBook(bookId, id)}
             />
           ) : routeView === 'revision' ? (
             <RevisionWorkbench
@@ -2026,33 +1983,6 @@ export default function App() {
               bookId={bookId}
               onBack={() => setRouteView('accounting')}
               onBusyChange={changeBusinessBusy}
-            />
-          ) : routeView === 'integration' && bookId ? (
-            <IntegrationWorkbench
-              key={session.scope_key + ':' + bookId}
-              session={session}
-              bookId={bookId}
-              onBack={() => setRouteView('accounting')}
-              onBusyChange={changeBusinessBusy}
-            />
-          ) : routeView === 'ledger' && bookId ? (
-            <LedgerWorkspace
-              key={session.scope_key + ':' + bookId}
-              session={session}
-              bookId={bookId}
-              onBack={() => setRouteView('accounting')}
-              onBusyChange={changeBusinessBusy}
-              onChanged={() => {
-                void refresh(bookId);
-                void initialize();
-              }}
-            />
-          ) : routeView === 'briefing' && bookId ? (
-            <MonthlyBriefing
-              key={session.scope_key + ':' + bookId}
-              session={session}
-              bookId={bookId}
-              onBack={() => setRouteView('accounting')}
             />
           ) : routeView === 'review' ? (
             <ReviewWorkbench
@@ -2084,24 +2014,6 @@ export default function App() {
               onChanged={() => {
                 if (bookId) void refresh(bookId);
               }}
-            />
-          ) : routeView === 'learning' && bookId ? (
-            <LearningWorkbench
-              key={session.scope_key + ':' + bookId}
-              session={session}
-              bookId={bookId}
-              onBack={() => setRouteView('accounting')}
-              onBusyChange={changeBusinessBusy}
-              onChanged={() => refresh(bookId)}
-            />
-          ) : routeView === 'catalog' && bookId ? (
-            <CatalogWorkbench
-              key={session.scope_key + ':' + bookId}
-              session={session}
-              bookId={bookId}
-              onBack={() => setRouteView('accounting')}
-              onBusyChange={changeBusinessBusy}
-              onChanged={() => refresh(bookId)}
             />
           ) : routeView === 'operations' && canFirmOperations ? (
             <OperationsWorkbench
@@ -2234,6 +2146,102 @@ export default function App() {
                     embedded
                     onBack={() => setRouteView('accounting')}
                     onBusyChange={changeBusinessBusy}
+                  />
+                ) : routeView === 'recurring' && bookId ? (
+                  <RecurringEntries
+                    key={session.scope_key + ':' + bookId}
+                    session={session}
+                    bookId={bookId}
+                    embedded
+                    onBack={() => setRouteView('accounting')}
+                    onBusyChange={changeBusinessBusy}
+                    onDirtyChange={changeMonthlyDirty}
+                    onOpenDraft={(id) => openDraftInBook(bookId, id)}
+                    onChanged={() => {
+                      void refresh(bookId);
+                      setWorkspaceRevision((n) => n + 1);
+                    }}
+                  />
+                ) : routeView === 'settlement' && bookId ? (
+                  <SettlementWorkbench
+                    key={session.scope_key + ':' + bookId}
+                    session={session}
+                    bookId={bookId}
+                    embedded
+                    onBack={() => setRouteView('accounting')}
+                    onBusyChange={changeBusinessBusy}
+                    onChanged={() => {
+                      void refresh(bookId);
+                    }}
+                    onOpenDraft={(id) => openDraftInBook(bookId, id)}
+                  />
+                ) : routeView === 'briefing' && bookId ? (
+                  <MonthlyBriefing
+                    key={session.scope_key + ':' + bookId}
+                    session={session}
+                    bookId={bookId}
+                    embedded
+                    onBack={() => setRouteView('accounting')}
+                  />
+                ) : routeView === 'integration' && bookId ? (
+                  <IntegrationWorkbench
+                    key={session.scope_key + ':' + bookId}
+                    session={session}
+                    bookId={bookId}
+                    embedded
+                    onBack={() => setRouteView('accounting')}
+                    onBusyChange={changeBusinessBusy}
+                  />
+                ) : routeView === 'catalog' && bookId ? (
+                  <CatalogWorkbench
+                    key={session.scope_key + ':' + bookId}
+                    session={session}
+                    bookId={bookId}
+                    embedded
+                    onBack={() => setRouteView('accounting')}
+                    onBusyChange={changeBusinessBusy}
+                    onChanged={() => refresh(bookId)}
+                  />
+                ) : routeView === 'learning' && bookId ? (
+                  <LearningWorkbench
+                    key={session.scope_key + ':' + bookId}
+                    session={session}
+                    bookId={bookId}
+                    embedded
+                    onBack={() => setRouteView('accounting')}
+                    onBusyChange={changeBusinessBusy}
+                    onChanged={() => refresh(bookId)}
+                  />
+                ) : routeView === 'ledger' && bookId ? (
+                  <LedgerWorkspace
+                    key={session.scope_key + ':' + bookId}
+                    session={session}
+                    bookId={bookId}
+                    embedded
+                    onBack={() => setRouteView('accounting')}
+                    onBusyChange={changeBusinessBusy}
+                    onChanged={() => {
+                      void refresh(bookId);
+                      setWorkspaceRevision((n) => n + 1);
+                    }}
+                  />
+                ) : routeView === 'migration' && bookId ? (
+                  <LegacyMigrationWorkspace
+                    key={session.scope_key + ':' + bookId}
+                    session={session}
+                    bookId={bookId}
+                    initialProjectId={migrationTarget || undefined}
+                    embedded
+                    onBack={() => {
+                      setMigrationTarget('');
+                      setRouteView('accounting');
+                    }}
+                    onBusyChange={changeBusinessBusy}
+                    onOpenDraft={openDraftInBook}
+                    onChanged={() => {
+                      void refresh(bookId);
+                      setWorkspaceRevision((n) => n + 1);
+                    }}
                   />
                 ) : null
               }

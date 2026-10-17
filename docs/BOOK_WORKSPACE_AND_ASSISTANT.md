@@ -29,8 +29,9 @@
 
 ## 当前边界
 
-参考余额、月结和交付已迁入常驻壳。月度简报、固定事项、财务软件接入、科目模板、长期账套及
-旧账迁移仍有独立工作台，后续可按同一 `embedded` 契约逐页迁入，避免一次性重构全部路由。
+参考余额、月结、交付、固定事项、收付款核销、月度简报、财务软件接入、科目模板、审核样例、
+长期账套及旧账迁移均已通过同一 `embedded` 契约迁入常驻壳。账套级子视图切换时，左侧账套
+列表、当前账套标题与五步流水线不再卸载；各子视图仍保留独立地址，刷新和深链可直接恢复。
 
 关键浏览器回归：`stage9-delivery.spec.ts`、`stage9-reconciliation.spec.ts`、
 `stage10-closing.spec.ts`、`stage17-monthly.spec.ts`、`stage15-global-assistant.spec.ts`。

@@ -42,6 +42,7 @@ export function SettlementWorkbench({
   onBusyChange,
   onChanged,
   onOpenDraft,
+  embedded = false,
 }: {
   session: Session;
   bookId: string;
@@ -49,6 +50,7 @@ export function SettlementWorkbench({
   onBusyChange?: (busy: boolean) => void;
   onChanged?: () => void;
   onOpenDraft?: (draftId: string) => void;
+  embedded?: boolean;
 }) {
   const [overview, setOverview] = useState<SettlementOverview | null>(null),
     [offset, setOffset] = useState(0),
@@ -287,9 +289,26 @@ export function SettlementWorkbench({
   }
   const modalOpen = !!preview || !!clearance || !!reversal,
     blocked = busy || loading || modalOpen || overview?.book.period_status !== 'open';
+  const Wrapper = embedded ? 'div' : 'main';
   return (
-    <main className="settlement-workbench">
-      <section className="page-heading">
+    <Wrapper className={'settlement-workbench' + (embedded ? ' embedded' : '')}>
+      {embedded ? (
+        <section className="book-embedded-heading">
+          <div>
+            <h2>收付款核销</h2>
+            <p>同一开放期间按应收/应付完整分配银行收付，保留原件和撤销回执。</p>
+          </div>
+          <button
+            className="button secondary small"
+            disabled={busy || modalOpen || loading}
+            onClick={() => void load()}
+          >
+            <RefreshCw size={15} />
+            读取最新余额
+          </button>
+        </section>
+      ) : (
+        <section className="page-heading">
         <div>
           <p className="eyebrow">RECEIVABLE / PAYABLE CLEARANCE</p>
           <h1>一笔付款，可以对应多项业务。</h1>
@@ -311,7 +330,8 @@ export function SettlementWorkbench({
             读取最新余额
           </button>
         </div>
-      </section>
+        </section>
+      )}
       {error && (
         <p className="inline-error" role="alert">
           <TriangleAlert size={16} />
@@ -695,6 +715,6 @@ export function SettlementWorkbench({
           </section>
         </div>
       )}
-    </main>
+    </Wrapper>
   );
 }
