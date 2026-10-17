@@ -10,7 +10,8 @@ export type DirectUploadPurpose =
   | 'event_attachment'
   | 'case_attachment'
   | 'material_attachment'
-  | 'invoice_import';
+  | 'invoice_import'
+  | 'bank_import';
 
 async function sha256Hex(data: ArrayBuffer): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', data);

@@ -9,7 +9,7 @@ from ..accounting.domain import AccountingError
 from ..accounting.models import ImportRequest, SourceRow, cents_to_money, money_to_cents
 from ..accounting.service import fingerprint, now
 from .models import MappingSettings, PreviewRequest
-from .parser import convert_row
+from .parser import convert_row, parse_file, validate_import_original
 from .storage import ImportOriginalStore
 
 
@@ -18,11 +18,12 @@ def dumped(value):
 
 
 class ImportWizardService:
-    def __init__(self, db, storage, ledger=None):
+    def __init__(self, db, storage, ledger=None, uploads=None):
         self.db, self.ledger = db, ledger
         self.access = AccessControl()
         self.storage = storage.clone(ImportOriginalStore)
         self.bank = BankImportService(db)
+        self.uploads = uploads
 
     def _book(self, conn, actor, book_id, edit=False):
         book = self.access.book(conn, actor, book_id, "edit" if edit else "read")
@@ -40,51 +41,78 @@ class ImportWizardService:
             company_id = self._book(conn, actor, book_id, True)["company_id"]
         metadata, table = self.storage.put(filename, data)
         try:
-            with self.db.transaction(
-                write=True, actor=actor, company_id=company_id, write_scope="company"
-            ) as conn:
-                book = self._book(conn, actor, book_id, True)
-                threshold = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
-                count = conn.execute(
-                    "SELECT COUNT(*) FROM bank_import_files WHERE book_id=? AND created_by=? AND created_at>?",
-                    (book_id, actor.user_id, threshold),
-                ).fetchone()[0]
-                if count >= 20:
-                    raise AccountingError("此账套每人每小时最多上传20个导入文件，请稍后重试", 429)
-                conn.execute(
-                    "INSERT INTO bank_import_files(id,book_id,firm_id,company_id,storage_key,filename,media_type,sha256,size_bytes,table_json,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
-                    (
-                        metadata["id"],
-                        book_id,
-                        actor.firm_id,
-                        book["company_id"],
-                        metadata["storage_key"],
-                        metadata["filename"],
-                        metadata["media_type"],
-                        metadata["sha256"],
-                        metadata["size_bytes"],
-                        dumped(table),
-                        actor.user_id,
-                        now(),
-                    ),
-                )
-                result = {
-                    "file_id": metadata["id"],
-                    "filename": metadata["filename"],
-                    "sha256": metadata["sha256"],
-                    "headers": table["headers"],
-                    "sample_rows": table["rows"][:5],
-                    "row_count": len(table["rows"]),
-                    "encoding": table["encoding"],
-                    "suggested_columns": table["suggested_columns"],
-                    "ambiguous_fields": table["ambiguous_fields"],
-                    "sheet_name": table.get("sheet_name"),
-                }
-                self.storage.retain(metadata)
-                return result
+            return self._record(actor, book_id, company_id, metadata, table)
         except Exception:
             self.storage.discard(metadata)
             raise
+
+    def upload_stored(self, actor, book_id, stored):
+        """两段式直传：校验已存原始件后登记，不再复制对象。"""
+        with self.db.transaction(actor=actor) as conn:
+            company_id = self._book(conn, actor, book_id, True)["company_id"]
+        data = self.storage.read(stored)
+        filename, media_type = validate_import_original(
+            stored["filename"], stored["media_type"], data
+        )
+        metadata = {**stored, "filename": filename, "media_type": media_type}
+        table = parse_file(filename, data)
+        return self._record(actor, book_id, company_id, metadata, table)
+
+    def upload_intent(self, actor, book_id, upload_id):
+        if self.uploads is None:
+            raise AccountingError("大文件直传尚未配置", 409)
+        stored = self.uploads.take(actor, upload_id, "bank_import")
+        try:
+            result = self.upload_stored(actor, book_id, stored)
+            self.uploads.confirm(actor, upload_id, "bank_import")
+            return result
+        except AccountingError:
+            self.uploads.release(actor, upload_id)
+            raise
+
+    def _record(self, actor, book_id, company_id, metadata, table):
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
+            book = self._book(conn, actor, book_id, True)
+            threshold = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+            count = conn.execute(
+                "SELECT COUNT(*) FROM bank_import_files WHERE book_id=? AND created_by=? AND created_at>?",
+                (book_id, actor.user_id, threshold),
+            ).fetchone()[0]
+            if count >= 20:
+                raise AccountingError("此账套每人每小时最多上传20个导入文件，请稍后重试", 429)
+            conn.execute(
+                "INSERT INTO bank_import_files(id,book_id,firm_id,company_id,storage_key,filename,media_type,sha256,size_bytes,table_json,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+                (
+                    metadata["id"],
+                    book_id,
+                    actor.firm_id,
+                    book["company_id"],
+                    metadata["storage_key"],
+                    metadata["filename"],
+                    metadata["media_type"],
+                    metadata["sha256"],
+                    metadata["size_bytes"],
+                    dumped(table),
+                    actor.user_id,
+                    now(),
+                ),
+            )
+            result = {
+                "file_id": metadata["id"],
+                "filename": metadata["filename"],
+                "sha256": metadata["sha256"],
+                "headers": table["headers"],
+                "sample_rows": table["rows"][:5],
+                "row_count": len(table["rows"]),
+                "encoding": table["encoding"],
+                "suggested_columns": table["suggested_columns"],
+                "ambiguous_fields": table["ambiguous_fields"],
+                "sheet_name": table.get("sheet_name"),
+            }
+            self.storage.retain(metadata)
+            return result
 
     def _file(self, conn, book_id, file_id):
         item = conn.execute(

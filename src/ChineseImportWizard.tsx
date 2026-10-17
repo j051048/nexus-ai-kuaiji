@@ -29,6 +29,7 @@ import {
   mappingFields,
 } from './import-wizard-helpers';
 import { uploadLimitLabel, uploadSizeError } from './transport-limits';
+import { attachmentForm, prepareDirectUpload } from './upload-client';
 import './import-wizard.css';
 
 export default function ChineseImportWizard({
@@ -146,10 +147,10 @@ export default function ChineseImportWizard({
     setConfirmed(false);
     setPaste('');
     await perform(async () => {
-      const invalidSize = uploadSizeError(selected.size, 2 * 1024 * 1024);
+      const invalidSize = uploadSizeError(selected.size, 10 * 1024 * 1024);
       if (invalidSize) throw new Error(invalidSize);
-      const body = new FormData();
-      body.append('file', selected);
+      const direct = await prepareDirectUpload(session, selected, 'bank_import');
+      const body = attachmentForm(selected, direct);
       const value = await api<ImportFileInfo>(`${endpoint}/files`, session, {
         method: 'POST',
         body,
@@ -281,8 +282,8 @@ export default function ChineseImportWizard({
                 <div>
                   <h3>把银行文件交给系统</h3>
                   <p>
-                    支持UTF-8 / GBK CSV和单工作表Excel，最大 {uploadLimitLabel(2 * 1024 * 1024)}
-                    、1,000行。
+                    支持UTF-8 / GBK CSV和单工作表Excel，最大 {uploadLimitLabel(10 * 1024 * 1024)}
+                    、5,000行；超过 2 MB 的文件会自动改用大文件直传。
                   </p>
                 </div>
                 <button

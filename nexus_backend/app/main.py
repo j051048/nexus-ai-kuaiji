@@ -317,7 +317,10 @@ def create_app(
                 intelligence=application.state.intelligence,
             )
             application.state.import_wizard = ImportWizardService(
-                database, application.state.attachment_store, ledger=application.state.service
+                database,
+                application.state.attachment_store,
+                ledger=application.state.service,
+                uploads=application.state.uploads,
             )
             application.state.workspace = WorkspaceService(
                 database,

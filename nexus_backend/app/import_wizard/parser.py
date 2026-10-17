@@ -13,11 +13,21 @@ from ..accounting.domain import AccountingError
 from ..accounting.models import SourceRow, money_to_cents, cents_to_money
 from .models import MappingSettings
 
-MAX_BYTES = 2 * 1024 * 1024
-MAX_ROWS = 1000
+# 月度流水在部分银行导出中可达数 MB、数千行；与全局单文件上限（10 MB）对齐。
+MAX_BYTES = 10 * 1024 * 1024
+MAX_ROWS = 5000
 MAX_COLUMNS = 64
 MAX_CELL = 2000
 MAX_EXPANDED = 12 * 1024 * 1024
+XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+CSV_CLAIMS = {
+    "",
+    "text/csv",
+    "text/plain",
+    "application/csv",
+    "application/vnd.ms-excel",
+    "application/octet-stream",
+}
 NS = {"s": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
 ALIASES = {
     "external_id": ("external_id", "交易编号", "流水号", "交易流水号", "交易序号", "流水编号"),
@@ -42,7 +52,7 @@ def _table(rows, encoding, **extra):
     if not rows or len(rows) < 2:
         raise AccountingError("文件须包含一行表头和至少一条流水", 422)
     if len(rows) > MAX_ROWS + 1 or any(len(row) > MAX_COLUMNS for row in rows):
-        raise AccountingError("每次最多1,000条流水、64列，请拆分文件", 413)
+        raise AccountingError("每次最多5,000条流水、64列，请拆分文件", 413)
     if any(len(cell) > MAX_CELL for row in rows for cell in row):
         raise AccountingError("单元格内容超过2,000字，请检查文件", 413)
     headers = [x.strip() for x in rows[0]]
@@ -88,7 +98,7 @@ def parse_csv(data):
             rows.append(row)
             positions.append(first_line)
             if len(rows) > MAX_ROWS + 1 or len(row) > MAX_COLUMNS:
-                raise AccountingError("每次最多1,000条流水、64列，请拆分文件", 413)
+                raise AccountingError("每次最多5,000条流水、64列，请拆分文件", 413)
         return _table(rows, encoding, row_positions=positions[1:])
     except csv.Error:
         raise AccountingError("CSV引号或分隔符无效，请检查文件", 422) from None
@@ -206,7 +216,7 @@ def parse_xlsx(data):
                         raise AccountingError("Excel行号无效", 422)
                     positions.append(int(row_index))
                 if len(rows) > MAX_ROWS + 1:
-                    raise AccountingError("每次最多1,000条流水，请拆分文件", 413)
+                    raise AccountingError("每次最多5,000条流水，请拆分文件", 413)
             if rows:
                 width = len(rows[0])
                 rows = [row + [""] * (width - len(row)) for row in rows]
@@ -232,12 +242,30 @@ def parse_xlsx(data):
 
 def parse_file(filename, data):
     if not data or len(data) > MAX_BYTES:
-        raise AccountingError("文件不能为空，最大2MB", 413)
+        raise AccountingError("文件不能为空，单个文件最多10MB", 413)
     if filename.lower().endswith(".csv"):
         return parse_csv(data)
     if filename.lower().endswith(".xlsx") and data[:2] == b"PK":
         return parse_xlsx(data)
     raise AccountingError("仅支持CSV与.xlsx；旧版.xls请另存为.xlsx或CSV", 422)
+
+
+def validate_import_original(filename, claimed_type, data):
+    """两步式上传校验器：返回（归一化文件名, 探测到的媒体类型）。"""
+    name = re.sub(
+        r"[\x00-\x1f\x7f]", "", (filename or "").replace("\\", "/").split("/")[-1]
+    ).strip()
+    if not 1 <= len(name) <= 150:
+        raise AccountingError("文件名称须为1–150字", 422)
+    parse_file(name, data)
+    claimed = (claimed_type or "").split(";", 1)[0].strip().lower()
+    if name.lower().endswith(".csv"):
+        if claimed and claimed not in CSV_CLAIMS:
+            raise AccountingError("CSV 声明格式与实际内容不符", 422)
+        return name, "text/csv"
+    if claimed and claimed not in {XLSX, "application/octet-stream"}:
+        raise AccountingError("XLSX 声明格式与实际内容不符", 422)
+    return name, XLSX
 
 
 def convert_date(value, mode):

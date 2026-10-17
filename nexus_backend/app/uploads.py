@@ -25,6 +25,7 @@ Purpose = Literal[
     "event_attachment",
     "case_attachment",
     "material_attachment",
+    "bank_import",
     "invoice_import",
 ]
 INTENT_TTL_SECONDS = 900
@@ -33,6 +34,7 @@ PURPOSES: tuple[str, ...] = (
     "event_attachment",
     "case_attachment",
     "material_attachment",
+    "bank_import",
     "invoice_import",
 )
 Filename = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=150)]
@@ -79,6 +81,10 @@ class UploadIntentService:
             from .invoices.parser import validate_invoice_export
 
             return validate_invoice_export
+        if purpose == "bank_import":
+            from .import_wizard.parser import validate_import_original
+
+            return validate_import_original
         return validate_attachment
 
     def create(self, actor, request: UploadCreate):

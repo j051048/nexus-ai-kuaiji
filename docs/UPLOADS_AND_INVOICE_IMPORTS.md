@@ -4,7 +4,7 @@
 
 网关保持 3 MiB/单文件、4 MiB/请求 的硬限制不变；超过阈值的前端会把附件改走两段式：
 
-1. `POST /api/uploads`（用途绑定：intake/event/case/material/invoice_import）返回一次性凭证
+1. `POST /api/uploads`（用途绑定：intake/event/case/material/bank_import/invoice_import）返回一次性凭证
    （15 分钟有效，声明大小与 SHA-256）；
 2. 浏览器直传私有存储：
    - 配置了 Supabase → 使用对象存储签名 URL（完全绕开网关）；
@@ -23,6 +23,13 @@
   缓冲整包；其余接口继续严格保持 4 MiB 有界缓冲。自建部署不配 Supabase 时，
   浏览器会落到该同源流式端点，> 4 MiB 的文件同样可以上传。
 - 后端单文件上限仍为 10 MB；每事项最多 10 个附件、合计 50 MB（既有产品约束不变）。
+
+### 银行流水导入
+
+`POST /api/books/{book_id}/import-wizard/files` 同时支持传统 multipart 与 `upload_id`：
+前端在文件超过 2 MiB 时自动申请 `bank_import` 用途的一次性凭证并直传，后端校验
+（CSV/XLSX 结构、10 MB、5,000 行）后登记为导入原件，不再复制对象；用途不匹配凭证会被释放回
+`stored` 以便重试。解析上限与全局单文件限制对齐（10 MB / 5,000 行 / 64 列）。
 
 ## 2. 电子税务局发票导出表导入
 

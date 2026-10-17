@@ -59,3 +59,12 @@ def test_new_tables_carry_rls_force_and_write_gate():
             r"accounting\.company_write_table_guard",
             later,
         ), f"{table} 缺少批量写门触发器"
+
+
+def test_import_wizard_large_file_migration_covers_every_row_bound():
+    postgres = migration_files("postgres")[96]
+    sqlite = migration_files("sqlite")[73]
+    assert postgres.count("jsonb_array_length") >= 3
+    assert postgres.count("BETWEEN 1 AND 5000") == 2
+    assert "size_bytes BETWEEN 1 AND 10485760" in sqlite
+    assert "row_number BETWEEN 2 AND 10000000" in sqlite

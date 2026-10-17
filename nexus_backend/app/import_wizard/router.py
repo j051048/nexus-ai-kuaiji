@@ -1,6 +1,6 @@
 import re
 from urllib.parse import quote
-from fastapi import APIRouter, Depends, File, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse, Response
 from .models import ConfirmRequest, PasteRequest, PreviewRequest
 from .parser import MAX_BYTES
@@ -15,12 +15,20 @@ def build_import_wizard_router(actor_dependency):
     @router.post("/files", status_code=201)
     async def upload(
         book_id: str,
-        file: UploadFile = File(...),
+        request: Request,
+        file: UploadFile | None = File(default=None),
+        upload_id: str | None = Form(default=None),
         actor=Depends(actor_dependency),
         wizard=Depends(service),
     ):
         with wizard.db.transaction(actor=actor) as conn:
             wizard._book(conn, actor, book_id, True)
+        if upload_id:
+            return wizard.upload_intent(actor, book_id, upload_id)
+        if file is None:
+            from ..accounting.domain import AccountingError
+
+            raise AccountingError("请选择文件，或先完成大文件上传校验", 422)
         try:
             data = await file.read(MAX_BYTES + 1)
             return wizard.upload(actor, book_id, file.filename, data)
@@ -103,9 +111,8 @@ class ImportWizardBodyLimitMiddleware:
                 return
             chunk = message.get("body", b"")
             if len(buffer) + len(chunk) > MAX_BYTES + 128 * 1024:
-                return await JSONResponse({"detail": "导入请求过大，文件最多2MB"}, status_code=413)(
-                    scope, receive, send
-                )
+                detail = f"导入请求过大，文件最多{MAX_BYTES // (1024 * 1024)}MB"
+                return await JSONResponse({"detail": detail}, status_code=413)(scope, receive, send)
             buffer.extend(chunk)
             if not message.get("more_body", False):
                 break
