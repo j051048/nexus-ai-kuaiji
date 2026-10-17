@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 from app.accounting.domain import AccountingError
 from app.accounting.models import BookCreate, BookMemberGrant, CompanyCreate
 from app.business.storage import AttachmentStore
+from app.invoices.models import InvoiceAccrualItem, InvoiceAccrualRequest
 from app.invoices.parser import parse_invoice_export, validate_invoice_export
 from app.invoices.router import build_invoice_imports_router
 from app.invoices.service import InvoiceImportService
@@ -133,6 +134,17 @@ def add_source(c, actor, source_id, counterparty, amount_cents, direction, day="
                 "银行流水",
                 hashlib.sha256(source_id.encode()).hexdigest(),
             ),
+        )
+
+
+def add_tax_accounts(c, actor):
+    with c.db.transaction(write=True, actor=actor) as conn:
+        conn.executemany(
+            "INSERT INTO accounts(book_id,code,name,category,normal_balance) VALUES(?,?,?,?,?)",
+            [
+                (c.book["id"], "2221.01", "应交税费—应交增值税（销项税额）", "liability", "credit"),
+                (c.book["id"], "2221.02", "应交税费—应交增值税（进项税额）", "asset", "debit"),
+            ],
         )
 
 
@@ -376,6 +388,105 @@ def test_http_preview_uses_upload_id_without_consuming_it(invoices):
             "SELECT state FROM upload_intents WHERE id=?", (created["id"],)
         ).fetchone()["state"]
     assert state == "stored"
+
+
+def test_accrual_creates_balanced_ar_ap_drafts_with_source_lineage(invoices):
+    c = invoices
+    actor = c.actors["accountant"]
+    add_tax_accounts(c, actor)
+    payload = csv_bytes(
+        [
+            row("25442000000000000091", buyer="应收客户"),
+            row(
+                "25442000000000000092",
+                seller="应付供应商",
+                seller_tax="91320100SUPPLIER03",
+                buyer="客户企业",
+                buyer_tax=COMPANY_TAX,
+                amount="2000.00",
+                tax="260.00",
+                total="2260.00",
+            ),
+        ]
+    )
+    created = upload(c, actor, payload)
+    batch = c.invoices.create(actor, c.book["id"], created["id"])
+    detail = c.invoices.get_batch(actor, c.book["id"], batch["id"])
+    by_direction = {line["direction"]: line for line in detail["rows"]}
+    request = InvoiceAccrualRequest(
+        items=[
+            InvoiceAccrualItem(
+                line=by_direction["output"]["line"],
+                settlement_account="1122",
+                profit_account="6001",
+                tax_account="2221.01",
+            ),
+            InvoiceAccrualItem(
+                line=by_direction["input"]["line"],
+                settlement_account="2202",
+                profit_account="6602.99",
+                tax_account="2221.02",
+            ),
+        ],
+        reason="已开具或已认证但本期未收付款，按权责发生制挂账",
+    )
+    receipt = c.invoices.accrue(actor, c.book["id"], batch["id"], request)
+    assert receipt["created"] == 2 and receipt["replayed"] is False
+    drafts = {
+        item["line"]: c.ledger.get_draft(actor, c.book["id"], item["draft_id"])
+        for item in receipt["items"]
+    }
+    output = drafts[by_direction["output"]["line"]]
+    input_ = drafts[by_direction["input"]["line"]]
+    assert output["issues"] == [] and input_["issues"] == []
+    assert [(line["account_code"], line["debit"], line["credit"]) for line in output["lines"]] == [
+        ("1122", "1130.00", "0.00"),
+        ("6001", "0.00", "1000.00"),
+        ("2221.01", "0.00", "130.00"),
+    ]
+    assert [(line["account_code"], line["debit"], line["credit"]) for line in input_["lines"]] == [
+        ("6602.99", "2000.00", "0.00"),
+        ("2221.02", "260.00", "0.00"),
+        ("2202", "0.00", "2260.00"),
+    ]
+    refreshed = c.invoices.get_batch(actor, c.book["id"], batch["id"])
+    assert all(line["accrual"]["status"] == "draft" for line in refreshed["rows"])
+    with c.db.transaction(actor=actor) as conn:
+        audit = conn.execute(
+            "SELECT COUNT(*) AS count FROM audit_events WHERE action='invoice.accrual' "
+            "AND book_id=?",
+            (c.book["id"],),
+        ).fetchone()["count"]
+    assert audit == 2
+    replay = c.invoices.accrue(actor, c.book["id"], batch["id"], request)
+    assert replay["created"] == 0 and replay["replayed"] is True
+
+
+def test_accrual_rechecks_current_bank_candidates_before_writing(invoices):
+    c = invoices
+    actor = c.actors["accountant"]
+    add_tax_accounts(c, actor)
+    created = upload(c, actor, csv_bytes([row("25442000000000000093", buyer="后来收款客户")]))
+    batch = c.invoices.create(actor, c.book["id"], created["id"])
+    add_source(c, actor, "late-bank", "后来收款客户", 113000, "income")
+    detail = c.invoices.get_batch(actor, c.book["id"], batch["id"])
+    with pytest.raises(AccountingError, match="已匹配银行流水"):
+        c.invoices.accrue(
+            actor,
+            c.book["id"],
+            batch["id"],
+            InvoiceAccrualRequest(
+                items=[
+                    InvoiceAccrualItem(
+                        line=detail["rows"][0]["line"],
+                        settlement_account="1122",
+                        profit_account="6001",
+                        tax_account="2221.01",
+                    )
+                ],
+                reason="测试当前银行候选重查",
+            ),
+        )
 
 
 def test_second_batch_flags_previous_invoices_as_duplicates(invoices):

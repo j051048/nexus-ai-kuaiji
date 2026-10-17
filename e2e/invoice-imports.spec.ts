@@ -34,6 +34,23 @@ function invoice(number: string, status = '正常') {
   ].join(',');
 }
 
+function companyInvoice(number: string, companyTax: string) {
+  return [
+    '数电票（增值税普通发票）',
+    '',
+    number,
+    '2026-10-12',
+    '挂账测试客户企业',
+    companyTax,
+    '虚构应收客户有限公司',
+    '91330100CUSTOMER01X',
+    '1000.00',
+    '130.00',
+    '1130.00',
+    '正常',
+  ].join(',');
+}
+
 async function uploadInvoices(request: APIRequestContext, authorization: string, data: Buffer) {
   const digest = createHash('sha256').update(data).digest('hex');
   let response = await request.post('/api/uploads', {
@@ -156,4 +173,84 @@ test('电子税务局发票导出表：导入批次留在对账页，只作勾�
   await expect(panel).toContainText('重复');
   await expect(panel).toContainText('作废');
   await page.screenshot({ path: 'artifacts/invoice-imports-panel.png', fullPage: true });
+});
+
+test('未匹配销项发票可生成借贷平衡的应收挂账草稿', async ({ page, request }) => {
+  const session = await (await request.get('/api/session?persona=accountant')).json();
+  const headers = { Authorization: `Bearer ${session.token}` };
+  const suffix = Date.now().toString().slice(-8);
+  const companyTax = `91330100ACCRUAL${suffix}`;
+  let response = await request.post('/api/companies', {
+    headers,
+    data: { name: `发票挂账客户-${suffix}`, tax_id: companyTax },
+  });
+  expect(response.status()).toBe(201);
+  const company = await response.json();
+  response = await request.post('/api/books', {
+    headers,
+    data: { name: `发票挂账账套-${suffix}`, period: '2026-10', company_id: company.id },
+  });
+  expect(response.status()).toBe(201);
+  const book = await response.json();
+  response = await request.post(`/api/books/${book.id}/catalog/accounts`, {
+    headers,
+    data: {
+      code: '2221.01',
+      name: '应交税费—应交增值税（销项税额）',
+      category: 'liability',
+      normal_balance: 'credit',
+      active: true,
+      auxiliary_requirements: [],
+    },
+  });
+  expect(response.status()).toBe(201);
+
+  const number = `2499400${suffix}1`;
+  const csv = Buffer.from([HEADERS, companyInvoice(number, companyTax)].join('\n') + '\n');
+  const uploadId = await uploadInvoices(request, headers.Authorization, csv);
+  response = await request.post(`/api/books/${book.id}/invoice-imports`, {
+    headers,
+    data: { upload_id: uploadId },
+  });
+  expect(response.status()).toBe(201);
+
+  await page.goto('/');
+  await openAccounting(page);
+  await page.getByLabel('搜索企业名称').fill(book.name);
+  await page.getByRole('listitem').filter({ hasText: book.name }).click();
+  await page.getByRole('button', { name: '流水与业务匹配', exact: true }).click();
+  const panel = page.locator('section.invoice-imports');
+  await expect(panel).toBeVisible({ timeout: 60_000 });
+  await panel.getByRole('button').filter({ hasText: '全量发票查询导出表' }).first().click();
+  await expect(panel).toContainText(number);
+  await panel.getByRole('button', { name: '生成挂账草稿', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: '生成往来挂账草稿', exact: true });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByLabel('应收账款科目')).toHaveValue('1122');
+  await expect(dialog.getByLabel('收入科目')).toHaveValue('6001');
+  await expect(dialog.getByLabel('销项税额科目')).toHaveValue('2221.01');
+  await dialog.getByLabel('处理依据').fill('发票已开具，本月尚未收款，按权责发生制挂应收。');
+  await dialog.getByRole('button', { name: '生成挂账草稿', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(panel).toContainText('已生成未审核往来挂账草稿');
+  await expect(panel).toContainText('挂账草稿');
+
+  const refreshed = await (await request.get(`/api/books/${book.id}`, { headers })).json();
+  expect(refreshed.sources).toHaveLength(1);
+  expect(refreshed.sources[0].direction).toBe('income');
+  const draft = refreshed.drafts[0];
+  expect(draft.status).toBe('draft');
+  const draftDetail = await (
+    await request.get(`/api/books/${book.id}/drafts/${draft.id}`, { headers })
+  ).json();
+  expect(draftDetail.lines.map((line: { debit: string }) => line.debit)).toEqual([
+    '1130.00',
+    '0.00',
+    '0.00',
+  ]);
+  expect(draftDetail.lines.map((line: { credit: string }) => line.credit)).toEqual([
+    '0.00',
+    '1000.00',
+    '130.00',
+  ]);
 });

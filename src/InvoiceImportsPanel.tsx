@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { FileSpreadsheet, LoaderCircle, RefreshCw, TriangleAlert } from 'lucide-react';
 import { api, errorMessage } from './api';
+import type { CatalogAccount } from './catalog-types';
+import {
+  accrualAccountCandidates,
+  defaultInvoiceAccrualAccounts,
+  invoiceAccrualEligible,
+  type AccrualAccountRole,
+  type InvoiceDirection,
+} from './invoice-accrual-helpers';
 import { prepareUploadIntent } from './upload-client';
 import type { Session } from './types';
 import './invoice-imports.css';
@@ -11,6 +19,13 @@ type InvoiceMatch = {
   counterparty: string;
   amount_cents: number;
 } | null;
+
+type InvoiceAccrual = {
+  source_id: string;
+  draft_id: string;
+  status: 'draft' | 'approved' | 'exported';
+  version: number;
+};
 
 type InvoiceRow = {
   number: string;
@@ -29,6 +44,7 @@ type InvoiceRow = {
   red: boolean;
   duplicate: boolean;
   match: InvoiceMatch;
+  accrual: InvoiceAccrual | null;
 };
 
 type InvoiceBatchSummary = {
@@ -84,6 +100,12 @@ const DIRECTION_LABEL: Record<string, string> = {
   unknown: '待定',
 };
 
+const ACCRUAL_LABEL: Record<string, string> = {
+  draft: '挂账草稿',
+  approved: '已审核',
+  exported: '已导出',
+};
+
 function money(cents: number | null) {
   if (cents === null || cents === undefined) return '—';
   const value = Math.abs(cents) / 100;
@@ -106,11 +128,21 @@ export function InvoiceImportsPanel({
   const [detail, setDetail] = useState<InvoiceBatchDetail | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<InvoicePreview | null>(null);
+  const [accounts, setAccounts] = useState<CatalogAccount[] | null>(null);
+  const [accrualRow, setAccrualRow] = useState<InvoiceRow | null>(null);
+  const [accrualForm, setAccrualForm] = useState({
+    settlement_account: '',
+    profit_account: '',
+    tax_account: '',
+    reason: '',
+  });
+  const [accrualBusy, setAccrualBusy] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const epoch = useRef(0);
   const mounted = useRef(true);
+  const firstAccount = useRef<HTMLSelectElement>(null);
   const base = `/books/${encodeURIComponent(bookId)}/invoice-imports`;
 
   const load = useCallback(
@@ -133,6 +165,8 @@ export function InvoiceImportsPanel({
     mounted.current = true;
     setItems(null);
     setDetail(null);
+    setAccounts(null);
+    setAccrualRow(null);
     setNotice('');
     void load();
     return () => {
@@ -140,6 +174,15 @@ export function InvoiceImportsPanel({
       epoch.current += 1;
     };
   }, [load]);
+
+  useEffect(() => {
+    if (!accrualRow) return;
+    const close = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !accrualBusy) setAccrualRow(null);
+    };
+    window.addEventListener('keydown', close);
+    return () => window.removeEventListener('keydown', close);
+  }, [accrualRow, accrualBusy]);
 
   async function openDetail(id: string) {
     if (detail?.id === id) {
@@ -213,6 +256,89 @@ export function InvoiceImportsPanel({
       onBusyChange?.(false);
     }
   }
+
+  function optionsFor(role: AccrualAccountRole) {
+    if (!accounts || !accrualRow || accrualRow.direction === 'unknown') return [];
+    return accrualAccountCandidates(accounts, role, accrualRow.direction);
+  }
+
+  async function openAccrual(row: InvoiceRow) {
+    if (row.direction === 'unknown') return;
+    setError('');
+    try {
+      let available = accounts;
+      if (!available) {
+        const catalog = await api<{ accounts: CatalogAccount[] }>(
+          `/books/${encodeURIComponent(bookId)}/catalog`,
+          session,
+        );
+        available = catalog.accounts.filter((account) => account.active);
+        setAccounts(available);
+      }
+      setAccrualForm({
+        ...defaultInvoiceAccrualAccounts(available, row.direction),
+        reason: '',
+      });
+      setAccrualRow(row);
+      window.setTimeout(() => firstAccount.current?.focus(), 0);
+    } catch (failure) {
+      setError(errorMessage(failure));
+    }
+  }
+
+  async function submitAccrual() {
+    if (!accrualRow || !detail || accrualRow.direction === 'unknown') return;
+    const needsTax = (accrualRow.tax_cents ?? 0) > 0;
+    if (
+      !accrualForm.settlement_account ||
+      !accrualForm.profit_account ||
+      (needsTax && !accrualForm.tax_account) ||
+      !accrualForm.reason.trim()
+    ) {
+      setError('请选择往来、损益与税额科目，并填写处理依据。');
+      return;
+    }
+    setAccrualBusy(true);
+    setError('');
+    onBusyChange?.(true);
+    try {
+      const result = await api<{ created: number; replayed: boolean }>(
+        `${base}/${encodeURIComponent(detail.id)}/accruals`,
+        session,
+        {
+          method: 'POST',
+          body: {
+            items: [
+              {
+                line: accrualRow.line,
+                settlement_account: accrualForm.settlement_account,
+                profit_account: accrualForm.profit_account,
+                tax_account: accrualForm.tax_account,
+              },
+            ],
+            reason: accrualForm.reason,
+          },
+        },
+      );
+      setNotice(
+        result.created
+          ? '已生成未审核往来挂账草稿，请到凭证复核中核对科目、辅助核算与原始发票。'
+          : '该发票已生成过挂账草稿，已刷新当前状态。',
+      );
+      setAccrualRow(null);
+      setDetail(await api<InvoiceBatchDetail>(`${base}/${encodeURIComponent(detail.id)}`, session));
+    } catch (failure) {
+      setError(errorMessage(failure));
+    } finally {
+      if (mounted.current) setAccrualBusy(false);
+      onBusyChange?.(false);
+    }
+  }
+
+  const accrualDirection: InvoiceDirection | null =
+    accrualRow?.direction === 'input' || accrualRow?.direction === 'output'
+      ? accrualRow.direction
+      : null;
 
   return (
     <section className="panel invoice-imports" aria-label="发票导出表勾稽">
@@ -421,6 +547,7 @@ export function InvoiceImportsPanel({
                   <th>方向</th>
                   <th>状态</th>
                   <th>银行勾稽</th>
+                  <th>往来挂账</th>
                 </tr>
               </thead>
               <tbody>
@@ -445,6 +572,24 @@ export function InvoiceImportsPanel({
                         ? `${row.match.date} · ${row.match.counterparty} · ${money(row.match.amount_cents)}`
                         : '—'}
                     </td>
+                    <td>
+                      {row.accrual ? (
+                        <span className="invoice-imports-tag accrual">
+                          {ACCRUAL_LABEL[row.accrual.status] ?? row.accrual.status}
+                        </span>
+                      ) : invoiceAccrualEligible(row) ? (
+                        <button
+                          type="button"
+                          className="text-button invoice-imports-accrual-button"
+                          disabled={busy || accrualBusy}
+                          onClick={() => void openAccrual(row)}
+                        >
+                          生成挂账草稿
+                        </button>
+                      ) : (
+                        '—'
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -455,6 +600,159 @@ export function InvoiceImportsPanel({
               </p>
             )}
           </div>
+        </div>
+      )}
+      {accrualRow && accrualDirection && (
+        <div
+          className="invoice-accrual-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !accrualBusy) setAccrualRow(null);
+          }}
+        >
+          <section
+            className="invoice-accrual-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="invoice-accrual-title"
+          >
+            <header>
+              <div>
+                <span>{accrualDirection === 'input' ? '进项发票' : '销项发票'}</span>
+                <h3 id="invoice-accrual-title">生成往来挂账草稿</h3>
+                <p>
+                  发票 {accrualRow.number} · {money(accrualRow.total_cents)}
+                </p>
+              </div>
+              <em>仅生成草稿</em>
+            </header>
+            <div className="invoice-accrual-summary">
+              <span>
+                不含税金额 <strong>{money(accrualRow.amount_cents)}</strong>
+              </span>
+              <span>
+                税额 <strong>{money(accrualRow.tax_cents)}</strong>
+              </span>
+              <span>
+                往来方{' '}
+                <strong>
+                  {(accrualDirection === 'input' ? accrualRow.seller : accrualRow.buyer) || '—'}
+                </strong>
+              </span>
+            </div>
+            <form
+              className="invoice-accrual-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void submitAccrual();
+              }}
+            >
+              <label>
+                <span>{accrualDirection === 'input' ? '应付账款科目' : '应收账款科目'}</span>
+                <select
+                  ref={firstAccount}
+                  value={accrualForm.settlement_account}
+                  disabled={accrualBusy}
+                  onChange={(event) =>
+                    setAccrualForm((current) => ({
+                      ...current,
+                      settlement_account: event.target.value,
+                    }))
+                  }
+                >
+                  <option value="">请选择科目</option>
+                  {optionsFor('settlement').map((account) => (
+                    <option key={account.code} value={account.code}>
+                      {account.code} {account.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>{accrualDirection === 'input' ? '成本 / 费用科目' : '收入科目'}</span>
+                <select
+                  value={accrualForm.profit_account}
+                  disabled={accrualBusy}
+                  onChange={(event) =>
+                    setAccrualForm((current) => ({
+                      ...current,
+                      profit_account: event.target.value,
+                    }))
+                  }
+                >
+                  <option value="">请选择科目</option>
+                  {optionsFor('profit').map((account) => (
+                    <option key={account.code} value={account.code}>
+                      {account.code} {account.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {(accrualRow.tax_cents ?? 0) > 0 && (
+                <label>
+                  <span>{accrualDirection === 'input' ? '进项税额科目' : '销项税额科目'}</span>
+                  <select
+                    value={accrualForm.tax_account}
+                    disabled={accrualBusy}
+                    onChange={(event) =>
+                      setAccrualForm((current) => ({
+                        ...current,
+                        tax_account: event.target.value,
+                      }))
+                    }
+                  >
+                    <option value="">请选择科目</option>
+                    {optionsFor('tax').map((account) => (
+                      <option key={account.code} value={account.code}>
+                        {account.code} {account.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              <label className="invoice-accrual-reason">
+                <span>处理依据</span>
+                <textarea
+                  rows={3}
+                  maxLength={500}
+                  value={accrualForm.reason}
+                  disabled={accrualBusy}
+                  placeholder="例如：发票已开具/认证，本月尚未收付款，按权责发生制挂往来。"
+                  onChange={(event) =>
+                    setAccrualForm((current) => ({ ...current, reason: event.target.value }))
+                  }
+                />
+              </label>
+              {accounts?.some(
+                (account) =>
+                  [
+                    accrualForm.settlement_account,
+                    accrualForm.profit_account,
+                    accrualForm.tax_account,
+                  ].includes(account.code) && account.auxiliary_requirements.length > 0,
+              ) && (
+                <p className="invoice-imports-hint">
+                  所选科目需要辅助核算；草稿生成后须在凭证复核中补全往来、项目或人员。
+                </p>
+              )}
+              <p className="invoice-accrual-note">
+                系统只按发票金额和所选科目生成借贷平衡草稿，不会自动审核或导出；另一名会计仍需独立复核。
+              </p>
+              <div className="invoice-accrual-actions">
+                <button
+                  type="button"
+                  className="text-button"
+                  disabled={accrualBusy}
+                  onClick={() => setAccrualRow(null)}
+                >
+                  取消
+                </button>
+                <button type="submit" className="button primary" disabled={accrualBusy}>
+                  {accrualBusy && <LoaderCircle size={14} className="spinner" />}
+                  生成挂账草稿
+                </button>
+              </div>
+            </form>
+          </section>
         </div>
       )}
     </section>

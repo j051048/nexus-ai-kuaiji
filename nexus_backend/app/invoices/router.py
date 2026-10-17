@@ -4,16 +4,8 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import Response
-from pydantic import BaseModel, ConfigDict, Field
 
-
-class InvoiceImportCreate(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    upload_id: str = Field(pattern=r"^[0-9a-f]{32}$")
-
-
-class InvoiceImportPreview(InvoiceImportCreate):
-    pass
+from .models import InvoiceAccrualRequest, InvoiceImportCreate
 
 
 def build_invoice_imports_router(actor_dependency):
@@ -34,7 +26,7 @@ def build_invoice_imports_router(actor_dependency):
     @router.post("/preview")
     def preview(
         book_id: str,
-        payload: InvoiceImportPreview,
+        payload: InvoiceImportCreate,
         actor=Depends(actor_dependency),
         invoices=Depends(service),
     ):
@@ -58,6 +50,16 @@ def build_invoice_imports_router(actor_dependency):
         invoices=Depends(service),
     ):
         return invoices.get_batch(actor, book_id, batch_id)
+
+    @router.post("/{batch_id}/accruals")
+    def accruals(
+        book_id: str,
+        batch_id: str,
+        payload: InvoiceAccrualRequest,
+        actor=Depends(actor_dependency),
+        invoices=Depends(service),
+    ):
+        return invoices.accrue(actor, book_id, batch_id, payload)
 
     @router.get("/{batch_id}/original")
     def original(

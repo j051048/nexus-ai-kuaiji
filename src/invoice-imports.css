@@ -194,3 +194,148 @@
   border-color: #c98a8a;
   color: #a04444;
 }
+.invoice-imports-tag.accrual {
+  border-color: #8faf8d;
+  color: #426845;
+  margin-left: 0;
+  white-space: nowrap;
+}
+.invoice-imports-accrual-button {
+  white-space: nowrap;
+  font-size: 10.5px;
+}
+.invoice-accrual-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  background: rgba(20, 29, 20, 0.48);
+  display: grid;
+  place-items: center;
+  padding: 20px;
+}
+.invoice-accrual-dialog {
+  width: min(560px, 100%);
+  max-height: min(760px, calc(100vh - 40px));
+  overflow: auto;
+  background: #fbfcf8;
+  border: 1px solid #aab9a2;
+  box-shadow: 0 22px 70px rgba(24, 36, 23, 0.28);
+  padding: 20px;
+}
+.invoice-accrual-dialog > header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #dfe6da;
+}
+.invoice-accrual-dialog > header div {
+  display: grid;
+  gap: 3px;
+}
+.invoice-accrual-dialog > header span,
+.invoice-accrual-dialog > header p {
+  color: #647568;
+  font-size: 11px;
+  margin: 0;
+}
+.invoice-accrual-dialog > header h3 {
+  margin: 0;
+  font-size: 18px;
+  color: #2e412e;
+}
+.invoice-accrual-dialog > header em {
+  color: #8a6d3b;
+  border: 1px solid #cdbb8e;
+  border-radius: 2px;
+  padding: 2px 6px;
+  font-size: 9.5px;
+  font-style: normal;
+  white-space: nowrap;
+}
+.invoice-accrual-summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  padding: 12px 0;
+}
+.invoice-accrual-summary span {
+  display: grid;
+  gap: 3px;
+  color: #718071;
+  font-size: 9.5px;
+  border: 1px solid #dfe6da;
+  background: #fff;
+  padding: 8px;
+}
+.invoice-accrual-summary strong {
+  color: #334532;
+  font-size: 11.5px;
+  overflow-wrap: anywhere;
+}
+.invoice-accrual-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.invoice-accrual-form label {
+  display: grid;
+  gap: 5px;
+  color: #4b5d49;
+  font-size: 11px;
+}
+.invoice-accrual-form select,
+.invoice-accrual-form textarea {
+  width: 100%;
+  border: 1px solid #bdc9b7;
+  border-radius: 2px;
+  background: #fff;
+  color: #2f402f;
+  font: inherit;
+  padding: 8px 9px;
+}
+.invoice-accrual-reason,
+.invoice-accrual-form > .invoice-imports-hint,
+.invoice-accrual-note,
+.invoice-accrual-actions {
+  grid-column: 1 / -1;
+}
+.invoice-accrual-note {
+  margin: 0;
+  color: #6d786a;
+  font-size: 10.5px;
+  line-height: 1.55;
+  background: #f3f6ef;
+  border-left: 2px solid #9caf91;
+  padding: 8px 9px;
+}
+.invoice-accrual-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 4px;
+}
+
+@media (max-width: 620px) {
+  .invoice-accrual-backdrop {
+    padding: 0;
+    align-items: end;
+  }
+  .invoice-accrual-dialog {
+    width: 100%;
+    max-height: calc(100vh - 24px);
+    border-right: 0;
+    border-bottom: 0;
+    border-left: 0;
+    padding: 16px;
+  }
+  .invoice-accrual-summary,
+  .invoice-accrual-form {
+    grid-template-columns: 1fr;
+  }
+  .invoice-accrual-summary span {
+    grid-template-columns: 100px 1fr;
+    align-items: center;
+  }
+}
