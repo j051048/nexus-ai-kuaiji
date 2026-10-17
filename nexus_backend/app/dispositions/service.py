@@ -11,6 +11,11 @@ class SourceDispositionService:
         self.db = db
         self.access = AccessControl()
 
+    def _company_of_book(self, actor, book_id):
+        """Resolve the book's company up front for a company-scoped write lock."""
+        with self.db.transaction(actor=actor) as conn:
+            return self.access.book(conn, actor, book_id, "review")["company_id"]
+
     @staticmethod
     def _row(conn, source):
         return conn.execute(
@@ -100,7 +105,10 @@ class SourceDispositionService:
             **request.model_dump(exclude={"idempotency_key"}),
         }
         digest = fingerprint(command)
-        with self.db.transaction(write=True, actor=actor) as conn:
+        company_id = self._company_of_book(actor, book_id)
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             book = self.access.book(conn, actor, book_id, "review")
             source = conn.execute(
                 "SELECT * FROM sources WHERE id=? AND book_id=?", (source_id, book_id)

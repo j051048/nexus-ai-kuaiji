@@ -97,6 +97,11 @@ class AccountingService:
         with self.db.transaction(actor=actor) as conn:
             self._book(conn, actor, book_id)
 
+    def _company_of_book(self, actor: Actor, book_id: str):
+        """Resolve the book's company up front for a company-scoped write lock."""
+        with self.db.transaction(actor=actor) as conn:
+            return self._book(conn, actor, book_id)["company_id"]
+
     def _open(self, book):
         if book["period_status"] != "open":
             raise AccountingError("该会计期间已关闭，不可写入", 403)
@@ -116,6 +121,8 @@ class AccountingService:
         )
 
     def create_book(self, actor: Actor, request: BookCreate):
+        # 全局写锁：同一事务里创建企业、账套、科目与长期账套映射（跨多个域），
+        # 企业范围迁移留给第三批写锁工作处理。
         with self.db.transaction(write=True, actor=actor) as conn:
             self.access.require_manager(conn, actor)
             company_id = request.company_id
@@ -788,7 +795,10 @@ class AccountingService:
             return {**self._draft_json(conn, draft, actor), "detail_loaded": True}
 
     def import_sources(self, actor: Actor, book_id: str, request: ImportRequest):
-        with self.db.transaction(write=True, actor=actor) as conn:
+        company_id = self._company_of_book(actor, book_id)
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             book = self._book(conn, actor, book_id, edit=True)
             self._open(book)
             imported = duplicates = 0
@@ -857,7 +867,10 @@ class AccountingService:
             return {"imported": imported, "duplicates": duplicates}
 
     def add_evidence(self, actor: Actor, book_id: str, source_id: str, request: EvidenceRequest):
-        with self.db.transaction(write=True, actor=actor) as conn:
+        company_id = self._company_of_book(actor, book_id)
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             self._open(self._book(conn, actor, book_id, edit=True))
             source = conn.execute(
                 "SELECT * FROM sources WHERE id=? AND book_id=?", (source_id, book_id)
@@ -890,7 +903,10 @@ class AccountingService:
             return self._source_json(conn, source)
 
     def suggestions(self, actor: Actor, book_id: str):
-        with self.db.transaction(write=True, actor=actor) as conn:
+        company_id = self._company_of_book(actor, book_id)
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             result = self.suggestions_in_transaction(conn, actor, book_id)
             return {"created": result["created"], "exceptions": result["exceptions"]}
 
@@ -1036,7 +1052,10 @@ class AccountingService:
         return draft
 
     def update_draft(self, actor: Actor, book_id: str, draft_id: str, request: DraftUpdate):
-        with self.db.transaction(write=True, actor=actor) as conn:
+        company_id = self._company_of_book(actor, book_id)
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             return self.update_draft_in_transaction(conn, actor, book_id, draft_id, request)
 
     def update_draft_in_transaction(self, conn, actor, book_id, draft_id, request):
@@ -1165,7 +1184,10 @@ class AccountingService:
         return result
 
     def approve(self, actor: Actor, book_id: str, draft_id: str, request: ApprovalRequest):
-        with self.db.transaction(write=True, actor=actor) as conn:
+        company_id = self._company_of_book(actor, book_id)
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             return self._approve_in_transaction(
                 conn, actor, book_id, draft_id, request.expected_version
             )
@@ -1214,7 +1236,10 @@ class AccountingService:
         )
 
     def export(self, actor: Actor, book_id: str, request: ExportRequest):
-        with self.db.transaction(write=True, actor=actor) as conn:
+        company_id = self._company_of_book(actor, book_id)
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             book = self._book(conn, actor, book_id, reviewer=True)
             digest = fingerprint(sorted(request.draft_ids))
             existing = conn.execute(

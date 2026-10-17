@@ -30,12 +30,19 @@ class ImportWizardService:
             raise AccountingError("该会计期间已关闭，不能继续导入", 403)
         return book
 
+    def _company_of_book(self, actor, book_id):
+        """Resolve the book's company up front for a company-scoped write lock."""
+        with self.db.transaction(actor=actor) as conn:
+            return self._book(conn, actor, book_id)["company_id"]
+
     def upload(self, actor, book_id, filename, data):
         with self.db.transaction(actor=actor) as conn:
-            self._book(conn, actor, book_id, True)
+            company_id = self._book(conn, actor, book_id, True)["company_id"]
         metadata, table = self.storage.put(filename, data)
         try:
-            with self.db.transaction(write=True, actor=actor) as conn:
+            with self.db.transaction(
+                write=True, actor=actor, company_id=company_id, write_scope="company"
+            ) as conn:
                 book = self._book(conn, actor, book_id, True)
                 threshold = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
                 count = conn.execute(
@@ -235,7 +242,10 @@ class ImportWizardService:
         }
 
     def preview(self, actor, book_id, request: PreviewRequest):
-        with self.db.transaction(write=True, actor=actor) as conn:
+        company_id = self._company_of_book(actor, book_id)
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             book = self._book(conn, actor, book_id, True)
             item = self._file(conn, book_id, request.file_id)
             self.storage.read(item)
@@ -275,7 +285,10 @@ class ImportWizardService:
             }
 
     def confirm(self, actor, book_id, preview_id, remember=False):
-        with self.db.transaction(write=True, actor=actor) as conn:
+        company_id = self._company_of_book(actor, book_id)
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             book = self._book(conn, actor, book_id, True)
             preview = conn.execute(
                 "SELECT * FROM bank_import_previews WHERE id=? AND book_id=?", (preview_id, book_id)

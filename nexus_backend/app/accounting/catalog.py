@@ -34,6 +34,11 @@ class CatalogService:
             raise AccountingError("已关闭期间不能变更科目或记账模板", 403)
         return book
 
+    def _company_of_book(self, actor, book_id):
+        """Resolve the book's company up front for a company-scoped write lock."""
+        with self.db.transaction(actor=actor) as conn:
+            return self._book(conn, actor, book_id)["company_id"]
+
     @staticmethod
     def _audit(conn, actor, book_id, action, object_id, details):
         conn.execute(
@@ -163,14 +168,20 @@ class CatalogService:
         return result
 
     def create_account(self, actor, book_id, request: AccountDefinition):
-        with self.db.transaction(write=True, actor=actor) as conn:
+        company_id = self._company_of_book(actor, book_id)
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             self._book(conn, actor, book_id, True)
             return self._save_account(conn, actor, book_id, request)
 
     def update_account(self, actor, book_id, code, request: AccountUpdate):
         if code != request.code:
             raise AccountingError("科目代码不可变更，请新建科目并停用旧科目", 409)
-        with self.db.transaction(write=True, actor=actor) as conn:
+        company_id = self._company_of_book(actor, book_id)
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             self._book(conn, actor, book_id, True)
             return self._save_account(conn, actor, book_id, request, request.expected_version)
 
@@ -206,7 +217,10 @@ class CatalogService:
                 raise AccountingError(f"模板科目 {line.account_code} 不存在或已停用")
 
     def save_template(self, actor, book_id, request: TemplateDefinition, template_id=None):
-        with self.db.transaction(write=True, actor=actor) as conn:
+        company_id = self._company_of_book(actor, book_id)
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             self._book(conn, actor, book_id, True)
             self._validate_template(conn, book_id, request)
             definition = request.model_dump(exclude={"expected_version"})

@@ -248,7 +248,14 @@ class ReconciliationService:
 
     def confirm(self, actor, request):
         digest = fingerprint(request.model_dump())
-        with self.db.transaction(write=True, actor=actor) as conn:
+        # 单企业批次走企业级写锁；跨企业批次保持全局串行（fail-safe）。
+        companies = self._confirm_companies(actor, request)
+        options = (
+            {"company_id": next(iter(companies)), "write_scope": "company"}
+            if len(companies) == 1
+            else {}
+        )
+        with self.db.transaction(write=True, actor=actor, **options) as conn:
             # Authorize every requested company/book before looking up or writing
             # a receipt. A retry never recovers data from a revoked book.
             authorized = self._authorize(conn, actor, request, current=False)
@@ -384,6 +391,12 @@ class ReconciliationService:
                     "SELECT * FROM reconciliation_receipts WHERE id=?", (result_id,)
                 ).fetchone(),
             )
+
+    def _confirm_companies(self, actor, request):
+        """授权预读：只用于选取写锁范围，不替代事务内的实时授权。"""
+        with self.db.transaction(actor=actor) as conn:
+            authorized = self._authorize(conn, actor, request, current=False)
+            return {book["company_id"] for _item, book, _event, _draft, _source in authorized}
 
     def _receipt_json(self, conn, actor, row):
         request = json.loads(row["request_json"])

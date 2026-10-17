@@ -375,7 +375,10 @@ class ReviewService:
         results = []
         for book_id, selected in grouped.items():
             try:
-                with self.db.transaction(write=True, actor=actor) as conn:
+                company_id = self.accounting._company_of_book(actor, book_id)
+                with self.db.transaction(
+                    write=True, actor=actor, company_id=company_id, write_scope="company"
+                ) as conn:
                     preview, current_items = self._preview(conn, actor, preview_id)
                     receipt = self._receipt(conn, command_id, book_id)
                     if receipt:
@@ -421,7 +424,10 @@ class ReviewService:
                     )
                     results.append(result)
             except AccountingError as error:
-                with self.db.transaction(write=True, actor=actor) as conn:
+                company_id = self.accounting._company_of_book(actor, book_id)
+                with self.db.transaction(
+                    write=True, actor=actor, company_id=company_id, write_scope="company"
+                ) as conn:
                     self._preview(conn, actor, preview_id)
                     existing = self._receipt(conn, command_id, book_id)
                     result = existing or {
