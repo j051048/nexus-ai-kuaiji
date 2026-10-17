@@ -1,0 +1,42 @@
+import type { FirmRole } from './types';
+import type { WorkspaceView } from './workspace-route';
+
+export const workspaceViewLabels: Partial<Record<WorkspaceView, string>> = {
+  home: '我的待办',
+  runs: '后台运行',
+  business: '业务事项',
+  review: '跨企业批量复核',
+  cases: '异常与补件',
+  queue: '票据处理任务',
+  intelligence: '票据核对异常',
+  operations: '费用与运行监控',
+  revision: '事实修订与调整',
+  monthly: '客户月度进度',
+  service: '月度服务单',
+  materials: '资料清单',
+  portfolio: '客户人工投入',
+  balances: '参考余额与月度差异',
+  recurring: '固定事项草稿',
+  migration: '旧账迁移',
+  quality: '试点评测',
+  settlement: '收付款核销',
+  closing: '月结预检',
+  efficiency: '人工效率',
+  integration: '财务软件接入',
+  ledger: '长期账套与主数据',
+  reconciliation: '流水与业务匹配',
+  delivery: '导入回执核验',
+  briefing: '月度财税简报',
+  learning: '审核样例与企业规则',
+  catalog: '科目与模板',
+};
+
+export const roleLabels: Record<FirmRole, string> = {
+  owner: '事务所负责人',
+  admin: '事务所管理员',
+  operator: '记账经办员',
+  reviewer: '会计复核员',
+  viewer: '只读成员',
+  client_employee: '客户企业成员',
+  client_member: '客户企业成员',
+};

@@ -76,6 +76,9 @@ export function useWorkspaceRoute({
     }
     const path = workspaceRouteUrl(value, metadata, location.search);
     if (path === location.pathname + location.search) return;
+    // State can settle over several renders before React Router exposes the
+    // first navigation. Do not enqueue the same destination more than once.
+    if (ownNavigation.current === path) return;
     const previous = readWorkspaceRoute(location.pathname, location.search);
     // Enrich authenticated metadata or update search without filling history.
     const replace =
