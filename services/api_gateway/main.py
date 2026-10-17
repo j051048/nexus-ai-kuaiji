@@ -11,6 +11,7 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 import json
 import os
+import re
 from urllib.parse import urlsplit
 
 from fastapi import FastAPI, Request
@@ -23,6 +24,8 @@ MAX_FILE_BYTES = 3 * 1024 * 1024
 MAX_REQUEST_BYTES = 4 * 1024 * 1024
 MAX_RESPONSE_BYTES = 4 * 1024 * 1024
 MAX_AUTH_CONFIG_DEPTH = 64
+UPLOAD_MAX_BYTES_DEFAULT = 50 * 1024 * 1024
+UPLOAD_PATH = re.compile(r"/api/uploads/[0-9a-f]{32}/content\Z")
 TRANSPORT_LIMITS = {
     "max_file_bytes": MAX_FILE_BYTES,
     "max_request_bytes": MAX_REQUEST_BYTES,
@@ -44,10 +47,13 @@ class GatewaySettings:
     backend_origin: str = field(default="", repr=False)
     allow_local_http: bool = False
     timeout_seconds: float = 110
+    upload_max_bytes: int = UPLOAD_MAX_BYTES_DEFAULT
 
     def __post_init__(self) -> None:
         if not 1 <= self.timeout_seconds <= 110:
             raise ValueError("网关超时必须在 1 至 110 秒之间")
+        if not 1024 * 1024 <= self.upload_max_bytes <= 200 * 1024 * 1024:
+            raise ValueError("上传流式上限必须在 1 至 200 MiB 之间")
         if not self.backend_origin:
             return
         value = self.backend_origin
@@ -87,12 +93,16 @@ class GatewaySettings:
     def from_env(cls) -> GatewaySettings:
         try:
             timeout_seconds = float(os.environ.get("ACCOUNTING_GATEWAY_TIMEOUT_SECONDS", "110"))
+            upload_max_bytes = int(
+                os.environ.get("ACCOUNTING_UPLOAD_MAX_BYTES", str(UPLOAD_MAX_BYTES_DEFAULT))
+            )
         except ValueError as error:
             raise ValueError("网关超时格式无效，请检查网关服务器配置") from error
         return cls(
             backend_origin=os.environ.get("ACCOUNTING_BACKEND_ORIGIN", "").strip(),
             allow_local_http=os.environ.get("ACCOUNTING_GATEWAY_ALLOW_LOCAL_HTTP") == "1",
             timeout_seconds=timeout_seconds,
+            upload_max_bytes=upload_max_bytes,
         )
 
 
@@ -142,6 +152,31 @@ async def _read_request(request: Request) -> bytes | Response:
     return bytes(content)
 
 
+class _UploadTooLarge(Exception):
+    pass
+
+
+class _UploadAborted(Exception):
+    pass
+
+
+async def _stream_upload(request: Request, limit: int):
+    """Forward the upload body in chunks without buffering it in the gateway.
+
+    仅用于已鉴权的一次性上传路由（/api/uploads/{id}/content）；其余接口继续
+    走 4 MiB 有界缓冲，避免无界内存占用。
+    """
+    total = 0
+    try:
+        async for chunk in request.stream():
+            total += len(chunk)
+            if total > limit:
+                raise _UploadTooLarge()
+            yield chunk
+    except ClientDisconnect:
+        raise _UploadAborted() from None
+
+
 def _target(settings: GatewaySettings, request: Request) -> httpx.URL:
     # copy_with(raw_path=...) cannot replace the trusted authority with a URL
     # supplied via Host, forwarding headers, path parameters or a query string.
@@ -164,12 +199,26 @@ async def _proxy(app: FastAPI, request: Request) -> Response:
         target = _target(settings, request)
     except (ValueError, httpx.InvalidURL):
         return _error(400, "无效 API 路径")
+    upload = request.method == "PUT" and UPLOAD_PATH.fullmatch(request.scope["path"]) is not None
     deadline = asyncio.get_running_loop().time() + settings.timeout_seconds
     try:
         async with asyncio.timeout_at(deadline):
-            content = await _read_request(request)
+            if upload:
+                length = request.headers.get("content-length")
+                if length is not None:
+                    if len(length) > 20 or not length.isascii() or not length.isdecimal():
+                        return _error(400, "请求大小信息无效")
+                    if int(length) > settings.upload_max_bytes:
+                        return _error(413, "上传文件超过网关流式上传上限，请缩小文件后重试")
+                content = _stream_upload(request, settings.upload_max_bytes)
+            else:
+                content = await _read_request(request)
     except TimeoutError:
         return _error(504, "请求读取超时，尚未发送到会计后端，请缩小文件后重试")
+    except _UploadTooLarge:
+        return _error(413, "上传文件超过网关流式上传上限，请缩小文件后重试")
+    except _UploadAborted:
+        return _error(400, "请求连接已断开，请刷新后查看操作状态")
     if isinstance(content, Response):
         return content
     # Cookies, Host and forwarding headers are intentionally excluded. httpx
@@ -253,6 +302,10 @@ async def _proxy(app: FastAPI, request: Request) -> Response:
         )
     except httpx.HTTPError:
         return _error(502, "无法连接会计后端，操作结果尚未确认，请稍后刷新状态")
+    except _UploadTooLarge:
+        return _error(413, "上传文件超过网关流式上传上限，请缩小文件后重试")
+    except _UploadAborted:
+        return _error(400, "请求连接已断开，请刷新后查看操作状态")
 
 
 def create_app(
