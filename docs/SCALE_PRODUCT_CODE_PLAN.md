@@ -3,6 +3,35 @@
 目标：把当前“专家可用的记账工作台”演进为可承载几百至上千家客户的事务所数据中心。
 原则是保留整数分记账、证据链、复核导出和租户隔离，优先减少运营复杂度与重复代码。
 
+## 审计复核增补（2026-10-17）
+
+Gemini 对前几轮提交的复核中，核心生产风险基本成立；以下项目优先于新功能开发。
+
+| 复核项 | 结论 | 归入 |
+| --- | --- | --- |
+| 网关模式把普通传输上限 3 MiB 误用于两段式直传，前端会提前拦截 3–10 MB 文件 | 成立，P0 | 第 8、9 点 |
+| 同源 `PUT /api/uploads/{id}/content` 未携带 `X-Firm-Id`，多事务所切换后上传会 404 | 成立，P0 | 第 8、9 点 |
+| `ProjectionRefresher._sweep` 漏掉从未建过投影的活跃企业，且先 drain 后 sweep 会立即重入 | 成立，P0/P1 | 第 1 点 |
+| 发票挂账草稿没有绑定唯一交易对方辅助核算 | 成立，P1 | 第 4、7 点 |
+| `BankImportService.distinguish` 和旧账清偿 confirm/reverse 仍是全局写锁 | 成立，P1 | 第 1、8 点 |
+| recurring/settlement/briefing/integration/catalog/learning/ledger/migration 仍会退出常驻账套壳 | 成立，P1 | 第 9 点 |
+| `BusinessWorkspace` 仍有旧版内联表单，`IntakeWizard` 仍有三个底部动作 | 成立，P2 | 第 5、9 点 |
+
+轻微事实修正：简报字段实际名为 `briefings`；`App.tsx` 当前约 2,587 行而非 2,617 行；
+工具栏回调实际名为 `onWorkspace`。这些差异不改变上述架构判断。
+
+P0 收尾必须拆成独立小提交：
+
+1. `TransportLimits` 增加独立的 `direct_upload_max_bytes`。普通 multipart/JSON 的
+   `max_file_bytes` 继续由网关 3 MiB 限制；超过 2 MiB 的两段式直传按业务 domainLimit
+   （当前 10 MB）和 `direct_upload_max_bytes` 的较小值校验，不能直接把 50 MiB 当成可上传业务文件。
+2. `upload-client.ts` 的同源 PUT 分支同时发送 `Authorization` 与 `X-Firm-Id`，补多事务所切换测试。
+3. `ProjectionRefresher._sweep` 对齐 `pending_companies` 的 `LEFT JOIN` 语义并纳入从未构建企业；
+   `_loop` 改为先 sweep 再 drain。最终仍应迁到独立 Worker lease job。
+4. 挂账草稿通过 `LedgerService.resolve_in_transaction` 解析唯一往来方，再经
+   `CatalogService.save_auxiliaries_in_transaction` 写入；名称歧义或未匹配时不猜测，保留阻断说明。
+5. 三个锁迁移先做单账套/单企业写门与 PG 回归；旧账迁移不能因模块名而整块保持全局锁。
+
 ## 1. 统一任务与批处理底座
 
 复用现有 `jobs/service.py`、`jobs/worker.py`、`unified_worker.py` 和租约模型，不另造
@@ -16,6 +45,8 @@
   汇总失败项 → 单户重试”。
 - `ProjectionRefresher` 从 API 进程移到独立 Worker 或带租约的 maintenance job；Web 容器不跑
   长期后台循环。
+- 在迁移 Worker 之前先补齐 P0 预热修复：扫描从未构建投影的活跃企业，并先 sweep 后 drain；
+  增加“全新部署无 state 行”和“脏企业反复失败”的回归测试。
 - 所有任务统一要求：幂等键、企业范围、租约、退避重试、死信、取消和审计事件。
 
 验收：100/500/1000 家合成客户批量任务可续跑；单户失败不影响其他客户；API 重启不丢任务。
@@ -89,6 +120,9 @@
 
 验收：同一来源重复投递幂等；断点可续；错误可按批次追溯；客户 IT 无需读日志文件即可定位失败。
 
+同时把上传传输限额拆成“普通内联请求上限”和“两段式直传上限”。当前网关流式能力为 50 MiB，
+但业务附件仍为 10 MB；前端必须分别读取两个口径，不能用一个 `max_file_bytes` 同时表达两种通道。
+
 ## 7. AI 工作流副驾
 
 把 AI 限定为“证据整理、异常解释、任务预填”的工作流副驾，不提供自动记账权限。
@@ -98,6 +132,8 @@
 - 每个能力返回结构化结果：结论、证据引用、可执行动作、不可执行原因、版本指纹。
 - 生成的动作只产生预览或草稿；确认后走现有任务/复核 API。
 - 增加按企业、能力、模型的成本、延迟、人工采纳率和撤销率统计。
+- 发票转挂账属于确定性工作流，不应交给模型猜测往来方：由主数据唯一解析后自动写辅助核算，
+  歧义或多候选时返回明确阻断并要求会计选择。
 
 代码上拆分 `GlobalAccountingAssistant.tsx` 的 transcript、composer、plans、history 子模块；
 不再新增第三个助手入口。
@@ -129,6 +165,10 @@
 - `src` 迁移到 `app / domains / shared / admin`；先迁新模块，最后机械搬迁旧文件。
 - 提炼 `useScopedQuery/useScopedMutation/useUpload`，统一取消、竞态、dirty 和撤权清空。
 - 建立 tokens、表格、表单、错误页、抽屉和任务进度等基础组件，减少页面级 CSS 分叉。
+- 把 `recurring/settlement/briefing/integration/catalog/learning/ledger/migration` 八个账套
+  子视图按同一 `embedded` 契约迁入 `BookWorkspaceShell`；每次迁一页并保留五步导航回归。
+- 删除 `BusinessWorkspace.tsx` 旧版内联 `BusinessForm`；`IntakeWizard` 底栏收敛为
+  “暂存草稿”和“提交财务处理（或提交审批）”两个动作。自动保存继续保留，但不再作为第三个按钮。
 - 后端测试拆为 unit/sqlite/postgres/e2e 四层，使用并行或分片；本地 smoke 控制在 10 分钟以内；
   CI 保留全量，并增加 100/500/1000 租户性能基准。
 - Vite 使用 vendor 分块和路由级懒加载；对部署静态资源继续保留 `_deploy_reload` 自愈机制。
