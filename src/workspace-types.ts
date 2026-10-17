@@ -12,6 +12,13 @@ export type WorkspaceProfile = {
   can_operations?: boolean;
   can_firm_operations?: boolean;
   companies: { id: string; name: string }[];
+  briefings?: {
+    book_id: string;
+    book_name: string;
+    period: string;
+    company_id: string;
+    company_name: string;
+  }[];
   book_count: number;
 };
 export type TaskKind =

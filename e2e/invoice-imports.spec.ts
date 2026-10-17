@@ -149,6 +149,12 @@ test('电子税务局发票导出表：导入批次留在对账页，只作勾�
   ).toBeVisible({
     timeout: 60_000,
   });
+  const pipeline = page.getByRole('navigation', { name: '做账五步流水线' });
+  await expect(pipeline).toBeVisible();
+  await expect(pipeline.getByRole('button', { name: '② 匹配与核销', exact: true })).toHaveAttribute(
+    'aria-current',
+    'step',
+  );
   const panel = page.locator('section.invoice-imports');
   await expect(panel).toBeVisible({ timeout: 60_000 });
   await expect(panel).toContainText('重复 1');
@@ -168,7 +174,9 @@ test('电子税务局发票导出表：导入批次留在对账页，只作勾�
   await precheck.getByRole('button', { name: '确认导入并勾稽', exact: true }).click();
   await expect(precheck).toHaveCount(0);
   await expect(panel).toContainText('已导入 1 行');
-  await panel.getByRole('button').filter({ hasText: '全量发票查询导出表' }).first().click();
+  const originalBatch = panel.getByRole('button').filter({ hasText: batch.filename }).first();
+  await expect(originalBatch).toBeVisible();
+  await originalBatch.click();
   await expect(panel.locator('table')).toContainText(`2499200${suffix}1`);
   await expect(panel).toContainText('重复');
   await expect(panel).toContainText('作废');

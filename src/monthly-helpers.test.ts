@@ -61,6 +61,27 @@ describe('月度工作台的未知事实与精确金额', () => {
       period: '2026-11',
     });
     expect(monthlyRowDestination({ ...row, book_id: null }, 'balances')).toBeNull();
+    expect(
+      monthlyRowDestination(
+        { ...row, closing: { state: 'recheck', blockers: null, snapshot_id: null } },
+        'briefing',
+      ),
+    ).toBeNull();
+    expect(
+      monthlyRowDestination(
+        {
+          ...row,
+          closing: { state: 'closed', blockers: 0, snapshot_id: 'snapshot' },
+          permissions: { edit: false, review: false, export: false, manage: false },
+        },
+        'briefing',
+      ),
+    ).toEqual({
+      view: 'briefing',
+      companyId: 'c2',
+      bookId: 'b2',
+      period: '2026-11',
+    });
   });
   it('月份只接受规范的月度范围', () => {
     expect(validMonthlyPeriod('2026-10')).toBe(true);

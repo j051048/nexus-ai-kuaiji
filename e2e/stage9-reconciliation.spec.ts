@@ -124,6 +124,13 @@ test('真实后台分笔流水核对：金额精确相加、保存关联回执�
   await expect(
     page.getByRole('heading', { name: '让一笔业务，对上一笔付款。', exact: true }),
   ).toBeVisible({ timeout: 30_000 });
+  const pipeline = page.getByRole('navigation', { name: '做账五步流水线' });
+  await expect(pipeline).toBeVisible();
+  await expect(pipeline.getByRole('button', { name: '② 匹配与核销', exact: true })).toHaveAttribute(
+    'aria-current',
+    'step',
+  );
+  await expect(page.getByRole('button', { name: '返回会计工作台', exact: true })).toHaveCount(0);
   await page.getByRole('button').filter({ hasText: '第九阶段分笔付款核对' }).click();
   await page.getByLabel(`选择核对流水 stage9-match-${suffix}-0`, { exact: true }).check();
   await page

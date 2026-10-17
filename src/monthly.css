@@ -603,6 +603,12 @@ button.monthly-progress-cell:hover {
   display: grid;
   gap: 16px;
 }
+.briefing-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
 .briefing-card {
   display: grid;
   gap: 22px;
@@ -753,5 +759,48 @@ button.monthly-progress-cell:hover {
   .briefing-flows,
   .briefing-balances {
     grid-template-columns: 1fr;
+  }
+}
+
+@media print {
+  @page {
+    size: A4;
+    margin: 14mm;
+  }
+  body {
+    background: #fff !important;
+  }
+  .sidebar,
+  .topbar,
+  .briefing-actions,
+  .toast,
+  .workspace-footer {
+    display: none !important;
+  }
+  .main-shell {
+    width: 100% !important;
+    margin-left: 0 !important;
+  }
+  .briefing {
+    max-width: none;
+    margin: 0;
+    padding: 0;
+    display: block;
+  }
+  .briefing-card {
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    padding: 0;
+    background: #fff;
+  }
+  .briefing-card > section,
+  .briefing-heading,
+  .briefing-notes {
+    break-inside: avoid;
+  }
+  .briefing-flows,
+  .briefing-balances {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }

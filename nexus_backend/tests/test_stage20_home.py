@@ -93,6 +93,30 @@ def test_profile_matches_domain_grants_without_loading_accounting_facts(business
         assert service.profile(actor) == previous_profile(service, actor)
 
 
+def test_profile_exposes_only_authorized_closed_book_briefings(business):
+    c = business
+    service = workspace(c)
+    with c.db.transaction(write=True) as conn:
+        # This test isolates profile visibility; closing workflows have their own receipts.
+        conn.execute("DROP TRIGGER period_reviewed_close")
+        conn.execute(
+            "UPDATE periods SET status='closed' WHERE book_id=? AND period=?",
+            (c.book["id"], c.book["period"]),
+        )
+    reviewer = service.profile(c.actors["accountant"])
+    assert reviewer["briefings"] == [
+        {
+            "book_id": c.book["id"],
+            "book_name": c.book["name"],
+            "period": c.book["period"],
+            "company_id": c.company["id"],
+            "company_name": c.company["name"],
+        }
+    ]
+    employee = service.profile(c.actors["employee"])
+    assert "briefings" not in employee
+
+
 @pytest.mark.parametrize("extra_companies", [0, 100])
 def test_profile_uses_one_bounded_read_transaction_without_voucher_health(
     business, monkeypatch, extra_companies

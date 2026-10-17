@@ -5,6 +5,7 @@ import {
   CircleDot,
   Clock3,
   FilePlus2,
+  FileText,
   Layers3,
   List,
   LoaderCircle,
@@ -51,6 +52,7 @@ export function WorkspaceHome({
   onNew,
   onAccounting,
   onReview,
+  onBriefing,
   onRuns,
   revision,
   paused = false,
@@ -66,6 +68,13 @@ export function WorkspaceHome({
   onNew: (template: BusinessTemplate) => void;
   onAccounting: () => void;
   onReview: () => void;
+  onBriefing?: (target: {
+    book_id: string;
+    book_name: string;
+    period: string;
+    company_id: string;
+    company_name: string;
+  }) => void;
   onRuns?: () => void;
   revision: number;
   paused?: boolean;
@@ -322,6 +331,10 @@ export function WorkspaceHome({
     }
   }
   const copy = roleCopy[profile?.role ?? 'viewer'];
+  const briefings =
+    profile && ['manager', 'finance', 'accountant'].includes(profile.role)
+      ? (profile.briefings ?? [])
+      : [];
   const visibleValue =
     dataScope.current === session.scope_key && dataFilter.current === filterKey ? value : null;
   const visibleSummary = summaryScope.current === session.scope_key ? summary : null;
@@ -375,6 +388,38 @@ export function WorkspaceHome({
           <LoaderCircle className="spinner" size={16} />
           正在读取我的工作范围…
         </p>
+      )}
+      {!!briefings.length && (
+        <section className="workspace-briefings" aria-label="本月财税简报入口">
+          <div className="workspace-briefings-heading">
+            <FileText size={20} />
+            <div>
+              <strong>本月财税简报</strong>
+              <span>已锁期账套可直接查看一页纸经营概览，并打印或导出 PDF。</span>
+            </div>
+          </div>
+          <div className="workspace-briefing-links">
+            {briefings.map((item) => (
+              <button
+                key={item.book_id}
+                type="button"
+                disabled={locked || !onBriefing}
+                onClick={() => onBriefing?.(item)}
+              >
+                <span>
+                  <strong>{item.company_name}</strong>
+                  <small>
+                    {item.book_name} · {item.period}
+                  </small>
+                </span>
+                <span>
+                  查看简报
+                  <ArrowRight size={14} />
+                </span>
+              </button>
+            ))}
+          </div>
+        </section>
       )}
       {profile?.can_submit && (
         <section className="workspace-intake-actions" aria-label="快速录入">

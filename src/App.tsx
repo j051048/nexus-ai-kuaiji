@@ -1414,7 +1414,11 @@ export default function App() {
       focusBookRef.current = target.bookId;
       if (routeUsesBook) void initialize(undefined, target.bookId);
     }
-    if (['delivery', 'closing', 'efficiency', 'balances', 'recurring'].includes(target.view))
+    if (
+      ['delivery', 'closing', 'efficiency', 'balances', 'recurring', 'briefing'].includes(
+        target.view,
+      )
+    )
       setRouteView(target.view as WorkspaceView);
     if (target.filter) setFilter(target.filter);
   }
@@ -1817,6 +1821,14 @@ export default function App() {
               onNew={openNewIntake}
               onAccounting={() => navigate('accounting')}
               onReview={() => navigate('review')}
+              onBriefing={(target) => {
+                navigate('accounting');
+                setWorkCompany(target.company_id);
+                setWorkPeriod(target.period);
+                setBookId(target.book_id);
+                focusBookRef.current = target.book_id;
+                setRouteView('briefing');
+              }}
               onRuns={() => navigate('runs')}
             />
           ) : routeView === 'runs' ? (
@@ -2054,17 +2066,6 @@ export default function App() {
                 void initialize();
               }}
             />
-          ) : routeView === 'reconciliation' && bookId ? (
-            <ReconciliationWorkbench
-              key={session.scope_key + ':' + bookId}
-              session={session}
-              bookId={bookId}
-              onBack={() => setRouteView('accounting')}
-              onBusyChange={changeBusinessBusy}
-              onChanged={() => {
-                void refresh(bookId);
-              }}
-            />
           ) : routeView === 'delivery' && bookId ? (
             <DeliveryWorkbench
               key={session.scope_key + ':' + bookId + ':' + deliveryTarget}
@@ -2211,6 +2212,21 @@ export default function App() {
               session={session}
               me={me}
               routeView={routeView}
+              bookView={
+                routeView === 'reconciliation' && bookId ? (
+                  <ReconciliationWorkbench
+                    key={session.scope_key + ':' + bookId}
+                    session={session}
+                    bookId={bookId}
+                    embedded
+                    onBack={() => setRouteView('accounting')}
+                    onBusyChange={changeBusinessBusy}
+                    onChanged={() => {
+                      void refresh(bookId);
+                    }}
+                  />
+                ) : null
+              }
               filter={filter}
               navItems={navItems}
               stats={stats}

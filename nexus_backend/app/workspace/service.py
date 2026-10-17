@@ -1,4 +1,5 @@
 from datetime import datetime
+import json
 import logging
 from zoneinfo import ZoneInfo
 
@@ -74,6 +75,17 @@ class WorkspaceService:
         scope += """ AND c.status='active' AND EXISTS(SELECT 1 FROM active_actor aa
             WHERE aa.firm_role IN ('owner','admin') OR (a.role IS NOT NULL
               AND (aa.firm_role IS NOT NULL OR cm.role IN ('owner','admin','finance'))))"""
+        briefing_json = (
+            "(SELECT COALESCE(json_agg(json_build_object("
+            "'book_id',b.id,'book_name',b.name,'period',b.period,"
+            "'company_id',b.company_id,'company_name',b.company_name)),'[]'::json) "
+            "FROM closed_briefings b)"
+            if self.db.is_postgres
+            else "(SELECT COALESCE(json_group_array(json_object("
+            "'book_id',b.id,'book_name',b.name,'period',b.period,"
+            "'company_id',b.company_id,'company_name',b.company_name)),'[]') "
+            "FROM closed_briefings b)"
+        )
         rows = conn.execute(
             """WITH active_actor AS (SELECT u.id,m.role AS firm_role FROM users u
                 LEFT JOIN memberships m ON m.user_id=u.id AND m.firm_id=?
@@ -86,6 +98,10 @@ class WorkspaceService:
                       OR (aa.firm_role IS NULL AND b.company_role='finance')))
                     THEN 1 ELSE 0 END) AS can_review
                 FROM visible_books b CROSS JOIN active_actor aa GROUP BY b.company_id
+              ), closed_briefings AS (
+                SELECT b.id,b.name,b.period,b.company_id,b.company_name
+                FROM visible_books b WHERE b.period_status='closed'
+                ORDER BY b.period DESC,b.name,b.id LIMIT 3
               ), visible_companies AS (
                 SELECT c.id,c.name,cm.role,cm.department_id,
                     COALESCE(p.mode,'department') AS submission_mode,
@@ -105,7 +121,9 @@ class WorkspaceService:
                     CROSS JOIN active_actor aa
                     WHERE c.status='active' AND (aa.firm_role IN ('owner','admin')
                       OR cm.role IS NOT NULL OR b.company_id IS NOT NULL)
-              ) SELECT aa.firm_role AS _firm_role,c.* FROM active_actor aa
+              ) SELECT aa.firm_role AS _firm_role,c.*,"""
+            + briefing_json
+            + """ AS briefings_json FROM active_actor aa
                 LEFT JOIN visible_companies c ON 1=1 ORDER BY c.name,c.id""",
             (actor.firm_id, actor.user_id, *params, actor.user_id, actor.firm_id, actor.user_id),
         ).fetchall()
@@ -128,6 +146,8 @@ class WorkspaceService:
             for row in companies
         )
         can_manage = manager or any(row["role"] in {"owner", "admin"} for row in companies)
+        raw_briefings = rows[0]["briefings_json"]
+        briefings = json.loads(raw_briefings) if isinstance(raw_briefings, str) else raw_briefings
         # The firm's accounting role is primary; a company's finance member
         # keeps the finance workflow even when additionally allowed to review.
         role = (
@@ -145,7 +165,7 @@ class WorkspaceService:
             if can_review
             else "viewer"
         )
-        return {
+        result = {
             "role": role,
             "can_submit": can_submit,
             "can_approve": can_approve,
@@ -161,6 +181,9 @@ class WorkspaceService:
             "companies": [{"id": c["id"], "name": c["name"]} for c in companies],
             "book_count": book_count,
         }
+        if briefings:
+            result["briefings"] = briefings
+        return result
 
     def _task_gates(self, conn, actor):
         """Resolve the live firm role plus capability probes for pruning.

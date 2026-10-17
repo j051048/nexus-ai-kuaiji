@@ -1,5 +1,5 @@
 import { useScopedQuery } from './useScopedQuery';
-import { ArrowLeft, ShieldCheck, TrendingDown, TrendingUp, Wallet } from 'lucide-react';
+import { ArrowLeft, Printer, ShieldCheck, TrendingDown, TrendingUp, Wallet } from 'lucide-react';
 import { api, errorMessage } from './api';
 import { EmptyState, Spinner } from './AppPrimitives';
 import { formatMoney } from './csv';
@@ -46,10 +46,21 @@ export function MonthlyBriefing({
 
   return (
     <main className="briefing">
-      <button className="text-button" onClick={onBack}>
-        <ArrowLeft size={14} />
-        返回账套
-      </button>
+      <div className="briefing-actions">
+        <button className="text-button" onClick={onBack}>
+          <ArrowLeft size={14} />
+          返回账套
+        </button>
+        <button
+          type="button"
+          className="button secondary small"
+          disabled={!data}
+          onClick={() => window.print()}
+        >
+          <Printer size={14} />
+          打印 / 导出 PDF
+        </button>
+      </div>
       {loading ? (
         <div className="loading-block">
           <Spinner />

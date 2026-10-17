@@ -10,7 +10,8 @@ export type MonthlyDestination = {
     | 'closing'
     | 'efficiency'
     | 'balances'
-    | 'recurring';
+    | 'recurring'
+    | 'briefing';
   companyId: string;
   period: string;
   bookId?: string;
@@ -105,6 +106,7 @@ export function monthlyRowDestination(
   if (['review', 'closing'].includes(view) && !row.permissions.review) return null;
   if (view === 'cases' && row.exceptions.open == null) return null;
   if (view === 'delivery' && row.delivery.unverified == null) return null;
+  if (view === 'briefing' && row.closing.state !== 'closed') return null;
   return {
     view,
     companyId: row.company_id,

@@ -4,6 +4,29 @@
   max-width: 1440px;
   margin: auto;
 }
+.reconciliation-workbench.embedded {
+  max-width: none;
+  margin: 0;
+  gap: 14px;
+  padding: 0 18px 18px;
+}
+.reconciliation-embedded-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.reconciliation-embedded-heading h2 {
+  color: #33452f;
+  font-size: 18px;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+.reconciliation-embedded-heading p {
+  color: #647568;
+  font-size: 10.5px;
+  margin: 7px 0 0;
+}
 .reconciliation-heading {
   display: flex;
   align-items: flex-end;
@@ -268,5 +291,11 @@
   }
   .reconciliation-heading h1 {
     font-size: 23px;
+  }
+}
+
+@container (max-width: 900px) {
+  .reconciliation-workbench.embedded .reconciliation-columns {
+    grid-template-columns: 1fr;
   }
 }

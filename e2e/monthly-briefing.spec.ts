@@ -37,15 +37,20 @@ test('月度财税简报：锁期前给出提示，锁期后交付一页纸概�
   await expect(page.getByText('本期已锁定', { exact: true })).toBeVisible();
 
   await page.getByRole('button', { name: '返回账套', exact: true }).click();
-  await openBookTools(page);
-  await page.getByRole('button', { name: '月度财税简报', exact: true }).click();
+  await page
+    .getByRole('navigation', { name: '主导航', exact: true })
+    .getByRole('button', { name: '客户月度进度', exact: true })
+    .click();
+  const matrix = page.locator('article.monthly-matrix-row').filter({ hasText: name });
+  await expect(matrix.getByRole('button', { name: '查看本月财税简报', exact: true })).toBeVisible({
+    timeout: 30_000,
+  });
+  await matrix.getByRole('button', { name: '查看本月财税简报', exact: true }).click();
   await expect(page.getByRole('heading', { name: /财税简报$/ })).toBeVisible();
   await expect(page.getByText('本期已锁期', { exact: true })).toBeVisible();
   await expect(page.getByText('银行流入', { exact: true })).toBeVisible();
   await expect(page.getByText('本期没有已审核的费用凭证。', { exact: true })).toBeVisible();
-  await expect(
-    page.getByText('本期未提供人工确认的期末参考余额', { exact: false }),
-  ).toBeVisible();
+  await expect(page.getByText('本期未提供人工确认的期末参考余额', { exact: false })).toBeVisible();
   await expect(page.getByText('当前没有需要提示的风险项。', { exact: true })).toBeVisible();
   await page.screenshot({ path: 'artifacts/monthly-briefing.png', fullPage: true });
 
@@ -55,6 +60,26 @@ test('月度财税简报：锁期前给出提示，锁期后交付一页纸概�
   expect(briefing.book.period_status).toBe('closed');
   expect(briefing.flows).toMatchObject({ income: '0.00', expense: '0.00', net: '0.00' });
   expect(briefing.tax.change).toBe('0.00');
+
+  await page.goto('/');
+  const direct = page.getByLabel('本月财税简报入口');
+  await expect(direct).toContainText(name, { timeout: 30_000 });
+  await direct.getByRole('button').filter({ hasText: name }).click();
+  await expect(page.getByRole('heading', { name: /财税简报$/ })).toBeVisible();
+  await page.evaluate(() => {
+    Object.defineProperty(window, 'print', {
+      configurable: true,
+      value: () => {
+        (window as Window & { __briefingPrinted?: boolean }).__briefingPrinted = true;
+      },
+    });
+  });
+  await page.getByRole('button', { name: '打印 / 导出 PDF', exact: true }).click();
+  expect(
+    await page.evaluate(
+      () => (window as Window & { __briefingPrinted?: boolean }).__briefingPrinted,
+    ),
+  ).toBe(true);
 
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(

@@ -31,12 +31,14 @@ export function ReconciliationWorkbench({
   onBack,
   onBusyChange,
   onChanged,
+  embedded = false,
 }: {
   session: Session;
   bookId: string;
   onBack: () => void;
   onBusyChange?: (busy: boolean) => void;
   onChanged?: () => void;
+  embedded?: boolean;
 }) {
   const [page, setPage] = useState<ReconciliationPage | null>(null);
   const [eventsOffset, setEventsOffset] = useState(0);
@@ -268,21 +270,24 @@ export function ReconciliationWorkbench({
   const selectionIssue = selectedEvent
     ? reconciliationSelectionIssue(selectedEvent, selectedRows, reason)
     : '请选择业务事项';
+  const Wrapper = embedded ? 'div' : 'main';
   return (
-    <main className="reconciliation-workbench">
-      <div className="reconciliation-heading">
+    <Wrapper className={'reconciliation-workbench' + (embedded ? ' embedded' : '')}>
+      <div className={embedded ? 'reconciliation-embedded-heading' : 'reconciliation-heading'}>
         <div>
-          <p className="reconciliation-kicker">BANK RECONCILIATION / 业务与资金</p>
-          <h1>让一笔业务，对上一笔付款。</h1>
+          {!embedded && <p className="reconciliation-kicker">BANK RECONCILIATION / 业务与资金</p>}
+          {embedded ? <h2>让一笔业务，对上一笔付款。</h2> : <h1>让一笔业务，对上一笔付款。</h1>}
           <p>
             {page?.book.company_name ?? '当前授权账套'} · {page?.book.period ?? ''} ·
             关联核对与会计复核分别确认
           </p>
         </div>
-        <button className="text-button" disabled={busy} onClick={onBack}>
-          <ArrowLeft size={14} />
-          返回会计工作台
-        </button>
+        {!embedded && (
+          <button className="text-button" disabled={busy} onClick={onBack}>
+            <ArrowLeft size={14} />
+            返回会计工作台
+          </button>
+        )}
       </div>
       {error && (
         <p className="inline-error" role="alert">
@@ -565,6 +570,6 @@ export function ReconciliationWorkbench({
         </section>
       </div>
       <InvoiceImportsPanel session={session} bookId={bookId} onBusyChange={onBusyChange} />
-    </main>
+    </Wrapper>
   );
 }

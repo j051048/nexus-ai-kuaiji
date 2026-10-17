@@ -8,6 +8,7 @@ import {
   RefreshCw,
   Search,
   ClipboardList,
+  FileText,
 } from 'lucide-react';
 import type { Session } from './types';
 import { durationLabel } from './efficiency-helpers';
@@ -322,6 +323,16 @@ export function MonthlyClientWorkbench({
                     参考余额与差异
                     <ArrowUpRight size={12} />
                   </button>
+                  {row.closing.state === 'closed' && row.book_id && (
+                    <button
+                      className="text-button monthly-briefing-entry"
+                      disabled={!open(row, 'briefing')}
+                      onClick={open(row, 'briefing')}
+                    >
+                      <FileText size={12} />
+                      查看本月财税简报
+                    </button>
+                  )}
                 </div>
                 <ProgressCell
                   label="人工投入"

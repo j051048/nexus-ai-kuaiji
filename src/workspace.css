@@ -42,6 +42,82 @@
   margin: 0;
   line-height: 1.6;
 }
+.workspace-briefings {
+  border: 1px solid #d9d4bd;
+  background: #fffdf3;
+  border-radius: 12px;
+  padding: 18px 20px;
+  margin-bottom: 22px;
+  display: grid;
+  gap: 14px;
+}
+.workspace-briefings-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.workspace-briefings-heading > svg {
+  color: #7b6738;
+  flex: none;
+}
+.workspace-briefings-heading div {
+  display: grid;
+  gap: 3px;
+}
+.workspace-briefings-heading strong {
+  color: #403923;
+  font-size: 15px;
+}
+.workspace-briefings-heading span {
+  color: #766e56;
+  font-size: 12px;
+}
+.workspace-briefing-links {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 9px;
+}
+.workspace-briefing-links button {
+  border: 1px solid #ded7bb;
+  border-radius: 8px;
+  background: #fff;
+  color: #3c392a;
+  padding: 11px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  text-align: left;
+}
+.workspace-briefing-links button > span:first-child {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.workspace-briefing-links button > span:last-child {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #6d5b2d;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.workspace-briefing-links strong,
+.workspace-briefing-links small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.workspace-briefing-links strong {
+  font-size: 12px;
+}
+.workspace-briefing-links small {
+  color: #7d7767;
+  font-size: 10px;
+}
+.workspace-briefing-links button:disabled {
+  opacity: 0.55;
+}
 .workspace-intake-actions {
   border: 1px solid #d4dfd8;
   background: #edf3ee;

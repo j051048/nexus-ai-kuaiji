@@ -618,10 +618,17 @@ h1 {
   align-items: start;
   gap: 20px;
 }
+.workspace-grid.book-focus {
+  grid-template-columns: minmax(0, 1fr);
+}
 .work-column {
   min-width: 0;
   display: grid;
   gap: 20px;
+}
+.book-embedded-view {
+  container-type: inline-size;
+  min-width: 0;
 }
 .panel {
   border-radius: 8px;
