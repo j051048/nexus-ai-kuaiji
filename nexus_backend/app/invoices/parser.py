@@ -191,6 +191,8 @@ def _assemble(headers, rows, positions, source):
                 "fingerprint": fingerprint,
             }
         )
+    if not results:
+        raise AccountingError("导出表中没有可导入的发票行，请检查发票号码列", 422)
     if len(warnings) > MAX_WARNINGS:
         extra = len(warnings) - MAX_WARNINGS
         warnings = warnings[:MAX_WARNINGS] + [f"另有 {extra} 条同类提示未逐行列出"]

@@ -247,6 +247,27 @@ class UploadIntentService:
                 "size_bytes": row["size_bytes"],
             }
 
+    def peek(self, actor, upload_id, purpose):
+        """Read a stored intent without claiming it, for deterministic previews."""
+        with self.db.transaction(actor=actor) as conn:
+            row = self._owned(conn, actor, upload_id)
+            if row["purpose"] != purpose:
+                raise AccountingError("上传凭证的用途与本次操作不一致", 409)
+            if row["state"] == "consuming":
+                raise AccountingError("该上传凭证正在被处理，请稍后核对结果", 409)
+            if row["state"] != "stored":
+                raise AccountingError("上传尚未完成校验，请先完成上传校验", 409)
+            if self._expired(row):
+                raise AccountingError("上传凭证已过期，请重新上传", 410)
+            return {
+                "id": row["storage_key"].split("/")[1],
+                "storage_key": row["storage_key"],
+                "filename": row["filename"],
+                "media_type": row["media_type"],
+                "sha256": row["sha256"],
+                "size_bytes": row["size_bytes"],
+            }
+
     def confirm(self, actor, upload_id, ref="attachment"):
         with self.db.transaction(write=True, actor=actor) as conn:
             self.access.require_user(conn, actor.user_id)

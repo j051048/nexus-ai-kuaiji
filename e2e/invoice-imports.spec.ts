@@ -135,6 +135,22 @@ test('电子税务局发票导出表：导入批次留在对账页，只作勾�
   const panel = page.locator('section.invoice-imports');
   await expect(panel).toBeVisible({ timeout: 60_000 });
   await expect(panel).toContainText('重复 1');
+  const previewCsv = Buffer.from(
+    [HEADERS, invoice(`2499300${suffix}1`)].join('\n') + '\n',
+    'utf-8',
+  );
+  await panel.getByLabel('选择发票导出表').setInputFiles({
+    name: `预检发票-${suffix}.csv`,
+    mimeType: 'text/csv',
+    buffer: previewCsv,
+  });
+  await panel.getByRole('button', { name: '预检文件', exact: true }).click();
+  const precheck = panel.getByLabel('发票导入预检结果');
+  await expect(precheck).toContainText('待确认');
+  await expect(precheck).toContainText('有效总行数');
+  await precheck.getByRole('button', { name: '确认导入并勾稽', exact: true }).click();
+  await expect(precheck).toHaveCount(0);
+  await expect(panel).toContainText('已导入 1 行');
   await panel.getByRole('button').filter({ hasText: '全量发票查询导出表' }).first().click();
   await expect(panel.locator('table')).toContainText(`2499200${suffix}1`);
   await expect(panel).toContainText('重复');

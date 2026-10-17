@@ -12,6 +12,10 @@ class InvoiceImportCreate(BaseModel):
     upload_id: str = Field(pattern=r"^[0-9a-f]{32}$")
 
 
+class InvoiceImportPreview(InvoiceImportCreate):
+    pass
+
+
 def build_invoice_imports_router(actor_dependency):
     router = APIRouter(prefix="/api/books/{book_id}/invoice-imports", tags=["发票导出表导入"])
 
@@ -26,6 +30,15 @@ def build_invoice_imports_router(actor_dependency):
         invoices=Depends(service),
     ):
         return invoices.create(actor, book_id, payload.upload_id)
+
+    @router.post("/preview")
+    def preview(
+        book_id: str,
+        payload: InvoiceImportPreview,
+        actor=Depends(actor_dependency),
+        invoices=Depends(service),
+    ):
+        return invoices.preview(actor, book_id, payload.upload_id)
 
     @router.get("")
     def listing(

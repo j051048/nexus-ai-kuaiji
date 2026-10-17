@@ -6,11 +6,14 @@ import zipfile
 from datetime import datetime, timedelta
 
 import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
 from app.accounting.domain import AccountingError
 from app.accounting.models import BookCreate, BookMemberGrant, CompanyCreate
 from app.business.storage import AttachmentStore
 from app.invoices.parser import parse_invoice_export, validate_invoice_export
+from app.invoices.router import build_invoice_imports_router
 from app.invoices.service import InvoiceImportService
 from app.uploads import UploadCreate, UploadIntentService
 from test_business import business
@@ -176,6 +179,11 @@ def test_parser_derives_total_amount_and_rejects_statement_or_xls():
         parse_invoice_export("大.csv", b"x" * (10 * 1024 * 1024 + 1))
 
 
+def test_parser_rejects_export_with_no_valid_invoice_rows():
+    with pytest.raises(AccountingError, match="没有可导入"):
+        parse_invoice_export("空号码.csv", csv_bytes([row("")]))
+
+
 def test_parser_rejects_row_overflow_and_bad_money_becomes_warning():
     rows = [row(f"25442000000{i:011d}") for i in range(5001)]
     with pytest.raises(AccountingError, match="5,000"):
@@ -306,6 +314,68 @@ def test_import_batch_records_evidence_dedup_and_bank_candidates(invoices):
     assert listing["total"] == 1 and listing["items"][0]["duplicates"] == 1
     filename, original = c.invoices.original(actor, c.book["id"], batch["id"])
     assert filename == "全量发票查询导出表.csv" and original == payload
+
+
+def test_preview_is_non_destructive_and_reports_accrual_candidates(invoices):
+    c = invoices
+    actor = c.actors["accountant"]
+    add_source(c, actor, "preview-source", "供应商", 113000, "income")
+    payload = csv_bytes(
+        [
+            row("25442000000000000055"),
+            row(
+                "25442000000000000056",
+                seller="供应商乙公司",
+                seller_tax="91320100SUPPLIER02",
+                buyer="客户企业",
+                buyer_tax=COMPANY_TAX,
+                amount="2000.00",
+                tax="260.00",
+                total="2260.00",
+            ),
+            row("25442000000000000057", status="作废"),
+        ]
+    )
+    created = upload(c, actor, payload)
+    preview = c.invoices.preview(actor, c.book["id"], created["id"])
+    assert preview["row_count"] == 3 and preview["direction"] == "mixed"
+    assert preview["matched"] == 1
+    assert preview["unmatched_eligible"] == 1
+    assert preview["void"] == 1 and preview["unknown_direction"] == 0
+    assert preview["company_tax_linked"] is True
+    assert preview["company_tax_matched"] == 2
+    assert c.invoices.list_batches(actor, c.book["id"])["total"] == 0
+    with c.db.transaction(actor=actor) as conn:
+        state = conn.execute(
+            "SELECT state FROM upload_intents WHERE id=?", (created["id"],)
+        ).fetchone()["state"]
+    assert state == "stored"
+    outsider = c.actors["employee"]
+    with pytest.raises(AccountingError):
+        c.invoices.preview(outsider, c.book["id"], created["id"])
+    batch = c.invoices.create(actor, c.book["id"], created["id"])
+    assert batch["row_count"] == 3
+
+
+def test_http_preview_uses_upload_id_without_consuming_it(invoices):
+    c = invoices
+    actor = c.actors["accountant"]
+    created = upload(c, actor, csv_bytes([row("25442000000000000058")]))
+    app = FastAPI()
+    app.state.invoice_imports = c.invoices
+    app.include_router(build_invoice_imports_router(lambda: actor))
+    client = TestClient(app)
+    response = client.post(
+        f"/api/books/{c.book['id']}/invoice-imports/preview",
+        json={"upload_id": created["id"]},
+    )
+    assert response.status_code == 200
+    assert response.json()["unmatched_eligible"] == 1
+    with c.db.transaction(actor=actor) as conn:
+        state = conn.execute(
+            "SELECT state FROM upload_intents WHERE id=?", (created["id"],)
+        ).fetchone()["state"]
+    assert state == "stored"
 
 
 def test_second_batch_flags_previous_invoices_as_duplicates(invoices):

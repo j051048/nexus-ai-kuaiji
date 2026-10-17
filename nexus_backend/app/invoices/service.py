@@ -26,6 +26,26 @@ def normalize_name(value):
     return name.replace("（", "(").replace("）", ")").replace("，", ",").casefold()
 
 
+def accrual_ready(row):
+    """A normal, complete invoice row with no current bank candidate."""
+    amount, tax, total = row.get("amount_cents"), row.get("tax_cents"), row.get("total_cents")
+    return (
+        not row.get("void")
+        and not row.get("red")
+        and not row.get("duplicate")
+        and row.get("direction") in {"input", "output"}
+        and bool(row.get("date"))
+        and row.get("match") is None
+        and type(amount) is int
+        and type(tax) is int
+        and type(total) is int
+        and amount >= 0
+        and tax >= 0
+        and total > 0
+        and amount + tax == total
+    )
+
+
 class InvoiceImportService:
     def __init__(self, db, store, uploads):
         self.db, self.store, self.uploads = db, store, uploads
@@ -52,12 +72,7 @@ class InvoiceImportService:
             book = self.access.book(conn, actor, book_id, "edit")
         stored = self.uploads.take(actor, upload_id, "invoice_import")
         try:
-            data = self.store.backend.read(stored["storage_key"], MAX_FILE_BYTES)
-            if (
-                len(data) != stored["size_bytes"]
-                or hashlib.sha256(data).hexdigest() != stored["sha256"]
-            ):
-                raise AccountingError("原件与上传校验不一致，请重新上传", 409)
+            data = self._stored_data(stored)
             parsed = parse_invoice_export(stored["filename"], data)
             batch = self._commit(actor, book, stored, parsed)
             self.uploads.confirm(actor, upload_id, "invoice_import")
@@ -65,6 +80,31 @@ class InvoiceImportService:
         except AccountingError:
             self.uploads.release(actor, upload_id)
             raise
+
+    def preview(self, actor, book_id, upload_id):
+        """Parse and summarize a stored upload without creating a batch."""
+        with self.db.transaction(actor=actor) as conn:
+            self.access.book(conn, actor, book_id, "edit")
+        stored = self.uploads.peek(actor, upload_id, "invoice_import")
+        parsed = parse_invoice_export(stored["filename"], self._stored_data(stored))
+        with self.db.transaction(actor=actor) as conn:
+            book = self.access.book(conn, actor, book_id, "edit")
+            _rows, summary = self._analyze(conn, book, parsed)
+        return {
+            "upload_id": upload_id,
+            "filename": stored["filename"],
+            "size_bytes": stored["size_bytes"],
+            **summary,
+        }
+
+    def _stored_data(self, stored):
+        data = self.store.backend.read(stored["storage_key"], MAX_FILE_BYTES)
+        if (
+            len(data) != stored["size_bytes"]
+            or hashlib.sha256(data).hexdigest() != stored["sha256"]
+        ):
+            raise AccountingError("原件与上传校验不一致，请重新上传", 409)
+        return data
 
     def _direction(self, row, company_tax):
         seller = normalize_tax_id(row["seller_tax"])
@@ -135,47 +175,75 @@ class InvoiceImportService:
                     break
         return matched
 
+    def _analyze(self, conn, book, parsed):
+        company = conn.execute(
+            "SELECT tax_id FROM companies WHERE id=?", (book["company_id"],)
+        ).fetchone()
+        company_tax = normalize_tax_id(company["tax_id"] if company else "")
+        rows = parsed["rows"]
+        for row in rows:
+            row["direction"] = self._direction(row, company_tax)
+        kinds = {
+            row["direction"]
+            for row in rows
+            if not row["void"] and row["direction"] in {"input", "output"}
+        }
+        direction = kinds.pop() if len(kinds) == 1 else "mixed"
+        seen = self._seen_before(conn, book["id"])
+        duplicates = 0
+        for row in rows:
+            if not row["duplicate"]:
+                if row["key"] in seen:
+                    row["duplicate"] = True
+                else:
+                    seen.add(row["key"])
+            if row["duplicate"]:
+                duplicates += 1
+        matched = self._match(conn, book["id"], rows)
+        dates = sorted(row["date"] for row in rows if row["date"])
+        company_tax_matched = sum(
+            1
+            for row in rows
+            if not row["void"]
+            and company_tax
+            and company_tax
+            in {
+                normalize_tax_id(row["seller_tax"]),
+                normalize_tax_id(row["buyer_tax"]),
+            }
+        )
+        summary = {
+            "row_count": len(rows),
+            "direction": direction,
+            "duplicates": duplicates,
+            "matched": matched,
+            "void": sum(1 for row in rows if row["void"]),
+            "red": sum(1 for row in rows if row["red"]),
+            "unknown_direction": sum(
+                1 for row in rows if not row["void"] and row["direction"] == "unknown"
+            ),
+            "unmatched_eligible": sum(1 for row in rows if accrual_ready(row)),
+            "company_tax_linked": bool(company_tax),
+            "company_tax_matched": company_tax_matched,
+            "date_from": dates[0] if dates else None,
+            "date_to": dates[-1] if dates else None,
+            "skipped": parsed["skipped"],
+            "warnings": parsed["warnings"],
+            "source": parsed["source"],
+            "columns": parsed["columns"],
+        }
+        return rows, summary
+
     def _commit(self, actor, book, stored, parsed):
         with self.db.transaction(
             write=True, actor=actor, company_id=book["company_id"], write_scope="company"
         ) as conn:
             self.access.require_user(conn, actor.user_id)
-            company = conn.execute(
-                "SELECT tax_id FROM companies WHERE id=?", (book["company_id"],)
-            ).fetchone()
-            company_tax = normalize_tax_id(company["tax_id"] if company else "")
-            rows = parsed["rows"]
-            for row in rows:
-                row["direction"] = self._direction(row, company_tax)
-            kinds = {
-                row["direction"]
-                for row in rows
-                if not row["void"] and row["direction"] in {"input", "output"}
-            }
-            direction = kinds.pop() if len(kinds) == 1 else "mixed"
-            seen = self._seen_before(conn, book["id"])
-            duplicates = 0
-            for row in rows:
-                if not row["duplicate"]:
-                    if row["key"] in seen:
-                        row["duplicate"] = True
-                    else:
-                        seen.add(row["key"])
-                if row["duplicate"]:
-                    duplicates += 1
-            matched = self._match(conn, book["id"], rows)
+            rows, summary = self._analyze(conn, book, parsed)
+            direction = summary["direction"]
+            duplicates = summary["duplicates"]
+            matched = summary["matched"]
             batch_id = uuid4().hex
-            notes = {
-                "warnings": parsed["warnings"],
-                "skipped": parsed["skipped"],
-                "duplicates": duplicates,
-                "void": sum(1 for row in rows if row["void"]),
-                "red": sum(1 for row in rows if row["red"]),
-                "matched": matched,
-                "source": parsed["source"],
-                "columns": parsed["columns"],
-                "company_tax_linked": bool(company_tax),
-            }
             stamp = now()
             conn.execute(
                 "INSERT INTO invoice_import_batches(id,book_id,firm_id,company_id,filename,"
@@ -193,7 +261,7 @@ class InvoiceImportService:
                     len(rows),
                     direction,
                     encode(rows),
-                    encode(notes),
+                    encode(summary),
                     actor.user_id,
                     stamp,
                 ),

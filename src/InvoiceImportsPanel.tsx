@@ -56,6 +56,27 @@ type InvoiceBatchDetail = InvoiceBatchSummary & {
   rows: InvoiceRow[];
 };
 
+type InvoicePreview = {
+  upload_id: string;
+  filename: string;
+  size_bytes: number;
+  row_count: number;
+  direction: 'input' | 'output' | 'mixed';
+  duplicates: number;
+  matched: number;
+  void: number;
+  red: number;
+  unknown_direction: number;
+  unmatched_eligible: number;
+  company_tax_linked: boolean;
+  company_tax_matched: number;
+  date_from: string | null;
+  date_to: string | null;
+  skipped: number;
+  warnings: string[];
+  source: string;
+};
+
 const DIRECTION_LABEL: Record<string, string> = {
   input: '进项',
   output: '销项',
@@ -84,6 +105,7 @@ export function InvoiceImportsPanel({
   const [items, setItems] = useState<InvoiceBatchSummary[] | null>(null);
   const [detail, setDetail] = useState<InvoiceBatchDetail | null>(null);
   const [file, setFile] = useState<File | null>(null);
+  const [preview, setPreview] = useState<InvoicePreview | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -132,7 +154,7 @@ export function InvoiceImportsPanel({
     }
   }
 
-  async function importFile() {
+  async function previewFile() {
     if (!file) return;
     const name = file.name.toLowerCase();
     if (!name.endsWith('.csv') && !name.endsWith('.xlsx')) {
@@ -142,18 +164,41 @@ export function InvoiceImportsPanel({
     setBusy(true);
     setError('');
     setNotice('');
+    setPreview(null);
     onBusyChange?.(true);
     try {
       const uploadId = await prepareUploadIntent(session, file, 'invoice_import');
+      setPreview(
+        await api<InvoicePreview>(`${base}/preview`, session, {
+          method: 'POST',
+          body: { upload_id: uploadId },
+        }),
+      );
+    } catch (failure) {
+      setError(errorMessage(failure));
+    } finally {
+      if (mounted.current) setBusy(false);
+      onBusyChange?.(false);
+    }
+  }
+
+  async function confirmImport() {
+    if (!preview) return;
+    setBusy(true);
+    setError('');
+    setNotice('');
+    onBusyChange?.(true);
+    try {
       const created = await api<{ id: string; row_count: number; direction: string }>(
         base,
         session,
         {
           method: 'POST',
-          body: { upload_id: uploadId },
+          body: { upload_id: preview.upload_id },
         },
       );
       setFile(null);
+      setPreview(null);
       setNotice(
         `已导入 ${created.row_count} 行（${DIRECTION_LABEL[created.direction] ?? created.direction}），只作勾稽证据，不产生凭证。`,
       );
@@ -209,6 +254,7 @@ export function InvoiceImportsPanel({
             aria-label="选择发票导出表"
             onChange={(event) => {
               setFile(event.target.files?.[0] ?? null);
+              setPreview(null);
               setError('');
             }}
           />
@@ -216,13 +262,107 @@ export function InvoiceImportsPanel({
         </label>
         <button
           className="button primary"
-          disabled={busy || !file}
-          onClick={() => void importFile()}
+          disabled={busy || !file || !!preview}
+          onClick={() => void previewFile()}
         >
           {busy ? <LoaderCircle size={14} className="spinner" /> : <FileSpreadsheet size={14} />}
-          导入并勾稽
+          预检文件
         </button>
       </div>
+      {preview && (
+        <section className="invoice-imports-preview" aria-label="发票导入预检结果">
+          <div className="invoice-imports-preview-heading">
+            <div>
+              <strong>导入前预检</strong>
+              <span>文件已安全暂存，尚未写入发票批次或产生凭证。</span>
+            </div>
+            <em>待确认</em>
+          </div>
+          <div className="invoice-imports-preview-grid">
+            <div>
+              <span>发票方向</span>
+              <strong>{DIRECTION_LABEL[preview.direction] ?? preview.direction}</strong>
+            </div>
+            <div>
+              <span>有效总行数</span>
+              <strong>{preview.row_count}</strong>
+            </div>
+            <div>
+              <span>作废 / 红冲</span>
+              <strong>
+                {preview.void} / {preview.red}
+              </strong>
+            </div>
+            <div>
+              <span>重复</span>
+              <strong>{preview.duplicates}</strong>
+            </div>
+            <div>
+              <span>银行候选</span>
+              <strong>{preview.matched}</strong>
+            </div>
+            <div>
+              <span>可挂账候选</span>
+              <strong>{preview.unmatched_eligible}</strong>
+            </div>
+            <div>
+              <span>企业税号</span>
+              <strong>
+                {preview.company_tax_linked ? `已匹配 ${preview.company_tax_matched} 行` : '未配置'}
+              </strong>
+            </div>
+            <div>
+              <span>开票日期</span>
+              <strong>
+                {preview.date_from || '—'}
+                {preview.date_to && preview.date_to !== preview.date_from
+                  ? ` 至 ${preview.date_to}`
+                  : ''}
+              </strong>
+            </div>
+          </div>
+          {preview.unknown_direction > 0 && (
+            <p className="invoice-imports-hint">
+              有 {preview.unknown_direction} 行无法按企业税号判断进销项；落库后仍需人工核对。
+            </p>
+          )}
+          {preview.skipped > 0 && (
+            <p className="invoice-imports-hint">跳过 {preview.skipped} 行缺少发票号码的记录。</p>
+          )}
+          {preview.warnings.length > 0 && (
+            <details className="invoice-imports-warnings">
+              <summary>预检提示（{preview.warnings.length}）</summary>
+              <ul>
+                {preview.warnings.slice(0, 50).map((warning) => (
+                  <li key={warning}>{warning}</li>
+                ))}
+              </ul>
+            </details>
+          )}
+          <div className="invoice-imports-preview-actions">
+            <button
+              type="button"
+              className="text-button"
+              disabled={busy}
+              onClick={() => {
+                setPreview(null);
+                setFile(null);
+              }}
+            >
+              重新选择
+            </button>
+            <button
+              type="button"
+              className="button primary"
+              disabled={busy}
+              onClick={() => void confirmImport()}
+            >
+              {busy && <LoaderCircle size={14} className="spinner" />}
+              确认导入并勾稽
+            </button>
+          </div>
+        </section>
+      )}
       {items && !items.length && !detail && (
         <p className="invoice-imports-empty">还没有导入过发票导出表。</p>
       )}
