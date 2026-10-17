@@ -3,6 +3,8 @@ import type { WorkspaceView } from './workspace-route';
 
 export const workspaceViewLabels: Partial<Record<WorkspaceView, string>> = {
   home: '我的待办',
+  firm: '事务所驾驶舱',
+  onboarding: '客户开通',
   runs: '后台运行',
   business: '业务事项',
   review: '跨企业批量复核',

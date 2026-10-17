@@ -31,7 +31,7 @@ test('批量开期为既有客户创建当月账套、逐户报告并保持幂�
   await dialog.getByLabel('批量开期搜索范围').fill(`批量开期`);
   await dialog.getByLabel('批量开期操作依据').fill('合成验证：月初批量开期两家客户');
   await dialog.getByRole('button', { name: '开始批量开期', exact: true }).click();
-  await expect(dialog.getByText('已开期 2 家')).toBeVisible();
+  await expect(dialog.getByText('已开期 2 家')).toBeVisible({ timeout: 30_000 });
   await expect(dialog.getByText(`批量开期甲${tag}`)).toBeVisible();
   await expect(
     dialog.getByText('长期账套尚未建立资料模板', { exact: false }).first(),
@@ -45,9 +45,14 @@ test('批量开期为既有客户创建当月账套、逐户报告并保持幂�
   await expect(page.getByText(`批量开期甲${tag} 2026-11`)).toBeVisible();
 
   const listed = await (
-    await request.get(`/api/monthly/workbench?period=2026-11&search=${encodeURIComponent('批量开期')}&limit=20&offset=0`, { headers })
+    await request.get(
+      `/api/monthly/workbench?period=2026-11&search=${encodeURIComponent('批量开期')}&limit=20&offset=0`,
+      { headers },
+    )
   ).json();
-  const ours = listed.rows.filter((row: { company_name: string }) => row.company_name.startsWith('批量开期'));
+  const ours = listed.rows.filter((row: { company_name: string }) =>
+    row.company_name.startsWith('批量开期'),
+  );
   expect(ours).toHaveLength(2);
   for (const row of ours) {
     expect(row.status).toBe('open');

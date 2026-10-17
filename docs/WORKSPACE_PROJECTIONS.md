@@ -32,9 +32,8 @@ PostgreSQL 侧还有逐行 RLS：投影策略逐行调用与源表完全相同�
 
 ## 4. 刷新路径
 
-1. **后台刷新器**（`ProjectionRefresher`，API 进程内轻量线程）：读请求发现投影不干净时
-   只做一次内存唤醒（`wake`），**绝不在请求内写库**；刷新器每 2 秒轮询一次脏企业
-   （每次最多 5 家，更多则自唤醒继续），每家企业一个独立事务，走**系统身份 + 企业写锁**
+1. **独立投影维护进程**（`app.maintenance_worker`）：API 进程不再启动长期后台线程。
+   维护进程扫描脏、失败和从未构建的活跃企业，每家企业一个独立事务，走**系统身份 + 企业写锁**
    （`begin_system_company_write`，见迁移 094）：共享全局门 + 企业锁，
    不再抢占全库独占锁——重建期间其他企业的写事务不受影响，只有同企业写入会被短暂串行。
    单企业失败只记账（`failures+1`，同样走企业锁）并继续下一家。
@@ -65,13 +64,19 @@ PostgreSQL 侧还有逐行 RLS：投影策略逐行调用与源表完全相同�
 建议的告警口径：`failing>0` 或 `never_built` 持续增长（>24h）→ 触发运维处理；
 正常态应为 `dirty` 短暂出现、`failing=0`。
 
-## 6. 为什么 Worker 不做预热
+## 6. 为什么普通 Worker 不做预热
 
 Worker 登录按安全设计只持有 `accounting_app` + `accounting_worker` 两个角色，
 没有 `accounting_system`，无法在系统身份下读全量源表重建投影。
-因此预热入口放在管理层（有人值守）与交互请求（自动收敛），而不是后台 Worker。
-若未来希望在 Worker 侧预热，需要新增 SECURITY DEFINER 的刷新函数并逐表放行只读——属于
-第三批写锁工作之后的独立议题。
+因此投影维护使用单独进程与单独数据库账号：
+
+```bash
+ACCOUNTING_MAINTENANCE_DATABASE_URL=postgresql://accounting_maintenance... \
+python scripts/run_accounting_maintenance.py
+```
+
+该账号必须可切换 `accounting_system`，但不需要 `accounting_worker`；普通票据/助手 Worker
+继续只持有受限角色。API 多副本、统一 Worker 多副本都不再各自运行刷新线程。
 
 ## 7. 故障处理
 

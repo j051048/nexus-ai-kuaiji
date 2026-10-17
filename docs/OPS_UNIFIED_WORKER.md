@@ -7,7 +7,8 @@
 
 1. 实时会计助手（高优）
 2. 单张票据识别与分录生成队列（中优）
-3. 批量旧账迁移（低优）
+3. 跨企业批处理子项（中优）
+4. 批量旧账迁移（低优）
 
 领取与租约仍由数据库逐条判定，因此统一进程与独立 Worker 可以任意混跑，
 不会重复领取任务；大规模时再按队列横向拆分即可。
@@ -31,9 +32,10 @@ python scripts/run_accounting_unified.py --once
 |------|--------|------|
 | `ACCOUNTING_WORKER_DATABASE_URL` | 必填 | 受限 worker 登录（仅 accounting_app + accounting_worker 角色） |
 | `ACCOUNTING_ATTACHMENT_ROOT` | 空 | 共享 Supabase 或本地持久目录 |
-| `ACCOUNTING_UNIFIED_ROLES` | `assistant,queue,migration` | 只跑子集：如 `queue,migration` 或 `assistant` |
+| `ACCOUNTING_UNIFIED_ROLES` | `assistant,queue,batch,migration` | 只跑子集：如 `queue,batch` 或 `assistant` |
 | `ACCOUNTING_UNIFIED_ASSISTANT_BUDGET` | `1` | 每轮最多处理的助手会话数（1–10） |
 | `ACCOUNTING_UNIFIED_QUEUE_BUDGET` | `2` | 每轮最多领取的票据/分录任务数（1–10） |
+| `ACCOUNTING_UNIFIED_BATCH_BUDGET` | `2` | 每轮最多领取的跨企业批处理子项数（1–10） |
 | `ACCOUNTING_UNIFIED_MIGRATION_BUDGET` | `1` | 每轮最多领取的迁移任务数（1–10） |
 | `ACCOUNTING_UNIFIED_IDLE_SECONDS` | `1` | 全部空闲时的轮询间隔（0.05–30 秒） |
 | `ACCOUNTING_QUEUE_LEASE_SECONDS` | `180` | 队列租约（≥150，覆盖 PDF 准备与模型调用） |
@@ -45,7 +47,8 @@ python scripts/run_accounting_unified.py --once
 
 ## 4. 部署建议
 
-- **中小事务所**：1 个 API + 1 个统一 Worker（`ACCOUNTING_UNIFIED_ROLES` 默认全开）。
+- **中小事务所**：1 个 API + 1 个统一 Worker（`ACCOUNTING_UNIFIED_ROLES` 默认全开）
+  + 1 个投影维护进程（使用独立系统能力数据库账号）。
 - **规模上量后**：把 `assistant` 拆成独立进程并保持低延迟；`queue` 与 `migration` 可继续合并，
   或按 `ACCOUNTING_UNIFIED_ROLES=migration` 把迁移单独隔离到低峰时段。
 - 灰度替换顺序：先启动统一 Worker → 观察 10 分钟心跳与队列进度 →

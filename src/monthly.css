@@ -538,6 +538,20 @@ button.monthly-progress-cell:hover {
   font-weight: 600;
   color: #2f4a33;
 }
+.batch-progress {
+  height: 7px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: #e8ede4;
+  margin: 0 0 14px;
+}
+.batch-progress > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #496a4e;
+  transition: width 220ms ease;
+}
 .batch-rows {
   display: grid;
   gap: 10px;
@@ -551,9 +565,15 @@ button.monthly-progress-cell:hover {
   padding: 12px 14px;
   background: #fffefa;
 }
-.batch-row.blocked {
+.batch-row.blocked,
+.batch-row.failed,
+.batch-row.retry_wait {
   border-color: #e7dece;
   background: #faf7f0;
+}
+.batch-row.running {
+  border-color: #b8c9d0;
+  background: #f5fafb;
 }
 .batch-row header {
   display: flex;
@@ -581,10 +601,17 @@ button.monthly-progress-cell:hover {
   color: #5c665c;
   border-color: #dcdfd8;
 }
-.batch-badge.blocked {
+.batch-badge.blocked,
+.batch-badge.failed,
+.batch-badge.retry_wait {
   background: #faf3e6;
   color: #8d6d38;
   border-color: #e7dece;
+}
+.batch-badge.running {
+  background: #edf5f7;
+  color: #416773;
+  border-color: #c7d9df;
 }
 .batch-message {
   color: #6c5b3a;

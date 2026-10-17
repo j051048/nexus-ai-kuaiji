@@ -12,7 +12,7 @@ import time
 
 logger = logging.getLogger(__name__)
 
-ROLES = ("assistant", "queue", "migration")
+ROLES = ("assistant", "queue", "batch", "migration")
 MONITOR_INTERVAL = 15.0
 
 
@@ -22,15 +22,18 @@ class UnifiedWorker:
         *,
         assistant_worker=None,
         queue_worker=None,
+        batch_worker=None,
         migration_worker=None,
         assistant_budget=1,
         queue_budget=2,
+        batch_budget=2,
         migration_budget=1,
         idle_seconds=1.0,
     ):
         for label, budget in (
             ("assistant", assistant_budget),
             ("queue", queue_budget),
+            ("batch", batch_budget),
             ("migration", migration_budget),
         ):
             if type(budget) is not int or not 1 <= budget <= 10:
@@ -42,12 +45,15 @@ class UnifiedWorker:
             plan.append((assistant_worker, assistant_budget))
         if queue_worker is not None:
             plan.append((queue_worker, queue_budget))
+        if batch_worker is not None:
+            plan.append((batch_worker, batch_budget))
         if migration_worker is not None:
             plan.append((migration_worker, migration_budget))
         if not plan:
             raise ValueError("统一后台至少需要一类队列")
         self._plan = plan
         self.assistant_worker, self.queue_worker = assistant_worker, queue_worker
+        self.batch_worker = batch_worker
         self.idle_seconds = idle_seconds
         self._stop = threading.Event()
         self._thread = None
@@ -126,6 +132,8 @@ def main(ready_callback=None):
     from .assistant.provider import AssistantProvider
     from .assistant.service import AssistantService
     from .assistant.worker import AssistantWorker
+    from .batch_ops.service import BatchOperationsService
+    from .batch_ops.worker import BatchWorker
     from .intelligence.provider import AISettings, OpenAICompatibleProvider
     from .intelligence.service import IntelligenceService
     from .jobs.service import QueueService
@@ -133,7 +141,10 @@ def main(ready_callback=None):
     from .legacy_migration.service import LegacyMigrationService
     from .legacy_migration.settlements import LegacySettlementService
     from .legacy_migration.worker import MigrationWorker
+    from .ledgers.service import LedgersService
+    from .monthly.batch import MonthlyBatchService
     from .operations.meter import MeterService
+    from .service_plans.service import ServicePlansService
     from .storage.factory import create_attachment_store
 
     parser = argparse.ArgumentParser(description="统一后台：助手、票据队列与旧账迁移的加权调度进程")
@@ -167,7 +178,7 @@ def main(ready_callback=None):
         if part.strip()
     }
     if not roles or roles - set(ROLES):
-        parser.error("ACCOUNTING_UNIFIED_ROLES 仅支持 assistant,queue,migration")
+        parser.error("ACCOUNTING_UNIFIED_ROLES 仅支持 assistant,queue,batch,migration")
     worker_started = False
     worker = None
     database = None
@@ -176,7 +187,7 @@ def main(ready_callback=None):
         verify_worker_login(database)
         storage = create_attachment_store(root)
         storage.verify_private()
-        queue_worker = assistant_worker = migration_worker = None
+        queue_worker = assistant_worker = batch_worker = migration_worker = None
         if "queue" in roles:
             queue = QueueService(database, IntelligenceService(database, storage))
             lease = int(os.getenv("ACCOUNTING_QUEUE_LEASE_SECONDS", "180"))
@@ -207,6 +218,18 @@ def main(ready_callback=None):
             assistant_worker = AssistantWorker(
                 service, provider, AssistantMeter(database, MeterService(database))
             )
+        if "batch" in roles:
+            batch_intelligence = IntelligenceService(database, storage)
+            monthly_batch = MonthlyBatchService(
+                database,
+                batch_intelligence.ledger,
+                LedgersService(database),
+                ServicePlansService(
+                    database, batch_intelligence.ledger, batch_intelligence.business
+                ),
+                batch_intelligence.business,
+            )
+            batch_worker = BatchWorker(BatchOperationsService(database, monthly_batch))
         if "migration" in roles:
             migration_service = LegacyMigrationService(database, storage)
             migration_worker = MigrationWorker(
@@ -216,9 +239,11 @@ def main(ready_callback=None):
         worker = UnifiedWorker(
             assistant_worker=assistant_worker,
             queue_worker=queue_worker,
+            batch_worker=batch_worker,
             migration_worker=migration_worker,
             assistant_budget=int(os.getenv("ACCOUNTING_UNIFIED_ASSISTANT_BUDGET", "1")),
             queue_budget=int(os.getenv("ACCOUNTING_UNIFIED_QUEUE_BUDGET", "2")),
+            batch_budget=int(os.getenv("ACCOUNTING_UNIFIED_BATCH_BUDGET", "2")),
             migration_budget=int(os.getenv("ACCOUNTING_UNIFIED_MIGRATION_BUDGET", "1")),
             idle_seconds=float(os.getenv("ACCOUNTING_UNIFIED_IDLE_SECONDS", "1")),
         )

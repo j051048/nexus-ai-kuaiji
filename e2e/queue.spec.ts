@@ -1,4 +1,4 @@
-import { openManagement } from './ui-navigation';
+import { choosePersona, openBusiness, openManagement } from './ui-navigation';
 import { expect, test, type Page } from '@playwright/test';
 
 const original = {
@@ -10,8 +10,8 @@ const original = {
   ),
 };
 async function createOriginal(page: Page, description: string) {
-  await page.getByLabel('切换验证身份').selectOption('employee');
-  await page.getByRole('button', { name: '业务事项', exact: true }).click();
+  await choosePersona(page, 'employee');
+  await openBusiness(page);
   await page.getByRole('button', { name: '录入业务事项', exact: true }).click();
   await page.getByRole('button', { name: /^员工报销/ }).click();
   await page.getByLabel('事项客户企业').selectOption({ label: '青屿设计（虚构示例）' });

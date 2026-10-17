@@ -82,6 +82,13 @@ from .intelligence.service import IntelligenceService
 from .jobs.service import QueueService
 from .jobs.worker import QueueWorker
 from .jobs.router import build_queue_router
+from .batch_ops.router import build_batch_ops_router
+from .batch_ops.service import BatchOperationsService
+from .batch_ops.worker import BatchWorker
+from .cockpit.router import build_cockpit_router
+from .cockpit.service import FirmCockpitService
+from .onboarding.router import build_onboarding_router
+from .onboarding.service import OnboardingService
 from .operations.meter import MeterService
 from .operations.service import OperationsService
 from .operations.router import build_operations_router
@@ -123,7 +130,6 @@ from .import_wizard.service import ImportWizardService
 from .import_wizard.router import build_import_wizard_router, ImportWizardBodyLimitMiddleware
 from .workspace.service import WorkspaceService
 from .workspace.router import build_workspace_router
-from .workspace.projection import ProjectionRefresher
 from .legacy_migration.service import LegacyMigrationService
 from .legacy_migration.worker import MigrationWorker
 from .legacy_migration.router import build_legacy_migration_router, MigrationBodyLimitMiddleware
@@ -254,6 +260,9 @@ def create_app(
             application.state.catalog = CatalogService(database)
             application.state.directory = DirectoryService(database)
             application.state.admin = AdminService(database)
+            application.state.onboarding = OnboardingService(
+                database, application.state.admin, application.state.catalog
+            )
             application.state.admin_identity = AdminIdentityService(database)
             application.state.business = BusinessService(database)
             application.state.revisions = FactRevisionService(
@@ -329,9 +338,6 @@ def create_app(
                 application.state.review,
                 application.state.cases,
             )
-            application.state.projection_refresher = ProjectionRefresher(database)
-            application.state.workspace.refresher = application.state.projection_refresher
-            application.state.projection_refresher.start()
             application.state.monthly = MonthlyService(database, application.state.service)
             application.state.service_plans = ServicePlansService(
                 database, application.state.service, application.state.business
@@ -352,6 +358,10 @@ def create_app(
                 application.state.service_plans,
                 application.state.business,
             )
+            application.state.batch_operations = BatchOperationsService(
+                database, application.state.monthly_batch
+            )
+            application.state.firm_cockpit = FirmCockpitService(database, application.state.service)
             application.state.handover = HandoverService(
                 database,
                 application.state.service,
@@ -454,12 +464,15 @@ def create_app(
             if assistant_worker:
                 assistant_worker.start()
             application.state.assistant_worker = assistant_worker
+            batch_worker = BatchWorker(application.state.batch_operations) if embedded else None
+            if batch_worker:
+                batch_worker.start()
+            application.state.batch_worker = batch_worker
             try:
                 yield
             finally:
-                projection_refresher = getattr(application.state, "projection_refresher", None)
-                if projection_refresher:
-                    projection_refresher.stop()
+                if batch_worker:
+                    batch_worker.stop()
                 if assistant_worker:
                     assistant_worker.stop()
                 if migration_worker:
@@ -942,6 +955,9 @@ def create_app(
     app.include_router(build_legacy_migration_router(actor))
     app.include_router(build_intelligence_router(actor))
     app.include_router(build_queue_router(actor))
+    app.include_router(build_batch_ops_router(actor))
+    app.include_router(build_cockpit_router(actor))
+    app.include_router(build_onboarding_router(actor))
     app.include_router(build_operations_router(actor))
     app.include_router(build_catalog_router(actor))
     app.include_router(build_review_router(actor))

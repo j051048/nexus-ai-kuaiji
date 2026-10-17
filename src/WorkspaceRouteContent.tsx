@@ -22,6 +22,12 @@ import type { WorkspaceView } from './workspace-route';
 const AgentActivityWorkspace = lazy(() =>
   import('./AgentActivityWorkspace').then((module) => ({ default: module.AgentActivityWorkspace })),
 );
+const FirmCockpit = lazy(() =>
+  import('./FirmCockpit').then((module) => ({ default: module.FirmCockpit })),
+);
+const FirmOnboarding = lazy(() =>
+  import('./FirmOnboarding').then((module) => ({ default: module.FirmOnboarding })),
+);
 const MonthlyClientWorkbench = lazy(() =>
   import('./MonthlyClientWorkbench').then((module) => ({ default: module.MonthlyClientWorkbench })),
 );
@@ -338,6 +344,34 @@ export function WorkspaceRouteContent({
           onOpen={openAgentRun}
           onBack={() => navigate('home')}
           onBusyChange={changeBusinessBusy}
+        />
+      ) : routeView === 'firm' ? (
+        <FirmCockpit
+          key={`${session.scope_key}:${workPeriod}`}
+          session={session}
+          initialPeriod={workPeriod}
+          onOpenBook={(target) => {
+            navigate('accounting');
+            setWorkCompany(target.companyId);
+            setWorkPeriod(target.period);
+            setBookId(target.bookId);
+            focusBookRef.current = target.bookId;
+            void initialize(undefined, target.bookId);
+          }}
+        />
+      ) : routeView === 'onboarding' ? (
+        <FirmOnboarding
+          key={`${session.scope_key}:${workPeriod}`}
+          session={session}
+          initialPeriod={workPeriod}
+          onOpenBook={(target) => {
+            navigate('accounting');
+            setWorkCompany(target.companyId);
+            setWorkPeriod(target.period);
+            setBookId(target.bookId);
+            focusBookRef.current = target.bookId;
+            void initialize(undefined, target.bookId);
+          }}
         />
       ) : routeView === 'monthly' ? (
         <MonthlyClientWorkbench

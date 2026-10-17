@@ -1,0 +1,105 @@
+.client-portal {
+  min-height: 100vh;
+  background: #f6f8f3;
+  color: #263126;
+}
+.client-portal-header {
+  min-height: 64px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 0 24px;
+  background: #fffefa;
+  border-bottom: 1px solid #dce4d7;
+}
+.client-portal-header > div {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.client-portal-mark {
+  font-weight: 800;
+  letter-spacing: 0.06em;
+}
+.client-portal-firm {
+  color: #6c786c;
+  font-size: 13px;
+}
+.client-portal-user {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #536153;
+  font-size: 13px;
+}
+.client-portal-user small {
+  color: #879187;
+}
+.client-portal-user select {
+  max-width: 130px;
+  min-height: 32px;
+  border: 1px solid #d5dfd1;
+  border-radius: 7px;
+  background: #f7faf3;
+  color: #4e5e50;
+  font-size: 11px;
+}
+.client-portal-user button {
+  border: 0;
+  background: transparent;
+  color: #6a756a;
+  padding: 7px;
+  border-radius: 7px;
+}
+.client-portal-tabs {
+  display: flex;
+  gap: 8px;
+  padding: 12px 24px;
+  background: #eef3eb;
+  border-bottom: 1px solid #dce4d7;
+}
+.client-portal-tabs button {
+  display: inline-flex;
+  gap: 7px;
+  align-items: center;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 8px 14px;
+  background: transparent;
+  color: #536153;
+  font-size: 13px;
+}
+.client-portal-tabs button.active {
+  background: #fffefa;
+  border-color: #cbd8c7;
+  color: #284a2d;
+  box-shadow: 0 2px 8px rgb(70 92 67 / 8%);
+}
+.client-portal-body > main,
+.client-portal-body > .monthly-workbench {
+  max-width: 1120px;
+  margin: 0 auto;
+}
+@media (max-width: 640px) {
+  .client-portal-header {
+    padding: 10px 14px;
+  }
+  .client-portal-firm,
+  .client-portal-user small {
+    display: none;
+  }
+  .client-portal-tabs {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    padding: 8px;
+    justify-content: space-between;
+  }
+  .client-portal-tabs button {
+    flex: 1;
+    justify-content: center;
+    padding: 9px 5px;
+    font-size: 11px;
+  }
+}

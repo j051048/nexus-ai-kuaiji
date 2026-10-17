@@ -1,5 +1,7 @@
 export const workspaceViews = [
   'home',
+  'firm',
+  'onboarding',
   'runs',
   'business',
   'accounting',
@@ -34,6 +36,8 @@ export type WorkspaceView = (typeof workspaceViews)[number];
 export function workspaceUsesBook(view: WorkspaceView): boolean {
   return ![
     'home',
+    'firm',
+    'onboarding',
     'runs',
     'business',
     'review',

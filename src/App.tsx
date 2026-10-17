@@ -40,6 +40,7 @@ import type { Book, BookDetail, Draft, Session, Workbench } from './types';
 import { EmptyState, Modal, Spinner } from './AppPrimitives';
 import { NewBookModal } from './AppDialogs';
 import { AssistantDrawer, type AssistantDrawerMode } from './AssistantDrawer';
+import { ClientPortalShell, type ClientPortalTab } from './ClientPortalShell';
 import { useBookWorkspace, type BookFilter, type BookNotice } from './useBookWorkspace';
 import { WorkspaceRouteContent } from './WorkspaceRouteContent';
 import { useWorkspaceRoute } from './useWorkspaceRoute';
@@ -598,6 +599,7 @@ export default function App() {
   const canSeeAccounting =
     profile?.can_accounting ??
     (!!stats?.book_count && !['client_employee', 'client_member'].includes(session.role ?? ''));
+  const clientPortal = !!profile && !canSeeAccounting;
   const experience = workspaceExperience(profile);
   const navigationLocked =
     !!busy ||
@@ -630,6 +632,8 @@ export default function App() {
     setRouteView(
       [
         'home',
+        'firm',
+        'onboarding',
         'runs',
         'business',
         'queue',
@@ -997,6 +1001,78 @@ export default function App() {
       setModal('import');
     },
   };
+  const portalRouteView: WorkspaceView =
+    clientPortal && !['home', 'accounting', 'business', 'materials', 'briefing'].includes(routeView)
+      ? 'home'
+      : routeView;
+  const routeContent = (
+    <WorkspaceRouteContent
+      app={
+        portalRouteView === routeView
+          ? routeApp
+          : {
+              ...routeApp,
+              routeView: portalRouteView,
+              showBusiness:
+                portalRouteView === 'business' ||
+                (portalRouteView === 'accounting' && clientPortal),
+            }
+      }
+      book={bookWorkspace}
+    />
+  );
+  const clientPortalTab: ClientPortalTab =
+    portalRouteView === 'materials'
+      ? 'materials'
+      : portalRouteView === 'briefing'
+        ? 'briefing'
+        : portalRouteView === 'business' || portalRouteView === 'accounting'
+          ? 'submit'
+          : 'home';
+
+  if (clientPortal && profile) {
+    return (
+      <>
+        {routeGuard.blocked && (
+          <RouteLeaveDialog
+            canDiscard={routeGuard.canDiscard}
+            onStay={routeGuard.cancel}
+            onLeave={routeGuard.proceed}
+          />
+        )}
+        <ClientPortalShell
+          session={session}
+          profile={profile}
+          current={clientPortalTab}
+          onNavigate={(tab) => {
+            if (tab === 'home') navigate('home');
+            else if (tab === 'materials') navigate('materials');
+            else navigate('business');
+          }}
+          onBriefing={() => {
+            const target = profile.briefings?.[0];
+            if (!target) {
+              navigate('home');
+              return;
+            }
+            navigate('accounting');
+            setWorkCompany(target.company_id);
+            setWorkPeriod(target.period);
+            setBookId(target.book_id);
+            focusBookRef.current = target.book_id;
+            setRouteView('briefing');
+            void initialize(undefined, target.book_id);
+          }}
+          onLogout={() => void auth.logout()}
+          persona={auth.persona}
+          personas={auth.config?.personas}
+          onPersonaChange={(value) => void auth.choosePersona(value)}
+        >
+          {routeContent}
+        </ClientPortalShell>
+      </>
+    );
+  }
 
   return (
     <div className="app-shell agent-shell">
@@ -1016,6 +1092,8 @@ export default function App() {
               ? 'business'
               : [
                     'home',
+                    'firm',
+                    'onboarding',
                     'runs',
                     'review',
                     'cases',
@@ -1195,7 +1273,7 @@ export default function App() {
             setRouteView('efficiency');
           }}
         />
-        <WorkspaceRouteContent app={routeApp} book={bookWorkspace} />
+        {routeContent}
       </div>
 
       {assistantOpen && (

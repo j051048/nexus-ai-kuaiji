@@ -12,6 +12,7 @@ import {
   Layers3,
   LayoutDashboard,
   Menu,
+  Plus,
   ShieldCheck,
   X,
 } from 'lucide-react';
@@ -19,6 +20,8 @@ import type { Session } from './types';
 
 export type AgentNavigationView =
   | 'home'
+  | 'firm'
+  | 'onboarding'
   | 'business'
   | 'accounting'
   | 'review'
@@ -189,6 +192,36 @@ export function AgentNavigation({
               我的待办<small>我的工作</small>
             </span>
           </button>
+          {canOperations && (
+            <button
+              aria-label="事务所驾驶舱"
+              className={'nav-item agent-primary-item ' + (current === 'firm' ? 'active' : '')}
+              disabled={locked}
+              onClick={() => go('firm')}
+              aria-current={current === 'firm' ? 'page' : undefined}
+            >
+              <Activity size={19} />
+              <span>
+                事务所驾驶舱<small>客户、负载与风险</small>
+              </span>
+            </button>
+          )}
+          {canOperations && (
+            <button
+              aria-label="客户开通"
+              className={
+                'nav-item agent-primary-item ' + (current === 'onboarding' ? 'active' : '')
+              }
+              disabled={locked}
+              onClick={() => go('onboarding')}
+              aria-current={current === 'onboarding' ? 'page' : undefined}
+            >
+              <Plus size={19} />
+              <span>
+                客户开通<small>模板复制与检查</small>
+              </span>
+            </button>
+          )}
           {canAccounting && (
             <button
               aria-label="客户企业"

@@ -69,6 +69,14 @@ class MonthlyBatchService:
         self.access = accounting.access
 
     def open_month(self, actor, request: BatchOpen):
+        company_ids, names = self.resolve_companies(actor, request)
+        results = [
+            self.open_company(actor, company_id, names.get(company_id, ""), request)
+            for company_id in company_ids
+        ]
+        return self._result(request.period, results)
+
+    def resolve_companies(self, actor, request: BatchOpen):
         period = request.period
         with self.db.transaction(actor=actor) as conn:
             self.access.require_manager(conn, actor)
@@ -77,10 +85,13 @@ class MonthlyBatchService:
             else:
                 company_ids = list(request.companies)
             names = self._names(conn, actor, company_ids)
-        results = [
-            self._open_company(actor, company_id, names.get(company_id, ""), request)
-            for company_id in company_ids
-        ]
+        return company_ids, names
+
+    def open_company(self, actor, company_id, company_name, request: BatchOpen):
+        return self._open_company(actor, company_id, company_name, request)
+
+    @staticmethod
+    def _result(period, results):
         return {
             "period": period,
             "opened": sum(1 for row in results if row["status"] == "created"),

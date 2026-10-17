@@ -2,7 +2,7 @@
 
 投影只保存与操作者无关的任务行与可见性键；授权仍由读取时的实时谓词与
 （PostgreSQL）逐行 RLS 决定。源表触发器把企业标记为脏，刷新在系统身份
-（API 进程的 accounting_system）下逐企业重建；读取路径在干净时使用投影、
+（独立维护进程的 accounting_system）下逐企业重建；读取路径在干净时使用投影、
 脏时回退实时查询，因此正确性从不依赖投影的新鲜度。legacy_migration 的
 迁移支线暂不进投影，继续走实时分支。
 """
@@ -446,6 +446,10 @@ class ProjectionRefresher:
         # Sweep first, then consume the firms discovered by this pass.
         self._sweep()
         self.drain()
+
+    def run_once(self):
+        """Run one deterministic maintenance pass for the dedicated worker/tests."""
+        self._tick()
 
     def _loop(self):
         while not self._stop.is_set():

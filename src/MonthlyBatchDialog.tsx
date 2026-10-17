@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { CalendarPlus, RefreshCw } from 'lucide-react';
 import { api, errorMessage } from './api';
 import { Modal, Spinner } from './AppPrimitives';
@@ -15,19 +15,34 @@ type BatchRow = {
   message: string;
 };
 
-type BatchResult = {
-  period: string;
-  opened: number;
-  skipped: number;
-  blocked: number;
-  results: BatchRow[];
-  notes: string[];
+type BatchItem = {
+  id: string;
+  company_id: string;
+  company_name: string;
+  status: 'queued' | 'running' | 'succeeded' | 'skipped' | 'failed' | 'retry_wait';
+  error_detail: string;
+  result: BatchRow | null;
 };
 
-const statusLabels: Record<BatchRow['status'], string> = {
-  created: '已开期',
+type BatchOperation = {
+  id: string;
+  kind: 'monthly_open';
+  status: 'queued' | 'running' | 'completed' | 'attention' | 'cancelled';
+  total: number;
+  succeeded: number;
+  skipped: number;
+  failed: number;
+  progress: { total: number; completed: number; percent: number };
+  items: BatchItem[];
+};
+
+const itemStatusLabels: Record<BatchItem['status'], string> = {
+  queued: '排队中',
+  running: '处理中',
+  succeeded: '已开期',
   skipped: '已存在',
-  blocked: '待人工处理',
+  failed: '待人工处理',
+  retry_wait: '等待重试',
 };
 
 /** 月初批量开期向导：为既有客户批量创建当月账套、继承分工并生成催资清单。 */
@@ -49,7 +64,27 @@ export function MonthlyBatchDialog({
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [result, setResult] = useState<BatchResult | null>(null);
+  const [batch, setBatch] = useState<BatchOperation | null>(null);
+  const requestKey = useRef('');
+  const openedRef = useRef(onOpened);
+  openedRef.current = onOpened;
+
+  async function poll(id: string) {
+    try {
+      const value = await api<BatchOperation>(
+        `/firm/batch-operations/${encodeURIComponent(id)}`,
+        session,
+      );
+      setBatch(value);
+      if (['queued', 'running'].includes(value.status)) {
+        window.setTimeout(() => void poll(id), 800);
+      } else {
+        openedRef.current();
+      }
+    } catch (failure) {
+      setError(errorMessage(failure));
+    }
+  }
 
   async function run() {
     if (reason.trim().length < 3) {
@@ -59,9 +94,11 @@ export function MonthlyBatchDialog({
     setBusy(true);
     setError('');
     try {
-      const value = await api<BatchResult>('/monthly/batch/open', session, {
+      if (!requestKey.current) requestKey.current = crypto.randomUUID();
+      const value = await api<BatchOperation>('/firm/batch-operations/monthly-open', session, {
         method: 'POST',
         body: {
+          idempotency_key: requestKey.current,
           period,
           scope: 'awaiting',
           search: search.trim(),
@@ -69,8 +106,9 @@ export function MonthlyBatchDialog({
           reason: reason.trim(),
         },
       });
-      setResult(value);
+      setBatch(value);
       onOpened();
+      if (['queued', 'running'].includes(value.status)) void poll(value.id);
     } catch (failure) {
       setError(errorMessage(failure));
     } finally {
@@ -85,49 +123,61 @@ export function MonthlyBatchDialog({
       onClose={onClose}
       busy={busy}
     >
-      {result ? (
+      {batch ? (
         <div className="batch-result">
           <p role="status" className="batch-summary">
-            已开期 {result.opened} 家 · 已存在 {result.skipped} 家 · 待人工处理 {result.blocked} 家
+            已开期 {batch.succeeded} 家 · 已存在 {batch.skipped} 家 · 待人工处理 {batch.failed} 家
+            {' · '}进度 {batch.progress.completed}/{batch.progress.total}
           </p>
+          <div
+            className="batch-progress"
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={batch.progress.percent}
+          >
+            <span style={{ width: `${batch.progress.percent}%` }} />
+          </div>
           <div className="batch-rows" aria-label="批量开期逐户结果">
-            {result.results.map((row) => (
-              <article key={row.company_id} className={'batch-row ' + row.status}>
-                <header>
-                  <strong>{row.company_name}</strong>
-                  <span className={'batch-badge ' + row.status}>{statusLabels[row.status]}</span>
-                </header>
-                <p>
-                  {row.plan?.copied
-                    ? '已继承上月服务单分工。'
-                    : row.plan?.reason === 'source_without_plan'
-                      ? '上月尚未填写服务单分工。'
-                      : row.plan?.reason === 'already_planned'
-                        ? '已有服务单分工，未覆盖。'
+            {batch.items.map((item) => {
+              const row = item.result;
+              return (
+                <article key={item.id} className={'batch-row ' + item.status}>
+                  <header>
+                    <strong>{item.company_name}</strong>
+                    <span className={'batch-badge ' + item.status}>
+                      {itemStatusLabels[item.status]}
+                    </span>
+                  </header>
+                  {row && (
+                    <p>
+                      {row.plan?.copied
+                        ? '已继承上月服务单分工。'
+                        : row.plan?.reason === 'source_without_plan'
+                          ? '上月尚未填写服务单分工。'
+                          : row.plan?.reason === 'already_planned'
+                            ? '已有服务单分工，未覆盖。'
+                            : ''}
+                      {row.materials
+                        ? `催资清单：新建 ${row.materials.created} 项、复用 ${row.materials.reused} 项。`
                         : ''}
-                  {row.materials
-                    ? `催资清单：新建 ${row.materials.created} 项、复用 ${row.materials.reused} 项。`
-                    : ''}
-                </p>
-                {row.message && <p className="batch-message">{row.message}</p>}
-                {row.warnings.map((item) => (
-                  <p className="batch-warning" key={item}>
-                    {item}
-                  </p>
-                ))}
-              </article>
-            ))}
-            {!result.results.length && (
+                    </p>
+                  )}
+                  {(item.error_detail || row?.message) && (
+                    <p className="batch-message">{item.error_detail || row?.message}</p>
+                  )}
+                  {(row?.warnings ?? []).map((warning) => (
+                    <p className="batch-warning" key={warning}>
+                      {warning}
+                    </p>
+                  ))}
+                </article>
+              );
+            })}
+            {!batch.items.length && (
               <p className="field-help">当前范围内没有待建账企业，无需开期。</p>
             )}
           </div>
-          {result.notes.length > 0 && (
-            <ul className="batch-notes">
-              {result.notes.map((note) => (
-                <li key={note}>{note}</li>
-              ))}
-            </ul>
-          )}
           {error && (
             <p className="form-error" role="alert">
               {error}
@@ -137,13 +187,21 @@ export function MonthlyBatchDialog({
             <button
               className="button secondary"
               type="button"
-              disabled={busy}
-              onClick={() => setResult(null)}
+              disabled={busy || ['queued', 'running'].includes(batch.status)}
+              onClick={() => {
+                requestKey.current = '';
+                setBatch(null);
+              }}
             >
               <RefreshCw size={14} />
               再来一批
             </button>
-            <button className="button primary" type="button" disabled={busy} onClick={onClose}>
+            <button
+              className="button primary"
+              type="button"
+              disabled={busy || ['queued', 'running'].includes(batch.status)}
+              onClick={onClose}
+            >
               完成批量开期
             </button>
           </div>

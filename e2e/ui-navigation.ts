@@ -13,9 +13,15 @@ export async function openNavigation(page: Page) {
 export async function choosePersona(page: Page, persona: string) {
   await openNavigation(page);
   await page.getByLabel('切换验证身份').selectOption(persona);
+  await expect(page.locator('.agent-sidebar, .client-portal')).toBeVisible({ timeout: 30_000 });
 }
 
 export async function openBusiness(page: Page) {
+  const portal = page.getByRole('navigation', { name: '客户服务', exact: true });
+  if (await portal.count()) {
+    await portal.getByRole('button', { name: '提交', exact: true }).click();
+    return;
+  }
   await openNavigation(page);
   await page
     .getByRole('navigation', { name: '主导航', exact: true })
