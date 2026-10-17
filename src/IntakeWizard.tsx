@@ -43,6 +43,7 @@ export function IntakeWizard({
   onBusyChange,
   initialDraftId = '',
   initialTemplate = 'reimbursement',
+  initialEvent,
   lockedCompanyId = '',
 }: {
   session: Session;
@@ -52,6 +53,7 @@ export function IntakeWizard({
   onBusyChange: (value: boolean) => void;
   initialDraftId?: string;
   initialTemplate?: BusinessTemplate;
+  initialEvent?: BusinessEvent;
   /** A material request may only resume or submit drafts of its own company. */
   lockedCompanyId?: string;
 }) {
@@ -61,12 +63,20 @@ export function IntakeWizard({
   const dialog = useRef<HTMLDialogElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const photoInput = useRef<HTMLInputElement>(null);
-  const [companyId, setCompany] = useState(companies[0]?.id ?? '');
+  const [editing, setEditing] = useState<BusinessEvent | null>(initialEvent ?? null);
+  const [companyId, setCompany] = useState(initialEvent?.company_id ?? companies[0]?.id ?? '');
   const company = companies.find((item) => item.id === companyId);
-  const direct = company?.submission_policy?.mode === 'direct';
-  const [departmentId, setDepartment] = useState(company?.department_id ?? '');
-  const [template, setTemplate] = useState<BusinessTemplate>(initialTemplate);
-  const [fields, setFields] = useState(initialBusinessPayload(initialTemplate));
+  const direct =
+    initialEvent?.submission_mode === 'direct' || company?.submission_policy?.mode === 'direct';
+  const [departmentId, setDepartment] = useState(
+    initialEvent?.department_id ?? company?.department_id ?? '',
+  );
+  const [template, setTemplate] = useState<BusinessTemplate>(
+    initialEvent?.template_id ?? initialTemplate,
+  );
+  const [fields, setFields] = useState(
+    initialEvent?.payload ?? initialBusinessPayload(initialTemplate),
+  );
   const [draft, setDraft] = useState<IntakeDraft | null>(null);
   const [savedDrafts, setSavedDrafts] = useState<IntakeDraft[]>([]);
   const [busy, setBusy] = useState('');
@@ -82,7 +92,11 @@ export function IntakeWizard({
   fieldRef.current = fields;
   const templateRef = useRef(template);
   templateRef.current = template;
-  const savedSignature = useRef('');
+  const savedSignature = useRef(
+    initialEvent
+      ? JSON.stringify({ template_id: initialEvent.template_id, fields: initialEvent.payload })
+      : '',
+  );
   const pendingCreate = useRef<{ key: string; body: object; signature: string } | null>(null);
   const completeKey = useRef<{ signature: string; key: string } | null>(null);
   const recognizeKeys = useRef(new Map<string, string>());
@@ -91,6 +105,7 @@ export function IntakeWizard({
     dialog.current?.showModal();
     active.current = true;
     const controller = new AbortController();
+    if (initialEvent) return;
     void api<{ drafts: IntakeDraft[] }>('/intake/drafts', session, { signal: controller.signal })
       .then((value) => {
         if (active.current)
@@ -105,7 +120,7 @@ export function IntakeWizard({
       active.current = false;
       controller.abort();
     };
-  }, [session, lockedCompanyId]);
+  }, [session, lockedCompanyId, initialEvent]);
   useEffect(() => {
     if (initialDraftId) void resume(initialDraftId);
   }, [initialDraftId]);
@@ -185,6 +200,38 @@ export function IntakeWizard({
     if (active.current) setSaveState('草稿已保存 · 关闭或刷新后可继续填写');
     return current;
   }
+  async function persistEditing() {
+    const current = editing;
+    if (!current) throw new Error('当前修改事项已失效，请关闭后重新打开。');
+    if (!companyId) throw new Error('请先选择客户企业。');
+    const signature = JSON.stringify({
+      template_id: current.template_id,
+      fields: fieldRef.current,
+    });
+    if (savedSignature.current === signature) return current;
+    const value = await api<BusinessEvent>(
+      `/business/events/${encodeURIComponent(current.id)}`,
+      session,
+      {
+        method: 'PATCH',
+        body: {
+          expected_version: current.version,
+          payload: normalizeBusinessPayload(fieldRef.current),
+        },
+      },
+    );
+    if (active.current) {
+      setEditing(value);
+      setFields(value.payload);
+      fieldRef.current = value.payload;
+      savedSignature.current = JSON.stringify({
+        template_id: value.template_id,
+        fields: value.payload,
+      });
+      setSaveState('修改已保存');
+    }
+    return value;
+  }
   async function run(name: string, action: () => Promise<void>) {
     if (lock.current) return;
     lock.current = true;
@@ -237,12 +284,24 @@ export function IntakeWizard({
     const timer = window.setTimeout(
       () =>
         void run('saving', async () => {
-          await persist();
+          if (editing) await persistEditing();
+          else await persist();
         }),
       1200,
     );
     return () => window.clearTimeout(timer);
-  }, [fields, template, touched, busy, error, companyId, departmentId, direct]);
+  }, [
+    fields,
+    template,
+    touched,
+    busy,
+    error,
+    companyId,
+    departmentId,
+    direct,
+    editing?.id,
+    editing?.version,
+  ]);
   function field<K extends keyof BusinessPayload>(key: K, value: BusinessPayload[K]) {
     setFields((current) => ({ ...current, [key]: value }));
     setConfirmed(false);
@@ -290,7 +349,7 @@ export function IntakeWizard({
     if (!files?.length) return;
     const selected = Array.from(files);
     await run('upload', async () => {
-      let current = await persist();
+      let current = editing ? (touched ? await persistEditing() : editing) : await persist();
       for (const file of selected) {
         const validation = validateAttachment(
           file,
@@ -298,14 +357,27 @@ export function IntakeWizard({
           current.attachments.reduce((sum, item) => sum + item.size_bytes, 0),
         );
         if (validation) throw new Error(`${file.name}：${validation}`);
-        const direct = await prepareDirectUpload(session, file, 'intake_attachment');
-        const data = attachmentForm(file, direct);
-        current = await api<IntakeDraft>(
-          `/intake/drafts/${encodeURIComponent(current.id)}/attachments?expected_version=${current.version}`,
+        const direct = await prepareDirectUpload(
           session,
-          { method: 'POST', body: data },
+          file,
+          editing ? 'event_attachment' : 'intake_attachment',
         );
-        if (active.current) adopt(current);
+        const data = attachmentForm(file, direct);
+        if (editing) {
+          current = await api<BusinessEvent>(
+            `/business/events/${encodeURIComponent(current.id)}/attachments?expected_version=${current.version}`,
+            session,
+            { method: 'POST', body: data },
+          );
+          if (active.current) setEditing(current);
+        } else {
+          current = await api<IntakeDraft>(
+            `/intake/drafts/${encodeURIComponent(current.id)}/attachments?expected_version=${current.version}`,
+            session,
+            { method: 'POST', body: data },
+          );
+          if (active.current) adopt(current);
+        }
       }
       if (active.current) {
         setTouched(true);
@@ -355,6 +427,25 @@ export function IntakeWizard({
       setError('请核对原件并勾选字段确认。');
       return;
     }
+    if (editing) {
+      await run(submit ? 'submit' : 'complete', async () => {
+        let current = touched ? await persistEditing() : editing;
+        if (submit)
+          current = await api<BusinessEvent>(
+            `/business/events/${encodeURIComponent(current.id)}/submit`,
+            session,
+            {
+              method: 'POST',
+              body: { expected_version: current.version },
+            },
+          );
+        if (active.current) {
+          completionRef.current = true;
+          onCompleted(current);
+        }
+      });
+      return;
+    }
     await run(submit ? 'submit' : 'complete', async () => {
       const current = await persist();
       const payload = normalizeBusinessPayload(fieldRef.current);
@@ -385,14 +476,18 @@ export function IntakeWizard({
     if (busy) return;
     if (touched && !error && !completionRef.current)
       await run('saving', async () => {
-        await persist();
+        if (editing) await persistEditing();
+        else await persist();
         onClose();
       });
     else onClose();
   }
   async function download(id: string, filename: string) {
     await run('download', async () => {
-      const data = await apiBlob(`/intake/attachments/${encodeURIComponent(id)}/content`, session);
+      const data = await apiBlob(
+        `${editing ? '/business' : '/intake'}/attachments/${encodeURIComponent(id)}/content`,
+        session,
+      );
       if (!active.current) return;
       const url = URL.createObjectURL(data);
       const link = document.createElement('a');
@@ -407,6 +502,10 @@ export function IntakeWizard({
   draft?.runs.forEach((row) => {
     if (!latestRuns.has(row.attachment_id)) latestRuns.set(row.attachment_id, row);
   });
+  const attachments = editing?.attachments ?? draft?.attachments ?? [];
+  const aiEnabled = !editing && !!draft?.ai_enabled;
+  const visionReady = !editing && !!draft?.vision_ready;
+  const structuredReady = !editing && !!draft?.structured_ready;
   return (
     <dialog
       ref={dialog}
@@ -420,8 +519,8 @@ export function IntakeWizard({
       <header className="modal-header">
         <div>
           <p className="eyebrow">把业务说清楚，票据一起交</p>
-          <h2 id="intake-title">录入业务事项</h2>
-          <p>上传票据 → 核对信息 → {direct ? '提交给会计' : '提交审批'}</p>
+          <h2 id="intake-title">{editing ? '修改业务事项' : '录入业务事项'}</h2>
+          <p>上传票据 → 核对信息 → {direct ? '提交财务处理' : '提交审批'}</p>
         </div>
         <button
           className="icon-button"
@@ -434,7 +533,7 @@ export function IntakeWizard({
         </button>
       </header>
       <div className="intake-scroll">
-        {!!savedDrafts.length && !draft && (
+        {!!savedDrafts.length && !draft && !editing && (
           <details className="intake-resume">
             <summary>
               <Save size={15} />
@@ -462,7 +561,7 @@ export function IntakeWizard({
               key={item.id}
               aria-pressed={template === item.id}
               className={template === item.id ? 'selected' : ''}
-              disabled={disabled}
+              disabled={disabled || !!editing}
               onClick={() => chooseTemplate(item.id)}
             >
               <Receipt size={18} />
@@ -482,7 +581,7 @@ export function IntakeWizard({
               <select
                 aria-label="事项客户企业"
                 value={companyId}
-                disabled={!!draft || !!busy || !!pendingCreate.current}
+                disabled={!!draft || !!busy || !!pendingCreate.current || !!editing}
                 onChange={(event) => chooseCompany(event.target.value)}
               >
                 {companies.map((item) => (
@@ -505,7 +604,11 @@ export function IntakeWizard({
                 aria-label="事项所属部门"
                 value={departmentId}
                 disabled={
-                  !!draft || !!busy || !!pendingCreate.current || company?.role === 'employee'
+                  !!draft ||
+                  !!busy ||
+                  !!pendingCreate.current ||
+                  !!editing ||
+                  company?.role === 'employee'
                 }
                 onChange={(event) => setDepartment(event.target.value)}
               >
@@ -571,11 +674,11 @@ export function IntakeWizard({
             </div>
             <p className="intake-ai-help">
               <Sparkles size={15} />
-              {draft?.ai_enabled && (draft.vision_ready || draft.structured_ready)
+              {aiEnabled && (visionReady || structuredReady)
                 ? '识别后逐字段选择建议；金额和交易对方由你核对。'
                 : '票据识别尚未启用或配置，可以直接手工填写并提交。'}
             </p>
-            {draft?.attachments.map((attachment) => {
+            {attachments.map((attachment) => {
               const run = latestRuns.get(attachment.id);
               return (
                 <article className="intake-file" key={attachment.id}>
@@ -594,10 +697,10 @@ export function IntakeWizard({
                       下载
                     </button>
                   </div>
-                  {draft.ai_enabled &&
+                  {aiEnabled &&
                     (attachment.media_type === 'application/xml'
-                      ? draft.structured_ready
-                      : draft.vision_ready) && (
+                      ? structuredReady
+                      : visionReady) && (
                       <button
                         className="button secondary small"
                         type="button"
@@ -674,7 +777,7 @@ export function IntakeWizard({
                 </article>
               );
             })}
-            {(draft?.attachments.length ?? 0) > 1 && (
+            {attachments.length > 1 && (
               <p className="field-help">
                 多张票据分别展示，不自动合计或猜测交易对方。涉及不同业务时请分别录入。
               </p>
@@ -845,31 +948,16 @@ export function IntakeWizard({
           <button
             className="button secondary intake-save-draft"
             type="button"
-            disabled={!!busy || (!direct && !departmentId)}
-            onClick={() =>
-              void run('saving', async () => {
-                await persist();
-              })
-            }
-          >
-            <Save size={15} />
-            保存录入草稿
-          </button>
-          <button
-            className="button secondary"
-            type="button"
             disabled={!!busy || (!direct && !departmentId) || !confirmed}
             onClick={() => void finish(false)}
           >
-            <FileText size={15} />
-            保存事项
+            <Save size={15} />
+            {editing ? '保存修改' : '暂存草稿'}
           </button>
           <button
             className="button primary"
             type="button"
-            disabled={
-              !!busy || (!direct && !departmentId) || !draft?.attachments.length || !confirmed
-            }
+            disabled={!!busy || (!direct && !departmentId) || !attachments.length || !confirmed}
             onClick={() => void finish(true)}
           >
             {busy === 'submit' ? (
@@ -877,7 +965,7 @@ export function IntakeWizard({
             ) : (
               <Send size={15} />
             )}
-            {direct ? '提交给会计' : '提交审批'}
+            {direct ? '提交财务处理' : '提交审批'}
           </button>
         </div>
       </footer>

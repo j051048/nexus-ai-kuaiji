@@ -28,7 +28,7 @@ async function createOriginal(page: Page, description: string) {
     await page
       .getByText('我已核对原件，确认日期、金额、交易对方与本次业务一致。', { exact: true })
       .click();
-  await page.getByRole('button', { name: '保存事项', exact: true }).click();
+  await page.getByRole('button', { name: '暂存草稿', exact: true }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   // setInputFiles can target a disabled hidden input while saving still holds
   // the action lock; wait for the actual upload button to be usable first.

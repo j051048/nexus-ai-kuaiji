@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { FormEvent } from 'react';
 import {
   ArrowDownLeft,
   ArrowRight,
@@ -18,7 +17,6 @@ import {
   RotateCcw,
   Send,
   ShieldCheck,
-  ShoppingBag,
   TriangleAlert,
   Upload,
   X,
@@ -30,11 +28,8 @@ import { directUploadLimitLabel } from './transport-limits';
 import {
   BUSINESS_CATEGORIES,
   BUSINESS_TEMPLATES,
-  initialBusinessPayload,
   initialBusinessScope,
-  normalizeBusinessPayload,
   validateAttachment,
-  validateBusinessPayload,
 } from './business-forms';
 import type {
   BusinessContext,
@@ -137,7 +132,7 @@ export function BusinessWorkspace({
   const busy = operationBusy || (intelligenceBusy ? 'intelligence' : '');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
-  const [formEvent, setFormEvent] = useState<BusinessEvent | 'new' | null>(null);
+  const [editEvent, setEditEvent] = useState<BusinessEvent | null>(null);
   const [intakeOpen, setIntakeOpen] = useState(false);
   const defaultScopeSet = useRef(false);
   const [organizationOpen, setOrganizationOpen] = useState(false);
@@ -158,8 +153,6 @@ export function BusinessWorkspace({
   const booksEpoch = useRef(0);
   const attachmentInput = useRef<HTMLInputElement>(null);
   const handoffKey = useRef<{ eventId: string; bookId: string; key: string } | null>(null);
-  const createKey = useRef(0);
-  const creationRequest = useRef<{ signature: string; key: string } | null>(null);
   const changeOrganizationBusy = useCallback(
     (value: boolean) => setBusy(value ? 'organization' : ''),
     [],
@@ -405,7 +398,7 @@ export function BusinessWorkspace({
         failure instanceof TypeError ||
         (failure instanceof ApiError && [409, 503].includes(failure.status));
       if (uncertain && name !== 'download') {
-        if (selected && !(name === 'save' && formEvent === 'new')) {
+        if (selected) {
           try {
             const latest = await api<BusinessEvent>(
               `/business/events/${encoded(selected.id)}`,
@@ -593,8 +586,6 @@ export function BusinessWorkspace({
             type="button"
             disabled={!!busy || !context?.companies.some((company) => company.can_submit)}
             onClick={() => {
-              createKey.current += 1;
-              creationRequest.current = null;
               setIntakeOpen(true);
               setError('');
             }}
@@ -901,7 +892,7 @@ export function BusinessWorkspace({
               <div className="business-next-step">
                 {selected.status === 'draft' || selected.status === 'returned'
                   ? selected.submission_mode === 'direct'
-                    ? '下一步：核对资料后提交给会计。'
+                    ? '下一步：核对资料后提交财务处理。'
                     : '下一步：申请人核对事项与附件后提交部门审批。'
                   : selected.status === 'submitted'
                     ? '下一步：由获授权的部门审批人核对业务并审批。'
@@ -1096,7 +1087,7 @@ export function BusinessWorkspace({
                     type="button"
                     className="button secondary"
                     disabled={!!busy}
-                    onClick={() => setFormEvent(selected)}
+                    onClick={() => setEditEvent(selected)}
                   >
                     修改事项
                   </button>
@@ -1276,358 +1267,27 @@ export function BusinessWorkspace({
           }}
         />
       )}
-      {formEvent && context && (
-        <BusinessForm
-          key={typeof formEvent === 'string' ? `new-${createKey.current}` : formEvent.id}
+      {editEvent && context && (
+        <IntakeWizard
+          key={editEvent.id}
+          session={session}
           context={context}
-          event={formEvent === 'new' ? undefined : formEvent}
-          busy={!!busy}
-          error={error}
-          onClose={() => setFormEvent(null)}
-          onSave={async (company, department, template, payload) => {
-            await run(
-              'save',
-              async () => {
-                const body =
-                  typeof formEvent === 'string'
-                    ? {
-                        company_id: company,
-                        department_id: department || null,
-                        template_id: template,
-                        payload,
-                      }
-                    : { expected_version: formEvent.version, payload };
-                if (typeof formEvent === 'string') {
-                  const signature = JSON.stringify(body);
-                  if (creationRequest.current?.signature !== signature)
-                    creationRequest.current = { signature, key: crypto.randomUUID() };
-                }
-                const result = await api<BusinessEvent>(
-                  typeof formEvent === 'string'
-                    ? '/business/events'
-                    : `/business/events/${encoded(formEvent.id)}`,
-                  session,
-                  {
-                    method: typeof formEvent === 'string' ? 'POST' : 'PATCH',
-                    body: {
-                      ...body,
-                      ...(typeof formEvent === 'string'
-                        ? { idempotency_key: creationRequest.current!.key }
-                        : {}),
-                    },
-                  },
-                );
-                creationRequest.current = null;
-                setFormEvent(null);
-                return result;
-              },
-              '事项已保存，请上传附件后提交审批。',
+          initialEvent={editEvent}
+          onBusyChange={changeOrganizationBusy}
+          onClose={() => setEditEvent(null)}
+          onCompleted={(event) => {
+            setEditEvent(null);
+            setSelected(event);
+            setNotice(
+              event.status === 'submitted'
+                ? '事项修改已保存并重新提交，等待后续审批。'
+                : '事项修改已保存。',
             );
+            void loadList();
           }}
         />
       )}
     </main>
-  );
-}
-
-function BusinessForm({
-  context,
-  event,
-  busy,
-  error,
-  onClose,
-  onSave,
-}: {
-  context: BusinessContext;
-  event?: BusinessEvent;
-  busy: boolean;
-  error: string;
-  onClose: () => void;
-  onSave: (
-    companyId: string,
-    departmentId: string,
-    template: BusinessTemplate,
-    payload: BusinessPayload,
-  ) => Promise<void>;
-}) {
-  const dialog = useRef<HTMLDialogElement>(null);
-  const [template, setTemplate] = useState<BusinessTemplate>(event?.template_id ?? 'reimbursement');
-  const [payload, setPayload] = useState<BusinessPayload>(
-    event?.payload ?? initialBusinessPayload('reimbursement'),
-  );
-  const companies = context.companies.filter((company) => company.can_submit);
-  const [companyId, setCompanyId] = useState(event?.company_id ?? companies[0]?.id ?? '');
-  const company = context.companies.find((value) => value.id === companyId);
-  const [departmentId, setDepartmentId] = useState(
-    event?.department_id ?? company?.department_id ?? '',
-  );
-  const [validation, setValidation] = useState('');
-  useEffect(() => {
-    dialog.current?.showModal();
-  }, []);
-  function field<K extends keyof BusinessPayload>(key: K, value: BusinessPayload[K]) {
-    setPayload((current) => ({ ...current, [key]: value }));
-    setValidation('');
-  }
-  async function save(e: FormEvent) {
-    e.preventDefault();
-    const message = validateBusinessPayload(template, payload);
-    if (message) {
-      setValidation(message);
-      return;
-    }
-    if (!companyId || (!departmentId && company?.submission_policy?.mode !== 'direct')) {
-      setValidation('请选择客户企业和业务所属部门。');
-      return;
-    }
-    await onSave(companyId, departmentId, template, normalizeBusinessPayload(payload));
-  }
-  return (
-    <dialog
-      ref={dialog}
-      className="modal business-form-modal"
-      aria-labelledby="business-form-title"
-      onCancel={(e) => {
-        e.preventDefault();
-        if (!busy) onClose();
-      }}
-    >
-      <div className="modal-header">
-        <div>
-          <h2 id="business-form-title">{event ? '修改业务事项' : '录入业务事项'}</h2>
-          <p>保存后上传原始附件，再提交审批。</p>
-        </div>
-        <button
-          type="button"
-          className="icon-button"
-          onClick={onClose}
-          disabled={busy}
-          aria-label="关闭业务事项表单"
-        >
-          <X size={20} />
-        </button>
-      </div>
-      <form onSubmit={(e) => void save(e)}>
-        <div className="business-form-content">
-          <div className="business-template-grid" role="group" aria-label="选择业务模板">
-            {BUSINESS_TEMPLATES.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                className={template === item.id ? 'selected' : ''}
-                disabled={busy || !!event}
-                aria-pressed={template === item.id}
-                onClick={() => {
-                  setTemplate(item.id);
-                  setPayload((current) => ({
-                    ...current,
-                    direction: item.id === 'daily_cashflow' ? current.direction : 'expense',
-                    payment_status:
-                      item.id === 'daily_cashflow'
-                        ? 'paid'
-                        : item.id === 'reimbursement'
-                          ? 'unpaid'
-                          : current.payment_status,
-                  }));
-                  setValidation('');
-                }}
-              >
-                {item.id === 'reimbursement' ? (
-                  <Receipt size={19} />
-                ) : item.id === 'procurement_expense' ? (
-                  <ShoppingBag size={19} />
-                ) : (
-                  <Building2 size={19} />
-                )}
-                <strong>{item.name}</strong>
-                <span>{item.description}</span>
-              </button>
-            ))}
-          </div>
-          <div className="business-form-grid">
-            <label>
-              <span className="field-label">客户企业</span>
-              <select
-                aria-label="事项客户企业"
-                value={companyId}
-                required
-                disabled={busy || !!event}
-                onChange={(e) => {
-                  setCompanyId(e.target.value);
-                  setDepartmentId(
-                    context.companies.find((value) => value.id === e.target.value)?.department_id ??
-                      '',
-                  );
-                }}
-              >
-                {companies.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              <span className="field-label">业务所属部门</span>
-              <select
-                aria-label="事项所属部门"
-                value={departmentId}
-                required={company?.submission_policy?.mode !== 'direct'}
-                disabled={
-                  busy || !!event || (company?.role === 'employee' && !!company.department_id)
-                }
-                onChange={(e) => setDepartmentId(e.target.value)}
-              >
-                <option value="">选择部门</option>
-                {company?.departments.map((department) => (
-                  <option key={department.id} value={department.id}>
-                    {department.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              <span className="field-label">发生日期</span>
-              <input
-                type="date"
-                min="2000-01-01"
-                max="2099-12-31"
-                value={payload.occurred_on}
-                required
-                disabled={busy}
-                onChange={(e) => field('occurred_on', e.target.value)}
-              />
-            </label>
-            <label>
-              <span className="field-label">金额（人民币元）</span>
-              <input
-                inputMode="decimal"
-                aria-label="事项金额"
-                value={payload.amount}
-                required
-                disabled={busy}
-                placeholder="例如 128.50"
-                onChange={(e) => field('amount', e.target.value)}
-              />
-            </label>
-            <label className="wide-field">
-              <span className="field-label">事项摘要</span>
-              <input
-                aria-label="事项摘要"
-                value={payload.description}
-                required
-                maxLength={500}
-                disabled={busy}
-                placeholder="例如：10 月上海客户拜访交通费"
-                onChange={(e) => field('description', e.target.value)}
-              />
-            </label>
-            <label className="wide-field">
-              <span className="field-label">交易对方</span>
-              <input
-                aria-label="交易对方"
-                value={payload.counterparty}
-                required
-                maxLength={200}
-                disabled={busy}
-                placeholder="供应商、客户或实际收款人"
-                onChange={(e) => field('counterparty', e.target.value)}
-              />
-            </label>
-            <label>
-              <span className="field-label">事项分类</span>
-              <select
-                aria-label="事项分类"
-                value={payload.category}
-                disabled={busy}
-                onChange={(e) => field('category', e.target.value as BusinessPayload['category'])}
-              >
-                {Object.entries(BUSINESS_CATEGORIES).map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {template === 'daily_cashflow' ? (
-              <label>
-                <span className="field-label">收支方向</span>
-                <select
-                  aria-label="收支方向"
-                  value={payload.direction}
-                  disabled={busy}
-                  onChange={(e) =>
-                    field('direction', e.target.value as BusinessPayload['direction'])
-                  }
-                >
-                  <option value="expense">支出</option>
-                  <option value="income">收入</option>
-                </select>
-              </label>
-            ) : (
-              <label>
-                <span className="field-label">企业付款状态</span>
-                <select
-                  aria-label="企业付款状态"
-                  value={payload.payment_status}
-                  disabled={busy || template === 'reimbursement'}
-                  onChange={(e) =>
-                    field('payment_status', e.target.value as BusinessPayload['payment_status'])
-                  }
-                >
-                  <option value="unpaid">待企业付款</option>
-                  {template === 'procurement_expense' && <option value="paid">已付款</option>}
-                </select>
-              </label>
-            )}
-            <label className="wide-field">
-              <span className="field-label">业务用途</span>
-              <textarea
-                aria-label="业务用途"
-                value={payload.purpose}
-                maxLength={1000}
-                rows={2}
-                disabled={busy}
-                placeholder="补充与业务相关的用途，便于审批人核对"
-                onChange={(e) => field('purpose', e.target.value)}
-              />
-            </label>
-            <label className="wide-field">
-              <span className="field-label">所属项目（可选）</span>
-              <input
-                aria-label="所属项目"
-                value={payload.project}
-                maxLength={200}
-                disabled={busy}
-                onChange={(e) => field('project', e.target.value)}
-              />
-            </label>
-          </div>
-          {(validation || error) && (
-            <p className="form-error" role="alert">
-              <TriangleAlert size={16} />
-              {validation || error}
-            </p>
-          )}
-          <p className="field-help">
-            {template === 'reimbursement'
-              ? '员工垫付报销记录为待企业付款的支出，财务核验后生成应付款草稿。'
-              : template === 'daily_cashflow'
-                ? '日常收支仅记录已经实际收付的事项。'
-                : '采购 / 费用可记录已支付费用或待付款事项。'}{' '}
-            所有草稿仍由会计复核。
-          </p>
-        </div>
-        <div className="modal-footer">
-          <button type="button" className="button secondary" onClick={onClose} disabled={busy}>
-            取消
-          </button>
-          <button type="submit" className="button primary" disabled={busy || !companyId}>
-            {busy ? <Spinner /> : <FileText size={15} />}保存事项
-          </button>
-        </div>
-      </form>
-    </dialog>
   );
 }
 

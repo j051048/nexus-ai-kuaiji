@@ -106,7 +106,7 @@ test('无部门企业管理员上传 XML 核对直接提交，由授权会计接
     await expect(intake.getByLabel('交易对方', { exact: true })).toHaveValue('耗材商店');
     await expect(intake.getByLabel('发生日期', { exact: true })).toHaveValue('2026-10-03');
     await expect(intake.getByLabel('事项所属部门')).toHaveValue('');
-    await expect(intake.getByRole('button', { name: '提交给会计', exact: true })).toBeDisabled();
+    await expect(intake.getByRole('button', { name: '提交财务处理', exact: true })).toBeDisabled();
     await intake
       .getByText('我已核对原件，确认日期、金额、交易对方与本次业务一致。', { exact: true })
       .click();
@@ -115,7 +115,7 @@ test('无部门企业管理员上传 XML 核对直接提交，由授权会计接
     expect(await intake.evaluate((node) => node.scrollWidth <= innerWidth)).toBe(true);
     await page.screenshot({ path: 'artifacts/batch1-xml-submission-mobile.png', fullPage: false });
     await page.setViewportSize({ width: 1440, height: 960 });
-    await intake.getByRole('button', { name: '提交给会计', exact: true }).click();
+    await intake.getByRole('button', { name: '提交财务处理', exact: true }).click();
     await expect(intake).toHaveCount(0);
     await expect(page.getByText('待会计接收', { exact: true }).first()).toBeVisible();
     const own = await (
