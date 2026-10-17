@@ -22,12 +22,14 @@ PostgreSQL 侧由 `accounting.company_write_table_guard` 逐行核对：
 - 第 3 批（pg 095）：月结预检/复核/锁期（`closing`）、交付清单/回执/备注
   （`delivery`）、收付款核销与冲销（`settlements`）、单企业月度参考余额/检查/
   固定事项（`monthly/service.py`，跨企业批量开期仍为全局锁）。
+- 第 4 批（pg 097）：相似银行流水人工核验（`bank_duplicate_decisions`），以及
+  单项目历史未结清偿的确认/冲销（`migration_clearance_commands/allocations/reversals`）。
 
 ### 明确保持全局锁（不要迁移）
 
 `accounting/directory.py`、`admin_identity.py`、`admin_service.py`（事务所级配置）、
 `monthly/batch.py`（跨企业批量开期）、`handover.py`（跨企业转派）、
-`legacy_migration/*`（多企业调度）、`jobs/*`（队列有独立 dispatch 门）、
+`legacy_migration/*` 的跨企业调度（单项目确认/冲销已按企业锁隔离）、`jobs/*`（队列有独立 dispatch 门）、
 `uploads.py`（事务所与用户级上传通道，无企业账务字段）、
 `accounting/service.py::create_book`（一次事务里创建企业+账套+科目+长期账套映射）。
 

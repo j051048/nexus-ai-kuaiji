@@ -68,3 +68,14 @@ def test_import_wizard_large_file_migration_covers_every_row_bound():
     assert postgres.count("BETWEEN 1 AND 5000") == 2
     assert "size_bytes BETWEEN 1 AND 10485760" in sqlite
     assert "row_number BETWEEN 2 AND 10000000" in sqlite
+
+
+def test_company_write_scope_wave4_maps_each_single_company_table():
+    postgres = migration_files("postgres")[97]
+    for table in (
+        "bank_duplicate_decisions",
+        "migration_clearance_commands",
+        "migration_clearance_allocations",
+        "migration_clearance_reversals",
+    ):
+        assert f"WHEN '{table}'" in postgres

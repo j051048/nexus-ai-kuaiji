@@ -119,6 +119,10 @@ class BankImportService:
             imported += 1
         return {"imported": imported, "duplicates": duplicates}
 
+    def _company_of_book(self, actor, book_id):
+        with self.db.transaction(actor=actor) as conn:
+            return self.access.book(conn, actor, book_id, "review")["company_id"]
+
     def blocking_issues_in_transaction(self, conn, actor, source):
         if source["source_kind"] != "bank":
             return []
@@ -194,7 +198,10 @@ class BankImportService:
             }
 
     def distinguish(self, actor, book_id, source_id, other_id, request):
-        with self.db.transaction(write=True, actor=actor) as conn:
+        company_id = self._company_of_book(actor, book_id)
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             book = self.access.book(conn, actor, book_id, "review")
             low, high = sorted((source_id, other_id))
             source = conn.execute(

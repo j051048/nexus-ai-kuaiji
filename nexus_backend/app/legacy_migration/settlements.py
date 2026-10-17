@@ -89,6 +89,10 @@ class LegacySettlementService:
             raise AccountingError("已关期不能分配或撤销清偿", 409)
         return book
 
+    def _company_of_project(self, actor, book_id, project_id):
+        with self.db.transaction(actor=actor) as conn:
+            return self._project(conn, actor, book_id, project_id)["company_id"]
+
     def _used(self, conn, item_id):
         if self.db.is_postgres:
             value = conn.execute(
@@ -517,7 +521,10 @@ class LegacySettlementService:
         return result
 
     def confirm(self, actor, book_id, project_id, preview_id, body):
-        with self.db.transaction(write=True, actor=actor) as conn:
+        company_id = self._company_of_project(actor, book_id, project_id)
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             project = self._project(conn, actor, book_id, project_id)
             preview = conn.execute(
                 "SELECT * FROM migration_clearance_previews WHERE id=? AND project_id=? AND created_by=? AND firm_id=?",
@@ -630,7 +637,10 @@ class LegacySettlementService:
             )
 
     def reverse(self, actor, book_id, project_id, command_id, body):
-        with self.db.transaction(write=True, actor=actor) as conn:
+        company_id = self._company_of_project(actor, book_id, project_id)
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             project = self._project(conn, actor, book_id, project_id)
             command = conn.execute(
                 "SELECT * FROM migration_clearance_commands WHERE id=? AND project_id=? AND firm_id=?",

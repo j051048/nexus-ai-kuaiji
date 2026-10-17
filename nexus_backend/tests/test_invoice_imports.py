@@ -4,6 +4,7 @@ import hashlib
 import io
 import zipfile
 from datetime import datetime, timedelta
+from uuid import uuid4
 
 import pytest
 from fastapi import FastAPI
@@ -487,6 +488,90 @@ def test_accrual_rechecks_current_bank_candidates_before_writing(invoices):
                 reason="测试当前银行候选重查",
             ),
         )
+
+
+def test_accrual_binds_unique_counterparty_auxiliary_and_never_guesses_ambiguity(invoices):
+    c = invoices
+    actor = c.actors["accountant"]
+    add_tax_accounts(c, actor)
+    unique_id = uuid4().hex
+    with c.db.transaction(write=True, actor=actor) as conn:
+        conn.execute(
+            "INSERT INTO company_master_entities(id,firm_id,company_id,kind,code,name,"
+            "recorded_book_id,created_by,created_at) VALUES(?,?,?,'counterparty','C1',?,?,?,?)",
+            (
+                unique_id,
+                actor.firm_id,
+                c.company["id"],
+                "唯一应收客户",
+                c.book["id"],
+                actor.user_id,
+                "2026-10-17T00:00:00+00:00",
+            ),
+        )
+        conn.execute(
+            "UPDATE accounts SET auxiliary_requirements='[\"counterparty\"]' "
+            "WHERE book_id=? AND code='1122'",
+            (c.book["id"],),
+        )
+    created = upload(
+        c,
+        actor,
+        csv_bytes([row("25442000000000000101", buyer="唯一应收客户")]),
+    )
+    batch = c.invoices.create(actor, c.book["id"], created["id"])
+    detail = c.invoices.get_batch(actor, c.book["id"], batch["id"])
+    item = InvoiceAccrualItem(
+        line=detail["rows"][0]["line"],
+        settlement_account="1122",
+        profit_account="6001",
+        tax_account="2221.01",
+    )
+    receipt = c.invoices.accrue(
+        actor,
+        c.book["id"],
+        batch["id"],
+        InvoiceAccrualRequest(items=[item], reason="唯一往来主数据自动绑定"),
+    )
+    draft = c.ledger.get_draft(actor, c.book["id"], receipt["items"][0]["draft_id"])
+    assert draft["issues"] == []
+    assert draft["lines"][0]["auxiliary_values"] == {"counterparty": unique_id}
+
+    with c.db.transaction(write=True, actor=actor) as conn:
+        for code, name in (("C2", "歧义客户"), ("C3", "歧义客户")):
+            conn.execute(
+                "INSERT INTO company_master_entities(id,firm_id,company_id,kind,code,name,"
+                "recorded_book_id,created_by,created_at) VALUES(?,?,?,'counterparty',?,?,?,?,?)",
+                (
+                    uuid4().hex,
+                    actor.firm_id,
+                    c.company["id"],
+                    code,
+                    name,
+                    c.book["id"],
+                    actor.user_id,
+                    "2026-10-17T00:00:00+00:00",
+                ),
+            )
+    ambiguous = upload(
+        c,
+        actor,
+        csv_bytes([row("25442000000000000102", buyer="歧义客户")]),
+    )
+    batch = c.invoices.create(actor, c.book["id"], ambiguous["id"])
+    detail = c.invoices.get_batch(actor, c.book["id"], batch["id"])
+    receipt = c.invoices.accrue(
+        actor,
+        c.book["id"],
+        batch["id"],
+        InvoiceAccrualRequest(
+            items=[item.model_copy(update={"line": detail["rows"][0]["line"]})],
+            reason="同名主数据不得自动猜测",
+        ),
+    )
+    draft = c.ledger.get_draft(actor, c.book["id"], receipt["items"][0]["draft_id"])
+    assert draft["lines"][0]["auxiliary_values"] == {}
+    assert any("交易对方辅助值缺失" in issue for issue in draft["issues"])
 
 
 def test_second_batch_flags_previous_invoices_as_duplicates(invoices):

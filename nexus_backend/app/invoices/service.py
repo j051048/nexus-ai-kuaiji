@@ -6,10 +6,12 @@ import re
 from uuid import uuid4
 
 from ..accounting.access import AccessControl
+from ..accounting.catalog import CatalogService
 from ..accounting.domain import AccountingError
 from ..accounting.queries import page_bounds
 from ..accounting.service import fingerprint, now
 from ..business.storage import MAX_FILE_BYTES
+from ..ledgers.service import LedgersService
 from .parser import parse_invoice_export
 
 
@@ -317,11 +319,12 @@ class InvoiceImportService:
             accounts = {
                 row["code"]: row
                 for row in conn.execute(
-                    "SELECT code,name,category,normal_balance FROM accounts "
+                    "SELECT code,name,category,normal_balance,auxiliary_requirements FROM accounts "
                     "WHERE book_id=? AND active=1",
                     (book_id,),
                 )
             }
+            ledger, catalog = LedgersService(self.db), CatalogService(self.db)
             pending, existing = [], []
             for item in request.items:
                 invoice = by_line.get(item.line)
@@ -388,6 +391,18 @@ class InvoiceImportService:
                     invoice["total_cents"],
                 )
                 party = invoice["seller"] if direction == "input" else invoice["buyer"]
+                counterparty = (
+                    ledger.resolve_in_transaction(
+                        conn,
+                        actor,
+                        book["company_id"],
+                        "counterparty",
+                        party,
+                        book_id,
+                    )
+                    if party
+                    else None
+                )
                 item_name = invoice.get("item") or "发票事项"
                 description = (
                     f"{'进项' if direction == 'input' else '销项'}发票挂账 "
@@ -456,6 +471,16 @@ class InvoiceImportService:
                     "VALUES(?,?,?,?,?,?)",
                     [(draft_id, book_id, ordinal, *line) for ordinal, line in enumerate(lines)],
                 )
+                auxiliaries = [{} for _line in lines]
+                if counterparty:
+                    for ordinal, (account_code, _debit, _credit) in enumerate(lines):
+                        requirements = json.loads(accounts[account_code]["auxiliary_requirements"])
+                        if "counterparty" in requirements:
+                            auxiliaries[ordinal]["counterparty"] = counterparty["entity_id"]
+                if any(auxiliaries):
+                    catalog.save_auxiliaries_in_transaction(
+                        conn, actor, book_id, draft_id, auxiliaries
+                    )
                 self._audit(
                     conn,
                     actor,
@@ -473,6 +498,9 @@ class InvoiceImportService:
                             "profit": item.profit_account,
                             "tax": item.tax_account,
                         },
+                        "counterparty_entity_id": (
+                            counterparty["entity_id"] if counterparty else None
+                        ),
                         "source_id": source_id,
                         "reason": request.reason,
                     },
