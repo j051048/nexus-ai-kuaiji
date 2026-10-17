@@ -11,6 +11,11 @@ class ClosingService:
     def __init__(self, db, accounting=None):
         self.db, self.accounting, self.access = db, accounting, AccessControl()
 
+    def _company_of_book(self, actor, book_id):
+        """Resolve the book's company up front for a company-scoped write lock."""
+        with self.db.transaction(actor=actor) as conn:
+            return self.access.book(conn, actor, book_id, "review")["company_id"]
+
     @staticmethod
     def _audit(conn, actor, book_id, action, object_id, details):
         conn.execute(
@@ -127,7 +132,10 @@ class ClosingService:
             return self._json(conn, row, actor, digest, book["period_status"])
 
     def preflight(self, actor, book_id, request):
-        with self.db.transaction(write=True, actor=actor) as conn:
+        company_id = self._company_of_book(actor, book_id)
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             book = self.access.book(conn, actor, book_id, "review")
             if book["period_status"] != "open":
                 raise AccountingError("已关闭期间仅可查看历史月结快照", 403)
@@ -184,7 +192,10 @@ class ClosingService:
             )
 
     def review(self, actor, book_id, snapshot_id, request):
-        with self.db.transaction(write=True, actor=actor) as conn:
+        company_id = self._company_of_book(actor, book_id)
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             book = self.access.book(conn, actor, book_id, "review")
             row = self._snapshot(conn, actor, book_id, snapshot_id)
             digest, report, _ = self._current(conn, actor, book_id)
@@ -228,7 +239,10 @@ class ClosingService:
             return self._json(conn, row, actor, digest, book["period_status"])
 
     def close(self, actor, book_id, request):
-        with self.db.transaction(write=True, actor=actor) as conn:
+        company_id = self._company_of_book(actor, book_id)
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             book = self.access.book(conn, actor, book_id, "review")
             row = self._snapshot(conn, actor, book_id, request.snapshot_id)
             prior = conn.execute(

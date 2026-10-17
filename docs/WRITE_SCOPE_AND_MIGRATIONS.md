@@ -6,6 +6,7 @@
 |------|----------|------|
 | 全局锁（默认） | 事务所级配置、跨企业批量、旧账迁移调度、任何未评审的写域 | `lock_legacy_write()`：全所串行 |
 | 企业锁 `write_scope="company"` | 已评审的单企业写域 | 共享全局门 + 按企业 hash 的独立咨询锁，A/B 企业互不阻塞 |
+| 系统企业锁（迁移 094） | 系统身份事务，投影刷新等已评审的系统任务 | `begin_system_company_write(firm, company)`：共享全局门 + 企业锁；必须显式 `firm_id`，仅 `accounting_system` 可执行 |
 
 PostgreSQL 侧由 `accounting.company_write_table_guard` 逐行核对：
 行所属公司必须等于本次事务声明的公司，越界直接 `42501`；
@@ -18,6 +19,9 @@ PostgreSQL 侧由 `accounting.company_write_table_guard` 逐行核对：
   （`review.py` 按账套事务）、科目与记账模板（`catalog.py`）、银行导入向导
   （`import_wizard`，upload/preview/confirm）、重复来源隔离（`dispositions`）、
   关联回执（`reconciliation.confirm`，仅单企业批次；跨企业批次自动保持全局锁）。
+- 第 3 批（pg 095）：月结预检/复核/锁期（`closing`）、交付清单/回执/备注
+  （`delivery`）、收付款核销与冲销（`settlements`）、单企业月度参考余额/检查/
+  固定事项（`monthly/service.py`，跨企业批量开期仍为全局锁）。
 
 ### 明确保持全局锁（不要迁移）
 

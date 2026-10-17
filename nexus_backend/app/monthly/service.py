@@ -68,6 +68,12 @@ class MonthlyService:
             raise AccountingError("已关期间不能新增月度事实、检查或固定事项草稿", 409)
         return book, link["ledger_id"]
 
+    def _company_of_book(self, actor, book_id):
+        """Resolve the book's company up front for a company-scoped write lock."""
+        with self.db.transaction(actor=actor) as conn:
+            book, _ = self._scope(conn, actor, book_id)
+            return book["company_id"]
+
     def _audit(self, conn, actor, book_id, action, identifier, details):
         self.accounting._audit(conn, actor, book_id, action, identifier, details)
 
@@ -260,7 +266,10 @@ class MonthlyService:
         return result
 
     def create_baseline(self, actor, book_id, request, original=None):
-        with self.db.transaction(write=True, actor=actor) as conn:
+        company_id = self._company_of_book(actor, book_id)
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             book, ledger_id = self._scope(conn, actor, book_id, "edit", True)
             digest = fingerprint(
                 request.model_dump(exclude={"idempotency_key"})
@@ -351,7 +360,10 @@ class MonthlyService:
             return self._baseline_json(conn, self._baseline(conn, book_id, identifier))
 
     def confirm_baseline(self, actor, book_id, identifier, request):
-        with self.db.transaction(write=True, actor=actor) as conn:
+        company_id = self._company_of_book(actor, book_id)
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             self._scope(conn, actor, book_id, "review", True)
             row = self._baseline(conn, book_id, identifier)
             if row["created_by"] == actor.user_id:
@@ -678,7 +690,10 @@ class MonthlyService:
         }
 
     def create_check(self, actor, book_id, request):
-        with self.db.transaction(write=True, actor=actor) as conn:
+        company_id = self._company_of_book(actor, book_id)
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             book, ledger_id = self._scope(conn, actor, book_id, "review", True)
             digest = fingerprint(
                 request.model_dump(exclude={"idempotency_key"}) | {"book_id": book_id}
@@ -754,7 +769,10 @@ class MonthlyService:
             )
 
     def close_check(self, actor, book_id, identifier, request):
-        with self.db.transaction(write=True, actor=actor) as conn:
+        company_id = self._company_of_book(actor, book_id)
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             book, _ = self._scope(conn, actor, book_id, "review", True)
             row = conn.execute(
                 "SELECT * FROM monthly_checks WHERE id=? AND book_id=?", (identifier, book_id)
@@ -882,7 +900,10 @@ class MonthlyService:
         }
 
     def create_plan(self, actor, book_id, request):
-        with self.db.transaction(write=True, actor=actor) as conn:
+        company_id = self._company_of_book(actor, book_id)
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             book, ledger_id = self._scope(conn, actor, book_id, "review", True)
             digest = fingerprint(
                 request.model_dump(exclude={"idempotency_key"}) | {"book_id": book_id}
@@ -949,7 +970,10 @@ class MonthlyService:
             )
 
     def approve_plan(self, actor, book_id, identifier, request):
-        with self.db.transaction(write=True, actor=actor) as conn:
+        company_id = self._company_of_book(actor, book_id)
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             book, ledger_id = self._scope(conn, actor, book_id, "review", True)
             row = self._plan(conn, ledger_id, identifier)
             if request.version != row["version"]:
@@ -992,7 +1016,10 @@ class MonthlyService:
             return self._plan_json(conn, actor, book, ledger_id, row)
 
     def generate(self, actor, book_id, identifier, request):
-        with self.db.transaction(write=True, actor=actor) as conn:
+        company_id = self._company_of_book(actor, book_id)
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             book, ledger_id = self._scope(conn, actor, book_id, "edit", True)
             row = self._plan(conn, ledger_id, identifier)
             digest = fingerprint(

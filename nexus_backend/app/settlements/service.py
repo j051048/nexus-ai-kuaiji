@@ -57,6 +57,11 @@ class SettlementService:
             raise AccountingError("核销只能写入当前开放期间", 403)
         return book
 
+    def _company_of_book(self, actor, book_id):
+        """Resolve the book's company up front for a company-scoped write lock."""
+        with self.db.transaction(actor=actor) as conn:
+            return self._book(conn, actor, book_id)["company_id"]
+
     @staticmethod
     def _source(conn, book_id, source_id):
         row = conn.execute(
@@ -247,7 +252,10 @@ class SettlementService:
         digest = fingerprint(
             {"book_id": book_id, **request.model_dump(exclude={"idempotency_key"})}
         )
-        with self.db.transaction(write=True, actor=actor) as conn:
+        company_id = self._company_of_book(actor, book_id)
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             book = self._book(conn, actor, book_id)
             prior = conn.execute(
                 "SELECT * FROM settlement_items WHERE firm_id=? AND created_by=? AND idempotency_key=?",
@@ -384,7 +392,10 @@ class SettlementService:
         }
 
     def preview(self, actor, book_id, request):
-        with self.db.transaction(write=True, actor=actor) as conn:
+        company_id = self._company_of_book(actor, book_id)
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             book = self._book(conn, actor, book_id, True)
             plan = self._plan(conn, actor, book, request)
             if self.db.is_postgres:
@@ -432,7 +443,10 @@ class SettlementService:
         }
 
     def confirm(self, actor, book_id, preview_id, request):
-        with self.db.transaction(write=True, actor=actor) as conn:
+        company_id = self._company_of_book(actor, book_id)
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             book = self._book(conn, actor, book_id)
             preview = conn.execute(
                 "SELECT * FROM settlement_previews WHERE id=? AND book_id=? AND firm_id=? AND created_by=?",
@@ -500,7 +514,10 @@ class SettlementService:
             )
 
     def reversal(self, actor, book_id, allocation_id, request):
-        with self.db.transaction(write=True, actor=actor) as conn:
+        company_id = self._company_of_book(actor, book_id)
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             book = self._book(conn, actor, book_id)
             row = conn.execute(
                 "SELECT * FROM settlement_allocations WHERE id=? AND book_id=? AND firm_id=?",

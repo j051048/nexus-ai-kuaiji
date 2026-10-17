@@ -47,6 +47,11 @@ class DeliveryService:
     def __init__(self, db):
         self.db, self.access = db, AccessControl()
 
+    def _company_of_book(self, actor, book_id):
+        """Resolve the book's company up front for a company-scoped write lock."""
+        with self.db.transaction(actor=actor) as conn:
+            return self.access.book(conn, actor, book_id)["company_id"]
+
     @staticmethod
     def _audit(conn, actor, book_id, action, object_id, details):
         conn.execute(
@@ -212,7 +217,10 @@ class DeliveryService:
 
     def backfill_manifest(self, actor, book_id, export_id):
         """Reconstruct only immutable audit-backed journals, never today's chart."""
-        with self.db.transaction(write=True, actor=actor) as conn:
+        company_id = self._company_of_book(actor, book_id)
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             book, export = self._export(conn, actor, book_id, export_id, write=True)
             if conn.execute(
                 "SELECT 1 FROM delivery_manifests WHERE export_id=? AND book_id=?",
@@ -587,7 +595,10 @@ class DeliveryService:
                 "raw_hash": raw_hash,
             }
         )
-        with self.db.transaction(write=True, actor=actor) as conn:
+        company_id = self._company_of_book(actor, book_id)
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             book, export = self._export(conn, actor, book_id, export_id, write=True)
             prior = conn.execute(
                 "SELECT * FROM delivery_receipts WHERE firm_id=? AND created_by=? AND idempotency_key=?",
@@ -804,7 +815,10 @@ class DeliveryService:
         return "\ufeff" + out.getvalue()
 
     def add_note(self, actor, book_id, request):
-        with self.db.transaction(write=True, actor=actor) as conn:
+        company_id = self._company_of_book(actor, book_id)
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             book = self.access.book(conn, actor, book_id, "review")
             receipt = conn.execute(
                 "SELECT * FROM delivery_receipts WHERE id=? AND book_id=?",
