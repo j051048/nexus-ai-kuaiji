@@ -9,7 +9,14 @@ own row and one failing company never rolls back the others.
 import re
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    field_validator,
+    model_validator,
+)
 
 from app.accounting.directory import DirectoryService
 from app.accounting.domain import AccountingError
@@ -262,9 +269,7 @@ class MonthlyBatchService:
         return ids
 
     def _member_active(self, conn, actor, company_id, user_id):
-        if not conn.execute(
-            "SELECT 1 FROM users WHERE id=? AND active=1", (user_id,)
-        ).fetchone():
+        if not conn.execute("SELECT 1 FROM users WHERE id=? AND active=1", (user_id,)).fetchone():
             return False
         if conn.execute(
             "SELECT 1 FROM memberships WHERE firm_id=? AND user_id=?",

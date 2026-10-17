@@ -1,4 +1,7 @@
 fastapi>=0.133,<0.134
+# TestClient(client=...)（HTTP 夹具依赖）与现行生命周期语义需要较新的 starlette；
+# 上界由 fastapi 的解析结果决定，这里显式声明避免不同机器装到过旧版本。
+starlette>=1.0,<2
 uvicorn>=0.41,<0.43
 pydantic>=2.13,<3
 httpx>=0.28,<0.29

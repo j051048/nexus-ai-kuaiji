@@ -66,9 +66,7 @@ class HandoverService:
 
     def _target_context(self, conn, actor, company_id, to_user_id):
         firm_role = self.access.firm_role(conn, Actor(to_user_id, actor.firm_id))
-        company_role = self.access.company_role(
-            conn, Actor(to_user_id, actor.firm_id), company_id
-        )
+        company_role = self.access.company_role(conn, Actor(to_user_id, actor.firm_id), company_id)
         return firm_role, company_role
 
     def _capabilities(self, firm_role, book_role, company_role):
@@ -105,10 +103,15 @@ class HandoverService:
                     }
                 )
                 continue
-            firm_role, company_role = self._target_context(conn, actor, row["company_id"], to_user_id)
+            firm_role, company_role = self._target_context(
+                conn, actor, row["company_id"], to_user_id
+            )
             effective = target["role"] if target else row["role"]
             capability = "can_review" if row["role"] == "reviewer" else "can_lead"
-            if not target and not self._capabilities(firm_role, effective, company_role)[capability]:
+            if (
+                not target
+                and not self._capabilities(firm_role, effective, company_role)[capability]
+            ):
                 skipped.append(
                     {
                         "kind": "book",
@@ -141,8 +144,12 @@ class HandoverService:
             (actor.firm_id, from_user_id, from_user_id, from_user_id, from_user_id),
         ).fetchall()
         for row in plan_rows:
-            firm_role, company_role = self._target_context(conn, actor, row["company_id"], to_user_id)
-            effective = effective_roles.get(row["book_id"], self._current_book_role(conn, row["book_id"], to_user_id))
+            firm_role, company_role = self._target_context(
+                conn, actor, row["company_id"], to_user_id
+            )
+            effective = effective_roles.get(
+                row["book_id"], self._current_book_role(conn, row["book_id"], to_user_id)
+            )
             capabilities = self._capabilities(firm_role, effective, company_role)
             changed = {}
             for field, capability, label in (
@@ -198,14 +205,14 @@ class HandoverService:
             (actor.firm_id, from_user_id),
         ).fetchall()
         for row in case_rows:
-            firm_role, company_role = self._target_context(conn, actor, row["company_id"], to_user_id)
+            firm_role, company_role = self._target_context(
+                conn, actor, row["company_id"], to_user_id
+            )
             effective = effective_roles.get(
                 row["book_id"],
                 self._current_book_role(conn, row["book_id"], to_user_id),
             )
-            if not self._case_receivable(
-                conn, row, firm_role, company_role, effective, to_user_id
-            ):
+            if not self._case_receivable(conn, row, firm_role, company_role, effective, to_user_id):
                 skipped.append(
                     {
                         "kind": "case",
@@ -243,11 +250,7 @@ class HandoverService:
             event = conn.execute(
                 "SELECT applicant_id FROM business_events WHERE id=?", (row["event_id"],)
             ).fetchone()
-            if (
-                company_role == "finance"
-                and event
-                and event["applicant_id"] != to_user_id
-            ):
+            if company_role == "finance" and event and event["applicant_id"] != to_user_id:
                 return True
         if not row["book_id"]:
             return False

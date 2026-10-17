@@ -243,7 +243,12 @@ class ServicePlansService:
                 raise AccountingError("继承来源与目标期间必须属于同一长期账套", 409)
             existing = self._plan(conn, target_book_id)
             if existing:
-                return {"copied": False, "dropped": [], "reason": "already_planned", "version": existing["version"]}
+                return {
+                    "copied": False,
+                    "dropped": [],
+                    "reason": "already_planned",
+                    "version": existing["version"],
+                }
             prior = self._plan(conn, source_book_id)
             if not prior:
                 return {"copied": False, "dropped": [], "reason": "source_without_plan"}
