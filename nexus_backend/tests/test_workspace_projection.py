@@ -2,6 +2,9 @@
 
 from uuid import uuid4
 
+import pytest
+
+from app.accounting.domain import AccountingError
 from app.accounting.models import ApprovalRequest, ExportRequest
 from app.accounting.review import ReviewService
 from app.cases.service import CaseService
@@ -161,3 +164,55 @@ def test_projection_matches_live_for_material_requests(plans):
     for actor in (c.employee, c.finance, c.reviewer, c.owner):
         live = service.list(actor, bucket="all", use_projection=False)
         assert service.list(actor, bucket="all") == live
+
+
+def test_projection_status_and_firm_manager_rebuild(business):
+    c = business
+    service = workspace(c)
+    submitted(c)
+    status = service.projection_status(c.manager)
+    assert status["total"] >= 1
+    assert status["dirty"] + status["never_built"] >= 1
+    result = service.rebuild_projections(c.manager, limit=10)
+    assert result["rebuilt"] >= 1 and result["failed"] == 0 and result["remaining"] == 0
+    after = service.projection_status(c.manager)
+    assert after["dirty"] == 0 and after["never_built"] == 0 and after["failing"] == 0
+    with c.db.transaction(actor=c.manager) as conn:
+        built = conn.execute(
+            "SELECT built_at,failures FROM workspace_projection_state WHERE company_id=?",
+            (c.company["id"],),
+        ).fetchone()
+    assert built and built["built_at"] and built["failures"] == 0
+    for actor in (c.actors["employee"], c.actors["accountant"]):
+        with pytest.raises(AccountingError) as denied:
+            service.projection_status(actor)
+        assert denied.value.status == 403
+    with pytest.raises(AccountingError, match="50"):
+        service.rebuild_projections(c.manager, limit=51)
+
+
+def test_projection_failure_is_recorded_and_never_blocks_reads(business, monkeypatch):
+    import app.workspace.service as workspace_service
+
+    c = business
+    service = workspace(c)
+    submitted(c)
+
+    def boom(*_args, **_kwargs):
+        raise RuntimeError("synthetic projection failure")
+
+    monkeypatch.setattr(workspace_service, "refresh_company", boom)
+    # 读取路径照常返回实时结果，并把连续失败落库供运维告警。
+    assert service.list(c.actors["employee"], bucket="all") == service.list(
+        c.actors["employee"], bucket="all", use_projection=False
+    )
+    with c.db.transaction(actor=c.manager) as conn:
+        row = conn.execute(
+            "SELECT failures FROM workspace_projection_state WHERE company_id=?",
+            (c.company["id"],),
+        ).fetchone()
+    assert row is not None and row["failures"] >= 1
+    result = service.rebuild_projections(c.manager, limit=5)
+    assert result["failed"] >= 1
+    status = service.projection_status(c.manager)
+    assert status["failing"] >= 1

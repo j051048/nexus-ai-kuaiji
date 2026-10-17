@@ -39,4 +39,16 @@ def build_workspace_router(actor_dependency):
     def task(kind: str, ref: str, current=Depends(actor_dependency), workspace=Depends(service)):
         return workspace.get(current, kind, ref)
 
+    @router.get("/projections")
+    def projections(current=Depends(actor_dependency), workspace=Depends(service)):
+        return workspace.projection_status(current)
+
+    @router.post("/projections/rebuild")
+    def rebuild_projections(
+        limit: int = Query(20, ge=1, le=50),
+        current=Depends(actor_dependency),
+        workspace=Depends(service),
+    ):
+        return workspace.rebuild_projections(current, limit)
+
     return router

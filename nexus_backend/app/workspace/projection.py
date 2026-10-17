@@ -7,6 +7,7 @@
 迁移支线暂不进投影，继续走实时分支。
 """
 
+from datetime import datetime, timezone
 from time import perf_counter
 
 from ..accounting.queries import inactive_source_sql
@@ -236,6 +237,7 @@ def refresh_statements(db, firm_id, company_id):
 def refresh_company(conn, db, firm_id, company_id):
     """Rebuild one company's projection rows inside the caller's transaction."""
     started = perf_counter()
+    stamp = datetime.now(timezone.utc).isoformat()
     conn.execute(
         "DELETE FROM workspace_task_projections WHERE firm_id=? AND company_id=?",
         (firm_id, company_id),
@@ -246,17 +248,86 @@ def refresh_company(conn, db, firm_id, company_id):
         rows += conn.execute(sql, params).rowcount or 0
     conn.execute(
         "INSERT INTO workspace_projection_state(firm_id,company_id,revision,built_revision,"
-        "dirty_at) SELECT ?,?,1,1,COALESCE((SELECT dirty_at FROM workspace_projection_state "
-        "WHERE firm_id=? AND company_id=?),'') WHERE NOT EXISTS(SELECT 1 FROM "
+        "dirty_at,built_at,failures) SELECT ?,?,1,1,COALESCE((SELECT dirty_at FROM "
+        "workspace_projection_state WHERE firm_id=? AND company_id=?),?),?,0 "
+        "WHERE NOT EXISTS(SELECT 1 FROM "
         "workspace_projection_state WHERE firm_id=? AND company_id=?)",
-        (firm_id, company_id, firm_id, company_id, firm_id, company_id),
+        (firm_id, company_id, firm_id, company_id, stamp, stamp, firm_id, company_id),
     )
     conn.execute(
-        "UPDATE workspace_projection_state SET built_revision=revision "
+        "UPDATE workspace_projection_state SET built_revision=revision,built_at=?,failures=0 "
         "WHERE firm_id=? AND company_id=?",
-        (firm_id, company_id),
+        (stamp, firm_id, company_id),
     )
     return {"rows": rows, "elapsed_ms": round((perf_counter() - started) * 1000, 1)}
+
+
+def mark_failure(conn, firm_id, company_id):
+    """Record one rebuild failure for a company without touching its dirty state."""
+    stamp = datetime.now(timezone.utc).isoformat()
+    conn.execute(
+        "INSERT INTO workspace_projection_state(firm_id,company_id,revision,built_revision,"
+        "dirty_at,built_at,failures) VALUES(?,?,1,0,?,'',1) "
+        "ON CONFLICT(firm_id,company_id) DO UPDATE SET failures=failures+1",
+        (firm_id, company_id, stamp),
+    )
+
+
+def pending_companies(conn, firm_id, limit):
+    """Companies of one firm whose projection is dirty, never built or failing."""
+    return [
+        (row["firm_id"], row["company_id"])
+        for row in conn.execute(
+            "SELECT fc.firm_id,fc.company_id,s.revision,s.built_revision,s.failures "
+            "FROM firm_clients fc LEFT JOIN workspace_projection_state s "
+            "ON s.firm_id=fc.firm_id AND s.company_id=fc.company_id "
+            "WHERE fc.firm_id=? AND fc.status='active' AND (s.revision IS NULL "
+            "OR s.revision>s.built_revision OR s.failures>0) "
+            "ORDER BY (s.revision IS NULL) DESC,COALESCE(s.dirty_at,'') DESC,fc.company_id "
+            "LIMIT ?",
+            (firm_id, limit),
+        )
+    ]
+
+
+def status_snapshot(conn, firm_id, samples=10):
+    """Durable gauges for the ops surface: dirty/never-built/failing companies."""
+    rows = [
+        dict(row)
+        for row in conn.execute(
+            "SELECT fc.company_id,s.revision,s.built_revision,s.failures,s.dirty_at,s.built_at "
+            "FROM firm_clients fc LEFT JOIN workspace_projection_state s "
+            "ON s.firm_id=fc.firm_id AND s.company_id=fc.company_id "
+            "WHERE fc.firm_id=? AND fc.status='active' ORDER BY fc.company_id",
+            (firm_id,),
+        )
+    ]
+    never_built = [row for row in rows if row["revision"] is None]
+    dirty = [
+        row
+        for row in rows
+        if row["revision"] is not None and row["revision"] > row["built_revision"]
+    ]
+    failing = [row for row in rows if (row["failures"] or 0) > 0]
+    oldest = min((row["dirty_at"] for row in dirty if row["dirty_at"]), default="")
+    return {
+        "total": len(rows),
+        "dirty": len(dirty),
+        "never_built": len(never_built),
+        "failing": len(failing),
+        "oldest_dirty_at": oldest,
+        "samples": [
+            {
+                "company_id": row["company_id"],
+                "revision": row["revision"],
+                "built_revision": row["built_revision"],
+                "failures": row["failures"] or 0,
+                "dirty_at": row["dirty_at"] or "",
+                "built_at": row["built_at"] or "",
+            }
+            for row in [*failing, *dirty, *never_built][:samples]
+        ],
+    }
 
 
 def reachable_companies_sql(alias="s"):

@@ -10,8 +10,11 @@ from app.jobs.visibility import book_edit_scope, event_scope
 from .projection import (
     companies_missing_state,
     dirty_companies,
+    mark_failure,
+    pending_companies,
     projection_clean,
     refresh_company,
+    status_snapshot,
 )
 
 logger = logging.getLogger(__name__)
@@ -261,9 +264,57 @@ class WorkspaceService:
                     ).fetchone()
                     if state and state["built_revision"] >= state["revision"]:
                         continue
-                    refresh_company(conn, self.db, firm_id, company_id)
+                    conn.execute("SAVEPOINT projection_prepare")
+                    try:
+                        refresh_company(conn, self.db, firm_id, company_id)
+                    except Exception:
+                        conn.execute("ROLLBACK TO SAVEPOINT projection_prepare")
+                        conn.execute("RELEASE SAVEPOINT projection_prepare")
+                        mark_failure(conn, firm_id, company_id)
+                        logger.warning("统一待办投影重建失败，读取路径已回退实时查询")
+                    else:
+                        conn.execute("RELEASE SAVEPOINT projection_prepare")
         except Exception:
             logger.warning("统一待办投影暂未重建，读取路径已回退实时查询")
+
+    def projection_status(self, actor):
+        """只读诊断：脏、从未构建与连续失败的企业分布（事务所管理层）。"""
+        with self.db.transaction(actor=actor) as conn:
+            self.access.require_manager(conn, actor)
+            return status_snapshot(conn, actor.firm_id)
+
+    def rebuild_projections(self, actor, limit=20):
+        """管理端批量重建：每次最多 50 家，返回已重建、失败与剩余数量。"""
+        if type(limit) is not int or not 1 <= limit <= 50:
+            raise AccountingError("每次最多重建 50 家企业", 422)
+        with self.db.transaction(actor=actor) as conn:
+            self.access.require_manager(conn, actor)
+        rebuilt = failed = 0
+        with self.db.transaction(write=True, system=True) as conn:
+            for firm_id, company_id in pending_companies(conn, actor.firm_id, limit):
+                state = conn.execute(
+                    "SELECT revision,built_revision,failures FROM workspace_projection_state "
+                    "WHERE firm_id=? AND company_id=?",
+                    (firm_id, company_id),
+                ).fetchone()
+                clean = (
+                    state and state["built_revision"] >= state["revision"] and not state["failures"]
+                )
+                if clean:
+                    continue
+                conn.execute("SAVEPOINT projection_rebuild")
+                try:
+                    refresh_company(conn, self.db, firm_id, company_id)
+                except Exception:
+                    conn.execute("ROLLBACK TO SAVEPOINT projection_rebuild")
+                    conn.execute("RELEASE SAVEPOINT projection_rebuild")
+                    mark_failure(conn, firm_id, company_id)
+                    failed += 1
+                else:
+                    conn.execute("RELEASE SAVEPOINT projection_rebuild")
+                    rebuilt += 1
+            remaining = len(pending_companies(conn, actor.firm_id, 1000))
+        return {"rebuilt": rebuilt, "failed": failed, "remaining": remaining}
 
     def _projected_query(self, conn, actor):
         """Same task projection as _query, served from the materialized rows.
