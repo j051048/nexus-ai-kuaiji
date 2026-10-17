@@ -524,12 +524,17 @@ class Database:
         system: bool = False,
         *,
         company_id=None,
+        firm_id=None,
         write_scope="global",
     ):
         if write_scope not in {"global", "company"}:
             raise ValueError("写锁范围仅支持 global 或 company")
-        if write_scope == "company" and (not write or actor is None or not company_id or system):
-            raise ValueError("企业写事务必须显式提供 actor、company_id 与 write=True")
+        if write_scope == "company" and (
+            not write or not company_id or (actor is None and not system)
+        ):
+            raise ValueError("企业写事务必须显式提供 actor（或 system）与 company_id、write=True")
+        if write_scope == "company" and system and not firm_id:
+            raise ValueError("系统身份的企业写事务必须显式提供 firm_id")
         if self.is_postgres and actor is None and not system:
             raise ValueError("PostgreSQL 事务必须提供 actor 或显式使用 system=True 的身份事务")
         if actor is not None and system:
@@ -567,8 +572,9 @@ class Database:
                     write_lock(
                         conn,
                         scope=write_scope,
-                        firm_id=actor.firm_id if actor else None,
+                        firm_id=actor.firm_id if actor else firm_id,
                         company_id=company_id,
+                        system=system,
                     )
                     lock_wait_ms = (perf_counter() - lock_started) * 1000
             else:

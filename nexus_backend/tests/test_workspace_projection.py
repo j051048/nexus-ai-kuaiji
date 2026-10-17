@@ -12,6 +12,7 @@ from app.workspace.projection import projection_clean, refresh_company
 from app.workspace.service import WorkspaceService
 from test_business import approved, business, submitted  # noqa: F401
 from test_business_postgres import business_case, business_postgres  # noqa: F401
+from test_company_write_scope_wave1 import tap
 from test_intelligence_workflow import ai_case, create_event  # noqa: F401
 from test_queue_workflow import enqueue, queue_case  # noqa: F401
 from test_stage8_cases import setup as case_setup
@@ -216,3 +217,21 @@ def test_projection_failure_is_recorded_and_never_blocks_reads(business, monkeyp
     assert result["failed"] >= 1
     status = service.projection_status(c.manager)
     assert status["failing"] >= 1
+
+
+def test_projection_refresh_uses_system_company_scope(business):
+    c = business
+    service = workspace(c)
+    submitted(c)
+    calls = tap(c.db)
+    service.list(c.actors["employee"], bucket="all")
+    scoped = [
+        call
+        for call in calls
+        if call.get("write") and call.get("system") and call.get("write_scope") == "company"
+    ]
+    assert scoped, "投影刷新必须走系统身份的企业写事务，不能再抢全库写锁"
+    assert all(
+        call.get("company_id") == c.company["id"] and call.get("firm_id") == c.manager.firm_id
+        for call in scoped
+    )

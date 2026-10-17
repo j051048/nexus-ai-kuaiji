@@ -233,3 +233,32 @@ def test_real_pg_scoped_ocr_and_legacy_request_cannot_spend_last_company_budget_
     assert c.provider.extract_calls==1
     usage=c.operations.overview(c.manager,c.company['id'])['usage']
     assert usage['estimated_cost']=='0.001400' and usage['reserved_cost']=='0.000000'
+
+
+def test_real_pg_system_company_scope_refreshes_projection_without_global_lock(case):
+    """投影刷新等系统任务走企业锁：同企业行可写、跨企业行被写门拒绝。"""
+    c=case
+    stamp='2026-01-01T00:00:00+00:00'
+    with c.db.transaction(write=True,system=True,write_scope='company',company_id=c.company,firm_id=c.actor.firm_id) as conn:
+        conn.execute(
+            "INSERT INTO workspace_projection_state(firm_id,company_id,revision,built_revision,dirty_at,built_at,failures) VALUES(?,?,1,1,?,?,0) ON CONFLICT(firm_id,company_id) DO NOTHING",
+            (c.actor.firm_id,c.company,stamp,stamp),
+        )
+        conn.execute(
+            "INSERT INTO workspace_task_projections(firm_id,company_id,kind,ref,state,title,updated_at) VALUES(?,?,'alert','scope-probe','open','探针',?)",
+            (c.actor.firm_id,c.company,stamp),
+        )
+        conn.execute(
+            "DELETE FROM workspace_task_projections WHERE firm_id=? AND company_id=? AND ref='scope-probe'",
+            (c.actor.firm_id,c.company),
+        )
+    other=c.service.create_book(c.actor,BookCreate(name='系统企业锁第二客户',period='2026-10'))
+    with pytest.raises(Exception):
+        with c.db.transaction(write=True,system=True,write_scope='company',company_id=c.company,firm_id=c.actor.firm_id) as conn:
+            conn.execute(
+                "INSERT INTO workspace_task_projections(firm_id,company_id,kind,ref,state,title,updated_at) VALUES(?,?,'alert','scope-other','open','越界',?)",
+                (c.actor.firm_id,other['company_id'],stamp),
+            )
+    with c.db.transaction(write=True,system=True) as conn:
+        conn.execute("DELETE FROM workspace_task_projections WHERE firm_id=? AND ref='scope-other'",(c.actor.firm_id,))
+        conn.execute("DELETE FROM workspace_projection_state WHERE firm_id=? AND company_id=?",(c.actor.firm_id,c.company))

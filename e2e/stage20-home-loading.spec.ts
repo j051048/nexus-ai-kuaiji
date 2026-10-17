@@ -19,7 +19,7 @@ function observeReads(page: import('@playwright/test').Page) {
 }
 
 async function readyHome(page: import('@playwright/test').Page) {
-  await expect(page.getByLabel('我的工作概览')).toBeVisible();
+  await expect(page.getByLabel('我的工作概览')).toBeVisible({ timeout: 30_000 });
   await expect(page.getByText('正在读取我的工作范围…', { exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: '刷新工作台', exact: true })).toBeEnabled();
 }

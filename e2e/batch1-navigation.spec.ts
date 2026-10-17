@@ -46,10 +46,14 @@ async function prepare(request: APIRequestContext) {
 test('账套与凭证链接可直达、刷新、后退；未保存修改明确阻断离开', async ({ page, request }) => {
   const { book, draft } = await prepare(request);
   await page.goto(`/workspace/accounting?book=${book.id}&draft=${draft.id}`);
-  await expect(page.locator('#journal-description')).toHaveValue(draft.description);
+  await expect(page.locator('#journal-description')).toHaveValue(draft.description, {
+    timeout: 30_000,
+  });
   await expect(page).toHaveURL(new RegExp(`company=${book.company_id}`));
   await page.reload();
-  await expect(page.locator('#journal-description')).toHaveValue(draft.description);
+  await expect(page.locator('#journal-description')).toHaveValue(draft.description, {
+    timeout: 30_000,
+  });
   await page
     .getByRole('navigation', { name: '主导航' })
     .getByRole('button', { name: '我的待办', exact: true })

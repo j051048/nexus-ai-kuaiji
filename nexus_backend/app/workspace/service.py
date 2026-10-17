@@ -253,29 +253,47 @@ class WorkspaceService:
                     if len(pending) < PROJECTION_REFRESH_PER_REQUEST
                     else []
                 )
-            if not pending and not missing:
-                return
-            with self.db.transaction(write=True, system=True) as conn:
-                for firm_id, company_id in [*pending, *missing]:
-                    state = conn.execute(
-                        "SELECT revision,built_revision FROM workspace_projection_state "
-                        "WHERE firm_id=? AND company_id=?",
-                        (firm_id, company_id),
-                    ).fetchone()
-                    if state and state["built_revision"] >= state["revision"]:
-                        continue
-                    conn.execute("SAVEPOINT projection_prepare")
-                    try:
-                        refresh_company(conn, self.db, firm_id, company_id)
-                    except Exception:
-                        conn.execute("ROLLBACK TO SAVEPOINT projection_prepare")
-                        conn.execute("RELEASE SAVEPOINT projection_prepare")
-                        mark_failure(conn, firm_id, company_id)
-                        logger.warning("统一待办投影重建失败，读取路径已回退实时查询")
-                    else:
-                        conn.execute("RELEASE SAVEPOINT projection_prepare")
+            for firm_id, company_id in [*pending, *missing]:
+                self._refresh_company_locked(firm_id, company_id)
         except Exception:
             logger.warning("统一待办投影暂未重建，读取路径已回退实时查询")
+
+    def _refresh_company_locked(self, firm_id, company_id):
+        """单企业刷新：系统身份 + 企业写锁。
+
+        共享全局门 + 企业锁意味着刷新不再抢占全库写锁：其他企业的写事务互不阻塞，
+        只有同企业的写入会被短暂串行；失败只记账并回退实时查询，绝不阻塞读。
+        返回 "rebuilt"/"skipped"/"failed"。
+        """
+        try:
+            with self.db.transaction(
+                write=True,
+                system=True,
+                write_scope="company",
+                company_id=company_id,
+                firm_id=firm_id,
+            ) as conn:
+                state = conn.execute(
+                    "SELECT revision,built_revision,failures FROM workspace_projection_state "
+                    "WHERE firm_id=? AND company_id=?",
+                    (firm_id, company_id),
+                ).fetchone()
+                if (
+                    state
+                    and state["built_revision"] >= state["revision"]
+                    and not state["failures"]
+                ):
+                    return "skipped"
+                refresh_company(conn, self.db, firm_id, company_id)
+                return "rebuilt"
+        except Exception:
+            try:
+                with self.db.transaction(write=True, system=True) as conn:
+                    mark_failure(conn, firm_id, company_id)
+            except Exception:
+                pass
+            logger.warning("统一待办投影重建失败，读取路径已回退实时查询")
+            return "failed"
 
     def projection_status(self, actor):
         """只读诊断：脏、从未构建与连续失败的企业分布（事务所管理层）。"""
@@ -289,30 +307,16 @@ class WorkspaceService:
             raise AccountingError("每次最多重建 50 家企业", 422)
         with self.db.transaction(actor=actor) as conn:
             self.access.require_manager(conn, actor)
+            pending = pending_companies(conn, actor.firm_id, limit)
         rebuilt = failed = 0
-        with self.db.transaction(write=True, system=True) as conn:
-            for firm_id, company_id in pending_companies(conn, actor.firm_id, limit):
-                state = conn.execute(
-                    "SELECT revision,built_revision,failures FROM workspace_projection_state "
-                    "WHERE firm_id=? AND company_id=?",
-                    (firm_id, company_id),
-                ).fetchone()
-                clean = (
-                    state and state["built_revision"] >= state["revision"] and not state["failures"]
-                )
-                if clean:
-                    continue
-                conn.execute("SAVEPOINT projection_rebuild")
-                try:
-                    refresh_company(conn, self.db, firm_id, company_id)
-                except Exception:
-                    conn.execute("ROLLBACK TO SAVEPOINT projection_rebuild")
-                    conn.execute("RELEASE SAVEPOINT projection_rebuild")
-                    mark_failure(conn, firm_id, company_id)
-                    failed += 1
-                else:
-                    conn.execute("RELEASE SAVEPOINT projection_rebuild")
-                    rebuilt += 1
+        for firm_id, company_id in pending:
+            outcome = self._refresh_company_locked(firm_id, company_id)
+            if outcome == "rebuilt":
+                rebuilt += 1
+            elif outcome == "failed":
+                failed += 1
+        with self.db.transaction(actor=actor) as conn:
+            self.access.require_manager(conn, actor)
             remaining = len(pending_companies(conn, actor.firm_id, 1000))
         return {"rebuilt": rebuilt, "failed": failed, "remaining": remaining}
 

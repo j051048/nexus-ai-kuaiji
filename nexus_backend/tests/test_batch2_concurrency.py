@@ -64,7 +64,7 @@ def test_sqlite_transport_slots_are_company_scoped_and_crash_leases_recover(ai_c
         assert conn.execute("SELECT count(*) FROM provider_request_slots").fetchone()[0] == 0
 
 
-def test_company_scope_cannot_be_silently_requested_for_reads_or_identity(ai_case):
+def test_company_scope_requires_identity_and_explicit_system_firm(ai_case):
     c = ai_case
     for options in [{"actor": c.manager, "company_id": c.company["id"]},
                     {"write": True, "actor": c.manager},
@@ -72,3 +72,12 @@ def test_company_scope_cannot_be_silently_requested_for_reads_or_identity(ai_cas
         with pytest.raises(ValueError):
             with c.db.transaction(write_scope="company", **options):
                 pass
+    # 系统身份 + 企业范围是已评审的受控扩展（投影刷新），必须显式给出 firm_id。
+    with c.db.transaction(
+        write=True,
+        system=True,
+        write_scope="company",
+        company_id=c.company["id"],
+        firm_id=c.manager.firm_id,
+    ) as conn:
+        assert conn.execute("SELECT 1").fetchone()[0] == 1
