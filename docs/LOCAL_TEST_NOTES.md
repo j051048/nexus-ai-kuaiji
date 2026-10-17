@@ -55,12 +55,13 @@ npx playwright test e2e/monthly-briefing.spec.ts --timeout=180000
 
 以下用例在本机（Windows）无论新旧依赖都会失败或偶发失败；已用 `git stash` 对照证实：
 
-- `e2e/batch1-navigation.spec.ts:46`（导航直达/阻断离开）
-- `e2e/stage20-home-loading.spec.ts:60`、`:101`（首页慢读取与角色切换）
+- `e2e/batch1-navigation.spec.ts:46`（导航直达/阻断离开；失败时页面停在首页/历史回退行为，
+  与断言超时无关）
+- `e2e/stage20-home-loading.spec.ts:60`、`:101`（首页慢读取与角色切换；失败在页面状态而非加载时长）
 - `e2e/business.spec.ts:43`（会计确认审核按钮等待超时）
 - `e2e/stage8-cases.spec.ts`：与其他 spec 连跑时偶发超时，单独运行通过
-- `e2e/stage9-reconciliation.spec.ts`：冷启动首跑偶发（点击后标题 5 秒内不可见），
-  热缓存复跑通过；功能断言本身从未失败
+- `e2e/stage9-reconciliation.spec.ts`：冷启动曾偶发（导航后标题 5 秒内不可见）；
+  已把首次导航断言放宽到 30 秒，清空 vite 缓存冷跑验证通过（保留观察）
 
 排障时不要为这些用例反复做基线对照；以 GitHub Actions（Linux + 同一套 spec）为准。
 

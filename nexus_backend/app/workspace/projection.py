@@ -7,11 +7,18 @@
 迁移支线暂不进投影，继续走实时分支。
 """
 
+import logging
+import threading
 from datetime import datetime, timezone
 from time import perf_counter
 
 from ..accounting.queries import inactive_source_sql
 from ..closing.queries import receipt_valid_sql
+
+logger = logging.getLogger(__name__)
+
+# 每轮刷新最多处理的企业数；更多脏企业由后续轮次继续收敛。
+REFRESH_PER_PASS = 5
 
 INSERTS = (
     "INSERT INTO workspace_task_projections(firm_id,company_id,kind,ref,book_id,event_id,"
@@ -328,6 +335,134 @@ def status_snapshot(conn, firm_id, samples=10):
             for row in [*failing, *dirty, *never_built][:samples]
         ],
     }
+
+
+def refresh_company_scoped(db, firm_id, company_id):
+    """Refresh one company with the system identity plus a company write lock.
+
+    单企业独立事务：共享全局门 + 企业锁，不再抢占全库独占锁。
+    返回 "rebuilt"/"skipped"/"failed"。
+    """
+    try:
+        with db.transaction(
+            write=True,
+            system=True,
+            write_scope="company",
+            company_id=company_id,
+            firm_id=firm_id,
+        ) as conn:
+            state = conn.execute(
+                "SELECT revision,built_revision,failures FROM workspace_projection_state "
+                "WHERE firm_id=? AND company_id=?",
+                (firm_id, company_id),
+            ).fetchone()
+            if state and state["built_revision"] >= state["revision"] and not state["failures"]:
+                return "skipped"
+            refresh_company(conn, db, firm_id, company_id)
+            return "rebuilt"
+    except Exception:
+        try:
+            with db.transaction(
+                write=True,
+                system=True,
+                write_scope="company",
+                company_id=company_id,
+                firm_id=firm_id,
+            ) as conn:
+                mark_failure(conn, firm_id, company_id)
+        except Exception:
+            try:
+                with db.transaction(write=True, system=True) as conn:
+                    mark_failure(conn, firm_id, company_id)
+            except Exception:
+                pass
+        logger.warning("统一待办投影重建失败，读取路径已回退实时查询")
+        return "failed"
+
+
+class ProjectionRefresher:
+    """API 进程内的轻量后台刷新器：读请求只唤醒，绝不在请求内写库。
+
+    轮询间隔内做一次低成本脏企业扫描，保证部署预热与失败自愈不依赖读流量；
+    多实例部署时重复刷新由企业锁串行化，结果幂等。
+    """
+
+    def __init__(self, db, poll_seconds=2.0):
+        self.db = db
+        self.poll_seconds = poll_seconds
+        self._lock = threading.Lock()
+        self._pending: set[str] = set()
+        self._event = threading.Event()
+        self._stop = threading.Event()
+        self._thread = None
+
+    def wake(self, firm_id):
+        if not firm_id:
+            return
+        with self._lock:
+            self._pending.add(firm_id)
+        self._event.set()
+
+    def drain(self):
+        """Synchronously process queued firms (tests / graceful shutdown)."""
+        with self._lock:
+            pending, self._pending = self._pending, set()
+        for firm_id in pending:
+            self._refresh_firm(firm_id)
+        return len(pending)
+
+    def _refresh_firm(self, firm_id):
+        try:
+            with self.db.transaction(system=True) as conn:
+                todo = pending_companies(conn, firm_id, REFRESH_PER_PASS + 1)
+        except Exception:
+            logger.warning("统一待办投影队列读取失败，将在下一轮重试")
+            return
+        for _firm, company_id in todo[:REFRESH_PER_PASS]:
+            refresh_company_scoped(self.db, firm_id, company_id)
+        if len(todo) > REFRESH_PER_PASS:
+            self.wake(firm_id)
+
+    def _sweep(self):
+        try:
+            with self.db.transaction(system=True) as conn:
+                firms = [
+                    row[0]
+                    for row in conn.execute(
+                        "SELECT DISTINCT firm_id FROM workspace_projection_state "
+                        "WHERE revision>built_revision OR failures>0 LIMIT 20"
+                    )
+                ]
+        except Exception:
+            return
+        for firm_id in firms:
+            self.wake(firm_id)
+
+    def _loop(self):
+        while not self._stop.is_set():
+            self._event.wait(self.poll_seconds)
+            self._event.clear()
+            if self._stop.is_set():
+                break
+            try:
+                self.drain()
+                self._sweep()
+            except Exception:
+                logger.warning("统一待办投影后台刷新暂不可用，将在下一轮重试")
+        self.drain()
+
+    def start(self):
+        if self._thread and self._thread.is_alive():
+            return
+        self._stop.clear()
+        self._thread = threading.Thread(target=self._loop, name="projection-refresher", daemon=True)
+        self._thread.start()
+
+    def stop(self):
+        self._stop.set()
+        self._event.set()
+        if self._thread:
+            self._thread.join(timeout=5)
 
 
 def reachable_companies_sql(alias="s"):

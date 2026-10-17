@@ -8,19 +8,13 @@ from app.accounting.queries import inactive_source_sql, page_bounds
 from app.closing.queries import receipt_valid_sql
 from app.jobs.visibility import book_edit_scope, event_scope
 from .projection import (
-    companies_missing_state,
-    dirty_companies,
-    mark_failure,
     pending_companies,
     projection_clean,
-    refresh_company,
+    refresh_company_scoped,
     status_snapshot,
 )
 
 logger = logging.getLogger(__name__)
-
-# 每次交互请求最多重建的企业数；其余企业回退实时查询，由后续请求继续收敛。
-PROJECTION_REFRESH_PER_REQUEST = 5
 
 
 KINDS = {
@@ -65,6 +59,8 @@ class WorkspaceService:
             cases,
         )
         self.access = accounting.access
+        # 后台投影刷新器（由 create_app 注入）；未注入时读取始终回退实时查询。
+        self.refresher = None
 
     def profile(self, actor):
         with self.db.transaction(actor=actor) as conn:
@@ -238,63 +234,6 @@ class WorkspaceService:
         }
         return row["firm_role"], gates
 
-    def _prepare_projection(self, actor):
-        """Rebuild up to the per-request budget of dirty companies.
-
-        投影只是加速层：清理失败只记录告警，读取路径会回退实时查询。
-        """
-        try:
-            with self.db.transaction(actor=actor) as conn:
-                pending = dirty_companies(conn, actor, PROJECTION_REFRESH_PER_REQUEST)
-                missing = (
-                    companies_missing_state(
-                        conn, actor, PROJECTION_REFRESH_PER_REQUEST - len(pending)
-                    )
-                    if len(pending) < PROJECTION_REFRESH_PER_REQUEST
-                    else []
-                )
-            for firm_id, company_id in [*pending, *missing]:
-                self._refresh_company_locked(firm_id, company_id)
-        except Exception:
-            logger.warning("统一待办投影暂未重建，读取路径已回退实时查询")
-
-    def _refresh_company_locked(self, firm_id, company_id):
-        """单企业刷新：系统身份 + 企业写锁。
-
-        共享全局门 + 企业锁意味着刷新不再抢占全库写锁：其他企业的写事务互不阻塞，
-        只有同企业的写入会被短暂串行；失败只记账并回退实时查询，绝不阻塞读。
-        返回 "rebuilt"/"skipped"/"failed"。
-        """
-        try:
-            with self.db.transaction(
-                write=True,
-                system=True,
-                write_scope="company",
-                company_id=company_id,
-                firm_id=firm_id,
-            ) as conn:
-                state = conn.execute(
-                    "SELECT revision,built_revision,failures FROM workspace_projection_state "
-                    "WHERE firm_id=? AND company_id=?",
-                    (firm_id, company_id),
-                ).fetchone()
-                if (
-                    state
-                    and state["built_revision"] >= state["revision"]
-                    and not state["failures"]
-                ):
-                    return "skipped"
-                refresh_company(conn, self.db, firm_id, company_id)
-                return "rebuilt"
-        except Exception:
-            try:
-                with self.db.transaction(write=True, system=True) as conn:
-                    mark_failure(conn, firm_id, company_id)
-            except Exception:
-                pass
-            logger.warning("统一待办投影重建失败，读取路径已回退实时查询")
-            return "failed"
-
     def projection_status(self, actor):
         """只读诊断：脏、从未构建与连续失败的企业分布（事务所管理层）。"""
         with self.db.transaction(actor=actor) as conn:
@@ -310,7 +249,7 @@ class WorkspaceService:
             pending = pending_companies(conn, actor.firm_id, limit)
         rebuilt = failed = 0
         for firm_id, company_id in pending:
-            outcome = self._refresh_company_locked(firm_id, company_id)
+            outcome = refresh_company_scoped(self.db, firm_id, company_id)
             if outcome == "rebuilt":
                 rebuilt += 1
             elif outcome == "failed":
@@ -1142,7 +1081,6 @@ class WorkspaceService:
         q="",
         use_projection=True,
     ):
-        self._prepare_projection(actor)
         with self.db.transaction(actor=actor) as conn:
             return self.list_in_connection(
                 conn,
@@ -1184,6 +1122,9 @@ class WorkspaceService:
         # _query resolves the active user and current firm role through the
         # review scope; do not repeat that identical authorization round trip.
         projected = use_projection and projection_clean(conn, actor)
+        if use_projection and not projected and self.refresher is not None:
+            # 读请求只唤醒后台刷新，绝不在请求内写库。
+            self.refresher.wake(actor.firm_id)
         query, params = (
             self._projected_query(conn, actor) if projected else self._query(conn, actor)
         )
@@ -1267,13 +1208,13 @@ class WorkspaceService:
         page_bounds(limit, offset)
         if len(q) > 200:
             raise AccountingError("企业搜索文字过长")
-        self._prepare_projection(actor)
         with self.db.transaction(actor=actor) as conn:
             self.access.require_user(conn, actor.user_id)
+            projected = use_projection and projection_clean(conn, actor)
+            if use_projection and not projected and self.refresher is not None:
+                self.refresher.wake(actor.firm_id)
             query, params = (
-                self._projected_query(conn, actor)
-                if use_projection and projection_clean(conn, actor)
-                else self._query(conn, actor)
+                self._projected_query(conn, actor) if projected else self._query(conn, actor)
             )
             search = " WHERE c.name LIKE ? ESCAPE '!'" if q.strip() else ""
             args = [*params, *([self._search(q)] if q.strip() else [])]

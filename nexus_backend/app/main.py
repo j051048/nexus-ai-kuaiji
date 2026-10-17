@@ -123,6 +123,7 @@ from .import_wizard.service import ImportWizardService
 from .import_wizard.router import build_import_wizard_router, ImportWizardBodyLimitMiddleware
 from .workspace.service import WorkspaceService
 from .workspace.router import build_workspace_router
+from .workspace.projection import ProjectionRefresher
 from .legacy_migration.service import LegacyMigrationService
 from .legacy_migration.worker import MigrationWorker
 from .legacy_migration.router import build_legacy_migration_router, MigrationBodyLimitMiddleware
@@ -325,6 +326,9 @@ def create_app(
                 application.state.review,
                 application.state.cases,
             )
+            application.state.projection_refresher = ProjectionRefresher(database)
+            application.state.workspace.refresher = application.state.projection_refresher
+            application.state.projection_refresher.start()
             application.state.monthly = MonthlyService(database, application.state.service)
             application.state.service_plans = ServicePlansService(
                 database, application.state.service, application.state.business
@@ -450,6 +454,9 @@ def create_app(
             try:
                 yield
             finally:
+                projection_refresher = getattr(application.state, "projection_refresher", None)
+                if projection_refresher:
+                    projection_refresher.stop()
                 if assistant_worker:
                     assistant_worker.stop()
                 if migration_worker:

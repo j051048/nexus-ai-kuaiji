@@ -1,4 +1,5 @@
 """Deterministic local supplier and SQLite capacity checks; no paid model calls."""
+
 from threading import Event
 from concurrent.futures import ThreadPoolExecutor
 from uuid import uuid4
@@ -19,16 +20,23 @@ def test_processing_configuration_rejects_unbounded_values(value):
 
 def test_defaults_stay_conservative_and_raise_only_with_explicit_bounds():
     assert SchedulingSettings.from_env({}).requested_global_limit == 2
-    assert SchedulingSettings.from_env({"ACCOUNTING_PROCESSING_GLOBAL_LIMIT": "8"}).requested_global_limit == 8
+    assert (
+        SchedulingSettings.from_env(
+            {"ACCOUNTING_PROCESSING_GLOBAL_LIMIT": "8"}
+        ).requested_global_limit
+        == 8
+    )
     assert AISettings(max_concurrency=8).max_concurrency == 8
 
 
 def test_same_supplier_instances_share_capacity_while_distinct_suppliers_progress():
     entered, release = Event(), Event()
+
     def held():
         with provider_capacity("https://shared.synthetic.test/v1", 1, 45):
             entered.set()
             assert release.wait(3)
+
     with ThreadPoolExecutor(1) as pool:
         running = pool.submit(held)
         assert entered.wait(3)
@@ -66,9 +74,11 @@ def test_sqlite_transport_slots_are_company_scoped_and_crash_leases_recover(ai_c
 
 def test_company_scope_requires_identity_and_explicit_system_firm(ai_case):
     c = ai_case
-    for options in [{"actor": c.manager, "company_id": c.company["id"]},
-                    {"write": True, "actor": c.manager},
-                    {"write": True, "system": True, "company_id": c.company["id"]}]:
+    for options in [
+        {"actor": c.manager, "company_id": c.company["id"]},
+        {"write": True, "actor": c.manager},
+        {"write": True, "system": True, "company_id": c.company["id"]},
+    ]:
         with pytest.raises(ValueError):
             with c.db.transaction(write_scope="company", **options):
                 pass

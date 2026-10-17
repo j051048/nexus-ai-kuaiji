@@ -8,7 +8,7 @@ from app.accounting.domain import AccountingError
 from app.accounting.models import ApprovalRequest, ExportRequest
 from app.accounting.review import ReviewService
 from app.cases.service import CaseService
-from app.workspace.projection import projection_clean, refresh_company
+from app.workspace.projection import ProjectionRefresher, projection_clean, refresh_company
 from app.workspace.service import WorkspaceService
 from test_business import approved, business, submitted  # noqa: F401
 from test_business_postgres import business_case, business_postgres  # noqa: F401
@@ -193,20 +193,23 @@ def test_projection_status_and_firm_manager_rebuild(business):
 
 
 def test_projection_failure_is_recorded_and_never_blocks_reads(business, monkeypatch):
-    import app.workspace.service as workspace_service
+    import app.workspace.projection as projection_module
 
     c = business
     service = workspace(c)
+    refresher = ProjectionRefresher(c.db)
+    service.refresher = refresher
     submitted(c)
 
     def boom(*_args, **_kwargs):
         raise RuntimeError("synthetic projection failure")
 
-    monkeypatch.setattr(workspace_service, "refresh_company", boom)
-    # 读取路径照常返回实时结果，并把连续失败落库供运维告警。
+    monkeypatch.setattr(projection_module, "refresh_company", boom)
+    # 读请求只回退实时查询并唤醒后台，绝不在请求内写库。
     assert service.list(c.actors["employee"], bucket="all") == service.list(
         c.actors["employee"], bucket="all", use_projection=False
     )
+    refresher.drain()
     with c.db.transaction(actor=c.manager) as conn:
         row = conn.execute(
             "SELECT failures FROM workspace_projection_state WHERE company_id=?",
@@ -219,19 +222,35 @@ def test_projection_failure_is_recorded_and_never_blocks_reads(business, monkeyp
     assert status["failing"] >= 1
 
 
-def test_projection_refresh_uses_system_company_scope(business):
+def test_workspace_task_reads_never_open_write_transactions(business):
     c = business
     service = workspace(c)
     submitted(c)
     calls = tap(c.db)
     service.list(c.actors["employee"], bucket="all")
+    service.companies(c.actors["employee"])
+    assert not [call for call in calls if call.get("write")], "待办读取必须是纯只读事务"
+
+
+def test_projection_refresher_uses_system_company_scope(business):
+    c = business
+    service = workspace(c)
+    refresher = ProjectionRefresher(c.db)
+    service.refresher = refresher
+    submitted(c)
+    service.list(c.actors["employee"], bucket="all")
+    calls = tap(c.db)
+    refresher.drain()
     scoped = [
         call
         for call in calls
         if call.get("write") and call.get("system") and call.get("write_scope") == "company"
     ]
     assert scoped, "投影刷新必须走系统身份的企业写事务，不能再抢全库写锁"
+    firm_companies = {c.company["id"], c.other["id"]}
     assert all(
-        call.get("company_id") == c.company["id"] and call.get("firm_id") == c.manager.firm_id
+        call.get("company_id") in firm_companies and call.get("firm_id") == c.manager.firm_id
         for call in scoped
     )
+    with c.db.transaction(actor=c.actors["employee"]) as conn:
+        assert projection_clean(conn, c.actors["employee"])
