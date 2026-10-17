@@ -3,6 +3,11 @@
   margin: 0 auto;
   padding-bottom: 48px;
 }
+.delivery-workbench.embedded {
+  max-width: none;
+  margin: 0;
+  padding: 0 18px 18px;
+}
 .delivery-notice {
   display: flex;
   gap: 16px;
@@ -40,6 +45,11 @@
   grid-template-columns: minmax(270px, 340px) minmax(0, 1fr);
   gap: 24px;
   align-items: start;
+}
+@container (max-width: 900px) {
+  .delivery-workbench.embedded .delivery-grid {
+    grid-template-columns: 1fr;
+  }
 }
 .delivery-exports {
   padding: 22px !important;

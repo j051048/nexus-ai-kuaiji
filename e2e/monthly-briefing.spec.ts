@@ -36,7 +36,7 @@ test('月度财税简报：锁期前给出提示，锁期后交付一页纸概�
   await page.getByRole('button', { name: '依据复核快照锁期', exact: true }).click();
   await expect(page.getByText('本期已锁定', { exact: true })).toBeVisible();
 
-  await page.getByRole('button', { name: '返回账套', exact: true }).click();
+  await openAccounting(page);
   await page
     .getByRole('navigation', { name: '主导航', exact: true })
     .getByRole('button', { name: '客户月度进度', exact: true })

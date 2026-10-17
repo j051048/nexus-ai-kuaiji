@@ -140,7 +140,7 @@ test('切换企业丢弃迟到聚合响应，关闭后不继续轮询', async ({
   held.release();
   await expect(drawer.locator('.ga-context')).not.toContainText(a.conversation.title);
   const beforeClose = reads.count();
-  await drawer.getByRole('button', { name: '关闭全局会计助手', exact: true }).click();
+  await drawer.getByRole('button', { name: '关闭会计助手', exact: true }).click();
   await page.clock.runFor(45_000);
   await expect(drawer).toHaveCount(0);
   expect(reads.count()).toBe(beforeClose);

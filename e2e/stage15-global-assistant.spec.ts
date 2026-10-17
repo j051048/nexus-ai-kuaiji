@@ -4,22 +4,60 @@ import { choosePersona } from './ui-navigation';
 test('全局助手保存范围、任务预览确认、历史恢复与手机显示', async ({ page, request }) => {
   test.setTimeout(60_000);
   const session = await (await request.get('/api/session?persona=accountant')).json();
-  const headers = { Authorization: `Bearer ${session.token}` }, tag = crypto.randomUUID().slice(0, 8);
-  const created = await request.post('/api/books', { headers, data: { name: `合成对话企业 ${tag}`, period: '2026-10' } });
-  expect(created.status()).toBe(201); const book = await created.json();
-  expect((await request.post(`/api/books/${book.id}/imports`, { headers, data: { source_name: '合成助手银行资料', rows: [
-    { external_id: tag, date: '2026-10-03', description: `合成办公耗材 ${tag}`, counterparty: '合成供应商', amount: '100.01', direction: 'expense', evidence_ref: `合成回单 ${tag}` },
-  ] } })).status()).toBe(200);
-  await page.goto('/'); await choosePersona(page, 'accountant');
+  const headers = { Authorization: `Bearer ${session.token}` },
+    tag = crypto.randomUUID().slice(0, 8);
+  const created = await request.post('/api/books', {
+    headers,
+    data: { name: `合成对话企业 ${tag}`, period: '2026-10' },
+  });
+  expect(created.status()).toBe(201);
+  const book = await created.json();
+  expect(
+    (
+      await request.post(`/api/books/${book.id}/imports`, {
+        headers,
+        data: {
+          source_name: '合成助手银行资料',
+          rows: [
+            {
+              external_id: tag,
+              date: '2026-10-03',
+              description: `合成办公耗材 ${tag}`,
+              counterparty: '合成供应商',
+              amount: '100.01',
+              direction: 'expense',
+              evidence_ref: `合成回单 ${tag}`,
+            },
+          ],
+        },
+      })
+    ).status(),
+  ).toBe(200);
+  await page.goto('/');
+  await choosePersona(page, 'accountant');
   await page.getByRole('button', { name: '问会计助手', exact: true }).click();
   const assistant = page.getByRole('dialog', { name: '会计助手', exact: true });
   await expect(assistant).toBeVisible({ timeout: 15_000 });
+  const assistantTabs = assistant.getByRole('tablist', { name: '会计助手模式' });
+  await expect(assistantTabs.getByRole('tab', { name: '全账套对话' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await expect(assistantTabs.getByRole('tab', { name: '当前凭证' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: '查找企业与任务', exact: true })).toHaveCount(0);
+  expect(await page.evaluate(() => document.body.style.overflow)).toBe('');
   await assistant.getByLabel('助手所属企业', { exact: true }).selectOption(book.company_id);
-  await assistant.locator('label').filter({ hasText: `合成对话企业 ${tag}` }).getByRole('checkbox').check();
+  await assistant
+    .locator('label')
+    .filter({ hasText: `合成对话企业 ${tag}` })
+    .getByRole('checkbox')
+    .check();
   await assistant.getByPlaceholder('例如：10 月报销与票据核对').fill(`合成会话 ${tag}`);
   await assistant.getByRole('button', { name: /创建会话/ }).click();
   await expect(assistant.locator('.ga-context')).toContainText('2026-10');
-  await expect(assistant.getByRole('button', { name: '发送会计助手问题', exact: true })).toBeDisabled();
+  await expect(
+    assistant.getByRole('button', { name: '发送会计助手问题', exact: true }),
+  ).toBeDisabled();
   await expect(assistant.locator('.ga-config-note')).toContainText('尚未配置');
   await assistant.getByText('直接准备后台任务', { exact: false }).click();
   await assistant.getByRole('button', { name: '生成流水草稿', exact: true }).click();
@@ -29,31 +67,96 @@ test('全局助手保存范围、任务预览确认、历史恢复与手机显�
   expect(before.drafts).toHaveLength(0);
   await plan.getByRole('button', { name: '确认执行这 1 项', exact: true }).click();
   await expect(plan.locator('.ga-receipt')).toContainText('1 份草稿已生成');
-  await page.screenshot({ path: 'artifacts/stage15-global-assistant-desktop.png', fullPage: false });
-  await assistant.getByRole('button', { name: '关闭全局会计助手', exact: true }).click();
-  await page.reload(); await page.getByRole('button', { name: '问会计助手', exact: true }).click();
+  await page.screenshot({
+    path: 'artifacts/stage15-global-assistant-desktop.png',
+    fullPage: false,
+  });
+  await assistant.getByRole('button', { name: '关闭会计助手', exact: true }).click();
+  await page.reload();
+  await page.getByRole('button', { name: '问会计助手', exact: true }).click();
   await assistant.getByLabel('助手所属企业', { exact: true }).selectOption(book.company_id);
   await assistant.getByRole('button', { name: '查看我的会话', exact: true }).click();
   await assistant.getByRole('button', { name: new RegExp(`合成会话 ${tag}`) }).click();
   await expect(assistant.locator('.ga-receipt')).toContainText('1 份草稿已生成');
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(assistant).toBeVisible();
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(
+    true,
+  );
   await page.screenshot({ path: 'artifacts/stage15-global-assistant-mobile.png', fullPage: false });
-  await page.keyboard.press('Escape'); await expect(assistant).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await expect(assistant).toHaveCount(0);
   const persisted = await (await request.get(`/api/books/${book.id}`, { headers })).json();
   expect(persisted.drafts).toHaveLength(1);
   expect(persisted.drafts[0].status).toBe('draft');
-  expect((await (await request.get(`/api/books/${book.id}/exports`, { headers })).json()).exports).toEqual([]);
+  expect(
+    (await (await request.get(`/api/books/${book.id}/exports`, { headers })).json()).exports,
+  ).toEqual([]);
   await page.getByRole('button', { name: '问会计助手', exact: true }).click();
   await assistant.getByLabel('助手所属企业', { exact: true }).selectOption(book.company_id);
   await assistant.getByRole('button', { name: '查看我的会话', exact: true }).click();
   await assistant.getByRole('button', { name: new RegExp(`合成会话 ${tag}`) }).click();
-  await assistant.locator('.ga-receipt').getByRole('button', { name: '查看结果', exact: false }).click();
+  await assistant
+    .locator('.ga-receipt')
+    .getByRole('button', { name: '查看结果', exact: false })
+    .click();
   const review = page.getByRole('dialog', { name: '原件与凭证，一起核对', exact: true });
   await expect(review).toBeVisible();
   await expect(review).toContainText(`合成办公耗材 ${tag}`);
-  await page.keyboard.press('Escape'); await expect(review).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await expect(review).toHaveCount(0);
+});
+
+test('统一右侧抽屉可在当前凭证与全账套对话之间切换', async ({ page, request }) => {
+  test.setTimeout(90_000);
+  const session = await (await request.get('/api/session?persona=accountant')).json();
+  const headers = { Authorization: `Bearer ${session.token}` };
+  const tag = crypto.randomUUID().slice(0, 8);
+  const created = await request.post('/api/books', {
+    headers,
+    data: { name: `助手抽屉切换 ${tag}`, period: '2026-10' },
+  });
+  const book = await created.json();
+  await request.post(`/api/books/${book.id}/imports`, {
+    headers,
+    data: {
+      source_name: '合成抽屉切换资料',
+      rows: [
+        {
+          external_id: tag,
+          date: '2026-10-03',
+          description: `合成抽屉办公费 ${tag}`,
+          counterparty: '合成抽屉供应商',
+          amount: '88.01',
+          direction: 'expense',
+          evidence_ref: `合成抽屉回单 ${tag}`,
+        },
+      ],
+    },
+  });
+  await request.post(`/api/books/${book.id}/suggestions`, { headers });
+
+  await page.goto(`/workspace/accounting?book=${book.id}`);
+  await page.locator('.draft-title').first().click();
+  await page.getByRole('button', { name: '会计助手 · 解释当前资料', exact: true }).click();
+  const assistant = page.getByRole('dialog', { name: '会计助手', exact: true });
+  const tabs = assistant.getByRole('tablist', { name: '会计助手模式' });
+  await expect(tabs.getByRole('tab', { name: '当前凭证' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await expect(assistant.locator('.context-scope-card')).toContainText('凭证 v1');
+  await tabs.getByRole('tab', { name: '全账套对话' }).click();
+  await expect(tabs.getByRole('tab', { name: '全账套对话' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await expect(assistant.getByRole('region', { name: '会计助手' })).toBeVisible();
+  await tabs.getByRole('tab', { name: '当前凭证', exact: true }).click();
+  await expect(assistant.locator('.context-scope-card')).toContainText('凭证 v1');
+  await assistant.getByRole('button', { name: '关闭会计助手', exact: true }).click();
+  await expect(assistant).toHaveCount(0);
+  expect(await page.evaluate(() => document.body.style.overflow)).toBe('');
 });
 
 test('员工只选择本企业授权事项，空范围后台识别有明确阻断', async ({ page, request }) => {
@@ -61,7 +164,8 @@ test('员工只选择本企业授权事项，空范围后台识别有明确阻�
   const headers = { Authorization: `Bearer ${session.token}` };
   const companies = (await (await request.get('/api/companies', { headers })).json()).companies;
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto('/'); await choosePersona(page, 'employee');
+  await page.goto('/');
+  await choosePersona(page, 'employee');
   await page.getByRole('button', { name: '问会计助手', exact: true }).click();
   const assistant = page.getByRole('dialog', { name: '会计助手', exact: true });
   await assistant.getByLabel('助手所属企业', { exact: true }).selectOption(companies[0].id);

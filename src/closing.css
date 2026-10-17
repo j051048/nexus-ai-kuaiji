@@ -2,6 +2,10 @@
   display: grid;
   gap: 24px;
 }
+.closing-workbench.embedded {
+  gap: 14px;
+  padding: 0 18px 18px;
+}
 .closing-actions {
   display: flex;
   gap: 10px;
@@ -29,6 +33,11 @@
   display: grid;
   grid-template-columns: minmax(270px, 0.7fr) minmax(0, 1.3fr);
   gap: 24px;
+}
+@container (max-width: 900px) {
+  .closing-workbench.embedded .closing-columns {
+    grid-template-columns: 1fr;
+  }
 }
 .closing-snapshots {
   display: grid;

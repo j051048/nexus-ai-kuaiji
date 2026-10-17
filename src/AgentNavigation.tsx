@@ -6,16 +6,13 @@ import {
   CalendarDays,
   CheckCheck,
   ClipboardCheck,
-  Command,
   FileCheck2,
   FileSearch,
   FileText,
   Layers3,
   LayoutDashboard,
   Menu,
-  Search,
   ShieldCheck,
-  Sparkles,
   X,
 } from 'lucide-react';
 import type { Session } from './types';
@@ -51,8 +48,6 @@ export function AgentNavigation({
   footer,
   onNavigate,
   onAccountingFilter,
-  onCommand,
-  onAssistant,
 }: {
   session: Session;
   current: string;
@@ -68,8 +63,6 @@ export function AgentNavigation({
   footer: ReactNode;
   onNavigate: (view: AgentNavigationView) => void;
   onAccountingFilter: (filter: 'pending' | 'approved') => void;
-  onCommand: () => void;
-  onAssistant?: () => void;
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const opener = useRef<HTMLButtonElement>(null),
@@ -183,35 +176,6 @@ export function AgentNavigation({
             <span>会计专用工作空间</span>
           </div>
         </div>
-        <button
-          className="agent-command-launch"
-          disabled={locked}
-          onClick={() => {
-            setMobileOpen(false);
-            onCommand();
-          }}
-        >
-          <Search size={16} />
-          <span>查找企业与任务</span>
-          <kbd>
-            <Command size={11} /> K
-          </kbd>
-        </button>
-        {onAssistant && (
-          <button
-            className="agent-assistant-launch"
-            disabled={locked}
-            onClick={() => {
-              setMobileOpen(false);
-              onAssistant();
-            }}
-          >
-            <Sparkles size={16} />
-            <span>
-              会计助手<small>按企业提问与执行任务</small>
-            </span>
-          </button>
-        )}
         <nav aria-label="主导航" className="agent-primary-nav">
           <button
             aria-label="我的待办"

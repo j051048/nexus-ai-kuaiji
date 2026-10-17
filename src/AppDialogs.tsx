@@ -1,74 +1,8 @@
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { Building2, Plus } from 'lucide-react';
 import { api, errorMessage } from './api';
 import { Modal, Spinner } from './AppPrimitives';
 import type { Session, Company } from './types';
-export function AssistantDialog({
-  children,
-  onClose,
-}: {
-  children: ReactNode;
-  onClose: () => void;
-}) {
-  const panel = useRef<HTMLDivElement>(null);
-  const close = useRef(onClose);
-  close.current = onClose;
-  useEffect(() => {
-    const previous = document.activeElement as HTMLElement | null,
-      overflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    const timer = window.setTimeout(
-      () => panel.current?.querySelector<HTMLElement>('button,textarea')?.focus(),
-      0,
-    );
-    const keyboard = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        close.current();
-        return;
-      }
-      if (event.key !== 'Tab' || !panel.current) return;
-      const elements = Array.from(
-        panel.current.querySelectorAll<HTMLElement>(
-          'button:not(:disabled),textarea:not(:disabled),input:not(:disabled),a[href]',
-        ),
-      ).filter((el) => el.getClientRects().length);
-      if (event.shiftKey && document.activeElement === elements[0]) {
-        event.preventDefault();
-        elements[elements.length - 1]?.focus();
-      } else if (!event.shiftKey && document.activeElement === elements[elements.length - 1]) {
-        event.preventDefault();
-        elements[0]?.focus();
-      }
-    };
-    window.addEventListener('keydown', keyboard);
-    return () => {
-      window.clearTimeout(timer);
-      document.body.style.overflow = overflow;
-      window.removeEventListener('keydown', keyboard);
-      if (previous?.isConnected) previous.focus();
-    };
-  }, []);
-  return (
-    <div
-      className="agent-assistant-overlay"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
-      }}
-    >
-      <div
-        className="agent-assistant-dialog"
-        ref={panel}
-        role="dialog"
-        aria-modal="true"
-        aria-label="会计资料助手"
-      >
-        {children}
-      </div>
-    </div>
-  );
-}
-
 export function NewBookModal({
   session,
   canCreateCompany,

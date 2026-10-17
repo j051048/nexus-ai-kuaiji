@@ -33,6 +33,7 @@ export function DeliveryWorkbench({
   initialExportId,
   onBack,
   onBusyChange,
+  embedded = false,
 }: DeliveryWorkbenchProps) {
   const [overview, setOverview] = useState<DeliveryOverview | null>(null);
   const [detail, setDetail] = useState<DeliveryDetail | null>(null);
@@ -276,22 +277,47 @@ export function DeliveryWorkbench({
     });
   }
   const items = detail?.manifest.items ?? [];
+  const Wrapper = embedded ? 'div' : 'main';
   return (
-    <main className="delivery-workbench">
-      <section className="page-heading">
-        <div>
-          <p className="eyebrow">DELIVERY / RECEIPT / RECONCILIATION</p>
-          <h1>导出之后，还要核对回执。</h1>
-          <p className="page-description">
-            {overview?.company_name} · {overview?.book_name} · {overview?.period}
-            。会计导出的凭证保持冻结；回执和差异记录独立追加。
-          </p>
-        </div>
-        <button type="button" className="button secondary" disabled={!!busy} onClick={onBack}>
-          <ArrowLeft size={16} />
-          返回账套
-        </button>
-      </section>
+    <Wrapper className={'delivery-workbench' + (embedded ? ' embedded' : '')}>
+      {embedded ? (
+        <section className="book-embedded-heading">
+          <div>
+            <h2>交付与回执核验</h2>
+            <p>
+              {overview?.company_name ?? '当前账套'} · {overview?.book_name ?? ''} ·{' '}
+              {overview?.period ?? ''}
+            </p>
+          </div>
+          <button
+            type="button"
+            className="button secondary small"
+            disabled={!!busy}
+            onClick={() => {
+              void load();
+              void loadDetail();
+            }}
+          >
+            <RefreshCw size={15} />
+            刷新
+          </button>
+        </section>
+      ) : (
+        <section className="page-heading">
+          <div>
+            <p className="eyebrow">DELIVERY / RECEIPT / RECONCILIATION</p>
+            <h1>导出之后，还要核对回执。</h1>
+            <p className="page-description">
+              {overview?.company_name} · {overview?.book_name} · {overview?.period}
+              。会计导出的凭证保持冻结；回执和差异记录独立追加。
+            </p>
+          </div>
+          <button type="button" className="button secondary" disabled={!!busy} onClick={onBack}>
+            <ArrowLeft size={16} />
+            返回账套
+          </button>
+        </section>
+      )}
       <section className="delivery-notice">
         <FileCheck2 size={25} />
         <div>
@@ -735,6 +761,6 @@ export function DeliveryWorkbench({
           )}
         </section>
       </div>
-    </main>
+    </Wrapper>
   );
 }

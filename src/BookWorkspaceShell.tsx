@@ -44,6 +44,8 @@ export interface BookWorkspaceShellProps {
   me: Me | null;
   routeView: WorkspaceView;
   bookView?: ReactNode;
+  bookViewBusy?: boolean;
+  bookViewDirty?: boolean;
   filter: Filter;
   navItems: { id: Filter; label: string }[];
   stats: Workbench['stats'] | undefined;
@@ -112,6 +114,8 @@ export function BookWorkspaceShell({
   me,
   routeView,
   bookView,
+  bookViewBusy = false,
+  bookViewDirty = false,
   filter,
   navItems,
   stats,
@@ -167,6 +171,8 @@ export function BookWorkspaceShell({
   onOpenBookModal,
   onOpenImport,
 }: BookWorkspaceShellProps) {
+  const embeddedBusy = !!bookView && bookViewBusy;
+  const embeddedDirty = !!bookView && bookViewDirty;
   return (
     <main>
       <section className="page-heading">
@@ -269,7 +275,7 @@ export function BookWorkspaceShell({
                 bookId={bookId}
                 search={search}
                 filtered={filter !== 'all'}
-                busy={!!busy || reviewDirty}
+                busy={!!busy || reviewDirty || embeddedBusy || embeddedDirty}
                 loading={bootLoading}
                 pagination={workbench?.pagination}
                 onChoose={chooseBook}
@@ -289,9 +295,9 @@ export function BookWorkspaceShell({
                 <AccountingBookToolbar
                   book={detail?.book}
                   fallbackName={workbench?.books.find((book) => book.id === bookId)?.name}
-                  busy={!!busy}
+                  busy={!!busy || embeddedBusy}
                   loading={bookLoading}
-                  dirty={reviewDirty}
+                  dirty={reviewDirty || embeddedDirty}
                   activeStep={bookPipelineStep(routeView, listTab)}
                   onImport={() => {
                     setNotice(null);

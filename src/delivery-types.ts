@@ -95,4 +95,5 @@ export type DeliveryWorkbenchProps = {
   initialExportId?: string;
   onBack: () => void;
   onBusyChange?: (value: boolean) => void;
+  embedded?: boolean;
 };

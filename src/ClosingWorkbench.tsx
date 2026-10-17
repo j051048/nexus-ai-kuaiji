@@ -21,6 +21,7 @@ export function ClosingWorkbench({
   onBusyChange,
   onChanged,
   onOpenIssue,
+  embedded = false,
 }: {
   session: Session;
   bookId: string;
@@ -28,6 +29,7 @@ export function ClosingWorkbench({
   onBusyChange?: (busy: boolean) => void;
   onChanged?: () => void;
   onOpenIssue?: (target: { type: string; id: string; bookId: string }) => void;
+  embedded?: boolean;
 }) {
   const [data, setData] = useState<ClosingOverview | null>(null),
     [selected, setSelected] = useState(''),
@@ -41,7 +43,8 @@ export function ClosingWorkbench({
   scopeRef.current = scope;
   const lock = useRef(false),
     mounted = useRef(true),
-    epoch = useRef(0);
+    epoch = useRef(0),
+    resetScope = useRef('');
   const path = `/books/${encodeURIComponent(bookId)}/closing`;
   const load = useCallback(async () => {
     const current = ++epoch.current,
@@ -56,15 +59,19 @@ export function ClosingWorkbench({
     }
   }, [bookId, session]);
   useEffect(() => {
+    const changed = resetScope.current !== scope;
+    resetScope.current = scope;
     mounted.current = true;
-    lock.current = false;
-    setBusy(false);
-    setSelected('');
-    setReason('');
-    setConfirmed(false);
-    setError('');
-    setNotice('');
-    setData(null);
+    if (changed) {
+      lock.current = false;
+      setBusy(false);
+      setSelected('');
+      setReason('');
+      setConfirmed(false);
+      setError('');
+      setNotice('');
+      setData(null);
+    }
     void load().catch((failure) => {
       if (mounted.current && scopeRef.current === scope)
         setError(failure instanceof Error ? failure.message : '读取失败');
@@ -104,30 +111,48 @@ export function ClosingWorkbench({
   }
   const snapshot = data?.snapshots.find((item) => item.id === selected) ?? null;
   const report = snapshot?.report ?? data?.current_report;
+  const Wrapper = embedded ? 'div' : 'main';
   return (
-    <main className="closing-workbench">
-      <section className="page-heading">
-        <div>
-          <p className="eyebrow">MONTH-END REVIEW</p>
-          <h1>先核清，再合上这个月。</h1>
-          <p className="page-description">
-            月结预检核对资料、任务、匹配和交付结果。会计确认当前快照后，才锁定期间。
-          </p>
-        </div>
-        <div className="closing-actions">
-          <button className="button secondary" disabled={busy} onClick={onBack}>
-            返回账套
-          </button>
+    <Wrapper className={'closing-workbench' + (embedded ? ' embedded' : '')}>
+      {embedded ? (
+        <section className="book-embedded-heading">
+          <div>
+            <h2>月结预检与锁期</h2>
+            <p>核对资料、任务、匹配和交付结果，确认当前快照后才锁定期间。</p>
+          </div>
           <button
-            className="button secondary"
+            className="button secondary small"
             disabled={busy}
             onClick={() => void run(async () => '已读取最新账务与月结状态。')}
           >
             <RefreshCw size={15} />
             刷新
           </button>
-        </div>
-      </section>
+        </section>
+      ) : (
+        <section className="page-heading">
+          <div>
+            <p className="eyebrow">MONTH-END REVIEW</p>
+            <h1>先核清，再合上这个月。</h1>
+            <p className="page-description">
+              月结预检核对资料、任务、匹配和交付结果。会计确认当前快照后，才锁定期间。
+            </p>
+          </div>
+          <div className="closing-actions">
+            <button className="button secondary" disabled={busy} onClick={onBack}>
+              返回账套
+            </button>
+            <button
+              className="button secondary"
+              disabled={busy}
+              onClick={() => void run(async () => '已读取最新账务与月结状态。')}
+            >
+              <RefreshCw size={15} />
+              刷新
+            </button>
+          </div>
+        </section>
+      )}
       {error && (
         <p className="inline-error" role="alert">
           <TriangleAlert size={16} />
@@ -380,6 +405,6 @@ export function ClosingWorkbench({
           )}
         </>
       )}
-    </main>
+    </Wrapper>
   );
 }

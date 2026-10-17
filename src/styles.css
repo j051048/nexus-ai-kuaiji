@@ -630,6 +630,28 @@ h1 {
   container-type: inline-size;
   min-width: 0;
 }
+.book-embedded-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 2px 0 4px;
+}
+.book-embedded-heading > div {
+  min-width: 0;
+}
+.book-embedded-heading h2 {
+  margin: 0;
+  color: #33452f;
+  font-size: 18px;
+  letter-spacing: -0.02em;
+}
+.book-embedded-heading p {
+  margin: 7px 0 0;
+  color: #6c7b68;
+  font-size: 10.5px;
+  line-height: 1.55;
+}
 .panel {
   border-radius: 8px;
   border: 1px solid #e2e8dc;

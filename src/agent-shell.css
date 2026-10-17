@@ -61,29 +61,6 @@
   font-size: 11px;
   color: #afc3b6;
 }
-.agent-command-launch {
-  margin: 18px 0 20px;
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  border: 1px solid #dce9df24;
-  background: #ffffff08;
-  color: #d1dfd3;
-  border-radius: 8px;
-  padding: 10px;
-  font-size: 12px;
-}
-.agent-command-launch:hover:not(:disabled) {
-  background: #ffffff12;
-}
-.agent-command-launch kbd {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 1px;
-  font-size: 10px;
-  opacity: 0.75;
-}
 .agent-primary-nav {
   gap: 6px;
 }
@@ -498,37 +475,6 @@
   margin-top: 7px;
   line-height: 1.7;
 }
-.agent-assistant-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 120;
-  background: #152d2370;
-  backdrop-filter: blur(2px);
-  display: flex;
-  justify-content: flex-end;
-  padding: 18px;
-}
-.agent-assistant-dialog {
-  width: min(460px, 100%);
-  height: 100%;
-  border-radius: 12px;
-  overflow: hidden;
-  box-shadow: 0 12px 45px #11291f25;
-  background: #f8faf5;
-}
-.agent-assistant-dialog .accounting-context-assistant {
-  border-left: 0;
-}
-@media (max-width: 740px) {
-  .agent-assistant-overlay {
-    padding: 0;
-  }
-  .agent-assistant-dialog {
-    width: 100%;
-    border-radius: 0;
-    height: 100dvh;
-  }
-}
 @media (min-width: 741px) {
   .agent-nav-panel {
     display: flex !important;
@@ -732,36 +678,6 @@
   }
 }
 
-/* The assistant is a clear workspace entrance, readable on narrow screens. */
-.agent-assistant-launch {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  width: 100%;
-  padding: 12px 14px;
-  margin: 0 0 14px;
-  border: 1px solid #52766a;
-  border-radius: 9px;
-  color: #f8f4eb;
-  background: #284c40;
-  text-align: left;
-  cursor: pointer;
-}
-.agent-assistant-launch span {
-  font-size: 14px;
-  font-weight: 600;
-}
-.agent-assistant-launch small {
-  display: block;
-  margin-top: 3px;
-  color: #c7d9cf;
-  font-size: 11px;
-  font-weight: 400;
-}
-.agent-assistant-launch:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
 .agent-topbar-assistant {
   display: flex;
   gap: 7px;

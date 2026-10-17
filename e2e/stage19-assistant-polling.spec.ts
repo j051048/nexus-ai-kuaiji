@@ -339,7 +339,7 @@ test('关闭助手取消慢读取且停止后台轮询', async ({ page, request 
   await page.clock.install();
   await openHistory(page, value.conversation.title);
   await held.arrived;
-  await drawer.getByRole('button', { name: '关闭全局会计助手', exact: true }).click();
+  await drawer.getByRole('button', { name: '关闭会计助手', exact: true }).click();
   held.release();
   await page.clock.runFor(45_000);
   await expect(drawer).toHaveCount(0);

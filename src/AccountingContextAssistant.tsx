@@ -42,6 +42,7 @@ export interface AccountingContextAssistantProps {
   onClose?: () => void;
   onOpenEvidence?: (evidenceId: string) => void;
   onAction?: (action: AccountingContextAction) => void;
+  embedded?: boolean;
 }
 
 /** The assistant summarizes persisted, authorized evidence. It never submits a journal. */
@@ -55,6 +56,7 @@ export function AccountingContextAssistant({
   onClose,
   onOpenEvidence,
   onAction,
+  embedded = false,
 }: AccountingContextAssistantProps) {
   const scopeKey = `${session.scope_key}:${session.user_id}:${bookId}:${draftId}:${draftVersion ?? 'current'}`;
   const currentScope = useRef(scopeKey);
@@ -243,29 +245,31 @@ export function AccountingContextAssistant({
     : [];
   return (
     <aside
-      className="accounting-context-assistant"
+      className={'accounting-context-assistant' + (embedded ? ' embedded' : '')}
       aria-label="当前凭证会计助手"
       data-scope-book={bookId}
       data-scope-draft={draftId}
     >
-      <header className="context-assistant-header">
-        <div className="context-assistant-mark">
-          <Sparkles size={18} />
-        </div>
-        <div>
-          <p>衡账 · 会计助手</p>
-          <h3>依据当前资料</h3>
-        </div>
-        {onClose && (
-          <button
-            className="icon-button context-assistant-close"
-            aria-label="关闭会计助手"
-            onClick={onClose}
-          >
-            <X size={18} />
-          </button>
-        )}
-      </header>
+      {!embedded && (
+        <header className="context-assistant-header">
+          <div className="context-assistant-mark">
+            <Sparkles size={18} />
+          </div>
+          <div>
+            <p>衡账 · 会计助手</p>
+            <h3>依据当前资料</h3>
+          </div>
+          {onClose && (
+            <button
+              className="icon-button context-assistant-close"
+              aria-label="关闭会计助手"
+              onClick={onClose}
+            >
+              <X size={18} />
+            </button>
+          )}
+        </header>
+      )}
       <div className="context-assistant-scroll">
         {loading ? (
           <div className="context-assistant-loading" role="status">

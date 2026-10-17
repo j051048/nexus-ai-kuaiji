@@ -97,6 +97,7 @@ export function MonthlyReconciliationWorkbench(props: {
   onBusyChange?: (busy: boolean) => void;
   onDirtyChange?: (dirty: boolean) => void;
   onChanged?: () => void;
+  embedded?: boolean;
 }) {
   return <MonthlyBalanceContent key={props.session.scope_key + ':' + props.bookId} {...props} />;
 }
@@ -107,6 +108,7 @@ function MonthlyBalanceContent({
   onBusyChange,
   onDirtyChange,
   onChanged,
+  embedded = false,
 }: Parameters<typeof MonthlyReconciliationWorkbench>[0]) {
   const resource = useMonthlyData<MonthlyOverview>(
     session,
@@ -206,26 +208,40 @@ function MonthlyBalanceContent({
       if (active.current) setOriginalBusy('');
     }
   }
+  const Wrapper = embedded ? 'div' : 'main';
   return (
-    <main className="monthly-workbench">
-      <section className="page-heading">
-        <div>
-          <p className="eyebrow">MONTHLY / EXTERNAL REFERENCE</p>
-          <h1>用真实外部余额，核清月度差异。</h1>
-          <p className="page-description">
-            外部期初加已核验交付，与外部期末逐项比较。未审核和未核验交付单独保留。
-          </p>
-        </div>
-        <div className="monthly-actions">
-          <button className="button secondary" disabled={locked || dirty} onClick={onBack}>
-            返回账套
-          </button>
-          <button className="button secondary" disabled={locked} onClick={() => void load()}>
+    <Wrapper className={'monthly-workbench' + (embedded ? ' embedded' : '')}>
+      {embedded ? (
+        <section className="book-embedded-heading">
+          <div>
+            <h2>参考余额与月度差异</h2>
+            <p>外部期初加已核验交付，与外部期末逐项比较；未审核和未核验交付单独保留。</p>
+          </div>
+          <button className="button secondary small" disabled={locked} onClick={() => void load()}>
             <RefreshCw size={15} />
             刷新余额
           </button>
-        </div>
-      </section>
+        </section>
+      ) : (
+        <section className="page-heading">
+          <div>
+            <p className="eyebrow">MONTHLY / EXTERNAL REFERENCE</p>
+            <h1>用真实外部余额，核清月度差异。</h1>
+            <p className="page-description">
+              外部期初加已核验交付，与外部期末逐项比较。未审核和未核验交付单独保留。
+            </p>
+          </div>
+          <div className="monthly-actions">
+            <button className="button secondary" disabled={locked || dirty} onClick={onBack}>
+              返回账套
+            </button>
+            <button className="button secondary" disabled={locked} onClick={() => void load()}>
+              <RefreshCw size={15} />
+              刷新余额
+            </button>
+          </div>
+        </section>
+      )}
       {(error || command.error || originalError) && (
         <p className="inline-error" role="alert">
           {error || command.error || originalError}
@@ -692,6 +708,6 @@ function MonthlyBalanceContent({
           </section>
         </>
       ) : null}
-    </main>
+    </Wrapper>
   );
 }

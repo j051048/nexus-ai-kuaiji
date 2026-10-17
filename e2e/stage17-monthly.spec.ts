@@ -183,15 +183,18 @@ test('外部余额独立确认后比较，人工核对保留差异且新版本�
   try {
     await page.goto(`/workspace/balances?book=${book.id}`);
     await expect(
-      page.getByRole('heading', { name: '用真实外部余额，核清月度差异。' }),
+      page.getByRole('heading', { name: '参考余额与月度差异', exact: true }),
     ).toBeVisible();
+    const pipeline = page.getByRole('navigation', { name: '做账五步流水线' });
+    const closingStep = pipeline.getByRole('button', { name: '④ 对账与月结', exact: true });
+    await expect(closingStep).toHaveAttribute('aria-current', 'step');
     await page.getByRole('button', { name: '录入外部余额', exact: true }).click();
     await page.getByLabel('外部余额来源').fill(`T+ 合成余额导出 ${tag}`);
     await page.getByLabel('外部余额原件依据').fill(`仅合成原件 ${tag}`);
     await page.getByLabel('外部余额录入依据').fill('合成期初现金余额，等待独立核查');
     await page.getByLabel('余额第 1 行科目').selectOption('1002');
     await page.getByLabel('余额第 1 行金额').fill('100.00');
-    await expect(page.getByRole('button', { name: '返回账套', exact: true })).toBeDisabled();
+    await expect(closingStep).toBeDisabled();
     await page.getByRole('button', { name: '保存并等待独立确认', exact: true }).click();
     await expect(page.getByRole('status')).toContainText('等待另一位会计');
     await expect(page.getByRole('button', { name: '独立确认', exact: true })).toHaveCount(0);

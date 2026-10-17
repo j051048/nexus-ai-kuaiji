@@ -3,6 +3,10 @@
   gap: 22px;
   min-width: 0;
 }
+.monthly-workbench.embedded {
+  gap: 14px;
+  padding: 0 18px 18px;
+}
 .monthly-toolbar {
   display: flex;
   align-items: center;

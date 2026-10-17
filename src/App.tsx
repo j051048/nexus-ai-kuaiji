@@ -39,7 +39,8 @@ import { downloadCsv } from './csv';
 import type { Book, BookDetail, Draft, FirmRole, JournalLine, Session, Workbench } from './types';
 
 import { EmptyState, Modal, Spinner } from './AppPrimitives';
-import { AssistantDialog, NewBookModal } from './AppDialogs';
+import { NewBookModal } from './AppDialogs';
+import { AssistantDrawer, type AssistantDrawerMode } from './AssistantDrawer';
 import { BookWorkspaceShell } from './BookWorkspaceShell';
 import { useWorkspaceRoute } from './useWorkspaceRoute';
 import { RouteLeaveDialog } from './RouteLeaveDialog';
@@ -207,6 +208,7 @@ export default function App() {
   );
   const [commandOpen, setCommandOpen] = useState(false);
   const [globalAssistant, setGlobalAssistant] = useState<AssistantInitialContext | null>(null);
+  const [assistantMode, setAssistantMode] = useState<AssistantDrawerMode>('global');
   const [assistantTarget, setAssistantTarget] = useState<{
     bookId: string;
     draftId: string;
@@ -429,33 +431,18 @@ export default function App() {
     const handle = (event: KeyboardEvent) => {
       if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 'k' || !session?.firm_id)
         return;
-      if (
-        busy ||
-        businessBusy ||
-        reviewDirty ||
-        inlineTarget ||
-        proposalTarget ||
-        assistantTarget ||
-        globalAssistant ||
-        modal
-      )
-        return;
+      if (busy || businessBusy || reviewDirty || inlineTarget || proposalTarget || modal) return;
       event.preventDefault();
       setCommandOpen(true);
     };
     window.addEventListener('keydown', handle);
     return () => window.removeEventListener('keydown', handle);
-  }, [
-    session?.scope_key,
-    busy,
-    businessBusy,
-    reviewDirty,
-    inlineTarget,
-    proposalTarget,
-    assistantTarget,
-    globalAssistant,
-    modal,
-  ]);
+  }, [session?.scope_key, busy, businessBusy, reviewDirty, inlineTarget, proposalTarget, modal]);
+  useEffect(() => {
+    if (!modal && !commandOpen) return;
+    setGlobalAssistant(null);
+    setAssistantTarget(null);
+  }, [modal, commandOpen]);
   const profileEpoch = useRef(0);
   const loadProfile = useCallback(
     async (signal?: AbortSignal, useBootstrap = false) => {
@@ -1089,9 +1076,7 @@ export default function App() {
       reviewDirty ||
       drawerDirty ||
       monthlyDirty ||
-      modal === 'import' ||
-      !!globalAssistant ||
-      !!assistantTarget,
+      modal === 'import',
     canDiscard:
       (reviewDirty || drawerDirty || monthlyDirty) &&
       !operationBusy &&
@@ -1271,9 +1256,13 @@ export default function App() {
     monthlyDirty ||
     !!inlineTarget ||
     !!proposalTarget ||
-    !!assistantTarget ||
-    !!globalAssistant ||
     modal === 'import';
+  const assistantOpen = !!globalAssistant || !!assistantTarget;
+  const effectiveAssistantMode: AssistantDrawerMode =
+    assistantMode === 'context' && assistantTarget ? 'context' : 'global';
+  const assistantContextLabel = assistantTarget
+    ? `${detail?.book.id === assistantTarget.bookId ? detail.book.name : '当前凭证'} · v${assistantTarget.version}`
+    : undefined;
   function navigate(view: AgentNavigationView, fromAssistant = false) {
     if (
       navigationLocked &&
@@ -1284,7 +1273,6 @@ export default function App() {
         monthlyDirty ||
         inlineTarget ||
         proposalTarget ||
-        assistantTarget ||
         modal)
     )
       return;
@@ -1422,6 +1410,39 @@ export default function App() {
       setRouteView(target.view as WorkspaceView);
     if (target.filter) setFilter(target.filter);
   }
+  function openClosingIssue(issue: { type: string; id: string; bookId: string }) {
+    if (issue.type === 'draft') {
+      openDraftInBook(issue.bookId, issue.id);
+    } else if (issue.type === 'event') {
+      setBusinessTarget(issue.id);
+      setRouteView('business');
+    } else if (issue.type === 'export') {
+      setDeliveryTarget(issue.id);
+      setRouteView('delivery');
+    } else if (issue.type === 'revision') {
+      setBusinessTarget('');
+      setRouteView('revision');
+    } else if (issue.type === 'case') {
+      setCaseTarget(undefined);
+      setInitialCaseId(issue.id);
+      setRouteView('cases');
+    } else if (issue.type === 'proposal_job') {
+      setProposalTarget(issue.id);
+    } else if (issue.type === 'ocr_job') {
+      void api<{ batch_id: string }>('/intelligence/jobs/' + encodeURIComponent(issue.id), session!)
+        .then((job) => {
+          if (sessionScope.current !== session?.scope_key) return;
+          setQueueTarget(job.batch_id);
+          setQueueJobTarget(issue.id);
+          setRouteView('queue');
+        })
+        .catch((error) => setNotice({ kind: 'error', text: errorMessage(error) }));
+    } else {
+      setRouteView('accounting');
+      setFilter('all');
+      void refresh(issue.bookId);
+    }
+  }
   const showBusiness =
     routeView === 'business' || (routeView === 'accounting' && !!profile && !canSeeAccounting);
   async function openAgentRun(route: AgentRoute) {
@@ -1466,7 +1487,6 @@ export default function App() {
         reviewDirty ||
         inlineTarget ||
         proposalTarget ||
-        assistantTarget ||
         modal)
     )
       return;
@@ -1476,7 +1496,8 @@ export default function App() {
     if (routeUsesBook) void initialize(undefined, book.id);
   }
   function openGlobalAssistant() {
-    if (navigationLocked || modal || commandOpen) return;
+    if (navigationLocked || modal || commandOpen || assistantOpen) return;
+    setAssistantMode('global');
     // Keep global browsing separate from the current voucher's explicit scope.
     setGlobalAssistant(
       routeUsesBook && detail
@@ -1487,6 +1508,26 @@ export default function App() {
           }
         : {},
     );
+  }
+  function closeAssistantDrawer() {
+    setGlobalAssistant(null);
+    setAssistantTarget(null);
+  }
+  function switchAssistantMode(mode: AssistantDrawerMode) {
+    if (mode === 'context' && !assistantTarget) return;
+    if (mode === 'global') setGlobalAssistant((current) => current ?? {});
+    setAssistantMode(mode);
+  }
+  function openContextAssistant(
+    target: { bookId: string; draftId: string; version: number } | null,
+  ) {
+    if (!target) {
+      setAssistantTarget(null);
+      return;
+    }
+    setAssistantTarget(target);
+    setAssistantMode('context');
+    setGlobalAssistant(null);
   }
   async function openAssistantBook(targetBookId: string) {
     if (!session) return;
@@ -1500,7 +1541,7 @@ export default function App() {
     }
   }
   function openAssistantEvidence(evidence: AssistantEvidence) {
-    setGlobalAssistant(null);
+    closeAssistantDrawer();
     if (evidence.book_id && evidence.draft_id) {
       setInlineTarget({ bookId: evidence.book_id, draftId: evidence.draft_id });
       return;
@@ -1515,7 +1556,7 @@ export default function App() {
     }
   }
   function openAssistantTask(receipt: AssistantActionReceipt) {
-    setGlobalAssistant(null);
+    closeAssistantDrawer();
     setWorkspaceRevision((value) => value + 1);
     if (receipt.batch_id) {
       navigate('queue', true);
@@ -1536,7 +1577,10 @@ export default function App() {
       id: 'assistant',
       label: '会计助手',
       description: '按企业与账期提问、预览后台任务',
-      run: () => setGlobalAssistant({}),
+      run: () => {
+        setAssistantMode('global');
+        setGlobalAssistant({});
+      },
     },
     {
       id: 'home',
@@ -1641,8 +1685,6 @@ export default function App() {
           navigate('accounting');
           setFilter(value);
         }}
-        onCommand={() => setCommandOpen(true)}
-        onAssistant={openGlobalAssistant}
         firmSelector={
           (me?.firms.length ?? 0) > 1 ? (
             <select
@@ -1761,7 +1803,7 @@ export default function App() {
             <button
               className="agent-topbar-assistant"
               aria-label="问会计助手"
-              disabled={navigationLocked || !!modal || commandOpen}
+              disabled={navigationLocked || !!modal || commandOpen || assistantOpen}
               onClick={openGlobalAssistant}
             >
               <Sparkles size={15} />
@@ -1915,19 +1957,6 @@ export default function App() {
                 if (routeUsesBook) void initialize(undefined, id);
               }}
             />
-          ) : routeView === 'balances' && bookId ? (
-            <MonthlyReconciliationWorkbench
-              key={session.scope_key + ':' + bookId}
-              session={session}
-              bookId={bookId}
-              onBack={() => setRouteView('accounting')}
-              onBusyChange={changeBusinessBusy}
-              onDirtyChange={changeMonthlyDirty}
-              onChanged={() => {
-                void refresh(bookId);
-                setWorkspaceRevision((n) => n + 1);
-              }}
-            />
           ) : routeView === 'recurring' && bookId ? (
             <RecurringEntries
               key={session.scope_key + ':' + bookId}
@@ -1980,54 +2009,6 @@ export default function App() {
               }}
               onOpenDraft={(id) => openDraftInBook(bookId, id)}
             />
-          ) : routeView === 'closing' && bookId ? (
-            <ClosingWorkbench
-              key={session.scope_key + ':' + bookId}
-              session={session}
-              bookId={bookId}
-              onBack={() => setRouteView('accounting')}
-              onBusyChange={changeBusinessBusy}
-              onChanged={() => {
-                void refresh(bookId);
-                void initialize();
-              }}
-              onOpenIssue={(issue) => {
-                if (issue.type === 'draft') {
-                  openDraftInBook(issue.bookId, issue.id);
-                } else if (issue.type === 'event') {
-                  setBusinessTarget(issue.id);
-                  setRouteView('business');
-                } else if (issue.type === 'export') {
-                  setDeliveryTarget(issue.id);
-                  setRouteView('delivery');
-                } else if (issue.type === 'revision') {
-                  setBusinessTarget('');
-                  setRouteView('revision');
-                } else if (issue.type === 'case') {
-                  setCaseTarget(undefined);
-                  setInitialCaseId(issue.id);
-                  setRouteView('cases');
-                } else if (issue.type === 'proposal_job') {
-                  setProposalTarget(issue.id);
-                } else if (issue.type === 'ocr_job') {
-                  void api<{ batch_id: string }>(
-                    '/intelligence/jobs/' + encodeURIComponent(issue.id),
-                    session,
-                  )
-                    .then((job) => {
-                      if (sessionScope.current !== session.scope_key) return;
-                      setQueueTarget(job.batch_id);
-                      setQueueJobTarget(issue.id);
-                      setRouteView('queue');
-                    })
-                    .catch((error) => setNotice({ kind: 'error', text: errorMessage(error) }));
-                } else {
-                  setRouteView('accounting');
-                  setFilter('all');
-                  void refresh(issue.bookId);
-                }
-              }}
-            />
           ) : routeView === 'revision' ? (
             <RevisionWorkbench
               key={session.scope_key + ':' + businessTarget}
@@ -2065,15 +2046,6 @@ export default function App() {
                 void refresh(bookId);
                 void initialize();
               }}
-            />
-          ) : routeView === 'delivery' && bookId ? (
-            <DeliveryWorkbench
-              key={session.scope_key + ':' + bookId + ':' + deliveryTarget}
-              session={session}
-              bookId={bookId}
-              initialExportId={deliveryTarget}
-              onBack={() => setRouteView('accounting')}
-              onBusyChange={changeBusinessBusy}
             />
           ) : routeView === 'briefing' && bookId ? (
             <MonthlyBriefing
@@ -2225,8 +2197,48 @@ export default function App() {
                       void refresh(bookId);
                     }}
                   />
+                ) : routeView === 'balances' && bookId ? (
+                  <MonthlyReconciliationWorkbench
+                    key={session.scope_key + ':' + bookId}
+                    session={session}
+                    bookId={bookId}
+                    embedded
+                    onBack={() => setRouteView('accounting')}
+                    onBusyChange={changeBusinessBusy}
+                    onDirtyChange={changeMonthlyDirty}
+                    onChanged={() => {
+                      void refresh(bookId);
+                      setWorkspaceRevision((n) => n + 1);
+                    }}
+                  />
+                ) : routeView === 'closing' && bookId ? (
+                  <ClosingWorkbench
+                    key={session.scope_key + ':' + bookId}
+                    session={session}
+                    bookId={bookId}
+                    embedded
+                    onBack={() => setRouteView('accounting')}
+                    onBusyChange={changeBusinessBusy}
+                    onChanged={() => {
+                      void refresh(bookId);
+                      setWorkspaceRevision((n) => n + 1);
+                    }}
+                    onOpenIssue={openClosingIssue}
+                  />
+                ) : routeView === 'delivery' && bookId ? (
+                  <DeliveryWorkbench
+                    key={session.scope_key + ':' + bookId + ':' + deliveryTarget}
+                    session={session}
+                    bookId={bookId}
+                    initialExportId={deliveryTarget}
+                    embedded
+                    onBack={() => setRouteView('accounting')}
+                    onBusyChange={changeBusinessBusy}
+                  />
                 ) : null
               }
+              bookViewBusy={businessBusy}
+              bookViewDirty={monthlyDirty}
               filter={filter}
               navItems={navItems}
               stats={stats}
@@ -2273,7 +2285,7 @@ export default function App() {
               setRouteView={setRouteView}
               setQueueTarget={setQueueTarget}
               setInlineTarget={setInlineTarget}
-              setAssistantTarget={setAssistantTarget}
+              setAssistantTarget={openContextAssistant}
               setCaseTarget={setCaseTarget}
               setNotice={setNotice}
               changeBusinessBusy={changeBusinessBusy}
@@ -2292,36 +2304,88 @@ export default function App() {
         </Suspense>
       </div>
 
-      {globalAssistant && (
-        <Suspense
-          fallback={
-            <AssistantDialog onClose={() => setGlobalAssistant(null)}>
-              <div className="loading-block">
-                <Spinner />
-                正在打开会计助手…
-              </div>
-            </AssistantDialog>
-          }
+      {assistantOpen && (
+        <AssistantDrawer
+          mode={effectiveAssistantMode}
+          contextAvailable={!!assistantTarget}
+          contextLabel={assistantContextLabel}
+          onModeChange={switchAssistantMode}
+          onClose={closeAssistantDrawer}
         >
-          <GlobalAccountingAssistant
-            key={session.scope_key}
-            session={session}
-            initialContext={globalAssistant}
-            onClose={() => setGlobalAssistant(null)}
-            onNavigateEvidence={openAssistantEvidence}
-            onNavigateContext={(context) => {
-              setGlobalAssistant(null);
-              if (context.draft && context.books.length === 1)
-                setInlineTarget({ bookId: context.books[0].id, draftId: context.draft.id });
-              else if (context.books.length === 1) void openAssistantBook(context.books[0].id);
-              else if (context.events.length === 1) {
-                navigate('business', true);
-                setBusinessTarget(context.events[0].id);
-              } else navigate('accounting', true);
-            }}
-            onOpenTask={openAssistantTask}
-          />
-        </Suspense>
+          {globalAssistant && (
+            <div className="assistant-mode-panel" hidden={effectiveAssistantMode !== 'global'}>
+              <Suspense
+                fallback={
+                  <div className="loading-block">
+                    <Spinner />
+                    正在打开全账套助手…
+                  </div>
+                }
+              >
+                <GlobalAccountingAssistant
+                  key={session.scope_key}
+                  session={session}
+                  initialContext={globalAssistant}
+                  embedded
+                  onClose={closeAssistantDrawer}
+                  onNavigateEvidence={openAssistantEvidence}
+                  onNavigateContext={(context) => {
+                    closeAssistantDrawer();
+                    if (context.draft && context.books.length === 1)
+                      setInlineTarget({
+                        bookId: context.books[0].id,
+                        draftId: context.draft.id,
+                      });
+                    else if (context.books.length === 1)
+                      void openAssistantBook(context.books[0].id);
+                    else if (context.events.length === 1) {
+                      navigate('business', true);
+                      setBusinessTarget(context.events[0].id);
+                    } else navigate('accounting', true);
+                  }}
+                  onOpenTask={openAssistantTask}
+                />
+              </Suspense>
+            </div>
+          )}
+          {assistantTarget && (
+            <div className="assistant-mode-panel" hidden={effectiveAssistantMode !== 'context'}>
+              <Suspense
+                fallback={
+                  <div className="loading-block">
+                    <Spinner />
+                    正在读取当前凭证依据…
+                  </div>
+                }
+              >
+                <AccountingContextAssistant
+                  key={`${session.scope_key}:${assistantTarget.bookId}:${assistantTarget.draftId}:${assistantTarget.version}`}
+                  session={session}
+                  bookId={assistantTarget.bookId}
+                  draftId={assistantTarget.draftId}
+                  draftVersion={assistantTarget.version}
+                  actionTypes={['review', 'edit']}
+                  embedded
+                  onClose={closeAssistantDrawer}
+                  onOpenEvidence={() => {
+                    setInlineTarget({
+                      bookId: assistantTarget.bookId,
+                      draftId: assistantTarget.draftId,
+                    });
+                    closeAssistantDrawer();
+                  }}
+                  onAction={() => {
+                    setInlineTarget({
+                      bookId: assistantTarget.bookId,
+                      draftId: assistantTarget.draftId,
+                    });
+                    closeAssistantDrawer();
+                  }}
+                />
+              </Suspense>
+            </div>
+          )}
+        </AssistantDrawer>
       )}
       {commandOpen && (
         <AgentCommandPalette
@@ -2332,42 +2396,6 @@ export default function App() {
           onOpenBook={openCommandBook}
           onClose={() => setCommandOpen(false)}
         />
-      )}
-      {assistantTarget && (
-        <AssistantDialog onClose={() => setAssistantTarget(null)}>
-          <Suspense
-            fallback={
-              <div className="loading-block">
-                <Spinner />
-                正在读取当前凭证依据…
-              </div>
-            }
-          >
-            <AccountingContextAssistant
-              key={`${session.scope_key}:${assistantTarget.bookId}:${assistantTarget.draftId}:${assistantTarget.version}`}
-              session={session}
-              bookId={assistantTarget.bookId}
-              draftId={assistantTarget.draftId}
-              draftVersion={assistantTarget.version}
-              actionTypes={['review', 'edit']}
-              onClose={() => setAssistantTarget(null)}
-              onOpenEvidence={() => {
-                setInlineTarget({
-                  bookId: assistantTarget.bookId,
-                  draftId: assistantTarget.draftId,
-                });
-                setAssistantTarget(null);
-              }}
-              onAction={() => {
-                setInlineTarget({
-                  bookId: assistantTarget.bookId,
-                  draftId: assistantTarget.draftId,
-                });
-                setAssistantTarget(null);
-              }}
-            />
-          </Suspense>
-        </AssistantDialog>
       )}
       {notice && (
         <div className={`toast ${notice.kind}`} role={notice.kind === 'error' ? 'alert' : 'status'}>
