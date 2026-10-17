@@ -5,7 +5,7 @@ import type {
   BusinessTemplate,
 } from './business-types';
 import { moneyToCents } from './csv';
-import { DEFAULT_ATTACHMENT_BYTES, uploadSizeError } from './transport-limits';
+import { DEFAULT_ATTACHMENT_BYTES, directUploadSizeError } from './transport-limits';
 
 /** Scope hints must come from the selected company's capabilities. The API
  * remains the authority, including when grants change after this read. */
@@ -125,7 +125,7 @@ export function validateAttachment(
     !(['application/xml', 'text/xml', ''].includes(file.type) && /\.xml$/i.test(file.name))
   )
     return '附件仅支持数电票 XML、PDF、PNG、JPEG 和 WebP。';
-  const sizeError = uploadSizeError(file.size, MAX_ATTACHMENT_BYTES);
+  const sizeError = directUploadSizeError(file.size, MAX_ATTACHMENT_BYTES);
   if (sizeError) return sizeError;
   if (existingCount >= 10) return '每个事项最多上传 10 个附件。';
   if (existingBytes + file.size > MAX_TOTAL_ATTACHMENT_BYTES)

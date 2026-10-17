@@ -106,6 +106,11 @@ class GatewaySettings:
         )
 
 
+def transport_limits(settings: GatewaySettings) -> dict[str, int]:
+    """Keep inline limits separate from streaming direct-upload capacity."""
+    return {**TRANSPORT_LIMITS, "direct_upload_max_bytes": settings.upload_max_bytes}
+
+
 def _error(status: int, detail: str) -> JSONResponse:
     return JSONResponse(
         {"detail": detail},
@@ -286,7 +291,7 @@ async def _proxy(app: FastAPI, request: Request) -> Response:
                         if not isinstance(config, dict):
                             raise ValueError("invalid auth config")
                         _check_auth_config_depth(config)
-                        config["transport_limits"] = TRANSPORT_LIMITS
+                        config["transport_limits"] = transport_limits(settings)
                         body = json.dumps(
                             config, ensure_ascii=False, allow_nan=False, separators=(",", ":")
                         ).encode("utf-8")

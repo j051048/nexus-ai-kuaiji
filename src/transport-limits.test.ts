@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   DEFAULT_ATTACHMENT_BYTES,
+  directUploadLimitLabel,
+  directUploadSizeError,
   getTransportLimits,
+  maxDirectUploadBytes,
   maxUploadBytes,
   setTransportLimits,
   transportBodyError,
@@ -16,6 +19,7 @@ const gatewayLimits = {
   max_file_bytes: 3 * 1024 * 1024,
   max_request_bytes: 4 * 1024 * 1024,
   max_response_bytes: 4 * 1024 * 1024,
+  direct_upload_max_bytes: 50 * 1024 * 1024,
 };
 afterEach(() => setTransportLimits());
 
@@ -29,24 +33,35 @@ describe('公开运行配置中的上传限制', () => {
     expect(validateReceiptFile('回执.json', 2_000_000)).toBe('json');
   });
 
-  it('已导入的校验函数每次使用最新上限，不在 import 时冻结', () => {
-    const file = {
-      name: '发票.pdf',
-      type: 'application/pdf',
-      size: gatewayLimits.max_file_bytes + 1,
-    };
-    expect(validateAttachment(file, 0, 0)).toBe('');
-    setTransportLimits(gatewayLimits);
-    expect(validateAttachment(file, 0, 0)).toContain('3 MB');
-    expect(validateAttachment({ ...file, size: gatewayLimits.max_file_bytes }, 0, 0)).toBe('');
-    expect(uploadLimitLabel()).toBe('3 MB');
-    setTransportLimits();
-    expect(validateAttachment(file, 0, 0)).toBe('');
-  });
-
-  it('业务附件、补件、旧账共用 3 MB 边界，中文流水与回执继续采用更小边界', () => {
+  it('普通请求保持 3 MB，两段式直传由独立上限和业务上限共同约束', () => {
     setTransportLimits(gatewayLimits);
     expect(maxUploadBytes()).toBe(3 * 1024 * 1024);
+    expect(maxDirectUploadBytes()).toBe(DEFAULT_ATTACHMENT_BYTES);
+    expect(uploadLimitLabel()).toBe('3 MB');
+    expect(directUploadLimitLabel()).toBe('10 MB');
+    expect(uploadSizeError(3 * 1024 * 1024 + 1)).toContain('3 MB');
+    expect(directUploadSizeError(DEFAULT_ATTACHMENT_BYTES)).toBe('');
+    expect(directUploadSizeError(DEFAULT_ATTACHMENT_BYTES + 1)).toContain('10 MB');
+    expect(
+      validateAttachment(
+        { name: '发票.pdf', type: 'application/pdf', size: 9 * 1024 * 1024 },
+        0,
+        0,
+      ),
+    ).toBe('');
+    expect(
+      validateAttachment(
+        { name: '发票.pdf', type: 'application/pdf', size: DEFAULT_ATTACHMENT_BYTES + 1 },
+        0,
+        0,
+      ),
+    ).toContain('10 MB');
+  });
+
+  it('普通请求、直传附件与固定小文件导入分别使用各自边界', () => {
+    setTransportLimits(gatewayLimits);
+    expect(maxUploadBytes()).toBe(3 * 1024 * 1024);
+    expect(maxDirectUploadBytes()).toBe(10 * 1024 * 1024);
     expect(uploadSizeError(3 * 1024 * 1024)).toBe('');
     expect(uploadSizeError(3 * 1024 * 1024 + 1)).toContain('拆分');
     expect(uploadSizeError(2 * 1024 * 1024, MAX_CSV_BYTES)).toBe('');

@@ -13,6 +13,18 @@ export type DirectUploadPurpose =
   | 'invoice_import'
   | 'bank_import';
 
+export function sameOriginUploadHeaders(
+  firmId: string | null,
+  token: string,
+  mediaType: string,
+): Record<string, string> {
+  return {
+    'Content-Type': mediaType || 'application/octet-stream',
+    Authorization: `Bearer ${token}`,
+    ...(firmId ? { 'X-Firm-Id': firmId } : {}),
+  };
+}
+
 async function sha256Hex(data: ArrayBuffer): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', data);
   return Array.from(new Uint8Array(digest))
@@ -56,9 +68,12 @@ export async function prepareUploadIntent(
   });
   const sameOrigin = intent.url.startsWith('/');
   const headers: Record<string, string> = sameOrigin
-    ? { 'Content-Type': file.type || 'application/octet-stream' }
+    ? sameOriginUploadHeaders(
+        session.firm_id,
+        await currentAccessToken(session),
+        file.type || 'application/octet-stream',
+      )
     : { ...intent.headers };
-  if (sameOrigin) headers.Authorization = `Bearer ${await currentAccessToken(session)}`;
   let response: Response;
   try {
     response = await fetch(intent.url, {

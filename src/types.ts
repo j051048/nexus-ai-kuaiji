@@ -17,6 +17,7 @@ export interface TransportLimits {
   max_file_bytes: number;
   max_request_bytes: number;
   max_response_bytes: number;
+  direct_upload_max_bytes?: number;
 }
 export interface AuthConfig {
   mode: 'local' | 'supabase';

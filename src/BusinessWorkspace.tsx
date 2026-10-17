@@ -26,7 +26,7 @@ import {
 import { api, apiBlob, ApiError, errorMessage } from './api';
 import { attachmentForm, prepareDirectUpload } from './upload-client';
 import { formatMoney } from './csv';
-import { uploadLimitLabel } from './transport-limits';
+import { directUploadLimitLabel } from './transport-limits';
 import {
   BUSINESS_CATEGORIES,
   BUSINESS_TEMPLATES,
@@ -960,7 +960,7 @@ export function BusinessWorkspace({
                       {busy === 'upload' ? <Spinner /> : <Upload size={14} />}上传原始附件
                     </button>
                     <p className="field-help">
-                      数电票 XML / PDF / PNG / JPEG / WebP，每个不超过 {uploadLimitLabel()}
+                      数电票 XML / PDF / PNG / JPEG / WebP，每个不超过 {directUploadLimitLabel()}
                       ，总计不超过 50 MB。支持票据识别与交叉核对，审批人仍须核对原件。
                     </p>
                   </>

@@ -31,6 +31,12 @@ export function setTransportLimits(value?: unknown): void {
     ),
     max_request_bytes: Number(candidate.max_request_bytes),
     max_response_bytes: Number(candidate.max_response_bytes),
+    direct_upload_max_bytes:
+      typeof candidate.direct_upload_max_bytes === 'number' &&
+      Number.isSafeInteger(candidate.direct_upload_max_bytes) &&
+      candidate.direct_upload_max_bytes > 0
+        ? Number(candidate.direct_upload_max_bytes)
+        : Number(candidate.max_file_bytes),
   };
 }
 
@@ -43,6 +49,14 @@ export function maxUploadBytes(domainLimit = DEFAULT_ATTACHMENT_BYTES): number {
   return Math.min(domainLimit, limits?.max_file_bytes ?? domainLimit);
 }
 
+/** Streaming uploads bypass the inline request limit but remain domain-capped. */
+export function maxDirectUploadBytes(domainLimit = DEFAULT_ATTACHMENT_BYTES): number {
+  return Math.min(
+    domainLimit,
+    limits?.direct_upload_max_bytes ?? limits?.max_file_bytes ?? domainLimit,
+  );
+}
+
 export function uploadLimitLabel(domainLimit = DEFAULT_ATTACHMENT_BYTES): string {
   const bytes = maxUploadBytes(domainLimit);
   // Existing 2,000,000-byte receipt imports use the established decimal MB label.
@@ -50,10 +64,27 @@ export function uploadLimitLabel(domainLimit = DEFAULT_ATTACHMENT_BYTES): string
   return megabytes >= 1 ? `${Number(megabytes.toFixed(2))} MB` : `${Math.floor(bytes / 1024)} KB`;
 }
 
+export function directUploadLimitLabel(domainLimit = DEFAULT_ATTACHMENT_BYTES): string {
+  const bytes = maxDirectUploadBytes(domainLimit);
+  return bytes >= 1024 * 1024
+    ? `${Number((bytes / (1024 * 1024)).toFixed(2))} MB`
+    : `${Math.floor(bytes / 1024)} KB`;
+}
+
 export function uploadSizeError(bytes: number, domainLimit = DEFAULT_ATTACHMENT_BYTES): string {
   if (!Number.isSafeInteger(bytes) || bytes <= 0) return '文件大小须大于零。';
   if (bytes > maxUploadBytes(domainLimit))
     return `单份文件不能超过 ${uploadLimitLabel(domainLimit)}，请压缩票据图片或按历史期间拆分后上传。`;
+  return '';
+}
+
+export function directUploadSizeError(
+  bytes: number,
+  domainLimit = DEFAULT_ATTACHMENT_BYTES,
+): string {
+  if (!Number.isSafeInteger(bytes) || bytes <= 0) return '文件大小须大于零。';
+  if (bytes > maxDirectUploadBytes(domainLimit))
+    return `单份文件不能超过 ${directUploadLimitLabel(domainLimit)}，请压缩文件或按期间拆分后上传。`;
   return '';
 }
 

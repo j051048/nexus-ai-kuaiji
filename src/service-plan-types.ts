@@ -1,6 +1,6 @@
 import type { BusinessEvent } from './business-types';
 import type { Pagination } from './types';
-import { uploadSizeError } from './transport-limits';
+import { directUploadSizeError } from './transport-limits';
 
 export interface ServicePlanCandidate {
   user_id: string;
@@ -152,7 +152,7 @@ export function materialAttachmentIssue(
 ) {
   if (!/\.(pdf|png|jpe?g|webp|xml|csv|xlsx)$/i.test(file.name))
     return '资料支持 PDF、图片、XML、CSV 和 XLSX；请先另存为支持的格式。';
-  const sizeIssue = uploadSizeError(file.size);
+  const sizeIssue = directUploadSizeError(file.size);
   if (sizeIssue) return sizeIssue;
   if (attachments.length >= 10) return '每项资料最多保存 10 个原件。';
   if (attachments.reduce((sum, item) => sum + item.size_bytes, 0) + file.size > 50 * 1024 * 1024)

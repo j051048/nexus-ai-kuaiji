@@ -11,7 +11,7 @@ import {
 import { api, apiBlob, errorMessage } from './api';
 import { attachmentForm, prepareDirectUpload } from './upload-client';
 import type { Session } from './types';
-import { uploadLimitLabel, uploadSizeError } from './transport-limits';
+import { directUploadLimitLabel, directUploadSizeError } from './transport-limits';
 import { caseCanClose, caseMissingFields, caseReasonError, caseStateLabels } from './case-types';
 import type { CaseTask } from './case-types';
 import './cases.css';
@@ -203,7 +203,7 @@ export function CasePanel({
   }
   async function upload() {
     if (!task || !file || lock.current) return;
-    const invalidSize = uploadSizeError(file.size);
+    const invalidSize = directUploadSizeError(file.size);
     if (invalidSize) {
       setError(invalidSize);
       return;
@@ -401,7 +401,7 @@ export function CasePanel({
                   <Paperclip size={14} />
                   上传补件原件
                 </button>
-                <small>单个附件最多 {uploadLimitLabel()}；本次补件最多 10 件。</small>
+                <small>单个附件最多 {directUploadLimitLabel()}；本次补件最多 10 件。</small>
               </div>
             )}
             {(task.permissions.manage || task.permissions.respond) && (

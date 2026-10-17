@@ -20,7 +20,7 @@ import type {
   MaterialRequest,
   MaterialRequests,
 } from './service-plan-types';
-import { uploadLimitLabel } from './transport-limits';
+import { directUploadLimitLabel } from './transport-limits';
 import './service-plan.css';
 
 export interface ServicePlanMaterialsProps {
@@ -563,7 +563,10 @@ function MaterialRequestEditor({
                 资料原件
               </h4>
               <p>上传银行对账单、工资表及其他月度资料。原件直接交验收人核对。</p>
-              <p>PDF、图片、XML、CSV、XLSX · 单个 {uploadLimitLabel()}，最多 10 份，合计 50 MB。</p>
+              <p>
+                PDF、图片、XML、CSV、XLSX · 单个 {directUploadLimitLabel()}，最多 10 份，合计 50
+                MB。
+              </p>
               <button
                 type="button"
                 className="button secondary small"

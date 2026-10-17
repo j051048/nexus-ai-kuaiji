@@ -19,6 +19,11 @@ gateway = importlib.util.module_from_spec(_spec)
 sys.modules[_spec.name] = gateway
 _spec.loader.exec_module(gateway)
 
+EXPECTED_TRANSPORT_LIMITS = {
+    **gateway.TRANSPORT_LIMITS,
+    "direct_upload_max_bytes": gateway.UPLOAD_MAX_BYTES_DEFAULT,
+}
+
 
 class Chunks(httpx.AsyncByteStream):
     def __init__(self, *values):
@@ -168,7 +173,18 @@ def test_config_adds_platform_limits_without_modifying_backend_auth_fields():
     ) as browser:
         response = browser.get("/api/auth/config")
     assert response.status_code == 200
-    assert response.json() == {**original, "transport_limits": gateway.TRANSPORT_LIMITS}
+    assert response.json() == {**original, "transport_limits": EXPECTED_TRANSPORT_LIMITS}
+
+
+def test_config_exposes_custom_direct_upload_limit_separately():
+    with client(
+        lambda request: upstream(b'{"mode":"local"}', headers={"content-type": "application/json"}),
+        upload_max_bytes=6 * 1024 * 1024,
+    ) as browser:
+        response = browser.get("/api/auth/config")
+    limits = response.json()["transport_limits"]
+    assert limits["max_file_bytes"] == gateway.MAX_FILE_BYTES
+    assert limits["direct_upload_max_bytes"] == 6 * 1024 * 1024
 
 
 @pytest.mark.parametrize("body", [b"null", b"[]", b"not-json", b'{"mode": NaN}', b"\xff"])
@@ -481,7 +497,7 @@ def test_login_configuration_has_a_fixed_container_depth_limit(
         response = browser.get("/api/auth/config")
     assert response.status_code == status
     if status == 200:
-        assert response.json()["transport_limits"] == gateway.TRANSPORT_LIMITS
+        assert response.json()["transport_limits"] == EXPECTED_TRANSPORT_LIMITS
 
 
 def test_login_configuration_depth_does_not_count_brackets_inside_strings():
@@ -489,7 +505,7 @@ def test_login_configuration_depth_does_not_count_brackets_inside_strings():
     with client(lambda request: upstream(json.dumps(original).encode())) as browser:
         response = browser.get("/api/auth/config")
     assert response.status_code == 200
-    assert response.json() == {**original, "transport_limits": gateway.TRANSPORT_LIMITS}
+    assert response.json() == {**original, "transport_limits": EXPECTED_TRANSPORT_LIMITS}
 
 
 def test_request_reading_shares_whole_exchange_deadline_and_is_not_forwarded():

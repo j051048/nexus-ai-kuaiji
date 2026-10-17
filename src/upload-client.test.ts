@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { DIRECT_UPLOAD_THRESHOLD, attachmentForm } from './upload-client';
+import { DIRECT_UPLOAD_THRESHOLD, attachmentForm, sameOriginUploadHeaders } from './upload-client';
 
 describe('attachmentForm 字段契约', () => {
   test('普通文件继续使用 multipart file 字段', () => {
@@ -18,5 +18,17 @@ describe('attachmentForm 字段契约', () => {
 
   test('两段式直传阈值保持 2 MiB', () => {
     expect(DIRECT_UPLOAD_THRESHOLD).toBe(2 * 1024 * 1024);
+  });
+
+  test('同源直传同时携带当前事务所、令牌和媒体类型', () => {
+    expect(sameOriginUploadHeaders('firm-two', 'token-value', 'text/csv')).toEqual({
+      Authorization: 'Bearer token-value',
+      'Content-Type': 'text/csv',
+      'X-Firm-Id': 'firm-two',
+    });
+    expect(sameOriginUploadHeaders(null, 'token-value', '')).toEqual({
+      Authorization: 'Bearer token-value',
+      'Content-Type': 'application/octet-stream',
+    });
   });
 });

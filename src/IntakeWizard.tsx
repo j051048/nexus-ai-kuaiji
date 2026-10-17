@@ -32,7 +32,7 @@ import type {
 import type { Session } from './types';
 import type { IntakeDraft, IntakeRun } from './intake-types';
 import { changeIntakeTemplate, intakeCandidates } from './intake-helpers';
-import { uploadLimitLabel } from './transport-limits';
+import { directUploadLimitLabel } from './transport-limits';
 import './intake.css';
 
 export function IntakeWizard({
@@ -528,7 +528,7 @@ export function IntakeWizard({
             <div className="intake-upload">
               <Upload size={27} />
               <strong>把发票、收据或业务凭据放在这里</strong>
-              <p>PDF、JPG、PNG、WebP · 单个 {uploadLimitLabel()}，合计 50 MB</p>
+              <p>PDF、JPG、PNG、WebP · 单个 {directUploadLimitLabel()}，合计 50 MB</p>
               <p>数电票 XML 支持本地解析，单份解析上限 1 MB。</p>
               <div>
                 <button

@@ -2,7 +2,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { api, apiBlob, ApiError, setApiScope } from './api';
 import { currentAccessToken } from './auth';
 import type { Session } from './types';
-import { getTransportLimits, maxUploadBytes, setTransportLimits } from './transport-limits';
+import {
+  getTransportLimits,
+  maxDirectUploadBytes,
+  maxUploadBytes,
+  setTransportLimits,
+} from './transport-limits';
 
 vi.mock('./auth', () => ({ currentAccessToken: vi.fn() }));
 const credentials: Session = {
@@ -195,6 +200,7 @@ describe('deployment transport limits', () => {
     max_file_bytes: 3145728,
     max_request_bytes: 4194304,
     max_response_bytes: 4194304,
+    direct_upload_max_bytes: 50 * 1024 * 1024,
   };
 
   it('reads runtime limits from auth config and resets for a direct backend without metadata', async () => {
@@ -210,6 +216,7 @@ describe('deployment transport limits', () => {
     await api('/auth/config');
     expect(getTransportLimits()).toEqual(limits);
     expect(maxUploadBytes()).toBe(3145728);
+    expect(maxDirectUploadBytes()).toBe(10 * 1024 * 1024);
     await api('/auth/config');
     expect(getTransportLimits()).toBeNull();
     expect(maxUploadBytes()).toBe(10 * 1024 * 1024);
