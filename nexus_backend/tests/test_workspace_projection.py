@@ -254,3 +254,22 @@ def test_projection_refresher_uses_system_company_scope(business):
     )
     with c.db.transaction(actor=c.actors["employee"]) as conn:
         assert projection_clean(conn, c.actors["employee"])
+
+
+def test_projection_refresher_sweeps_companies_never_built(business):
+    c = business
+    refresher = ProjectionRefresher(c.db)
+    with c.db.transaction(write=True) as conn:
+        conn.execute("DELETE FROM workspace_projection_state")
+    refresher._sweep()
+    assert refresher._pending == {c.manager.firm_id}
+
+
+def test_projection_refresher_sweeps_before_draining(business):
+    c = business
+    refresher = ProjectionRefresher(c.db)
+    calls = []
+    refresher._sweep = lambda: calls.append("sweep")
+    refresher.drain = lambda: calls.append("drain") or 0
+    refresher._tick()
+    assert calls == ["sweep", "drain"]

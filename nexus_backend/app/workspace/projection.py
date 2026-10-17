@@ -429,14 +429,23 @@ class ProjectionRefresher:
                 firms = [
                     row[0]
                     for row in conn.execute(
-                        "SELECT DISTINCT firm_id FROM workspace_projection_state "
-                        "WHERE revision>built_revision OR failures>0 LIMIT 20"
+                        "SELECT DISTINCT fc.firm_id FROM firm_clients fc "
+                        "LEFT JOIN workspace_projection_state s "
+                        "ON s.firm_id=fc.firm_id AND s.company_id=fc.company_id "
+                        "WHERE fc.status='active' AND (s.revision IS NULL "
+                        "OR s.revision>s.built_revision OR s.failures>0) "
+                        "ORDER BY fc.firm_id LIMIT 20"
                     )
                 ]
         except Exception:
             return
         for firm_id in firms:
             self.wake(firm_id)
+
+    def _tick(self):
+        # Sweep first, then consume the firms discovered by this pass.
+        self._sweep()
+        self.drain()
 
     def _loop(self):
         while not self._stop.is_set():
@@ -445,8 +454,7 @@ class ProjectionRefresher:
             if self._stop.is_set():
                 break
             try:
-                self.drain()
-                self._sweep()
+                self._tick()
             except Exception:
                 logger.warning("统一待办投影后台刷新暂不可用，将在下一轮重试")
         self.drain()
