@@ -69,6 +69,35 @@
   font-size: 13px;
   color: var(--muted);
 }
+.inline-review-status-axes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 9px;
+}
+.inline-review-header .review-axis {
+  border: 1px solid #d7dfd5;
+  border-radius: 999px;
+  padding: 3px 8px;
+  color: #526653;
+  background: #f7faf5;
+  font-size: 12px;
+}
+.inline-review-header .review-axis-draft {
+  border-color: #d9d4bd;
+  background: #fffdf3;
+  color: #6d5a1d;
+}
+.inline-review-header .review-axis-approved {
+  border-color: #b8d6bd;
+  background: #f1f8f2;
+  color: #275c3a;
+}
+.inline-review-header .review-axis-exported {
+  border-color: #c7d4e4;
+  background: #f3f7fc;
+  color: #2e4f75;
+}
 .inline-review-header > button {
   align-self: flex-start;
 }

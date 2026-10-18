@@ -6,6 +6,8 @@ those books, and未关闭的异常／补件任务。主办与复核不得同人�
 并留下 member.handover 审计快照。
 """
 
+import hashlib
+import json
 import re
 from typing import Annotated
 
@@ -24,6 +26,7 @@ class HandoverRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     to_user_id: UserId
     reason: Reason
+    plan_fingerprint: str | None = None
 
 
 class HandoverService:
@@ -41,6 +44,8 @@ class HandoverService:
         with self.db.transaction(write=True, actor=actor) as conn:
             self._authorize(conn, actor, from_user_id, request.to_user_id)
             plan = self._plan(conn, actor, from_user_id, request.to_user_id)
+            if request.plan_fingerprint and request.plan_fingerprint != self._fingerprint(plan):
+                raise AccountingError("交接范围已变化，请重新预览后再执行", 409)
             self._apply(conn, actor, from_user_id, request.to_user_id, request.reason, plan)
             self._audit(conn, actor, from_user_id, request, plan)
         return self._public(from_user_id, request.to_user_id, plan, executed=True)
@@ -341,11 +346,18 @@ class HandoverService:
         )
 
     @staticmethod
-    def _public(from_user_id, to_user_id, plan, executed):
+    def _fingerprint(plan):
+        return hashlib.sha256(
+            json.dumps(plan, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+
+    @classmethod
+    def _public(cls, from_user_id, to_user_id, plan, executed):
         return {
             "from_user_id": from_user_id,
             "to_user_id": to_user_id,
             "executed": executed,
+            "plan_fingerprint": cls._fingerprint(plan),
             "books": plan["books"],
             "plans": plan["plans"],
             "cases": plan["cases"],

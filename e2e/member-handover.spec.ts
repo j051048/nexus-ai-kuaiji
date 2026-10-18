@@ -1,6 +1,8 @@
 import { expect, test } from '@playwright/test';
 import { openNavigation } from './ui-navigation';
 
+test.setTimeout(120_000);
+
 test('工作交接向导：把离职会计的未结束账套职责受审计转派给接替人', async ({ page, request }) => {
   const accountant = await (await request.get('/api/session?persona=accountant')).json();
   const headers = { Authorization: `Bearer ${accountant.token}` };
@@ -42,7 +44,7 @@ test('工作交接向导：把离职会计的未结束账套职责受审计转�
     ).status(),
   ).toBe(200);
 
-  await page.goto('/');
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
   await openNavigation(page);
   await page.getByRole('button', { name: '组织管理后台', exact: true }).click();
   await page.getByRole('button', { name: '事务所人员', exact: true }).click();

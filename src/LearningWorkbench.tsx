@@ -350,33 +350,33 @@ export function LearningWorkbench({
         </section>
       ) : (
         <section className="page-heading">
-        <div>
-          <p className="eyebrow">REVIEWED EXPERIENCE</p>
-          <h1>把修正，变成下一次的依据。</h1>
-          <p className="page-description">
-            从已审核凭证积累企业样例；规则经过正反例评估和会计发布后，才用于后续草稿。
-          </p>
-        </div>
-        <div className="learning-actions">
-          <button
-            className="button secondary"
-            disabled={busy || !!editor || !!command}
-            onClick={onBack}
-          >
-            返回账套
-          </button>
-          <button
-            className="button secondary"
-            disabled={busy || loading || !!editor || !!command}
-            onClick={() => {
-              setEvaluation(null);
-              void load();
-            }}
-          >
-            <RefreshCw size={15} />
-            读取最新状态
-          </button>
-        </div>
+          <div>
+            <p className="eyebrow">REVIEWED EXPERIENCE</p>
+            <h1>把修正，变成下一次的依据。</h1>
+            <p className="page-description">
+              从已审核凭证积累企业样例；规则经过正反例评估和会计发布后，才用于后续草稿。
+            </p>
+          </div>
+          <div className="learning-actions">
+            <button
+              className="button secondary"
+              disabled={busy || !!editor || !!command}
+              onClick={onBack}
+            >
+              返回账套
+            </button>
+            <button
+              className="button secondary"
+              disabled={busy || loading || !!editor || !!command}
+              onClick={() => {
+                setEvaluation(null);
+                void load();
+              }}
+            >
+              <RefreshCw size={15} />
+              读取最新状态
+            </button>
+          </div>
         </section>
       )}
       {error && !editor && !command && (

@@ -139,26 +139,26 @@ export function LedgerWorkspace({
         </section>
       ) : (
         <section className="page-heading">
-        <div>
-          <p className="eyebrow">CONTINUITY OF THE BOOKS</p>
-          <h1>一家企业，一份持续的账务档案。</h1>
-          <p className="page-description">
-            长期账套连接明确月份。科目与模板可以继承，每月凭证、证据和复核权限独立保存。
-          </p>
-        </div>
-        <div className="ledger-actions">
-          <button className="button secondary" disabled={busy} onClick={onBack}>
-            返回账套
-          </button>
-          <button
-            className="button secondary"
-            disabled={busy}
-            onClick={() => void run(async () => '已读取最新权限与配置。')}
-          >
-            <RefreshCw size={15} />
-            刷新
-          </button>
-        </div>
+          <div>
+            <p className="eyebrow">CONTINUITY OF THE BOOKS</p>
+            <h1>一家企业，一份持续的账务档案。</h1>
+            <p className="page-description">
+              长期账套连接明确月份。科目与模板可以继承，每月凭证、证据和复核权限独立保存。
+            </p>
+          </div>
+          <div className="ledger-actions">
+            <button className="button secondary" disabled={busy} onClick={onBack}>
+              返回账套
+            </button>
+            <button
+              className="button secondary"
+              disabled={busy}
+              onClick={() => void run(async () => '已读取最新权限与配置。')}
+            >
+              <RefreshCw size={15} />
+              刷新
+            </button>
+          </div>
         </section>
       )}
       {error && (

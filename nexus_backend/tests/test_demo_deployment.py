@@ -38,6 +38,17 @@ def test_each_role_uses_one_restricted_database_config(role):
     assert runner.validate_runtime(role, configured(role)) == 8080
 
 
+def test_runtime_image_uses_runtime_lock_and_includes_maintenance_consumer():
+    dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+    lock = (ROOT / "nexus_backend" / "requirements.runtime.lock").read_text(encoding="utf-8")
+    compose = (ROOT / "docker-compose.demo.yml").read_text(encoding="utf-8")
+    assert "requirements.runtime.lock" in dockerfile
+    assert "pytest==" not in lock and "ruff==" not in lock
+    assert "maintenance:" in compose
+    assert "ACCOUNTING_SERVICE_ROLE: maintenance" in compose
+    assert "maintenance" in runner.ROLES
+
+
 @pytest.mark.parametrize("key,value", [
     ("ACCOUNTING_ADMIN_DATABASE_URL", "postgresql://postgres:ADMIN_SECRET@db.example/postgres"),
     ("ACCOUNTING_WORKER_DATABASE_URL", "postgresql://worker:WORKER_SECRET@db.example/postgres"),

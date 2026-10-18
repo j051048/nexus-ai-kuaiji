@@ -56,10 +56,10 @@ export function MonthlyBriefing({
             <p>已锁期账套的一页纸经营概览，可打印或导出 PDF。</p>
           </div>
         ) : (
-        <button className="text-button" onClick={onBack}>
-          <ArrowLeft size={14} />
-          返回账套
-        </button>
+          <button className="text-button" onClick={onBack}>
+            <ArrowLeft size={14} />
+            返回账套
+          </button>
         )}
         <button
           type="button"

@@ -11,7 +11,8 @@ from uuid import uuid4
 
 from app.accounting.domain import Actor, AccountingError
 from app.accounting.service import now
-from app.intelligence.provider import ProviderError
+from app.intelligence.endpoints import AIEndpointPolicyService
+from app.intelligence.provider import ProviderError, effective_settings
 from app.operations.meter import BudgetError
 from .models import AssistantReply
 from .monitor import AssistantMonitor
@@ -258,6 +259,17 @@ class AssistantWorker:
                 raise ProviderError("unavailable", "会计对话模型尚未配置，未发送任何资料")
             with self.db.transaction(write=True, actor=self._actor(turn)) as conn:
                 snapshot = self._check(conn, turn)
+                chat = effective_settings(self.provider.settings, "chat")
+                AIEndpointPolicyService(self.db).check_send(
+                    conn,
+                    self._actor(turn),
+                    turn["company_id"],
+                    "chat",
+                    {"chat"},
+                    chat.base_url,
+                    chat.model,
+                    bool(chat.api_key),
+                )
                 context.before_send(conn)
                 if self.db.is_postgres:
                     sent = conn.execute(

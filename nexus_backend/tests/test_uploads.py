@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import threading
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -68,6 +69,37 @@ def test_local_two_phase_upload_feeds_event_attachment(uploads):
     with pytest.raises(AccountingError) as reused:
         c.uploads.take(actor, created["id"], "event_attachment")
     assert reused.value.status == 409
+
+
+def test_slow_object_put_does_not_hold_database_write_lock(uploads):
+    c = uploads
+    actor = c.actors["employee"]
+    data_a, first = intent(c, actor, filename="慢对象甲.pdf")
+    data_b, second = intent(c, actor, filename="慢对象乙.pdf")
+    started, release = threading.Event(), threading.Event()
+    original_put = c.store.backend.put
+
+    def slow_put(key, data, media_type=""):
+        if key.endswith(first["id"]):
+            started.set()
+            assert release.wait(2)
+        return original_put(key, data, media_type)
+
+    c.store.backend.put = slow_put
+    first_result = {}
+
+    def store_a():
+        first_result["value"] = c.uploads.store_content(actor, first["id"], data_a)
+
+    thread = threading.Thread(target=store_a)
+    thread.start()
+    assert started.wait(2)
+    # While A is still in slow object IO, B must complete without waiting on A's
+    # database write lock.
+    assert c.uploads.store_content(actor, second["id"], data_b)["state"] == "stored"
+    release.set()
+    thread.join(3)
+    assert first_result["value"]["state"] == "stored"
 
 
 def test_hash_mismatch_blocks_local_store_and_allows_retry(uploads):

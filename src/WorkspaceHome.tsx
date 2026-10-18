@@ -41,6 +41,7 @@ import type { AgentSummary } from './agent-workspace-types';
 import type { Session } from './types';
 import type { BusinessTemplate } from './business-types';
 import { workspaceExperience } from './workspace-experience';
+import { roleHomeGuide } from './workspace-role-home';
 import './workspace.css';
 
 export function WorkspaceHome({
@@ -331,6 +332,7 @@ export function WorkspaceHome({
     }
   }
   const copy = roleCopy[profile?.role ?? 'viewer'];
+  const guide = profile ? roleHomeGuide(profile) : null;
   const briefings =
     profile && ['manager', 'finance', 'accountant'].includes(profile.role)
       ? (profile.briefings ?? [])
@@ -375,6 +377,24 @@ export function WorkspaceHome({
           )}
         </div>
       </header>
+      {guide && (
+        <section className="workspace-role-guide" aria-label="当前职责与授权范围">
+          <div className="workspace-role-guide-main">
+            <span>当前身份</span>
+            <strong>{guide.label}</strong>
+            <p>{guide.focus}</p>
+          </div>
+          <div className="workspace-role-guide-actions">
+            <span>当前可操作</span>
+            <ul>
+              {guide.actions.map((action) => (
+                <li key={action}>{action}</li>
+              ))}
+            </ul>
+          </div>
+          <p className="workspace-role-guide-boundary">{guide.boundary}</p>
+        </section>
+      )}
       {profileError && (
         <p className="inline-error" role="alert">
           {profileError}

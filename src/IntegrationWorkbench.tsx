@@ -257,17 +257,17 @@ export function IntegrationWorkbench({
         </section>
       ) : (
         <header className="integration-heading">
-        <button className="button secondary small" disabled={busy} onClick={onBack}>
-          <ArrowLeft size={15} />
-          返回账套
-        </button>
-        <span className="section-eyebrow">T+ · 文件接入验证</span>
-        <h1>财务软件接入</h1>
-        <p>先核验账套与映射，再保留客户导出资料、准备已审核凭证的交付包。</p>
-        <span className="integration-offline">
-          <Link2 size={15} />
-          文件模式 · 真实连接未启用
-        </span>
+          <button className="button secondary small" disabled={busy} onClick={onBack}>
+            <ArrowLeft size={15} />
+            返回账套
+          </button>
+          <span className="section-eyebrow">T+ · 文件接入验证</span>
+          <h1>财务软件接入</h1>
+          <p>先核验账套与映射，再保留客户导出资料、准备已审核凭证的交付包。</p>
+          <span className="integration-offline">
+            <Link2 size={15} />
+            文件模式 · 真实连接未启用
+          </span>
         </header>
       )}
       {error && (

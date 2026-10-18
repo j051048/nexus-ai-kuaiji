@@ -357,6 +357,14 @@ export function AgentNavigation({
             <summary>会计工作区</summary>
             <nav aria-label="会计协作">
               <button
+                className={'nav-item ' + (current === 'accounting' ? 'selected' : '')}
+                disabled={locked}
+                onClick={() => go('accounting')}
+              >
+                <Building2 size={16} />
+                <span>会计工作台</span>
+              </button>
+              <button
                 className="nav-item"
                 disabled={locked}
                 onClick={() => {

@@ -12,7 +12,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 COPY nexus_backend/requirements.txt /app/nexus_backend/requirements.txt
-RUN pip install --no-cache-dir -r /app/nexus_backend/requirements.txt \
+COPY nexus_backend/requirements.runtime.lock /app/nexus_backend/requirements.runtime.lock
+RUN pip install --no-cache-dir -r /app/nexus_backend/requirements.runtime.lock \
     && groupadd --gid 10001 accounting \
     && useradd --uid 10001 --gid accounting --no-create-home accounting
 

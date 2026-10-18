@@ -210,7 +210,13 @@ def verify_database(env: Mapping[str, str], role: str) -> None:
     from psycopg.rows import dict_row
     from app.accounting.database import migration_digest, migration_files
 
-    key = "ACCOUNTING_DATABASE_URL" if role == "api" else "ACCOUNTING_WORKER_DATABASE_URL"
+    key = (
+        "ACCOUNTING_DATABASE_URL"
+        if role == "api"
+        else "ACCOUNTING_MAINTENANCE_DATABASE_URL"
+        if role == "maintenance" and env.get("ACCOUNTING_MAINTENANCE_DATABASE_URL", "").strip()
+        else "ACCOUNTING_WORKER_DATABASE_URL"
+    )
     with psycopg.connect(
         env[key], autocommit=True, prepare_threshold=None, connect_timeout=10, row_factory=dict_row
     ) as conn:
@@ -236,7 +242,7 @@ def verify_database(env: Mapping[str, str], role: str) -> None:
             actual = {row["rolname"] for row in memberships}
             expected = {
                 "accounting_app",
-                "accounting_system" if role == "api" else "accounting_worker",
+                "accounting_system" if role in {"api", "maintenance"} else "accounting_worker",
             }
             _require(actual == expected)
             dangerous = conn.execute(
@@ -319,7 +325,9 @@ def inspect_online(env: Mapping[str, str], role: str) -> list[Check]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="部署只读自检，不迁移、不调用模型、不更改客户数据")
-    parser.add_argument("--role", choices=("api", "worker", "assistant", "migration"))
+    parser.add_argument(
+        "--role", choices=("api", "worker", "assistant", "migration", "maintenance")
+    )
     parser.add_argument("--env-file", help="显式加载该私密文件，不自动读取 .env")
     parser.add_argument(
         "--online", action="store_true", help="额外只读查询数据库、Auth settings 及 bucket metadata"
@@ -335,7 +343,7 @@ def main(argv: list[str] | None = None) -> int:
 
         load_dotenv(path, override=False)
     role = args.role or os.getenv("ACCOUNTING_SERVICE_ROLE", "api").strip().lower()
-    if role not in {"api", "worker", "assistant", "migration"}:
+    if role not in {"api", "worker", "assistant", "migration", "maintenance"}:
         parser.error("ACCOUNTING_SERVICE_ROLE 无效")
     checks = inspect_configuration(os.environ, role, require_ai=args.require_ai)
     if args.online:

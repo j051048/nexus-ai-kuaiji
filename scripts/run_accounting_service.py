@@ -15,11 +15,12 @@ from urllib.parse import parse_qs, urlsplit
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "nexus_backend"))
 
-ROLES = ("api", "worker", "assistant", "migration")
+ROLES = ("api", "worker", "assistant", "migration", "maintenance")
 WORKER_MODULES = {
     "worker": "app.jobs.worker",
     "assistant": "run_accounting_assistant",
     "migration": "app.legacy_migration.worker",
+    "maintenance": "app.maintenance_worker",
 }
 
 
@@ -78,7 +79,9 @@ class WorkerHealthProbe:
 def validate_runtime(role: str, env: Mapping[str, str]) -> int:
     """Fail closed on deployment mistakes; errors contain names, never values."""
     if role not in ROLES:
-        raise ValueError("ACCOUNTING_SERVICE_ROLE 必须为 api、worker、assistant 或 migration")
+        raise ValueError(
+            "ACCOUNTING_SERVICE_ROLE 必须为 api、worker、assistant、migration 或 maintenance"
+        )
     if env.get("ACCOUNTING_ADMIN_DATABASE_URL", "").strip():
         raise ValueError("运行容器禁止配置 ACCOUNTING_ADMIN_DATABASE_URL；迁移只在独立维护步骤执行")
     if env.get("ACCOUNTING_QUEUE_EMBEDDED_WORKER", "0") != "0":
@@ -87,7 +90,13 @@ def validate_runtime(role: str, env: Mapping[str, str]) -> int:
         raise ValueError("真实登录部署必须设置 ACCOUNTING_SEED=0")
     if env.get("ACCOUNTING_ENV", "").strip().lower() != "production":
         raise ValueError("云端服务入口要求 ACCOUNTING_ENV=production；本地示例继续使用原启动方式")
-    key = "ACCOUNTING_DATABASE_URL" if role == "api" else "ACCOUNTING_WORKER_DATABASE_URL"
+    key = (
+        "ACCOUNTING_DATABASE_URL"
+        if role == "api"
+        else "ACCOUNTING_MAINTENANCE_DATABASE_URL"
+        if role == "maintenance" and env.get("ACCOUNTING_MAINTENANCE_DATABASE_URL", "").strip()
+        else "ACCOUNTING_WORKER_DATABASE_URL"
+    )
     url = env.get(key, "").strip()
     try:
         parsed = urlsplit(url)

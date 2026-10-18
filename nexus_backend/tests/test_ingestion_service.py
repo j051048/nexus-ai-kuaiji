@@ -1,10 +1,13 @@
 import pytest
+from fastapi.testclient import TestClient
 
 from app.accounting.admin_models import AdminCompanyStatus
 from app.accounting.admin_service import AdminService
 from app.accounting.domain import AccountingError
+from app.accounting.seed import LOCAL_ACTOR
 from app.ingestion.models import ConnectionCreate
 from app.ingestion.service import IngestionService
+from app.main import create_app
 from test_business import business
 
 
@@ -122,3 +125,58 @@ def test_ingestion_without_event_key_uses_content_hash_and_is_idempotent(busines
     first = service.receive_webhook(created["token"], payload)
     second = service.receive_webhook(created["token"], payload)
     assert second["run_id"] == first["run_id"] and second["duplicate"] is True
+
+
+def test_environment_cannot_enable_ingestion_and_old_token_url_has_no_side_effect(
+    tmp_path, monkeypatch, caplog
+):
+    monkeypatch.setenv("ACCOUNTING_INGESTION_ENABLED", "1")
+    app = create_app(tmp_path / "ingestion-off.db", seed=False)
+    with TestClient(
+        app, base_url="http://127.0.0.1", client=("127.0.0.1", 45678)
+    ) as client:
+        assert app.state.ingestion.enabled is False
+        response = client.post(
+            "/api/integrations/webhook/fake-token",
+            json={"records": [{"id": "must-not-exist"}]},
+        )
+        assert response.status_code == 404
+        assert "fake-token" not in response.text
+        assert "fake-token" not in caplog.text
+        with app.state.service.db.transaction() as conn:
+            assert conn.execute("SELECT COUNT(*) FROM ingestion_runs").fetchone()[0] == 0
+
+
+def test_http_receive_202_only_means_received(tmp_path):
+    app = create_app(tmp_path / "ingestion-http.db", seed=True)
+    with TestClient(
+        app, base_url="http://127.0.0.1", client=("127.0.0.1", 45678)
+    ) as client:
+        app.state.ingestion.enabled = True
+        with app.state.service.db.transaction() as conn:
+            company_id = conn.execute("SELECT id FROM companies LIMIT 1").fetchone()[0]
+        created = app.state.ingestion.create(
+            LOCAL_ACTOR,
+            ConnectionCreate(
+                company_id=company_id, kind="webhook", name="HTTP接收", config={}
+            ),
+        )
+        response = client.post(
+            "/api/integrations/webhook",
+            headers={
+                "X-Ingestion-Token": created["token"],
+                "X-Event-Id": "evt-http-1",
+            },
+            json={"records": [{"id": 1}]},
+        )
+        assert response.status_code == 202
+        assert response.json()["status"] == "received"
+        assert response.json()["duplicate"] is False
+        with app.state.service.db.transaction() as conn:
+            assert (
+                conn.execute(
+                    "SELECT status FROM ingestion_runs WHERE id=?",
+                    (response.json()["run_id"],),
+                ).fetchone()[0]
+                == "received"
+            )

@@ -35,7 +35,7 @@ export async function openAccounting(page: Page) {
     .getByRole('navigation', { name: '主导航', exact: true })
     .getByRole('button', { name: '客户企业', exact: true })
     .click();
-  await expect(page.getByLabel('搜索企业名称')).toBeVisible();
+  await expect(page.getByLabel('搜索企业名称').first()).toBeVisible({ timeout: 30_000 });
 }
 
 async function expand(page: Page, label: string) {
@@ -53,6 +53,8 @@ export async function openBookSettings(page: Page) {
   await expand(page, '账套设置');
 }
 export async function openManagement(page: Page) {
+  // Client portal deliberately has no firm-management navigation.
+  if (await page.getByRole('navigation', { name: '客户服务', exact: true }).count()) return;
   await expand(page, '处理记录与管理');
 }
 

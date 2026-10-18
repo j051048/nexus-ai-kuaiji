@@ -7,6 +7,7 @@ import type { Member, Session } from './types';
 type HandoverPlan = {
   from_user_id: string;
   to_user_id: string;
+  plan_fingerprint: string;
   executed: boolean;
   books: { book_id: string; name: string; period: string; role: string; action: string }[];
   plans: {
@@ -82,7 +83,14 @@ export function MemberHandoverDialog({
       const value = await api<HandoverPlan>(
         `/firm/members/${encodeURIComponent(from.user_id)}/handover`,
         session,
-        { method: 'POST', body: { to_user_id: target, reason: reason.trim() } },
+        {
+          method: 'POST',
+          body: {
+            to_user_id: target,
+            reason: reason.trim(),
+            plan_fingerprint: plan.plan_fingerprint,
+          },
+        },
       );
       setDone(value);
       setPlan(null);

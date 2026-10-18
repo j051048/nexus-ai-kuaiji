@@ -86,6 +86,13 @@ services:
       <<: *models
       ACCOUNTING_SERVICE_ROLE: assistant
       ACCOUNTING_WORKER_DATABASE_URL: ${ACCOUNTING_ASSISTANT_WORKER_DATABASE_URL:?set assistant restricted worker DSN}
+  maintenance:
+    <<: *service
+    environment:
+      <<: *common
+      ACCOUNTING_SERVICE_ROLE: maintenance
+      ACCOUNTING_MAINTENANCE_DATABASE_URL: ${ACCOUNTING_MAINTENANCE_DATABASE_URL:?set projection maintenance system DSN}
+      ACCOUNTING_PROJECTION_POLL_SECONDS: "5"
   migration:
     <<: *service
     environment:

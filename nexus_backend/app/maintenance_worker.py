@@ -42,6 +42,11 @@ def main(ready_callback=None):
         load_dotenv(config_path, override=False)
 
     url = _database_url()
+    from .jobs.restore_hold import enforce_restore_hold
+
+    enforce_restore_hold(
+        database_path=None if url.startswith(("postgres://", "postgresql://")) else url
+    )
     production = os.getenv("ACCOUNTING_ENV", "local").lower() == "production" or any(
         os.getenv(key, "").lower() in {"prod", "production"}
         for key in ("APP_ENV", "ENV", "ENVIRONMENT")

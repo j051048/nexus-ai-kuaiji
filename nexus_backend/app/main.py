@@ -80,6 +80,8 @@ from .storage.settings import StorageSettings
 from .intelligence.provider import ProviderError
 from .intelligence.router import build_intelligence_router
 from .intelligence.service import IntelligenceService
+from .intelligence.endpoints import AIEndpointPolicyService
+from .intelligence.policy_router import build_ai_policy_router
 from .jobs.service import QueueService
 from .jobs.worker import QueueWorker
 from .jobs.router import build_queue_router
@@ -104,6 +106,16 @@ from .ledgers.service import LedgersService
 from .ledgers.router import build_ledgers_router
 from .opening.router import build_opening_router
 from .opening.service import OpeningService
+from .posting.router import build_posting_router
+from .posting.service import PostingService
+from .subledger.router import build_subledger_router
+from .subledger.service import SubledgerService
+from .periodic.router import build_periodic_router
+from .periodic.service import PeriodicService
+from .reports.router import build_report_router
+from .reports.service import ReportService
+from .b04_close.router import build_close_router
+from .b04_close.service import CloseService
 from .integrations.service import FinancialBridgeService
 from .settlements.service import SettlementService
 from .settlements.router import build_settlement_router
@@ -212,6 +224,9 @@ def create_app(
     storage_path = (
         configured_attachment_root or Path(__file__).resolve().parents[1] / "private-attachments"
     )
+    from .jobs.restore_hold import enforce_restore_hold
+
+    enforce_restore_hold(database_path=path, attachment_root=storage_path)
     hosts = [
         x.strip()
         for x in os.getenv("ACCOUNTING_ALLOWED_HOSTS", "localhost,127.0.0.1,[::1],::1").split(",")
@@ -264,6 +279,12 @@ def create_app(
             application.state.service = AccountingService(database)
             application.state.ledgers = LedgersService(database)
             application.state.opening = OpeningService(database)
+            application.state.posting = PostingService(database)
+            application.state.ai_policy = AIEndpointPolicyService(database)
+            application.state.subledger = SubledgerService(database)
+            application.state.periodic = PeriodicService(database)
+            application.state.reports = ReportService(database)
+            application.state.b04_close = CloseService(database)
             application.state.integrations = FinancialBridgeService(database)
             application.state.settlements = SettlementService(database)
             application.state.service.settlements = application.state.settlements
@@ -996,6 +1017,7 @@ def create_app(
     app.include_router(build_assistant_router(actor))
     app.include_router(build_legacy_migration_router(actor))
     app.include_router(build_intelligence_router(actor))
+    app.include_router(build_ai_policy_router(actor))
     app.include_router(build_queue_router(actor))
     app.include_router(build_batch_ops_router(actor))
     app.include_router(build_cockpit_router(actor))
@@ -1014,6 +1036,11 @@ def create_app(
     app.include_router(build_delivery_router(actor))
     app.include_router(build_ledgers_router(actor))
     app.include_router(build_opening_router(actor))
+    app.include_router(build_posting_router(actor))
+    app.include_router(build_subledger_router(actor))
+    app.include_router(build_periodic_router(actor))
+    app.include_router(build_report_router(actor))
+    app.include_router(build_close_router(actor))
     app.include_router(build_integrations_router(actor))
     app.include_router(build_settlement_router(actor))
     app.include_router(build_revisions_router(actor))

@@ -11,7 +11,7 @@ PARSER_VERSION = "document-parser-v1"
 CACHE_VERSION = "validated-ocr-cache-v1"
 
 
-def config_key(settings, media_type):
+def config_key(settings, media_type, policy_key=None):
     from .structured import is_structured, STRUCTURED_VERSION
 
     if is_structured(media_type):
@@ -40,6 +40,7 @@ def config_key(settings, media_type):
             "cache": CACHE_VERSION,
             "media_type": media_type,
             "independent_ocr": independent,
+            "policy": policy_key or "legacy",
         }
     )
 

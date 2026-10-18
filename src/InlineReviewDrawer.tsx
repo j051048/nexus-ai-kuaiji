@@ -548,6 +548,22 @@ export function InlineReviewDrawer({
             <span>
               {detail?.book.company_name} · {detail?.book.name} · {detail?.book.period}
             </span>
+            {draft && (
+              <div className="inline-review-status-axes" aria-label="审核与外部交付状态">
+                <span className={'review-axis review-axis-' + draft.status}>
+                  审核：
+                  {draft.status === 'draft'
+                    ? '待会计审核'
+                    : draft.status === 'approved'
+                      ? '已审核'
+                      : '已导出'}
+                </span>
+                <span className="review-axis">
+                  外部交付：{draft.status === 'exported' ? '已导出，待回执核验' : '未导出'}
+                </span>
+                <span className="review-axis">事实版本：v{draft.version}</span>
+              </div>
+            )}
           </div>
           <div className="inline-review-header-actions">
             <button

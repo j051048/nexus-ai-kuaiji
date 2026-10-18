@@ -42,6 +42,64 @@
   margin: 0;
   line-height: 1.6;
 }
+.workspace-role-guide {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 16px 22px;
+  border: 1px solid #d7dfd5;
+  background: #f7faf5;
+  border-radius: 12px;
+  padding: 14px 18px;
+  margin: 0 0 20px;
+}
+.workspace-role-guide span {
+  color: #68756b;
+  font-size: 12px;
+  font-weight: 600;
+}
+.workspace-role-guide-main strong {
+  display: block;
+  margin: 3px 0 4px;
+  color: #263b2f;
+  font-size: 16px;
+}
+.workspace-role-guide-main p,
+.workspace-role-guide-boundary {
+  margin: 0;
+  color: #526653;
+  font-size: 13px;
+  line-height: 1.55;
+}
+.workspace-role-guide-actions ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 7px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.workspace-role-guide-actions li {
+  border: 1px solid #cad8c5;
+  border-radius: 999px;
+  padding: 3px 9px;
+  color: #315c4b;
+  background: #fff;
+  font-size: 12px;
+}
+.workspace-role-guide-boundary {
+  grid-column: 1 / -1;
+  border-top: 1px dashed #d7dfd5;
+  padding-top: 10px;
+  color: #6c736d;
+}
+@media (max-width: 760px) {
+  .workspace-role-guide {
+    grid-template-columns: 1fr;
+  }
+  .workspace-role-guide-boundary {
+    grid-column: auto;
+  }
+}
 .workspace-briefings {
   border: 1px solid #d9d4bd;
   background: #fffdf3;

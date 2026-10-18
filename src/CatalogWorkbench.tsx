@@ -221,26 +221,26 @@ export function CatalogWorkbench({
         </section>
       ) : (
         <section className="page-heading">
-        <div>
-          <p className="eyebrow">A CHART THAT FITS THE BUSINESS</p>
-          <h1>把企业的账，配置清楚。</h1>
-          <p className="page-description">
-            客户科目、辅助核算与固定记账模板，由授权会计维护并保留版本。
-          </p>
-        </div>
-        <div className="catalog-heading-actions">
-          <button className="button secondary" disabled={busy} onClick={onBack}>
-            返回账套
-          </button>
-          <button
-            className="button secondary"
-            disabled={busy || loading || !bookId}
-            onClick={() => void load()}
-          >
-            <RefreshCw size={15} />
-            读取最新配置
-          </button>
-        </div>
+          <div>
+            <p className="eyebrow">A CHART THAT FITS THE BUSINESS</p>
+            <h1>把企业的账，配置清楚。</h1>
+            <p className="page-description">
+              客户科目、辅助核算与固定记账模板，由授权会计维护并保留版本。
+            </p>
+          </div>
+          <div className="catalog-heading-actions">
+            <button className="button secondary" disabled={busy} onClick={onBack}>
+              返回账套
+            </button>
+            <button
+              className="button secondary"
+              disabled={busy || loading || !bookId}
+              onClick={() => void load()}
+            >
+              <RefreshCw size={15} />
+              读取最新配置
+            </button>
+          </div>
         </section>
       )}
       <section className="catalog-scope">

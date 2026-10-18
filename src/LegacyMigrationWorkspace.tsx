@@ -969,15 +969,15 @@ export function LegacyMigrationWorkspace({
         </section>
       ) : (
         <header className="legacy-migration-heading">
-        <div>
-          <p className="eyebrow">旧账迁移 · 企业接管</p>
-          <h1>把旧账接清楚，再开始新月份。</h1>
-          <p>原始资料、历史凭证与接管依据一起留存，集中处理需要会计判断的差异。</p>
-        </div>
-        <button className="button secondary" disabled={busy || dirty} onClick={onBack}>
-          <ArrowLeft size={16} />
-          返回账套
-        </button>
+          <div>
+            <p className="eyebrow">旧账迁移 · 企业接管</p>
+            <h1>把旧账接清楚，再开始新月份。</h1>
+            <p>原始资料、历史凭证与接管依据一起留存，集中处理需要会计判断的差异。</p>
+          </div>
+          <button className="button secondary" disabled={busy || dirty} onClick={onBack}>
+            <ArrowLeft size={16} />
+            返回账套
+          </button>
         </header>
       )}
       <section className="legacy-migration-boundary" aria-label="迁移范围">

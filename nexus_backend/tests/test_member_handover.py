@@ -109,6 +109,33 @@ def test_handover_moves_book_role_plan_field_and_case_assignee(handover_case):
     assert after["counts"] == {"books": 0, "plans": 0, "cases": 0, "skipped": 0}
 
 
+def test_handover_execute_rejects_changed_or_wrong_preview_fingerprint(handover_case):
+    c = handover_case
+    accountant = c.actors["accountant"]
+    preview = c.handover.preview(c.manager, accountant.user_id, c.receiver.user_id)
+    assert len(preview["plan_fingerprint"]) == 64
+    with pytest.raises(AccountingError, match="重新预览"):
+        c.handover.execute(
+            c.manager,
+            accountant.user_id,
+            HandoverRequest(
+                to_user_id=c.receiver.user_id,
+                reason="错误预览指纹不得执行",
+                plan_fingerprint="0" * 64,
+            ),
+        )
+    result = c.handover.execute(
+        c.manager,
+        accountant.user_id,
+        HandoverRequest(
+            to_user_id=c.receiver.user_id,
+            reason="按预览指纹执行",
+            plan_fingerprint=preview["plan_fingerprint"],
+        ),
+    )
+    assert result["executed"] is True
+
+
 def test_handover_reports_role_conflicts_and_independence_violations(handover_case):
     c = handover_case
     accountant = c.actors["accountant"]

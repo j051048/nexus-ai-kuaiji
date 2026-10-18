@@ -149,76 +149,91 @@ class UploadIntentService:
             return True
         return expires < datetime.now(timezone.utc)
 
-    def store_content(self, actor, upload_id, data):
-        """Local single-request path: verify the declared bytes, then store."""
-        if not isinstance(data, bytes):
-            raise AccountingError("上传内容无效", 422)
-        with self.db.transaction(write=True, actor=actor) as conn:
+    def _transfer_snapshot(self, actor, upload_id):
+        """Short read: authorize and snapshot the intent, never hold it during IO."""
+        with self.db.transaction(actor=actor) as conn:
             row = self._owned(conn, actor, upload_id)
             if row["state"] == "stored":
-                return {"id": upload_id, "state": "stored"}
+                return dict(row), True
             if row["state"] != "pending":
                 raise AccountingError("该上传凭证已被使用或失效", 409)
             if self._expired(row):
                 raise AccountingError("上传凭证已过期，请重新发起上传", 410)
-            if len(data) != row["size_bytes"] or hashlib.sha256(data).hexdigest() != row["sha256"]:
-                raise AccountingError("上传内容与声明的大小或哈希不一致", 409)
-            validator = self._validator(row["purpose"])
-            name, detected = validator(row["filename"], row["media_type"], data)
-            self.store.backend.put(row["storage_key"], data, detected)
+            return dict(row), False
+
+    def _commit_stored(self, actor, upload_id, name, detected=None):
+        """Short write: re-authorize/version-check before publishing the object."""
+        with self.db.transaction(write=True, actor=actor) as conn:
+            row = self._owned(conn, actor, upload_id)
+            if row["state"] == "stored":
+                return {
+                    "id": upload_id,
+                    "state": "stored",
+                    "filename": row["filename"],
+                    **({"media_type": detected} if detected else {}),
+                }
+            if row["state"] != "pending":
+                raise AccountingError("上传凭证状态已变化，请重新发起上传", 409)
+            if self._expired(row):
+                raise AccountingError("上传凭证已过期，请重新发起上传", 410)
             changed = conn.execute(
                 "UPDATE upload_intents SET state='stored' WHERE id=? AND state='pending'",
                 (upload_id,),
             )
             if changed.rowcount != 1:
+                current = self._owned(conn, actor, upload_id)
+                if current["state"] == "stored":
+                    return {
+                        "id": upload_id,
+                        "state": "stored",
+                        "filename": current["filename"],
+                        **({"media_type": detected} if detected else {}),
+                    }
                 raise AccountingError("上传凭证状态已变化，请重新发起上传", 409)
-            return {"id": upload_id, "state": "stored", "filename": name}
+            return {
+                "id": upload_id,
+                "state": "stored",
+                "filename": name,
+                **({"media_type": detected} if detected else {}),
+            }
+
+    def store_content(self, actor, upload_id, data):
+        """Local single-request path: verify bytes outside the write lock, then commit."""
+        if not isinstance(data, bytes):
+            raise AccountingError("上传内容无效", 422)
+        row, already = self._transfer_snapshot(actor, upload_id)
+        if already:
+            return {"id": upload_id, "state": "stored", "filename": row["filename"]}
+        if len(data) != row["size_bytes"] or hashlib.sha256(data).hexdigest() != row["sha256"]:
+            raise AccountingError("上传内容与声明的大小或哈希不一致", 409)
+        validator = self._validator(row["purpose"])
+        name, detected = validator(row["filename"], row["media_type"], data)
+        # Object IO may be slow/networked; it runs without a database write lock.
+        self.store.backend.put(row["storage_key"], data, detected)
+        return self._commit_stored(actor, upload_id, name, detected)
 
     def complete(self, actor, upload_id):
-        """Verify the object written through a signed URL, then mark it stored."""
-        failure, storage_key = None, ""
-        with self.db.transaction(write=True, actor=actor) as conn:
-            row = self._owned(conn, actor, upload_id)
-            if row["state"] == "stored":
-                return {"id": upload_id, "state": "stored", "filename": row["filename"]}
-            if row["state"] != "pending":
-                raise AccountingError("该上传凭证已被使用或失效", 409)
-            storage_key = row["storage_key"]
-            if self._expired(row):
-                failure = AccountingError("上传凭证已过期，请重新发起上传", 410)
-            else:
-                try:
-                    data = self.store.backend.read(row["storage_key"], row["size_bytes"])
-                except AccountingError:
-                    raise AccountingError("尚未收到上传内容，请先完成文件传输再校验", 409) from None
-                if (
-                    len(data) != row["size_bytes"]
-                    or hashlib.sha256(data).hexdigest() != row["sha256"]
-                ):
-                    failure = AccountingError("上传内容与声明的大小或哈希不一致，已丢弃该对象", 409)
-                else:
-                    try:
-                        validator = self._validator(row["purpose"])
-                        name, detected = validator(row["filename"], row["media_type"], data)
-                    except AccountingError as error:
-                        failure = error
-                    else:
-                        changed = conn.execute(
-                            "UPDATE upload_intents SET state='stored' WHERE id=? AND state='pending'",
-                            (upload_id,),
-                        )
-                        if changed.rowcount != 1:
-                            raise AccountingError("上传凭证状态已变化，请重新发起上传", 409)
-                        return {
-                            "id": upload_id,
-                            "state": "stored",
-                            "filename": name,
-                            "media_type": detected,
-                        }
-        if failure is not None:
-            self._discard_object({"storage_key": storage_key})
-            self._mark_discarded(actor, upload_id)
-            raise failure
+        """Verify a signed-URL object outside the write lock, then commit once."""
+        row, already = self._transfer_snapshot(actor, upload_id)
+        if already:
+            return {"id": upload_id, "state": "stored", "filename": row["filename"]}
+        try:
+            data = self.store.backend.read(row["storage_key"], row["size_bytes"])
+        except AccountingError:
+            raise AccountingError("尚未收到上传内容，请先完成文件传输再校验", 409) from None
+        mismatch = (
+            len(data) != row["size_bytes"] or hashlib.sha256(data).hexdigest() != row["sha256"]
+        )
+        if mismatch:
+            self._mark_discarded(actor, upload_id, row["storage_key"])
+            raise AccountingError("上传内容与声明的大小或哈希不一致，已丢弃该对象", 409)
+        try:
+            validator = self._validator(row["purpose"])
+            name, detected = validator(row["filename"], row["media_type"], data)
+        except AccountingError:
+            self._mark_discarded(actor, upload_id, row["storage_key"])
+            raise
+        return self._commit_stored(actor, upload_id, name, detected)
 
     def take(self, actor, upload_id, purpose):
         """Claim a stored intent for the caller's attachment transaction."""
@@ -293,15 +308,18 @@ class UploadIntentService:
         except AccountingError:
             pass
 
-    def _mark_discarded(self, actor, upload_id):
-        """Commit the discard bookkeeping even though the caller then raises."""
+    def _mark_discarded(self, actor, upload_id, storage_key):
+        """Claim the discard before deleting bytes, so a concurrent winner is safe."""
         with self.db.transaction(write=True, actor=actor) as conn:
             self.access.require_user(conn, actor.user_id)
-            conn.execute(
+            changed = conn.execute(
                 "UPDATE upload_intents SET state='discarded' WHERE id=? AND firm_id=? "
-                "AND user_id=? AND state IN('pending','stored')",
+                "AND user_id=? AND state='pending'",
                 (upload_id, actor.firm_id, actor.user_id),
             )
+            claimed = changed.rowcount == 1
+        if claimed:
+            self._discard_object({"storage_key": storage_key})
 
 
 def build_uploads_router(actor_dependency):

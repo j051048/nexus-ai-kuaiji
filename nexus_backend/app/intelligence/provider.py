@@ -49,10 +49,12 @@ class ScenarioSettings:
     model: str = ""
     response_format: str = "json_schema"
     timeout_seconds: float = 45
+    auth_mode: str = "bearer"
+    allow_single_json_fence: bool = False
 
     @property
     def available(self) -> bool:
-        return bool(self.base_url and self.api_key and self.model)
+        return bool(self.base_url and self.model and (self.api_key or self.auth_mode == "none"))
 
 
 def effective_settings(settings, scenario: str) -> ScenarioSettings:
@@ -83,6 +85,8 @@ class AISettings:
     response_format: str = "json_schema"
     timeout_seconds: float = 45
     allow_http: bool = False
+    allow_no_auth: bool = False
+    allow_single_json_fence: bool = False
     max_concurrency: int = 2
     chat_model: str = ""
     ocr_base_url: str = ""
@@ -137,11 +141,13 @@ class AISettings:
         ):
             raise ProviderError("configuration", "AI 密钥配置无效")
         for scenario in ("ocr", "journal", "chat"):
-            if bool(getattr(self, scenario + "_base_url")) != bool(
-                getattr(self, scenario + "_api_key")
-            ):
+            base_url = getattr(self, scenario + "_base_url")
+            api_key = getattr(self, scenario + "_api_key")
+            if api_key and not base_url:
+                raise ProviderError("configuration", "AI 场景密钥不能脱离接口地址单独配置")
+            if base_url and not api_key and not self.allow_no_auth:
                 raise ProviderError(
-                    "configuration", "AI 场景接口地址与密钥须同时填写，避免向其他服务转发旧密钥"
+                    "configuration", "AI 场景接口缺少密钥；无鉴权本地服务须显式启用 allow_no_auth"
                 )
         for name in ("base_url", "ocr_base_url", "journal_base_url", "chat_base_url"):
             value = getattr(self, name)
@@ -193,6 +199,8 @@ class AISettings:
             response_format=env.get("ACCOUNTING_AI_RESPONSE_FORMAT", "json_schema").strip(),
             timeout_seconds=timeout,
             allow_http=env.get("ACCOUNTING_AI_ALLOW_HTTP", "") == "1",
+            allow_no_auth=env.get("ACCOUNTING_AI_ALLOW_NO_AUTH", "") == "1",
+            allow_single_json_fence=env.get("ACCOUNTING_AI_ALLOW_SINGLE_JSON_FENCE", "") == "1",
             max_concurrency=concurrency,
             ocr_base_url=env.get("ACCOUNTING_AI_OCR_BASE_URL", "").strip(),
             ocr_api_key=env.get("ACCOUNTING_AI_OCR_API_KEY", "").strip(),
@@ -228,6 +236,8 @@ class AISettings:
             model,
             getattr(self, scenario + "_response_format") or self.response_format,
             self.timeout_seconds,
+            "none" if self.allow_no_auth else "bearer",
+            self.allow_single_json_fence,
         )
 
     @property
@@ -258,6 +268,19 @@ def _json_without_duplicates(text: str) -> object:
         raise ValueError("Non-finite JSON number")
 
     return json.loads(text, object_pairs_hook=object_pairs, parse_constant=invalid_constant)
+
+
+def _strip_single_json_fence(value: str):
+    """Only one complete fenced JSON object, with no prose or second fence."""
+    if not isinstance(value, str) or len(value) > MAX_RESPONSE_BYTES:
+        return None
+    stripped = value.strip()
+    if not (stripped.startswith("```json") and stripped.endswith("```")):
+        return None
+    inner = stripped[7:-3].strip()
+    if not inner or "```" in inner:
+        return None
+    return inner
 
 
 def _score_setting(value):
@@ -431,15 +454,17 @@ class OpenAICompatibleProvider:
                     trust_env=False,
                 )
                 started = time.monotonic()
+                headers = {
+                    "Accept": "application/json",
+                    "Accept-Encoding": "identity",
+                }
+                if settings.auth_mode != "none":
+                    headers["Authorization"] = "Bearer " + settings.api_key
                 with client.stream(
                     "POST",
                     settings.base_url + "/chat/completions",
                     json=payload,
-                    headers={
-                        "Authorization": "Bearer " + settings.api_key,
-                        "Accept": "application/json",
-                        "Accept-Encoding": "identity",
-                    },
+                    headers=headers,
                     timeout=settings.timeout_seconds,
                     follow_redirects=False,
                 ) as response:
@@ -474,7 +499,13 @@ class OpenAICompatibleProvider:
                         if len(buffer) + len(chunk) > MAX_RESPONSE_BYTES:
                             raise ProviderError("response_too_large", "AI 服务响应超过大小限制")
                         buffer.extend(chunk)
-                return self._parse(bytes(buffer), output_type, model, prompt_version)
+                return self._parse(
+                    bytes(buffer),
+                    output_type,
+                    model,
+                    prompt_version,
+                    allow_single_json_fence=settings.allow_single_json_fence,
+                )
             except httpx.TimeoutException:
                 raise ProviderError("timeout", "AI 服务请求超时，请人工处理或稍后重试") from None
             except httpx.HTTPError:
@@ -488,7 +519,11 @@ class OpenAICompatibleProvider:
 
     @staticmethod
     def _parse(
-        body: bytes, output_type: type[T], model: str, prompt_version: str
+        body: bytes,
+        output_type: type[T],
+        model: str,
+        prompt_version: str,
+        allow_single_json_fence: bool = False,
     ) -> ProviderResult[T]:
         try:
             envelope = _json_without_duplicates(body.decode("utf-8"))
@@ -534,10 +569,19 @@ class OpenAICompatibleProvider:
             raise failure("invalid_response", "AI 服务返回了不允许的执行请求，需人工处理")
         if not isinstance(message.get("content"), str):
             raise failure("invalid_response", "AI 服务未返回结构化内容，需人工处理")
+        raw_content = message["content"]
         try:
-            content = _json_without_duplicates(message["content"])
+            content = _json_without_duplicates(raw_content)
         except (ValueError, RecursionError):
-            raise failure("invalid_json", "AI 服务返回了无效结构化内容，需人工处理") from None
+            unwrapped = None
+            if allow_single_json_fence:
+                unwrapped = _strip_single_json_fence(raw_content)
+            if unwrapped is None:
+                raise failure("invalid_json", "AI 服务返回了无效结构化内容，需人工处理") from None
+            try:
+                content = _json_without_duplicates(unwrapped)
+            except (ValueError, RecursionError):
+                raise failure("invalid_json", "AI 服务返回了无效结构化内容，需人工处理") from None
         try:
             data = output_type.model_validate(content)
         except (ValidationError, ValueError, TypeError, RecursionError):

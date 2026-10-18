@@ -125,22 +125,22 @@ function RecurringContent({
         </section>
       ) : (
         <section className="page-heading">
-        <div>
-          <p className="eyebrow">RECURRING / REVIEWED TEMPLATES</p>
-          <h1>重复事项，复用明确的处理方案。</h1>
-          <p className="page-description">
-            先写清真实科目、金额、期间与原件，再由另一位会计审批。每月生成一次未审草稿。
-          </p>
-        </div>
-        <div className="monthly-actions">
-          <button className="button secondary" disabled={locked || dirty} onClick={onBack}>
-            返回账套
-          </button>
-          <button className="button secondary" disabled={locked} onClick={() => void load()}>
-            <RefreshCw size={15} />
-            刷新计划
-          </button>
-        </div>
+          <div>
+            <p className="eyebrow">RECURRING / REVIEWED TEMPLATES</p>
+            <h1>重复事项，复用明确的处理方案。</h1>
+            <p className="page-description">
+              先写清真实科目、金额、期间与原件，再由另一位会计审批。每月生成一次未审草稿。
+            </p>
+          </div>
+          <div className="monthly-actions">
+            <button className="button secondary" disabled={locked || dirty} onClick={onBack}>
+              返回账套
+            </button>
+            <button className="button secondary" disabled={locked} onClick={() => void load()}>
+              <RefreshCw size={15} />
+              刷新计划
+            </button>
+          </div>
         </section>
       )}
       {(error || command.error) && (

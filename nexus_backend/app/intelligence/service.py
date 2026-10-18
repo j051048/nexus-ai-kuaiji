@@ -199,6 +199,21 @@ class IntelligenceService:
         if enabled and not self._enabled(conn, actor, event):
             raise AccountingError("企业尚未启用票据与模型处理，请联系管理员", 403)
 
+    def _policy_check(self, conn, actor, company_id, scenario, data_categories):
+        from .endpoints import AIEndpointPolicyService
+
+        settings = effective_settings(self.provider.settings, scenario)
+        return AIEndpointPolicyService(self.db).check_send(
+            conn,
+            actor,
+            company_id,
+            scenario,
+            data_categories,
+            settings.base_url,
+            settings.model,
+            bool(settings.api_key),
+        )
+
     @staticmethod
     def _public_run(row):
         result = dict(row)
@@ -372,8 +387,19 @@ class IntelligenceService:
                 (event_id, attachment["id"]),
             ).fetchone():
                 raise AccountingError("该票据正在后台识别，请查看任务进度", 409)
-            cache_key = config_key(self.provider.settings, attachment["media_type"])
             structured = is_structured(attachment["media_type"])
+            policy_key = None
+            if not structured:
+                policy_evidence = self._policy_check(
+                    conn, actor, event["company_id"], "ocr", {"document", "counterparty", "amount"}
+                )
+                if policy_evidence.get("managed"):
+                    policy_key = (
+                        f"{policy_evidence['policy_version']}:{policy_evidence['endpoint_id']}"
+                    )
+            cache_key = config_key(
+                self.provider.settings, attachment["media_type"], policy_key=policy_key
+            )
             digest = fingerprint(
                 {
                     "attachment_id": attachment["id"],
@@ -1096,6 +1122,9 @@ class IntelligenceService:
             raise AccountingError("本阶段仅为员工已移交的业务事项生成模型分录建议", 409)
         event = self.business._event(conn, actor, mapping["event_id"])
         self._require(conn, actor, event, "generate_proposal", enabled=True)
+        self._policy_check(
+            conn, actor, event["company_id"], "journal", {"accounting", "counterparty", "document"}
+        )
         source = conn.execute(
             "SELECT * FROM sources WHERE id=? AND book_id=?", (draft["source_id"], book_id)
         ).fetchone()

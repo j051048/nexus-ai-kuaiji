@@ -29,6 +29,15 @@ def test_consistent_sqlite_backup_and_new_target_restore_drill(service, book, tm
     copied = Database(restored / "database.sqlite")
     with copied.transaction() as conn:
         assert conn.execute("SELECT COUNT(*) FROM drafts WHERE book_id=?", (book,)).fetchone()[0] == 1
+        assert conn.execute(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN "
+            "('vouchers','voucher_lines','voucher_sequences','posting_commands','opening_bindings')"
+        ).fetchone()[0] == 5
+        assert conn.execute(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN "
+            "('subledger_items','subledger_allocations','periodic_runs','periodic_drafts',"
+            "'report_runs','internal_close_runs','internal_period_locks')"
+        ).fetchone()[0] == 7
     assert not (target / "manifest.json").read_text(encoding="utf-8").find(service.db.path) >= 0
 
 
