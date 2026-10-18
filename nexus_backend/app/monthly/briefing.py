@@ -3,9 +3,9 @@
 import json
 
 from ..accounting.domain import AccountingError
-from ..accounting.invariants import cents_to_money
+from ..accounting.invariants import cents_to_money, signed_cents_to_money
 from ..accounting.service import now
-from ..closing.queries import receipt_valid_sql
+from ..closing.queries import active_source_sql, receipt_valid_sql
 
 
 class BriefingService:
@@ -28,10 +28,11 @@ class BriefingService:
             company = conn.execute(
                 "SELECT name FROM companies WHERE id=?", (book["company_id"],)
             ).fetchone()
+            active = active_source_sql(self.db.dialect, "s")
             flows = {"income": 0, "expense": 0}
             for row in conn.execute(
-                "SELECT direction,COALESCE(SUM(amount_cents),0) AS total FROM sources "
-                "WHERE book_id=? AND source_kind='bank' GROUP BY direction",
+                "SELECT direction,COALESCE(SUM(amount_cents),0) AS total FROM sources s "
+                "WHERE s.book_id=? AND s.source_kind='bank' AND " + active + " GROUP BY direction",
                 (book_id,),
             ):
                 flows[row["direction"]] = int(row["total"])
@@ -39,15 +40,17 @@ class BriefingService:
                 {
                     "account_code": row["account_code"],
                     "name": row["name"],
-                    "amount": cents_to_money(abs(int(row["amount_cents"]))),
+                    "amount": signed_cents_to_money(int(row["amount_cents"])),
                 }
                 for row in conn.execute(
                     "SELECT l.account_code,a.name,SUM(l.debit_cents-l.credit_cents) AS amount_cents "
                     "FROM draft_lines l JOIN drafts d ON d.id=l.draft_id AND d.book_id=l.book_id "
+                    "JOIN sources s ON s.id=d.source_id AND s.book_id=d.book_id "
                     "JOIN accounts a ON a.book_id=l.book_id AND a.code=l.account_code "
                     "WHERE l.book_id=? AND d.status IN ('approved','exported') AND a.category='expense' "
+                    "AND " + active + " "
                     "GROUP BY l.account_code,a.name HAVING SUM(l.debit_cents-l.credit_cents)<>0 "
-                    "ORDER BY ABS(SUM(l.debit_cents-l.credit_cents)) DESC,l.account_code LIMIT 5",
+                    "ORDER BY SUM(l.debit_cents-l.credit_cents) DESC,l.account_code LIMIT 5",
                     (book_id,),
                 )
             ]
@@ -117,25 +120,25 @@ class BriefingService:
                 "flows": {
                     "income": cents_to_money(flows["income"]),
                     "expense": cents_to_money(flows["expense"]),
-                    "net": cents_to_money(net),
-                    "basis": "按银行来源流水的收入 / 支出合计",
+                    "net": signed_cents_to_money(net),
+                    "basis": "按有效银行来源流水的收入 / 支出合计（已排除已隔离重复与替代前来源）",
                 },
                 "top_expenses": top,
                 "balances": {
-                    "receivable": None if receivable is None else cents_to_money(receivable),
-                    "payable": None if payable is None else cents_to_money(payable),
+                    "receivable": None if receivable is None else signed_cents_to_money(receivable),
+                    "payable": None if payable is None else signed_cents_to_money(payable),
                     "basis": "人工确认的期末参考余额"
                     if baseline
                     else "本期未提供人工确认的期末参考余额",
                 },
                 "tax": {
-                    "change": cents_to_money(tax),
+                    "change": signed_cents_to_money(tax),
                     "note": "按已审核凭证的应交税费类科目净变动汇总，最终以纳税申报为准。",
                 },
                 "risks": risks,
                 "notes": [
                     "简报只聚合已锁期账套的银行流水、已审核凭证与人工确认的期末参考余额，不包含员工票据原件。",
-                    "金额以分为单位精确计算；净额为正表示银行净流入。",
+                    "金额以分为单位精确计算；净额为正表示银行净流入，负值表示净流出。",
                     "本简报不是财务报表，也不能替代法定申报与客户外部账套过账。",
                 ],
                 "generated_at": now(),

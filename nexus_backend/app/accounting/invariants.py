@@ -24,6 +24,15 @@ def cents_to_money(cents: int) -> str:
     return f"{cents // 100}.{cents % 100:02d}"
 
 
+def signed_cents_to_money(cents: int) -> str:
+    """Format a signed balance or net change without weakening non-negative input rules."""
+    if type(cents) is not int or abs(cents) > MAX_CENTS:
+        raise ValueError("金额须为允许范围内的整数分")
+    sign = "-" if cents < 0 else ""
+    value = abs(cents)
+    return f"{sign}{value // 100}.{value % 100:02d}"
+
+
 def validate_period(value: str) -> str:
     if not isinstance(value, str) or not PERIOD_PATTERN.fullmatch(value):
         raise ValueError("期间必须是 2000 至 2099 年内的 YYYY-MM")

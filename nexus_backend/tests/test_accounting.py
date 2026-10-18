@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from app.accounting.database import Database
+from app.accounting.invariants import signed_cents_to_money
 from app.accounting.models import ApprovalRequest, BookCreate, DraftUpdate, EvidenceRequest, ExportRequest, ImportRequest, SourceRow, cents_to_money, money_to_cents
 from app.accounting.seed import LOCAL_ACTOR, bootstrap
 from app.accounting.service import AccountingError, AccountingService, Actor
@@ -66,6 +67,11 @@ def test_money_rejects_noncanonical_and_inexact_input(bad):
 def test_precision_roundtrip_and_split_amounts(service, book):
     assert money_to_cents("0.10") + money_to_cents("0.20") == money_to_cents("0.30")
     assert cents_to_money(money_to_cents("999999999999.99")) == "999999999999.99"
+    assert signed_cents_to_money(0) == "0.00"
+    assert signed_cents_to_money(-1) == "-0.01"
+    assert signed_cents_to_money(money_to_cents("999999999999.99")) == "999999999999.99"
+    with pytest.raises(ValueError):
+        signed_cents_to_money(-(10**15))
     draft = make_draft(service, book)
     updated = service.update_draft(LOCAL_ACTOR, book, draft["id"], DraftUpdate(expected_version=1, description="分摊办公费", lines=[
         {"account_code": "6602.02", "debit": "0.10", "credit": "0"},

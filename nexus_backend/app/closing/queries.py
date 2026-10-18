@@ -36,6 +36,23 @@ def date_valid_sql(dialect, value):
     return f"COALESCE(length({value})=10 AND {value} GLOB '20[0-9][0-9]-[0-1][0-9]-[0-3][0-9]' AND strftime('%Y-%m-%d',{value},'+0 days')={value},0)=1"
 
 
+def active_source_sql(dialect, source_alias="s"):
+    """Predicate shared by close preflight and read-only briefings.
+
+    Isolated duplicate copies and replaced historical sources remain in the
+    evidence trail but must not contribute to current-period totals.
+    """
+    if dialect not in {"sqlite", "postgres"}:
+        raise ValueError("不支持的数据方言")
+    alias = source_alias
+    return (
+        f"NOT EXISTS(SELECT 1 FROM bank_source_dispositions z "
+        f"WHERE z.book_id={alias}.book_id AND z.source_id={alias}.id) "
+        f"AND NOT EXISTS(SELECT 1 FROM fact_revision_lineage z "
+        f"WHERE z.old_book_id={alias}.book_id AND z.old_source_id={alias}.id)"
+    )
+
+
 def receipt_valid_sql(dialect, export_alias="x"):
     j, each = _json(dialect)
     equal = lambda left, right: (

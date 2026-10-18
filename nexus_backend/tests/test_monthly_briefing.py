@@ -18,22 +18,25 @@ from app.closing.models import CloseRequest, PreflightRequest, SnapshotReview
 from app.closing.service import ClosingService
 from app.delivery.models import ReceiptCreate
 from app.delivery.service import DeliveryService
+from app.dispositions.service import SourceDispositionService
 from app.monthly.briefing import BriefingService
 from app.monthly.models import BaselineCreate, CheckCreate, MonthlyReason
 from app.monthly.service import MonthlyService
 from test_catalog import case
+from test_stage10_dispositions import duplicates
 from test_stage9_delivery import facts
 
 
-def prepare_book(accounting, book):
+def prepare_book(accounting, book, rows=None):
     """导入、审核、导出并核验回执，使月结预检只剩锁期本身。"""
-    delivery = DeliveryService(accounting.db)
     accounting.import_sources(
         LOCAL_ACTOR,
         book,
         ImportRequest(
             source_name="虚构银行流水",
-            rows=[
+            rows=rows
+            if rows is not None
+            else [
                 SourceRow(
                     external_id="brief-in",
                     date="2026-10-05",
@@ -56,7 +59,11 @@ def prepare_book(accounting, book):
         ),
     )
     accounting.suggestions(LOCAL_ACTOR, book)
-    drafts = accounting.get_book(LOCAL_ACTOR, book)["drafts"]
+    approve_export_and_receipt(accounting, book, accounting.get_book(LOCAL_ACTOR, book)["drafts"])
+
+
+def approve_export_and_receipt(accounting, book, drafts):
+    delivery = DeliveryService(accounting.db)
     approved = []
     for draft in drafts:
         accounting.approve(
@@ -187,7 +194,7 @@ def test_briefing_requires_locked_period_and_aggregates_exact_cents(case):
         "income": "1000.00",
         "expense": "300.00",
         "net": "700.00",
-        "basis": "按银行来源流水的收入 / 支出合计",
+        "basis": "按有效银行来源流水的收入 / 支出合计（已排除已隔离重复与替代前来源）",
     }
     assert len(result["top_expenses"]) == 1
     assert result["top_expenses"][0]["amount"] == "300.00"
@@ -197,6 +204,56 @@ def test_briefing_requires_locked_period_and_aggregates_exact_cents(case):
     assert result["tax"]["change"] == "0.00"
     assert result["risks"] == []
     assert any("不是财务报表" in note for note in result["notes"])
+
+
+def test_briefing_negative_net_flow_is_signed_not_a_server_error(case):
+    accounting, _, book = case
+    prepare_book(
+        accounting,
+        book,
+        rows=[
+            SourceRow(
+                external_id="brief-only-out",
+                date="2026-10-06",
+                description="办公用品采购",
+                counterparty="供方乙",
+                amount="300.00",
+                direction="expense",
+                evidence_ref="银行流水原件",
+            )
+        ],
+    )
+    close_book(accounting, book)
+    result = BriefingService(accounting.db, accounting).briefing(LOCAL_ACTOR, book)
+    assert result["flows"] == {
+        "income": "0.00",
+        "expense": "300.00",
+        "net": "-300.00",
+        "basis": "按有效银行来源流水的收入 / 支出合计（已排除已隔离重复与替代前来源）",
+    }
+    assert result["top_expenses"][0]["amount"] == "300.00"
+    assert any("净流出" in risk["text"] for risk in result["risks"])
+
+
+def test_briefing_excludes_isolated_duplicate_sources(case):
+    accounting, _, book = case
+    isolated, candidate, request = duplicates(accounting, book)
+    SourceDispositionService(accounting.db).confirm(
+        LOCAL_ACTOR, book, isolated["source_id"], candidate["id"], request
+    )
+    canonical = next(
+        draft
+        for draft in accounting.get_book(LOCAL_ACTOR, book)["drafts"]
+        if draft["source_id"] == candidate["id"]
+    )
+    approve_export_and_receipt(accounting, book, [canonical])
+    close_book(accounting, book)
+    result = BriefingService(accounting.db, accounting).briefing(LOCAL_ACTOR, book)
+    # Two duplicate bank rows of 0.30 exist, but only the canonical source is active.
+    assert result["flows"]["expense"] == "0.30"
+    assert result["flows"]["net"] == "-0.30"
+    assert len(result["top_expenses"]) == 1
+    assert result["top_expenses"][0]["amount"] == "0.30"
 
 
 def test_briefing_scope_and_capability_boundaries(case):
