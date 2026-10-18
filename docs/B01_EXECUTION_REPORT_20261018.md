@@ -160,7 +160,7 @@
 | `nexus_backend/app/ingestion/router.py` | 路径改为 `/api/integrations/webhook`；令牌走 `X-Ingestion-Token`，事件键走 `X-Event-Id` |
 | `nexus_backend/app/ingestion/middleware.py` | 在 JSON 解析前限制 256 KiB |
 | `nexus_backend/app/main.py` | 注册中间件；按 `ACCOUNTING_INGESTION_ENABLED` 决定是否启用 |
-| `nexus_backend/migrations/postgres/103_ingestion_receive_boundary.sql`、`sqlite/078_ingestion_receive_boundary.sql` | `ingestion_runs` 增加 `event_key/raw_event_json/request_hash` 与事件唯一索引 |
+| `nexus_backend/migrations/postgres/103_ingestion_receive_boundary.sql`、`sqlite/078_ingestion_receive_boundary.sql` | `ingestion_runs` 增加 `event_key/raw_event_json/request_hash` 与事件唯一索引；PostgreSQL 给 `accounting_system` 仅追加 `audit_events` 的 INSERT 权限 |
 | `.env.accounting.example`、`deploy/.env.api.example` | 增加默认关闭开关 |
 
 ### 测试
