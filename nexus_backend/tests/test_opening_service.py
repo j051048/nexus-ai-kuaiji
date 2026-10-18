@@ -222,6 +222,13 @@ def test_opening_idempotency_and_config_change_block_submit(business):
             ledger_id=ledger_id, target_period="2026-10", policy_id=created_policy["id"]
         ),
     )
+    with pytest.raises(AccountingError, match="已存在期初包"):
+        service.create_package(
+            case.manager,
+            OpeningPackageCreate(
+                ledger_id=ledger_id, target_period="2026-10", policy_id=created_policy["id"]
+            ),
+        )
     first = service.import_version(case.manager, package["package"]["id"], request)
     replay = service.import_version(case.manager, package["package"]["id"], request)
     assert replay["replayed"] is True and replay["version"]["id"] == first["version"]["id"]
@@ -277,6 +284,8 @@ def test_account_hierarchy_cross_ledger_and_cycle_are_rejected(business):
     parent_view = next(row for row in current_parent if row["id"] == parent["id"])
     assert parent_view["is_leaf"] == 0
     assert child["parent_account_id"] == parent["id"]
+    with pytest.raises(AccountingError, match="编码"):
+        account(service, case.manager, ledger_id, "6602.01", "重复编码")
     other_policy = policy(service, case.manager, other_ledger)
     other_parent = account(service, case.manager, other_ledger, "6602", "其他账套管理费用")
     with pytest.raises(AccountingError):
