@@ -19,11 +19,7 @@ CREATE OR REPLACE FUNCTION accounting.company_write_table_guard() RETURNS TRIGGE
    THEN RAISE EXCEPTION 'Audit scope differs from company transaction' USING ERRCODE='42501';END IF;
   resolved:=current_setting('app.write_scope_company',true);
  ELSIF TG_TABLE_NAME=ANY(ARRAY['ai_runs','ai_findings','document_extractions','ocr_jobs','ocr_attempts','model_costs','ops_exception_snapshots','ops_company_dirty','ops_company_refresh','processing_job_metrics']) THEN
-  IF value->>'firm_id' IS DISTINCT FROM current_setting('app.write_scope_firm',true)
-   OR value->>'company_id' IS DISTINCT FROM current_setting('app.write_scope_company',true)
-   THEN RAISE EXCEPTION 'Write exceeds declared company scope' USING ERRCODE='42501';END IF;
-  PERFORM pg_advisory_xact_lock_shared(6420031786281903101);
-  PERFORM pg_advisory_xact_lock(accounting.company_lock_key(value->>'firm_id',value->>'company_id'));
+  PERFORM accounting.lock_company_write(value->>'firm_id',value->>'company_id');
  ELSIF (value ? 'company_id') AND nullif(value->>'company_id','') IS NOT NULL THEN
   resolved:=value->>'company_id';
  ELSE

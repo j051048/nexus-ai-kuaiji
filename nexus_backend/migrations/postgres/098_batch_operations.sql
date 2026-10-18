@@ -175,6 +175,3 @@ REVOKE ALL ON FUNCTION accounting.recover_batch_operations() FROM PUBLIC,account
 GRANT EXECUTE ON FUNCTION accounting.worker_claim_batch_item(TEXT,INTEGER) TO accounting_worker;
 GRANT EXECUTE ON FUNCTION accounting.worker_finish_batch_item(TEXT,TEXT,TEXT,TEXT,TEXT,TEXT,INTEGER) TO accounting_worker;
 GRANT EXECUTE ON FUNCTION accounting.recover_batch_operations() TO accounting_worker;
-
-CREATE TRIGGER batch_operations_write_gate BEFORE INSERT OR UPDATE OR DELETE ON accounting.batch_operations FOR EACH ROW EXECUTE FUNCTION accounting.company_write_table_guard();
-CREATE TRIGGER batch_operation_items_write_gate BEFORE INSERT OR UPDATE OR DELETE ON accounting.batch_operation_items FOR EACH ROW EXECUTE FUNCTION accounting.company_write_table_guard();

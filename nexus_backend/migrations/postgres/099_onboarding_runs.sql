@@ -25,4 +25,3 @@ CREATE POLICY onboarding_runs_manager ON accounting.onboarding_runs FOR ALL TO a
   AND m.user_id=accounting.actor_user() AND m.role IN('owner','admin')));
 REVOKE ALL ON accounting.onboarding_runs FROM PUBLIC,accounting_app,accounting_worker;
 GRANT SELECT,INSERT,UPDATE ON accounting.onboarding_runs TO accounting_app;
-CREATE TRIGGER onboarding_runs_write_gate BEFORE INSERT OR UPDATE OR DELETE ON accounting.onboarding_runs FOR EACH ROW EXECUTE FUNCTION accounting.company_write_table_guard();
