@@ -634,6 +634,9 @@ export default function App() {
         'home',
         'firm',
         'onboarding',
+        'inbox',
+        'observability',
+        'ingestion',
         'runs',
         'business',
         'queue',
@@ -644,6 +647,7 @@ export default function App() {
         'revision',
         'monthly',
         'materials',
+        'messages',
         'portfolio',
         'quality',
       ].includes(view)
@@ -1002,7 +1006,8 @@ export default function App() {
     },
   };
   const portalRouteView: WorkspaceView =
-    clientPortal && !['home', 'accounting', 'business', 'materials', 'briefing'].includes(routeView)
+    clientPortal &&
+    !['home', 'accounting', 'business', 'materials', 'messages', 'briefing'].includes(routeView)
       ? 'home'
       : routeView;
   const routeContent = (
@@ -1024,11 +1029,13 @@ export default function App() {
   const clientPortalTab: ClientPortalTab =
     portalRouteView === 'materials'
       ? 'materials'
-      : portalRouteView === 'briefing'
-        ? 'briefing'
-        : portalRouteView === 'business' || portalRouteView === 'accounting'
-          ? 'submit'
-          : 'home';
+      : portalRouteView === 'messages'
+        ? 'messages'
+        : portalRouteView === 'briefing'
+          ? 'briefing'
+          : portalRouteView === 'business' || portalRouteView === 'accounting'
+            ? 'submit'
+            : 'home';
 
   if (clientPortal && profile) {
     return (
@@ -1047,6 +1054,7 @@ export default function App() {
           onNavigate={(tab) => {
             if (tab === 'home') navigate('home');
             else if (tab === 'materials') navigate('materials');
+            else if (tab === 'messages') navigate('messages');
             else navigate('business');
           }}
           onBriefing={() => {
@@ -1094,6 +1102,9 @@ export default function App() {
                     'home',
                     'firm',
                     'onboarding',
+                    'inbox',
+                    'observability',
+                    'ingestion',
                     'runs',
                     'review',
                     'cases',
@@ -1102,6 +1113,7 @@ export default function App() {
                     'operations',
                     'monthly',
                     'materials',
+                    'messages',
                     'portfolio',
                     'quality',
                   ].includes(routeView)

@@ -28,6 +28,18 @@ const FirmCockpit = lazy(() =>
 const FirmOnboarding = lazy(() =>
   import('./FirmOnboarding').then((module) => ({ default: module.FirmOnboarding })),
 );
+const ClientMessages = lazy(() =>
+  import('./ClientMessages').then((module) => ({ default: module.ClientMessages })),
+);
+const FirmInbox = lazy(() =>
+  import('./FirmInbox').then((module) => ({ default: module.FirmInbox })),
+);
+const FirmObservability = lazy(() =>
+  import('./FirmObservability').then((module) => ({ default: module.FirmObservability })),
+);
+const FirmIngestionCenter = lazy(() =>
+  import('./FirmIngestionCenter').then((module) => ({ default: module.FirmIngestionCenter })),
+);
 const MonthlyClientWorkbench = lazy(() =>
   import('./MonthlyClientWorkbench').then((module) => ({ default: module.MonthlyClientWorkbench })),
 );
@@ -358,6 +370,7 @@ export function WorkspaceRouteContent({
             focusBookRef.current = target.bookId;
             void initialize(undefined, target.bookId);
           }}
+          onOpenInbox={() => navigate('inbox')}
         />
       ) : routeView === 'onboarding' ? (
         <FirmOnboarding
@@ -373,6 +386,14 @@ export function WorkspaceRouteContent({
             void initialize(undefined, target.bookId);
           }}
         />
+      ) : routeView === 'inbox' ? (
+        <FirmInbox session={session} />
+      ) : routeView === 'observability' ? (
+        <FirmObservability session={session} />
+      ) : routeView === 'ingestion' ? (
+        <FirmIngestionCenter session={session} />
+      ) : routeView === 'messages' ? (
+        <ClientMessages session={session} />
       ) : routeView === 'monthly' ? (
         <MonthlyClientWorkbench
           key={session.scope_key}

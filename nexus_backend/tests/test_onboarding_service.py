@@ -1,13 +1,23 @@
 from app.accounting.admin_service import AdminService
 from app.accounting.catalog import CatalogService
+from app.business.service import BusinessService
+from app.ledgers.service import LedgersService
 from app.onboarding.models import StartOnboarding
 from app.onboarding.service import OnboardingService
+from app.service_plans.service import ServicePlansService
 from test_business import business
 
 
 def test_onboarding_run_is_resumable_and_rechecks_readiness(business):
     c = business
-    service = OnboardingService(c.db, AdminService(c.db), CatalogService(c.db))
+    service = OnboardingService(
+        c.db,
+        AdminService(c.db),
+        c.service,
+        LedgersService(c.db),
+        ServicePlansService(c.db, c.service, BusinessService(c.db)),
+        CatalogService(c.db),
+    )
     preview = service.preview(c.manager, c.company["id"], c.book["period"])
     assert preview["company_id"] == c.company["id"]
     assert preview["target_book_id"] == c.book["id"]

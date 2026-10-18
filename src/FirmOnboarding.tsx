@@ -22,6 +22,13 @@ type Preview = {
   target_book_id: string | null;
   source_book_id: string | null;
   checklist: { steps: Step[]; ready: boolean; note: string };
+  resources?: {
+    service_plan: boolean;
+    material_templates: number;
+    bank_accounts: number;
+    opening_balance_ready: boolean;
+    target_ledger_ready: boolean;
+  };
 };
 type Run = {
   id: string;
@@ -170,21 +177,29 @@ export function FirmOnboarding({
     setBusy('copy');
     setError('');
     try {
-      const value = await api<{ copied: number; skipped: number }>(
-        '/firm/onboarding/copy-templates',
-        session,
-        {
-          method: 'POST',
-          body: {
-            source_company_id: source,
-            target_company_id: target,
-            period,
-            reason: '标准化开通复制同类客户模板',
-          },
+      const value = await api<{
+        copied: number;
+        skipped: number;
+        service_plan: boolean;
+        material_templates: number;
+        material_templates_skipped: number;
+        bank_accounts: number;
+        bank_accounts_skipped: number;
+      }>('/firm/onboarding/copy-templates', session, {
+        method: 'POST',
+        body: {
+          source_company_id: source,
+          target_company_id: target,
+          period,
+          reason: '标准化开通复制同类客户模板',
         },
-      );
+      });
       setRevision((current) => current + 1);
-      setError(`模板复制完成：新增 ${value.copied} 个，跳过 ${value.skipped} 个。`);
+      setError(
+        `开通资源复制完成：记账模板新增 ${value.copied} 个、跳过 ${value.skipped} 个；` +
+          `资料模板 ${value.material_templates} 个、银行账户 ${value.bank_accounts} 个；` +
+          `服务单分工${value.service_plan ? '已复制' : '未复制'}。`,
+      );
     } catch (failure) {
       setError(errorMessage(failure));
     } finally {
@@ -320,6 +335,16 @@ export function FirmOnboarding({
               </ul>
             </div>
           ) : null}
+          {preview?.resources && (
+            <div className="onboarding-resources" aria-label="可复制开通资源">
+              <span>服务单分工 {preview.resources.service_plan ? '可复制' : '已有/无来源'}</span>
+              <span>资料模板 {preview.resources.material_templates} 个</span>
+              <span>银行账户 {preview.resources.bank_accounts} 个</span>
+              <span>
+                期初余额 {preview.resources.opening_balance_ready ? '已确认' : '待导入确认'}
+              </span>
+            </div>
+          )}
           <ol className="onboarding-factory-steps">
             {steps.map((step, index) => (
               <li key={step.id} className={step.complete ? 'complete' : ''}>

@@ -58,10 +58,12 @@ export function FirmCockpit({
   session,
   initialPeriod,
   onOpenBook,
+  onOpenInbox,
 }: {
   session: Session;
   initialPeriod?: string;
   onOpenBook: (target: { bookId: string; companyId: string; period: string }) => void;
+  onOpenInbox: () => void;
 }) {
   const [period, setPeriod] = useState(initialPeriod || new Date().toISOString().slice(0, 7));
   const [data, setData] = useState<Cockpit | null>(null);
@@ -97,6 +99,10 @@ export function FirmCockpit({
           <p>先看风险、负载和交付阻塞，再进入具体客户账套。</p>
         </div>
         <div className="cockpit-actions">
+          <button className="button primary" type="button" onClick={onOpenInbox}>
+            <ShieldAlert size={15} />
+            打开异常收件箱
+          </button>
           <label>
             <span>会计期间</span>
             <input

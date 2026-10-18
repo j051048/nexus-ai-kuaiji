@@ -4,6 +4,7 @@ import {
   ArrowUpRight,
   Building2,
   CalendarDays,
+  Cable,
   CheckCheck,
   ClipboardCheck,
   FileCheck2,
@@ -22,6 +23,10 @@ export type AgentNavigationView =
   | 'home'
   | 'firm'
   | 'onboarding'
+  | 'inbox'
+  | 'observability'
+  | 'ingestion'
+  | 'messages'
   | 'business'
   | 'accounting'
   | 'review'
@@ -208,6 +213,36 @@ export function AgentNavigation({
           )}
           {canOperations && (
             <button
+              aria-label="数据接入中心"
+              className={'nav-item agent-primary-item ' + (current === 'ingestion' ? 'active' : '')}
+              disabled={locked}
+              onClick={() => go('ingestion')}
+              aria-current={current === 'ingestion' ? 'page' : undefined}
+            >
+              <Cable size={19} />
+              <span>
+                数据接入<small>连接、游标与失败</small>
+              </span>
+            </button>
+          )}
+          {canOperations && (
+            <button
+              aria-label="运行可观测性"
+              className={
+                'nav-item agent-primary-item ' + (current === 'observability' ? 'active' : '')
+              }
+              disabled={locked}
+              onClick={() => go('observability')}
+              aria-current={current === 'observability' ? 'page' : undefined}
+            >
+              <Activity size={19} />
+              <span>
+                运行可观测性<small>队列、锁与成本</small>
+              </span>
+            </button>
+          )}
+          {canOperations && (
+            <button
               aria-label="客户开通"
               className={
                 'nav-item agent-primary-item ' + (current === 'onboarding' ? 'active' : '')
@@ -219,6 +254,20 @@ export function AgentNavigation({
               <Plus size={19} />
               <span>
                 客户开通<small>模板复制与检查</small>
+              </span>
+            </button>
+          )}
+          {canOperations && (
+            <button
+              aria-label="异常收件箱"
+              className={'nav-item agent-primary-item ' + (current === 'inbox' ? 'active' : '')}
+              disabled={locked}
+              onClick={() => go('inbox')}
+              aria-current={current === 'inbox' ? 'page' : undefined}
+            >
+              <ClipboardCheck size={19} />
+              <span>
+                异常收件箱<small>分派、催办与 SLA</small>
               </span>
             </button>
           )}

@@ -79,6 +79,19 @@
   margin: 6px 0 0;
   padding-left: 18px;
 }
+.onboarding-resources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+.onboarding-resources span {
+  border: 1px solid #d6e0d2;
+  border-radius: 999px;
+  padding: 4px 9px;
+  background: #f6f9f2;
+  color: #5c6a5d;
+  font-size: 11px;
+}
 .onboarding-factory-steps {
   list-style: none;
   margin: 0;

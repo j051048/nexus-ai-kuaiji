@@ -1,18 +1,24 @@
 """Readiness, resumable onboarding runs and governed template copying."""
 
 import json
+from datetime import date
 from uuid import uuid4
 
 from ..accounting.catalog import CatalogService
 from ..accounting.catalog_models import TemplateDefinition
 from ..accounting.domain import AccountingError
 from ..accounting.service import now
+from ..ledgers.models import EntityCreate
+from ..service_plans.models import PlanSave, TemplateCreate
 
 
 class OnboardingService:
-    def __init__(self, db, admin, catalog=None):
+    def __init__(self, db, admin, accounting, ledgers, plans, catalog=None):
         self.db = db
         self.admin = admin
+        self.accounting = accounting
+        self.ledgers = ledgers
+        self.plans = plans
         self.catalog = catalog or CatalogService(db)
 
     def _book(self, conn, actor, company_id, period):
@@ -37,6 +43,63 @@ class OnboardingService:
             company = conn.execute(
                 "SELECT id,name,tax_id FROM companies WHERE id=?", (company_id,)
             ).fetchone()
+            source_ledger = (
+                conn.execute(
+                    "SELECT ledger_id FROM ledger_periods WHERE book_id=?", (source["id"],)
+                ).fetchone()
+                if source
+                else None
+            )
+            target_ledger = (
+                conn.execute(
+                    "SELECT ledger_id FROM ledger_periods WHERE book_id=?", (target["id"],)
+                ).fetchone()
+                if target
+                else None
+            )
+            plan = (
+                conn.execute(
+                    "SELECT * FROM service_plan_versions WHERE book_id=? "
+                    "ORDER BY version DESC LIMIT 1",
+                    (source["id"],),
+                ).fetchone()
+                if source
+                else None
+            )
+            target_plan = (
+                conn.execute(
+                    "SELECT 1 FROM service_plan_versions WHERE book_id=? LIMIT 1",
+                    (target["id"],),
+                ).fetchone()
+                if target
+                else None
+            )
+            material_count = (
+                conn.execute(
+                    "SELECT COUNT(*) FROM material_templates WHERE ledger_id=?",
+                    (source_ledger["ledger_id"],),
+                ).fetchone()[0]
+                if source_ledger
+                else 0
+            )
+            bank_count = (
+                conn.execute(
+                    "SELECT COUNT(*) FROM company_master_entities WHERE firm_id=? "
+                    "AND company_id=? AND kind='bank_account' AND active=1",
+                    (actor.firm_id, source_company_id),
+                ).fetchone()[0]
+                if source
+                else 0
+            )
+            opening = (
+                conn.execute(
+                    "SELECT 1 FROM monthly_baselines b JOIN monthly_baseline_confirmations c "
+                    "ON c.baseline_id=b.id WHERE b.book_id=? AND b.kind='opening' LIMIT 1",
+                    (target["id"],),
+                ).fetchone()
+                if target
+                else None
+            )
         required = [step for step in checklist["steps"] if step["required"]]
         missing = [step["id"] for step in required if not step["complete"]]
         blockers = []
@@ -60,6 +123,13 @@ class OnboardingService:
             "blockers": blockers,
             "target_book_id": target["id"] if target else None,
             "source_book_id": source["id"] if source else None,
+            "resources": {
+                "service_plan": bool(plan and not target_plan),
+                "material_templates": material_count,
+                "bank_accounts": bank_count,
+                "opening_balance_ready": bool(opening),
+                "target_ledger_ready": bool(target_ledger),
+            },
         }
 
     def preview(self, actor, company_id, period, source_company_id=""):
@@ -206,6 +276,17 @@ class OnboardingService:
             self.catalog.save_template(actor, target["id"], definition)
             signatures.add(signature)
             copied += 1
+        plan_copied = self._copy_service_plan(actor, source["id"], target["id"], request.reason)
+        materials, materials_skipped = self._copy_material_templates(
+            actor, source["id"], target["id"], request.reason
+        )
+        banks, banks_skipped = self._copy_bank_accounts(
+            actor,
+            source["id"],
+            target["id"],
+            source["company_id"],
+            target["company_id"],
+        )
         with self.db.transaction(write=True, actor=actor) as conn:
             conn.execute(
                 "INSERT INTO audit_events(firm_id,user_id,action,object_id,details,created_at) "
@@ -220,6 +301,11 @@ class OnboardingService:
                             "period": request.period,
                             "copied": copied,
                             "skipped": skipped,
+                            "service_plan": plan_copied,
+                            "material_templates": materials,
+                            "material_templates_skipped": materials_skipped,
+                            "bank_accounts": banks,
+                            "bank_accounts_skipped": banks_skipped,
                             "reason": request.reason,
                         },
                         ensure_ascii=False,
@@ -227,7 +313,116 @@ class OnboardingService:
                     now(),
                 ),
             )
-        return {"copied": copied, "skipped": skipped, "target_book_id": target["id"]}
+        return {
+            "copied": copied,
+            "skipped": skipped,
+            "service_plan": plan_copied,
+            "material_templates": materials,
+            "material_templates_skipped": materials_skipped,
+            "bank_accounts": banks,
+            "bank_accounts_skipped": banks_skipped,
+            "target_book_id": target["id"],
+        }
+
+    def _copy_service_plan(self, actor, source_book_id, target_book_id, reason):
+        with self.db.transaction(actor=actor) as conn:
+            if conn.execute(
+                "SELECT 1 FROM service_plan_versions WHERE book_id=? LIMIT 1",
+                (target_book_id,),
+            ).fetchone():
+                return False
+            source = conn.execute(
+                "SELECT * FROM service_plan_versions WHERE book_id=? ORDER BY version DESC LIMIT 1",
+                (source_book_id,),
+            ).fetchone()
+        if not source:
+            return False
+        due_on = date.fromisoformat(source["due_on"]) if source["due_on"] else date.today()
+        self.plans.save_plan(
+            actor,
+            target_book_id,
+            PlanSave(
+                expected_version=0,
+                lead_user_id=source["lead_user_id"],
+                reviewer_user_id=source["reviewer_user_id"],
+                backup_user_id=source["backup_user_id"],
+                contact_user_id=source["contact_user_id"],
+                due_on=due_on,
+                notes=source["notes"] or "",
+                reason=reason,
+            ),
+        )
+        return True
+
+    def _copy_material_templates(self, actor, source_book_id, target_book_id, reason):
+        with self.db.transaction(actor=actor) as conn:
+            source_ledger = conn.execute(
+                "SELECT ledger_id FROM ledger_periods WHERE book_id=?", (source_book_id,)
+            ).fetchone()
+            target_ledger = conn.execute(
+                "SELECT ledger_id FROM ledger_periods WHERE book_id=?", (target_book_id,)
+            ).fetchone()
+            if not source_ledger or not target_ledger:
+                return 0, 0
+            rows = conn.execute(
+                "SELECT * FROM material_templates WHERE ledger_id=? ORDER BY created_at,id",
+                (source_ledger["ledger_id"],),
+            ).fetchall()
+            existing = {
+                row["name"]
+                for row in conn.execute(
+                    "SELECT name FROM material_templates WHERE ledger_id=?",
+                    (target_ledger["ledger_id"],),
+                )
+            }
+        copied = skipped = 0
+        for row in rows:
+            if row["name"] in existing:
+                skipped += 1
+                continue
+            self.plans.create_template(
+                actor,
+                target_book_id,
+                TemplateCreate(
+                    name=row["name"],
+                    items=json.loads(row["items_json"]),
+                    reason=reason,
+                ),
+            )
+            existing.add(row["name"])
+            copied += 1
+        return copied, skipped
+
+    def _copy_bank_accounts(
+        self, actor, source_book_id, target_book_id, source_company_id, target_company_id
+    ):
+        with self.db.transaction(actor=actor) as conn:
+            rows = conn.execute(
+                "SELECT code,name FROM company_master_entities WHERE firm_id=? "
+                "AND company_id=? AND kind='bank_account' AND active=1 ORDER BY code",
+                (actor.firm_id, source_company_id),
+            ).fetchall()
+            existing = {
+                row["code"]
+                for row in conn.execute(
+                    "SELECT code FROM company_master_entities WHERE firm_id=? "
+                    "AND company_id=? AND kind='bank_account'",
+                    (actor.firm_id, target_company_id),
+                )
+            }
+        copied = skipped = 0
+        for row in rows:
+            if row["code"] in existing:
+                skipped += 1
+                continue
+            self.ledgers.create_entity(
+                actor,
+                target_book_id,
+                EntityCreate(kind="bank_account", code=row["code"], name=row["name"]),
+            )
+            existing.add(row["code"])
+            copied += 1
+        return copied, skipped
 
     @staticmethod
     def _json(row):

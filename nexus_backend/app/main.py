@@ -5,6 +5,7 @@ import os
 import secrets
 import sqlite3
 import time
+from uuid import uuid4
 from contextlib import asynccontextmanager, closing
 from pathlib import Path
 from urllib.parse import urlsplit, parse_qs
@@ -87,8 +88,14 @@ from .batch_ops.service import BatchOperationsService
 from .batch_ops.worker import BatchWorker
 from .cockpit.router import build_cockpit_router
 from .cockpit.service import FirmCockpitService
+from .firm_tasks.router import build_firm_tasks_router
+from .firm_tasks.service import FirmTasksService
 from .onboarding.router import build_onboarding_router
 from .onboarding.service import OnboardingService
+from .observability.router import build_observability_router
+from .observability.service import FirmObservabilityService
+from .ingestion.router import build_ingestion_router
+from .ingestion.service import IngestionService
 from .operations.meter import MeterService
 from .operations.service import OperationsService
 from .operations.router import build_operations_router
@@ -260,9 +267,6 @@ def create_app(
             application.state.catalog = CatalogService(database)
             application.state.directory = DirectoryService(database)
             application.state.admin = AdminService(database)
-            application.state.onboarding = OnboardingService(
-                database, application.state.admin, application.state.catalog
-            )
             application.state.admin_identity = AdminIdentityService(database)
             application.state.business = BusinessService(database)
             application.state.revisions = FactRevisionService(
@@ -345,6 +349,14 @@ def create_app(
             application.state.service_plans.attachments = MaterialAttachmentService(
                 application.state.service_plans, application.state.attachment_store
             )
+            application.state.onboarding = OnboardingService(
+                database,
+                application.state.admin,
+                application.state.service,
+                application.state.ledgers,
+                application.state.service_plans,
+                application.state.catalog,
+            )
             application.state.monthly_workbench = MonthlyWorkbenchService(
                 database,
                 application.state.service,
@@ -362,6 +374,11 @@ def create_app(
                 database, application.state.monthly_batch
             )
             application.state.firm_cockpit = FirmCockpitService(database, application.state.service)
+            application.state.firm_tasks = FirmTasksService(database, application.state.service)
+            application.state.firm_observability = FirmObservabilityService(
+                database, application.state.service
+            )
+            application.state.ingestion = IngestionService(database, application.state.service)
             application.state.handover = HandoverService(
                 database,
                 application.state.service,
@@ -503,6 +520,7 @@ def create_app(
         allow_origins=origins,
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
         allow_headers=["Authorization", "Content-Type", "X-Firm-Id"],
+        expose_headers=["X-Request-Id"],
         allow_credentials=False,
     )
 
@@ -516,10 +534,12 @@ def create_app(
         if origin and origin not in origins:
             return JSONResponse({"detail": "不允许该网页来源访问会计服务"}, status_code=403)
         public = {"/api/auth/config", "/api/session", "/api/health"}
+        public_webhook = request.url.path.startswith("/api/integrations/webhook/")
         if (
             request.method != "OPTIONS"
             and request.url.path.startswith("/api")
             and request.url.path not in public
+            and not public_webhook
         ):
             authorization = request.headers.get("authorization", "")
             token = authorization[7:] if authorization.startswith("Bearer ") else ""
@@ -557,6 +577,16 @@ def create_app(
         response.headers["Cache-Control"] = "private, no-store" if private else "no-store"
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
+        return response
+
+    @app.middleware("http")
+    async def trace_request(request: Request, call_next):
+        trace_id = request.headers.get("x-request-id", "").strip()
+        if not trace_id or len(trace_id) > 120:
+            trace_id = uuid4().hex
+        request.state.trace_id = trace_id
+        response = await call_next(request)
+        response.headers["X-Request-Id"] = trace_id
         return response
 
     @app.exception_handler(AccountingError)
@@ -957,6 +987,9 @@ def create_app(
     app.include_router(build_queue_router(actor))
     app.include_router(build_batch_ops_router(actor))
     app.include_router(build_cockpit_router(actor))
+    app.include_router(build_firm_tasks_router(actor))
+    app.include_router(build_observability_router(actor))
+    app.include_router(build_ingestion_router(actor))
     app.include_router(build_onboarding_router(actor))
     app.include_router(build_operations_router(actor))
     app.include_router(build_catalog_router(actor))

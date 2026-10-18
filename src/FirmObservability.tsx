@@ -1,0 +1,171 @@
+import { useEffect, useState } from 'react';
+import { Activity, AlertTriangle, Database, RefreshCw, Server } from 'lucide-react';
+import { api, errorMessage } from './api';
+import { Spinner } from './AppPrimitives';
+import type { Session } from './types';
+import './firm-observability.css';
+
+type Snapshot = {
+  queues: Record<string, Record<string, number>>;
+  alerts: Record<string, { open: number; critical: number }>;
+  workers: { worker_id: string; state: string; heartbeat_at: string; inflight_count: number }[];
+  metrics: {
+    buckets: number;
+    transactions: number;
+    writes: number;
+    rollbacks: number;
+    avg_connection_ms: number;
+    avg_lock_ms: number;
+    max_transaction_ms: number;
+  };
+  ai_cost_cny: number;
+  projection: {
+    total: number;
+    dirty: number;
+    never_built: number;
+    failing: number;
+    oldest_dirty_at: string;
+  };
+  trace_hint: string;
+};
+
+export function FirmObservability({ session }: { session: Session }) {
+  const [data, setData] = useState<Snapshot | null>(null);
+  const [period, setPeriod] = useState(new Date().toISOString().slice(0, 7));
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [revision, setRevision] = useState(0);
+  useEffect(() => {
+    const controller = new AbortController();
+    setLoading(true);
+    setError('');
+    void api<Snapshot>(
+      '/firm/observability?' + new URLSearchParams({ period }).toString(),
+      session,
+      { signal: controller.signal },
+    )
+      .then((value) => {
+        if (!controller.signal.aborted) setData(value);
+      })
+      .catch((failure) => {
+        if (!controller.signal.aborted) setError(errorMessage(failure));
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+    return () => controller.abort();
+  }, [session, period, revision]);
+  const queueLabels: Record<string, string> = {
+    ocr: '票据识别',
+    proposal: '分录生成',
+    migration: '旧账迁移',
+    batch: '批量运营',
+  };
+  return (
+    <main className="firm-observability">
+      <header>
+        <div>
+          <p className="eyebrow">OPERATIONS / TRACE</p>
+          <h1>运行可观测性</h1>
+          <p>队列、锁等待、Worker、投影与 AI 成本集中在一个只读视图。</p>
+        </div>
+        <div className="firm-observability-actions">
+          <input type="month" value={period} onChange={(event) => setPeriod(event.target.value)} />
+          <button
+            className="button secondary"
+            type="button"
+            disabled={loading}
+            onClick={() => setRevision((value) => value + 1)}
+          >
+            <RefreshCw size={15} />
+            刷新
+          </button>
+        </div>
+      </header>
+      {error && (
+        <p className="form-error" role="alert">
+          {error}
+        </p>
+      )}
+      {loading && !data ? (
+        <div className="loading-block">
+          <Spinner />
+          正在读取运行指标…
+        </div>
+      ) : data ? (
+        <>
+          <section className="observability-cards">
+            <article>
+              <Activity size={18} />
+              <span>近一小时事务</span>
+              <strong>{data.metrics.transactions}</strong>
+              <small>
+                写 {data.metrics.writes} · 回滚 {data.metrics.rollbacks}
+              </small>
+            </article>
+            <article>
+              <span>锁等待均值</span>
+              <strong>{data.metrics.avg_lock_ms.toFixed(1)} ms</strong>
+              <small>连接均值 {data.metrics.avg_connection_ms.toFixed(1)} ms</small>
+            </article>
+            <article>
+              <Server size={18} />
+              <span>Worker</span>
+              <strong>{data.workers.filter((worker) => worker.state !== 'stopped').length}</strong>
+              <small>{data.workers.length} 个最近心跳记录</small>
+            </article>
+            <article>
+              <Database size={18} />
+              <span>AI 估算成本</span>
+              <strong>¥ {data.ai_cost_cny}</strong>
+              <small>{period} · 已确认或估算费用</small>
+            </article>
+          </section>
+          <div className="observability-grid">
+            <section className="observability-panel">
+              <header>
+                <h2>任务队列</h2>
+                <span className="field-help">{data.trace_hint}</span>
+              </header>
+              <div className="observability-queues">
+                {Object.entries(data.queues).map(([kind, counts]) => (
+                  <article key={kind}>
+                    <strong>{queueLabels[kind] ?? kind}</strong>
+                    <div>
+                      {Object.entries(counts).map(([state, count]) => (
+                        <span key={state}>
+                          {state} {count}
+                        </span>
+                      ))}
+                      {!Object.keys(counts).length && <span>无积压</span>}
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </section>
+            <section className="observability-panel">
+              <header>
+                <h2>投影与告警</h2>
+              </header>
+              <div className="observability-health">
+                <p>
+                  活跃企业 <strong>{data.projection.total}</strong> · 脏投影{' '}
+                  <strong>{data.projection.dirty}</strong> · 从未构建{' '}
+                  <strong>{data.projection.never_built}</strong> · 连续失败{' '}
+                  <strong>{data.projection.failing}</strong>
+                </p>
+                {Object.entries(data.alerts).map(([code, value]) => (
+                  <p key={code} className={value.critical ? 'danger' : ''}>
+                    <AlertTriangle size={14} />
+                    {code} · 未结 {value.open} · 严重 {value.critical}
+                  </p>
+                ))}
+                {!Object.keys(data.alerts).length && <p>当前没有未结运行告警。</p>}
+              </div>
+            </section>
+          </div>
+        </>
+      ) : null}
+    </main>
+  );
+}

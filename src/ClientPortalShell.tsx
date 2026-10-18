@@ -1,10 +1,10 @@
 import type { ReactNode } from 'react';
-import { FileCheck2, FileText, Home, LogOut, PieChart } from 'lucide-react';
+import { FileCheck2, FileText, Home, LogOut, MessageSquareText, PieChart } from 'lucide-react';
 import type { Session } from './types';
 import type { WorkspaceProfile } from './workspace-types';
 import './client-portal.css';
 
-export type ClientPortalTab = 'home' | 'submit' | 'materials' | 'briefing';
+export type ClientPortalTab = 'home' | 'submit' | 'materials' | 'messages' | 'briefing';
 
 export function ClientPortalShell({
   session,
@@ -33,6 +33,7 @@ export function ClientPortalShell({
     { id: 'home', label: '待办', icon: Home },
     { id: 'submit', label: '提交', icon: FileText },
     { id: 'materials', label: '资料清单', icon: FileCheck2 },
+    { id: 'messages', label: '消息', icon: MessageSquareText },
     { id: 'briefing', label: '本月简报', icon: PieChart },
   ];
   return (

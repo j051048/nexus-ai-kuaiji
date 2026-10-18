@@ -2,6 +2,8 @@ export const workspaceViews = [
   'home',
   'firm',
   'onboarding',
+  'inbox',
+  'observability',
   'runs',
   'business',
   'accounting',
@@ -13,6 +15,7 @@ export const workspaceViews = [
   'briefing',
   'ledger',
   'integration',
+  'ingestion',
   'revision',
   'efficiency',
   'closing',
@@ -28,6 +31,7 @@ export const workspaceViews = [
   'recurring',
   'service',
   'materials',
+  'messages',
   'portfolio',
 ] as const;
 export type WorkspaceView = (typeof workspaceViews)[number];
@@ -38,6 +42,8 @@ export function workspaceUsesBook(view: WorkspaceView): boolean {
     'home',
     'firm',
     'onboarding',
+    'inbox',
+    'observability',
     'runs',
     'business',
     'review',
@@ -49,7 +55,9 @@ export function workspaceUsesBook(view: WorkspaceView): boolean {
     'monthly',
     'service',
     'materials',
+    'messages',
     'portfolio',
+    'ingestion',
   ].includes(view);
 }
 

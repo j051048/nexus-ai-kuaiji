@@ -1,0 +1,135 @@
+.firm-ingestion {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 28px 32px 48px;
+  display: grid;
+  gap: 16px;
+}
+.firm-ingestion > header {
+  display: flex;
+  justify-content: space-between;
+  align-items: end;
+  gap: 20px;
+}
+.firm-ingestion h1 {
+  margin: 4px 0 8px;
+  font-size: clamp(30px, 4vw, 46px);
+}
+.firm-ingestion > header p:not(.eyebrow) {
+  margin: 0;
+  color: #6b776c;
+}
+.ingestion-token {
+  display: flex;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid #d9cda8;
+  border-radius: 10px;
+  background: #fff9e9;
+}
+.ingestion-token div {
+  display: grid;
+  gap: 4px;
+}
+.ingestion-token code {
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+.ingestion-token small {
+  color: #7f704f;
+}
+.ingestion-grid {
+  display: grid;
+  grid-template-columns: 1.25fr 0.85fr;
+  gap: 16px;
+  align-items: start;
+}
+.ingestion-grid > section {
+  border: 1px solid #dce4d7;
+  border-radius: 11px;
+  background: #fffefa;
+  overflow: hidden;
+}
+.ingestion-grid > section > header {
+  padding: 14px 16px;
+  border-bottom: 1px solid #e8ede4;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.ingestion-grid h2 {
+  margin: 0;
+  font-size: 17px;
+}
+.ingestion-connections,
+.ingestion-runs {
+  display: grid;
+}
+.ingestion-connections article {
+  padding: 12px 16px;
+  border-bottom: 1px solid #edf1ea;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+.ingestion-kind {
+  border-radius: 6px;
+  background: #eef3eb;
+  color: #506351;
+  padding: 4px 7px;
+  font-size: 10px;
+}
+.ingestion-connections p {
+  margin: 3px 0 0;
+  color: #7b857a;
+  font-size: 11px;
+}
+.ingestion-create {
+  padding: 14px 16px;
+  display: grid;
+  gap: 10px;
+  background: #f8faf5;
+}
+.ingestion-create label {
+  display: grid;
+  gap: 4px;
+  color: #5e6b60;
+  font-size: 11px;
+}
+.ingestion-create input,
+.ingestion-create select {
+  min-height: 36px;
+  border: 1px solid #cfd8ca;
+  border-radius: 7px;
+  padding: 6px 9px;
+  background: #fffefa;
+}
+.ingestion-runs article {
+  padding: 12px 16px;
+  border-bottom: 1px solid #edf1ea;
+  display: grid;
+  gap: 3px;
+}
+.ingestion-runs article.failed {
+  background: #fbf2ee;
+}
+.ingestion-runs span,
+.ingestion-runs small {
+  color: #778277;
+  font-size: 11px;
+}
+@media (max-width: 850px) {
+  .ingestion-grid {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 620px) {
+  .firm-ingestion {
+    padding: 20px 14px 36px;
+  }
+  .firm-ingestion > header {
+    display: grid;
+    align-items: start;
+  }
+}

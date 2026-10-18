@@ -13,7 +13,7 @@
     "typecheck": "tsc -p tsconfig.app.json --noEmit",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "test:e2e:smoke": "playwright test e2e/stage20-home-loading.spec.ts e2e/batch1-navigation.spec.ts e2e/stage9-reconciliation.spec.ts e2e/invoice-imports.spec.ts",
+    "test:e2e:smoke": "playwright test e2e/stage20-home-loading.spec.ts e2e/batch1-navigation.spec.ts e2e/stage9-reconciliation.spec.ts e2e/invoice-imports.spec.ts e2e/monthly-batch.spec.ts e2e/firm-operations.spec.ts",
     "test:backend": "python -m pytest nexus_backend/tests -q",
     "env:doctor": "python scripts/env_doctor.py",
     "lint": "eslint src",
