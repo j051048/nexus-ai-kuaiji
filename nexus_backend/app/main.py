@@ -21,6 +21,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from .auth import AuthSettings, AuthError, Identity, SupabaseAuthenticator
 from .auth.admin_security import allow_firm_signup, requires_admin_mfa
 from .accounting.database import Database, DatabaseCapacityError
+from .accounting.db_diagnostics import log_database_unavailable
 from .agent_workspace.service import AgentWorkspaceService
 from .agent_workspace.router import build_agent_workspace_router
 from .assistant.service import AssistantService
@@ -685,6 +686,7 @@ def create_app(
     @app.exception_handler(psycopg.OperationalError)
     @app.exception_handler(sqlite3.OperationalError)
     async def handle_database_unavailable(request, error):
+        log_database_unavailable(request, error)
         return JSONResponse(
             {"detail": "账务数据服务暂时不可用，请稍后重试；未完成的操作会整体回滚"},
             status_code=503,

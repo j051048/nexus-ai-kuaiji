@@ -125,12 +125,33 @@ def test_pg_assigned_finance_editor_collects_only_public_material_for_accountant
     assert accepted["state"] == "in_review"
 
 
-def test_pg_finance_viewer_material_case_does_not_grant_journal_review(business_case):
+def test_pg_finance_viewer_material_case_does_not_grant_journal_review(business_case, tmp_path):
+    import io
+    from PIL import Image
     from app.accounting.models import ApprovalRequest, DraftUpdate
     from app.accounting.domain import AccountingError
+    from app.business.models import BusinessEventCreate, HandoffRequest
+    from app.business.storage import AttachmentStore
     c = business_case
-    event = full_event(c)
-    _, draft_id = handoff(c, event)
+    business = BusinessService(c.db)
+    value = business.create(c.employee, BusinessEventCreate(
+        company_id=c.company, template_id="reimbursement",
+        payload={"occurred_on":"2026-10-01","description":"本地合成办公费用",
+                 "counterparty":"合成供应商","amount":"12.34","direction":"expense",
+                 "payment_status":"unpaid","category":"office"},
+    ))
+    original = io.BytesIO()
+    Image.new("RGB", (16, 16), "white").save(original, "PNG")
+    stored = AttachmentStore(tmp_path / "viewer-originals").put(
+        "合成原始票据.png", "image/png", original.getvalue())
+    value = business.add_attachment(c.employee, value["id"], value["version"], stored)
+    value = business.submit(c.employee, value["id"], value["version"])
+    value = business.approve_department(c.approver, value["id"], value["version"])
+    value = business.approve_finance(c.finance, value["id"], value["version"])
+    event = value["id"]
+    receipt = business.handoff(c.finance, event, HandoffRequest(
+        expected_version=value["version"], book_id=c.book, idempotency_key=uuid4().hex))
+    draft_id = receipt["draft_id"]
     with c.psycopg.connect(ADMIN_URL) as conn:
         conn.execute("UPDATE accounting.book_access SET role='viewer' WHERE book_id=%s AND user_id=%s", (c.book, c.finance.user_id))
     cases = CaseService(c.db, BusinessService(c.db))
