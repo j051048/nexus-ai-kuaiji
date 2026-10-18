@@ -161,9 +161,15 @@ def test_postgres_read_transaction_keeps_consistent_snapshot(case):
 
 
 def test_postgres_system_role_cannot_access_ledger_and_runtime_is_restricted(case):
+    # Projection maintenance deliberately has read-only access to source/draft
+    # summaries. It must not reach the formal ledger or write a business table.
+    with case.db.transaction(system=True) as conn:
+        assert conn.execute("SELECT COUNT(*) FROM sources").fetchone()[0] >= 0
+        with pytest.raises(case.psycopg.errors.InsufficientPrivilege):
+            conn.execute("SELECT * FROM vouchers")
     with pytest.raises(case.psycopg.errors.InsufficientPrivilege):
-        with case.db.transaction(system=True) as conn:
-            conn.execute("SELECT * FROM sources")
+        with case.db.transaction(write=True, system=True) as conn:
+            conn.execute("INSERT INTO sources(id,book_id) VALUES('x','y')")
     with pytest.raises(RuntimeError, match="禁止"):
         Database(ADMIN_URL)
     with pytest.raises(ValueError, match="actor"):
@@ -171,7 +177,15 @@ def test_postgres_system_role_cannot_access_ledger_and_runtime_is_restricted(cas
             pass
     with case.db.transaction(actor=case.actor) as conn:
         tables = conn.execute("SELECT relname,relrowsecurity,relforcerowsecurity FROM pg_class JOIN pg_namespace n ON n.oid=relnamespace WHERE n.nspname='accounting' AND relkind='r'").fetchall()
-        assert tables and all(row["relrowsecurity"] and row["relforcerowsecurity"] for row in tables)
+        # These three are global catalogs (trusted endpoint directory, capability
+        # metadata, report templates), not tenant rows. Every tenant table must
+        # still have both ENABLE and FORCE RLS.
+        global_catalogs = {"ai_endpoint_capabilities", "ai_trusted_endpoints", "report_templates"}
+        tenant_tables = [row for row in tables if row["relname"] not in global_catalogs]
+        assert tenant_tables and all(
+            row["relrowsecurity"] and row["relforcerowsecurity"] for row in tenant_tables
+        )
+        assert {row["relname"] for row in tables} >= global_catalogs
 
 
 def test_postgres_onboarding_first_owner_and_multi_firm_discovery(postgres):

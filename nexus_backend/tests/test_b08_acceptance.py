@@ -1,6 +1,8 @@
 """B08 independent comparator and non-authorizing switch package tests."""
 
 from copy import deepcopy
+import hashlib
+import json
 import sys
 from pathlib import Path
 
@@ -195,11 +197,26 @@ def test_version_change_invalidates_comparison():
     )
 
 
-def _manifest(gates=None):
+def _manifest(tmp_path, gates=None):
     gate_names = list(switch.REQUIRED_GATES)
     values = {name: "passed" for name in gate_names}
     if gates:
         values.update(gates)
+    evidence = []
+    for name in gate_names:
+        target = tmp_path / f"{name}.json"
+        target.write_text(json.dumps({"gate": name, "synthetic": True}), encoding="utf-8")
+        digest = hashlib.sha256(target.read_bytes()).hexdigest()
+        evidence.append(
+            {
+                "gate": name,
+                "ref": target.name,
+                "sha256": digest,
+                "company_id": "PILOT-A",
+                "ledger_id": "LEDGER-A",
+                "data_version": "b08-local",
+            }
+        )
     return {
         "scope": {
             "company_id": "PILOT-A",
@@ -208,10 +225,7 @@ def _manifest(gates=None):
             "mode": "internal_ledger",
         },
         "gates": values,
-        "evidence": [
-            {"gate": name, "ref": f"evidence/{name}.json", "sha256": "a" * 64}
-            for name in gate_names
-        ],
+        "evidence": evidence,
         "freeze": {
             "data_boundary": "after 2026-09 close",
             "freeze_at": "2026-10-01T00:00:00+08:00",
@@ -222,22 +236,54 @@ def _manifest(gates=None):
     }
 
 
-def test_switch_missing_gate_is_blocked_and_never_approved():
-    package = switch.evaluate(_manifest({"b03_posting": "missing"}))
+def test_switch_missing_gate_is_blocked_and_never_approved(tmp_path):
+    package = switch.evaluate(_manifest(tmp_path, {"b03_posting": "missing"}), tmp_path)
     assert package["status"] == "blocked"
     assert package["status"] != "approved"
 
 
-def test_switch_all_gates_without_signature_is_only_ready_for_authorization():
-    package = switch.evaluate(_manifest())
+def test_switch_all_gates_without_signature_is_only_ready_for_authorization(tmp_path):
+    package = switch.evaluate(_manifest(tmp_path), tmp_path)
     assert package["status"] == "ready_for_authorization"
     assert "approved" not in package["status"]
     assert package["package_fingerprint"]
 
 
-def test_switch_not_applicable_requires_scope_reason():
-    manifest = _manifest({"b05_ai_scope": "not_applicable"})
-    package = switch.evaluate(manifest)
-    assert package["status"] == "blocked"
+def test_switch_not_applicable_requires_scope_reason(tmp_path):
+    manifest = _manifest(tmp_path, {"b05_ai_scope": "not_applicable"})
+    assert switch.evaluate(manifest, tmp_path)["status"] == "blocked"
     manifest["not_applicable"]["b05_ai_scope"] = "本试点不启用任何 AI 场景"
-    assert switch.evaluate(manifest)["status"] == "ready_for_authorization"
+    assert switch.evaluate(manifest, tmp_path)["status"] == "ready_for_authorization"
+
+
+def test_switch_wrong_evidence_hash_blocks(tmp_path):
+    manifest = _manifest(tmp_path)
+    manifest["evidence"][0]["sha256"] = "0" * 64
+    assert switch.evaluate(manifest, tmp_path)["status"] == "blocked"
+
+
+def test_switch_unrelated_company_evidence_blocks(tmp_path):
+    manifest = _manifest(tmp_path)
+    manifest["evidence"][0]["company_id"] = "PILOT-B"
+    assert switch.evaluate(manifest, tmp_path)["status"] == "blocked"
+
+
+def test_switch_core_gate_cannot_be_not_applicable(tmp_path):
+    manifest = _manifest(tmp_path, {"b01_security": "not_applicable"})
+    manifest["not_applicable"]["b01_security"] = "想跳过"
+    assert switch.evaluate(manifest, tmp_path)["status"] == "blocked"
+
+
+def test_switch_external_evidence_is_not_auto_verified(tmp_path):
+    manifest = _manifest(tmp_path)
+    manifest["evidence"][0] = {
+        "gate": "b01_security",
+        "ref": "https://vendor.example/report",
+        "sha256": "a" * 64,
+        "company_id": "PILOT-A",
+        "ledger_id": "LEDGER-A",
+        "data_version": "b08-local",
+    }
+    package = switch.evaluate(manifest, tmp_path)
+    assert package["status"] == "blocked"
+    assert any(item["status"] == "pending_manual_verification" for item in package["issues"])

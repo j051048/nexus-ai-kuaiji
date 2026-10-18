@@ -29,6 +29,104 @@ REQUIRED_GATES = {
     "user_acceptance": "实际人员操作验收",
 }
 ALLOWED = {"passed", "partial", "failed", "missing", "not_applicable"}
+CORE_GATES = {
+    "b01_security",
+    "b02_opening",
+    "b03_posting",
+    "b04_close_reports",
+    "two_periods",
+    "permissions",
+    "recovery",
+}
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _evidence(manifest, base_dir: Path | None):
+    """Return (verified gate set, issue list). External refs are never auto-verified."""
+    verified = set()
+    issues = []
+    scope = manifest.get("scope") or {}
+    freeze = manifest.get("freeze") or {}
+    for index, item in enumerate(manifest.get("evidence") or []):
+        ref = item.get("ref") if isinstance(item, dict) else None
+        gate = item.get("gate") if isinstance(item, dict) else None
+        label = f"evidence[{index}]"
+        if not isinstance(item, dict) or not ref or not gate:
+            issues.append(
+                {
+                    "gate": "evidence",
+                    "label": label,
+                    "message": "证据必须有 gate/ref",
+                    "status": "missing",
+                }
+            )
+            continue
+        declared = str(item.get("sha256") or "").lower()
+        if len(declared) != 64 or any(char not in "0123456789abcdef" for char in declared):
+            issues.append(
+                {
+                    "gate": gate,
+                    "label": label,
+                    "message": "证据 sha256 格式无效",
+                    "status": "failed",
+                }
+            )
+            continue
+        if str(ref).startswith(("http://", "https://")):
+            issues.append(
+                {
+                    "gate": gate,
+                    "label": label,
+                    "message": "外部证据需人工核验，工具不自动通过",
+                    "status": "pending_manual_verification",
+                }
+            )
+            continue
+        path = Path(ref)
+        if not path.is_absolute():
+            path = (base_dir or Path.cwd()) / path
+        if not path.is_file():
+            issues.append(
+                {"gate": gate, "label": label, "message": "证据文件不存在", "status": "missing"}
+            )
+            continue
+        if _sha256(path) != declared:
+            issues.append(
+                {"gate": gate, "label": label, "message": "证据内容哈希不匹配", "status": "failed"}
+            )
+            continue
+        if item.get("scope") != "global":
+            if item.get("company_id") != scope.get("company_id") or item.get(
+                "ledger_id"
+            ) != scope.get("ledger_id"):
+                issues.append(
+                    {
+                        "gate": gate,
+                        "label": label,
+                        "message": "证据企业/账套与切换范围不一致",
+                        "status": "failed",
+                    }
+                )
+                continue
+        if item.get("data_version") and item.get("data_version") != freeze.get("program_version"):
+            issues.append(
+                {
+                    "gate": gate,
+                    "label": label,
+                    "message": "证据版本不是当前冻结版本",
+                    "status": "stale",
+                }
+            )
+            continue
+        verified.add(gate)
+    return verified, issues
 
 
 class InputError(ValueError):
@@ -45,7 +143,7 @@ def _load(path):
     return value
 
 
-def evaluate(manifest):
+def evaluate(manifest, base_dir=None):
     scope = manifest.get("scope") or {}
     for field in ("company_id", "ledger_id", "start_period", "mode"):
         if not scope.get(field):
@@ -56,9 +154,11 @@ def evaluate(manifest):
     evidence = manifest.get("evidence") or []
     if not isinstance(evidence, list):
         raise InputError("evidence 必须是数组")
+    freeze = manifest.get("freeze") or {}
     issues = []
     normalized = {}
-    evidence_gates = {item.get("gate") for item in evidence if isinstance(item, dict)}
+    verified_gates, evidence_issues = _evidence(manifest, Path(base_dir) if base_dir else None)
+    issues.extend(evidence_issues)
     for key, label in REQUIRED_GATES.items():
         status = gates.get(key, "missing")
         if status not in ALLOWED:
@@ -68,7 +168,16 @@ def evaluate(manifest):
             status = "missing"
         if status == "not_applicable":
             reason = (manifest.get("not_applicable") or {}).get(key, "")
-            if not reason or len(str(reason).strip()) < 3:
+            if key in CORE_GATES:
+                issues.append(
+                    {
+                        "gate": key,
+                        "label": label,
+                        "message": "核心门槛不能标为不适用",
+                        "status": "failed",
+                    }
+                )
+            elif not reason or len(str(reason).strip()) < 3:
                 issues.append(
                     {
                         "gate": key,
@@ -83,33 +192,16 @@ def evaluate(manifest):
             issues.append(
                 {"gate": key, "label": label, "message": f"门槛未通过：{status}", "status": status}
             )
-        if key not in evidence_gates:
-            issues.append(
-                {"gate": key, "label": label, "message": "缺少对应证据引用", "status": "missing"}
-            )
-        normalized[key] = {"label": label, "status": status}
-    for item in evidence:
-        if not isinstance(item, dict) or not item.get("ref") or not item.get("sha256"):
+        if key not in verified_gates:
             issues.append(
                 {
-                    "gate": "evidence",
-                    "label": "证据",
-                    "message": "证据必须有 ref 和 sha256",
+                    "gate": key,
+                    "label": label,
+                    "message": "缺少可核验的本地证据（文件/哈希/范围/版本）",
                     "status": "missing",
                 }
             )
-            continue
-        digest = str(item["sha256"]).lower()
-        if len(digest) != 64 or any(char not in "0123456789abcdef" for char in digest):
-            issues.append(
-                {
-                    "gate": "evidence",
-                    "label": "证据",
-                    "message": "证据 sha256 格式无效",
-                    "status": "failed",
-                }
-            )
-    freeze = manifest.get("freeze") or {}
+        normalized[key] = {"label": label, "status": status}
     authorization = manifest.get("authorization") or {}
     for field in ("data_boundary", "freeze_at", "program_version", "migration_version"):
         if not freeze.get(field):
@@ -208,7 +300,7 @@ def main(argv=None):
     parser.add_argument("--force", action="store_true")
     args = parser.parse_args(argv)
     try:
-        package = evaluate(_load(args.manifest))
+        package = evaluate(_load(args.manifest), Path(args.manifest).resolve().parent)
         if args.json_out:
             _write(args.json_out, json.dumps(package, ensure_ascii=False, indent=2), args.force)
         if args.markdown_out:

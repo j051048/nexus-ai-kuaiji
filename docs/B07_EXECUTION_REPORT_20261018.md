@@ -8,7 +8,9 @@
 
 ## 0. 状态
 
-**B07 部分完成。** 已完成：
+**B07 部分完成。** 后续追加：WSL Ubuntu 内 PostgreSQL 14 已用于真实受限角色测试，20 个 PG 适配/集成测试通过；因此“真实 PostgreSQL 完全未验证”不再成立，但容器/PG16/完整恢复/私有身份/离线仍未验收。
+
+已完成：
 
 - 恢复隔离从“可选环境变量”加固为“恢复目录自动检测 + 显式配置 fail-closed”，并接入 API、worker、助手、维护。
 - 上传 `store_content/complete` 的对象 IO/哈希/校验移出数据库写锁，短事务重鉴权提交；并发慢对象测试通过。
@@ -18,7 +20,7 @@
 
 **未通过门槛：**
 
-- 无 Docker/PostgreSQL/psql，未做真实受限 PostgreSQL、容器、私有身份、离线验证。
+- 已在 WSL PostgreSQL 14 做真实受限角色测试；仍未做 Docker 容器、PG16、私有身份、离线验证。
 - 未完成完整系统恢复（身份/角色/RLS/密钥/报表文件/队列费用）。
 - 未做首页/助手端到端性能对比，未做升级/回退、故障注入、真实大附件下载。
 - B01–B06 未全部验收；B07 不能把它们变成生产可用。
@@ -30,7 +32,7 @@
 | 项 | 实际 |
 |---|---|
 | HEAD | `a9daee5b` |
-| 最新 PostgreSQL 迁移 | `107_b05_ai_endpoint_policy.sql` |
+| 最新 PostgreSQL 迁移 | `114_delivery_manifest_company_lock.sql` |
 | 最新 SQLite 迁移 | `082_b05_ai_endpoint_policy.sql` |
 | 工作区 | B03–B06 未提交；本批继续未提交 |
 | 本机可用 | Python/SQLite、Vitest/Playwright、本地 HTTP 替身 |
@@ -50,7 +52,7 @@
 | B04 子账/报表/月结 | 部分（SQLite） | 未进入生产 |
 | B05 端点/外发政策 | 部分（SQLite） | legacy 企业仍是缺口 |
 | B06 角色首页/复核 | 部分 | B07 未改 UI |
-| 真实 PostgreSQL 权限/并发 | **未验证** | 不能签收 |
+| 真实 PostgreSQL 权限/并发 | **部分验证（PG14）** | 20 个 PG 测试通过；PG16/容器未验证 |
 | 私有真实身份 | **未验证** | 不能称生产登录 |
 | 完全离线 | **未验证** | 不能称离线部署 |
 
@@ -205,7 +207,7 @@ Synthetic processing（2 requests，50ms 本地延迟）：
 - 健康探测仍区分进程与业务；未新增完整恢复点/备份失败告警。
 - 迁移由独立脚本执行；API/worker 不自动迁移。
 - 应用/worker/身份/存储版本矩阵、扩展-迁移-收缩、混合版本回退未验证。
-- 无 Docker/Postgres，无法做容器组合启动/退出/升级演练。
+- 有 WSL PostgreSQL 14，但无 Docker/PG16，仍无法做容器组合启动/退出/升级演练。
 
 ---
 
@@ -233,8 +235,15 @@ Synthetic processing（2 requests，50ms 本地延迟）：
 
 **迁移**
 
-- 无新迁移；未修改已应用迁移。
-- 最新仍为 PG 107 / SQLite 082。
+- 新增 PG 108–114；SQLite 无变化（仍 082）。
+- 108：投影 bump 改 SECURITY DEFINER，修复企业创建时 `workspace_projection_state` 权限不足。
+- 109：企业写锁对带非空 `company_id` 的表统一进入企业域，覆盖 B02–B04 新表。
+- 110：审计事件落企业锁；关期 snapshot 函数改企业锁。
+- 111：嵌套安全定义函数使用显式 advisory 企业锁，避免错误回退 legacy 全库锁。
+- 112：关期 review/close 与 ops 脏标记改用企业锁/显式 scope。
+- 113：`ops_company_dirty/refresh` 作为非财务投影状态移除通用企业写门（运行账号仍只有 SELECT）。
+- 114：交付清单函数从 legacy 锁改为企业锁。
+- 已应用历史迁移未修改。
 
 **兼容/回退**
 
@@ -262,6 +271,19 @@ pytest `
 
 结果：**145 passed, 4 skipped**。
 
+追加真实 PostgreSQL（WSL Ubuntu 22.04 / PostgreSQL 14.24）：
+
+```powershell
+$env:ACCOUNTING_TEST_POSTGRES_URL="postgresql://.../accounting_b08_local"
+$env:ACCOUNTING_TEST_DATABASE_URL="postgresql://.../accounting_b08_local"
+$env:ACCOUNTING_TEST_WORKER_DATABASE_URL="postgresql://.../accounting_b08_local"
+pytest nexus_backend/tests/test_postgres_adapter.py `
+  nexus_backend/tests/test_postgres_integration.py -q
+# 20 passed
+```
+
+已用独立 `b08_admin`、`b08_runtime`、`b08_worker` 角色，从空库迁移 1–114 后执行；不是 SQLite 替代。PG 14 与 CI 的 PG16 仍有版本差异，容器未验证。
+
 - `test_uploads.py`：**8 passed**（含慢对象锁测试）。
 - `test_stage10_backup_recovery.py` + `test_restore_hold.py`：**14 passed**。
 - `test_demo_deployment.py`：**37 passed**（含 maintenance/runtime lock）。
@@ -286,7 +308,8 @@ pytest `
 | maintenance 消费者/角色 | **已实现，配置测试** |
 | runtime-only 依赖锁 | **已实现，静态测试** |
 | 备份/原件完整性 | **已有测试，部分边界** |
-| 真实 PostgreSQL/容器/身份/离线 | **未验证** |
+| 真实 PostgreSQL | **部分验证（PG14，20 passed）** |
+| 容器/PG16/私有身份/离线 | **未验证** |
 | 完整系统恢复/RPO/RTO | **未完成** |
 | 首页/助手性能对比 | **未完成** |
 | B01–B06 生产可用 | **未验收** |
