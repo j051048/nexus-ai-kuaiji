@@ -1,6 +1,7 @@
 from period_fixtures import restore_period_state, complete_month_close
 import csv
 import io
+import json
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 
@@ -10,6 +11,7 @@ from pydantic import ValidationError
 
 from app.accounting.database import Database
 from app.accounting.invariants import signed_cents_to_money
+from app.accounting.service import REVIEW_POLICY_VERSION
 from app.accounting.models import ApprovalRequest, BookCreate, DraftUpdate, EvidenceRequest, ExportRequest, ImportRequest, SourceRow, cents_to_money, money_to_cents
 from app.accounting.seed import LOCAL_ACTOR, bootstrap
 from app.accounting.service import AccountingError, AccountingService, Actor
@@ -149,6 +151,71 @@ def test_optimistic_version_and_approved_freeze(service, book):
         service.update_draft(LOCAL_ACTOR, book, draft["id"], update.model_copy(update={"expected_version": 3}))
     with pytest.raises(AccountingError, match="已冻结"):
         service.add_evidence(LOCAL_ACTOR, book, draft["source_id"], EvidenceRequest(evidence_ref="替换证据"))
+
+
+def test_failed_approval_preserves_lines_status_and_evidence(service, book):
+    draft = make_draft(service, book, evidence_ref="")
+    with service.db.transaction(actor=LOCAL_ACTOR) as conn:
+        before = (
+            conn.execute("SELECT status,version FROM drafts WHERE id=?", (draft["id"],)).fetchone(),
+            conn.execute(
+                "SELECT ordinal,account_code,debit_cents,credit_cents FROM draft_lines "
+                "WHERE draft_id=? ORDER BY ordinal",
+                (draft["id"],),
+            ).fetchall(),
+        )
+    with pytest.raises(AccountingError, match="证据"):
+        approve(service, book, draft)
+    with service.db.transaction(actor=LOCAL_ACTOR) as conn:
+        after = (
+            conn.execute("SELECT status,version FROM drafts WHERE id=?", (draft["id"],)).fetchone(),
+            conn.execute(
+                "SELECT ordinal,account_code,debit_cents,credit_cents FROM draft_lines "
+                "WHERE draft_id=? ORDER BY ordinal",
+                (draft["id"],),
+            ).fetchall(),
+        )
+    assert before[0]["status"] == after[0]["status"] == "draft"
+    assert before[0]["version"] == after[0]["version"]
+    assert [tuple(row) for row in before[1]] == [tuple(row) for row in after[1]]
+
+
+def test_revoked_book_access_cannot_approve(service, book):
+    draft = make_draft(service, book)
+    reviewer = add_actor(
+        service,
+        user_id="revoked-reviewer",
+        firm_id=LOCAL_ACTOR.firm_id,
+        role="reviewer",
+        book_id=book,
+    )
+    with service.db.transaction(write=True, actor=LOCAL_ACTOR) as conn:
+        conn.execute(
+            "DELETE FROM book_access WHERE book_id=? AND user_id=?",
+            (book, reviewer.user_id),
+        )
+    with pytest.raises(AccountingError) as denied:
+        service.approve(
+            reviewer, book, draft["id"], ApprovalRequest(expected_version=draft["version"])
+        )
+    assert denied.value.status == 404
+    with service.db.transaction(actor=LOCAL_ACTOR) as conn:
+        assert (
+            conn.execute("SELECT status FROM drafts WHERE id=?", (draft["id"],)).fetchone()[0]
+            == "draft"
+        )
+
+
+def test_approval_audit_records_review_policy_version(service, book):
+    draft = make_draft(service, book)
+    approve(service, book, draft)
+    with service.db.transaction(actor=LOCAL_ACTOR) as conn:
+        row = conn.execute(
+            "SELECT details FROM audit_events WHERE action='draft.approve' AND object_id=?",
+            (draft["id"],),
+        ).fetchone()
+    assert row is not None
+    assert json.loads(row["details"])["review_policy_version"] == REVIEW_POLICY_VERSION
 
 
 def test_concurrent_approval_one_success(service, book):
@@ -361,6 +428,29 @@ def test_http_full_happy_path_and_scope_validation(client):
     export = client.post(url + "/exports", json={"draft_ids": [draft["id"]], "idempotency_key": "http-flow-001"})
     assert export.status_code == 200 and export.json()["count"] == 1
     assert client.get("/api/books/not-authorized").status_code == 404
+
+
+def test_http_review_requires_current_book_permission(client):
+    client.headers["Authorization"] = "Bearer " + client.get("/api/session").json()["token"]
+    book = client.post("/api/books", json={"name": "HTTP权限复核", "period": "2026-10"}).json()["id"]
+    url = f"/api/books/{book}"
+    assert client.post(url + "/imports", json={"source_name": "文件", "rows": [row().model_dump()]}).json()["imported"] == 1
+    assert client.post(url + "/suggestions", json={}).json()["created"] == 1
+    draft = client.get(url).json()["drafts"][0]
+    employee = client.get("/api/session", params={"persona": "employee"}).json()["token"]
+    denied = client.post(
+        url + f"/drafts/{draft['id']}/approve",
+        headers={"Authorization": "Bearer " + employee},
+        json={"expected_version": draft["version"]},
+    )
+    assert denied.status_code in {403, 404}
+    with client.app.state.service.db.transaction() as conn:
+        assert conn.execute("SELECT status FROM drafts WHERE id=?", (draft["id"],)).fetchone()[0] == "draft"
+    approved = client.post(
+        url + f"/drafts/{draft['id']}/approve",
+        json={"expected_version": draft["version"]},
+    )
+    assert approved.status_code == 200
 
 
 @pytest.mark.parametrize("key,value", [("ACCOUNTING_ENV", "production"), ("APP_ENV", "production"), ("ENVIRONMENT", "staging")])

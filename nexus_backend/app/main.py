@@ -102,6 +102,8 @@ from .operations.service import OperationsService
 from .operations.router import build_operations_router
 from .ledgers.service import LedgersService
 from .ledgers.router import build_ledgers_router
+from .opening.router import build_opening_router
+from .opening.service import OpeningService
 from .integrations.service import FinancialBridgeService
 from .settlements.service import SettlementService
 from .settlements.router import build_settlement_router
@@ -261,6 +263,7 @@ def create_app(
                         )
             application.state.service = AccountingService(database)
             application.state.ledgers = LedgersService(database)
+            application.state.opening = OpeningService(database)
             application.state.integrations = FinancialBridgeService(database)
             application.state.settlements = SettlementService(database)
             application.state.service.settlements = application.state.settlements
@@ -379,10 +382,11 @@ def create_app(
             application.state.firm_observability = FirmObservabilityService(
                 database, application.state.service
             )
+            # Deliberately code-level off: the receive/consumer loop is not
+            # complete. Enabling it requires a reviewed code change, not a
+            # deployment-time environment variable.
             application.state.ingestion = IngestionService(
-                database,
-                application.state.service,
-                enabled=os.environ.get("ACCOUNTING_INGESTION_ENABLED") == "1",
+                database, application.state.service, enabled=False
             )
             application.state.handover = HandoverService(
                 database,
@@ -539,7 +543,10 @@ def create_app(
         if origin and origin not in origins:
             return JSONResponse({"detail": "不允许该网页来源访问会计服务"}, status_code=403)
         public = {"/api/auth/config", "/api/session", "/api/health"}
-        public_webhook = request.url.path.startswith("/api/integrations/webhook/")
+        public_webhook = (
+            request.url.path == "/api/integrations/webhook"
+            or request.url.path.startswith("/api/integrations/webhook/")
+        )
         if (
             request.method != "OPTIONS"
             and request.url.path.startswith("/api")
@@ -1006,6 +1013,7 @@ def create_app(
     app.include_router(build_reconciliation_router(actor))
     app.include_router(build_delivery_router(actor))
     app.include_router(build_ledgers_router(actor))
+    app.include_router(build_opening_router(actor))
     app.include_router(build_integrations_router(actor))
     app.include_router(build_settlement_router(actor))
     app.include_router(build_revisions_router(actor))

@@ -25,6 +25,10 @@ from .models import (
     money_to_cents,
 )
 
+# Versioned review policy marker for audit. New separation rules must be
+# approved and versioned explicitly; do not infer them from a flag.
+REVIEW_POLICY_VERSION = "b01.review.2026-10-18"
+
 
 CHART = [
     ("1002", "银行存款"),
@@ -1225,6 +1229,7 @@ class AccountingService:
                 "reviewed_version": expected_version,
                 "lines": value["lines"],
                 "evidence_ref": value["evidence_ref"],
+                "review_policy_version": REVIEW_POLICY_VERSION,
             },
         )
         return self._draft_json(

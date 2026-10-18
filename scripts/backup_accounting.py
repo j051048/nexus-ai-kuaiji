@@ -24,16 +24,16 @@ ORIGINALS_POLICY_VERSION = 2
 # A backup must cover all of them; a restore must verify the same set. New
 # attachment tables must be added here and to the restore verification test.
 ORIGINAL_TABLES = (
-    ("business_attachments", "1=1"),
-    ("case_attachments", "1=1"),
-    ("intake_attachments", "1=1"),
-    ("bank_import_files", "1=1"),
-    ("migration_files", "1=1"),
-    ("material_attachments", "1=1"),
-    ("invoice_import_batches", "1=1"),
+    ("business_attachments", "1=1", ("firm_id", "company_id")),
+    ("case_attachments", "1=1", ("firm_id", "company_id")),
+    ("intake_attachments", "1=1", ("firm_id", "company_id")),
+    ("bank_import_files", "1=1", ("firm_id", "company_id")),
+    ("migration_files", "1=1", ("firm_id", "company_id")),
+    ("material_attachments", "1=1", ("firm_id", "company_id")),
+    ("invoice_import_batches", "1=1", ("firm_id", "company_id")),
     # Upload intents are never deleted. Stored/consuming rows may hold an
     # original that has not yet been attached to a business record.
-    ("upload_intents", "state IN ('stored','consuming','consumed')"),
+    ("upload_intents", "state IN ('stored','consuming','consumed')", ("firm_id", "user_id")),
 )
 
 
@@ -78,44 +78,71 @@ def safe_child(root, relative):
     return result
 
 
+def _collect_originals(conn, table, predicate, scope_columns):
+    scope_sql = ",".join(scope_columns)
+    rows = conn.execute(
+        f"SELECT storage_key,sha256,size_bytes,{scope_sql} FROM {table} WHERE {predicate}"
+    )
+    result = []
+    for row in rows:
+        key, digest, size = row[0], row[1], row[2]
+        scope = dict(zip(scope_columns, row[3:]))
+        result.append(
+            {
+                "storage_key": key,
+                "tables": [table],
+                "scope": scope,
+                "sha256": digest,
+                "size_bytes": size,
+                # The current local/Supabase adapters do not expose an object
+                # version. Keep the field explicit instead of pretending atomic
+                # consistency with the database snapshot.
+                "object_version": None,
+            }
+        )
+    return result
+
+
 def original_rows(conn, dialect):
     """Return deduplicated originals referenced by every registered table."""
     originals = {}
     present = []
     if dialect == "postgres":
-        for table, predicate in ORIGINAL_TABLES:
-            if (
-                conn.execute("SELECT to_regclass(%s)", ("accounting." + table,)).fetchone()[0]
-                is None
-            ):
+        for table, predicate, scope_columns in ORIGINAL_TABLES:
+            qualified = "accounting." + table
+            if conn.execute("SELECT to_regclass(%s)", (qualified,)).fetchone()[0] is None:
                 continue
             present.append(table)
-            rows = conn.execute(
-                f"SELECT storage_key,sha256,size_bytes FROM accounting.{table} WHERE {predicate}"
-            )
-            for key, digest, size in rows:
-                prior = originals.setdefault(
-                    key, {"storage_key": key, "sha256": digest, "size_bytes": size}
-                )
-                if prior["sha256"] != digest or prior["size_bytes"] != size:
-                    raise ValueError("同一原件存储键对应不同哈希")
+            rows = _collect_originals(conn, qualified, predicate, scope_columns)
+            for item in rows:
+                prior = originals.setdefault(item["storage_key"], item)
+                if (
+                    prior["sha256"] != item["sha256"]
+                    or prior["size_bytes"] != item["size_bytes"]
+                    or prior["scope"] != item["scope"]
+                ):
+                    raise ValueError("同一原件存储键对应不同哈希或范围")
+                if table not in prior["tables"]:
+                    prior["tables"].append(table)
     else:
         tables = {
             row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
         }
-        for table, predicate in ORIGINAL_TABLES:
+        for table, predicate, scope_columns in ORIGINAL_TABLES:
             if table not in tables:
                 continue
             present.append(table)
-            rows = conn.execute(
-                f"SELECT storage_key,sha256,size_bytes FROM {table} WHERE {predicate}"
-            )
-            for key, digest, size in rows:
-                prior = originals.setdefault(
-                    key, {"storage_key": key, "sha256": digest, "size_bytes": size}
-                )
-                if prior["sha256"] != digest or prior["size_bytes"] != size:
-                    raise ValueError("同一原件存储键对应不同哈希")
+            rows = _collect_originals(conn, table, predicate, scope_columns)
+            for item in rows:
+                prior = originals.setdefault(item["storage_key"], item)
+                if (
+                    prior["sha256"] != item["sha256"]
+                    or prior["size_bytes"] != item["size_bytes"]
+                    or prior["scope"] != item["scope"]
+                ):
+                    raise ValueError("同一原件存储键对应不同哈希或范围")
+                if table not in prior["tables"]:
+                    prior["tables"].append(table)
     return present, list(originals.values())
 
 
@@ -202,7 +229,16 @@ def copy_originals(storage_root, target, originals, *, storage_store=None):
         destination.chmod(0o600)
         if sha256(destination) != item["sha256"]:
             raise ValueError("复制后的原件哈希不符")
-        files.append({"path": relative, "sha256": item["sha256"], "size_bytes": item["size_bytes"]})
+        files.append(
+            {
+                "path": relative,
+                "sha256": item["sha256"],
+                "size_bytes": item["size_bytes"],
+                "tables": item.get("tables", []),
+                "scope": item.get("scope", {}),
+                "object_version": item.get("object_version"),
+            }
+        )
     return files
 
 
@@ -266,10 +302,12 @@ def backup(database, storage_root, destination, *, storage_store=None):
         "migrations": versions,
         "database_schema_version": versions[-1]["version"] if versions else 0,
         "original_tables": original_tables,
+        "object_version_supported": False,
         "files": files,
         "consistency": "exported_repeatable_read_snapshot"
         if postgres
         else "sqlite_backup_snapshot",
+        "consistency_note": "数据库为快照；对象版本由存储后端决定，当前记录 object_version=null，不宣称原子一致",
         "contains_credentials": False,
     }
     with (target / "manifest.json").open("x", encoding="utf-8") as stream:
@@ -395,6 +433,10 @@ def restore(directory, destination, postgres_target=None):
         "verified_files": len(manifest["files"]),
         "migration_count": len(manifest["migrations"]),
         "serving_enabled": False,
+        "outbound_disabled": True,
+        "worker_autostart": False,
+        "in_flight_jobs_hold": True,
+        "note": "恢复环境须先核对在途任务与结果未知状态，确认前不得启动 worker 或外发",
     }
     with (target / "restore-verification.json").open("x", encoding="utf-8") as stream:
         json.dump(receipt, stream, ensure_ascii=False, indent=2)

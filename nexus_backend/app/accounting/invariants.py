@@ -5,6 +5,7 @@ from datetime import date
 
 MAX_CENTS = 99_999_999_999_999
 MONEY_PATTERN = re.compile(r"(?:0|[1-9][0-9]{0,11})(?:\.[0-9]{1,2})?\Z")
+SIGNED_MONEY_PATTERN = re.compile(r"-?(?:0|[1-9][0-9]{0,11})(?:\.[0-9]{1,2})?\Z")
 PERIOD_PATTERN = re.compile(r"20[0-9]{2}-(?:0[1-9]|1[0-2])\Z")
 
 
@@ -16,6 +17,16 @@ def money_to_cents(value: str) -> int:
     if result > MAX_CENTS:
         raise ValueError("金额超出允许范围")
     return result
+
+
+def signed_money_to_cents(value: str) -> int:
+    """Parse a signed balance while keeping transaction amounts non-negative."""
+    if not isinstance(value, str) or not SIGNED_MONEY_PATTERN.fullmatch(value):
+        raise ValueError("余额必须是有符号十进制字符串，最多两位小数")
+    negative = value.startswith("-")
+    amount = value[1:] if negative else value
+    cents = money_to_cents(amount)
+    return -cents if negative and cents else cents
 
 
 def cents_to_money(cents: int) -> str:

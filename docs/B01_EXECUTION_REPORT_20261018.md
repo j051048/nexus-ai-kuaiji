@@ -225,7 +225,7 @@ python -m pytest nexus_backend/tests/test_review_boundary_postgres.py -q ...
 # 4 skipped（无 PostgreSQL 测试 DSN）
 ```
 
-全量 `nexus_backend/tests` 在本机沙箱运行时间过长，已停止；上面是 B01 相关定向回归，不把“全量通过”写成结论。
+全量 `nexus_backend/tests` 在本机沙箱运行时间过长，已停止；上面是 B01 相关定向回归，不把“全量通过”写成结论。**第二轮补全后的最新计数见第 10 节。**
 
 说明：`tmp_test/pytest_plugin.py` 只是本机沙箱的测试权限补丁（pytest 以 0o700 建临时目录后沙箱无法列举），不属于产品代码；CI 不需要该补丁。本机 `tmp_test/`、`.pytest-tmp/` 因沙箱 ACL 无法彻底删除，已加入 `.git/info/exclude`，不会进入提交。
 
@@ -274,10 +274,16 @@ B01.3 的触发器是“防绕过”，不是正式记账命令；B03 应在此�
 - `nexus_backend/app/ingestion/service.py`
 - `nexus_backend/app/ingestion/router.py`
 - `nexus_backend/app/ingestion/middleware.py`（新增）
+- `nexus_backend/app/jobs/restore_hold.py`（新增）
+- `nexus_backend/app/jobs/worker.py`
+- `nexus_backend/app/unified_worker.py`
+- `nexus_backend/app/accounting/service.py`
 - `nexus_backend/app/main.py`
 - `scripts/backup_accounting.py`
+- `scripts/run_accounting_assistant.py`
 - `.env.accounting.example`
 - `deploy/.env.api.example`
+- `docs/BACKUP_RECOVERY.md`
 
 **迁移**
 
@@ -293,3 +299,73 @@ B01.3 的触发器是“防绕过”，不是正式记账命令；B03 应在此�
 - `nexus_backend/tests/test_ingestion_service.py`
 - `nexus_backend/tests/test_catalog_postgres.py`
 - `nexus_backend/tests/test_review_boundary_postgres.py`（新增）
+- `nexus_backend/tests/test_restore_hold.py`（新增）
+
+---
+
+## 10. R1–R4 补全记录（2026-10-18 第二轮，未提交）
+
+基线 `cc39a916`，按补充执行词补全；本轮改动保持未提交。
+
+### R1 B01.1 证据
+
+新增/补强：
+
+- 净流出、重复来源隔离、**费用冲回负号**、**退款负号**、**缴税负号**、**跨企业 A/B 拒绝**。
+- 父级/辅助重复计数：当前 `accounts` 无父子层级，不新增体系；费用排名按 `account_code` 分组，不对父级汇总。该项标记为“当前模型不适用”。
+
+`test_monthly_briefing.py`：**8 passed**。
+
+### R2 B01.2 清单与恢复
+
+- `ORIGINAL_TABLES` 登记 8 类原件，并记录 `tables`、`scope`（`firm_id/company_id` 或 `firm_id/user_id`）、`object_version`、`sha256`、`size_bytes`。
+- 清单增加 `object_version_supported=false`、`consistency_note`；明确当前存储适配器不暴露对象版本，不宣称原子快照。
+- 新增注册表扫描测试：PostgreSQL 迁移中所有含 `storage_key` 的表必须登记；漏登即失败。
+- `restore-verification.json` 增加 `outbound_disabled/worker_autostart/in_flight_jobs_hold`。
+- 新增 `app/jobs/restore_hold.py`：设置 `ACCOUNTING_RESTORE_HOLD_FILE` 指向恢复核验文件时，队列/统一/助手 worker 拒绝启动。
+- `BACKUP_RECOVERY.md` 增加 accounting 数据包 / 企业资料交付包 / 完整系统灾难恢复三者边界。
+
+`test_stage10_backup_recovery.py` + `test_restore_hold.py`：**12 passed**。
+
+未完成：真实对象存储恢复、恢复后跨企业访问、无模型/邮件调用仍标未验证；企业资料交付包未实现。
+
+### R3 B01.3 审核边界
+
+- `AccountingService` 审批审计增加 `review_policy_version=b01.review.2026-10-18`；不新增第二/第三复核人。
+- 新增 HTTP 测试：企业员工不能复核；会计复核成功。
+- 新增撤权顺序测试：撤销 `book_access` 后不能审核，状态不变。
+- 新增拒绝后内容/证据保持测试：缺少证据的审批失败后，状态、版本、分录行不变。
+- 既有申请人≠复核人、乐观版本、并发审批、关闭期间规则继续保留。
+
+`test_accounting.py`：**45 passed**；`test_review_boundary_postgres.py`：**4 skipped**（本机无 PostgreSQL DSN）。
+
+仍未验收：PostgreSQL 触发器、HTTP 与受限 PG 同组案例、撤权与审核真正并发、最后实质修改人字段（列 B02）。
+
+### R4 B01.4 代码级封禁
+
+- `main.py` 不再读取 `ACCOUNTING_INGESTION_ENABLED`，`IngestionService(enabled=False)` 为代码级默认；环境变量无法开启。
+- 新增 HTTP 测试：设置该环境变量后，`app.state.ingestion.enabled` 仍为 false；旧 `/api/integrations/webhook/fake-token` 返回 404，响应/日志不含令牌，`ingestion_runs` 零新增。
+- 新增 HTTP 202 测试：代码内临时启用后，`X-Ingestion-Token` + `X-Event-Id` 返回 202，且只表示 `received`。
+- 旧路径不再携带令牌；新路径仅 header 凭据。
+
+`test_ingestion_service.py`：**7 passed**。
+
+未完成：真实网关/反向代理访问日志验证（本机 TestClient 只覆盖应用层）；完整消费/重放链仍未实现。
+
+### R5 回归
+
+- B01 定向合计：**72 passed, 4 skipped**。
+- 相关域回归（home/catalog/business/delivery/firm）：**109 passed**。
+- `ruff check`、`ruff format --check`（app/scripts）：通过。
+- 全量 `nexus_backend/tests` 未完成，不得写“全量通过”。
+
+### 当前状态
+
+| 子项 | 状态 |
+|---|---|
+| B01.1 | 已修复并验证（父级/辅助为当前模型不适用） |
+| B01.2 | 部分达标；清单/注册表/恢复守卫已验证，真实对象存储与跨企业恢复未验证 |
+| B01.3 | 未验收；PostgreSQL 与真正并发未验证 |
+| B01.4 | 已隔离；HTTP/代码级封禁已验证，网关日志与消费链未验证 |
+
+**进入 B02 条件**：B01.3 的 PostgreSQL 验收、B01.2 的真实恢复演练至少有一份可复现记录；否则 B01 只能标“部分完成”。

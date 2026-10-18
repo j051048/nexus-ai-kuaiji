@@ -29,7 +29,7 @@ def test_consistent_sqlite_backup_and_new_target_restore_drill(service, book, tm
     copied = Database(restored / "database.sqlite")
     with copied.transaction() as conn:
         assert conn.execute("SELECT COUNT(*) FROM drafts WHERE book_id=?", (book,)).fetchone()[0] == 1
-    assert not (target / "manifest.json").read_text().find(service.db.path) >= 0
+    assert not (target / "manifest.json").read_text(encoding="utf-8").find(service.db.path) >= 0
 
 
 def test_hash_mismatch_prevents_any_restore_write(service, tmp_path):
@@ -60,7 +60,7 @@ def test_manifest_traversal_is_rejected_before_restore(service, tmp_path):
     storage = tmp_path / "private"; storage.mkdir()
     target = tmp_path / "backup"
     recovery.backup(service.db.path, storage, target)
-    manifest = json.loads((target / "manifest.json").read_text())
+    manifest = json.loads((target / "manifest.json").read_text(encoding="utf-8"))
     manifest["files"].append({"path": "originals/../../outside", "sha256": "a" * 64, "size_bytes": 1})
     (target / "manifest.json").write_text(json.dumps(manifest))
     with pytest.raises(ValueError):
@@ -125,6 +125,24 @@ def test_public_remote_bucket_rejected_before_backup_directory_created(ai_case, 
     assert not target.exists()
 
 
+def test_original_registry_covers_every_storage_key_table():
+    import re
+
+    migrations = Path(__file__).resolve().parents[1] / "migrations" / "postgres"
+    found = set()
+    for path in migrations.glob("*.sql"):
+        text = path.read_text(encoding="utf-8")
+        for match in re.finditer(
+            r"CREATE TABLE(?: IF NOT EXISTS)? (?:accounting\.)?([a-z_]+)\s*\((.*?)\);",
+            text,
+            re.S,
+        ):
+            if "storage_key TEXT" in match.group(2):
+                found.add(match.group(1))
+    registered = {table for table, _, _ in recovery.ORIGINAL_TABLES}
+    assert found == registered
+
+
 def test_every_registered_original_table_is_backed_up_and_restored(tmp_path):
     database = tmp_path / "source.sqlite"
     storage = tmp_path / "private"
@@ -132,9 +150,11 @@ def test_every_registered_original_table_is_backed_up_and_restored(tmp_path):
     with sqlite3.connect(database) as conn:
         conn.execute("CREATE TABLE schema_migrations(version TEXT,checksum TEXT)")
         conn.execute("INSERT INTO schema_migrations VALUES('001','checksum')")
-        for table, _ in recovery.ORIGINAL_TABLES:
+        for table, _, scope_columns in recovery.ORIGINAL_TABLES:
+            scope_sql = ",".join(f"{column} TEXT" for column in scope_columns)
             conn.execute(
-                f"CREATE TABLE {table}(storage_key TEXT,sha256 TEXT,size_bytes INTEGER,state TEXT)"
+                f"CREATE TABLE {table}(storage_key TEXT,sha256 TEXT,size_bytes INTEGER,"
+                f"state TEXT,{scope_sql})"
             )
             key = f"aa/{table}"
             payload = table.encode("utf-8")
@@ -142,19 +162,28 @@ def test_every_registered_original_table_is_backed_up_and_restored(tmp_path):
             target = storage / key
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(payload)
+            placeholders = ",".join("?" for _ in range(4 + len(scope_columns)))
             conn.execute(
-                f"INSERT INTO {table} VALUES(?,?,?,?)",
-                (key, digest, len(payload), "stored"),
+                f"INSERT INTO {table} VALUES({placeholders})",
+                (key, digest, len(payload), "stored", *("scope-1" for _ in scope_columns)),
             )
     archive, restored = tmp_path / "backup", tmp_path / "restore"
     manifest = recovery.backup(str(database), storage, archive)
-    assert manifest["original_tables"] == [table for table, _ in recovery.ORIGINAL_TABLES]
+    assert manifest["original_tables"] == [
+        table for table, _, _ in recovery.ORIGINAL_TABLES
+    ]
+    assert manifest["object_version_supported"] is False
+    assert all(item["object_version"] is None for item in manifest["files"][1:])
+    assert all(item["scope"] for item in manifest["files"][1:])
     # One database plus one original for every registered table.
     assert len(manifest["files"]) == len(recovery.ORIGINAL_TABLES) + 1
     assert recovery.verify(archive) == manifest
     receipt = recovery.restore(archive, restored)
     assert receipt["verified_files"] == len(recovery.ORIGINAL_TABLES) + 1
-    for table, _ in recovery.ORIGINAL_TABLES:
+    assert receipt["outbound_disabled"] is True
+    assert receipt["worker_autostart"] is False
+    assert receipt["in_flight_jobs_hold"] is True
+    for table, _, _ in recovery.ORIGINAL_TABLES:
         key = f"aa/{table}"
         assert (restored / "originals" / key).read_bytes() == table.encode("utf-8")
     # A missing blob must block the backup even when the database row exists.

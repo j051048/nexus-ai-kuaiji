@@ -156,6 +156,9 @@ def main(ready_callback=None):
         if not config.is_file():
             parser.error("指定配置文件不存在")
         load_dotenv(config, override=False)
+    from .jobs.restore_hold import enforce_restore_hold
+
+    enforce_restore_hold()
     url = os.getenv("ACCOUNTING_WORKER_DATABASE_URL", "")
     root = os.getenv("ACCOUNTING_ATTACHMENT_ROOT", "")
     if not url:

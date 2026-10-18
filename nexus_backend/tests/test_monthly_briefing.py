@@ -22,6 +22,7 @@ from app.dispositions.service import SourceDispositionService
 from app.monthly.briefing import BriefingService
 from app.monthly.models import BaselineCreate, CheckCreate, MonthlyReason
 from app.monthly.service import MonthlyService
+from test_accounting import add_actor
 from test_catalog import case
 from test_stage10_dispositions import duplicates
 from test_stage9_delivery import facts
@@ -254,6 +255,129 @@ def test_briefing_excludes_isolated_duplicate_sources(case):
     assert result["flows"]["net"] == "-0.30"
     assert len(result["top_expenses"]) == 1
     assert result["top_expenses"][0]["amount"] == "0.30"
+
+
+def test_briefing_expense_reversal_keeps_negative_sign(case):
+    accounting, _, book = case
+    prepare_book(accounting, book)
+    close_book(accounting, book)
+    with accounting.db.transaction(write=True, actor=LOCAL_ACTOR) as conn:
+        conn.execute(
+            "INSERT INTO sources(id,book_id,external_id,source_name,date,description,"
+            "counterparty,amount_cents,direction,evidence_ref,fingerprint,source_kind) "
+            "VALUES('reversal-source',?,'reversal-001','虚构冲回','2026-10-20',"
+            "'费用冲回','示例供方',40000,'expense','冲回凭证','%s','bank')"
+            % ("a" * 64),
+            (book,),
+        )
+        conn.execute(
+            "INSERT INTO drafts(id,book_id,source_id,description,status,version,explanation,"
+            "approved_by,approved_at,exported_at) VALUES('reversal-draft',?,'reversal-source',"
+            "'费用冲回','exported',2,'虚构冲回','local-accountant',"
+            "'2026-10-20T00:00:00+00:00','2026-10-20T00:00:00+00:00')",
+            (book,),
+        )
+        conn.execute(
+            "INSERT INTO draft_lines(draft_id,book_id,ordinal,account_code,debit_cents,credit_cents) "
+            "VALUES('reversal-draft',?,1,'1002',40000,0)",
+            (book,),
+        )
+        conn.execute(
+            "INSERT INTO draft_lines(draft_id,book_id,ordinal,account_code,debit_cents,credit_cents) "
+            "VALUES('reversal-draft',?,2,'6602.02',0,40000)",
+            (book,),
+        )
+    result = BriefingService(accounting.db, accounting).briefing(LOCAL_ACTOR, book)
+    assert result["top_expenses"][0]["amount"] == "-100.00"
+
+
+def test_briefing_refund_keeps_negative_sign(case):
+    accounting, _, book = case
+    prepare_book(accounting, book)
+    close_book(accounting, book)
+    with accounting.db.transaction(write=True, actor=LOCAL_ACTOR) as conn:
+        conn.execute(
+            "INSERT INTO sources(id,book_id,external_id,source_name,date,description,"
+            "counterparty,amount_cents,direction,evidence_ref,fingerprint,source_kind) "
+            "VALUES('refund-source',?,'refund-001','虚构退款','2026-10-20',"
+            "'供应商退款','示例供方',40000,'income','退款凭证','%s','bank')"
+            % ("c" * 64),
+            (book,),
+        )
+        conn.execute(
+            "INSERT INTO drafts(id,book_id,source_id,description,status,version,explanation,"
+            "approved_by,approved_at,exported_at) VALUES('refund-draft',?,'refund-source',"
+            "'供应商退款','exported',2,'虚构退款','local-accountant',"
+            "'2026-10-20T00:00:00+00:00','2026-10-20T00:00:00+00:00')",
+            (book,),
+        )
+        conn.execute(
+            "INSERT INTO draft_lines(draft_id,book_id,ordinal,account_code,debit_cents,credit_cents) "
+            "VALUES('refund-draft',?,1,'1002',40000,0)",
+            (book,),
+        )
+        conn.execute(
+            "INSERT INTO draft_lines(draft_id,book_id,ordinal,account_code,debit_cents,credit_cents) "
+            "VALUES('refund-draft',?,2,'6602.02',0,40000)",
+            (book,),
+        )
+    result = BriefingService(accounting.db, accounting).briefing(LOCAL_ACTOR, book)
+    assert result["top_expenses"][0]["amount"] == "-100.00"
+
+
+def test_briefing_tax_payment_is_signed_negative(case):
+    accounting, _, book = case
+    prepare_book(accounting, book)
+    with accounting.db.transaction(write=True, actor=LOCAL_ACTOR) as conn:
+        conn.execute(
+            "INSERT INTO accounts(book_id,code,name,category,normal_balance) "
+            "VALUES(?,'2221','应交税费','liability','credit')",
+            (book,),
+        )
+    close_book(accounting, book)
+    with accounting.db.transaction(write=True, actor=LOCAL_ACTOR) as conn:
+        conn.execute(
+            "INSERT INTO sources(id,book_id,external_id,source_name,date,description,"
+            "counterparty,amount_cents,direction,evidence_ref,fingerprint,source_kind) "
+            "VALUES('tax-source',?,'tax-001','虚构缴税','2026-10-20',"
+            "'缴纳增值税','税务机关',10000,'expense','完税凭证','%s','bank')"
+            % ("b" * 64),
+            (book,),
+        )
+        conn.execute(
+            "INSERT INTO drafts(id,book_id,source_id,description,status,version,explanation,"
+            "approved_by,approved_at,exported_at) VALUES('tax-draft',?,'tax-source',"
+            "'缴纳增值税','exported',2,'虚构缴税','local-accountant',"
+            "'2026-10-20T00:00:00+00:00','2026-10-20T00:00:00+00:00')",
+            (book,),
+        )
+        conn.execute(
+            "INSERT INTO draft_lines(draft_id,book_id,ordinal,account_code,debit_cents,credit_cents) "
+            "VALUES('tax-draft',?,1,'2221',10000,0)",
+            (book,),
+        )
+        conn.execute(
+            "INSERT INTO draft_lines(draft_id,book_id,ordinal,account_code,debit_cents,credit_cents) "
+            "VALUES('tax-draft',?,2,'1002',0,10000)",
+            (book,),
+        )
+    result = BriefingService(accounting.db, accounting).briefing(LOCAL_ACTOR, book)
+    assert result["tax"]["change"] == "-100.00"
+
+
+def test_briefing_rejects_another_firm_without_book_access(case):
+    accounting, _, book = case
+    prepare_book(accounting, book)
+    close_book(accounting, book)
+    stranger = add_actor(
+        accounting,
+        user_id="brief-other-firm",
+        firm_id="brief-other-firm-id",
+        role="reviewer",
+    )
+    with pytest.raises(AccountingError) as missing:
+        BriefingService(accounting.db, accounting).briefing(stranger, book)
+    assert missing.value.status == 404
 
 
 def test_briefing_scope_and_capability_boundaries(case):
