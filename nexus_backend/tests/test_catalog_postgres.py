@@ -85,7 +85,9 @@ def test_auxiliary_values_frozen_when_draft_approved_sql(business_case):
     event_id = full_event(case)
     _, draft_id = handoff(case, event_id)
     with case.db.transaction(write=True, actor=case.finance) as conn:
-        conn.execute("INSERT INTO draft_lines VALUES(?,?,0,'1002',0,1234)", (draft_id, case.book))
+        # Balanced lines are required by the database review boundary.
+        conn.execute("INSERT INTO draft_lines VALUES(?,?,0,'1002',1234,0)", (draft_id, case.book))
+        conn.execute("INSERT INTO draft_lines VALUES(?,?,1,'2202',0,1234)", (draft_id, case.book))
         conn.execute("INSERT INTO draft_line_auxiliaries VALUES(?,?,0,?)", (draft_id, case.book, json.dumps({'counterparty':'供应商'})))
     with case.db.transaction(write=True, actor=case.owner) as conn:
         conn.execute("UPDATE drafts SET status='approved',approved_by=?,approved_at='2026-10-12T00:00:00+00:00' WHERE id=?", (case.owner.user_id, draft_id))
