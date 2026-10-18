@@ -35,14 +35,17 @@ class OpeningService:
         if not row or row["client_status"] != "active":
             raise AccountingError("长期账套不存在、已停用或无权访问", 404)
         if manage:
-            manager = conn.execute(
-                "SELECT 1 FROM memberships WHERE firm_id=? AND user_id=? "
-                "AND role IN ('owner','admin')",
-                (actor.firm_id, actor.user_id),
-            ).fetchone() or conn.execute(
-                "SELECT 1 FROM ledger_managers WHERE ledger_id=? AND user_id=?",
-                (ledger_id, actor.user_id),
-            ).fetchone()
+            manager = (
+                conn.execute(
+                    "SELECT 1 FROM memberships WHERE firm_id=? AND user_id=? "
+                    "AND role IN ('owner','admin')",
+                    (actor.firm_id, actor.user_id),
+                ).fetchone()
+                or conn.execute(
+                    "SELECT 1 FROM ledger_managers WHERE ledger_id=? AND user_id=?",
+                    (ledger_id, actor.user_id),
+                ).fetchone()
+            )
             if not manager:
                 raise AccountingError("需要事务所管理层或长期账套管理授权", 403)
         return row
@@ -98,11 +101,18 @@ class OpeningService:
                     stamp,
                 ),
             )
-            self._audit(conn, actor, ledger["id"], "opening.policy.create", policy_id, {
-                "standard_kind": request.standard_kind,
-                "taxpayer_kind": request.taxpayer_kind,
-                "version": version,
-            })
+            self._audit(
+                conn,
+                actor,
+                ledger["id"],
+                "opening.policy.create",
+                policy_id,
+                {
+                    "standard_kind": request.standard_kind,
+                    "taxpayer_kind": request.taxpayer_kind,
+                    "version": version,
+                },
+            )
             return self._policy_row(conn, policy_id)
 
     @staticmethod
@@ -184,7 +194,14 @@ class OpeningService:
             conn.execute(
                 "INSERT INTO ledger_accounts(id,firm_id,company_id,ledger_id,current_version,status,"
                 "created_by,created_at) VALUES(?,?,?,?,1,'active',?,?)",
-                (account_id, ledger["firm_id"], ledger["company_id"], ledger["id"], actor.user_id, stamp),
+                (
+                    account_id,
+                    ledger["firm_id"],
+                    ledger["company_id"],
+                    ledger["id"],
+                    actor.user_id,
+                    stamp,
+                ),
             )
             conn.execute(
                 "INSERT INTO ledger_account_versions(id,account_id,ledger_id,firm_id,company_id,version,"
@@ -214,10 +231,17 @@ class OpeningService:
             )
             if parent and parent["is_leaf"]:
                 self._revise_parent_leaf(conn, actor, ledger["id"], parent, stamp)
-            self._audit(conn, actor, ledger["id"], "opening.account.create", account_id, {
-                "code": request.code,
-                "parent_account_id": request.parent_account_id,
-            })
+            self._audit(
+                conn,
+                actor,
+                ledger["id"],
+                "opening.account.create",
+                account_id,
+                {
+                    "code": request.code,
+                    "parent_account_id": request.parent_account_id,
+                },
+            )
             return self._account(conn, ledger["id"], account_id)
 
     def _revise_parent_leaf(self, conn, actor, ledger_id, parent, stamp):
@@ -230,8 +254,15 @@ class OpeningService:
             "SELECT ?,account_id,ledger_id,firm_id,company_id,?,code,name,parent_account_id,level,0,"
             "category,normal_balance,auxiliary_requirements,effective_from,effective_to,'active',?,?,? "
             "FROM ledger_account_versions WHERE account_id=? AND version=?",
-            (uuid4().hex, version, "新增子科目后父级转为汇总科目", actor.user_id, stamp,
-             parent["id"], parent_row["version"]),
+            (
+                uuid4().hex,
+                version,
+                "新增子科目后父级转为汇总科目",
+                actor.user_id,
+                stamp,
+                parent["id"],
+                parent_row["version"],
+            ),
         )
         conn.execute(
             "UPDATE ledger_accounts SET current_version=? WHERE id=? AND ledger_id=?",
@@ -279,10 +310,17 @@ class OpeningService:
                 "UPDATE ledger_accounts SET current_version=? WHERE id=? AND ledger_id=?",
                 (version, account_id, ledger["id"]),
             )
-            self._audit(conn, actor, ledger["id"], "opening.account.revise", account_id, {
-                "version": version,
-                "code": request.code,
-            })
+            self._audit(
+                conn,
+                actor,
+                ledger["id"],
+                "opening.account.revise",
+                account_id,
+                {
+                    "version": version,
+                    "code": request.code,
+                },
+            )
             return self._account(conn, ledger["id"], account_id)
 
     def list_accounts(self, actor, ledger_id):
@@ -308,7 +346,9 @@ class OpeningService:
             if not book:
                 raise AccountingError("旧账套不存在或未关联长期账套", 404)
             self._ledger(conn, actor, book["ledger_id"], manage=True)
-            account = self._account(conn, book["ledger_id"], request.account_id, request.account_version)
+            account = self._account(
+                conn, book["ledger_id"], request.account_id, request.account_version
+            )
             exists = conn.execute(
                 "SELECT 1 FROM accounts WHERE book_id=? AND code=?",
                 (book["id"], request.book_account_code),
@@ -323,11 +363,21 @@ class OpeningService:
                 prior["account_id"] != request.account_id
                 or int(prior["account_version"]) != request.account_version
             ):
-                self._audit(conn, actor, book["ledger_id"], "opening.mapping.replace", book["id"], {
-                    "code": request.book_account_code,
-                    "before": dict(prior),
-                    "after": {"account_id": request.account_id, "version": request.account_version},
-                })
+                self._audit(
+                    conn,
+                    actor,
+                    book["ledger_id"],
+                    "opening.mapping.replace",
+                    book["id"],
+                    {
+                        "code": request.book_account_code,
+                        "before": dict(prior),
+                        "after": {
+                            "account_id": request.account_id,
+                            "version": request.account_version,
+                        },
+                    },
+                )
             conn.execute(
                 "INSERT INTO ledger_account_mappings(book_id,firm_id,company_id,ledger_id,"
                 "book_account_code,account_id,account_version,created_by,created_at) "
@@ -346,11 +396,18 @@ class OpeningService:
                     now(),
                 ),
             )
-            self._audit(conn, actor, book["ledger_id"], "opening.mapping.upsert", book["id"], {
-                "code": request.book_account_code,
-                "account_id": request.account_id,
-                "version": request.account_version,
-            })
+            self._audit(
+                conn,
+                actor,
+                book["ledger_id"],
+                "opening.mapping.upsert",
+                book["id"],
+                {
+                    "code": request.book_account_code,
+                    "account_id": request.account_id,
+                    "version": request.account_version,
+                },
+            )
             return {
                 "book_id": book["id"],
                 "book_account_code": request.book_account_code,
@@ -410,10 +467,17 @@ class OpeningService:
                     stamp,
                 ),
             )
-            self._audit(conn, actor, ledger["id"], "opening.package.create", package_id, {
-                "target_period": request.target_period,
-                "policy_id": policy["id"],
-            })
+            self._audit(
+                conn,
+                actor,
+                ledger["id"],
+                "opening.package.create",
+                package_id,
+                {
+                    "target_period": request.target_period,
+                    "policy_id": policy["id"],
+                },
+            )
             return self._package_view(conn, actor, package_id)
 
     def import_version(self, actor, package_id, request):
@@ -529,11 +593,18 @@ class OpeningService:
                 "UPDATE opening_packages SET current_version=?,status='draft',updated_at=? WHERE id=?",
                 (version, stamp, package_id),
             )
-            self._audit(conn, actor, package["ledger_id"], "opening.version.import", version_id, {
-                "package_id": package_id,
-                "version": version,
-                "lines": len(request.lines),
-            })
+            self._audit(
+                conn,
+                actor,
+                package["ledger_id"],
+                "opening.version.import",
+                version_id,
+                {
+                    "package_id": package_id,
+                    "version": version,
+                    "lines": len(request.lines),
+                },
+            )
             return self._version_view(conn, actor, version_id, replayed=False)
 
     @staticmethod
@@ -542,9 +613,7 @@ class OpeningService:
             {
                 "policy_id": policy["id"],
                 "policy_version": policy["version"],
-                "accounts": sorted(
-                    {f"{line.account_id}:{line.account_version}" for line in lines}
-                ),
+                "accounts": sorted({f"{line.account_id}:{line.account_version}" for line in lines}),
             }
         )
 
@@ -624,7 +693,9 @@ class OpeningService:
         checks.append(
             (
                 "duplicate_lines",
-                "pass" if len(lines) == len({(row["account_id"], row["aux_json"]) for row in lines}) else "fail",
+                "pass"
+                if len(lines) == len({(row["account_id"], row["aux_json"]) for row in lines})
+                else "fail",
                 {},
             )
         )
@@ -642,11 +713,7 @@ class OpeningService:
         return checks
 
     def _assert_current(self, conn, version):
-        failed = [
-            code
-            for code, status, _ in self._checks(conn, version)
-            if status != "pass"
-        ]
+        failed = [code for code, status, _ in self._checks(conn, version) if status != "pass"]
         if failed:
             raise AccountingError("核验未通过或配置已变化：" + "、".join(failed), 409)
 
@@ -667,9 +734,16 @@ class OpeningService:
                 "UPDATE opening_packages SET status='submitted',updated_at=? WHERE id=?",
                 (now(), version["package_id"]),
             )
-            self._audit(conn, actor, version["ledger_id"], "opening.version.submit", version_id, {
-                "version": version["version"],
-            })
+            self._audit(
+                conn,
+                actor,
+                version["ledger_id"],
+                "opening.version.submit",
+                version_id,
+                {
+                    "version": version["version"],
+                },
+            )
             return self._version_view(conn, actor, version_id, replayed=False)
 
     def approve_version(self, actor, version_id, request):
@@ -696,10 +770,17 @@ class OpeningService:
                 "UPDATE opening_packages SET status='approved',updated_at=? WHERE id=?",
                 (now(), version["package_id"]),
             )
-            self._audit(conn, actor, version["ledger_id"], "opening.version.approve", version_id, {
-                "version": version["version"],
-                "approved_by": actor.user_id,
-            })
+            self._audit(
+                conn,
+                actor,
+                version["ledger_id"],
+                "opening.version.approve",
+                version_id,
+                {
+                    "version": version["version"],
+                    "approved_by": actor.user_id,
+                },
+            )
             return self._version_view(conn, actor, version_id, replayed=False)
 
     def freeze_version(self, actor, version_id, request):
@@ -718,9 +799,16 @@ class OpeningService:
                 "UPDATE opening_packages SET status='frozen',updated_at=? WHERE id=?",
                 (now(), version["package_id"]),
             )
-            self._audit(conn, actor, version["ledger_id"], "opening.version.freeze", version_id, {
-                "version": version["version"],
-            })
+            self._audit(
+                conn,
+                actor,
+                version["ledger_id"],
+                "opening.version.freeze",
+                version_id,
+                {
+                    "version": version["version"],
+                },
+            )
             return self._version_view(conn, actor, version_id, replayed=False)
 
     def _version(self, conn, actor, version_id):

@@ -18,7 +18,9 @@ def build_opening_router(actor_dependency):
         return request.app.state.opening
 
     @router.post("/policies", status_code=201)
-    def create_policy(payload: PolicyCreate, current=Depends(actor_dependency), opening=Depends(service)):
+    def create_policy(
+        payload: PolicyCreate, current=Depends(actor_dependency), opening=Depends(service)
+    ):
         return opening.create_policy(current, payload)
 
     @router.get("/policies")
@@ -30,7 +32,9 @@ def build_opening_router(actor_dependency):
         return {"policies": opening.list_policies(current, ledger_id)}
 
     @router.post("/accounts", status_code=201)
-    def create_account(payload: AccountCreate, current=Depends(actor_dependency), opening=Depends(service)):
+    def create_account(
+        payload: AccountCreate, current=Depends(actor_dependency), opening=Depends(service)
+    ):
         return opening.create_account(current, payload)
 
     @router.post("/accounts/{account_id}/versions", status_code=201)
@@ -51,7 +55,9 @@ def build_opening_router(actor_dependency):
         return {"accounts": opening.list_accounts(current, ledger_id)}
 
     @router.post("/mappings", status_code=201)
-    def create_mapping(payload: MappingCreate, current=Depends(actor_dependency), opening=Depends(service)):
+    def create_mapping(
+        payload: MappingCreate, current=Depends(actor_dependency), opening=Depends(service)
+    ):
         return opening.create_mapping(current, payload)
 
     @router.get("/mappings")
