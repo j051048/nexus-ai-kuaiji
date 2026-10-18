@@ -194,6 +194,7 @@ class BatchOperationsService:
                 "FROM batch_operation_items i "
                 "JOIN batch_operations b ON b.id=i.batch_id "
                 "WHERE i.status IN('queued','retry_wait') AND i.available_at<=? "
+                "AND i.attempt<i.max_attempts "
                 "ORDER BY i.created_at,i.id LIMIT 1",
                 (stamp,),
             ).fetchone()
@@ -225,6 +226,12 @@ class BatchOperationsService:
             }
 
     def finish(self, item, status, result=None, error_code="", error_detail="", retry_seconds=30):
+        if status == "retry_wait" and int(item.get("attempt", 0)) >= int(
+            item.get("max_attempts", 0)
+        ):
+            status = "failed"
+            error_code = error_code or "max_attempts"
+            error_detail = "达到重试上限，已转人工处理"
         with self.worker_transaction() as conn:
             if self.db.is_postgres:
                 return conn.execute(

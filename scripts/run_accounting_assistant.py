@@ -60,6 +60,7 @@ def main(ready_callback=None):
     db = None
     try:
         db = Database(url)
+        db.assert_restore_hold()
         storage = create_attachment_store(root)
         storage.verify_private()
         intelligence = IntelligenceService(

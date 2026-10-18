@@ -124,6 +124,30 @@ export function IntakeWizard({
   useEffect(() => {
     if (initialDraftId) void resume(initialDraftId);
   }, [initialDraftId]);
+  const hasRunningRun = !!draft?.runs.some((row) => row.status === 'running');
+  useEffect(() => {
+    if (!draft?.id || !hasRunningRun) return;
+    let disposed = false;
+    const controller = new AbortController();
+    const timer = window.setInterval(() => {
+      void api<IntakeDraft>(
+        `/intake/drafts/${encodeURIComponent(draft.id)}`,
+        session,
+        { signal: controller.signal },
+      )
+        .then((value) => {
+          if (!disposed && active.current) adopt(value);
+        })
+        .catch((failure) => {
+          if (!disposed && !controller.signal.aborted) setError(errorMessage(failure));
+        });
+    }, 2500);
+    return () => {
+      disposed = true;
+      window.clearInterval(timer);
+      controller.abort();
+    };
+  }, [draft?.id, hasRunningRun, session]);
   useEffect(() => {
     onBusyChange(!!busy);
     return () => onBusyChange(false);
@@ -705,7 +729,10 @@ export function IntakeWizard({
                         className="button secondary small"
                         type="button"
                         disabled={
-                          !!busy || run?.status === 'running' || run?.status === 'succeeded'
+                          !!busy ||
+                          run?.status === 'running' ||
+                          run?.status === 'succeeded' ||
+                          run?.status === 'stale'
                         }
                         onClick={() => void recognize(attachment.id)}
                       >
@@ -723,8 +750,12 @@ export function IntakeWizard({
                               : 'AI 识别并预填'}
                       </button>
                     )}
-                  {run && run.status === 'failed' && (
-                    <p className="form-error">{run.error_detail}</p>
+                  {run && (run.status === 'failed' || run.status === 'stale') && (
+                    <p className="form-error">
+                      {run.status === 'stale'
+                        ? '识别已中断，未自动重发；请刷新等待管理员核定费用后再恢复。'
+                        : run.error_detail}
+                    </p>
                   )}
                   {run &&
                     intakeCandidates(run, fields.direction).map((candidate) => (

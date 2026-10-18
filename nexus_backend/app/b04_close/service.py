@@ -4,6 +4,7 @@ import hashlib
 import json
 from uuid import uuid4
 
+from ..accounting.close_dependencies import close_dependencies
 from ..accounting.domain import AccountingError
 from ..accounting.service import AccountingService, now
 from ..posting.service import PostingService
@@ -30,31 +31,47 @@ class CloseService:
     def _book(self, conn, actor, book_id, write=False):
         return self.accounting.access.book(conn, actor, book_id, "review" if write else "read")
 
-    def preflight(self, actor, request: ClosePreflight):
+    def _company_for_book(self, actor, book_id):
+        # Discover the target with normal authorization, then authorize again
+        # after entering the company's established shared-global/company gate.
         with self.db.transaction(actor=actor) as conn:
-            book = self._book(conn, actor, request.book_id)
-            if request.period != book["period"]:
-                raise AccountingError("月结期间与账套期间不一致", 422)
-            report = conn.execute(
-                "SELECT * FROM report_runs WHERE id=? AND book_id=? AND period=?",
-                (request.report_id, book["id"], request.period),
-            ).fetchone()
-            if not report:
-                raise AccountingError("报表不存在或不属于当前账套/期间", 404)
-            if report["status"] not in {"reviewed", "published"}:
-                raise AccountingError("报表尚未复核，不能进行月结预检", 409)
-            unposted = conn.execute(
-                "SELECT COUNT(*) FROM periodic_drafts WHERE book_id=? AND period=? AND status<>'posted'",
-                (book["id"], request.period),
-            ).fetchone()[0]
-            unapproved = conn.execute(
-                "SELECT COUNT(*) FROM drafts WHERE book_id=? AND status NOT IN('approved','exported')",
-                (book["id"],),
-            ).fetchone()[0]
-            report_content = json.loads(report["content_json"])
-        control = self.subledger.control_reconciliation(actor, book["id"])
-        bank = self.subledger.bank_reconciliation(actor, book["id"])
-        trial = self.posting.trial_balance(actor, book["id"])
+            return self._book(conn, actor, book_id, write=True)["company_id"]
+
+    def _company_for_run(self, actor, run_id):
+        with self.db.transaction(actor=actor) as conn:
+            run = self._run(conn, actor, run_id, write=True)
+            return self._book(conn, actor, run["book_id"], write=True)["company_id"]
+
+    def _snapshot(self, conn, actor, book, period, report_id):
+        if period != book["period"] or book["period_status"] != "open":
+            raise AccountingError("月结期间与开放的账套期间不一致", 409)
+        report = conn.execute(
+            "SELECT * FROM report_runs WHERE id=? AND book_id=? AND period=?",
+            (report_id, book["id"], period),
+        ).fetchone()
+        if not report:
+            raise AccountingError("报表不存在或不属于当前账套/期间", 404)
+        if report["status"] not in {"reviewed", "published"}:
+            raise AccountingError("报表尚未复核，不能进行月结预检", 409)
+        # Every input is read on this connection while the company gate is held;
+        # no nested transaction can supply an older balance or reconciliation.
+        trial = self.posting.trial_balance_in_transaction(conn, actor, book["id"])
+        self.reports._current_in_transaction(conn, actor, report["id"], trial=trial)
+        control = self.subledger.control_reconciliation_in_transaction(
+            conn, actor, book["id"], trial=trial
+        )
+        bank = self.subledger.bank_reconciliation_in_transaction(
+            conn, actor, book["id"], trial=trial
+        )
+        unposted = conn.execute(
+            "SELECT COUNT(*) FROM periodic_drafts WHERE book_id=? AND period=? AND status<>'posted'",
+            (book["id"], period),
+        ).fetchone()[0]
+        unapproved = conn.execute(
+            "SELECT COUNT(*) FROM drafts WHERE book_id=? AND status NOT IN('approved','exported')",
+            (book["id"],),
+        ).fetchone()[0]
+        report_content = json.loads(report["content_json"])
         checks = [
             {
                 "code": "unposted_periodic",
@@ -97,13 +114,59 @@ class CloseService:
                 "detail": report_content["checks"],
             },
         ]
-        blocking = [check for check in checks if check["status"] == "blocked"]
-        status = "preflight_failed" if blocking else "preflight_passed"
-        fingerprint = _fingerprint(
-            {"report": report["inputs_fingerprint"], "checks": checks, "trial": trial["totals"]}
-        )
-        with self.db.transaction(write=True, actor=actor) as conn:
+        dependencies = close_dependencies(conn, book["id"], report["template_id"])
+        fingerprint = _fingerprint({
+            "dependencies": dependencies,
+            "report": {
+                "id": report["id"], "version": int(report["version"]),
+                "inputs_fingerprint": report["inputs_fingerprint"],
+                "content_hash": report["content_hash"],
+                "template_version": int(report["template_version"]),
+            },
+            "checks": checks,
+            "trial": trial,
+        })
+        return checks, dependencies, fingerprint
+
+    def _assert_current(self, conn, actor, run):
+        book = self._book(conn, actor, run["book_id"], write=True)
+        try:
+            checks, dependencies, fingerprint = self._snapshot(
+                conn, actor, book, run["period"], run["report_run_id"]
+            )
+        except AccountingError as error:
+            if error.status != 409:
+                raise
+            raise AccountingError("月结预检已变化，请重新预检并复核", 409) from error
+        if (
+            json.loads(run["dependencies_json"]) != dependencies
+            or run["inputs_fingerprint"] != fingerprint
+            or any(check["status"] == "blocked" for check in checks)
+        ):
+            raise AccountingError("月结预检已变化，请重新预检并复核", 409)
+        return book
+
+    def preflight(self, actor, request: ClosePreflight):
+        company_id = self._company_for_book(actor, request.book_id)
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             book = self._book(conn, actor, request.book_id, write=True)
+            if request.period != book["period"]:
+                raise AccountingError("月结期间与账套期间不一致", 422)
+            if conn.execute(
+                "SELECT 1 FROM internal_period_locks WHERE book_id=? AND period=?",
+                (book["id"], request.period),
+            ).fetchone():
+                raise AccountingError("该期间已经内部锁期", 409)
+            checks, dependencies, fingerprint = self._snapshot(
+                conn, actor, book, request.period, request.report_id
+            )
+            status = (
+                "preflight_failed"
+                if any(check["status"] == "blocked" for check in checks)
+                else "preflight_passed"
+            )
             version = conn.execute(
                 "SELECT COALESCE(MAX(version),0)+1 FROM internal_close_runs WHERE book_id=? AND period=?",
                 (book["id"], request.period),
@@ -111,25 +174,23 @@ class CloseService:
             run_id = uuid4().hex
             conn.execute(
                 "INSERT INTO internal_close_runs(id,book_id,period,status,version,inputs_fingerprint,"
-                "checks_json,report_run_id,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
+                "checks_json,dependencies_json,report_run_id,created_by,created_at) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?,?)",
                 (
-                    run_id,
-                    book["id"],
-                    request.period,
-                    status,
-                    version,
-                    fingerprint,
+                    run_id, book["id"], request.period, status, version, fingerprint,
                     json.dumps(checks, ensure_ascii=False),
-                    report["id"],
-                    actor.user_id,
-                    now(),
+                    json.dumps(dependencies, ensure_ascii=False, sort_keys=True),
+                    request.report_id, actor.user_id, now(),
                 ),
             )
             self._audit(conn, actor, book["id"], "close.preflight", run_id, {"status": status})
             return self._view(conn, run_id)
 
     def review(self, actor, run_id, request: CloseCommand):
-        with self.db.transaction(write=True, actor=actor) as conn:
+        company_id = self._company_for_run(actor, run_id)
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             run = self._run(conn, actor, run_id, write=True)
             if run["status"] != "preflight_passed":
                 raise AccountingError("只有预检通过的月结才能复核", 409)
@@ -137,36 +198,30 @@ class CloseService:
                 raise AccountingError("月结版本已变化", 409)
             if run["created_by"] == actor.user_id:
                 raise AccountingError("月结预检人与复核人必须分离", 403)
+            self._assert_current(conn, actor, run)
             conn.execute(
                 "UPDATE internal_close_runs SET status='reviewed',reviewed_by=?,reviewed_at=? WHERE id=?",
                 (actor.user_id, now(), run_id),
             )
+            self._audit(conn, actor, run["book_id"], "close.review", run_id, {})
             return self._view(conn, run_id)
 
     def lock(self, actor, run_id, request: CloseCommand):
-        with self.db.transaction(actor=actor) as conn:
-            run = self._run(conn, actor, run_id)
+        company_id = self._company_for_run(actor, run_id)
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
+            run = self._run(conn, actor, run_id, write=True)
             if run["status"] != "reviewed":
                 raise AccountingError("只有已复核的月结才能锁期", 409)
             if int(run["version"]) != request.expected_version:
                 raise AccountingError("月结版本已变化", 409)
-            report = conn.execute(
-                "SELECT * FROM report_runs WHERE id=?", (run["report_run_id"],)
-            ).fetchone()
-            if not report or report["status"] not in {"reviewed", "published"}:
-                raise AccountingError("报表复核已失效，不能锁期", 409)
-            report_id = report["id"]
-        self.reports._current(actor, report_id)
-        with self.db.transaction(write=True, actor=actor) as conn:
-            run = self._run(conn, actor, run_id, write=True)
-            if run["status"] != "reviewed" or int(run["version"]) != request.expected_version:
-                raise AccountingError("月结状态或版本已变化，请刷新后重试", 409)
             if conn.execute(
                 "SELECT 1 FROM internal_period_locks WHERE book_id=? AND period=?",
                 (run["book_id"], run["period"]),
             ).fetchone():
                 raise AccountingError("该期间已经内部锁期", 409)
-            book = self._book(conn, actor, run["book_id"], write=True)
+            book = self._assert_current(conn, actor, run)
             ledger = conn.execute(
                 "SELECT ledger_id FROM ledger_periods WHERE book_id=?", (book["id"],)
             ).fetchone()
@@ -175,15 +230,8 @@ class CloseService:
                 "INSERT INTO internal_period_locks(id,firm_id,company_id,ledger_id,book_id,period,"
                 "close_run_id,locked_by,locked_at) VALUES(?,?,?,?,?,?,?,?,?)",
                 (
-                    lock_id,
-                    book["firm_id"],
-                    book["company_id"],
-                    ledger["ledger_id"],
-                    run["book_id"],
-                    run["period"],
-                    run_id,
-                    actor.user_id,
-                    now(),
+                    lock_id, book["firm_id"], book["company_id"], ledger["ledger_id"],
+                    run["book_id"], run["period"], run_id, actor.user_id, now(),
                 ),
             )
             conn.execute(
@@ -194,8 +242,9 @@ class CloseService:
             return self._view(conn, run_id)
 
     def publish(self, actor, run_id, request: CloseCommand):
-        with self.db.transaction(actor=actor) as conn:
-            run = self._run(conn, actor, run_id)
+        with self.db.transaction(write=True, actor=actor) as conn:
+            run = self._run(conn, actor, run_id, write=True)
+            self.accounting.access.book(conn, actor, run["book_id"], "review")
             if run["status"] != "locked":
                 raise AccountingError("只有已锁期的月结才能发布", 409)
             if int(run["version"]) != request.expected_version:
@@ -210,10 +259,14 @@ class CloseService:
             ReportCommand(expected_version=report["version"], reason=request.reason),
         )
         with self.db.transaction(write=True, actor=actor) as conn:
-            conn.execute(
-                "UPDATE internal_close_runs SET status='published',published_by=?,published_at=? WHERE id=?",
+            self.accounting.access.book(conn, actor, run["book_id"], "review")
+            changed = conn.execute(
+                "UPDATE internal_close_runs SET status='published',published_by=?,published_at=? "
+                "WHERE id=? AND status='locked'",
                 (actor.user_id, now(), run_id),
             )
+            if changed.rowcount != 1:
+                raise AccountingError("月结状态已变化，未发布", 409)
             self._audit(
                 conn, actor, run["book_id"], "close.publish", run_id, {"report_id": report_id}
             )
@@ -224,7 +277,8 @@ class CloseService:
 
     def get(self, actor, run_id):
         with self.db.transaction(actor=actor) as conn:
-            return self._view(conn, run_id)
+            row = self._run(conn, actor, run_id)
+            return {"close": dict(row), "checks": json.loads(row["checks_json"])}
 
     def list(self, actor, book_id):
         with self.db.transaction(actor=actor) as conn:

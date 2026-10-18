@@ -61,58 +61,68 @@ class ImportWizardService:
     def upload_intent(self, actor, book_id, upload_id):
         if self.uploads is None:
             raise AccountingError("大文件直传尚未配置", 409)
-        stored = self.uploads.take(actor, upload_id, "bank_import")
-        try:
-            result = self.upload_stored(actor, book_id, stored)
-            self.uploads.confirm(actor, upload_id, "bank_import")
-            return result
-        except AccountingError:
-            self.uploads.release(actor, upload_id)
-            raise
+        with self.db.transaction(actor=actor) as conn:
+            self._book(conn, actor, book_id)
+        stored = self.uploads.peek(actor, upload_id, "bank_import", allow_consumed=True)
+        data = self.storage.read(stored)
+        filename, media_type = validate_import_original(stored["filename"], stored["media_type"], data)
+        table = parse_file(filename, data)
+        return self.uploads.consume(actor, upload_id, "bank_import", book_id,
+            lambda conn, metadata: self._record(actor, book_id, None,
+                {**metadata, "filename": filename, "media_type": media_type}, table, conn=conn))
 
-    def _record(self, actor, book_id, company_id, metadata, table):
-        with self.db.transaction(
-            write=True, actor=actor, company_id=company_id, write_scope="company"
-        ) as conn:
-            book = self._book(conn, actor, book_id, True)
-            threshold = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
-            count = conn.execute(
-                "SELECT COUNT(*) FROM bank_import_files WHERE book_id=? AND created_by=? AND created_at>?",
-                (book_id, actor.user_id, threshold),
-            ).fetchone()[0]
-            if count >= 20:
-                raise AccountingError("此账套每人每小时最多上传20个导入文件，请稍后重试", 429)
-            conn.execute(
-                "INSERT INTO bank_import_files(id,book_id,firm_id,company_id,storage_key,filename,media_type,sha256,size_bytes,table_json,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
-                (
-                    metadata["id"],
-                    book_id,
-                    actor.firm_id,
-                    book["company_id"],
-                    metadata["storage_key"],
-                    metadata["filename"],
-                    metadata["media_type"],
-                    metadata["sha256"],
-                    metadata["size_bytes"],
-                    dumped(table),
-                    actor.user_id,
-                    now(),
-                ),
-            )
-            result = {
-                "file_id": metadata["id"],
-                "filename": metadata["filename"],
-                "sha256": metadata["sha256"],
-                "headers": table["headers"],
-                "sample_rows": table["rows"][:5],
-                "row_count": len(table["rows"]),
-                "encoding": table["encoding"],
-                "suggested_columns": table["suggested_columns"],
-                "ambiguous_fields": table["ambiguous_fields"],
-                "sheet_name": table.get("sheet_name"),
-            }
-            self.storage.retain(metadata)
-            return result
+    def _record(self, actor, book_id, company_id, metadata, table, conn=None):
+        if conn is None:
+            with self.db.transaction(
+                write=True, actor=actor, company_id=company_id, write_scope="company"
+            ) as transaction:
+                return self._record(actor, book_id, company_id, metadata, table, transaction)
+        book = self._book(conn, actor, book_id, not metadata.get("_upload_replay"))
+        if metadata.get("_upload_replay"):
+            item = self._file(conn, book_id, metadata["id"])
+            return self._upload_result(dict(item), json.loads(item["table_json"]))
+        threshold = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+        count = conn.execute(
+            "SELECT COUNT(*) FROM bank_import_files WHERE book_id=? AND created_by=? AND created_at>?",
+            (book_id, actor.user_id, threshold),
+        ).fetchone()[0]
+        if count >= 20:
+            raise AccountingError("此账套每人每小时最多上传20个导入文件，请稍后重试", 429)
+        conn.execute(
+            "INSERT INTO bank_import_files(id,book_id,firm_id,company_id,storage_key,filename,media_type,sha256,size_bytes,table_json,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                metadata["id"],
+                book_id,
+                actor.firm_id,
+                book["company_id"],
+                metadata["storage_key"],
+                metadata["filename"],
+                metadata["media_type"],
+                metadata["sha256"],
+                metadata["size_bytes"],
+                dumped(table),
+                actor.user_id,
+                now(),
+            ),
+        )
+        result = self._upload_result(metadata, table)
+        self.storage.retain(metadata)
+        return result
+
+    @staticmethod
+    def _upload_result(metadata, table):
+        return {
+            "file_id": metadata["id"],
+            "filename": metadata["filename"],
+            "sha256": metadata["sha256"],
+            "headers": table["headers"],
+            "sample_rows": table["rows"][:5],
+            "row_count": len(table["rows"]),
+            "encoding": table["encoding"],
+            "suggested_columns": table["suggested_columns"],
+            "ambiguous_fields": table["ambiguous_fields"],
+            "sheet_name": table.get("sheet_name"),
+        }
 
     def _file(self, conn, book_id, file_id):
         item = conn.execute(

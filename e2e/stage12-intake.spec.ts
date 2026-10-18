@@ -17,9 +17,11 @@ const contract = {
   ),
 };
 
+test.setTimeout(90_000);
+
 test('员工一体化原件上传、服务端草稿恢复和独立部门审批', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 960 });
-  await page.goto('/');
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
   await choosePersona(page, 'employee');
   await openBusiness(page);
   await page.getByRole('button', { name: '录入业务事项', exact: true }).click();

@@ -207,55 +207,61 @@ class MaterialAttachmentService:
             raise AccountingError("资料请求不存在或无权访问", 404)
         return row["company_id"]
 
-    def add(self, actor, request_id, expected_version, stored):
-        company_id = self._company_of(actor, request_id)
-        with self.db.transaction(
-            write=True, actor=actor, company_id=company_id, write_scope="company"
-        ) as conn:
-            row = self._uploadable(conn, actor, request_id, expected_version)
-            previous = conn.execute(
-                "SELECT * FROM material_attachments WHERE request_id=? AND sha256=? AND filename=? AND media_type=?",
-                (request_id, stored["sha256"], stored["filename"], stored["media_type"]),
-            ).fetchone()
-            if previous:
-                return {
-                    "attachment": {key: previous[key] for key in METADATA},
-                    "version": expected_version,
-                    "duplicate": True,
-                }
-            limits = conn.execute(
-                "SELECT COUNT(*) AS count,COALESCE(SUM(size_bytes),0) AS bytes FROM material_attachments WHERE request_id=?",
-                (request_id,),
-            ).fetchone()
-            if limits["count"] >= 10 or limits["bytes"] + stored["size_bytes"] > 50 * 1024 * 1024:
-                raise AccountingError("每项资料最多 10 个原件，合计最多 50 MB", 413)
-            stamp = now()
-            conn.execute(
-                "INSERT INTO material_attachments(id,request_id,book_id,firm_id,company_id,storage_key,filename,media_type,sha256,size_bytes,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
-                (
-                    stored["id"],
-                    request_id,
-                    row["book_id"],
-                    actor.firm_id,
-                    row["company_id"],
-                    stored["storage_key"],
-                    stored["filename"],
-                    stored["media_type"],
-                    stored["sha256"],
-                    stored["size_bytes"],
-                    actor.user_id,
-                    stamp,
-                ),
-            )
-            # Native append trigger writes the audit in this same transaction.
-            # Retain before COMMIT, including uncertain commit acknowledgements.
-            self.store.retain(stored)
-            result = {**stored, "created_by": actor.user_id, "created_at": stamp}
+    def add(self, actor, request_id, expected_version, stored, conn=None):
+        if conn is None:
+            company_id = self._company_of(actor, request_id)
+            with self.db.transaction(
+                write=True, actor=actor, company_id=company_id, write_scope="company"
+            ) as transaction:
+                return self.add(actor, request_id, expected_version, stored, transaction)
+        if stored.get("_upload_replay"):
+            self.plans._request(conn, actor, request_id)
+            previous = conn.execute("SELECT * FROM material_attachments WHERE id=? AND request_id=?", (stored["id"], request_id)).fetchone()
+            return {"attachment": {key: previous[key] for key in METADATA}, "version": expected_version, "duplicate": True}
+        row = self._uploadable(conn, actor, request_id, expected_version)
+        previous = conn.execute(
+            "SELECT * FROM material_attachments WHERE request_id=? AND sha256=? AND filename=? AND media_type=?",
+            (request_id, stored["sha256"], stored["filename"], stored["media_type"]),
+        ).fetchone()
+        if previous:
             return {
-                "attachment": {key: result[key] for key in METADATA},
+                "attachment": {key: previous[key] for key in METADATA},
                 "version": expected_version,
-                "duplicate": False,
+                "duplicate": True,
             }
+        limits = conn.execute(
+            "SELECT COUNT(*) AS count,COALESCE(SUM(size_bytes),0) AS bytes FROM material_attachments WHERE request_id=?",
+            (request_id,),
+        ).fetchone()
+        if limits["count"] >= 10 or limits["bytes"] + stored["size_bytes"] > 50 * 1024 * 1024:
+            raise AccountingError("每项资料最多 10 个原件，合计最多 50 MB", 413)
+        stamp = now()
+        conn.execute(
+            "INSERT INTO material_attachments(id,request_id,book_id,firm_id,company_id,storage_key,filename,media_type,sha256,size_bytes,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                stored["id"],
+                request_id,
+                row["book_id"],
+                actor.firm_id,
+                row["company_id"],
+                stored["storage_key"],
+                stored["filename"],
+                stored["media_type"],
+                stored["sha256"],
+                stored["size_bytes"],
+                actor.user_id,
+                stamp,
+            ),
+        )
+        # Native append trigger writes the audit in this same transaction.
+        # Retain before COMMIT, including uncertain commit acknowledgements.
+        self.store.retain(stored)
+        result = {**stored, "created_by": actor.user_id, "created_at": stamp}
+        return {
+            "attachment": {key: result[key] for key in METADATA},
+            "version": expected_version,
+            "duplicate": False,
+        }
 
     def _rows(self, conn, actor, row, ids=None):
         self.plans._request(conn, actor, row["id"])
@@ -355,12 +361,10 @@ def build_material_attachments_router(actor_dependency):
         uploads = request.app.state.uploads if claimed else None
         stored = None
         try:
-            attachments.require_upload(actor, request_id, expected_version)
             if claimed:
-                stored = uploads.take(actor, upload_id, "material_attachment")
-                result = attachments.add(actor, request_id, expected_version, stored)
-                uploads.confirm(actor, upload_id)
-                return result
+                return uploads.consume(actor, upload_id, "material_attachment", request_id,
+                    lambda conn, metadata: attachments.add(actor, request_id, expected_version, metadata, conn=conn))
+            attachments.require_upload(actor, request_id, expected_version)
             if file is None:
                 raise AccountingError("请选择文件，或先完成大文件上传校验", 422)
             data = file.file.read(MAX_FILE_BYTES + 1)
@@ -372,8 +376,6 @@ def build_material_attachments_router(actor_dependency):
             return result
         except AccountingError:
             if claimed:
-                if stored:
-                    uploads.release(actor, upload_id)
                 raise
             if stored:
                 attachments.store.discard(stored)

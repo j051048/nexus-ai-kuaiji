@@ -256,47 +256,51 @@ class IntakeService:
         with self.db.transaction(actor=actor) as conn:
             self._version(self._draft(conn, actor, draft_id, editable=True), version)
 
-    def add_attachment(self, actor, draft_id, version, metadata):
-        company_id = self._company_of(actor, draft_id)
-        with self.db.transaction(
-            write=True, actor=actor, company_id=company_id, write_scope="company"
-        ) as conn:
-            draft = self._draft(conn, actor, draft_id, editable=True)
-            self._version(draft, version)
-            attachments = self._attachments(conn, draft_id)
-            if (
-                len(attachments) >= 10
-                or sum(row["size_bytes"] for row in attachments) + metadata["size_bytes"]
-                > 50 * 1024 * 1024
-            ):
-                raise AccountingError("每件事项最多 10 个附件，合计不超过 50 MB", 422)
-            if any(row["sha256"] == metadata["sha256"] for row in attachments):
-                return self._json(conn, actor, draft)
-            conn.execute(
-                "INSERT INTO intake_attachments(id,intake_id,firm_id,company_id,storage_key,filename,media_type,sha256,size_bytes,created_at,created_by) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
-                (
-                    metadata["id"],
-                    draft_id,
-                    actor.firm_id,
-                    draft["company_id"],
-                    metadata["storage_key"],
-                    metadata["filename"],
-                    metadata["media_type"],
-                    metadata["sha256"],
-                    metadata["size_bytes"],
-                    now(),
-                    actor.user_id,
-                ),
-            )
-            conn.execute(
-                "UPDATE intake_drafts SET version=version+1,updated_at=? WHERE id=?",
-                (now(), draft_id),
-            )
-            result = self._json(conn, actor, self._draft(conn, actor, draft_id))
-            from ..business.storage import retain_original
+    def add_attachment(self, actor, draft_id, version, metadata, conn=None):
+        if conn is None:
+            company_id = self._company_of(actor, draft_id)
+            with self.db.transaction(
+                write=True, actor=actor, company_id=company_id, write_scope="company"
+            ) as transaction:
+                return self.add_attachment(actor, draft_id, version, metadata, transaction)
+        draft = self._draft(conn, actor, draft_id, editable=not metadata.get("_upload_replay"))
+        if metadata.get("_upload_replay"):
+            return self._json(conn, actor, draft)
+        self._version(draft, version)
+        attachments = self._attachments(conn, draft_id)
+        if (
+            len(attachments) >= 10
+            or sum(row["size_bytes"] for row in attachments) + metadata["size_bytes"]
+            > 50 * 1024 * 1024
+        ):
+            raise AccountingError("每件事项最多 10 个附件，合计不超过 50 MB", 422)
+        if any(row["sha256"] == metadata["sha256"] for row in attachments):
+            return self._json(conn, actor, draft)
+        conn.execute(
+            "INSERT INTO intake_attachments(id,intake_id,firm_id,company_id,storage_key,filename,media_type,sha256,size_bytes,created_at,created_by) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                metadata["id"],
+                draft_id,
+                actor.firm_id,
+                draft["company_id"],
+                metadata["storage_key"],
+                metadata["filename"],
+                metadata["media_type"],
+                metadata["sha256"],
+                metadata["size_bytes"],
+                now(),
+                actor.user_id,
+            ),
+        )
+        conn.execute(
+            "UPDATE intake_drafts SET version=version+1,updated_at=? WHERE id=?",
+            (now(), draft_id),
+        )
+        result = self._json(conn, actor, self._draft(conn, actor, draft_id))
+        from ..business.storage import retain_original
 
-            retain_original(metadata)
-            return result
+        retain_original(metadata)
+        return result
 
     def download(self, actor, attachment_id):
         with self.db.transaction(actor=actor) as conn:

@@ -7,6 +7,7 @@ may reference the stored bytes. The intent row is owned by one active actor.
 """
 
 import hashlib
+import json
 import re
 from datetime import datetime, timedelta, timezone
 from typing import Annotated, Literal
@@ -19,6 +20,7 @@ from .accounting.access import AccessControl
 from .accounting.domain import AccountingError
 from .accounting.service import now
 from .business.storage import MAX_FILE_BYTES, validate_attachment
+from .upload_bindings import reference, resolve_target
 
 Purpose = Literal[
     "intake_attachment",
@@ -262,7 +264,7 @@ class UploadIntentService:
                 "size_bytes": row["size_bytes"],
             }
 
-    def peek(self, actor, upload_id, purpose):
+    def peek(self, actor, upload_id, purpose, *, allow_consumed=False):
         """Read a stored intent without claiming it, for deterministic previews."""
         with self.db.transaction(actor=actor) as conn:
             row = self._owned(conn, actor, upload_id)
@@ -270,9 +272,10 @@ class UploadIntentService:
                 raise AccountingError("上传凭证的用途与本次操作不一致", 409)
             if row["state"] == "consuming":
                 raise AccountingError("该上传凭证正在被处理，请稍后核对结果", 409)
-            if row["state"] != "stored":
+            replay = allow_consumed and row["state"] == "consumed" and row["binding_json"]
+            if row["state"] != "stored" and not replay:
                 raise AccountingError("上传尚未完成校验，请先完成上传校验", 409)
-            if self._expired(row):
+            if not replay and self._expired(row):
                 raise AccountingError("上传凭证已过期，请重新上传", 410)
             return {
                 "id": row["storage_key"].split("/")[1],
@@ -283,14 +286,75 @@ class UploadIntentService:
                 "size_bytes": row["size_bytes"],
             }
 
-    def confirm(self, actor, upload_id, ref="attachment"):
-        with self.db.transaction(write=True, actor=actor) as conn:
+    def confirm(self, actor, upload_id, target_id, *, conn):
+        """Only usable inside the same transaction which registered the original."""
+        row = self._owned(conn, actor, upload_id)
+        if row["state"] != "consuming":
+            raise AccountingError("上传凭证未在当前事务领取", 409)
+        binding = reference(conn, actor, row, target_id)
+        ref = f"{binding['attachment_table']}:{binding['attachment_id']}"
+        changed = conn.execute(
+            "UPDATE upload_intents SET state='consumed',consumed_ref=?,binding_json=? "
+            "WHERE id=? AND firm_id=? AND user_id=? AND state='consuming'",
+            (ref, json.dumps(binding, ensure_ascii=False, sort_keys=True, separators=(",", ":")),
+             upload_id, actor.firm_id, actor.user_id),
+        )
+        if changed.rowcount != 1:
+            raise AccountingError("上传凭证状态已变化，请核对处理结果", 409)
+
+    def consume(self, actor, upload_id, purpose, target_id, register):
+        """Atomically authorize/register/bind, or read the same authorized result on retry.
+
+        register(conn, metadata) must use that connection, check domain permissions,
+        and honor _upload_replay by reading the existing result without re-writing.
+        Object IO and parsing must finish before entering this method.
+        """
+        with self.db.transaction(actor=actor) as conn:
             self.access.require_user(conn, actor.user_id)
-            conn.execute(
-                "UPDATE upload_intents SET state='consumed',consumed_ref=? "
-                "WHERE id=? AND firm_id=? AND user_id=? AND state='consuming'",
-                (ref, upload_id, actor.firm_id, actor.user_id),
-            )
+            target = resolve_target(conn, actor, purpose, target_id)
+        with self.db.transaction(
+            write=True, actor=actor, company_id=target["company_id"], write_scope="company"
+        ) as conn:
+            self.access.require_user(conn, actor.user_id)
+            current = resolve_target(conn, actor, purpose, target_id)
+            if current["company_id"] != target["company_id"]:
+                raise AccountingError("上传目标所属企业已变化", 409)
+            # A row lock serializes one intent even when two allowed companies
+            # contend under different company advisory locks.
+            if self.db.is_postgres:
+                conn.execute("SELECT id FROM upload_intents WHERE id=? FOR UPDATE", (upload_id,)).fetchone()
+            row = self._owned(conn, actor, upload_id)
+            if row["purpose"] != purpose:
+                raise AccountingError("上传凭证用途不一致", 409)
+            replay = row["state"] == "consumed"
+            if replay:
+                try:
+                    binding = json.loads(row["binding_json"] or "null")
+                except (TypeError, ValueError):
+                    binding = None
+                if not isinstance(binding, dict) or binding.get("version") != 1:
+                    raise AccountingError("历史消费记录缺少可核验绑定，请人工核对原件", 409)
+                if binding.get("target_id") != target_id or binding.get("purpose") != purpose:
+                    raise AccountingError("上传凭证已绑定其他企业或事项", 409)
+                actual = reference(conn, actor, row, target_id)
+                if binding != actual or row["consumed_ref"] != f"{actual['attachment_table']}:{actual['attachment_id']}":
+                    raise AccountingError("上传消费绑定与实际原件不一致", 409)
+            elif row["state"] != "stored":
+                raise AccountingError("上传尚未校验或正在处理中，请核对结果", 409)
+            elif self._expired(row):
+                raise AccountingError("上传凭证已过期，请重新上传", 410)
+            else:
+                changed = conn.execute(
+                    "UPDATE upload_intents SET state='consuming' WHERE id=? AND state='stored'", (upload_id,)
+                )
+                if changed.rowcount != 1:
+                    raise AccountingError("上传凭证正在被处理，请核对结果", 409)
+            metadata = {key: row[key] for key in ("filename", "media_type", "storage_key", "sha256", "size_bytes")}
+            metadata.update(id=row["storage_key"].split("/")[1], _upload_replay=replay)
+            result = register(conn, metadata)
+            if not replay:
+                self.confirm(actor, upload_id, target_id, conn=conn)
+            return result
 
     def release(self, actor, upload_id):
         """Return a claimed intent to stored when the attachment write failed."""

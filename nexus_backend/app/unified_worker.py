@@ -187,6 +187,7 @@ def main(ready_callback=None):
     database = None
     try:
         database = Database(url)
+        database.assert_restore_hold()
         verify_worker_login(database)
         storage = create_attachment_store(root)
         storage.verify_private()

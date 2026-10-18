@@ -449,53 +449,61 @@ class PostingService:
             )
 
     def post_manual(self, actor, request: ManualVoucher):
-        fingerprint = _fingerprint(request.model_dump())
         with self.db.transaction(write=True, actor=actor) as conn:
-            book, _ = self._book(conn, actor, request.book_id, write=True)
-            replay = self._command_replay(conn, actor, book["id"], request.command_key, fingerprint)
-            if replay:
-                return replay
-            binding = self._binding(conn, book["id"])
-            validated, _ = self._validate_lines(conn, [line.model_dump() for line in request.lines])
-            original = None
-            if request.relation_kind:
-                if not request.original_voucher_id:
-                    raise AccountingError("调整凭证必须关联原凭证", 422)
-                original = conn.execute(
-                    "SELECT * FROM vouchers WHERE id=? AND book_id=?",
-                    (request.original_voucher_id, book["id"]),
-                ).fetchone()
-                if not original:
-                    raise AccountingError("原凭证不存在或不属于当前账套", 404)
-            view = self._insert_voucher(
-                conn,
-                actor,
-                book,
-                binding,
-                voucher_date=request.voucher_date,
-                voucher_type=request.voucher_type,
-                description=request.description,
-                lines=validated,
-                source_kind="manual",
-                command_key=request.command_key,
-                request_fingerprint=fingerprint,
+            return self.post_manual_in_transaction(conn, actor, request)
+
+    def post_manual_in_transaction(self, conn, actor, request: ManualVoucher):
+        """Post a manual voucher on an existing write transaction.
+
+        Periodic drafts call this so voucher creation, draft status, run status
+        and audit commit or roll back together.
+        """
+        fingerprint = _fingerprint(request.model_dump())
+        book, _ = self._book(conn, actor, request.book_id, write=True)
+        replay = self._command_replay(conn, actor, book["id"], request.command_key, fingerprint)
+        if replay:
+            return replay
+        binding = self._binding(conn, book["id"])
+        validated, _ = self._validate_lines(conn, [line.model_dump() for line in request.lines])
+        original = None
+        if request.relation_kind:
+            if not request.original_voucher_id:
+                raise AccountingError("调整凭证必须关联原凭证", 422)
+            original = conn.execute(
+                "SELECT * FROM vouchers WHERE id=? AND book_id=?",
+                (request.original_voucher_id, book["id"]),
+            ).fetchone()
+            if not original:
+                raise AccountingError("原凭证不存在或不属于当前账套", 404)
+        view = self._insert_voucher(
+            conn,
+            actor,
+            book,
+            binding,
+            voucher_date=request.voucher_date,
+            voucher_type=request.voucher_type,
+            description=request.description,
+            lines=validated,
+            source_kind="manual",
+            command_key=request.command_key,
+            request_fingerprint=fingerprint,
+        )
+        if original:
+            conn.execute(
+                "INSERT INTO voucher_relations(id,original_voucher_id,related_voucher_id,"
+                "kind,reason,created_by,created_at) VALUES(?,?,?,?,?,?,?)",
+                (
+                    uuid4().hex,
+                    original["id"],
+                    view["voucher"]["id"],
+                    "adjustment",
+                    request.reason,
+                    actor.user_id,
+                    self._now(),
+                ),
             )
-            if original:
-                conn.execute(
-                    "INSERT INTO voucher_relations(id,original_voucher_id,related_voucher_id,"
-                    "kind,reason,created_by,created_at) VALUES(?,?,?,?,?,?,?)",
-                    (
-                        uuid4().hex,
-                        original["id"],
-                        view["voucher"]["id"],
-                        "adjustment",
-                        request.reason,
-                        actor.user_id,
-                        self._now(),
-                    ),
-                )
-                return self._voucher_view(conn, view["voucher"]["id"])
-            return view
+            return self._voucher_view(conn, view["voucher"]["id"])
+        return view
 
     def reverse_voucher(self, actor, voucher_id, request: ReverseVoucher):
         fingerprint = _fingerprint({"voucher_id": voucher_id, **request.model_dump()})
@@ -596,20 +604,24 @@ class PostingService:
 
     def trial_balance(self, actor, book_id, as_of=None):
         with self.db.transaction(actor=actor) as conn:
-            book, _ = self._book(conn, actor, book_id)
-            binding = self._binding(conn, book["id"])
-            opening = conn.execute(
-                "SELECT * FROM opening_lines WHERE package_version_id=?",
-                (binding["package_version_id"],),
-            ).fetchall()
-            voucher_rows = conn.execute(
-                "SELECT l.*,v.voucher_date,v.voucher_no,v.voucher_type FROM voucher_lines l "
-                "JOIN vouchers v ON v.id=l.voucher_id WHERE v.book_id=? "
-                + ("AND v.voucher_date<=? " if as_of else "")
-                + "ORDER BY v.voucher_date,v.voucher_no,l.line_no",
-                (book["id"], as_of) if as_of else (book["id"],),
-            ).fetchall()
-            return self._trial_balance_rows(conn, binding, opening, voucher_rows)
+            return self.trial_balance_in_transaction(conn, actor, book_id, as_of)
+
+    def trial_balance_in_transaction(self, conn, actor, book_id, as_of=None):
+        """Read all balance inputs under the caller's transaction and locks."""
+        book, _ = self._book(conn, actor, book_id)
+        binding = self._binding(conn, book["id"])
+        opening = conn.execute(
+            "SELECT * FROM opening_lines WHERE package_version_id=?",
+            (binding["package_version_id"],),
+        ).fetchall()
+        voucher_rows = conn.execute(
+            "SELECT l.*,v.voucher_date,v.voucher_no,v.voucher_type FROM voucher_lines l "
+            "JOIN vouchers v ON v.id=l.voucher_id WHERE v.book_id=? "
+            + ("AND v.voucher_date<=? " if as_of else "")
+            + "ORDER BY v.voucher_date,v.voucher_no,l.line_no",
+            (book["id"], as_of) if as_of else (book["id"],),
+        ).fetchall()
+        return self._trial_balance_rows(conn, binding, opening, voucher_rows)
 
     def _trial_balance_rows(self, conn, binding, opening, voucher_rows):
         accounts = {

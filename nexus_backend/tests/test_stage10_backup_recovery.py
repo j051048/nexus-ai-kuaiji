@@ -41,6 +41,29 @@ def test_consistent_sqlite_backup_and_new_target_restore_drill(service, book, tm
     assert not (target / "manifest.json").read_text(encoding="utf-8").find(service.db.path) >= 0
 
 
+def test_consumed_upload_and_attachment_share_object_identity():
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        "CREATE TABLE business_attachments(storage_key TEXT,sha256 TEXT,size_bytes INTEGER,firm_id TEXT,company_id TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE upload_intents(storage_key TEXT,sha256 TEXT,size_bytes INTEGER,firm_id TEXT,user_id TEXT,state TEXT)"
+    )
+    digest = "a" * 64
+    conn.execute(
+        "INSERT INTO business_attachments VALUES('aa/one',?,100,'firm-1','company-1')", (digest,)
+    )
+    conn.execute(
+        "INSERT INTO upload_intents VALUES('aa/one',?,100,'firm-1','user-1','consumed')", (digest,)
+    )
+    present, originals = recovery.original_rows(conn, "sqlite")
+    assert present == ["business_attachments", "upload_intents"]
+    assert len(originals) == 1
+    assert originals[0]["sha256"] == digest
+    assert len(originals[0]["references"]) == 2
+
+
 def test_hash_mismatch_prevents_any_restore_write(service, tmp_path):
     storage = tmp_path / "private"; storage.mkdir()
     target = tmp_path / "backup"

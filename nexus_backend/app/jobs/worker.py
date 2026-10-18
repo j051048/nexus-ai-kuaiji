@@ -787,6 +787,7 @@ def main(ready_callback=None):
     database = None
     try:
         database = Database(url)
+        database.assert_restore_hold()
         storage = create_attachment_store(root)
         storage.verify_private()
         queue = QueueService(database, IntelligenceService(database, storage))

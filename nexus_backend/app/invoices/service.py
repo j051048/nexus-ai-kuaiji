@@ -71,17 +71,13 @@ class InvoiceImportService:
 
     def create(self, actor, book_id, upload_id):
         with self.db.transaction(actor=actor) as conn:
-            book = self.access.book(conn, actor, book_id, "edit")
-        stored = self.uploads.take(actor, upload_id, "invoice_import")
-        try:
-            data = self._stored_data(stored)
-            parsed = parse_invoice_export(stored["filename"], data)
-            batch = self._commit(actor, book, stored, parsed)
-            self.uploads.confirm(actor, upload_id, "invoice_import")
-            return batch
-        except AccountingError:
-            self.uploads.release(actor, upload_id)
-            raise
+            self.access.book(conn, actor, book_id, "read")
+        stored = self.uploads.peek(actor, upload_id, "invoice_import", allow_consumed=True)
+        parsed = parse_invoice_export(stored["filename"], self._stored_data(stored))
+        return self.uploads.consume(actor, upload_id, "invoice_import", book_id,
+            lambda conn, metadata: self._commit(actor,
+                self.access.book(conn, actor, book_id, "read" if metadata.get("_upload_replay") else "edit"),
+                metadata, parsed, conn=conn))
 
     def preview(self, actor, book_id, upload_id):
         """Parse and summarize a stored upload without creating a batch."""
@@ -236,62 +232,71 @@ class InvoiceImportService:
         }
         return rows, summary
 
-    def _commit(self, actor, book, stored, parsed):
-        with self.db.transaction(
-            write=True, actor=actor, company_id=book["company_id"], write_scope="company"
-        ) as conn:
-            self.access.require_user(conn, actor.user_id)
-            rows, summary = self._analyze(conn, book, parsed)
-            direction = summary["direction"]
-            duplicates = summary["duplicates"]
-            matched = summary["matched"]
-            batch_id = uuid4().hex
-            stamp = now()
-            conn.execute(
-                "INSERT INTO invoice_import_batches(id,book_id,firm_id,company_id,filename,"
-                "storage_key,sha256,size_bytes,row_count,direction,rows_json,notes_json,created_by,"
-                "created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                (
-                    batch_id,
-                    book["id"],
-                    actor.firm_id,
-                    book["company_id"],
-                    stored["filename"],
-                    stored["storage_key"],
-                    stored["sha256"],
-                    stored["size_bytes"],
-                    len(rows),
-                    direction,
-                    encode(rows),
-                    encode(summary),
-                    actor.user_id,
-                    stamp,
-                ),
-            )
-            self._audit(
-                conn,
-                actor,
-                book,
-                "invoice.import",
+    def _commit(self, actor, book, stored, parsed, conn=None):
+        if conn is None:
+            with self.db.transaction(
+                write=True, actor=actor, company_id=book["company_id"], write_scope="company"
+            ) as transaction:
+                return self._commit(actor, book, stored, parsed, transaction)
+        self.access.require_user(conn, actor.user_id)
+        if stored.get("_upload_replay"):
+            item = conn.execute("SELECT * FROM invoice_import_batches WHERE storage_key=? AND book_id=?", (stored["storage_key"], book["id"])).fetchone()
+            summary = json.loads(item["notes_json"])
+            return {"id": item["id"], "filename": item["filename"], "row_count": item["row_count"], "direction": item["direction"], "duplicates": summary["duplicates"], "matched": summary["matched"], "created_at": item["created_at"]}
+        book = self.access.book(conn, actor, book["id"], "edit")
+        if book["period_status"] != "open":
+            raise AccountingError("该会计期间已关闭，不能继续导入", 403)
+        rows, summary = self._analyze(conn, book, parsed)
+        direction = summary["direction"]
+        duplicates = summary["duplicates"]
+        matched = summary["matched"]
+        batch_id = uuid4().hex
+        stamp = now()
+        conn.execute(
+            "INSERT INTO invoice_import_batches(id,book_id,firm_id,company_id,filename,"
+            "storage_key,sha256,size_bytes,row_count,direction,rows_json,notes_json,created_by,"
+            "created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
                 batch_id,
-                {
-                    "filename": stored["filename"],
-                    "row_count": len(rows),
-                    "direction": direction,
-                    "duplicates": duplicates,
-                    "matched": matched,
-                    "sha256": stored["sha256"],
-                },
-            )
-            return {
-                "id": batch_id,
+                book["id"],
+                actor.firm_id,
+                book["company_id"],
+                stored["filename"],
+                stored["storage_key"],
+                stored["sha256"],
+                stored["size_bytes"],
+                len(rows),
+                direction,
+                encode(rows),
+                encode(summary),
+                actor.user_id,
+                stamp,
+            ),
+        )
+        self._audit(
+            conn,
+            actor,
+            book,
+            "invoice.import",
+            batch_id,
+            {
                 "filename": stored["filename"],
                 "row_count": len(rows),
                 "direction": direction,
                 "duplicates": duplicates,
                 "matched": matched,
-                "created_at": stamp,
-            }
+                "sha256": stored["sha256"],
+            },
+        )
+        return {
+            "id": batch_id,
+            "filename": stored["filename"],
+            "row_count": len(rows),
+            "direction": direction,
+            "duplicates": duplicates,
+            "matched": matched,
+            "created_at": stamp,
+        }
 
     @staticmethod
     def _accrual_external_id(batch_id, line):

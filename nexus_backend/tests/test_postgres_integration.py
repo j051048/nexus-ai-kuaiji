@@ -180,7 +180,12 @@ def test_postgres_system_role_cannot_access_ledger_and_runtime_is_restricted(cas
         # These three are global catalogs (trusted endpoint directory, capability
         # metadata, report templates), not tenant rows. Every tenant table must
         # still have both ENABLE and FORCE RLS.
-        global_catalogs = {"ai_endpoint_capabilities", "ai_trusted_endpoints", "report_templates"}
+        global_catalogs = {
+            "ai_endpoint_capabilities",
+            "ai_trusted_endpoints",
+            "report_templates",
+            "restore_state",
+        }
         tenant_tables = [row for row in tables if row["relname"] not in global_catalogs]
         assert tenant_tables and all(
             row["relrowsecurity"] and row["relforcerowsecurity"] for row in tenant_tables

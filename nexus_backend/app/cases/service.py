@@ -733,7 +733,13 @@ class CaseService:
                 raise AccountingError("仅申请人可上传待补件原件", 403)
             self._response_open(conn, actor, row)
 
-    def add_attachment(self, actor, case_id, expected_version, idempotency_key, stored):
+    def add_attachment(self, actor, case_id, expected_version, idempotency_key, stored, conn=None):
+        if conn is None:
+            company_id = self._company_of_case(actor, case_id)
+            with self.db.transaction(
+                write=True, actor=actor, company_id=company_id, write_scope="company"
+            ) as transaction:
+                return self.add_attachment(actor, case_id, expected_version, idempotency_key, stored, transaction)
         from .models import CaseCommand
 
         payload = CaseCommand(
@@ -741,84 +747,82 @@ class CaseService:
             idempotency_key=idempotency_key,
             reason="上传补件原件：" + stored["filename"],
         )
-        company_id = self._company_of_case(actor, case_id)
-        with self.db.transaction(
-            write=True, actor=actor, company_id=company_id, write_scope="company"
-        ) as conn:
-            row = self._case(conn, actor, case_id)
-            digest = fingerprint(
-                {
-                    "operation": "upload",
-                    "case_id": case_id,
-                    "expected_version": expected_version,
-                    "sha256": stored["sha256"],
-                    "filename": stored["filename"],
-                }
-            )
-            prior = conn.execute(
-                "SELECT * FROM case_commands WHERE firm_id=? AND user_id=? AND idempotency_key=?",
-                (actor.firm_id, actor.user_id, idempotency_key),
-            ).fetchone()
-            if prior:
-                if prior["request_fingerprint"] != digest or prior["case_id"] != case_id:
-                    raise AccountingError("幂等键已用于不同附件", 409)
-                return {"case": self._json(conn, actor, row), "duplicate": True}
-            self._version(row, expected_version)
-            if not self._responder(conn, actor, row) or row["state"] not in (
-                {"awaiting_info"} if row["event_id"] else {"open"}
-            ):
-                raise AccountingError("仅申请人可上传待补件原件", 403)
-            self._response_open(conn, actor, row)
-            response = self._response_draft(conn, actor, row)
-            summary = conn.execute(
-                "SELECT COUNT(*),COALESCE(SUM(size_bytes),0) FROM case_attachments WHERE response_id=?",
-                (response["id"],),
-            ).fetchone()
-            total = conn.execute(
-                "SELECT COALESCE(SUM(size_bytes),0) FROM case_attachments WHERE case_id=?",
-                (case_id,),
-            ).fetchone()[0]
-            if (
-                summary[0] >= 10
-                or summary[1] + stored["size_bytes"] > 50 * 1024 * 1024
-                or total + stored["size_bytes"] > 100 * 1024 * 1024
-            ):
-                raise AccountingError("每次补件最多 10 个附件、50 MB，任务累计最多 100 MB", 413)
-            conn.execute(
-                "INSERT INTO case_attachments(id,response_id,case_id,firm_id,company_id,storage_key,filename,media_type,sha256,size_bytes,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
-                (
-                    stored["id"],
-                    response["id"],
-                    case_id,
-                    actor.firm_id,
-                    row["company_id"],
-                    stored["storage_key"],
-                    stored["filename"],
-                    stored["media_type"],
-                    stored["sha256"],
-                    stored["size_bytes"],
-                    actor.user_id,
-                    now(),
-                ),
-            )
-            result = {
-                "case": self._finish(
-                    conn,
-                    actor,
-                    row,
-                    payload,
-                    digest,
-                    "upload",
-                    "requester"
-                    if row["kind"] == "supplement" or self._collector(conn, actor, row)
-                    else "internal",
-                ),
-                "duplicate": False,
+        row = self._case(conn, actor, case_id)
+        if stored.get("_upload_replay"):
+            return {"case": self._json(conn, actor, row), "duplicate": True}
+        digest = fingerprint(
+            {
+                "operation": "upload",
+                "case_id": case_id,
+                "expected_version": expected_version,
+                "sha256": stored["sha256"],
+                "filename": stored["filename"],
             }
-            from ..business.storage import retain_original
+        )
+        prior = conn.execute(
+            "SELECT * FROM case_commands WHERE firm_id=? AND user_id=? AND idempotency_key=?",
+            (actor.firm_id, actor.user_id, idempotency_key),
+        ).fetchone()
+        if prior:
+            if prior["request_fingerprint"] != digest or prior["case_id"] != case_id:
+                raise AccountingError("幂等键已用于不同附件", 409)
+            return {"case": self._json(conn, actor, row), "duplicate": True}
+        self._version(row, expected_version)
+        if not self._responder(conn, actor, row) or row["state"] not in (
+            {"awaiting_info"} if row["event_id"] else {"open"}
+        ):
+            raise AccountingError("仅申请人可上传待补件原件", 403)
+        self._response_open(conn, actor, row)
+        response = self._response_draft(conn, actor, row)
+        summary = conn.execute(
+            "SELECT COUNT(*),COALESCE(SUM(size_bytes),0) FROM case_attachments WHERE response_id=?",
+            (response["id"],),
+        ).fetchone()
+        total = conn.execute(
+            "SELECT COALESCE(SUM(size_bytes),0) FROM case_attachments WHERE case_id=?",
+            (case_id,),
+        ).fetchone()[0]
+        if (
+            summary[0] >= 10
+            or summary[1] + stored["size_bytes"] > 50 * 1024 * 1024
+            or total + stored["size_bytes"] > 100 * 1024 * 1024
+        ):
+            raise AccountingError("每次补件最多 10 个附件、50 MB，任务累计最多 100 MB", 413)
+        conn.execute(
+            "INSERT INTO case_attachments(id,response_id,case_id,firm_id,company_id,storage_key,filename,media_type,sha256,size_bytes,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                stored["id"],
+                response["id"],
+                case_id,
+                actor.firm_id,
+                row["company_id"],
+                stored["storage_key"],
+                stored["filename"],
+                stored["media_type"],
+                stored["sha256"],
+                stored["size_bytes"],
+                actor.user_id,
+                now(),
+            ),
+        )
+        result = {
+            "case": self._finish(
+                conn,
+                actor,
+                row,
+                payload,
+                digest,
+                "upload",
+                "requester"
+                if row["kind"] == "supplement" or self._collector(conn, actor, row)
+                else "internal",
+            ),
+            "duplicate": False,
+        }
+        from ..business.storage import retain_original
 
-            retain_original(stored)
-            return result
+        retain_original(stored)
+        return result
 
     def download_metadata(self, actor, attachment_id):
         with self.db.transaction(actor=actor) as conn:

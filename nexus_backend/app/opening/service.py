@@ -132,16 +132,24 @@ class OpeningService:
     # ---------- stable accounts ----------
 
     def _account(self, conn, ledger_id, account_id, version=None):
+        # Stable account IDs and append-only version IDs are different keys.
+        # Explicit labels avoid SQLite/PG duplicate-column lookup differences.
+        fields = (
+            "a.id,a.current_version,v.id AS version_id,v.account_id,v.ledger_id,v.firm_id,"
+            "v.company_id,v.version,v.code,v.name,v.parent_account_id,v.level,v.is_leaf,"
+            "v.category,v.normal_balance,v.auxiliary_requirements,v.effective_from,"
+            "v.effective_to,v.status,v.reason,v.created_by,v.created_at "
+        )
         if version is None:
             row = conn.execute(
-                "SELECT a.id,a.current_version AS version,v.* FROM ledger_accounts a "
+                "SELECT " + fields + "FROM ledger_accounts a "
                 "JOIN ledger_account_versions v ON v.account_id=a.id AND v.version=a.current_version "
                 "WHERE a.id=? AND a.ledger_id=?",
                 (account_id, ledger_id),
             ).fetchone()
         else:
             row = conn.execute(
-                "SELECT a.id,a.current_version AS current_version,v.* FROM ledger_accounts a "
+                "SELECT " + fields + "FROM ledger_accounts a "
                 "JOIN ledger_account_versions v ON v.account_id=a.id AND v.version=? "
                 "WHERE a.id=? AND a.ledger_id=?",
                 (version, account_id, ledger_id),
@@ -178,7 +186,7 @@ class OpeningService:
         conflict = conn.execute(
             "SELECT 1 FROM ledger_account_versions v JOIN ledger_accounts a ON a.id=v.account_id "
             "WHERE a.ledger_id=? AND v.code=? AND v.status IN ('draft','active') "
-            "AND (? IS NULL OR v.account_id<>?) LIMIT 1",
+            "AND (CAST(? AS TEXT) IS NULL OR v.account_id<>?) LIMIT 1",
             (ledger_id, request.code, account_id, account_id),
         ).fetchone()
         if conflict:

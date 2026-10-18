@@ -21,10 +21,10 @@ def build_import_wizard_router(actor_dependency):
         actor=Depends(actor_dependency),
         wizard=Depends(service),
     ):
-        with wizard.db.transaction(actor=actor) as conn:
-            wizard._book(conn, actor, book_id, True)
         if upload_id:
             return wizard.upload_intent(actor, book_id, upload_id)
+        with wizard.db.transaction(actor=actor) as conn:
+            wizard._book(conn, actor, book_id, True)
         if file is None:
             from ..accounting.domain import AccountingError
 

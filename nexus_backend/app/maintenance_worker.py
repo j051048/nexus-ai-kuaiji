@@ -62,6 +62,7 @@ def main(ready_callback=None):
     refresher = None
     try:
         database = Database(url)
+        database.assert_restore_hold()
         poll_seconds = float(os.getenv("ACCOUNTING_PROJECTION_POLL_SECONDS", "5"))
         if not 1 <= poll_seconds <= 60:
             raise ValueError("投影维护轮询须为1–60秒")

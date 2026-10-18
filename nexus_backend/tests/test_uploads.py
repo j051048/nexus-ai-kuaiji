@@ -56,16 +56,16 @@ def test_local_two_phase_upload_feeds_event_attachment(uploads):
     data, created = intent(c, actor)
     assert created["method"] == "PUT" and created["url"].startswith("/api/uploads/")
     assert c.uploads.store_content(actor, created["id"], data)["state"] == "stored"
-    metadata = c.uploads.take(actor, created["id"], "event_attachment")
+    metadata = c.uploads.peek(actor, created["id"], "event_attachment")
     assert metadata["id"] == created["id"] and metadata["size_bytes"] == len(data)
-    result = c.service.add_attachment(actor, event["id"], event["version"], metadata)
-    c.uploads.confirm(actor, created["id"])
+    result = c.uploads.consume(actor, created["id"], "event_attachment", event["id"],
+        lambda conn, stored: c.service.add_attachment(actor, event["id"], event["version"], stored, conn=conn))
     assert any(item["id"] == created["id"] for item in result["attachments"])
     with c.db.transaction(actor=actor) as conn:
         row = conn.execute(
             "SELECT state,consumed_ref FROM upload_intents WHERE id=?", (created["id"],)
         ).fetchone()
-    assert row["state"] == "consumed" and row["consumed_ref"] == "attachment"
+    assert row["state"] == "consumed" and row["consumed_ref"] == f"business_attachments:{created['id']}"
     with pytest.raises(AccountingError) as reused:
         c.uploads.take(actor, created["id"], "event_attachment")
     assert reused.value.status == 409

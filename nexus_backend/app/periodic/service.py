@@ -434,9 +434,12 @@ class PeriodicService:
             return self._draft_view(conn, draft_id)
 
     def post(self, actor, draft_id, request: DraftPost):
-        with self.db.transaction(actor=actor) as conn:
+        # One transaction covers the draft/run state, the formal voucher and the
+        # command receipt. A crash cannot leave a posted voucher with an approved
+        # draft, and a second business key cannot create a second voucher.
+        with self.db.transaction(write=True, actor=actor) as conn:
             draft = self._draft(conn, draft_id)
-            self._book(conn, actor, draft["book_id"], write=False)
+            self._book(conn, actor, draft["book_id"], write=True)
             if draft["status"] == "posted":
                 return self._draft_view(conn, draft_id, replayed=True)
             if draft["status"] != "approved":
@@ -446,32 +449,34 @@ class PeriodicService:
             lines = conn.execute(
                 "SELECT * FROM periodic_draft_lines WHERE draft_id=? ORDER BY line_no", (draft_id,)
             ).fetchall()
-        manual = ManualVoucher(
-            command_key=request.command_key,
-            book_id=draft["book_id"],
-            voucher_date=request.voucher_date,
-            voucher_type="转",
-            description=draft["description"],
-            reason=request.reason,
-            lines=[
-                ManualLine(
-                    account_id=row["account_id"],
-                    account_version=row["account_version"],
-                    debit=cents_to_money(row["debit_cents"]),
-                    credit=cents_to_money(row["credit_cents"]),
-                    auxiliary_values=json.loads(row["aux_json"] or "{}"),
-                    source_ref=row["source_ref"],
-                )
-                for row in lines
-            ],
-        )
-        view = self.posting.post_manual(actor, manual)
-        voucher_id = view["voucher"]["id"]
-        with self.db.transaction(write=True, actor=actor) as conn:
-            conn.execute(
-                "UPDATE periodic_drafts SET status='posted',posted_voucher_id=? WHERE id=?",
+            manual = ManualVoucher(
+                command_key=request.command_key,
+                book_id=draft["book_id"],
+                voucher_date=request.voucher_date,
+                voucher_type="转",
+                description=draft["description"],
+                reason=request.reason,
+                lines=[
+                    ManualLine(
+                        account_id=row["account_id"],
+                        account_version=row["account_version"],
+                        debit=cents_to_money(row["debit_cents"]),
+                        credit=cents_to_money(row["credit_cents"]),
+                        auxiliary_values=json.loads(row["aux_json"] or "{}"),
+                        source_ref=row["source_ref"],
+                    )
+                    for row in lines
+                ],
+            )
+            view = self.posting.post_manual_in_transaction(conn, actor, manual)
+            voucher_id = view["voucher"]["id"]
+            changed = conn.execute(
+                "UPDATE periodic_drafts SET status='posted',posted_voucher_id=? "
+                "WHERE id=? AND status='approved'",
                 (voucher_id, draft_id),
             )
+            if changed.rowcount != 1:
+                raise AccountingError("期末草稿状态已变化，未重复记账", 409)
             conn.execute(
                 "UPDATE periodic_runs SET status='posted',voucher_id=? WHERE id=?",
                 (voucher_id, draft["run_id"]),

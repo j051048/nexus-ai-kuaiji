@@ -122,7 +122,8 @@ export function InlineReviewDrawer({
     balanced &&
     !draft.issues.length &&
     !!source?.evidence_ref &&
-    !evidenceError;
+    !evidenceError &&
+    !error;
   useEffect(() => {
     window.dispatchEvent(new CustomEvent('accounting:review-dirty', { detail: dirty }));
     return () => {
@@ -829,7 +830,7 @@ export function InlineReviewDrawer({
                       type="checkbox"
                       aria-label="我已核对同屏原件与分录"
                       checked={acknowledged}
-                      disabled={!!busy || dirty || !!evidenceError}
+                      disabled={!!busy || dirty || !!evidenceError || !!error}
                       onChange={(event) => setAcknowledged(event.target.checked)}
                     />
                     我已核对原件、金额和会计处理

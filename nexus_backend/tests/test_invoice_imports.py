@@ -314,7 +314,7 @@ def test_import_batch_records_evidence_dedup_and_bank_candidates(invoices):
             "SELECT * FROM audit_events WHERE action='invoice.import' AND object_id=?",
             (batch["id"],),
         ).fetchone()
-    assert intent["state"] == "consumed" and intent["consumed_ref"] == "invoice_import"
+    assert intent["state"] == "consumed" and intent["consumed_ref"] == f"invoice_import_batches:{batch['id']}"
     assert audit is not None and audit["book_id"] == c.book["id"]
     detail = c.invoices.get_batch(actor, c.book["id"], batch["id"])
     matched_total = sum(1 for line in detail["rows"] if line["match"])
@@ -618,9 +618,7 @@ def test_import_requires_book_access_and_releases_on_purpose_mismatch(invoices):
     with pytest.raises(AccountingError, match="分页"):
         c.invoices.list_batches(actor, c.book["id"], limit=0)
     batch = c.invoices.create(actor, c.book["id"], valid["id"])
-    with pytest.raises(AccountingError) as gone:
-        c.invoices.create(actor, c.book["id"], valid["id"])
-    assert gone.value.status in {404, 409}
+    assert c.invoices.create(actor, c.book["id"], valid["id"]) == batch
     assert c.invoices.get_batch(actor, c.book["id"], batch["id"])["id"] == batch["id"]
 
 

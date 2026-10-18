@@ -38,11 +38,16 @@ class BatchWorker:
                 error_detail=str(error),
             )
         except Exception:
+            exhausted = int(item.get("attempt", 0)) >= int(item.get("max_attempts", 0))
             self.service.finish(
                 item,
-                "retry_wait",
+                "failed" if exhausted else "retry_wait",
                 error_code="worker_failure",
-                error_detail="批处理执行中断，将按租约重试",
+                error_detail=(
+                    "批处理持续失败且达到重试上限，请人工处理"
+                    if exhausted
+                    else "批处理执行中断，将按租约重试"
+                ),
                 retry_seconds=30,
             )
 

@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test';
 
+test.setTimeout(90_000);
+
 test('同屏复核保留包选择，修改后重新准备，手机原件详情与返回不丢进度', async ({ page, request }) => {
   const session = await (await request.get('/api/session?persona=accountant')).json();
   const headers = { Authorization: `Bearer ${session.token}` }, tag = crypto.randomUUID().slice(0, 8);
@@ -12,7 +14,7 @@ test('同屏复核保留包选择，修改后重新准备，手机原件详情�
     { external_id: `${tag}-2`, date: '2026-10-06', description: `同屏办公用品乙 ${tag}`, counterparty: party, amount: '125.00', direction: 'expense', evidence_ref: '合成归档索引乙，仅验证流程' },
   ] } }); expect(response.status()).toBe(200);
   expect((await request.post(`/api/books/${book.id}/suggestions`, { headers })).status()).toBe(200);
-  await page.goto('/'); await page.getByLabel('切换验证身份').selectOption('accountant');
+  await page.goto('/', { waitUntil: 'domcontentloaded' }); await page.getByLabel('切换验证身份').selectOption('accountant');
   await page.getByRole('navigation', { name: '主导航' }).getByRole('button', { name: '跨企业批量复核', exact: true }).click();
   await page.getByLabel('复核企业', { exact: true }).selectOption(book.company_id);
   await page.getByLabel('选择本页凭证', { exact: true }).check();

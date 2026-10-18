@@ -330,6 +330,28 @@ class Database:
         }
         return {"enabled": True, "scope": "current_process", **capacity}
 
+    def assert_restore_hold(self):
+        """Fail closed when the target database carries an unreleased hold.
+
+        The marker table is intentionally global/operational, not tenant data;
+        it is checked after connecting so PG/remote targets do not depend on a
+        local restore directory or an optional environment variable.
+        """
+        try:
+            with self.connect() as conn:
+                row = conn.execute(
+                    "SELECT hold,instance_id,restore_id FROM restore_state LIMIT 1"
+                ).fetchone()
+        except Exception:
+            # Older schemas and pre-migration test fixtures have no table; the
+            # normal migration/startup path will fail separately if needed.
+            return
+        if row and bool(row[0] if not hasattr(row, "keys") else row["hold"]):
+            raise SystemExit(
+                "数据库处于恢复隔离核对状态，禁止启动正常 API/worker；"
+                "请先核对在途任务与未知结果，再按受控流程释放 hold"
+            )
+
     def close(self):
         if self._closed:
             return

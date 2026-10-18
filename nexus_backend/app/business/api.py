@@ -142,12 +142,10 @@ def build_business_router(actor_dependency):
         uploads = request.app.state.uploads if claimed else None
         stored = None
         try:
-            service.require_attachment_upload(current, event_id, expected_version)
             if claimed:
-                stored = uploads.take(current, upload_id, "event_attachment")
-                result = service.add_attachment(current, event_id, expected_version, stored)
-                uploads.confirm(current, upload_id)
-                return result
+                return uploads.consume(current, upload_id, "event_attachment", event_id,
+                    lambda conn, metadata: service.add_attachment(current, event_id, expected_version, metadata, conn=conn))
+            service.require_attachment_upload(current, event_id, expected_version)
             if file is None:
                 raise AccountingError("请选择文件，或先完成大文件上传校验", 422)
             data = file.file.read(MAX_FILE_BYTES + 1)
@@ -155,8 +153,6 @@ def build_business_router(actor_dependency):
             return service.add_attachment(current, event_id, expected_version, stored)
         except AccountingError:
             if claimed:
-                if stored:
-                    uploads.release(current, upload_id)
                 raise
             if stored:
                 store.discard(stored)

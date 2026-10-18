@@ -163,7 +163,7 @@ class SubledgerService:
         with self.db.transaction(write=True, actor=actor) as conn:
             book, ledger_id = self._book(conn, actor, request.book_id, write=True)
             prior = conn.execute(
-                "SELECT * FROM subledger_allocations WHERE firm_id=? AND idempotency_key=?",
+                "SELECT * FROM subledger_allocation_requests WHERE firm_id=? AND idempotency_key=?",
                 (actor.firm_id, request.idempotency_key),
             ).fetchone()
             if prior:
@@ -177,6 +177,7 @@ class SubledgerService:
             if not voucher:
                 raise AccountingError("收付款凭证不存在或不属于当前账套", 404)
             items = []
+            seen_items = set()
             for part in request.parts:
                 item = conn.execute(
                     "SELECT * FROM subledger_items WHERE id=? AND book_id=? AND status IN('open','partial')",
@@ -184,6 +185,9 @@ class SubledgerService:
                 ).fetchone()
                 if not item:
                     raise AccountingError("未结事项不存在或已结清", 404)
+                if item["id"] in seen_items:
+                    raise AccountingError("同一请求不能重复分配同一未结事项", 422)
+                seen_items.add(item["id"])
                 amount = money_to_cents(part.amount)
                 if amount > int(item["amount_cents"]) - self._remaining(conn, item["id"]):
                     raise AccountingError("分配金额超过未结余额", 409)
@@ -194,12 +198,31 @@ class SubledgerService:
                 raise AccountingError("一次核销只能使用一个控制科目", 422)
             control_amount = self._voucher_control_amount(conn, voucher["id"], items[0][0])
             already = conn.execute(
-                "SELECT COALESCE(SUM(amount_cents),0) FROM subledger_allocations "
-                "WHERE voucher_id=? AND item_id IN (SELECT id FROM subledger_items WHERE control_account_id=?)",
+                "SELECT COALESCE(SUM(a.amount_cents),0) FROM subledger_allocations a "
+                "WHERE a.voucher_id=? AND a.item_id IN (SELECT id FROM subledger_items WHERE control_account_id=?) "
+                "AND NOT EXISTS(SELECT 1 FROM subledger_allocation_reversals r WHERE r.allocation_id=a.id)",
                 (voucher["id"], items[0][0]["control_account_id"]),
             ).fetchone()[0]
             if total + int(already) > control_amount:
                 raise AccountingError("核销金额超过凭证控制科目金额", 409)
+            request_id = uuid4().hex
+            conn.execute(
+                "INSERT INTO subledger_allocation_requests(id,firm_id,company_id,book_id,voucher_id,"
+                "idempotency_key,request_fingerprint,total_cents,created_by,created_at) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?)",
+                (
+                    request_id,
+                    book["firm_id"],
+                    book["company_id"],
+                    book["id"],
+                    voucher["id"],
+                    request.idempotency_key,
+                    fingerprint,
+                    total,
+                    actor.user_id,
+                    now(),
+                ),
+            )
             for item, amount in items:
                 conn.execute(
                     "INSERT INTO subledger_allocations(id,firm_id,company_id,book_id,item_id,voucher_id,"
@@ -214,7 +237,7 @@ class SubledgerService:
                         voucher["id"],
                         amount,
                         voucher["voucher_date"],
-                        request.idempotency_key,
+                        request.idempotency_key + ":" + item["id"],
                         fingerprint,
                         actor.user_id,
                         now(),
@@ -321,25 +344,46 @@ class SubledgerService:
             return {"as_of": as_of, "buckets": buckets, "items": detail}
 
     def control_reconciliation(self, actor, book_id, as_of=None):
-        groups = {}
         with self.db.transaction(actor=actor) as conn:
-            book, _ = self._book(conn, actor, book_id)
-            for kind in ("receivable", "payable", "advance_received", "advance_paid"):
-                items = conn.execute(
-                    "SELECT * FROM subledger_items WHERE book_id=? AND kind=? AND status IN('open','partial')",
-                    (book["id"], kind),
-                ).fetchall()
-                for item in items:
-                    remaining = int(item["amount_cents"]) - self._remaining(conn, item["id"], as_of)
-                    if remaining > 0:
-                        groups.setdefault(kind, {})
-                        groups[kind][item["control_account_id"]] = (
-                            groups[kind].get(item["control_account_id"], 0) + remaining
-                        )
+            return self.control_reconciliation_in_transaction(conn, actor, book_id, as_of)
+
+    def control_reconciliation_in_transaction(self, conn, actor, book_id, as_of=None, trial=None):
         from ..posting.service import PostingService
 
-        trial = PostingService(self.db).trial_balance(actor, book_id, as_of)
+        groups = {}
+        book, _ = self._book(conn, actor, book_id)
+        for kind in ("receivable", "payable", "advance_received", "advance_paid"):
+            items = conn.execute(
+                "SELECT * FROM subledger_items WHERE book_id=? AND kind=? AND status IN('open','partial')",
+                (book["id"], kind),
+            ).fetchall()
+            for item in items:
+                remaining = int(item["amount_cents"]) - self._remaining(conn, item["id"], as_of)
+                if remaining > 0:
+                    groups.setdefault(kind, {})
+                    groups[kind][item["control_account_id"]] = (
+                        groups[kind].get(item["control_account_id"], 0) + remaining
+                    )
+        trial = trial or PostingService(self.db).trial_balance_in_transaction(
+            conn, actor, book_id, as_of
+        )
         balances = {row["account_id"]: row for row in trial["rows"]}
+        # Reverse-enumerate configured control accounts from the trial balance.
+        # A payable with a book balance but no subledger items must produce a
+        # failed row, not an empty all([]) pass.
+        known_controls = {
+            "1122": "receivable",
+            "1123": "advance_paid",
+            "2202": "payable",
+            "2203": "advance_received",
+        }
+        for row in trial["rows"]:
+            code = str(row.get("code", ""))
+            kind = next(
+                (value for prefix, value in known_controls.items() if code.startswith(prefix)), None
+            )
+            if kind and row.get("is_leaf"):
+                groups.setdefault(kind, {}).setdefault(row["account_id"], 0)
         result = []
         for kind, by_account in groups.items():
             for account_id, subledger in by_account.items():
@@ -430,40 +474,58 @@ class SubledgerService:
 
     def bank_reconciliation(self, actor, book_id):
         with self.db.transaction(actor=actor) as conn:
-            book, _ = self._book(conn, actor, book_id)
-            statement = conn.execute(
-                "SELECT COALESCE(SUM(amount_cents),0) FROM bank_statement_lines WHERE book_id=?",
-                (book["id"],),
-            ).fetchone()[0]
-            unmatched = conn.execute(
-                "SELECT COUNT(*),COALESCE(SUM(amount_cents),0) FROM bank_statement_lines "
-                "WHERE book_id=? AND status='unmatched'",
-                (book["id"],),
-            ).fetchone()
-            adjustments = conn.execute(
-                "SELECT * FROM bank_recon_adjustments WHERE book_id=? ORDER BY created_at,id",
-                (book["id"],),
-            ).fetchall()
+            return self.bank_reconciliation_in_transaction(conn, actor, book_id)
+
+    def bank_reconciliation_in_transaction(self, conn, actor, book_id, trial=None):
         from ..posting.service import PostingService
 
-        trial = PostingService(self.db).trial_balance(actor, book_id)
-        cash = sum(
-            int(row["closing_cents"])
+        book, _ = self._book(conn, actor, book_id)
+        statement = conn.execute(
+            "SELECT COALESCE(SUM(amount_cents),0) FROM bank_statement_lines WHERE book_id=?",
+            (book["id"],),
+        ).fetchone()[0]
+        statement_count = conn.execute(
+            "SELECT COUNT(*) FROM bank_statement_lines WHERE book_id=?", (book["id"],)
+        ).fetchone()[0]
+        unmatched = conn.execute(
+            "SELECT COUNT(*),COALESCE(SUM(amount_cents),0) FROM bank_statement_lines "
+            "WHERE book_id=? AND status='unmatched'",
+            (book["id"],),
+        ).fetchone()
+        adjustments = conn.execute(
+            "SELECT * FROM bank_recon_adjustments WHERE book_id=? ORDER BY created_at,id",
+            (book["id"],),
+        ).fetchall()
+        trial = trial or PostingService(self.db).trial_balance_in_transaction(conn, actor, book_id)
+        cash_rows = [
+            row
             for row in trial["rows"]
             if row["is_leaf"] and row["code"].startswith(("1001", "1002"))
-        )
+        ]
+        cash = sum(int(row["closing_cents"]) for row in cash_rows)
+        cash_opening = sum(int(row.get("opening_cents", 0)) for row in cash_rows)
         unexplained = sum(
             int(row["amount_cents"]) for row in adjustments if row["status"] == "open"
         )
+        # Missing bank evidence is not a pass. A zero-cash book may legitimately
+        # have no statement; any nonzero cash needs at least one evidence line.
+        coverage_ok = int(statement_count) > 0 or cash == 0
+        difference = cash - (cash_opening + int(statement))
         return {
             "statement_cents": int(statement),
+            "statement_line_count": int(statement_count),
             "book_cash_cents": cash,
+            "opening_cash_cents": cash_opening,
             "unmatched_count": int(unmatched[0]),
             "unmatched_cents": int(unmatched[1]),
             "adjustments": [dict(row) for row in adjustments],
             "unexplained_cents": unexplained,
-            "difference_cents": cash - int(statement),
-            "passed": unexplained == 0 and int(unmatched[0]) == 0,
+            "difference_cents": difference,
+            "coverage_ok": coverage_ok,
+            "passed": coverage_ok
+            and unexplained == 0
+            and int(unmatched[0]) == 0
+            and difference == 0,
         }
 
     @staticmethod

@@ -268,6 +268,7 @@ def create_app(
     @asynccontextmanager
     async def lifespan(application):
         database = Database(path)
+        database.assert_restore_hold()
         try:
             if database.is_postgres:
                 with closing(database.connect()) as conn:

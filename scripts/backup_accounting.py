@@ -18,7 +18,7 @@ import subprocess
 import sys
 
 FORMAT_VERSION = 1
-ORIGINALS_POLICY_VERSION = 2
+ORIGINALS_POLICY_VERSION = 3
 
 # Single registry for every database row that points at a private original.
 # A backup must cover all of them; a restore must verify the same set. New
@@ -34,6 +34,22 @@ ORIGINAL_TABLES = (
     # Upload intents are never deleted. Stored/consuming rows may hold an
     # original that has not yet been attached to a business record.
     ("upload_intents", "state IN ('stored','consuming','consumed')", ("firm_id", "user_id")),
+)
+
+# Only these server-defined relationships may consume an upload. Backup checks
+# them independently against the same database snapshot; a string ref is not
+# evidence that an attachment belongs to its claimed enterprise or parent.
+CONSUMED_TARGETS = {
+    "intake_attachment": ("intake_draft", "intake_drafts", "intake_attachments", "intake_id"),
+    "event_attachment": ("business_event", "business_events", "business_attachments", "event_id"),
+    "case_attachment": ("case_task", "case_tasks", "case_attachments", "case_id"),
+    "material_attachment": ("material_request", "material_requests", "material_attachments", "request_id"),
+    "bank_import": ("book", "books", "bank_import_files", "book_id"),
+    "invoice_import": ("book", "books", "invoice_import_batches", "book_id"),
+}
+REFERENCE_COLUMNS = (
+    "id", "event_id", "intake_id", "case_id", "response_id", "request_id",
+    "project_id", "book_id", "source_id", "purpose", "state", "consumed_ref", "binding_json", "created_by",
 )
 
 
@@ -79,19 +95,49 @@ def safe_child(root, relative):
 
 
 def _collect_originals(conn, table, predicate, scope_columns):
+    # Historical/minimal schemas may predate binding_json. Keep their provenance
+    # explicit rather than inventing a binding for a legacy consumed intent.
+    description = conn.execute(f"SELECT * FROM {table} WHERE 1=0").description
+    columns = {column.name if hasattr(column, "name") else column[0] for column in description}
+    extra = [name for name in REFERENCE_COLUMNS if name in columns and name not in scope_columns]
     scope_sql = ",".join(scope_columns)
+    extra_sql = "," + ",".join(extra) if extra else ""
     rows = conn.execute(
-        f"SELECT storage_key,sha256,size_bytes,{scope_sql} FROM {table} WHERE {predicate}"
+        f"SELECT storage_key,sha256,size_bytes,{scope_sql}{extra_sql} FROM {table} WHERE {predicate}"
     )
     result = []
     for row in rows:
         key, digest, size = row[0], row[1], row[2]
-        scope = dict(zip(scope_columns, row[3:]))
+        scope = dict(zip(scope_columns, row[3:3 + len(scope_columns)]))
+        metadata = dict(zip(extra, row[3 + len(scope_columns):]))
+        normalized_table = table.removeprefix("accounting.")
+        reference = {
+            "table": normalized_table,
+            "row_id": metadata.get("id"),
+            "scope": scope,
+            "links": {name: metadata[name] for name in REFERENCE_COLUMNS
+                      if name.endswith("_id") and name != "id" and name in metadata},
+        }
+        if metadata.get("created_by") is not None:
+            reference["created_by"] = metadata["created_by"]
+        if normalized_table == "upload_intents":
+            raw = metadata.get("binding_json")
+            try:
+                binding = json.loads(raw) if isinstance(raw, str) else raw
+            except (ValueError, TypeError):
+                raise ValueError("上传消费引用绑定不是有效 JSON") from None
+            reference["upload"] = {
+                "purpose": metadata.get("purpose"), "state": metadata.get("state"),
+                "consumed_ref": metadata.get("consumed_ref"), "binding": binding,
+                "binding_status": "bound" if binding is not None else
+                    "legacy_unbound" if metadata.get("state") == "consumed" else "unconsumed",
+            }
         result.append(
             {
                 "storage_key": key,
-                "tables": [table],
+                "tables": [normalized_table],
                 "scope": scope,
+                "references": [reference],
                 "sha256": digest,
                 "size_bytes": size,
                 # The current local/Supabase adapters do not expose an object
@@ -101,6 +147,138 @@ def _collect_originals(conn, table, predicate, scope_columns):
             }
         )
     return result
+
+
+def _merge_original(originals, item):
+    """Merge content identity while preserving every authorized reference.
+
+    A storage key may be referenced by an attachment (firm/company) and a
+    consumed upload intent (firm/user). The scope dictionaries are not the
+    object identity; hash and size are. References must still belong to one
+    firm, and are retained for restore/diagnosis.
+    """
+    prior = originals.get(item["storage_key"])
+    if prior is None:
+        originals[item["storage_key"]] = item
+        return
+    if prior["sha256"] != item["sha256"] or prior["size_bytes"] != item["size_bytes"]:
+        raise ValueError("同一原件存储键对应不同哈希或大小")
+    scopes = [ref.get("scope", {}) for source in (prior, item) for ref in source.get("references", [])]
+    for field, label in (("firm_id", "事务所"), ("company_id", "企业")):
+        if len({scope[field] for scope in scopes if scope.get(field)}) > 1:
+            raise ValueError(f"同一原件存储键跨{label}引用")
+    references = prior.setdefault("references", [{"table": prior["tables"][0], "scope": prior["scope"]}])
+    for reference in item.get("references", []):
+        if reference not in references:
+            references.append(reference)
+    for table in item["tables"]:
+        if table not in prior["tables"]:
+            prior["tables"].append(table)
+
+
+def _canonical_references(references):
+    return sorted(references, key=lambda ref: json.dumps(ref, sort_keys=True, ensure_ascii=False))
+
+
+def _validate_references(item):
+    """Validate the portable manifest, without trusting a tenant scope string."""
+    references = item.get("references")
+    if not isinstance(references, list) or not references:
+        raise ValueError("原件清单缺少完整引用")
+    allowed = {table for table, _, _ in ORIGINAL_TABLES}
+    for reference in references:
+        if not isinstance(reference, dict) or reference.get("table") not in allowed:
+            raise ValueError("原件引用表不合法")
+        if not isinstance(reference.get("scope"), dict) or not isinstance(reference.get("links"), dict):
+            raise ValueError("原件引用范围或目标信息缺失")
+    if len({json.dumps(ref, sort_keys=True) for ref in references}) != len(references):
+        raise ValueError("原件引用重复")
+    if {ref["table"] for ref in references} != set(item.get("tables", [])):
+        raise ValueError("原件引用表清单不一致")
+    for field, label in (("firm_id", "事务所"), ("company_id", "企业")):
+        if len({ref["scope"][field] for ref in references if ref["scope"].get(field)}) > 1:
+            raise ValueError(f"同一原件存储键跨{label}引用")
+    for reference in references:
+        if reference["table"] != "upload_intents":
+            continue
+        upload = reference.get("upload")
+        if not isinstance(upload, dict):
+            raise ValueError("原件缺少上传消费引用")
+        binding = upload.get("binding")
+        if binding is None:
+            expected = "legacy_unbound" if upload.get("state") == "consumed" else "unconsumed"
+            if upload.get("binding_status") != expected:
+                raise ValueError("历史未绑定引用不得标记为已验证")
+            continue
+        if not isinstance(binding, dict) or binding.get("version") != 1:
+            raise ValueError("不支持的上传消费引用绑定版本")
+        if upload.get("state") != "consumed" or upload.get("binding_status") != "bound":
+            raise ValueError("上传消费状态与绑定不一致")
+        purpose = upload.get("purpose")
+        target = CONSUMED_TARGETS.get(purpose)
+        if target is None:
+            raise ValueError("上传消费用途不合法")
+        target_kind, _, attachment_table, parent_column = target
+        if (binding.get("purpose") != purpose or binding.get("target_kind") != target_kind
+                or binding.get("attachment_table") != attachment_table):
+            raise ValueError("上传消费用途与目标种类不一致")
+        if not all(isinstance(binding.get(key), str) and binding[key]
+                   for key in ("firm_id", "company_id", "target_id", "attachment_id")):
+            raise ValueError("上传消费引用缺少企业或目标标识")
+        if binding["firm_id"] != reference["scope"].get("firm_id"):
+            raise ValueError("上传消费引用跨事务所")
+        storage = binding.get("storage")
+        if not isinstance(storage, dict) or storage != {
+            "storage_key": item["storage_key"], "sha256": item["sha256"], "size_bytes": item["size_bytes"]
+        }:
+            raise ValueError("上传消费引用与原件身份不一致")
+        if upload.get("consumed_ref") != attachment_table + ":" + binding["attachment_id"]:
+            raise ValueError("上传消费引用标识不一致")
+        candidates = [ref for ref in references if ref["table"] == attachment_table
+                      and ref.get("row_id") == binding["attachment_id"]]
+        if len(candidates) != 1:
+            raise ValueError("上传消费引用的附件不存在或重复")
+        attachment = candidates[0]
+        if any(attachment["scope"].get(key) != binding[key] for key in ("firm_id", "company_id")):
+            raise ValueError("上传消费引用与附件企业不一致")
+        if attachment["links"].get(parent_column) != binding["target_id"]:
+            raise ValueError("上传消费引用与附件事项不一致")
+        if attachment.get("created_by") is not None and attachment["created_by"] != reference["scope"].get("user_id"):
+            raise ValueError("上传消费引用与附件创建人不一致")
+        for column in ("event_id", "source_id", "book_id", "response_id"):
+            if binding.get(column) is not None and column in attachment["links"]:
+                if binding[column] != attachment["links"][column]:
+                    raise ValueError("上传消费引用的关联标识不一致")
+
+
+def _snapshot_row(conn, dialect, table, row_id):
+    qualified = "accounting." + table if dialect == "postgres" else table
+    cursor = conn.execute(f"SELECT * FROM {qualified} WHERE id={'%s' if dialect == 'postgres' else '?'}", (row_id,))
+    row = cursor.fetchone()
+    if row is None:
+        raise ValueError("上传消费引用的目标不存在")
+    names = [column.name if hasattr(column, "name") else column[0] for column in cursor.description]
+    return dict(zip(names, row))
+
+
+def _validate_consumed_targets(conn, dialect, item):
+    for reference in item["references"]:
+        upload = reference.get("upload", {})
+        binding = upload.get("binding")
+        if binding is None:
+            continue
+        _, table, _, _ = CONSUMED_TARGETS[upload["purpose"]]
+        parent = _snapshot_row(conn, dialect, table, binding["target_id"])
+        if any(parent.get(key) != binding[key] for key in ("firm_id", "company_id")):
+            raise ValueError("上传消费引用与目标企业不一致")
+        for column in ("event_id", "source_id", "book_id"):
+            if binding.get(column) is not None and column in parent and parent[column] != binding[column]:
+                raise ValueError("上传消费引用与目标事项不一致")
+        if binding.get("response_id") is not None:
+            response = _snapshot_row(conn, dialect, "case_responses", binding["response_id"])
+            if (response.get("case_id") != binding["target_id"] or
+                    any(response.get(key) != binding[key] for key in ("firm_id", "company_id"))):
+                raise ValueError("上传消费引用与补件回复不一致")
 
 
 def original_rows(conn, dialect):
@@ -115,15 +293,7 @@ def original_rows(conn, dialect):
             present.append(table)
             rows = _collect_originals(conn, qualified, predicate, scope_columns)
             for item in rows:
-                prior = originals.setdefault(item["storage_key"], item)
-                if (
-                    prior["sha256"] != item["sha256"]
-                    or prior["size_bytes"] != item["size_bytes"]
-                    or prior["scope"] != item["scope"]
-                ):
-                    raise ValueError("同一原件存储键对应不同哈希或范围")
-                if table not in prior["tables"]:
-                    prior["tables"].append(table)
+                _merge_original(originals, item)
     else:
         tables = {
             row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
@@ -134,15 +304,11 @@ def original_rows(conn, dialect):
             present.append(table)
             rows = _collect_originals(conn, table, predicate, scope_columns)
             for item in rows:
-                prior = originals.setdefault(item["storage_key"], item)
-                if (
-                    prior["sha256"] != item["sha256"]
-                    or prior["size_bytes"] != item["size_bytes"]
-                    or prior["scope"] != item["scope"]
-                ):
-                    raise ValueError("同一原件存储键对应不同哈希或范围")
-                if table not in prior["tables"]:
-                    prior["tables"].append(table)
+                _merge_original(originals, item)
+    for item in originals.values():
+        _validate_references(item)
+        _validate_consumed_targets(conn, dialect, item)
+        item["references"] = _canonical_references(item["references"])
     return present, list(originals.values())
 
 
@@ -232,14 +398,40 @@ def copy_originals(storage_root, target, originals, *, storage_store=None):
         files.append(
             {
                 "path": relative,
+                "storage_key": item["storage_key"],
                 "sha256": item["sha256"],
                 "size_bytes": item["size_bytes"],
                 "tables": item.get("tables", []),
                 "scope": item.get("scope", {}),
+                "references": item["references"],
                 "object_version": item.get("object_version"),
             }
         )
     return files
+
+
+def reference_verification(files):
+    references = [reference for item in files if item.get("path", "").startswith("originals/")
+                  for reference in item.get("references", [])]
+    legacy = sum(reference.get("upload", {}).get("binding_status") == "legacy_unbound" for reference in references)
+    unidentified = sum(not reference.get("row_id") for reference in references)
+    return {"reference_count": len(references), "legacy_unbound_uploads": legacy,
+            "unidentified_references": unidentified,
+            "all_consumed_bindings_verified": not legacy and not unidentified}
+
+
+def _verify_reference_snapshot(manifest, originals):
+    if manifest.get("originals_policy_version", 1) < 3:
+        return
+    archived = {item["storage_key"]: item for item in manifest["files"] if item["path"].startswith("originals/")}
+    snapshot = {item["storage_key"]: item for item in originals}
+    if set(archived) != set(snapshot):
+        raise ValueError("备份清单与数据库原件引用集合不同")
+    for key, item in snapshot.items():
+        copied = archived[key]
+        if (copied["sha256"] != item["sha256"] or copied["size_bytes"] != item["size_bytes"]
+                or _canonical_references(copied["references"]) != _canonical_references(item["references"])):
+            raise ValueError("备份清单与数据库原件引用不一致")
 
 
 def backup(database, storage_root, destination, *, storage_store=None):
@@ -302,6 +494,7 @@ def backup(database, storage_root, destination, *, storage_store=None):
         "migrations": versions,
         "database_schema_version": versions[-1]["version"] if versions else 0,
         "original_tables": original_tables,
+        "reference_verification": reference_verification(files),
         "object_version_supported": False,
         "files": files,
         "consistency": "exported_repeatable_read_snapshot"
@@ -327,9 +520,14 @@ def verify(directory):
         "postgres",
     }:
         raise ValueError("不支持的备份格式")
+    if manifest.get("originals_policy_version", 1) not in (1, 2, ORIGINALS_POLICY_VERSION):
+        raise ValueError("不支持的原件引用策略版本")
     names = set()
     expected_database = "database.sqlite" if manifest["dialect"] == "sqlite" else "database.dump"
     for item in manifest["files"]:
+        if (not isinstance(item, dict) or not isinstance(item.get("path"), str)
+                or type(item.get("size_bytes")) is not int or item["size_bytes"] <= 0):
+            raise ValueError("备份清单文件身份不合法")
         name = item["path"]
         if name in names or (name != expected_database and not name.startswith("originals/")):
             raise ValueError("备份清单文件重复或非预期")
@@ -341,8 +539,20 @@ def verify(directory):
             or sha256(source) != item["sha256"]
         ):
             raise ValueError("备份文件缺失或哈希不符")
+        if name.startswith("originals/") and manifest.get("originals_policy_version", 1) >= 3:
+            if (not isinstance(item.get("storage_key"), str)
+                    or "originals/" + item["storage_key"].replace("\\", "/") != name):
+                raise ValueError("原件清单存储键与路径不一致")
+            _validate_references(item)
     if expected_database not in names:
         raise ValueError("备份缺少数据库")
+    if manifest.get("originals_policy_version", 1) >= 3:
+        if manifest.get("reference_verification") != reference_verification(manifest["files"]):
+            raise ValueError("原件引用验证摘要不一致")
+        if manifest["dialect"] == "sqlite":
+            with closing(sqlite3.connect(safe_child(directory, expected_database).as_uri() + "?mode=ro", uri=True)) as conn:
+                _, originals = original_rows(conn, "sqlite")
+                _verify_reference_snapshot(manifest, originals)
     return manifest
 
 
@@ -404,6 +614,7 @@ def restore(directory, destination, postgres_target=None):
             migrations, originals, _ = sqlite_metadata(conn)
             if migrations != manifest["migrations"]:
                 raise ValueError("恢复数据库迁移清单不同")
+            _verify_reference_snapshot(manifest, originals)
             for item in originals:
                 file = safe_child(target, "originals/" + item["storage_key"].replace("\\", "/"))
                 if file.stat().st_size != item["size_bytes"] or sha256(file) != item["sha256"]:
@@ -419,6 +630,7 @@ def restore(directory, destination, postgres_target=None):
             if migrations != manifest["migrations"]:
                 raise ValueError("恢复数据库迁移清单不同")
             _, originals = original_rows(conn, "postgres")
+            _verify_reference_snapshot(manifest, originals)
             for item in originals:
                 file = safe_child(target, "originals/" + item["storage_key"].replace("\\", "/"))
                 if (
@@ -427,6 +639,38 @@ def restore(directory, destination, postgres_target=None):
                     or sha256(file) != item["sha256"]
                 ):
                     raise ValueError("恢复后的数据库与原件不一致")
+    restore_id = hashlib.sha256(str(manifest).encode("utf-8")).hexdigest()[:32]
+    if manifest["dialect"] == "sqlite":
+        with closing(sqlite3.connect(target / "database.sqlite")) as conn:
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS restore_state("
+                "instance_id TEXT PRIMARY KEY,hold INTEGER NOT NULL DEFAULT 0,"
+                "restore_id TEXT NOT NULL DEFAULT '',reason TEXT NOT NULL DEFAULT '',"
+                "updated_by TEXT NOT NULL DEFAULT '',updated_at TEXT NOT NULL)"
+            )
+            conn.execute(
+                "INSERT INTO restore_state(instance_id,hold,restore_id,reason,updated_by,updated_at) "
+                "VALUES('restored',1,?,'恢复到隔离目标，等待核对','system',?) "
+                "ON CONFLICT(instance_id) DO UPDATE SET hold=1,restore_id=excluded.restore_id,"
+                "reason=excluded.reason,updated_by=excluded.updated_by,updated_at=excluded.updated_at",
+                (restore_id, datetime.now(timezone.utc).isoformat()),
+            )
+            conn.commit()
+    else:
+        with psycopg.connect(postgres_target) as conn:
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS accounting.restore_state("
+                "instance_id TEXT PRIMARY KEY,hold BOOLEAN NOT NULL DEFAULT false,"
+                "restore_id TEXT NOT NULL DEFAULT '',reason TEXT NOT NULL DEFAULT '',"
+                "updated_by TEXT NOT NULL DEFAULT '',updated_at TEXT NOT NULL)"
+            )
+            conn.execute(
+                "INSERT INTO accounting.restore_state(instance_id,hold,restore_id,reason,updated_by,updated_at) "
+                "VALUES('restored',TRUE,%s,'恢复到隔离目标，等待核对','system',%s) "
+                "ON CONFLICT(instance_id) DO UPDATE SET hold=TRUE,restore_id=EXCLUDED.restore_id,"
+                "reason=EXCLUDED.reason,updated_by=EXCLUDED.updated_by,updated_at=EXCLUDED.updated_at",
+                (restore_id, datetime.now(timezone.utc).isoformat()),
+            )
     receipt = {
         "restored_at": datetime.now(timezone.utc).isoformat(),
         "dialect": manifest["dialect"],
@@ -436,6 +680,10 @@ def restore(directory, destination, postgres_target=None):
         "outbound_disabled": True,
         "worker_autostart": False,
         "in_flight_jobs_hold": True,
+        "originals_policy_version": manifest.get("originals_policy_version", 1),
+        "reference_verification": reference_verification(manifest["files"])
+            if manifest.get("originals_policy_version", 1) >= 3 else {
+                "all_consumed_bindings_verified": False, "reason": "legacy_manifest_without_complete_references"},
         "note": "恢复环境须先核对在途任务与结果未知状态，确认前不得启动 worker 或外发",
     }
     with (target / "restore-verification.json").open("x", encoding="utf-8") as stream:

@@ -292,6 +292,49 @@ def test_periodic_accrual_asset_closing_reports_and_close(business):
             reason="记账折旧",
         ),
     )
+    # One fully matched bank movement gives the month-end bank evidence a
+    # complete coverage line before closing; the opening bank balance is 10,000.
+    bank_voucher = posting.post_manual(
+        case.manager,
+        ManualVoucher(
+            command_key="b04-bank-evidence",
+            book_id=case.book["id"],
+            voucher_date="2026-10-31",
+            description="虚构银行对账证据",
+            lines=[
+                ManualLine(
+                    account_id=opening["bank"]["id"],
+                    account_version=1,
+                    debit="10000.00",
+                    credit="0.00",
+                ),
+                ManualLine(
+                    account_id=opening["payable"]["id"],
+                    account_version=1,
+                    debit="0.00",
+                    credit="10000.00",
+                ),
+            ],
+        ),
+    )
+    sub = SubledgerService(case.db)
+    evidence_line = sub.add_bank_line(
+        case.manager,
+        BankLineCreate(
+            book_id=case.book["id"],
+            line_date="2026-10-31",
+            description="虚构银行对账证据",
+            amount="10000.00",
+        ),
+    )
+    bank_line_id = next(
+        line["id"] for line in bank_voucher["lines"] if line["account_id"] == opening["bank"]["id"]
+    )
+    sub.match_bank_line(
+        case.manager,
+        evidence_line["id"],
+        BankMatch(voucher_line_id=bank_line_id),
+    )
     closing = periodic.generate_closing(
         case.manager,
         ClosingGenerate(
@@ -332,6 +375,27 @@ def test_periodic_accrual_asset_closing_reports_and_close(business):
     )
     assert report["report"]["status"] == "reviewed"
 
+    # The accrual payable now requires an explicit subledger open item;
+    # otherwise the reverse reconciliation correctly blocks the close.
+    party = LedgersService(case.db).create_entity(
+        case.manager,
+        case.book["id"],
+        EntityCreate(kind="counterparty", code="B04-ACCRUAL", name="虚构计提供应商"),
+    )
+    SubledgerService(case.db).create_item(
+        case.manager,
+        OpenItemCreate(
+            book_id=case.book["id"],
+            kind="payable",
+            counterparty_id=party["id"],
+            control_account_id=opening["payable"]["id"],
+            control_account_version=1,
+            original_date="2026-10-01",
+            amount="20100.00",
+            source_kind="manual",
+            reason="计提应付款、期初应付款与银行证据子账",
+        ),
+    )
     close = CloseService(case.db)
     run = close.preflight(
         case.manager,
@@ -343,7 +407,9 @@ def test_periodic_accrual_asset_closing_reports_and_close(business):
             reason="B04 月结预检",
         ),
     )
-    assert run["close"]["status"] == "preflight_passed", run
+    assert run["close"]["status"] == "preflight_passed", [
+        check for check in run["checks"] if check["status"] == "blocked"
+    ]
     run = close.review(
         admin(case), run["close"]["id"], CloseCommand(expected_version=1, reason="复核月结")
     )

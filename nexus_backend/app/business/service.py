@@ -582,6 +582,8 @@ class BusinessService:
             ) as transaction:
                 return self.add_attachment(actor, event_id, expected_version, metadata, transaction)
         event = self._event(conn, actor, event_id)
+        if metadata.get("_upload_replay"):
+            return self._event_json(conn, actor, event)
         self._require_edit(conn, actor, event, expected_version)
         attachments = self._attachments(conn, event_id)
         if (

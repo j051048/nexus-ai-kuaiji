@@ -114,14 +114,11 @@ def build_cases_router(actor_dependency):
         uploads = request.app.state.uploads if claimed else None
         stored = None
         try:
-            cases.require_upload(actor, case_id, expected_version, idempotency_key)
             if claimed:
-                stored = uploads.take(actor, upload_id, "case_attachment")
-                result = cases.add_attachment(
-                    actor, case_id, expected_version, idempotency_key, stored
-                )
-                uploads.confirm(actor, upload_id)
+                result = uploads.consume(actor, upload_id, "case_attachment", case_id,
+                    lambda conn, metadata: cases.add_attachment(actor, case_id, expected_version, idempotency_key, metadata, conn=conn))
                 return result["case"]
+            cases.require_upload(actor, case_id, expected_version, idempotency_key)
             if file is None:
                 raise AccountingError("请选择文件，或先完成大文件上传校验", 422)
             data = file.file.read(MAX_FILE_BYTES + 1)
@@ -132,8 +129,6 @@ def build_cases_router(actor_dependency):
             return result["case"]
         except AccountingError:
             if claimed:
-                if stored:
-                    uploads.release(actor, upload_id)
                 raise
             if stored:
                 request.app.state.attachment_store.discard(stored)

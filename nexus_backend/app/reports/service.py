@@ -4,6 +4,7 @@ import hashlib
 import json
 from uuid import uuid4
 
+from ..accounting.close_dependencies import close_dependencies
 from ..accounting.domain import AccountingError
 from ..accounting.service import AccountingService, now
 from ..posting.service import PostingService
@@ -115,6 +116,8 @@ class ReportService:
         for row in rows:
             by_voucher.setdefault(row["voucher_id"], []).append(row)
         operating = investing = financing = unclassified = 0
+        unclassified_count = 0
+        unclassified_absolute = 0
         for lines in by_voucher.values():
             cash = [line for line in lines if line["account_id"] in cash_account_ids]
             if not cash:
@@ -123,9 +126,12 @@ class ReportService:
             if len(cash) > 1 and not noncash:
                 continue
             if len(cash) != 1 or not noncash:
-                unclassified += sum(
+                amount = sum(
                     int(line["debit_cents"]) - int(line["credit_cents"]) for line in cash
                 )
+                unclassified += amount
+                unclassified_count += 1
+                unclassified_absolute += abs(amount)
                 continue
             categories = {self._category(conn, line["account_id"]) for line in noncash}
             codes = {self._code(conn, line["account_id"]) for line in noncash}
@@ -140,11 +146,15 @@ class ReportService:
                 financing += amount
             else:
                 unclassified += amount
+                unclassified_count += 1
+                unclassified_absolute += abs(amount)
         return {
             "operating_cents": operating,
             "investing_cents": investing,
             "financing_cents": financing,
             "unclassified_cents": unclassified,
+            "unclassified_count": unclassified_count,
+            "unclassified_absolute_cents": unclassified_absolute,
         }
 
     @staticmethod
@@ -166,33 +176,35 @@ class ReportService:
         return row[0] if row else ""
 
     def _build(self, actor, book):
-        trial = self.posting.trial_balance(actor, book["id"])
-        binding = None
         with self.db.transaction(actor=actor) as conn:
-            binding = conn.execute(
-                "SELECT * FROM opening_bindings WHERE book_id=? AND status='active'", (book["id"],)
-            ).fetchone()
-            if not binding:
-                raise AccountingError("未绑定期初，不能生成正式报表", 409)
-            activity, closing_vouchers = self._activity(conn, book)
-            opening = {
-                row["account_id"]: int(row["total"])
-                for row in conn.execute(
-                    "SELECT account_id,SUM(opening_cents) AS total FROM opening_lines "
-                    "WHERE package_version_id=? GROUP BY account_id",
-                    (binding["package_version_id"],),
-                )
-            }
-            cash_ids = {
-                row[0]
-                for row in conn.execute(
-                    "SELECT a.id FROM ledger_accounts a JOIN ledger_account_versions v "
-                    "ON v.account_id=a.id AND v.version=a.current_version WHERE a.ledger_id=? "
-                    "AND (v.code LIKE '1001%' OR v.code LIKE '1002%')",
-                    (binding["ledger_id"],),
-                )
-            }
-            cash_flow = self._cash_flow(conn, book, cash_ids)
+            return self._build_in_transaction(conn, actor, book)
+
+    def _build_in_transaction(self, conn, actor, book, trial=None):
+        trial = trial or self.posting.trial_balance_in_transaction(conn, actor, book["id"])
+        binding = conn.execute(
+            "SELECT * FROM opening_bindings WHERE book_id=? AND status='active'", (book["id"],)
+        ).fetchone()
+        if not binding:
+            raise AccountingError("未绑定期初，不能生成正式报表", 409)
+        activity, closing_vouchers = self._activity(conn, book)
+        opening = {
+            row["account_id"]: int(row["total"])
+            for row in conn.execute(
+                "SELECT account_id,SUM(opening_cents) AS total FROM opening_lines "
+                "WHERE package_version_id=? GROUP BY account_id",
+                (binding["package_version_id"],),
+            )
+        }
+        cash_ids = {
+            row[0]
+            for row in conn.execute(
+                "SELECT a.id FROM ledger_accounts a JOIN ledger_account_versions v "
+                "ON v.account_id=a.id AND v.version=a.current_version WHERE a.ledger_id=? "
+                "AND (v.code LIKE '1001%' OR v.code LIKE '1002%')",
+                (binding["ledger_id"],),
+            )
+        }
+        cash_flow = self._cash_flow(conn, book, cash_ids)
         rows = trial["rows"]
         leaves = [row for row in rows if row["is_leaf"]]
         assets = [row for row in leaves if row["category"] == "asset"]
@@ -231,7 +243,11 @@ class ReportService:
             + cash_flow["investing_cents"]
             + cash_flow["financing_cents"]
         )
-        cash_ok = classified + cash_flow["unclassified_cents"] == cash_net
+        cash_ok = (
+            classified + cash_flow["unclassified_cents"] == cash_net
+            and cash_flow["unclassified_count"] == 0
+            and cash_flow["unclassified_absolute_cents"] == 0
+        )
 
         content = {
             "balance_sheet": {
@@ -295,6 +311,8 @@ class ReportService:
                 "profit_statement_passed": revenue - expenses == profit,
                 "cash_flow_passed": cash_ok,
                 "unclassified_cash_cents": cash_flow["unclassified_cents"],
+                "unclassified_cash_count": cash_flow["unclassified_count"],
+                "unclassified_cash_absolute_cents": cash_flow["unclassified_absolute_cents"],
                 "closing_posted": closing_posted,
             },
         }
@@ -307,19 +325,23 @@ class ReportService:
                 "opening": opening,
                 "cash_flow": cash_flow,
                 "closing_vouchers": closing_vouchers,
+                "policy_and_schema_revisions": {
+                    key: value for key, value in close_dependencies(
+                        conn, book["id"], self.TEMPLATE_ID
+                    ).items() if key != "book"
+                },
             }
         )
         return content, fingerprint
 
     def create(self, actor, book_id, period):
-        with self.db.transaction(actor=actor) as conn:
+        with self.db.transaction(write=True, actor=actor) as conn:
             book, _ = self._book(conn, actor, book_id)
             if period != book["period"]:
                 raise AccountingError("报表期间与账套期间不一致", 422)
-        content, fingerprint = self._build(actor, book)
-        with self.db.transaction(write=True, actor=actor) as conn:
             self._book(conn, actor, book_id, write=True)
             template = self._ensure_template(conn)
+            content, fingerprint = self._build_in_transaction(conn, actor, book)
             version = conn.execute(
                 "SELECT COALESCE(MAX(version),0)+1 FROM report_runs WHERE book_id=? AND period=? AND template_id=?",
                 (book["id"], period, self.TEMPLATE_ID),
@@ -365,17 +387,34 @@ class ReportService:
                 for key in ("balance_sheet_passed", "profit_statement_passed", "cash_flow_passed")
             ):
                 raise AccountingError("报表勾稽未通过，不能标记核验", 409)
-            if content["checks"].get("unclassified_cash_cents"):
+            if (
+                content["checks"].get("unclassified_cash_cents")
+                or content["checks"].get("unclassified_cash_count")
+                or content["checks"].get("unclassified_cash_absolute_cents")
+            ):
                 raise AccountingError("存在未分类现金流量，不能标记核验", 409)
             conn.execute("UPDATE report_runs SET status='validated' WHERE id=?", (report_id,))
             return self._view(conn, report_id)
 
     def _current(self, actor, report_id):
         with self.db.transaction(actor=actor) as conn:
-            row = self._report(conn, actor, report_id)
-            book = self.accounting.access.book(conn, actor, row["book_id"], "read")
-        _, fingerprint = self._build(actor, book)
-        if fingerprint != row["inputs_fingerprint"]:
+            return self._current_in_transaction(conn, actor, report_id)
+
+    def _current_in_transaction(self, conn, actor, report_id, trial=None):
+        row = self._report(conn, actor, report_id)
+        book = self.accounting.access.book(conn, actor, row["book_id"], "read")
+        template = conn.execute(
+            "SELECT * FROM report_templates WHERE id=? AND version=? AND active=1",
+            (row["template_id"], row["template_version"]),
+        ).fetchone()
+        if not template:
+            raise AccountingError("报表模板版本已变化，请重新生成报表", 409)
+        content, fingerprint = self._build_in_transaction(conn, actor, book, trial=trial)
+        if (
+            fingerprint != row["inputs_fingerprint"]
+            or _fingerprint(json.loads(row["content_json"])) != row["content_hash"]
+            or _fingerprint(content) != row["content_hash"]
+        ):
             raise AccountingError("报表输入已变化，请重新生成报表", 409)
         return row
 
@@ -388,6 +427,17 @@ class ReportService:
         if row["created_by"] == actor.user_id:
             raise AccountingError("报表编制人与复核人必须分离", 403)
         with self.db.transaction(write=True, actor=actor) as conn:
+            self.accounting.access.book(conn, actor, row["book_id"], "review")
+            current = conn.execute(
+                "SELECT status,version,created_by FROM report_runs WHERE id=?", (report_id,)
+            ).fetchone()
+            if (
+                not current
+                or current["status"] != "validated"
+                or int(current["version"]) != request.expected_version
+                or current["created_by"] == actor.user_id
+            ):
+                raise AccountingError("报表状态或复核权限已变化", 409)
             conn.execute(
                 "UPDATE report_runs SET status='reviewed',reviewed_by=?,reviewed_at=? WHERE id=?",
                 (actor.user_id, now(), report_id),
@@ -398,12 +448,23 @@ class ReportService:
         row = self._current(actor, report_id)
         if row["status"] == "published":
             with self.db.transaction(actor=actor) as conn:
+                self.accounting.access.book(conn, actor, row["book_id"], "review")
                 return self._view(conn, report_id)
         if row["status"] != "reviewed":
             raise AccountingError("只有已复核的报表才能发布", 409)
         if int(row["version"]) != request.expected_version:
             raise AccountingError("报表版本已变化", 409)
         with self.db.transaction(write=True, actor=actor) as conn:
+            self.accounting.access.book(conn, actor, row["book_id"], "review")
+            current = conn.execute(
+                "SELECT status,version FROM report_runs WHERE id=?", (report_id,)
+            ).fetchone()
+            if (
+                not current
+                or current["status"] != "reviewed"
+                or int(current["version"]) != request.expected_version
+            ):
+                raise AccountingError("报表状态或复核权限已变化", 409)
             lock = conn.execute(
                 "SELECT 1 FROM internal_period_locks WHERE book_id=? AND period=?",
                 (row["book_id"], row["period"]),

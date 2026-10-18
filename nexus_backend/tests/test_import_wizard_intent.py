@@ -66,7 +66,7 @@ def test_large_statement_via_intent_is_parsed_and_consumed(service, book, tmp_pa
             "SELECT state,consumed_ref FROM upload_intents WHERE id=?", (created["id"],)
         ).fetchone()
     assert row["storage_key"] == f"{created['id'][:2]}/{created['id']}"
-    assert tuple(state) == ("consumed", "bank_import")
+    assert tuple(state) == ("consumed", f"bank_import_files:{result['file_id']}")
 
 
 def test_maximum_statement_size_records_every_row(service, book, tmp_path):
