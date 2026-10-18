@@ -7,7 +7,6 @@ from uuid import uuid4
 from ..accounting.domain import AccountingError
 from ..accounting.service import fingerprint
 from ..intelligence.provider import JOURNAL_PROMPT_VERSION, effective_settings
-from ..intelligence.cache import config_key
 from .visibility import book_edit_scope
 
 PROPOSAL_ACTIVE = {"waiting", "queued", "running", "retry_wait"}
@@ -198,10 +197,15 @@ class ProposalQueueService:
             not is_structured(row["media_type"]) for row in attachments
         ):
             return "ocr_unavailable", "票据识别服务尚未配置，请配置后由会计重试"
-        budget = self.queue.automation.budget_attention(conn, actor, event)
-        if budget:
-            return budget
-        pending, _ = self._dependency_plan(conn, event)
+        try:
+            budget = self.queue.automation.budget_attention(conn, actor, event)
+            if budget:
+                return budget
+            pending, _ = self._dependency_plan(conn, event, actor)
+        except AccountingError as error:
+            if error.status not in {403, 409}:
+                raise
+            return "policy_invalid", "企业 AI 外发政策或可信端点不可用，请管理员核验后重试"
         try:
             self.queue._capacity(conn, actor, event["company_id"], len(pending))
         except AccountingError:
@@ -211,7 +215,7 @@ class ProposalQueueService:
             )
         return None
 
-    def _dependency_plan(self, conn, event):
+    def _dependency_plan(self, conn, event, actor):
         from ..intelligence.current_evidence import current_attachments
 
         attachments = current_attachments(
@@ -230,8 +234,8 @@ class ProposalQueueService:
                 {
                     "attachment_id": attachment["id"],
                     "sha256": attachment["sha256"],
-                    "config": config_key(
-                        self.intelligence.provider.settings, attachment["media_type"]
+                    "config": self.intelligence._ocr_cache_key(
+                        conn, actor, event, attachment["media_type"]
                     ),
                     "fact_version": event["fact_version"],
                     "force_refresh": False,
@@ -257,7 +261,7 @@ class ProposalQueueService:
         return pending, deps
 
     def _dependencies(self, conn, actor, event, job_id, generation):
-        pending, deps = self._dependency_plan(conn, event)
+        pending, deps = self._dependency_plan(conn, event, actor)
         if pending:
             self.queue._capacity(conn, actor, event["company_id"], len(pending))
             batch_id, stamp = uuid4().hex, self.queue.database_timestamp(conn)

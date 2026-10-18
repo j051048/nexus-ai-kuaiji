@@ -100,7 +100,7 @@ class QueueAutomationService:
         """Forecast only new external calls, preserving cached/deterministic work."""
         from ..accounting.catalog import CatalogService
         from ..accounting.models import money_to_cents, cents_to_money
-        from ..intelligence.cache import config_key, read_cache
+        from ..intelligence.cache import read_cache
         from ..intelligence.current_evidence import current_attachments
         from ..intelligence.structured import is_structured
 
@@ -115,7 +115,9 @@ class QueueAutomationService:
             ).fetchall(),
         )
         for attachment in attachments:
-            key = config_key(self.queue.intelligence.provider.settings, attachment["media_type"])
+            key = self.queue.intelligence._ocr_cache_key(
+                conn, actor, event, attachment["media_type"]
+            )
             digest = fingerprint(
                 {
                     "attachment_id": attachment["id"],

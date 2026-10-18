@@ -214,6 +214,22 @@ class IntelligenceService:
             bool(settings.api_key),
         )
 
+    def _ocr_cache_key(self, conn, actor, event, media_type):
+        """Bind every OCR checkpoint to the same current egress policy evidence.
+
+        Structured local parsing needs no egress grant. Model extraction must
+        reauthorize the endpoint and data categories before sending and before
+        publishing; passing an old captured policy key would hide revocation.
+        """
+        policy_key = None
+        if not is_structured(media_type):
+            evidence = self._policy_check(
+                conn, actor, event["company_id"], "ocr", {"document", "counterparty", "amount"}
+            )
+            if evidence.get("managed"):
+                policy_key = f"{evidence['policy_version']}:{evidence['endpoint_id']}"
+        return config_key(self.provider.settings, media_type, policy_key=policy_key)
+
     @staticmethod
     def _public_run(row):
         result = dict(row)
@@ -388,18 +404,7 @@ class IntelligenceService:
             ).fetchone():
                 raise AccountingError("该票据正在后台识别，请查看任务进度", 409)
             structured = is_structured(attachment["media_type"])
-            policy_key = None
-            if not structured:
-                policy_evidence = self._policy_check(
-                    conn, actor, event["company_id"], "ocr", {"document", "counterparty", "amount"}
-                )
-                if policy_evidence.get("managed"):
-                    policy_key = (
-                        f"{policy_evidence['policy_version']}:{policy_evidence['endpoint_id']}"
-                    )
-            cache_key = config_key(
-                self.provider.settings, attachment["media_type"], policy_key=policy_key
-            )
+            cache_key = self._ocr_cache_key(conn, actor, event, attachment["media_type"])
             digest = fingerprint(
                 {
                     "attachment_id": attachment["id"],
@@ -449,7 +454,8 @@ class IntelligenceService:
                 self._require(conn, actor, current, "process", enabled=True)
                 if (
                     current["fact_version"] != event["fact_version"]
-                    or config_key(self.provider.settings, attachment["media_type"]) != cache_key
+                    or self._ocr_cache_key(conn, actor, current, attachment["media_type"])
+                    != cache_key
                 ):
                     raise AccountingError("业务事实或识别配置已改变，识别结果未发布", 409)
                 if not conn.execute(
@@ -494,7 +500,9 @@ class IntelligenceService:
                             self._require(check_conn, actor, checked, "process", enabled=True)
                             if (
                                 checked["fact_version"] != event["fact_version"]
-                                or config_key(self.provider.settings, attachment["media_type"])
+                                or self._ocr_cache_key(
+                                    check_conn, actor, checked, attachment["media_type"]
+                                )
                                 != cache_key
                             ):
                                 raise AccountingError("业务事实已改变，字段提取未发送", 409)
@@ -535,7 +543,8 @@ class IntelligenceService:
                 self._require(conn, actor, current, "process", enabled=True)
                 if (
                     current["fact_version"] != event["fact_version"]
-                    or config_key(self.provider.settings, attachment["media_type"]) != cache_key
+                    or self._ocr_cache_key(conn, actor, current, attachment["media_type"])
+                    != cache_key
                 ):
                     raise AccountingError("业务事实或识别配置已改变，识别结果未发布", 409)
                 if not conn.execute(

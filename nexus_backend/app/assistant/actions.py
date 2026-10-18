@@ -15,7 +15,6 @@ from ..accounting.domain import AccountingError
 from ..accounting.models import InputModel
 from ..accounting.queries import inactive_source_sql
 from ..accounting.service import fingerprint
-from ..intelligence.cache import config_key
 from ..intelligence.current_evidence import current_attachments
 from ..jobs.requests import BatchItem, BatchRequest
 from ..jobs.visibility import event_scope
@@ -316,14 +315,25 @@ class AssistantActionService:
                             ).fetchall(),
                         )
                         for attachment in attachments:
+                            try:
+                                ocr_key = self.intelligence._ocr_cache_key(
+                                    conn, actor, event, attachment["media_type"]
+                                )
+                            except AccountingError as error:
+                                if error.status not in {403, 409}:
+                                    raise
+                                blocked.append(
+                                    self._blocked(
+                                        "policy_required",
+                                        "企业 AI 外发政策或可信端点不可用，请管理员核验",
+                                    )
+                                )
+                                continue
                             digest = fingerprint(
                                 {
                                     "attachment_id": attachment["id"],
                                     "sha256": attachment["sha256"],
-                                    "config": config_key(
-                                        self.intelligence.provider.settings,
-                                        attachment["media_type"],
-                                    ),
+                                    "config": ocr_key,
                                     "fact_version": event["fact_version"],
                                     "force_refresh": False,
                                 }

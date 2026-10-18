@@ -98,7 +98,7 @@ def test_superseded_original_is_rejected_for_sync_ocr_and_durable_enqueue(replac
     assert c.provider.extract_calls == before
     with c.db.transaction(actor=c.actors["accountant"]) as conn:
         raw_event = c.business._event(conn, c.actors["accountant"], c.event_id)
-        pending, deps = c.queue.proposals._dependency_plan(conn, raw_event)
+        pending, deps = c.queue.proposals._dependency_plan(conn, raw_event, c.actors["accountant"])
         assert [item["id"] for item in pending] == [c.new_attachment["id"]]
         assert not deps
 
