@@ -3,6 +3,7 @@ from pathlib import Path
 from uuid import uuid4
 import hashlib
 import json
+import sqlite3
 import pytest
 from app.accounting.database import Database
 from test_accounting import service, book, make_draft
@@ -122,3 +123,42 @@ def test_public_remote_bucket_rejected_before_backup_directory_created(ai_case, 
     with pytest.raises(AccountingError, match="私有"):
         recovery.backup(ai_case.db.path, None, target, storage_store=remote.store())
     assert not target.exists()
+
+
+def test_every_registered_original_table_is_backed_up_and_restored(tmp_path):
+    database = tmp_path / "source.sqlite"
+    storage = tmp_path / "private"
+    storage.mkdir()
+    with sqlite3.connect(database) as conn:
+        conn.execute("CREATE TABLE schema_migrations(version TEXT,checksum TEXT)")
+        conn.execute("INSERT INTO schema_migrations VALUES('001','checksum')")
+        for table, _ in recovery.ORIGINAL_TABLES:
+            conn.execute(
+                f"CREATE TABLE {table}(storage_key TEXT,sha256 TEXT,size_bytes INTEGER,state TEXT)"
+            )
+            key = f"aa/{table}"
+            payload = table.encode("utf-8")
+            digest = hashlib.sha256(payload).hexdigest()
+            target = storage / key
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(payload)
+            conn.execute(
+                f"INSERT INTO {table} VALUES(?,?,?,?)",
+                (key, digest, len(payload), "stored"),
+            )
+    archive, restored = tmp_path / "backup", tmp_path / "restore"
+    manifest = recovery.backup(str(database), storage, archive)
+    assert manifest["original_tables"] == [table for table, _ in recovery.ORIGINAL_TABLES]
+    # One database plus one original for every registered table.
+    assert len(manifest["files"]) == len(recovery.ORIGINAL_TABLES) + 1
+    assert recovery.verify(archive) == manifest
+    receipt = recovery.restore(archive, restored)
+    assert receipt["verified_files"] == len(recovery.ORIGINAL_TABLES) + 1
+    for table, _ in recovery.ORIGINAL_TABLES:
+        key = f"aa/{table}"
+        assert (restored / "originals" / key).read_bytes() == table.encode("utf-8")
+    # A missing blob must block the backup even when the database row exists.
+    (storage / "aa/invoice_import_batches").unlink()
+    with pytest.raises(ValueError, match="原件不存在"):
+        recovery.backup(str(database), storage, tmp_path / "incomplete")
+    assert not (tmp_path / "incomplete" / "manifest.json").exists()

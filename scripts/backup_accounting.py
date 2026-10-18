@@ -18,6 +18,23 @@ import subprocess
 import sys
 
 FORMAT_VERSION = 1
+ORIGINALS_POLICY_VERSION = 2
+
+# Single registry for every database row that points at a private original.
+# A backup must cover all of them; a restore must verify the same set. New
+# attachment tables must be added here and to the restore verification test.
+ORIGINAL_TABLES = (
+    ("business_attachments", "1=1"),
+    ("case_attachments", "1=1"),
+    ("intake_attachments", "1=1"),
+    ("bank_import_files", "1=1"),
+    ("migration_files", "1=1"),
+    ("material_attachments", "1=1"),
+    ("invoice_import_batches", "1=1"),
+    # Upload intents are never deleted. Stored/consuming rows may hold an
+    # original that has not yet been attached to a business record.
+    ("upload_intents", "state IN ('stored','consuming','consumed')"),
+)
 
 
 def sha256(path):
@@ -61,30 +78,54 @@ def safe_child(root, relative):
     return result
 
 
-def sqlite_metadata(conn):
-    tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-    versions = [
-        dict(zip(("version", "checksum"), row))
-        for row in conn.execute("SELECT version,checksum FROM schema_migrations ORDER BY version")
-    ]
+def original_rows(conn, dialect):
+    """Return deduplicated originals referenced by every registered table."""
     originals = {}
-    for table in (
-        "business_attachments",
-        "case_attachments",
-        "intake_attachments",
-        "bank_import_files",
-        "migration_files",
-    ):
-        if table in tables:
-            for key, digest, size in conn.execute(
-                f"SELECT storage_key,sha256,size_bytes FROM {table}"
+    present = []
+    if dialect == "postgres":
+        for table, predicate in ORIGINAL_TABLES:
+            if (
+                conn.execute("SELECT to_regclass(%s)", ("accounting." + table,)).fetchone()[0]
+                is None
             ):
+                continue
+            present.append(table)
+            rows = conn.execute(
+                f"SELECT storage_key,sha256,size_bytes FROM accounting.{table} WHERE {predicate}"
+            )
+            for key, digest, size in rows:
                 prior = originals.setdefault(
                     key, {"storage_key": key, "sha256": digest, "size_bytes": size}
                 )
                 if prior["sha256"] != digest or prior["size_bytes"] != size:
                     raise ValueError("同一原件存储键对应不同哈希")
-    return versions, list(originals.values())
+    else:
+        tables = {
+            row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        }
+        for table, predicate in ORIGINAL_TABLES:
+            if table not in tables:
+                continue
+            present.append(table)
+            rows = conn.execute(
+                f"SELECT storage_key,sha256,size_bytes FROM {table} WHERE {predicate}"
+            )
+            for key, digest, size in rows:
+                prior = originals.setdefault(
+                    key, {"storage_key": key, "sha256": digest, "size_bytes": size}
+                )
+                if prior["sha256"] != digest or prior["size_bytes"] != size:
+                    raise ValueError("同一原件存储键对应不同哈希")
+    return present, list(originals.values())
+
+
+def sqlite_metadata(conn):
+    versions = [
+        dict(zip(("version", "checksum"), row))
+        for row in conn.execute("SELECT version,checksum FROM schema_migrations ORDER BY version")
+    ]
+    tables, originals = original_rows(conn, "sqlite")
+    return versions, originals, tables
 
 
 def pg_environment(url):
@@ -182,27 +223,7 @@ def backup(database, storage_root, destination, *, storage_store=None):
                     "SELECT version,checksum FROM accounting.schema_migrations ORDER BY version"
                 )
             ]
-            originals = {}
-            for table in (
-                "business_attachments",
-                "case_attachments",
-                "intake_attachments",
-                "bank_import_files",
-                "migration_files",
-            ):
-                if (
-                    conn.execute("SELECT to_regclass(%s)", ("accounting." + table,)).fetchone()[0]
-                    is None
-                ):
-                    continue
-                for key, digest, size in conn.execute(
-                    f"SELECT storage_key,sha256,size_bytes FROM accounting.{table}"
-                ):
-                    prior = originals.setdefault(
-                        key, {"storage_key": key, "sha256": digest, "size_bytes": size}
-                    )
-                    if prior["sha256"] != digest or prior["size_bytes"] != size:
-                        raise ValueError("同一原件存储键对应不同哈希")
+            original_tables, originals = original_rows(conn, "postgres")
             dump = target / "database.dump"
             pg_tool(
                 "pg_dump",
@@ -217,9 +238,7 @@ def backup(database, storage_root, destination, *, storage_store=None):
                 ],
                 database,
             )
-            files = copy_originals(
-                storage_root, target, list(originals.values()), storage_store=storage_store
-            )
+            files = copy_originals(storage_root, target, originals, storage_store=storage_store)
     else:
         source = Path(database).resolve()
         if not source.is_file() or source.is_symlink():
@@ -235,15 +254,18 @@ def backup(database, storage_root, destination, *, storage_store=None):
                 or snapshot.execute("PRAGMA foreign_key_check").fetchall()
             ):
                 raise ValueError("SQLite 快照完整性验证失败")
-            versions, originals = sqlite_metadata(snapshot)
+            versions, originals, original_tables = sqlite_metadata(snapshot)
         files = copy_originals(storage_root, target, originals, storage_store=storage_store)
     dump.chmod(0o600)
     files.insert(0, {"path": dump.name, "sha256": sha256(dump), "size_bytes": dump.stat().st_size})
     manifest = {
         "format_version": FORMAT_VERSION,
+        "originals_policy_version": ORIGINALS_POLICY_VERSION,
         "dialect": "postgres" if postgres else "sqlite",
         "created_at": datetime.now(timezone.utc).isoformat(),
         "migrations": versions,
+        "database_schema_version": versions[-1]["version"] if versions else 0,
+        "original_tables": original_tables,
         "files": files,
         "consistency": "exported_repeatable_read_snapshot"
         if postgres
@@ -341,7 +363,7 @@ def restore(directory, destination, postgres_target=None):
                 or conn.execute("PRAGMA foreign_key_check").fetchall()
             ):
                 raise ValueError("恢复数据库完整性检查失败")
-            migrations, originals = sqlite_metadata(conn)
+            migrations, originals, _ = sqlite_metadata(conn)
             if migrations != manifest["migrations"]:
                 raise ValueError("恢复数据库迁移清单不同")
             for item in originals:
@@ -358,24 +380,15 @@ def restore(directory, destination, postgres_target=None):
             ]
             if migrations != manifest["migrations"]:
                 raise ValueError("恢复数据库迁移清单不同")
-            for table in (
-                "business_attachments",
-                "case_attachments",
-                "intake_attachments",
-                "bank_import_files",
-                "migration_files",
-            ):
+            _, originals = original_rows(conn, "postgres")
+            for item in originals:
+                file = safe_child(target, "originals/" + item["storage_key"].replace("\\", "/"))
                 if (
-                    conn.execute("SELECT to_regclass(%s)", ("accounting." + table,)).fetchone()[0]
-                    is None
+                    not file.is_file()
+                    or file.stat().st_size != item["size_bytes"]
+                    or sha256(file) != item["sha256"]
                 ):
-                    continue
-                for key, digest, size in conn.execute(
-                    f"SELECT storage_key,sha256,size_bytes FROM accounting.{table}"
-                ):
-                    file = safe_child(target, "originals/" + key.replace("\\", "/"))
-                    if not file.is_file() or file.stat().st_size != size or sha256(file) != digest:
-                        raise ValueError("恢复后的数据库与原件不一致")
+                    raise ValueError("恢复后的数据库与原件不一致")
     receipt = {
         "restored_at": datetime.now(timezone.utc).isoformat(),
         "dialect": manifest["dialect"],
