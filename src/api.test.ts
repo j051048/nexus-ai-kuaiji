@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { api, apiBlob, ApiError, setApiScope } from './api';
-import { currentAccessToken } from './auth';
+import { api, apiBlob, ApiError, invalidateApiScope, setApiScope } from './api';
+import { AuthTokenError, currentAccessToken } from './auth';
 import type { Session } from './types';
 import {
   getTransportLimits,
@@ -9,7 +9,10 @@ import {
   setTransportLimits,
 } from './transport-limits';
 
-vi.mock('./auth', () => ({ currentAccessToken: vi.fn() }));
+vi.mock('./auth', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./auth')>()),
+  currentAccessToken: vi.fn(),
+}));
 const credentials: Session = {
   mode: 'supabase',
   token: 'initial-token',
@@ -30,6 +33,103 @@ afterEach(() => {
 });
 
 describe('authenticated accounting requests', () => {
+  it('separates an MFA challenge from denial and never replays the write', async () => {
+    setApiScope(credentials);
+    tokenGetter.mockResolvedValue('aal1-token');
+    const dispatchEvent = vi.fn();
+    vi.stubGlobal('window', { dispatchEvent });
+    const fetcher = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            code: 'admin_mfa_required',
+            detail: '管理操作需要二次验证',
+          }),
+          { status: 403 },
+        ),
+    );
+    vi.stubGlobal('fetch', fetcher);
+    await expect(
+      api('/companies', credentials, { method: 'POST', body: { name: '合成客户' } }),
+    ).rejects.toMatchObject({ status: 403, code: 'admin_mfa_required' });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(dispatchEvent).toHaveBeenCalledTimes(1);
+    expect(dispatchEvent.mock.calls[0][0]).toMatchObject({
+      type: 'accounting:mfa-required',
+      detail: credentials.scope_key,
+    });
+  });
+
+  it.each([new TypeError('fetch failed'), new AuthTokenError('temporary refresh failure', false)])(
+    'does not log out on a temporary token refresh failure: %s',
+    async (failure) => {
+      setApiScope(credentials);
+      tokenGetter.mockRejectedValueOnce(failure);
+      const dispatchEvent = vi.fn();
+      vi.stubGlobal('window', { dispatchEvent });
+      const fetcher = vi.fn();
+      vi.stubGlobal('fetch', fetcher);
+      await expect(api('/companies', credentials, { method: 'POST' })).rejects.toMatchObject({
+        status: 503,
+      });
+      expect(dispatchEvent).not.toHaveBeenCalled();
+      expect(fetcher).not.toHaveBeenCalled();
+    },
+  );
+
+  it('invalidates a terminally expired SDK session', async () => {
+    setApiScope(credentials);
+    tokenGetter.mockRejectedValueOnce(new AuthTokenError('missing session', true));
+    const dispatchEvent = vi.fn();
+    vi.stubGlobal('window', { dispatchEvent });
+    await expect(api('/workbench', credentials)).rejects.toMatchObject({ status: 401 });
+    expect(dispatchEvent.mock.calls[0][0].type).toBe('accounting:unauthorized');
+  });
+
+  it.each(['json', 'blob'] as const)(
+    'rejects a late %s body after same-login permission invalidation',
+    async (method) => {
+      setApiScope(credentials);
+      tokenGetter.mockResolvedValue('token');
+      let deliver!: (value: unknown) => void;
+      const body = vi.fn(
+        () =>
+          new Promise((resolve) => {
+            deliver = resolve;
+          }),
+      );
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => ({ ok: true, json: body, blob: body })),
+      );
+      const pending =
+        method === 'json'
+          ? api('/books/private', credentials)
+          : apiBlob('/evidence/private', credentials);
+      await vi.waitFor(() => expect(body).toHaveBeenCalled());
+      invalidateApiScope(credentials);
+      deliver(method === 'json' ? { private: 'old evidence' } : new Blob(['old evidence']));
+      await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+    },
+  );
+
+  it('rejects a late token before sending a request under an invalidated permission context', async () => {
+    setApiScope(credentials);
+    let deliver!: (value: string) => void;
+    tokenGetter.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          deliver = resolve;
+        }),
+    );
+    const fetcher = vi.fn();
+    vi.stubGlobal('fetch', fetcher);
+    const pending = api('/companies', credentials, { method: 'POST' });
+    invalidateApiScope(credentials);
+    deliver('token');
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+    expect(fetcher).not.toHaveBeenCalled();
+  });
   it('resolves the current token for every request and sends the selected firm', async () => {
     setApiScope(credentials);
     tokenGetter.mockResolvedValueOnce('first-token').mockResolvedValueOnce('refreshed-token');

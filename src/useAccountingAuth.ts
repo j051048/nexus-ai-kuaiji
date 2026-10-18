@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { api, ApiError, errorMessage, setApiScope } from './api';
+import { api, ApiError, errorMessage, invalidateApiScope, setApiScope } from './api';
 import { configureAuth, getAuthClient, loginError } from './auth';
 import type { AuthConfig, Firm, Me, Session } from './types';
 import type { WorkspaceBootstrap, WorkspaceHomeBootstrap } from './workspace-types';
@@ -15,11 +15,18 @@ export function useAccountingAuth(clearWorkspace: () => void, bootstrapHome = tr
   const sessionRef = useRef<Session | null>(null);
   const generation = useRef(0);
   const unsubscribe = useRef<(() => void) | null>(null);
+  const identityRefresh = useRef<{
+    scope: string;
+    controller: AbortController;
+    promise: Promise<void>;
+  } | null>(null);
   const bootstrapHomeRef = useRef(bootstrapHome);
   bootstrapHomeRef.current = bootstrapHome;
 
   const clearSession = useCallback(() => {
     generation.current += 1;
+    identityRefresh.current?.controller.abort();
+    identityRefresh.current = null;
     sessionRef.current = null;
     setApiScope(null);
     clearWorkspace();
@@ -27,6 +34,30 @@ export function useAccountingAuth(clearWorkspace: () => void, bootstrapHome = tr
     setMe(null);
     setHomeBootstrap(null);
   }, [clearWorkspace]);
+
+  const publishIdentity = useCallback(
+    (candidate: Session, identity: Me, bootstrap: WorkspaceBootstrap | null = null) => {
+      const firm = identity.firms.find((item) => item.id === identity.current_firm_id);
+      const next: Session = {
+        ...candidate,
+        firm_id: identity.current_firm_id,
+        firm_name: firm?.name ?? '',
+        role: firm?.role ?? null,
+        user_id: identity.user.id,
+        user_name: identity.user.name || identity.user.email,
+      };
+      setApiScope(next);
+      sessionRef.current = next;
+      setMe(identity);
+      setHomeBootstrap(
+        bootstrap
+          ? { scope_key: next.scope_key, profile: bootstrap.profile, tasks: bootstrap.tasks }
+          : null,
+      );
+      setSession(next);
+    },
+    [],
+  );
 
   const loadIdentity = useCallback(
     async (mode: Session['mode'], token: string, firmId?: string, signal?: AbortSignal) => {
@@ -55,26 +86,80 @@ export function useAccountingAuth(clearWorkspace: () => void, bootstrapHome = tr
       }
       const identity = bootstrap?.me ?? (await api<Me>('/me', candidate, { signal }));
       if (signal?.aborted || attempt !== generation.current) return;
-      const firm = identity.firms.find((item) => item.id === identity.current_firm_id);
-      const next: Session = {
-        ...candidate,
-        firm_id: identity.current_firm_id,
-        firm_name: firm?.name ?? '',
-        role: firm?.role ?? null,
-        user_id: identity.user.id,
-        user_name: identity.user.name || identity.user.email,
-      };
-      setApiScope(next);
-      sessionRef.current = next;
-      setMe(identity);
-      setHomeBootstrap(
-        bootstrap
-          ? { scope_key: next.scope_key, profile: bootstrap.profile, tasks: bootstrap.tasks }
-          : null,
-      );
-      setSession(next);
+      publishIdentity(candidate, identity, bootstrap);
     },
-    [clearSession],
+    [clearSession, publishIdentity],
+  );
+
+  const revalidateIdentity = useCallback(
+    (current: Session): Promise<void> => {
+      if (identityRefresh.current?.scope === current.scope_key)
+        return identityRefresh.current.promise;
+      const controller = new AbortController();
+      const attempt = generation.current;
+      const pending = { scope: current.scope_key, controller, promise: Promise.resolve() };
+      identityRefresh.current = pending;
+      invalidateApiScope(current);
+      const stillCurrent = () =>
+        !controller.signal.aborted &&
+        generation.current === attempt &&
+        sessionRef.current?.scope_key === current.scope_key;
+      pending.promise = (async () => {
+        try {
+          let identity: Me;
+          try {
+            identity = await api<Me>('/me', current, { signal: controller.signal });
+          } catch (failure) {
+            if (
+              !stillCurrent() ||
+              !current.firm_id ||
+              !(failure instanceof ApiError) ||
+              failure.status !== 403
+            )
+              throw failure;
+            // A resource denial is not a lost login. Only a rejected firm
+            // selector permits falling back to the identity's live workspaces.
+            identity = await api<Me>(
+              '/me',
+              { ...current, firm_id: null },
+              { signal: controller.signal },
+            );
+          }
+          if (!stillCurrent()) return;
+          if (
+            identity.user.id === current.user_id &&
+            identity.current_firm_id === current.firm_id
+          ) {
+            // Preserve the request/session identity and route. Replacing the
+            // Session on every identical read would repeat denied requests.
+            const firm = identity.firms.find((item) => item.id === current.firm_id);
+            const metadata = {
+              role: firm?.role ?? null,
+              firm_name: firm?.name ?? '',
+              user_name: identity.user.name || identity.user.email,
+            };
+            if (
+              current.role !== metadata.role ||
+              current.firm_name !== metadata.firm_name ||
+              current.user_name !== metadata.user_name
+            ) {
+              const updated = { ...current, ...metadata };
+              sessionRef.current = updated;
+              setSession(updated);
+            }
+            setMe(identity);
+            setHomeBootstrap(null);
+            return;
+          }
+          clearSession();
+          publishIdentity({ ...current, scope_key: crypto.randomUUID() }, identity);
+        } finally {
+          if (identityRefresh.current === pending) identityRefresh.current = null;
+        }
+      })();
+      return pending.promise;
+    },
+    [clearSession, publishIdentity],
   );
 
   const consumeHomeBootstrap = useCallback((scopeKey: string) => {
@@ -134,12 +219,10 @@ export function useAccountingAuth(clearWorkspace: () => void, bootstrapHome = tr
     function onForbidden(event: Event) {
       const current = sessionRef.current;
       if (!current || (event as CustomEvent<string>).detail !== current.scope_key) return;
-      setLoading(true);
       setError('');
-      // Re-read identity without the previous firm selector, since access may have been revoked.
-      void loadIdentity(current.mode, current.token)
-        .catch((failure) => setError(errorMessage(failure)))
-        .finally(() => setLoading(false));
+      void revalidateIdentity(current).catch((failure) => {
+        if (sessionRef.current?.scope_key === current.scope_key) setError(errorMessage(failure));
+      });
     }
     window.addEventListener('accounting:unauthorized', onUnauthorized);
     window.addEventListener('accounting:forbidden', onForbidden);
@@ -147,7 +230,7 @@ export function useAccountingAuth(clearWorkspace: () => void, bootstrapHome = tr
       window.removeEventListener('accounting:unauthorized', onUnauthorized);
       window.removeEventListener('accounting:forbidden', onForbidden);
     };
-  }, [clearSession, loadIdentity]);
+  }, [clearSession, revalidateIdentity]);
 
   async function login(email: string, password: string) {
     const client = getAuthClient();
@@ -221,6 +304,17 @@ export function useAccountingAuth(clearWorkspace: () => void, bootstrapHome = tr
   }
 
   async function refreshIdentity() {
+    const current = sessionRef.current;
+    if (current) {
+      setError('');
+      try {
+        await revalidateIdentity(current);
+      } catch (failure) {
+        if (sessionRef.current?.scope_key === current.scope_key) setError(errorMessage(failure));
+        throw failure;
+      }
+      return;
+    }
     const client = getAuthClient();
     if (!client) return;
     setLoading(true);

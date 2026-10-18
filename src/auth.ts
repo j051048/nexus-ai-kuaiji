@@ -3,6 +3,25 @@ import type { AuthConfig, Session } from './types';
 
 let supabase: SupabaseClient | null = null;
 
+export class AuthTokenError extends Error {
+  constructor(
+    message: string,
+    public terminal: boolean,
+  ) {
+    super(message);
+    this.name = 'AuthTokenError';
+  }
+}
+
+function terminalAuthFailure(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const failure = error as { name?: unknown; status?: unknown };
+  return (
+    failure.name === 'AuthSessionMissingError' ||
+    (typeof failure.status === 'number' && [400, 401, 403, 422].includes(failure.status))
+  );
+}
+
 export function configureAuth(config: AuthConfig): SupabaseClient | null {
   void supabase?.auth.stopAutoRefresh();
   if (config.mode === 'local') {
@@ -23,10 +42,27 @@ export function getAuthClient(): SupabaseClient | null {
 
 export async function currentAccessToken(session: Session): Promise<string> {
   if (session.mode === 'local') return session.token;
-  const result = await supabase?.auth.getSession();
-  if (result?.error || !result?.data.session?.access_token)
-    throw new Error('登录已失效，请重新登录。');
-  return result.data.session.access_token;
+  if (!supabase) throw new AuthTokenError('登录已失效，请重新登录。', true);
+  try {
+    const result = await supabase.auth.getSession();
+    if (result.error) {
+      const terminal = terminalAuthFailure(result.error);
+      throw new AuthTokenError(
+        terminal ? '登录已失效，请重新登录。' : '暂时无法刷新登录状态，请检查网络后重试。',
+        terminal,
+      );
+    }
+    if (!result.data.session?.access_token)
+      throw new AuthTokenError('登录已失效，请重新登录。', true);
+    return result.data.session.access_token;
+  } catch (failure) {
+    if (failure instanceof AuthTokenError) throw failure;
+    const terminal = terminalAuthFailure(failure);
+    throw new AuthTokenError(
+      terminal ? '登录已失效，请重新登录。' : '暂时无法刷新登录状态，请检查网络后重试。',
+      terminal,
+    );
+  }
 }
 
 export function loginError(message: string): string {

@@ -43,6 +43,7 @@ import { AssistantDrawer, type AssistantDrawerMode } from './AssistantDrawer';
 import { ClientPortalShell, type ClientPortalTab } from './ClientPortalShell';
 import { useBookWorkspace, type BookFilter, type BookNotice } from './useBookWorkspace';
 import { WorkspaceRouteContent } from './WorkspaceRouteContent';
+import { WorkspaceMfaPrompt } from './WorkspaceMfaPrompt';
 import { useWorkspaceRoute } from './useWorkspaceRoute';
 import { RouteLeaveDialog } from './RouteLeaveDialog';
 import {
@@ -233,6 +234,29 @@ export default function App() {
     setRouteView,
     setNotice,
   });
+  const clearProtectedBookData = bookWorkspace.clearProtectedData;
+  useEffect(() => {
+    const onForbidden = (event: Event) => {
+      if (!session || (event as CustomEvent<string>).detail !== session.scope_key) return;
+      // Resource denial is not logout. Clear cached evidence while keeping the page/selection.
+      clearProtectedBookData();
+      bootstrapProfile.current = null;
+      auth.consumeHomeBootstrap(session.scope_key);
+      setProfile(null);
+      setProfileError('权限不足或授权已变更，请确认权限后刷新。');
+      setOperationsCompanies([]);
+      setCommandOpen(false);
+      setAssistantTarget(null);
+      setGlobalAssistant(null);
+      inlineContext.current = null;
+      clearReviewSession();
+      setInlineTarget(null);
+      setProposalTarget('');
+      setModal(null);
+    };
+    window.addEventListener('accounting:forbidden', onForbidden);
+    return () => window.removeEventListener('accounting:forbidden', onForbidden);
+  }, [session, clearProtectedBookData, auth.consumeHomeBootstrap]);
   const {
     acceptMutatedDraft,
     activeDraft,
@@ -556,6 +580,7 @@ export default function App() {
         )}
         <AdminMfaGate
           key={auth.session.scope_key}
+          scopeKey={auth.session.scope_key}
           required={
             auth.config?.admin_requires_mfa === true &&
             (me.permissions.manage_admin === true || me.permissions.manage_firm)
@@ -1076,6 +1101,17 @@ export default function App() {
           personas={auth.config?.personas}
           onPersonaChange={(value) => void auth.choosePersona(value)}
         >
+          {auth.error && (
+            <p className="form-error" role="alert">
+              {auth.error}
+            </p>
+          )}
+          <WorkspaceMfaPrompt
+            key={`mfa:${session.scope_key}`}
+            session={session}
+            onVerified={auth.refreshIdentity}
+            onLogout={auth.logout}
+          />
           {routeContent}
         </ClientPortalShell>
       </>
@@ -1236,6 +1272,17 @@ export default function App() {
       />
 
       <div className="main-shell">
+        {auth.error && (
+          <p className="form-error" role="alert">
+            {auth.error}
+          </p>
+        )}
+        <WorkspaceMfaPrompt
+          key={`mfa:${session.scope_key}`}
+          session={session}
+          onVerified={auth.refreshIdentity}
+          onLogout={auth.logout}
+        />
         <header className="topbar">
           <div className="breadcrumbs">
             工作空间

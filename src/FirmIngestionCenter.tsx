@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Cable, KeyRound, Plus, RefreshCw } from 'lucide-react';
-import { api, errorMessage } from './api';
+import { api, ApiError, errorMessage } from './api';
 import { Spinner } from './AppPrimitives';
 import type { Session } from './types';
 import './firm-ingestion.css';
@@ -38,6 +38,10 @@ const kinds = [
 ] as const;
 
 export function FirmIngestionCenter({ session }: { session: Session }) {
+  return <IngestionWorkspace key={session.scope_key} session={session} />;
+}
+
+function IngestionWorkspace({ session }: { session: Session }) {
   const [companies, setCompanies] = useState<{ id: string; name: string }[]>([]);
   const [connections, setConnections] = useState<Connection[]>([]);
   const [runs, setRuns] = useState<Run[]>([]);
@@ -49,12 +53,47 @@ export function FirmIngestionCenter({ session }: { session: Session }) {
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   const [revision, setRevision] = useState(0);
+  const active = useRef(true);
+  const epoch = useRef(0);
+  const command = useRef(false);
+
+  useEffect(() => {
+    active.current = true;
+    const invalidate = (event: Event) => {
+      if ((event as CustomEvent<string>).detail !== session.scope_key) return;
+      epoch.current += 1;
+      clearData();
+      setLoading(false);
+      setBusy('');
+      setError('当前授权可能已更新，已清除页面数据。请重新读取。');
+    };
+    window.addEventListener('accounting:forbidden', invalidate);
+    return () => {
+      active.current = false;
+      epoch.current += 1;
+      window.removeEventListener('accounting:forbidden', invalidate);
+    };
+  }, [session.scope_key]);
+
+  function clearData() {
+    setCompanies([]);
+    setConnections([]);
+    setRuns([]);
+    setCompanyId('');
+    setToken(null);
+  }
 
   useEffect(() => {
     const controller = new AbortController();
+    const stamp = ++epoch.current;
+    const current = () => active.current && !controller.signal.aborted && stamp === epoch.current;
     setLoading(true);
+    setError('');
+    setCompanies([]);
+    setConnections([]);
+    setRuns([]);
     void Promise.all([
-      api<{ companies: { id: string; name: string }[] }>('/admin/companies?limit=100', session, {
+      api<{ companies: { id: string; name: string }[] }>('/companies', session, {
         signal: controller.signal,
       }),
       api<{ connections: Connection[]; runs: Run[] }>('/firm/ingestion', session, {
@@ -62,55 +101,84 @@ export function FirmIngestionCenter({ session }: { session: Session }) {
       }),
     ])
       .then(([companyData, ingestion]) => {
-        if (controller.signal.aborted) return;
+        if (!current()) return;
         setCompanies(companyData.companies);
-        setCompanyId((current) => current || companyData.companies[0]?.id || '');
+        setCompanyId((selected) =>
+          companyData.companies.some((company) => company.id === selected)
+            ? selected
+            : companyData.companies[0]?.id || '',
+        );
         setConnections(ingestion.connections);
         setRuns(ingestion.runs);
       })
       .catch((failure) => {
-        if (!controller.signal.aborted) setError(errorMessage(failure));
+        if (
+          current() ||
+          (active.current && failure instanceof ApiError && failure.status === 403)
+        ) {
+          clearData();
+          setError(errorMessage(failure));
+        }
       })
       .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
+        if (current()) setLoading(false);
       });
     return () => controller.abort();
   }, [session, revision]);
 
   async function create() {
-    if (!companyId || !name.trim()) return;
+    if (command.current || loading || !companyId || !name.trim()) return;
+    command.current = true;
+    const stamp = ++epoch.current;
+    const current = () => active.current && stamp === epoch.current;
     setBusy('create');
     setError('');
+    setToken(null);
     try {
       const value = await api<Connection>('/firm/ingestion/connections', session, {
         method: 'POST',
         body: { company_id: companyId, kind, name: name.trim(), config: {} },
       });
+      if (!current()) return;
       setToken(value.token ? { name: value.name, value: value.token } : null);
       setName('');
       setRevision((current) => current + 1);
     } catch (failure) {
-      setError(errorMessage(failure));
+      if (current() || (active.current && failure instanceof ApiError && failure.status === 403)) {
+        clearData();
+        setError(errorMessage(failure));
+      }
     } finally {
-      setBusy('');
+      command.current = false;
+      if (current()) setBusy('');
     }
   }
 
   async function rotate(connection: Connection) {
+    if (command.current || loading) return;
+    command.current = true;
+    const stamp = ++epoch.current;
+    const current = () => active.current && stamp === epoch.current;
     setBusy('rotate:' + connection.id);
     setError('');
+    setToken(null);
     try {
       const value = await api<Connection>(
         `/firm/ingestion/connections/${encodeURIComponent(connection.id)}/rotate`,
         session,
         { method: 'POST' },
       );
+      if (!current()) return;
       setToken(value.token ? { name: value.name, value: value.token } : null);
       setRevision((current) => current + 1);
     } catch (failure) {
-      setError(errorMessage(failure));
+      if (current() || (active.current && failure instanceof ApiError && failure.status === 403)) {
+        clearData();
+        setError(errorMessage(failure));
+      }
     } finally {
-      setBusy('');
+      command.current = false;
+      if (current()) setBusy('');
     }
   }
 
@@ -125,8 +193,11 @@ export function FirmIngestionCenter({ session }: { session: Session }) {
         <button
           className="button secondary"
           type="button"
-          disabled={loading}
-          onClick={() => setRevision((current) => current + 1)}
+          disabled={loading || !!busy}
+          onClick={() => {
+            setToken(null);
+            setRevision((current) => current + 1);
+          }}
         >
           <RefreshCw size={15} />
           刷新
@@ -166,7 +237,7 @@ export function FirmIngestionCenter({ session }: { session: Session }) {
                 <button
                   className="text-button"
                   type="button"
-                  disabled={!!busy}
+                  disabled={!!busy || loading}
                   onClick={() => void rotate(connection)}
                 >
                   <KeyRound size={14} />
@@ -180,7 +251,11 @@ export function FirmIngestionCenter({ session }: { session: Session }) {
             <h2>新增连接</h2>
             <label>
               客户企业
-              <select value={companyId} onChange={(event) => setCompanyId(event.target.value)}>
+              <select
+                value={companyId}
+                disabled={!!busy || loading}
+                onChange={(event) => setCompanyId(event.target.value)}
+              >
                 {companies.map((company) => (
                   <option key={company.id} value={company.id}>
                     {company.name}
@@ -190,7 +265,11 @@ export function FirmIngestionCenter({ session }: { session: Session }) {
             </label>
             <label>
               来源类型
-              <select value={kind} onChange={(event) => setKind(event.target.value)}>
+              <select
+                value={kind}
+                disabled={!!busy || loading}
+                onChange={(event) => setKind(event.target.value)}
+              >
                 {kinds.map(([id, label]) => (
                   <option key={id} value={id}>
                     {label}
@@ -200,12 +279,16 @@ export function FirmIngestionCenter({ session }: { session: Session }) {
             </label>
             <label>
               连接名称
-              <input value={name} onChange={(event) => setName(event.target.value)} />
+              <input
+                value={name}
+                disabled={!!busy || loading}
+                onChange={(event) => setName(event.target.value)}
+              />
             </label>
             <button
               className="button primary"
               type="button"
-              disabled={!companyId || !name.trim() || !!busy}
+              disabled={!companyId || !name.trim() || !!busy || loading}
               onClick={() => void create()}
             >
               <Plus size={15} />

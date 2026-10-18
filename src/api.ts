@@ -1,4 +1,4 @@
-import { currentAccessToken } from './auth';
+import { AuthTokenError, currentAccessToken } from './auth';
 import type { Session } from './types';
 import {
   setTransportLimits,
@@ -8,11 +8,18 @@ import {
 
 let activeScope: string | null = null;
 let scopeController = new AbortController();
+let scopeRevision = 0;
 
 export function setApiScope(session: Session | null): void {
+  scopeRevision++;
   scopeController.abort();
   scopeController = new AbortController();
   activeScope = session?.scope_key ?? null;
+}
+
+// A permission recheck cancels old reads without turning a valid login into a logout.
+export function invalidateApiScope(session: Session): void {
+  if (session.scope_key === activeScope) setApiScope(session);
 }
 
 function invalidSession(session: Session) {
@@ -25,6 +32,7 @@ export class ApiError extends Error {
   constructor(
     message: string,
     public status: number,
+    public code?: string,
   ) {
     super(message);
   }
@@ -36,17 +44,24 @@ async function request(
   options: { method?: string; body?: unknown; signal?: AbortSignal } = {},
 ): Promise<Response> {
   const session = typeof credentials === 'object' ? credentials : undefined;
+  const revision = scopeRevision;
   if (session && session.scope_key !== activeScope)
     throw new DOMException('授权范围已切换', 'AbortError');
   let token = typeof credentials === 'string' ? credentials : undefined;
   if (session) {
     try {
       token = await currentAccessToken(session);
-    } catch {
-      invalidSession(session);
-      throw new ApiError('登录已失效，请重新登录。', 401);
+    } catch (failure) {
+      if (session.scope_key !== activeScope || revision !== scopeRevision)
+        throw new DOMException('授权范围已切换', 'AbortError');
+      if (failure instanceof AuthTokenError && failure.terminal) {
+        invalidSession(session);
+        throw new ApiError('登录已失效，请重新登录。', 401);
+      }
+      throw new ApiError('暂时无法连接登录服务，请稍后重试。', 503);
     }
-    if (session.scope_key !== activeScope) throw new DOMException('授权范围已切换', 'AbortError');
+    if (session.scope_key !== activeScope || revision !== scopeRevision)
+      throw new DOMException('授权范围已切换', 'AbortError');
   }
   const signal = session
     ? options.signal
@@ -80,6 +95,8 @@ async function request(
     if (signal?.aborted || (session && session.scope_key !== activeScope))
       throw new DOMException('授权范围已切换', 'AbortError');
     if (response.status === 401 && session) invalidSession(session);
+    const payload = data as { detail?: unknown; message?: string; code?: unknown } | null;
+    const code = typeof payload?.code === 'string' ? payload.code : undefined;
     if (
       response.status === 403 &&
       session &&
@@ -87,9 +104,13 @@ async function request(
       path !== '/me' &&
       typeof window !== 'undefined'
     ) {
-      window.dispatchEvent(new CustomEvent('accounting:forbidden', { detail: session.scope_key }));
+      window.dispatchEvent(
+        new CustomEvent(
+          code === 'admin_mfa_required' ? 'accounting:mfa-required' : 'accounting:forbidden',
+          { detail: session.scope_key },
+        ),
+      );
     }
-    const payload = data as { detail?: unknown; message?: string } | null;
     const detail = payload?.detail;
     const message =
       typeof detail === 'string'
@@ -102,6 +123,7 @@ async function request(
     throw new ApiError(
       response.status === 413 ? transportTooLargeMessage() : message,
       response.status,
+      code,
     );
   }
   return response;
@@ -112,11 +134,13 @@ export async function api<T>(
   credentials?: string | Session,
   options: { method?: string; body?: unknown; signal?: AbortSignal } = {},
 ): Promise<T> {
+  const revision = scopeRevision;
   const response = await request(path, credentials, options);
   const data = await response.json().catch(() => null);
   if (
     options.signal?.aborted ||
-    (typeof credentials === 'object' && credentials.scope_key !== activeScope)
+    (typeof credentials === 'object' &&
+      (credentials.scope_key !== activeScope || revision !== scopeRevision))
   )
     throw new DOMException('授权范围已切换', 'AbortError');
   if (
@@ -135,9 +159,10 @@ export async function apiBlob(
   session: Session,
   options: { signal?: AbortSignal } = {},
 ): Promise<Blob> {
+  const revision = scopeRevision;
   const response = await request(path, session, options);
   const blob = await response.blob();
-  if (options.signal?.aborted || session.scope_key !== activeScope)
+  if (options.signal?.aborted || session.scope_key !== activeScope || revision !== scopeRevision)
     throw new DOMException('授权范围已切换', 'AbortError');
   return blob;
 }

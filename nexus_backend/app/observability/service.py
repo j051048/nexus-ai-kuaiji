@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+import json
 
 from ..accounting.domain import AccountingError
 from ..workspace.projection import status_snapshot
@@ -20,6 +21,31 @@ class FirmObservabilityService:
                 f"AND status IN({placeholders}) GROUP BY status",
                 (firm_id, *statuses),
             )
+        }
+
+    def _worker_health(self, conn):
+        """Expose shared service availability, never global worker identities/load.
+
+        snapshot has already checked the current firm manager. PostgreSQL also
+        repeats that check inside a narrow, read-only SECURITY DEFINER function;
+        the runtime role deliberately has no worker_heartbeats SELECT grant.
+        """
+        if self.db.is_postgres:
+            result = conn.execute(
+                "SELECT accounting.firm_worker_health()"
+            ).fetchone()[0]
+            return json.loads(result) if isinstance(result, str) else result
+        cutoff = (datetime.now(timezone.utc) - timedelta(seconds=90)).isoformat()
+        row = conn.execute(
+            "SELECT COALESCE(MAX(CASE WHEN state IN ('active','idle') "
+            "AND julianday(heartbeat_at)>=julianday(?) THEN 1 ELSE 0 END),0) AS available,"
+            "MAX(heartbeat_at) AS last_heartbeat_at FROM worker_heartbeats",
+            (cutoff,),
+        ).fetchone()
+        return {
+            "available": bool(row["available"]),
+            "last_heartbeat_at": row["last_heartbeat_at"],
+            "stale_after_seconds": 90,
         }
 
     def snapshot(self, actor, period=""):
@@ -67,10 +93,7 @@ class FirmObservabilityService:
                     (actor.firm_id,),
                 )
             }
-            worker_rows = conn.execute(
-                "SELECT worker_id,state,heartbeat_at,inflight_count FROM worker_heartbeats "
-                "ORDER BY heartbeat_at DESC LIMIT 20"
-            ).fetchall()
+            worker_health = self._worker_health(conn)
             minute = int(datetime.now(timezone.utc).timestamp() // 60)
             metrics = conn.execute(
                 "SELECT COUNT(*) AS buckets,COALESCE(SUM(tx_count),0) AS transactions,"
@@ -92,7 +115,10 @@ class FirmObservabilityService:
         return {
             "queues": queues,
             "alerts": alerts,
-            "workers": [dict(row) for row in worker_rows],
+            "worker_health": worker_health,
+            # Deprecated empty field keeps already-open clients compatible.
+            # Never repopulate this with global worker identities or workload.
+            "workers": [],
             "metrics": dict(metrics),
             "ai_cost_cny": round((costs["micros"] or 0) / 1_000_000, 2),
             "projection": projection,

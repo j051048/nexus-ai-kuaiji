@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Activity, AlertTriangle, Database, RefreshCw, Server } from 'lucide-react';
-import { api, errorMessage } from './api';
+import { api, ApiError, errorMessage } from './api';
 import { Spinner } from './AppPrimitives';
 import type { Session } from './types';
 import './firm-observability.css';
@@ -8,7 +8,11 @@ import './firm-observability.css';
 type Snapshot = {
   queues: Record<string, Record<string, number>>;
   alerts: Record<string, { open: number; critical: number }>;
-  workers: { worker_id: string; state: string; heartbeat_at: string; inflight_count: number }[];
+  worker_health?: {
+    available: boolean;
+    last_heartbeat_at: string | null;
+    stale_after_seconds: number;
+  };
   metrics: {
     buckets: number;
     transactions: number;
@@ -30,14 +34,39 @@ type Snapshot = {
 };
 
 export function FirmObservability({ session }: { session: Session }) {
+  return <ObservabilityWorkspace key={session.scope_key} session={session} />;
+}
+
+function ObservabilityWorkspace({ session }: { session: Session }) {
   const [data, setData] = useState<Snapshot | null>(null);
   const [period, setPeriod] = useState(new Date().toISOString().slice(0, 7));
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [revision, setRevision] = useState(0);
+  const epoch = useRef(0);
+  const active = useRef(true);
+  useEffect(() => {
+    active.current = true;
+    const invalidate = (event: Event) => {
+      if ((event as CustomEvent<string>).detail !== session.scope_key) return;
+      epoch.current += 1;
+      setData(null);
+      setLoading(false);
+      setError('当前授权可能已更新，已清除页面数据。请重新读取。');
+    };
+    window.addEventListener('accounting:forbidden', invalidate);
+    return () => {
+      active.current = false;
+      epoch.current += 1;
+      window.removeEventListener('accounting:forbidden', invalidate);
+    };
+  }, [session.scope_key]);
   useEffect(() => {
     const controller = new AbortController();
+    const stamp = ++epoch.current;
+    const current = () => !controller.signal.aborted && stamp === epoch.current;
     setLoading(true);
+    setData(null);
     setError('');
     void api<Snapshot>(
       '/firm/observability?' + new URLSearchParams({ period }).toString(),
@@ -45,13 +74,19 @@ export function FirmObservability({ session }: { session: Session }) {
       { signal: controller.signal },
     )
       .then((value) => {
-        if (!controller.signal.aborted) setData(value);
+        if (current()) setData(value);
       })
       .catch((failure) => {
-        if (!controller.signal.aborted) setError(errorMessage(failure));
+        if (
+          current() ||
+          (active.current && failure instanceof ApiError && failure.status === 403)
+        ) {
+          setData(null);
+          setError(errorMessage(failure));
+        }
       })
       .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
+        if (current()) setLoading(false);
       });
     return () => controller.abort();
   }, [session, period, revision]);
@@ -67,7 +102,7 @@ export function FirmObservability({ session }: { session: Session }) {
         <div>
           <p className="eyebrow">OPERATIONS / TRACE</p>
           <h1>运行可观测性</h1>
-          <p>队列、锁等待、Worker、投影与 AI 成本集中在一个只读视图。</p>
+          <p>队列、锁等待、后台处理服务、投影与 AI 成本集中在一个只读视图。</p>
         </div>
         <div className="firm-observability-actions">
           <input type="month" value={period} onChange={(event) => setPeriod(event.target.value)} />
@@ -110,9 +145,21 @@ export function FirmObservability({ session }: { session: Session }) {
             </article>
             <article>
               <Server size={18} />
-              <span>Worker</span>
-              <strong>{data.workers.filter((worker) => worker.state !== 'stopped').length}</strong>
-              <small>{data.workers.length} 个最近心跳记录</small>
+              <span>后台处理服务</span>
+              <strong>
+                {!data.worker_health
+                  ? '状态未知'
+                  : data.worker_health.available
+                    ? '可用'
+                    : '暂无有效心跳'}
+              </strong>
+              <small>
+                {data.worker_health?.last_heartbeat_at
+                  ? `最近心跳 ${new Date(data.worker_health.last_heartbeat_at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false })}`
+                  : data.worker_health
+                    ? '尚未收到有效心跳'
+                    : '当前接口尚未提供服务健康状态'}
+              </small>
             </article>
             <article>
               <Database size={18} />

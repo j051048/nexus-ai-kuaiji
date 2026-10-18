@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { ShieldCheck } from 'lucide-react';
 import { getAuthClient } from './auth';
@@ -12,11 +12,17 @@ export default function AdminMfaGate({
   children,
   onVerified,
   onLogout,
+  scopeKey,
+  workspace = false,
+  challenged = false,
 }: {
   required: boolean;
   children: ReactNode;
   onVerified: () => Promise<void>;
   onLogout: () => Promise<void>;
+  scopeKey: string;
+  workspace?: boolean;
+  challenged?: boolean;
 }) {
   const [verified, setVerified] = useState(!required);
   const [loading, setLoading] = useState(required);
@@ -26,9 +32,29 @@ export default function AdminMfaGate({
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
   const [revision, setRevision] = useState(0);
+  const [forceChallenge, setForceChallenge] = useState(challenged);
+  const attempt = useRef(0);
   useEffect(() => {
-    if (!required) return;
+    const onRequired = (event: Event) => {
+      if ((event as CustomEvent<string>).detail !== scopeKey) return;
+      attempt.current++;
+      setVerified(false);
+      setForceChallenge(true);
+      setCode('');
+      setQr('');
+      setBusy(false);
+      setRevision((value) => value + 1);
+    };
+    window.addEventListener('accounting:mfa-required', onRequired);
+    return () => {
+      attempt.current++;
+      window.removeEventListener('accounting:mfa-required', onRequired);
+    };
+  }, [scopeKey]);
+  useEffect(() => {
+    if (!required && !forceChallenge) return;
     let disposed = false;
+    setVerified(false);
     setLoading(true);
     setError('');
     const client = getAuthClient();
@@ -37,7 +63,7 @@ export default function AdminMfaGate({
       const result = await client.auth.mfa.getAuthenticatorAssuranceLevel();
       if (result.error) throw result.error;
       if (disposed) return;
-      if (result.data.currentLevel === 'aal2') {
+      if (result.data.currentLevel === 'aal2' && !forceChallenge) {
         setVerified(true);
         return;
       }
@@ -55,14 +81,16 @@ export default function AdminMfaGate({
     return () => {
       disposed = true;
     };
-  }, [required, revision]);
+  }, [required, revision, forceChallenge]);
   async function enroll() {
     const client = getAuthClient();
     if (!client || busy) return;
+    const started = ++attempt.current;
     setBusy(true);
     setError('');
     try {
       const result = await enrollAdminTotp(client);
+      if (started !== attempt.current) return;
       setFactorId(result.id);
       setQr(
         result.totp.qr_code.startsWith('data:')
@@ -70,18 +98,21 @@ export default function AdminMfaGate({
           : `data:image/svg+xml;charset=utf-8,${encodeURIComponent(result.totp.qr_code)}`,
       );
     } catch {
-      setError('暂时无法绑定验证器，请稍后重试。已完成的身份验证器不会被修改。');
+      if (started === attempt.current)
+        setError('暂时无法绑定验证器，请稍后重试。已完成的身份验证器不会被修改。');
     } finally {
-      setBusy(false);
+      if (started === attempt.current) setBusy(false);
     }
   }
   async function verify() {
     const client = getAuthClient();
     if (!client || busy) return;
+    const started = ++attempt.current;
     setBusy(true);
     setError('');
     try {
       const result = await client.auth.mfa.challengeAndVerify({ factorId, code });
+      if (started !== attempt.current) return;
       setCode('');
       if (result.error) {
         setError('验证码不正确或已过期，请使用验证器中的最新 6 位验证码。');
@@ -89,21 +120,21 @@ export default function AdminMfaGate({
       }
       setQr('');
       await onVerified();
-      setVerified(true);
+      if (started === attempt.current) setVerified(true);
     } catch (failure) {
-      setError(errorMessage(failure));
+      if (started === attempt.current) setError(errorMessage(failure));
     } finally {
-      setBusy(false);
+      if (started === attempt.current) setBusy(false);
     }
   }
-  if (verified || !required) return children;
+  if (verified || (!required && !forceChallenge)) return children;
   return (
-    <main className="admin-shell">
-      <section className="admin-mfa">
+    <main className={workspace ? 'workspace-mfa' : 'admin-shell'}>
+      <section className={workspace ? 'admin-mfa admin-mfa-inline' : 'admin-mfa'}>
         <ShieldCheck size={28} />
         <p className="eyebrow">ADMINISTRATOR VERIFICATION</p>
         <h1>验证管理员身份</h1>
-        <p>管理企业和人员前，请通过验证器确认是本人操作。</p>
+        <p>管理企业和人员前，请通过验证器确认是本人操作。验证不会自动重新提交操作。</p>
         {error && (
           <p className="form-error" role="alert">
             {error}
@@ -144,7 +175,8 @@ export default function AdminMfaGate({
               />
             </label>
             <button className="button primary" disabled={busy || code.length !== 6}>
-              {busy && <Spinner />}验证并进入后台
+              {busy && <Spinner />}
+              {workspace ? '验证并继续' : '验证并进入后台'}
             </button>
           </form>
         ) : (
@@ -162,9 +194,11 @@ export default function AdminMfaGate({
           </button>
         )}
         <div className="admin-form-actions">
-          <Link className="text-button" to="/workspace/home">
-            返回工作台
-          </Link>
+          {!workspace && (
+            <Link className="text-button" to="/workspace/home">
+              返回工作台
+            </Link>
+          )}
           <button className="text-button" disabled={busy} onClick={() => void onLogout()}>
             退出登录
           </button>

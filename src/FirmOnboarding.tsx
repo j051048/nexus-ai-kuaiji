@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
-import { ArrowRight, Building2, Copy, Plus, RefreshCw, ShieldCheck } from 'lucide-react';
-import { api, errorMessage } from './api';
+import { useEffect, useRef, useState } from 'react';
+import { ArrowRight, Copy, Plus, RefreshCw, ShieldCheck } from 'lucide-react';
+import { api, ApiError, errorMessage } from './api';
 import { Spinner } from './AppPrimitives';
 import type { Session } from './types';
 import './firm-onboarding.css';
@@ -38,15 +38,17 @@ type Run = {
   steps: Preview;
 };
 
-export function FirmOnboarding({
-  session,
-  initialPeriod,
-  onOpenBook,
-}: {
+type OnboardingProps = {
   session: Session;
   initialPeriod?: string;
   onOpenBook: (target: { bookId: string; companyId: string; period: string }) => void;
-}) {
+};
+
+export function FirmOnboarding(props: OnboardingProps) {
+  return <OnboardingWorkspace key={props.session.scope_key} {...props} />;
+}
+
+function OnboardingWorkspace({ session, initialPeriod, onOpenBook }: OnboardingProps) {
   const [period, setPeriod] = useState(initialPeriod || new Date().toISOString().slice(0, 7));
   const [companies, setCompanies] = useState<Company[]>([]);
   const [target, setTarget] = useState('');
@@ -58,32 +60,100 @@ export function FirmOnboarding({
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   const [revision, setRevision] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const active = useRef(true);
+  const listEpoch = useRef(0);
+  const previewEpoch = useRef(0);
+  const mutationEpoch = useRef(0);
+  const command = useRef(false);
+  const selection = JSON.stringify([target, source, period]);
+  const selectionRef = useRef(selection);
+  selectionRef.current = selection;
+
+  useEffect(() => {
+    active.current = true;
+    const invalidate = (event: Event) => {
+      if ((event as CustomEvent<string>).detail !== session.scope_key) return;
+      mutationEpoch.current += 1;
+      fail(new Error('当前授权可能已更新，已清除页面数据。请重新读取。'));
+    };
+    window.addEventListener('accounting:forbidden', invalidate);
+    return () => {
+      active.current = false;
+      listEpoch.current += 1;
+      previewEpoch.current += 1;
+      mutationEpoch.current += 1;
+      window.removeEventListener('accounting:forbidden', invalidate);
+    };
+  }, [session.scope_key]);
+
+  function fail(failure: unknown) {
+    // A permission failure must not leave another in-flight read able to restore old data.
+    listEpoch.current += 1;
+    previewEpoch.current += 1;
+    setCompanies([]);
+    setTarget('');
+    setSource('');
+    setPreview(null);
+    setRun(null);
+    setLoading(false);
+    setBusy('');
+    setError(errorMessage(failure));
+  }
 
   useEffect(() => {
     const controller = new AbortController();
+    const stamp = ++listEpoch.current;
+    const current = () =>
+      active.current && !controller.signal.aborted && stamp === listEpoch.current;
     setError('');
-    void api<{ companies: Company[] }>('/admin/companies?limit=100', session, {
+    setLoading(true);
+    setBusy('');
+    setCompanies([]);
+    setPreview(null);
+    setRun(null);
+    void api<{ companies: Company[] }>('/companies', session, {
       signal: controller.signal,
     })
       .then((value) => {
-        if (controller.signal.aborted) return;
+        if (!current()) return;
         setCompanies(value.companies);
-        setTarget((current) => current || value.companies[0]?.id || '');
+        setTarget((selected) =>
+          value.companies.some((company) => company.id === selected)
+            ? selected
+            : value.companies[0]?.id || '',
+        );
+        setSource((selected) =>
+          value.companies.some((company) => company.id === selected) ? selected : '',
+        );
       })
       .catch((failure) => {
-        if (!controller.signal.aborted) setError(errorMessage(failure));
+        if (current() || (active.current && failure instanceof ApiError && failure.status === 403))
+          fail(failure);
+      })
+      .finally(() => {
+        if (current()) setLoading(false);
       });
     return () => controller.abort();
   }, [session, revision]);
 
   useEffect(() => {
-    if (!target) {
+    if (!target || !companies.some((company) => company.id === target)) {
       setPreview(null);
+      setRun(null);
       return;
     }
     const controller = new AbortController();
+    const stamp = ++previewEpoch.current;
+    const current = () =>
+      active.current &&
+      !controller.signal.aborted &&
+      stamp === previewEpoch.current &&
+      selection === selectionRef.current;
     setBusy('preview');
     setError('');
+    setPreview(null);
+    setRun(null);
     void api<Preview>(
       '/firm/onboarding/preview?' +
         new URLSearchParams({
@@ -95,45 +165,56 @@ export function FirmOnboarding({
       { signal: controller.signal },
     )
       .then((value) => {
-        if (!controller.signal.aborted) setPreview(value);
+        if (current()) setPreview(value);
       })
       .catch((failure) => {
-        if (!controller.signal.aborted) {
-          setPreview(null);
-          setError(errorMessage(failure));
-        }
+        if (current() || (active.current && failure instanceof ApiError && failure.status === 403))
+          fail(failure);
       })
       .finally(() => {
-        if (!controller.signal.aborted) setBusy('');
+        if (current()) setBusy('');
       });
     return () => controller.abort();
-  }, [session, target, source, period, revision]);
+  }, [session, target, source, period, revision, companies, selection]);
+
+  async function mutate(name: string, action: (current: () => boolean) => Promise<void>) {
+    if (command.current || loading || busy) return;
+    command.current = true;
+    const stamp = ++mutationEpoch.current;
+    const started = selection;
+    const current = () =>
+      active.current && stamp === mutationEpoch.current && started === selectionRef.current;
+    setBusy(name);
+    setError('');
+    try {
+      await action(current);
+    } catch (failure) {
+      if (current() || (active.current && failure instanceof ApiError && failure.status === 403))
+        fail(failure);
+    } finally {
+      command.current = false;
+      if (active.current && stamp === mutationEpoch.current) setBusy('');
+    }
+  }
 
   async function createCompany() {
     if (!newName.trim()) return;
-    setBusy('create');
-    setError('');
-    try {
+    await mutate('create', async (current) => {
       const value = await api<Company>('/companies', session, {
         method: 'POST',
         body: { name: newName.trim(), tax_id: newTaxId.trim() },
       });
+      if (!current()) return;
       setNewName('');
       setNewTaxId('');
       setRevision((current) => current + 1);
       setTarget(value.id);
-    } catch (failure) {
-      setError(errorMessage(failure));
-    } finally {
-      setBusy('');
-    }
+    });
   }
 
   async function startRun() {
     if (!target || !preview) return;
-    setBusy('start');
-    setError('');
-    try {
+    await mutate('start', async (current) => {
       const value = await api<Run>('/firm/onboarding/runs', session, {
         method: 'POST',
         body: {
@@ -143,19 +224,15 @@ export function FirmOnboarding({
           reason: '客户标准化开通',
         },
       });
+      if (!current()) return;
       setRun(value);
       setPreview(value.steps);
-    } catch (failure) {
-      setError(errorMessage(failure));
-    } finally {
-      setBusy('');
-    }
+    });
   }
 
   async function refreshRun() {
     if (!run) return;
-    setBusy('refresh');
-    try {
+    await mutate('refresh', async (current) => {
       const value = await api<Run>(
         `/firm/onboarding/runs/${encodeURIComponent(run.id)}/refresh`,
         session,
@@ -163,20 +240,15 @@ export function FirmOnboarding({
           method: 'POST',
         },
       );
+      if (!current()) return;
       setRun(value);
       setPreview(value.steps);
-    } catch (failure) {
-      setError(errorMessage(failure));
-    } finally {
-      setBusy('');
-    }
+    });
   }
 
   async function copyTemplates() {
     if (!source || !target || source === target) return;
-    setBusy('copy');
-    setError('');
-    try {
+    await mutate('copy', async (current) => {
       const value = await api<{
         copied: number;
         skipped: number;
@@ -194,17 +266,14 @@ export function FirmOnboarding({
           reason: '标准化开通复制同类客户模板',
         },
       });
+      if (!current()) return;
       setRevision((current) => current + 1);
       setError(
         `开通资源复制完成：记账模板新增 ${value.copied} 个、跳过 ${value.skipped} 个；` +
           `资料模板 ${value.material_templates} 个、银行账户 ${value.bank_accounts} 个；` +
           `服务单分工${value.service_plan ? '已复制' : '未复制'}。`,
       );
-    } catch (failure) {
-      setError(errorMessage(failure));
-    } finally {
-      setBusy('');
-    }
+    });
   }
 
   const selected = companies.find((company) => company.id === target);
@@ -221,12 +290,34 @@ export function FirmOnboarding({
         </div>
         <label>
           开通月份
-          <input type="month" value={period} onChange={(event) => setPeriod(event.target.value)} />
+          <input
+            type="month"
+            value={period}
+            disabled={!!busy || loading}
+            onChange={(event) => {
+              setPreview(null);
+              setRun(null);
+              setPeriod(event.target.value);
+            }}
+          />
         </label>
       </header>
       {error && (
-        <p className={error.includes('复制完成') ? 'inline-success' : 'form-error'} role="status">
+        <p
+          className={error.includes('复制完成') ? 'inline-success' : 'form-error'}
+          role={error.includes('复制完成') ? 'status' : 'alert'}
+        >
           {error}
+          {!error.includes('复制完成') && (
+            <button
+              className="text-button"
+              type="button"
+              disabled={!!busy || loading}
+              onClick={() => setRevision((value) => value + 1)}
+            >
+              重新读取客户
+            </button>
+          )}
         </p>
       )}
       <div className="onboarding-layout">
@@ -235,7 +326,15 @@ export function FirmOnboarding({
             <h2>选择目标客户</h2>
             <label>
               目标企业
-              <select value={target} onChange={(event) => setTarget(event.target.value)}>
+              <select
+                value={target}
+                disabled={!!busy || loading}
+                onChange={(event) => {
+                  setPreview(null);
+                  setRun(null);
+                  setTarget(event.target.value);
+                }}
+              >
                 {companies.map((company) => (
                   <option key={company.id} value={company.id}>
                     {company.name}
@@ -245,7 +344,15 @@ export function FirmOnboarding({
             </label>
             <label>
               参考同类客户（可选）
-              <select value={source} onChange={(event) => setSource(event.target.value)}>
+              <select
+                value={source}
+                disabled={!!busy || loading}
+                onChange={(event) => {
+                  setPreview(null);
+                  setRun(null);
+                  setSource(event.target.value);
+                }}
+              >
                 <option value="">不从其他客户复制</option>
                 {companies
                   .filter((company) => company.id !== target)
@@ -259,7 +366,7 @@ export function FirmOnboarding({
             <button
               className="button secondary"
               type="button"
-              disabled={!source || !target || busy !== ''}
+              disabled={!source || !target || busy !== '' || loading}
               onClick={() => void copyTemplates()}
             >
               <Copy size={15} />
@@ -270,16 +377,24 @@ export function FirmOnboarding({
             <h2>新增客户</h2>
             <label>
               企业名称
-              <input value={newName} onChange={(event) => setNewName(event.target.value)} />
+              <input
+                value={newName}
+                disabled={!!busy || loading}
+                onChange={(event) => setNewName(event.target.value)}
+              />
             </label>
             <label>
               税号（可稍后补充）
-              <input value={newTaxId} onChange={(event) => setNewTaxId(event.target.value)} />
+              <input
+                value={newTaxId}
+                disabled={!!busy || loading}
+                onChange={(event) => setNewTaxId(event.target.value)}
+              />
             </label>
             <button
               className="button secondary"
               type="button"
-              disabled={!newName.trim() || busy !== ''}
+              disabled={!newName.trim() || busy !== '' || loading}
               onClick={() => void createCompany()}
             >
               <Plus size={15} />
@@ -291,7 +406,7 @@ export function FirmOnboarding({
             <button
               className="button primary"
               type="button"
-              disabled={!preview || busy !== ''}
+              disabled={!preview || busy !== '' || loading}
               onClick={() => void startRun()}
             >
               <ShieldCheck size={15} />
@@ -301,7 +416,7 @@ export function FirmOnboarding({
               <button
                 className="button secondary"
                 type="button"
-                disabled={busy !== ''}
+                disabled={busy !== '' || loading}
                 onClick={() => void refreshRun()}
               >
                 <RefreshCw size={15} />
@@ -364,12 +479,13 @@ export function FirmOnboarding({
             <button
               className="button primary"
               type="button"
+              disabled={!!busy || loading}
               onClick={() =>
                 preview.target_book_id &&
                 onOpenBook({
                   bookId: preview.target_book_id,
-                  companyId: target,
-                  period,
+                  companyId: preview.company_id,
+                  period: preview.period,
                 })
               }
             >

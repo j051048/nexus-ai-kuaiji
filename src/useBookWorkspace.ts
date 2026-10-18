@@ -622,6 +622,25 @@ export function useBookWorkspace({
     .filter((draft) => draft.status === 'approved')
     .map((draft) => draft.id);
 
+  const clearProtectedData = useCallback(() => {
+    workbenchReadEpoch.current++;
+    bookReadEpoch.current++;
+    draftReadEpoch.current++;
+    pendingReview.current = null;
+    setWorkbench(null);
+    setDetail(null);
+    setSelectedIds([]);
+    setExportHistory([]);
+    setReviewDirty(false);
+    setBookLoading(false);
+    setBootLoading(false);
+    setDraftLoading(false);
+    setHistoryLoading(false);
+    setReviewNavigationLoading(false);
+    setBookError('权限不足或授权已变更，请确认权限后刷新。');
+    // Keep route selectors for a visible denial/retry at the original location.
+  }, []);
+
   const reset = useCallback(() => {
     workbenchReadEpoch.current++;
     bookReadEpoch.current++;
@@ -655,6 +674,7 @@ export function useBookWorkspace({
   }, []);
 
   return {
+    clearProtectedData,
     acceptMutatedDraft,
     activeDraft,
     approveDraft,

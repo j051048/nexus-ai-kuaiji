@@ -555,6 +555,11 @@
 .admin-mfa h1 {
   font-size: 22px;
 }
+.admin-mfa.admin-mfa-inline {
+  margin: 0;
+  border: 0;
+  max-width: none;
+}
 .admin-mfa p {
   color: #758278;
   font-size: 13px;
