@@ -6,14 +6,23 @@ from uuid import uuid4
 from ..accounting.domain import AccountingError
 from ..accounting.service import now
 
+MAX_EVENT_BYTES = 256 * 1024
+MAX_EVENT_KEY_LENGTH = 200
+
 
 def token_hash(token):
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
+def request_hash(payload):
+    canonical = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
 class IngestionService:
-    def __init__(self, db, accounting):
+    def __init__(self, db, accounting, enabled=False):
         self.db, self.access = db, accounting.access
+        self.enabled = enabled
 
     @staticmethod
     def _json(row, *, token=None):
@@ -116,26 +125,58 @@ class IngestionService:
             ).fetchone()
             return self._json(row, token=token)
 
-    def receive_webhook(self, token, payload):
+    def receive_webhook(self, token, payload, event_key=""):
+        if not self.enabled:
+            raise AccountingError("数据接入尚未启用", 404)
         if not token:
             raise AccountingError("数据连接凭证无效", 403)
+        raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        encoded = raw.encode("utf-8")
+        if len(encoded) > MAX_EVENT_BYTES:
+            raise AccountingError("接入事件超过 256 KiB 上限", 413)
+        digest = hashlib.sha256(encoded).hexdigest()
+        provided_key = str(event_key or "").strip()
+        if provided_key and len(provided_key) > MAX_EVENT_KEY_LENGTH:
+            key = "sha256:" + hashlib.sha256(provided_key.encode("utf-8")).hexdigest()
+        elif provided_key:
+            key = provided_key
+        else:
+            # A stable content key still prevents a replay of an identical body.
+            key = "sha256:" + digest
         with self.db.transaction(system=True, write=True) as conn:
             row = conn.execute(
-                "SELECT * FROM ingestion_connections WHERE token_hash=? AND status='active'",
+                "SELECT c.*,co.status AS company_status,fc.status AS client_status "
+                "FROM ingestion_connections c "
+                "JOIN companies co ON co.id=c.company_id "
+                "JOIN firm_clients fc ON fc.company_id=c.company_id AND fc.firm_id=c.firm_id "
+                "WHERE c.token_hash=? AND c.status='active'",
                 (token_hash(token),),
             ).fetchone()
             if not row:
                 raise AccountingError("数据连接不存在或已停用", 404)
+            if row["company_status"] != "active" or row["client_status"] != "active":
+                raise AccountingError("企业已停用，不能接收外部数据", 409)
+            existing = conn.execute(
+                "SELECT id,status FROM ingestion_runs WHERE connection_id=? AND event_key=?",
+                (row["id"], key),
+            ).fetchone()
+            if existing:
+                return {
+                    "run_id": existing["id"],
+                    "status": existing["status"],
+                    "duplicate": True,
+                }
             summary = {
-                "bytes": len(json.dumps(payload, ensure_ascii=False).encode("utf-8")),
+                "bytes": len(encoded),
                 "keys": sorted(payload)[:30] if isinstance(payload, dict) else ["array"],
                 "records": len(payload) if isinstance(payload, list) else 1,
+                "event_key": key,
             }
             run_id, stamp = uuid4().hex, now()
             conn.execute(
                 "INSERT INTO ingestion_runs(id,connection_id,firm_id,company_id,status,attempt,"
-                "cursor,summary_json,error_code,error_detail,created_at) "
-                "VALUES(?,?,?,?,'received',1,?,?,'','',?)",
+                "cursor,summary_json,error_code,error_detail,created_at,event_key,raw_event_json,"
+                "request_hash) VALUES(?,?,?,?,'received',1,?,?,'','',?,?,?,?)",
                 (
                     run_id,
                     row["id"],
@@ -144,6 +185,31 @@ class IngestionService:
                     row["last_cursor"],
                     json.dumps(summary, ensure_ascii=False),
                     stamp,
+                    key,
+                    raw,
+                    digest,
                 ),
             )
-            return {"run_id": run_id, "status": "received"}
+            conn.execute(
+                "INSERT INTO audit_events(firm_id,book_id,user_id,action,object_id,details,created_at) "
+                "VALUES(?,NULL,?,?,?,?,?)",
+                (
+                    row["firm_id"],
+                    row["created_by"],
+                    "ingestion.receive",
+                    run_id,
+                    json.dumps(
+                        {
+                            "connection_id": row["id"],
+                            "event_key": key,
+                            "request_hash": digest,
+                            "bytes": len(encoded),
+                        },
+                        ensure_ascii=False,
+                    ),
+                    stamp,
+                ),
+            )
+            # Receipt only; a consumer must produce an explicit imported/posted
+            # result later. Never report the 202 as accounting completion.
+            return {"run_id": run_id, "status": "received", "duplicate": False}

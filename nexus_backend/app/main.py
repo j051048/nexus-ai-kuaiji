@@ -94,6 +94,7 @@ from .onboarding.router import build_onboarding_router
 from .onboarding.service import OnboardingService
 from .observability.router import build_observability_router
 from .observability.service import FirmObservabilityService
+from .ingestion.middleware import IngestionBodyLimitMiddleware
 from .ingestion.router import build_ingestion_router
 from .ingestion.service import IngestionService
 from .operations.meter import MeterService
@@ -378,7 +379,11 @@ def create_app(
             application.state.firm_observability = FirmObservabilityService(
                 database, application.state.service
             )
-            application.state.ingestion = IngestionService(database, application.state.service)
+            application.state.ingestion = IngestionService(
+                database,
+                application.state.service,
+                enabled=os.environ.get("ACCOUNTING_INGESTION_ENABLED") == "1",
+            )
             application.state.handover = HandoverService(
                 database,
                 application.state.service,
@@ -1012,6 +1017,7 @@ def create_app(
     app.add_middleware(DeliveryBodyLimitMiddleware)
     app.add_middleware(ImportWizardBodyLimitMiddleware)
     app.add_middleware(MigrationBodyLimitMiddleware)
+    app.add_middleware(IngestionBodyLimitMiddleware)
     return app
 
 

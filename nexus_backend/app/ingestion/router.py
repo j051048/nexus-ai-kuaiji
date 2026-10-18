@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Header, Request
 
 from .models import ConnectionCreate
 
@@ -32,8 +32,17 @@ def build_ingestion_router(actor_dependency):
     ):
         return ingestion.rotate(current, connection_id)
 
-    @router.post("/integrations/webhook/{token}", status_code=202)
-    def webhook(token: str, payload: dict, request: Request):
-        return request.app.state.ingestion.receive_webhook(token, payload)
+    @router.post("/integrations/webhook", status_code=202)
+    def webhook(
+        payload: dict,
+        request: Request,
+        x_ingestion_token: str = Header(default=""),
+    ):
+        # Credentials must not appear in a URL path or access log.
+        return request.app.state.ingestion.receive_webhook(
+            x_ingestion_token,
+            payload,
+            event_key=request.headers.get("X-Event-Id", ""),
+        )
 
     return router
