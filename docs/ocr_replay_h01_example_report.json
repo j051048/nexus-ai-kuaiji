@@ -1,0 +1,273 @@
+{
+  "schema_version": "ocr-replay-report-v1",
+  "dataset_id": "h01-synthetic-invoices",
+  "dataset_version": "2026-10-19.1",
+  "data_nature": "synthetic",
+  "manifest_sha256": "54d8e7f6de0dbaaa6e1484dbd4478865d8714279f590aaafebeeecee2b6a35dc",
+  "mode": "mock",
+  "model": "none",
+  "model_verified": false,
+  "disclaimer": "本报告仅用于离线比较，不授权规则发布、自动审核、记账或导出。",
+  "samples": 4,
+  "supported": 3,
+  "unsupported": 1,
+  "unsupported_samples": [
+    "B1"
+  ],
+  "failed_or_unknown": 0,
+  "baseline": {
+    "schema_version": "ocr-field-evaluation-v1",
+    "samples": 3,
+    "completed": 3,
+    "missing_results": 0,
+    "all_labeled_fields_exact": 1,
+    "sample_exact_rate": 0.3333333333333333,
+    "fields": {
+      "invoice_number": {
+        "expected": 3,
+        "correct": 3,
+        "incorrect": 0,
+        "missing": 0,
+        "accuracy": 1.0
+      },
+      "issued_on": {
+        "expected": 3,
+        "correct": 3,
+        "incorrect": 0,
+        "missing": 0,
+        "accuracy": 1.0
+      },
+      "seller_tax_id": {
+        "expected": 3,
+        "correct": 3,
+        "incorrect": 0,
+        "missing": 0,
+        "accuracy": 1.0
+      },
+      "buyer_tax_id": {
+        "expected": 3,
+        "correct": 3,
+        "incorrect": 0,
+        "missing": 0,
+        "accuracy": 1.0
+      },
+      "gross_amount": {
+        "expected": 3,
+        "correct": 1,
+        "incorrect": 2,
+        "missing": 0,
+        "accuracy": 0.3333333333333333
+      },
+      "net_amount": {
+        "expected": 3,
+        "correct": 3,
+        "incorrect": 0,
+        "missing": 0,
+        "accuracy": 1.0
+      },
+      "tax_amount": {
+        "expected": 3,
+        "correct": 3,
+        "incorrect": 0,
+        "missing": 0,
+        "accuracy": 1.0
+      },
+      "seller_name": {
+        "expected": 3,
+        "correct": 3,
+        "incorrect": 0,
+        "missing": 0,
+        "accuracy": 1.0
+      },
+      "buyer_name": {
+        "expected": 3,
+        "correct": 3,
+        "incorrect": 0,
+        "missing": 0,
+        "accuracy": 1.0
+      },
+      "currency": {
+        "expected": 3,
+        "correct": 3,
+        "incorrect": 0,
+        "missing": 0,
+        "accuracy": 1.0
+      }
+    },
+    "categories": {
+      "standard": {
+        "samples": 1,
+        "exact": 0
+      },
+      "multi_page": {
+        "samples": 1,
+        "exact": 0
+      },
+      "standard_no_leading_zero": {
+        "samples": 1,
+        "exact": 1
+      }
+    },
+    "manual_review_flagged": 2,
+    "error_samples": 2,
+    "unflagged_error_samples": 0,
+    "unflagged_error_rate_among_errors": 0.0,
+    "duration_ms_p95": 0.903,
+    "duration_samples": 3,
+    "correction_seconds_median": null,
+    "correction_time_samples": 0,
+    "reported_cost_cny": null,
+    "known_cost_samples": 0,
+    "unknown_cost_samples": 3,
+    "scope_note": "离线比较已配对的单张票据标签与结果，不调用模型，不证明标签已独立确认，不授权自动审核或发布。费用缺失不是零；未告警错误指未标记人工处理，不代表已经导出。"
+  },
+  "candidate": {
+    "schema_version": "ocr-field-evaluation-v1",
+    "samples": 3,
+    "completed": 3,
+    "missing_results": 0,
+    "all_labeled_fields_exact": 1,
+    "sample_exact_rate": 0.3333333333333333,
+    "fields": {
+      "invoice_number": {
+        "expected": 3,
+        "correct": 1,
+        "incorrect": 2,
+        "missing": 0,
+        "accuracy": 0.3333333333333333
+      },
+      "issued_on": {
+        "expected": 3,
+        "correct": 3,
+        "incorrect": 0,
+        "missing": 0,
+        "accuracy": 1.0
+      },
+      "seller_tax_id": {
+        "expected": 3,
+        "correct": 3,
+        "incorrect": 0,
+        "missing": 0,
+        "accuracy": 1.0
+      },
+      "buyer_tax_id": {
+        "expected": 3,
+        "correct": 3,
+        "incorrect": 0,
+        "missing": 0,
+        "accuracy": 1.0
+      },
+      "gross_amount": {
+        "expected": 3,
+        "correct": 3,
+        "incorrect": 0,
+        "missing": 0,
+        "accuracy": 1.0
+      },
+      "net_amount": {
+        "expected": 3,
+        "correct": 3,
+        "incorrect": 0,
+        "missing": 0,
+        "accuracy": 1.0
+      },
+      "tax_amount": {
+        "expected": 3,
+        "correct": 3,
+        "incorrect": 0,
+        "missing": 0,
+        "accuracy": 1.0
+      },
+      "seller_name": {
+        "expected": 3,
+        "correct": 3,
+        "incorrect": 0,
+        "missing": 0,
+        "accuracy": 1.0
+      },
+      "buyer_name": {
+        "expected": 3,
+        "correct": 3,
+        "incorrect": 0,
+        "missing": 0,
+        "accuracy": 1.0
+      },
+      "currency": {
+        "expected": 3,
+        "correct": 3,
+        "incorrect": 0,
+        "missing": 0,
+        "accuracy": 1.0
+      }
+    },
+    "categories": {
+      "standard": {
+        "samples": 1,
+        "exact": 0
+      },
+      "multi_page": {
+        "samples": 1,
+        "exact": 0
+      },
+      "standard_no_leading_zero": {
+        "samples": 1,
+        "exact": 1
+      }
+    },
+    "manual_review_flagged": 0,
+    "error_samples": 2,
+    "unflagged_error_samples": 2,
+    "unflagged_error_rate_among_errors": 1.0,
+    "duration_ms_p95": 0.2361,
+    "duration_samples": 3,
+    "correction_seconds_median": null,
+    "correction_time_samples": 0,
+    "reported_cost_cny": null,
+    "known_cost_samples": 0,
+    "unknown_cost_samples": 3,
+    "scope_note": "离线比较已配对的单张票据标签与结果，不调用模型，不证明标签已独立确认，不授权自动审核或发布。费用缺失不是零；未告警错误指未标记人工处理，不代表已经导出。"
+  },
+  "splits": {
+    "dev": {
+      "samples": 2,
+      "baseline_exact": 1,
+      "candidate_exact": 1
+    },
+    "validation": {
+      "samples": 1,
+      "baseline_exact": 0,
+      "candidate_exact": 0
+    }
+  },
+  "baseline_evidence_legal": 4,
+  "candidate_evidence_legal": 4,
+  "candidate_evidence_errors": {},
+  "fixed_samples": [],
+  "regressed_samples": [],
+  "fixed_fields": [
+    {
+      "sample_id": "A1",
+      "field": "gross_amount"
+    },
+    {
+      "sample_id": "A2",
+      "field": "gross_amount"
+    }
+  ],
+  "regressed_fields": [
+    {
+      "sample_id": "A1",
+      "field": "invoice_number"
+    },
+    {
+      "sample_id": "A2",
+      "field": "invoice_number"
+    }
+  ],
+  "critical_regressions": [
+    "A1",
+    "A2"
+  ],
+  "status": "regression",
+  "scope_note": "仅比较冻结 OCR 文本到结构化字段；不验证图片识别、真实模型效果、会计复核或生产接入。"
+}

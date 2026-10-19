@@ -9,6 +9,66 @@ import pytest
 from test_postgres_integration import ADMIN_URL, case, postgres  # noqa: F401
 
 
+def test_runtime_can_configure_control_account(case):
+    from app.opening.models import AccountCreate
+    from app.opening.service import OpeningService
+    from app.subledger.models import ControlAccountCreate
+    from app.subledger.service import SubledgerService
+
+    with case.db.transaction(actor=case.actor) as conn:
+        ledger_id = conn.execute(
+            "SELECT ledger_id FROM ledger_periods WHERE book_id=?", (case.book,)
+        ).fetchone()["ledger_id"]
+    account = OpeningService(case.db).create_account(
+        case.actor,
+        AccountCreate(
+            ledger_id=ledger_id,
+            code="C01AP",
+            name="C01 应付控制",
+            category="liability",
+            normal_balance="credit",
+            effective_from="2026-01",
+            reason="C01-R3A 正常路径",
+        ),
+    )
+    config = SubledgerService(case.db).configure_control_account(
+        case.actor,
+        ControlAccountCreate(
+            book_id=case.book,
+            kind="payable",
+            control_account_id=account["id"],
+            control_account_version=1,
+            effective_from="2026-01",
+            reason="C01-R3A 正常配置",
+        ),
+    )
+    assert config["control_account_id"] == account["id"]
+    from app.ledgers.models import EntityCreate
+    from app.ledgers.service import LedgersService
+    from app.subledger.models import OpenItemCreate
+
+    party = LedgersService(case.db).create_entity(
+        case.actor,
+        case.book,
+        EntityCreate(kind="counterparty", code="C01SUP", name="C01 供应商"),
+    )
+    item = SubledgerService(case.db).create_item(
+        case.actor,
+        OpenItemCreate(
+            book_id=case.book,
+            kind="payable",
+            counterparty_id=party["id"],
+            control_account_id=account["id"],
+            control_account_version=1,
+            original_date="2026-10-01",
+            amount="10.00",
+            source_kind="manual",
+            reason="C01-R3A 子账事项",
+        ),
+    )
+    assert item["aux"] == {}
+
+
 def test_bank_coverage_rejects_forged_verifier(case):
     from uuid import uuid4
 

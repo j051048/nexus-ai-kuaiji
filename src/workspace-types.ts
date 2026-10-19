@@ -1,8 +1,20 @@
 import type { Me, Pagination, Session } from './types';
 export type WorkspaceRole =
   'accountant' | 'finance' | 'approver' | 'employee' | 'manager' | 'viewer';
+export type PresentationRole =
+  | 'employee'
+  | 'approver'
+  | 'finance'
+  | 'manager'
+  | 'accountant'
+  | 'reviewer'
+  | 'firm_owner'
+  | 'admin'
+  | 'viewer';
 export type WorkspaceProfile = {
   role: WorkspaceRole;
+  /** Optional server-derived presentation identity; never grants access. */
+  display_role?: PresentationRole;
   can_submit: boolean;
   can_approve: boolean;
   can_finance: boolean;

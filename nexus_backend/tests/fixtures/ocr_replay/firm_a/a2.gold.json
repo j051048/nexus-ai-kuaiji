@@ -1,0 +1,15 @@
+{
+  "sample_id": "A2",
+  "fields": {
+    "invoice_number": "0002",
+    "issued_on": "2026-10-02",
+    "seller_name": "丙公司",
+    "seller_tax_id": "91110000MA00000003",
+    "buyer_name": "甲公司",
+    "buyer_tax_id": "91110000MA00000001",
+    "gross_amount": "212.00",
+    "net_amount": "200.00",
+    "tax_amount": "12.00",
+    "currency": "CNY"
+  }
+}

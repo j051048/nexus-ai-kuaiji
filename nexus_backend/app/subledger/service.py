@@ -57,12 +57,22 @@ class SubledgerService:
         return int(allocated) - int(reversed_amount)
 
     def _control_state(self, conn, ledger_id, period):
-        return conn.execute(
+        row = conn.execute(
             "SELECT * FROM subledger_control_applicability WHERE ledger_id=? "
             "AND effective_from<=? AND (effective_to IS NULL OR effective_to>=?) "
             "ORDER BY effective_from DESC LIMIT 1",
             (ledger_id, period, period),
         ).fetchone()
+        if row:
+            return row
+        if self._control_configs(conn, ledger_id, as_of=period):
+            return {
+                "status": "configured",
+                "reason": "",
+                "effective_from": period,
+                "effective_to": None,
+            }
+        return None
 
     def _has_any_control_config(self, conn, ledger_id):
         return bool(
@@ -141,7 +151,7 @@ class SubledgerService:
 
     def _control_configs(self, conn, ledger_id, kind=None, as_of=None):
         sql = (
-            "SELECT * FROM subledger_control_accounts WHERE ledger_id=? AND active=1 "
+            "SELECT * FROM subledger_control_accounts WHERE ledger_id=? AND active IS TRUE "
             "AND effective_from<=? AND (effective_to IS NULL OR effective_to>=?)"
         )
         period = (as_of or "")[:7]
@@ -166,18 +176,16 @@ class SubledgerService:
                 raise AccountingError("必要辅助维度名称不能为空", 422)
             if len(set(request.required_aux)) != len(request.required_aux):
                 raise AccountingError("必要辅助维度不能重复", 422)
-            if conn.execute(
-                "SELECT 1 FROM subledger_control_accounts WHERE ledger_id=? AND kind=? AND active=1 "
-                "AND (effective_to IS NULL OR effective_to>=?) "
-                "AND (? IS NULL OR effective_from<=?) LIMIT 1",
-                (
-                    ledger_id,
-                    request.kind,
-                    request.effective_from,
-                    request.effective_to,
-                    request.effective_to,
-                ),
-            ).fetchone():
+            overlap_sql = (
+                "SELECT 1 FROM subledger_control_accounts WHERE ledger_id=? AND kind=? "
+                "AND active IS TRUE AND (effective_to IS NULL OR effective_to>=?)"
+            )
+            overlap_params = [ledger_id, request.kind, request.effective_from]
+            if request.effective_to is not None:
+                overlap_sql += " AND effective_from<=?"
+                overlap_params.append(request.effective_to)
+            overlap_sql += " LIMIT 1"
+            if conn.execute(overlap_sql, tuple(overlap_params)).fetchone():
                 raise AccountingError("控制科目生效期间与现有配置重叠", 409)
             existing = conn.execute(
                 "SELECT 1 FROM subledger_control_accounts WHERE ledger_id=? AND kind=? AND "
@@ -200,7 +208,7 @@ class SubledgerService:
             conn.execute(
                 "INSERT INTO subledger_control_accounts(id,firm_id,company_id,ledger_id,kind,"
                 "control_account_id,control_account_version,required_aux_json,effective_from,"
-                "effective_to,active,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,1,?,?)",
+                "effective_to,active,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,TRUE,?,?)",
                 (
                     config_id,
                     book["firm_id"],
@@ -214,26 +222,6 @@ class SubledgerService:
                     request.effective_to,
                     actor.user_id,
                     now(),
-                ),
-            )
-            stamp = now()
-            conn.execute(
-                "INSERT INTO subledger_control_applicability(id,ledger_id,firm_id,company_id,status,"
-                "effective_from,effective_to,reason,confirmed_by,confirmed_at,created_at) "
-                "VALUES(?,?,?,?,'configured',?,?,'',?,?,?) "
-                "ON CONFLICT(ledger_id,effective_from) DO UPDATE SET status='configured',"
-                "effective_to=excluded.effective_to,confirmed_by=excluded.confirmed_by,"
-                "confirmed_at=excluded.confirmed_at",
-                (
-                    uuid4().hex,
-                    ledger_id,
-                    book["firm_id"],
-                    book["company_id"],
-                    request.effective_from,
-                    request.effective_to,
-                    actor.user_id,
-                    stamp,
-                    stamp,
                 ),
             )
             if not self.db.is_postgres:
@@ -710,7 +698,7 @@ class SubledgerService:
         with self.db.transaction(actor=actor) as conn:
             book, _ = self._book(conn, actor, book_id)
             return [dict(row) for row in conn.execute(
-                "SELECT * FROM bank_accounts WHERE book_id=? AND active=1 ORDER BY name,id",
+                "SELECT * FROM bank_accounts WHERE book_id=? AND active IS TRUE ORDER BY name,id",
                 (book["id"],),
             )]
 
@@ -722,7 +710,7 @@ class SubledgerService:
         with self.db.transaction(write=True, actor=actor) as conn:
             book, _ = self._book(conn, actor, request.book_id, write=True)
             account = conn.execute(
-                "SELECT * FROM bank_accounts WHERE id=? AND book_id=? AND active=1",
+                "SELECT * FROM bank_accounts WHERE id=? AND book_id=? AND active IS TRUE",
                 (request.account_id, book["id"]),
             ).fetchone()
             if not account:
@@ -765,7 +753,7 @@ class SubledgerService:
             account_id = request.bank_account_id
             if account_id:
                 if not conn.execute(
-                    "SELECT 1 FROM bank_accounts WHERE id=? AND book_id=? AND active=1",
+                    "SELECT 1 FROM bank_accounts WHERE id=? AND book_id=? AND active IS TRUE",
                     (account_id, book["id"]),
                 ).fetchone():
                     raise AccountingError("银行账户不存在或不属于当前账套", 404)
@@ -852,7 +840,7 @@ class SubledgerService:
 
         book, _ = self._book(conn, actor, book_id)
         accounts = conn.execute(
-            "SELECT * FROM bank_accounts WHERE book_id=? AND active=1 ORDER BY name,id",
+            "SELECT * FROM bank_accounts WHERE book_id=? AND active IS TRUE ORDER BY name,id",
             (book["id"],),
         ).fetchall()
         if accounts:

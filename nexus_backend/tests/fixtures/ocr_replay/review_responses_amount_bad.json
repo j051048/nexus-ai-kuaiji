@@ -1,0 +1,14 @@
+{
+  "A1": {
+    "content": "{\"fields\":{\"gross_amount\":\"100.00\"},\"evidence\":[{\"field\":\"gross_amount\",\"page\":1,\"quote\":\"价税合计（小写）：100.00\"}]}",
+    "finish_reason": "stop",
+    "usage": {"prompt_tokens": 1, "completion_tokens": 0, "total_tokens": 1},
+    "cost": "0"
+  },
+  "A2": {
+    "content": "{\"fields\":{\"gross_amount\":\"212.00\"},\"evidence\":[{\"field\":\"gross_amount\",\"page\":2,\"quote\":\"价税合计（小写）：212.00\"}]}",
+    "finish_reason": "stop",
+    "usage": {"prompt_tokens": 1, "completion_tokens": 0, "total_tokens": 1},
+    "cost": "0"
+  }
+}

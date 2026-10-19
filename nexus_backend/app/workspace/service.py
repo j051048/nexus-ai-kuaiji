@@ -165,8 +165,21 @@ class WorkspaceService:
             if can_review
             else "viewer"
         )
+        # Additive read-only presentation identity. It does not alter grants;
+        # API authorization still uses the existing capability/scope checks.
+        display_role = (
+            "firm_owner" if firm_role == "owner"
+            else "admin" if firm_role == "admin"
+            else "reviewer" if firm_role == "reviewer"
+            else "accountant" if firm_role == "operator"
+            else "finance" if can_finance
+            else "approver" if can_approve
+            else "manager" if role == "manager"
+            else role
+        )
         result = {
             "role": role,
+            "display_role": display_role,
             "can_submit": can_submit,
             "can_approve": can_approve,
             "can_finance": can_finance,

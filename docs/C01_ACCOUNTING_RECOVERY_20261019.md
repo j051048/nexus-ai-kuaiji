@@ -289,6 +289,84 @@ C01-R3A **未闭环**：N6/N7/N8/N9/N10 与 R1–R4 尚未执行，A2/A3 未覆�
 
 ---
 
+## 7B. C01-R3A 收口复测（第二次）
+
+### 实际基线
+
+- HEAD：`59764a9b`（上一轮已提交推送；本轮未提交）
+- PG：14.24，隔离库，迁移 1–135
+- SQLite：1–092
+- 角色：迁移 `b08_admin`；业务 `b08_runtime`；worker `b08_worker`
+
+### 本轮修复
+
+1. **正常路径失败复现**
+   - `active=1` 在 PG boolean 列失败；
+   - 可空 `effective_to` 参数触发 `IndeterminateDatatype`；
+   - `subledger_control_accounts.active` INSERT 使用整数 `1`；
+   - `ON CONFLICT ... DO UPDATE` 需要 UPDATE 权限，且会覆盖历史声明。
+
+2. **修复**
+   - `active` 改为 `active IS TRUE`（仅对布尔列；`company_master_entities.active` 保持整数）；
+   - 重叠查询按 `effective_to` 是否为空分支生成 SQL，避免可空参数类型推断；
+   - 控制科目 INSERT 使用 `TRUE`；
+   - 移除配置路径对 `subledger_control_applicability` 的 upsert；
+     `_control_state` 在有有效配置时按配置派生 `configured`；
+     不适用声明仍只 INSERT，保留历史，不再要求 UPDATE 权限；
+   - 新增 PG `135_c01_r3a_close_and_ownership.sql`：
+     - applicability AFTER dependency trigger（F03）；
+     - bank coverage 自定义 company guard（真实解析 book/account/company）；
+     - coverage append-only；
+     - 控制科目/银行账户/适用性引用归属校验；
+     - 控制/适用性身份字段不可变。
+   - 银行覆盖锁保护仍只覆盖 INSERT/UPDATE；append-only trigger 已阻止 UPDATE/DELETE。
+
+3. **PG 正常路径**
+   - `test_runtime_can_configure_control_account`：
+     - `b08_runtime` 创建自定义科目；
+     - 配置控制科目；
+     - 创建往来方和子账事项；
+     - 通过。
+   - 未完成勾稽成功：该测试账套没有 opening binding，
+     `control_reconciliation` 因未绑定期初被正确拒绝；
+     A1 的“勾稽成功”仍缺合法期初绑定夹具。
+
+### 本轮测试
+
+```text
+SQLite R01/R03:              15 passed
+SQLite B04 + P0:             48 passed
+PG14 adapter+integration:    20 passed
+PG14 C01-R3A dedicated:       2 passed
+```
+
+PG 专项：
+
+- 受限运行时创建控制科目配置、子账事项：**通过**
+- 伪造 `verified_by` 被 identity trigger 拒绝：**通过**
+
+### 仍未完成
+
+- A1 勾稽成功（缺 opening binding 夹具）；
+- A2 显式 null / 后续期间查询未单独断言；
+- A3 真正不适用正常路径；
+- A4 银行账户 API 的 PG 正常路径；
+- N6 原生 SQL 跨企业/错账套/错版本；
+- N7 无复核资格写确认事实；
+- N8 锁期后 API + 原生 SQL 覆盖写入；
+- N9 撤权后旧请求；
+- N10 事务故障注入；
+- R1–R4 双会话并发；
+- coverage company guard 的实际 company-scope 成功/失败路径；
+- 135 的从零空库迁移与增量升级对照。
+
+### 结论
+
+C01-R3A **仍未闭环**。本轮修复了正常路径阻塞和部分历史/归属保护，
+但 A/N/R 未全部具备证据，不能进入 C01-R3B。
+
+---
+
 ## 8. C01-R2 环境调查
 
 ### PG17

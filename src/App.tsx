@@ -32,6 +32,11 @@ import type {
 import { clearReviewSession } from './review-session';
 import { roleCopy, taskDestination } from './workspace-types';
 import { workspaceExperience } from './workspace-experience';
+import {
+  presentationRole,
+  primaryNav,
+  roleHome,
+} from './workspace-presentation';
 import type { WorkspaceProfile, WorkspaceTask } from './workspace-types';
 import type { BusinessTemplate } from './business-types';
 import type { OperationsCompany } from './operations-types';
@@ -674,6 +679,7 @@ export default function App() {
         'materials',
         'messages',
         'portfolio',
+        'briefing',
         'quality',
       ].includes(view)
         ? (view as WorkspaceView)
@@ -1156,6 +1162,8 @@ export default function App() {
                 ? routeView
                 : 'accounting'
         }
+        presentationNav={profile ? primaryNav(presentationRole(profile)) : undefined}
+        presentationLabel={profile ? roleHome(presentationRole(profile)).name : undefined}
         canAccounting={canSeeAccounting}
         canProcessing={experience.processing}
         businessLabel={experience.businessLabel}

@@ -18,6 +18,7 @@ import {
   X,
 } from 'lucide-react';
 import type { Session } from './types';
+import type { PresentationNavItem } from './workspace-presentation';
 
 export type AgentNavigationView =
   | 'home'
@@ -39,7 +40,8 @@ export type AgentNavigationView =
   | 'revision'
   | 'monthly'
   | 'materials'
-  | 'portfolio';
+  | 'portfolio'
+  | 'briefing';
 
 export function AgentNavigation({
   session,
@@ -54,11 +56,15 @@ export function AgentNavigation({
   locked,
   firmSelector,
   footer,
+  presentationNav,
+  presentationLabel,
   onNavigate,
   onAccountingFilter,
 }: {
   session: Session;
   current: string;
+  presentationNav?: PresentationNavItem[];
+  presentationLabel?: string;
   canAccounting: boolean;
   canMonthly?: boolean;
   canReview: boolean;
@@ -185,6 +191,53 @@ export function AgentNavigation({
           </div>
         </div>
         <nav aria-label="主导航" className="agent-primary-nav">
+          {presentationNav?.length ? (
+            <>
+              {presentationLabel && (
+                <p className="agent-nav-context" aria-label="当前工作视角">
+                  {presentationLabel}
+                </p>
+              )}
+              {presentationNav.map((item) => {
+                const Icon =
+                  item.id === 'review'
+                    ? CheckCheck
+                    : item.id === 'cases' || item.id === 'business'
+                      ? ClipboardCheck
+                      : item.id === 'materials'
+                        ? FileCheck2
+                        : item.id === 'monthly' || item.id === 'portfolio'
+                          ? CalendarDays
+                          : item.id === 'firm' || item.id === 'operations'
+                            ? Activity
+                            : item.id === 'messages'
+                              ? FileText
+                              : LayoutDashboard;
+                return (
+                  <button
+                    key={item.id}
+                    aria-label={item.label}
+                    className={
+                      'nav-item agent-primary-item ' +
+                      (current === item.id || (item.id === 'home' && workActive) ? 'active' : '')
+                    }
+                    disabled={locked || item.id === 'admin'}
+                    onClick={() => {
+                      if (item.id !== 'admin') go(item.id as AgentNavigationView);
+                    }}
+                  >
+                    <Icon size={19} />
+                    <span>
+                      {item.label}
+                      <small>{item.hint}</small>
+                    </span>
+                  </button>
+                );
+              })}
+            </>
+          ) : null}
+          <details className="nav-group agent-legacy-nav" open={!presentationNav?.length}>
+            <summary>更多工具</summary>
           <button
             aria-label="我的待办"
             className={'nav-item agent-primary-item ' + (workActive ? 'active' : '')}
@@ -351,6 +404,7 @@ export function AgentNavigation({
               </button>
             )}
           </div>
+          </details>
         </nav>
         {canAccounting && (
           <details className="nav-group" open={current === 'accounting'}>
