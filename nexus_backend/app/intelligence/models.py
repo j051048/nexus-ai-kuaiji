@@ -141,9 +141,11 @@ class JournalSuggestion(OutputModel):
 
 
 class ProviderUsage(OutputModel):
-    prompt_tokens: StrictInt = Field(ge=0)
-    completion_tokens: StrictInt = Field(ge=0)
-    total_tokens: StrictInt = Field(ge=0)
+    # A supplier report outside this bound is not trusted as billable usage.
+    # Treat it as unknown and require manual cost confirmation instead.
+    prompt_tokens: StrictInt = Field(ge=0, le=100_000_000)
+    completion_tokens: StrictInt = Field(ge=0, le=100_000_000)
+    total_tokens: StrictInt = Field(ge=0, le=100_000_000)
 
 
 T = TypeVar("T", bound=OutputModel)

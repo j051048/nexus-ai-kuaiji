@@ -529,11 +529,7 @@ class OpenAICompatibleProvider:
             envelope = _json_without_duplicates(body.decode("utf-8"))
         except (UnicodeDecodeError, ValueError, RecursionError):
             raise ProviderError("invalid_json", "AI 服务返回了无效 JSON，需人工处理") from None
-        if (
-            not isinstance(envelope, dict)
-            or not isinstance(envelope.get("choices"), list)
-            or len(envelope["choices"]) != 1
-        ):
+        if not isinstance(envelope, dict):
             raise ProviderError("invalid_response", "AI 服务响应结构无效，需人工处理")
         usage = None
         if envelope.get("usage") is not None:
@@ -557,6 +553,11 @@ class OpenAICompatibleProvider:
             error.usage = usage
             return error
 
+        if (
+            not isinstance(envelope.get("choices"), list)
+            or len(envelope["choices"]) != 1
+        ):
+            raise failure("invalid_response", "AI 服务响应结构无效，需人工处理")
         choice = envelope["choices"][0]
         if not isinstance(choice, dict) or not isinstance(choice.get("message"), dict):
             raise failure("invalid_response", "AI 服务响应结构无效，需人工处理")
