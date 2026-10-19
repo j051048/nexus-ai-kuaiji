@@ -30,6 +30,20 @@ def _case(case):
 
 
 def _item(case, opening, sub, amount="5000.00"):
+    from app.subledger.models import ControlAccountCreate
+
+    if not sub.list_control_accounts(case.manager, case.book["id"]):
+        sub.configure_control_account(
+            case.manager,
+            ControlAccountCreate(
+                book_id=case.book["id"],
+                kind="payable",
+                control_account_id=opening["payable"]["id"],
+                control_account_version=1,
+                effective_from="2026-01",
+                reason="R01 控制科目夹具",
+            ),
+        )
     party = LedgersService(case.db).create_entity(
         case.manager,
         case.book["id"],
@@ -80,9 +94,198 @@ def _payment(case, opening, posting, amount="3000.00", key="r01-payment"):
 def test_f04_control_with_book_balance_and_no_items_fails(business):
     case = business
     opening, _, sub = _case(case)
+    from app.subledger.models import ControlAccountCreate
+
+    sub.configure_control_account(
+        case.manager,
+        ControlAccountCreate(
+            book_id=case.book["id"],
+            kind="payable",
+            control_account_id=opening["payable"]["id"],
+            control_account_version=1,
+            effective_from="2026-01",
+            reason="F04 配置应付控制科目",
+        ),
+    )
     result = sub.control_reconciliation(case.manager, case.book["id"])
     assert result["passed"] is False
     assert any(row["book_cents"] for row in result["rows"])
+
+
+def test_f04_custom_control_account_is_not_code_based(business):
+    case = business
+    opening, _, sub = _case(case)
+    from app.opening.models import AccountCreate
+    from app.opening.service import OpeningService
+    from app.subledger.models import ControlAccountCreate
+
+    custom = OpeningService(case.db).create_account(
+        case.manager,
+        AccountCreate(
+            ledger_id=opening["ledger_id"],
+            code="9999",
+            name="自定义应付控制",
+            category="liability",
+            normal_balance="credit",
+            effective_from="2026-01",
+            effective_to="2026-12",
+            reason="F04 自定义控制科目",
+        ),
+    )
+    sub.configure_control_account(
+        case.manager,
+        ControlAccountCreate(
+            book_id=case.book["id"],
+            kind="payable",
+            control_account_id=custom["id"],
+            control_account_version=1,
+            effective_from="2026-01",
+            reason="F04 自定义控制配置",
+        ),
+    )
+    configs = sub.list_control_accounts(case.manager, case.book["id"])
+    assert any(row["control_account_id"] == custom["id"] for row in configs)
+    reconciled = sub.control_reconciliation(case.manager, case.book["id"])
+    assert reconciled["status"] == "configured"
+    assert any(row["control_account_id"] == custom["id"] for row in reconciled["rows"])
+    party = LedgersService(case.db).create_entity(
+        case.manager,
+        case.book["id"],
+        EntityCreate(kind="counterparty", code="F04-CUSTOM", name="自定义控制往来方"),
+    )
+    item = sub.create_item(
+        case.manager,
+        OpenItemCreate(
+            book_id=case.book["id"],
+            kind="payable",
+            counterparty_id=party["id"],
+            control_account_id=custom["id"],
+            control_account_version=1,
+            original_date="2026-10-01",
+            amount="10.00",
+            source_kind="manual",
+            reason="F04 自定义控制事项",
+        ),
+    )
+    assert item["control_account_id"] == custom["id"]
+
+
+def test_f04_missing_config_does_not_silently_pass(business):
+    case = business
+    _, _, sub = _case(case)
+    result = sub.control_reconciliation(case.manager, case.book["id"])
+    assert result["status"] == "blocked"
+    assert result["passed"] is False
+    assert "配置" in result["reason"]
+
+
+def test_f04_expired_config_blocks_and_required_aux_is_enforced(business):
+    case = business
+    opening, _, sub = _case(case)
+    from app.ledgers.models import EntityCreate
+    from app.ledgers.service import LedgersService
+    from app.subledger.models import ControlAccountCreate, ControlApplicability
+
+    sub.configure_control_account(
+        case.manager,
+        ControlAccountCreate(
+            book_id=case.book["id"],
+            kind="payable",
+            control_account_id=opening["payable"]["id"],
+            control_account_version=1,
+            required_aux=["department"],
+            effective_from="2020-01",
+            effective_to="2020-02",
+            reason="F04 过期配置",
+        ),
+    )
+    expired = sub.control_reconciliation(case.manager, case.book["id"])
+    assert expired["status"] == "blocked"
+    sub.configure_control_account(
+        case.manager,
+        ControlAccountCreate(
+            book_id=case.book["id"],
+            kind="payable",
+            control_account_id=opening["payable"]["id"],
+            control_account_version=1,
+            required_aux=["department"],
+            effective_from="2026-01",
+            reason="F04 辅助维度配置",
+        ),
+    )
+    with pytest.raises(AccountingError, match="已有控制科目"):
+        sub.set_control_applicability(
+            case.manager,
+            ControlApplicability(
+                book_id=case.book["id"],
+                status="not_applicable",
+                effective_from="2026-11",
+                reason="当前声明不能覆盖其他期间配置",
+            ),
+        )
+    party = LedgersService(case.db).create_entity(
+        case.manager,
+        case.book["id"],
+        EntityCreate(kind="counterparty", code="F04-AUX", name="辅助维度往来方"),
+    )
+    with pytest.raises(AccountingError, match="必要辅助"):
+        sub.create_item(
+            case.manager,
+            OpenItemCreate(
+                book_id=case.book["id"],
+                kind="payable",
+                counterparty_id=party["id"],
+                control_account_id=opening["payable"]["id"],
+                control_account_version=1,
+                original_date="2026-10-01",
+                amount="10.00",
+                source_kind="manual",
+                reason="F04 缺辅助",
+            ),
+        )
+
+
+def test_c01_applicability_cannot_hide_payable_balance(business):
+    case = business
+    _, _, sub = _case(case)
+    from app.subledger.models import ControlApplicability
+
+    with pytest.raises(AccountingError, match="已有控制科目"):
+        sub.set_control_applicability(
+            case.manager,
+            ControlApplicability(
+                book_id=case.book["id"],
+                status="not_applicable",
+                effective_from="2026-10",
+                reason="试图跳过应付子账",
+            ),
+        )
+    with pytest.raises(AccountingError, match="当前登录主体"):
+        sub.set_control_applicability(
+            case.manager,
+            ControlApplicability(
+                book_id=case.book["id"],
+                status="not_applicable",
+                effective_from="2026-11",
+                reason="伪造确认人",
+                confirmed_by="another-user",
+            ),
+        )
+
+
+def test_c01_applicability_period_must_be_yyyy_mm(business):
+    case = business
+    _, _, _ = _case(case)
+    from pydantic import ValidationError
+    from app.subledger.models import ControlApplicability
+
+    with pytest.raises(ValidationError):
+        ControlApplicability(
+            book_id=case.book["id"],
+            status="not_applicable",
+            effective_from="2026-10-01",
+            reason="错误期间",
+        )
 
 
 def test_f09_bank_without_statement_evidence_fails(business):
@@ -92,6 +295,53 @@ def test_f09_bank_without_statement_evidence_fails(business):
     assert result["statement_line_count"] == 0
     assert result["coverage_ok"] is False
     assert result["passed"] is False
+
+
+def test_f09_multi_bank_requires_each_account_coverage(business):
+    case = business
+    opening, _, sub = _case(case)
+    from app.subledger.models import BankAccountCreate, BankCoverageCreate
+
+    first = sub.create_bank_account(
+        case.manager,
+        BankAccountCreate(
+            book_id=case.book["id"],
+            name="基本户",
+            ledger_account_id=opening["bank"]["id"],
+            ledger_account_version=1,
+            reason="F09 银行账户",
+        ),
+    )
+    sub.create_bank_account(
+        case.manager,
+        BankAccountCreate(
+            book_id=case.book["id"],
+            name="一般户",
+            ledger_account_id=opening["bank"]["id"],
+            ledger_account_version=1,
+            reason="F09 银行账户",
+        ),
+    )
+    result = sub.bank_reconciliation(case.manager, case.book["id"])
+    assert result["multi_account"] is True
+    assert len(result["rows"]) == 2
+    assert result["coverage_ok"] is False
+    assert result["passed"] is False
+    sub.declare_bank_coverage(
+        case.manager,
+        BankCoverageCreate(
+            book_id=case.book["id"],
+            account_id=first["id"],
+            period="2026-10",
+            opening="0.00",
+            closing="0.00",
+            source_ref="F09 合成对账单",
+            reason="F09 覆盖声明",
+        ),
+    )
+    partial = sub.bank_reconciliation(case.manager, case.book["id"])
+    assert partial["coverage_ok"] is False
+    assert partial["passed"] is False
 
 
 def test_f06_multi_item_allocation_and_f07_reversal_capacity(business):

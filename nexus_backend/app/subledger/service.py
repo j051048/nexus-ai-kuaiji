@@ -56,9 +56,232 @@ class SubledgerService:
         reversed_amount = conn.execute(reversal_sql, tuple(params)).fetchone()[0]
         return int(allocated) - int(reversed_amount)
 
+    def _control_state(self, conn, ledger_id, period):
+        return conn.execute(
+            "SELECT * FROM subledger_control_applicability WHERE ledger_id=? "
+            "AND effective_from<=? AND (effective_to IS NULL OR effective_to>=?) "
+            "ORDER BY effective_from DESC LIMIT 1",
+            (ledger_id, period, period),
+        ).fetchone()
+
+    def _has_any_control_config(self, conn, ledger_id):
+        return bool(
+            conn.execute(
+                "SELECT 1 FROM subledger_control_accounts WHERE ledger_id=? LIMIT 1",
+                (ledger_id,),
+            ).fetchone()
+        )
+
+    def set_control_applicability(self, actor, request):
+        from .models import ControlApplicability
+
+        if not isinstance(request, ControlApplicability):
+            raise AccountingError("控制科目适用性声明无效", 422)
+        if request.confirmed_by and request.confirmed_by != actor.user_id:
+            raise AccountingError("确认身份必须来自当前登录主体", 403)
+        with self.db.transaction(write=True, actor=actor) as conn:
+            book, ledger_id = self._book(conn, actor, request.book_id, write=True)
+            if request.effective_to and request.effective_to < request.effective_from:
+                raise AccountingError("适用性期间起止倒置", 422)
+            from ..posting.service import PostingService
+
+            trial = PostingService(self.db).trial_balance_in_transaction(conn, actor, book["id"])
+            legacy_nonzero = [
+                row for row in trial["rows"]
+                if str(row.get("code", "")).startswith(("1122", "1123", "2202", "2203"))
+                and any(int(row.get(field, 0)) for field in (
+                    "opening_cents", "debit_cents", "credit_cents", "closing_cents"
+                ))
+            ]
+            if (
+                self._has_any_control_config(conn, ledger_id)
+                or conn.execute(
+                    "SELECT 1 FROM subledger_items WHERE book_id=? LIMIT 1", (book["id"],)
+                ).fetchone()
+                or legacy_nonzero
+            ):
+                raise AccountingError("已有控制科目余额、配置或子账事项，不能声明无需子账", 409)
+            if conn.execute(
+                "SELECT 1 FROM subledger_control_applicability WHERE ledger_id=? "
+                "AND effective_from=?",
+                (ledger_id, request.effective_from),
+            ).fetchone():
+                raise AccountingError("该期间已有适用性声明", 409)
+            stamp = now()
+            declaration_id = uuid4().hex
+            conn.execute(
+                "INSERT INTO subledger_control_applicability(id,ledger_id,firm_id,company_id,status,"
+                "effective_from,effective_to,reason,confirmed_by,confirmed_at,created_at) "
+                "VALUES(?,?,?,?,'not_applicable',?,?,?,?,?,?)",
+                (
+                    declaration_id,
+                    ledger_id,
+                    book["firm_id"],
+                    book["company_id"],
+                    request.effective_from,
+                    request.effective_to,
+                    request.reason,
+                    actor.user_id,
+                    stamp,
+                    stamp,
+                ),
+            )
+            if not self.db.is_postgres:
+                conn.execute(
+                    "INSERT INTO close_dependency_revisions(scope_kind,scope_id,revision) "
+                    "VALUES('ledger',?,1) ON CONFLICT(scope_kind,scope_id) DO UPDATE "
+                    "SET revision=close_dependency_revisions.revision+1",
+                    (ledger_id,),
+                )
+            self._audit(conn, actor, book["id"], "subledger.control.not_applicable", ledger_id, {
+                "reason": request.reason, "effective_from": request.effective_from,
+                "effective_to": request.effective_to,
+            })
+            return dict(self._control_state(conn, ledger_id, request.effective_from))
+
+    def _control_configs(self, conn, ledger_id, kind=None, as_of=None):
+        sql = (
+            "SELECT * FROM subledger_control_accounts WHERE ledger_id=? AND active=1 "
+            "AND effective_from<=? AND (effective_to IS NULL OR effective_to>=?)"
+        )
+        period = (as_of or "")[:7]
+        params = [ledger_id, period, period]
+        if kind:
+            sql += " AND kind=?"
+            params.append(kind)
+        return conn.execute(sql, tuple(params)).fetchall()
+
+    def configure_control_account(self, actor, request):
+        from .models import ControlAccountCreate
+
+        if not isinstance(request, ControlAccountCreate):
+            raise AccountingError("控制科目配置无效", 422)
+        with self.db.transaction(write=True, actor=actor) as conn:
+            book, ledger_id = self._book(conn, actor, request.book_id, write=True)
+            if request.effective_from and len(request.effective_from) not in {7, 10}:
+                raise AccountingError("控制科目生效期间格式必须为 YYYY-MM", 422)
+            if request.effective_to and request.effective_to < request.effective_from:
+                raise AccountingError("控制科目生效期间起止倒置", 422)
+            if not all(isinstance(value, str) and value.strip() for value in request.required_aux):
+                raise AccountingError("必要辅助维度名称不能为空", 422)
+            if len(set(request.required_aux)) != len(request.required_aux):
+                raise AccountingError("必要辅助维度不能重复", 422)
+            if conn.execute(
+                "SELECT 1 FROM subledger_control_accounts WHERE ledger_id=? AND kind=? AND active=1 "
+                "AND (effective_to IS NULL OR effective_to>=?) "
+                "AND (? IS NULL OR effective_from<=?) LIMIT 1",
+                (
+                    ledger_id,
+                    request.kind,
+                    request.effective_from,
+                    request.effective_to,
+                    request.effective_to,
+                ),
+            ).fetchone():
+                raise AccountingError("控制科目生效期间与现有配置重叠", 409)
+            existing = conn.execute(
+                "SELECT 1 FROM subledger_control_accounts WHERE ledger_id=? AND kind=? AND "
+                "control_account_id=? AND effective_from=?",
+                (ledger_id, request.kind, request.control_account_id, request.effective_from),
+            ).fetchone()
+            if existing:
+                raise AccountingError("相同控制科目配置已存在", 409)
+            account = conn.execute(
+                "SELECT a.current_version,v.is_leaf FROM ledger_accounts a "
+                "JOIN ledger_account_versions v ON v.account_id=a.id AND v.version=? "
+                "WHERE a.id=? AND a.ledger_id=?",
+                (request.control_account_version, request.control_account_id, ledger_id),
+            ).fetchone()
+            if not account or int(account["current_version"]) != request.control_account_version:
+                raise AccountingError("控制科目版本已变化或不属于当前账套", 409)
+            if not account["is_leaf"]:
+                raise AccountingError("控制科目必须是末级科目", 422)
+            config_id = uuid4().hex
+            conn.execute(
+                "INSERT INTO subledger_control_accounts(id,firm_id,company_id,ledger_id,kind,"
+                "control_account_id,control_account_version,required_aux_json,effective_from,"
+                "effective_to,active,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,1,?,?)",
+                (
+                    config_id,
+                    book["firm_id"],
+                    book["company_id"],
+                    ledger_id,
+                    request.kind,
+                    request.control_account_id,
+                    request.control_account_version,
+                    json.dumps(sorted(set(request.required_aux)), ensure_ascii=False),
+                    request.effective_from,
+                    request.effective_to,
+                    actor.user_id,
+                    now(),
+                ),
+            )
+            stamp = now()
+            conn.execute(
+                "INSERT INTO subledger_control_applicability(id,ledger_id,firm_id,company_id,status,"
+                "effective_from,effective_to,reason,confirmed_by,confirmed_at,created_at) "
+                "VALUES(?,?,?,?,'configured',?,?,'',?,?,?) "
+                "ON CONFLICT(ledger_id,effective_from) DO UPDATE SET status='configured',"
+                "effective_to=excluded.effective_to,confirmed_by=excluded.confirmed_by,"
+                "confirmed_at=excluded.confirmed_at",
+                (
+                    uuid4().hex,
+                    ledger_id,
+                    book["firm_id"],
+                    book["company_id"],
+                    request.effective_from,
+                    request.effective_to,
+                    actor.user_id,
+                    stamp,
+                    stamp,
+                ),
+            )
+            if not self.db.is_postgres:
+                conn.execute(
+                    "INSERT INTO close_dependency_revisions(scope_kind,scope_id,revision) "
+                    "VALUES('ledger',?,1) ON CONFLICT(scope_kind,scope_id) DO UPDATE "
+                    "SET revision=close_dependency_revisions.revision+1",
+                    (ledger_id,),
+                )
+            self._audit(conn, actor, book["id"], "subledger.control.configure", config_id, {
+                "kind": request.kind, "account_id": request.control_account_id,
+                "effective_from": request.effective_from, "effective_to": request.effective_to,
+            })
+            return dict(conn.execute(
+                "SELECT * FROM subledger_control_accounts WHERE id=?", (config_id,)
+            ).fetchone())
+
+    def list_control_accounts(self, actor, book_id, as_of=None):
+        with self.db.transaction(actor=actor) as conn:
+            book, ledger_id = self._book(conn, actor, book_id)
+            period = as_of or book["period"]
+            return [dict(row) for row in self._control_configs(conn, ledger_id, as_of=period)]
+
     def create_item(self, actor, request: OpenItemCreate):
         with self.db.transaction(write=True, actor=actor) as conn:
             book, ledger_id = self._book(conn, actor, request.book_id, write=True)
+            state = self._control_state(conn, ledger_id, request.original_date)
+            if not state or state["status"] != "configured":
+                raise AccountingError("控制科目配置待确认，不能新建子账事项", 409)
+            configs = self._control_configs(conn, ledger_id, request.kind, request.original_date)
+            if not configs:
+                raise AccountingError("当前期间缺少该子账类型的控制科目配置", 409)
+            matched = next(
+                (
+                    row
+                    for row in configs
+                    if row["control_account_id"] == request.control_account_id
+                    and int(row["control_account_version"]) == request.control_account_version
+                ),
+                None,
+            )
+            if not matched:
+                raise AccountingError("控制科目未在核算配置中声明或版本不匹配", 409)
+            required_aux = set(json.loads(matched["required_aux_json"] or "[]"))
+            if not required_aux.issubset(set(request.aux)):
+                raise AccountingError("缺少控制科目要求的必要辅助维度", 422)
+            if any(not isinstance(value, str) or not value.strip() for value in request.aux.values()):
+                raise AccountingError("辅助维度值不能为空", 422)
             account = conn.execute(
                 "SELECT a.current_version,v.code,v.name,v.is_leaf FROM ledger_accounts a "
                 "JOIN ledger_account_versions v ON v.account_id=a.id AND v.version=? "
@@ -80,8 +303,8 @@ class SubledgerService:
             conn.execute(
                 "INSERT INTO subledger_items(id,firm_id,company_id,ledger_id,book_id,period,kind,"
                 "counterparty_id,control_account_id,control_account_version,original_date,due_date,"
-                "amount_cents,source_kind,source_id,source_version,status,created_by,created_at) "
-                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'open',?,?)",
+                "amount_cents,source_kind,source_id,source_version,status,aux_json,created_by,created_at) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'open',?,?,?)",
                 (
                     item_id,
                     book["firm_id"],
@@ -99,6 +322,7 @@ class SubledgerService:
                     request.source_kind,
                     request.source_id,
                     request.source_version,
+                    json.dumps(request.aux, ensure_ascii=False, sort_keys=True),
                     actor.user_id,
                     now(),
                 ),
@@ -121,6 +345,7 @@ class SubledgerService:
         if not row:
             raise AccountingError("未结事项不存在", 404)
         result = dict(row)
+        result["aux"] = json.loads(result.get("aux_json") or "{}")
         result["allocated_cents"] = self._remaining(conn, item_id)
         result["remaining_cents"] = int(row["amount_cents"]) - result["allocated_cents"]
         return result
@@ -351,7 +576,50 @@ class SubledgerService:
         from ..posting.service import PostingService
 
         groups = {}
-        book, _ = self._book(conn, actor, book_id)
+        book, ledger_id = self._book(conn, actor, book_id)
+        trial = trial or PostingService(self.db).trial_balance_in_transaction(
+            conn, actor, book_id, as_of
+        )
+        state = self._control_state(conn, ledger_id, as_of or book["period"])
+        configs = self._control_configs(conn, ledger_id, as_of=as_of or book["period"])
+        if not state or state["status"] == "pending":
+            return {
+                "status": "blocked",
+                "reason": "控制科目配置待确认，不能通过勾稽",
+                "rows": [],
+                "passed": False,
+            }
+        if state["status"] == "not_applicable":
+            legacy_nonzero = [
+                row for row in trial["rows"]
+                if str(row.get("code", "")).startswith(("1122", "1123", "2202", "2203"))
+                and any(int(row.get(field, 0)) for field in (
+                    "opening_cents", "debit_cents", "credit_cents", "closing_cents"
+                ))
+            ]
+            if (
+                self._has_any_control_config(conn, ledger_id)
+                or conn.execute(
+                    "SELECT 1 FROM subledger_items WHERE book_id=? LIMIT 1", (book["id"],)
+                ).fetchone()
+                or legacy_nonzero
+            ):
+                return {
+                    "status": "blocked",
+                    "reason": "已声明无需子账但存在控制科目余额、历史配置或事项",
+                    "rows": [],
+                    "passed": False,
+                }
+            return {"status": "not_applicable", "reason": state["reason"], "rows": [], "passed": True}
+        if not configs:
+            return {
+                "status": "blocked",
+                "reason": "已启用子账但当前期间没有控制科目配置",
+                "rows": [],
+                "passed": False,
+            }
+        for config in configs:
+            groups.setdefault(config["kind"], {}).setdefault(config["control_account_id"], 0)
         for kind in ("receivable", "payable", "advance_received", "advance_paid"):
             items = conn.execute(
                 "SELECT * FROM subledger_items WHERE book_id=? AND kind=? AND status IN('open','partial')",
@@ -364,26 +632,7 @@ class SubledgerService:
                     groups[kind][item["control_account_id"]] = (
                         groups[kind].get(item["control_account_id"], 0) + remaining
                     )
-        trial = trial or PostingService(self.db).trial_balance_in_transaction(
-            conn, actor, book_id, as_of
-        )
         balances = {row["account_id"]: row for row in trial["rows"]}
-        # Reverse-enumerate configured control accounts from the trial balance.
-        # A payable with a book balance but no subledger items must produce a
-        # failed row, not an empty all([]) pass.
-        known_controls = {
-            "1122": "receivable",
-            "1123": "advance_paid",
-            "2202": "payable",
-            "2203": "advance_received",
-        }
-        for row in trial["rows"]:
-            code = str(row.get("code", ""))
-            kind = next(
-                (value for prefix, value in known_controls.items() if code.startswith(prefix)), None
-            )
-            if kind and row.get("is_leaf"):
-                groups.setdefault(kind, {}).setdefault(row["account_id"], 0)
         result = []
         for kind, by_account in groups.items():
             for account_id, subledger in by_account.items():
@@ -400,17 +649,131 @@ class SubledgerService:
                         "passed": book_balance == expected,
                     }
                 )
-        return {"rows": result, "passed": all(row["passed"] for row in result)}
+        return {
+            "status": "configured",
+            "reason": "",
+            "rows": result,
+            "passed": all(row["passed"] for row in result),
+        }
 
     # ---------- bank evidence ----------
+
+    def create_bank_account(self, actor, request):
+        from .models import BankAccountCreate
+
+        if not isinstance(request, BankAccountCreate):
+            raise AccountingError("银行账户配置无效", 422)
+        with self.db.transaction(write=True, actor=actor) as conn:
+            book, ledger_id = self._book(conn, actor, request.book_id, write=True)
+            mapped = conn.execute(
+                "SELECT a.current_version,v.is_leaf,v.category FROM ledger_accounts a "
+                "JOIN ledger_account_versions v ON v.account_id=a.id AND v.version=? "
+                "WHERE a.id=? AND a.ledger_id=?",
+                (request.ledger_account_version, request.ledger_account_id, ledger_id),
+            ).fetchone()
+            if not mapped or int(mapped["current_version"]) != request.ledger_account_version:
+                raise AccountingError("银行账户映射的总账科目版本已变化或不属于当前账套", 409)
+            if not mapped["is_leaf"] or mapped["category"] != "asset":
+                raise AccountingError("银行账户必须映射到末级资产科目", 422)
+            account_id = uuid4().hex
+            conn.execute(
+                "INSERT INTO bank_accounts(id,firm_id,company_id,book_id,name,currency,active,"
+                "ledger_account_id,ledger_account_version,aux_json,created_by,created_at) "
+                "VALUES(?,?,?,?,?,?,1,?,?,?,?,?)",
+                (
+                    account_id,
+                    book["firm_id"],
+                    book["company_id"],
+                    book["id"],
+                    request.name,
+                    request.currency,
+                    request.ledger_account_id,
+                    request.ledger_account_version,
+                    json.dumps(request.aux, ensure_ascii=False, sort_keys=True),
+                    actor.user_id,
+                    now(),
+                ),
+            )
+            if not self.db.is_postgres:
+                conn.execute(
+                    "INSERT INTO close_dependency_revisions(scope_kind,scope_id,revision) "
+                    "VALUES('book',?,1) ON CONFLICT(scope_kind,scope_id) DO UPDATE "
+                    "SET revision=close_dependency_revisions.revision+1",
+                    (book["id"],),
+                )
+            self._audit(conn, actor, book["id"], "bank.account.create", account_id, {
+                "name": request.name, "currency": request.currency,
+            })
+            return {"id": account_id, "name": request.name, "currency": request.currency}
+
+    def list_bank_accounts(self, actor, book_id):
+        with self.db.transaction(actor=actor) as conn:
+            book, _ = self._book(conn, actor, book_id)
+            return [dict(row) for row in conn.execute(
+                "SELECT * FROM bank_accounts WHERE book_id=? AND active=1 ORDER BY name,id",
+                (book["id"],),
+            )]
+
+    def declare_bank_coverage(self, actor, request):
+        from .models import BankCoverageCreate
+
+        if not isinstance(request, BankCoverageCreate):
+            raise AccountingError("银行覆盖声明无效", 422)
+        with self.db.transaction(write=True, actor=actor) as conn:
+            book, _ = self._book(conn, actor, request.book_id, write=True)
+            account = conn.execute(
+                "SELECT * FROM bank_accounts WHERE id=? AND book_id=? AND active=1",
+                (request.account_id, book["id"]),
+            ).fetchone()
+            if not account:
+                raise AccountingError("银行账户不存在或不属于当前账套", 404)
+            if request.period != book["period"]:
+                raise AccountingError("银行覆盖期间与当前账套期间不一致", 422)
+            coverage_id = uuid4().hex
+            conn.execute(
+                "INSERT INTO bank_statement_coverages(id,account_id,book_id,period,opening_cents,"
+                "closing_cents,source_ref,verified_by,verified_at,created_at) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?)",
+                (
+                    coverage_id,
+                    account["id"],
+                    book["id"],
+                    request.period,
+                    money_to_cents(request.opening),
+                    money_to_cents(request.closing),
+                    request.source_ref,
+                    actor.user_id,
+                    now(),
+                    now(),
+                ),
+            )
+            if not self.db.is_postgres:
+                conn.execute(
+                    "INSERT INTO close_dependency_revisions(scope_kind,scope_id,revision) "
+                    "VALUES('book',?,1) ON CONFLICT(scope_kind,scope_id) DO UPDATE "
+                    "SET revision=close_dependency_revisions.revision+1",
+                    (book["id"],),
+                )
+            self._audit(conn, actor, book["id"], "bank.coverage.declare", coverage_id, {
+                "account_id": request.account_id, "period": request.period,
+            })
+            return {"id": coverage_id, "account_id": account["id"], "period": request.period}
 
     def add_bank_line(self, actor, request: BankLineCreate):
         with self.db.transaction(write=True, actor=actor) as conn:
             book, _ = self._book(conn, actor, request.book_id, write=True)
+            account_id = request.bank_account_id
+            if account_id:
+                if not conn.execute(
+                    "SELECT 1 FROM bank_accounts WHERE id=? AND book_id=? AND active=1",
+                    (account_id, book["id"]),
+                ).fetchone():
+                    raise AccountingError("银行账户不存在或不属于当前账套", 404)
             line_id = uuid4().hex
             conn.execute(
                 "INSERT INTO bank_statement_lines(id,book_id,period,line_date,description,"
-                "amount_cents,status,created_by,created_at) VALUES(?,?,?,?,?,?,'unmatched',?,?)",
+                "amount_cents,status,created_by,created_at,bank_account_id) "
+                "VALUES(?,?,?,?,?,?,'unmatched',?,?,?)",
                 (
                     line_id,
                     book["id"],
@@ -420,6 +783,7 @@ class SubledgerService:
                     signed_money_to_cents(request.amount),
                     actor.user_id,
                     now(),
+                    account_id,
                 ),
             )
             return {"id": line_id, **request.model_dump()}
@@ -441,6 +805,13 @@ class SubledgerService:
                 raise AccountingError("正式分录不存在或不属于当前账套", 404)
             if not voucher_line["code_snapshot"].startswith(("1001", "1002")):
                 raise AccountingError("只能匹配现金/银行正式分录", 422)
+            if line["bank_account_id"]:
+                bank_account = conn.execute(
+                    "SELECT * FROM bank_accounts WHERE id=? AND book_id=?",
+                    (line["bank_account_id"], book["id"]),
+                ).fetchone()
+                if not bank_account or voucher_line["account_id"] != bank_account["ledger_account_id"]:
+                    raise AccountingError("银行流水与凭证账户映射不一致", 409)
             amount = int(voucher_line["debit_cents"]) - int(voucher_line["credit_cents"])
             if amount != int(line["amount_cents"]):
                 raise AccountingError("银行流水金额与正式分录不一致", 409)
@@ -480,6 +851,90 @@ class SubledgerService:
         from ..posting.service import PostingService
 
         book, _ = self._book(conn, actor, book_id)
+        accounts = conn.execute(
+            "SELECT * FROM bank_accounts WHERE book_id=? AND active=1 ORDER BY name,id",
+            (book["id"],),
+        ).fetchall()
+        if accounts:
+            trial = trial or PostingService(self.db).trial_balance_in_transaction(
+                conn, actor, book_id
+            )
+            cash_rows = [
+                row for row in trial["rows"]
+                if row["is_leaf"] and row["code"].startswith(("1001", "1002"))
+            ]
+            cash = sum(int(row["closing_cents"]) for row in cash_rows)
+            adjustments = conn.execute(
+                "SELECT * FROM bank_recon_adjustments WHERE book_id=? AND status='open'",
+                (book["id"],),
+            ).fetchall()
+            unassigned = conn.execute(
+                "SELECT COUNT(*) FROM bank_statement_lines WHERE book_id=? AND bank_account_id IS NULL",
+                (book["id"],),
+            ).fetchone()[0]
+            balances = {row["account_id"]: int(row["closing_cents"]) for row in trial["rows"]}
+            rows = []
+            coverage_closing = 0
+            account_book_total = 0
+            for account in accounts:
+                coverage = conn.execute(
+                    "SELECT * FROM bank_statement_coverages WHERE account_id=? AND period=?",
+                    (account["id"], book["period"]),
+                ).fetchone()
+                lines = conn.execute(
+                    "SELECT COUNT(*),COALESCE(SUM(amount_cents),0),"
+                    "COALESCE(SUM(CASE WHEN status='unmatched' THEN 1 ELSE 0 END),0) "
+                    "FROM bank_statement_lines WHERE book_id=? AND bank_account_id=?",
+                    (book["id"], account["id"]),
+                ).fetchone()
+                opening = int(coverage["opening_cents"]) if coverage else 0
+                closing = int(coverage["closing_cents"]) if coverage else 0
+                net = int(lines[1])
+                accounted = balances.get(account["ledger_account_id"])
+                coverage_closing += closing if coverage else 0
+                account_book_total += int(accounted or 0)
+                passed = (
+                    coverage is not None
+                    and accounted is not None
+                    and opening + net == closing
+                    and int(accounted) == closing
+                    and int(lines[2]) == 0
+                )
+                rows.append(
+                    {
+                        "account_id": account["id"],
+                        "name": account["name"],
+                        "ledger_account_id": account["ledger_account_id"],
+                        "coverage": coverage is not None,
+                        "opening_cents": opening,
+                        "net_cents": net,
+                        "closing_cents": closing,
+                        "book_cents": accounted,
+                        "line_count": int(lines[0]),
+                        "unmatched_count": int(lines[2]),
+                        "difference_cents": opening + net - closing,
+                        "passed": passed,
+                    }
+                )
+            coverage_ok = all(row["coverage"] for row in rows)
+            passed = (
+                coverage_ok
+                and unassigned == 0
+                and not adjustments
+                and account_book_total == coverage_closing
+                and all(row["passed"] for row in rows)
+            )
+            return {
+                "multi_account": True,
+                "rows": rows,
+                "coverage_ok": coverage_ok,
+                "unassigned_line_count": int(unassigned),
+                "book_cash_cents": cash,
+                "coverage_closing_cents": coverage_closing,
+                "unexplained_cents": sum(int(row["amount_cents"]) for row in adjustments),
+                "difference_cents": cash - coverage_closing,
+                "passed": passed,
+            }
         statement = conn.execute(
             "SELECT COALESCE(SUM(amount_cents),0) FROM bank_statement_lines WHERE book_id=?",
             (book["id"],),

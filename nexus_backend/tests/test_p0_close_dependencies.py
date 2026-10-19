@@ -30,6 +30,7 @@ from app.subledger.models import (
     BankAdjustment,
     BankLineCreate,
     BankMatch,
+    ControlAccountCreate,
     OpenItemCreate,
 )
 from app.subledger.service import SubledgerService
@@ -74,6 +75,17 @@ def close_case(business):
             kind="counterparty",
             code="P0-SUPPLIER",
             name="虚构期初供应商",
+        ),
+    )
+    sub.configure_control_account(
+        case.manager,
+        ControlAccountCreate(
+            book_id=case.book["id"],
+            kind="payable",
+            control_account_id=opening["payable"]["id"],
+            control_account_version=1,
+            effective_from="2026-01",
+            reason="P0 控制科目夹具",
         ),
     )
     item = sub.create_item(

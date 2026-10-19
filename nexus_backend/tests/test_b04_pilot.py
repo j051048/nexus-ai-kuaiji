@@ -49,9 +49,26 @@ def setup_b03(case):
     return opening, posting
 
 
+def configure_payable(case, opening):
+    from app.subledger.models import ControlAccountCreate
+
+    SubledgerService(case.db).configure_control_account(
+        case.manager,
+        ControlAccountCreate(
+            book_id=case.book["id"],
+            kind="payable",
+            control_account_id=opening["payable"]["id"],
+            control_account_version=1,
+            effective_from="2026-01",
+            reason="B04 控制科目夹具",
+        ),
+    )
+
+
 def test_subledger_partial_payment_aging_control_and_bank(business):
     case = business
     opening, posting = setup_b03(case)
+    configure_payable(case, opening)
     subledger = SubledgerService(case.db)
     party = LedgersService(case.db).create_entity(
         case.manager,
@@ -202,6 +219,7 @@ def test_report_is_stale_after_new_posting_and_reopen_is_blocked(business):
 def test_periodic_accrual_asset_closing_reports_and_close(business):
     case = business
     opening, posting = setup_b03(case)
+    configure_payable(case, opening)
     periodic = PeriodicService(case.db)
     ledger_id = opening["ledger_id"]
     profit = OpeningService(case.db).create_account(

@@ -3,9 +3,13 @@ from fastapi import APIRouter, Depends, Query, Request
 from .models import (
     AllocationCreate,
     AllocationReverse,
+    BankAccountCreate,
     BankAdjustment,
+    BankCoverageCreate,
     BankLineCreate,
     BankMatch,
+    ControlAccountCreate,
+    ControlApplicability,
     OpenItemCreate,
 )
 
@@ -15,6 +19,55 @@ def build_subledger_router(actor_dependency):
 
     def service(request: Request):
         return request.app.state.subledger
+
+    @router.post("/control-accounts", status_code=201)
+    def configure_control(
+        payload: ControlAccountCreate,
+        current=Depends(actor_dependency),
+        subledger=Depends(service),
+    ):
+        return subledger.configure_control_account(current, payload)
+
+    @router.post("/control-applicability", status_code=201)
+    def control_applicability(
+        payload: ControlApplicability,
+        current=Depends(actor_dependency),
+        subledger=Depends(service),
+    ):
+        return subledger.set_control_applicability(current, payload)
+
+    @router.get("/control-accounts")
+    def control_accounts(
+        book_id: str = Query(min_length=1, max_length=100),
+        as_of: str | None = Query(default=None),
+        current=Depends(actor_dependency),
+        subledger=Depends(service),
+    ):
+        return {"accounts": subledger.list_control_accounts(current, book_id, as_of)}
+
+    @router.post("/bank-accounts", status_code=201)
+    def create_bank_account(
+        payload: BankAccountCreate,
+        current=Depends(actor_dependency),
+        subledger=Depends(service),
+    ):
+        return subledger.create_bank_account(current, payload)
+
+    @router.get("/bank-accounts")
+    def bank_accounts(
+        book_id: str = Query(min_length=1, max_length=100),
+        current=Depends(actor_dependency),
+        subledger=Depends(service),
+    ):
+        return {"accounts": subledger.list_bank_accounts(current, book_id)}
+
+    @router.post("/bank-coverages", status_code=201)
+    def declare_bank_coverage(
+        payload: BankCoverageCreate,
+        current=Depends(actor_dependency),
+        subledger=Depends(service),
+    ):
+        return subledger.declare_bank_coverage(current, payload)
 
     @router.post("/items", status_code=201)
     def create_item(
