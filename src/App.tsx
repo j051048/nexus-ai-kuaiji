@@ -194,6 +194,47 @@ export default function App() {
   const homeBootstrap =
     session && auth.homeBootstrap?.scope_key === session.scope_key ? auth.homeBootstrap : null;
   const profile = storedProfile ?? homeBootstrap?.profile ?? null;
+  const defaultLandingFor = useRef('');
+  // Role default landing applies only to an explicit bare home entry. Deep
+  // links with a company/book/draft/case identifier are never swallowed.
+  useEffect(() => {
+    if (!session || !profile) return;
+    const key = session.scope_key;
+    if (defaultLandingFor.current === key) return;
+    const explicit = readWorkspaceRoute(location.pathname, location.search);
+    const hasTarget = Boolean(
+      explicit.companyId ||
+        explicit.bookId ||
+        explicit.draftId ||
+        explicit.caseId ||
+        explicit.eventId ||
+        explicit.reviewBookId ||
+        explicit.intakeId ||
+        explicit.batchId ||
+        explicit.jobId ||
+        explicit.migrationId ||
+        explicit.deliveryId ||
+        explicit.proposalId ||
+        explicit.materialId ||
+        explicit.search,
+    );
+    if (explicit.view !== 'home' || hasTarget || adminMode) {
+      defaultLandingFor.current = key;
+      return;
+    }
+    const role = presentationRole(profile);
+    const target = roleHome(role).defaultView;
+    defaultLandingFor.current = key;
+    if (target === 'admin') {
+      if (me?.permissions.manage_admin || me?.permissions.manage_firm) void routerNavigate('/admin');
+      return;
+    }
+    if (target !== 'home') {
+      // Bare login without a target: route once to the role default. Explicit
+      // query/deep links were returned above and are never rewritten.
+      void routerNavigate(`/workspace/${target}`, { replace: true });
+    }
+  }, [session, profile, me, location.pathname, location.search, adminMode, routerNavigate]);
   // 代账包干制：模型费用与运行监控是事务所内部的生产资料，客户企业侧不展示；
   // can_operations 仅保留给接口兼容，导航与工作区渲染都以事务所管理层能力位为准。
   const canFirmOperations = profile?.can_firm_operations ?? !!me?.permissions.manage_firm;
@@ -672,6 +713,7 @@ export default function App() {
         'queue',
         'intelligence',
         'operations',
+        'efficiency',
         'review',
         'cases',
         'revision',
@@ -706,6 +748,8 @@ export default function App() {
       pendingReview.current = null;
     }
     if (view === 'home') setWorkspaceRevision((n) => n + 1);
+    // Keep the address bar/deep link in sync with the authorized navigation.
+    void routerNavigate(`/workspace/${view}`, { replace: false });
   }
   function openWorkspaceTask(task: WorkspaceTask) {
     if (navigationLocked) return;
@@ -1162,8 +1206,11 @@ export default function App() {
                 ? routeView
                 : 'accounting'
         }
-        presentationNav={profile ? primaryNav(presentationRole(profile)) : undefined}
+        presentationNav={profile ? primaryNav(presentationRole(profile), profile) : undefined}
         presentationLabel={profile ? roleHome(presentationRole(profile)).name : undefined}
+        onAdmin={() => {
+          if (!navigationLocked) void routerNavigate('/admin');
+        }}
         canAccounting={canSeeAccounting}
         canProcessing={experience.processing}
         businessLabel={experience.businessLabel}
@@ -1311,6 +1358,14 @@ export default function App() {
             >
               <Sparkles size={15} />
               <span>问会计助手</span>
+              <small>
+                {[
+                  profile?.companies.find((company) => company.id === workCompany)?.name,
+                  workPeriod,
+                ]
+                  .filter(Boolean)
+                  .join(' · ') || '当前授权范围'}
+              </small>
             </button>
             <button
               className="agent-topbar-command"

@@ -36,6 +36,7 @@ export type AgentNavigationView =
   | 'queue'
   | 'intelligence'
   | 'operations'
+  | 'efficiency'
   | 'quality'
   | 'revision'
   | 'monthly'
@@ -58,6 +59,7 @@ export function AgentNavigation({
   footer,
   presentationNav,
   presentationLabel,
+  onAdmin,
   onNavigate,
   onAccountingFilter,
 }: {
@@ -65,6 +67,7 @@ export function AgentNavigation({
   current: string;
   presentationNav?: PresentationNavItem[];
   presentationLabel?: string;
+  onAdmin?: () => void;
   canAccounting: boolean;
   canMonthly?: boolean;
   canReview: boolean;
@@ -118,7 +121,7 @@ export function AgentNavigation({
       else opener.current?.focus();
     };
   }, [mobileOpen]);
-  const workActive = ['home', 'business', 'review', 'cases'].includes(current);
+  const workActive = current === 'home';
   function go(view: AgentNavigationView) {
     if (locked) return;
     onNavigate(view);
@@ -208,11 +211,13 @@ export function AgentNavigation({
                         ? FileCheck2
                         : item.id === 'monthly' || item.id === 'portfolio'
                           ? CalendarDays
-                          : item.id === 'firm' || item.id === 'operations'
+                          : item.id === 'firm' || item.id === 'operations' || item.id === 'efficiency'
                             ? Activity
-                            : item.id === 'messages'
-                              ? FileText
-                              : LayoutDashboard;
+                            : item.id === 'accounting'
+                              ? Building2
+                              : item.id === 'messages'
+                                ? FileText
+                                : LayoutDashboard;
                 return (
                   <button
                     key={item.id}
@@ -221,9 +226,13 @@ export function AgentNavigation({
                       'nav-item agent-primary-item ' +
                       (current === item.id || (item.id === 'home' && workActive) ? 'active' : '')
                     }
-                    disabled={locked || item.id === 'admin'}
+                    disabled={locked || (item.id === 'admin' && !onAdmin)}
+                    aria-current={
+                      current === item.id || (item.id === 'home' && workActive) ? 'page' : undefined
+                    }
                     onClick={() => {
-                      if (item.id !== 'admin') go(item.id as AgentNavigationView);
+                      if (item.id === 'admin') onAdmin?.();
+                      else go(item.id as AgentNavigationView);
                     }}
                   >
                     <Icon size={19} />

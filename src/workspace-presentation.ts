@@ -60,11 +60,23 @@ const labels: Record<PresentationRole, { name: string; focus: string; action: st
   viewer: { name: '只读工作台', focus: '查看当前授权范围内的事项和报告。', action: '查看' },
 };
 
+const defaultViews: Record<PresentationRole, string> = {
+  employee: 'home',
+  approver: 'home',
+  finance: 'home',
+  manager: 'home',
+  accountant: 'home',
+  reviewer: 'review',
+  firm_owner: 'firm',
+  admin: 'admin',
+  viewer: 'home',
+};
+
 export function roleHome(role: PresentationRole) {
-  return { ...labels[role], surface: workSurface(role) };
+  return { ...labels[role], surface: workSurface(role), defaultView: defaultViews[role] };
 }
 
-export function primaryNav(role: PresentationRole): PresentationNavItem[] {
+function rolePrimaryNav(role: PresentationRole): PresentationNavItem[] {
   switch (role) {
     case 'employee':
       return [
@@ -115,8 +127,9 @@ export function primaryNav(role: PresentationRole): PresentationNavItem[] {
       return [
         { id: 'firm', label: '全所概览', hint: '交付风险' },
         { id: 'review', label: '跨企业批量复核', hint: '获授权复核' },
-        { id: 'portfolio', label: '客户', hint: '客户组合' },
-        { id: 'operations', label: '团队与效率', hint: '负载与投入' },
+        { id: 'cases', label: '异常与补件', hint: '交付阻塞' },
+        { id: 'accounting', label: '客户账套', hint: '客户与账套' },
+        { id: 'operations', label: '费用与运行', hint: '成本与诊断' },
         { id: 'monthly', label: '交付', hint: '月度进度' },
       ];
     case 'admin':
@@ -128,6 +141,30 @@ export function primaryNav(role: PresentationRole): PresentationNavItem[] {
         { id: 'briefing', label: '报告', hint: '获授权结果' },
       ];
   }
+}
+
+export function primaryNav(
+  role: PresentationRole,
+  profile?: WorkspaceProfile | null,
+): PresentationNavItem[] {
+  const items = rolePrimaryNav(role);
+  if (!profile) return items;
+  return items.filter((item) => {
+    if (item.id === 'review') return profile.can_review;
+    if (item.id === 'monthly') return profile.can_accounting || profile.can_manage;
+    if (item.id === 'business') {
+      return Boolean(
+        profile.can_submit ||
+          profile.can_approve ||
+          profile.can_finance ||
+          profile.can_accounting ||
+          profile.can_manage,
+      );
+    }
+    if (item.id === 'operations' || item.id === 'efficiency') return profile.can_firm_operations;
+    if (item.id === 'admin') return role === 'admin' && profile.can_manage;
+    return true;
+  });
 }
 
 export function clientPortalTabs(profile: WorkspaceProfile): ClientPortalTab[] {

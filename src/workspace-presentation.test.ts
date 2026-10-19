@@ -105,6 +105,36 @@ describe('UX01 role presentation contract', () => {
     expect(contextTitle(profile({ display_role: 'admin' }))).toBe('系统管理');
   });
 
+  it('filters primary navigation with server capabilities, not role labels alone', () => {
+    const accountant = profile({ can_accounting: true, can_review: false });
+    expect(primaryNav('accountant', accountant).some((item) => item.id === 'review')).toBe(false);
+    const reviewer = profile({ can_accounting: true, can_review: true });
+    expect(primaryNav('accountant', reviewer).some((item) => item.id === 'review')).toBe(true);
+    const owner = profile({ display_role: 'firm_owner', can_firm_operations: true, can_manage: true, can_review: false });
+    expect(primaryNav('firm_owner', owner).map((item) => item.id)).toEqual([
+      'firm',
+      'cases',
+      'accounting',
+      'operations',
+      'monthly',
+    ]);
+  });
+
+  it('exposes admin entry only for an admin display role with manage capability', () => {
+    expect(primaryNav('admin', profile({ display_role: 'admin', can_manage: true })).map((item) => item.id)).toEqual([
+      'admin',
+    ]);
+    expect(primaryNav('admin', profile({ display_role: 'admin', can_manage: false }))).toEqual([]);
+    expect(primaryNav('manager', profile({ role: 'manager', can_manage: true })).some((item) => item.id === 'admin')).toBe(false);
+  });
+
+  it('defines role default landing without changing deep links in App', () => {
+    expect(roleHome('reviewer').defaultView).toBe('review');
+    expect(roleHome('firm_owner').defaultView).toBe('firm');
+    expect(roleHome('admin').defaultView).toBe('admin');
+    expect(roleHome('accountant').defaultView).toBe('home');
+  });
+
   it('filters customer tabs by presentation role rather than one fixed menu', () => {
     expect(clientPortalTabs(profile({ role: 'manager' }))).toEqual([
       'home',
