@@ -74,10 +74,21 @@ class InvoiceImportService:
             self.access.book(conn, actor, book_id, "read")
         stored = self.uploads.peek(actor, upload_id, "invoice_import", allow_consumed=True)
         parsed = parse_invoice_export(stored["filename"], self._stored_data(stored))
-        return self.uploads.consume(actor, upload_id, "invoice_import", book_id,
-            lambda conn, metadata: self._commit(actor,
-                self.access.book(conn, actor, book_id, "read" if metadata.get("_upload_replay") else "edit"),
-                metadata, parsed, conn=conn))
+        return self.uploads.consume(
+            actor,
+            upload_id,
+            "invoice_import",
+            book_id,
+            lambda conn, metadata: self._commit(
+                actor,
+                self.access.book(
+                    conn, actor, book_id, "read" if metadata.get("_upload_replay") else "edit"
+                ),
+                metadata,
+                parsed,
+                conn=conn,
+            ),
+        )
 
     def preview(self, actor, book_id, upload_id):
         """Parse and summarize a stored upload without creating a batch."""
@@ -240,9 +251,20 @@ class InvoiceImportService:
                 return self._commit(actor, book, stored, parsed, transaction)
         self.access.require_user(conn, actor.user_id)
         if stored.get("_upload_replay"):
-            item = conn.execute("SELECT * FROM invoice_import_batches WHERE storage_key=? AND book_id=?", (stored["storage_key"], book["id"])).fetchone()
+            item = conn.execute(
+                "SELECT * FROM invoice_import_batches WHERE storage_key=? AND book_id=?",
+                (stored["storage_key"], book["id"]),
+            ).fetchone()
             summary = json.loads(item["notes_json"])
-            return {"id": item["id"], "filename": item["filename"], "row_count": item["row_count"], "direction": item["direction"], "duplicates": summary["duplicates"], "matched": summary["matched"], "created_at": item["created_at"]}
+            return {
+                "id": item["id"],
+                "filename": item["filename"],
+                "row_count": item["row_count"],
+                "direction": item["direction"],
+                "duplicates": summary["duplicates"],
+                "matched": summary["matched"],
+                "created_at": item["created_at"],
+            }
         book = self.access.book(conn, actor, book["id"], "edit")
         if book["period_status"] != "open":
             raise AccountingError("该会计期间已关闭，不能继续导入", 403)

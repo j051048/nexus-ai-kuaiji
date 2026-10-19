@@ -14,10 +14,17 @@ from test_uploads import pdf
 
 
 def upload(client, headers, purpose, data, filename, media_type):
-    created = client.post("/api/uploads", headers=headers, json={
-        "purpose": purpose, "filename": filename, "media_type": media_type,
-        "size_bytes": len(data), "sha256": hashlib.sha256(data).hexdigest(),
-    })
+    created = client.post(
+        "/api/uploads",
+        headers=headers,
+        json={
+            "purpose": purpose,
+            "filename": filename,
+            "media_type": media_type,
+            "size_bytes": len(data),
+            "sha256": hashlib.sha256(data).hexdigest(),
+        },
+    )
     assert created.status_code == 201, created.text
     identifier = created.json()["id"]
     saved = client.put(f"/api/uploads/{identifier}/content", headers=headers, content=data)
@@ -25,14 +32,17 @@ def upload(client, headers, purpose, data, filename, media_type):
     return identifier
 
 
-@pytest.mark.parametrize("purpose,table", [
-    ("event_attachment", "business_attachments"),
-    ("intake_attachment", "intake_attachments"),
-    ("case_attachment", "case_attachments"),
-    ("material_attachment", "material_attachments"),
-    ("bank_import", "bank_import_files"),
-    ("invoice_import", "invoice_import_batches"),
-])
+@pytest.mark.parametrize(
+    "purpose,table",
+    [
+        ("event_attachment", "business_attachments"),
+        ("intake_attachment", "intake_attachments"),
+        ("case_attachment", "case_attachments"),
+        ("material_attachment", "material_attachments"),
+        ("bank_import", "bank_import_files"),
+        ("invoice_import", "invoice_import_batches"),
+    ],
+)
 def test_http_consumers_bind_and_replay_exactly_once(client, purpose, table):
     employee = auth(client, "employee")
     actor = employee
@@ -43,10 +53,15 @@ def test_http_consumers_bind_and_replay_exactly_once(client, purpose, table):
         target_id, path = event["id"], f"/api/business/events/{event['id']}/attachments"
     elif purpose == "intake_attachment":
         company = client.get("/api/business/context", headers=employee).json()["companies"][0]
-        created = client.post("/api/intake/drafts", headers=employee, json={
-            "company_id": company["id"], "department_id": company["department_id"],
-            "idempotency_key": uuid4().hex,
-        })
+        created = client.post(
+            "/api/intake/drafts",
+            headers=employee,
+            json={
+                "company_id": company["id"],
+                "department_id": company["department_id"],
+                "idempotency_key": uuid4().hex,
+            },
+        )
         assert created.status_code == 201, created.text
         target_id = created.json()["id"]
         path = f"/api/intake/drafts/{target_id}/attachments"
@@ -88,6 +103,11 @@ def test_http_consumers_bind_and_replay_exactly_once(client, purpose, table):
         assert intent["state"] == "consumed"
         assert binding["target_id"] == target_id and binding["attachment_table"] == table
         assert intent["consumed_ref"] == f"{table}:{binding['attachment_id']}"
-        assert conn.execute(f"SELECT COUNT(*) FROM {table} WHERE storage_key=?", (intent["storage_key"],)).fetchone()[0] == 1
+        assert (
+            conn.execute(
+                f"SELECT COUNT(*) FROM {table} WHERE storage_key=?", (intent["storage_key"],)
+            ).fetchone()[0]
+            == 1
+        )
         if purpose == "case_attachment":
             assert binding["event_id"] == event["id"] and binding["response_id"]

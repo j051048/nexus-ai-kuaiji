@@ -115,8 +115,15 @@ def build_cases_router(actor_dependency):
         stored = None
         try:
             if claimed:
-                result = uploads.consume(actor, upload_id, "case_attachment", case_id,
-                    lambda conn, metadata: cases.add_attachment(actor, case_id, expected_version, idempotency_key, metadata, conn=conn))
+                result = uploads.consume(
+                    actor,
+                    upload_id,
+                    "case_attachment",
+                    case_id,
+                    lambda conn, metadata: cases.add_attachment(
+                        actor, case_id, expected_version, idempotency_key, metadata, conn=conn
+                    ),
+                )
                 return result["case"]
             cases.require_upload(actor, case_id, expected_version, idempotency_key)
             if file is None:

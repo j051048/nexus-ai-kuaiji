@@ -21,6 +21,7 @@ from app.subledger.service import SubledgerService
 from test_b04_pilot import setup_b03
 from test_business import business
 from test_posting_service import admin
+from test_p0_close_dependencies import close_case
 
 
 def _case(case):
@@ -180,16 +181,20 @@ def test_f02_periodic_post_rolls_back_voucher_and_draft_together(business, monke
         assert conn.execute("SELECT COUNT(*) FROM vouchers").fetchone()[0] == 0
 
 
-def test_f03_lock_rejects_pending_draft_after_preflight(business, monkeypatch):
-    case = business
-    opening, _, _ = _case(case)
+def test_f03_lock_rejects_pending_draft_after_preflight(close_case):
+    case = close_case
     from app.accounting.models import ImportRequest, SourceRow
     from app.b04_close.models import CloseCommand
-    from app.b04_close.service import CloseService
-
     from app.accounting.service import AccountingService
 
-    AccountingService(case.db).import_sources(
+    close = case.close
+    close.review(
+        case.reviewer,
+        case.run["close"]["id"],
+        CloseCommand(expected_version=1, reason="F03 独立复核真实预检"),
+    )
+    accounting = AccountingService(case.db)
+    accounting.import_sources(
         case.manager,
         case.book["id"],
         ImportRequest(
@@ -205,44 +210,11 @@ def test_f03_lock_rejects_pending_draft_after_preflight(business, monkeypatch):
             ],
         ),
     )
-    with case.db.transaction(write=True, actor=case.manager) as conn:
-        source_id = conn.execute(
-            "SELECT id FROM sources WHERE book_id=? AND external_id='f03-source'",
-            (case.book["id"],),
-        ).fetchone()["id"]
-        conn.execute(
-            "INSERT INTO report_runs(id,book_id,period,template_id,template_version,status,version,"
-            "inputs_fingerprint,content_json,content_hash,created_by,created_at) "
-            "VALUES('f03-report',?,?,'f03',1,'reviewed',1,'x','{}','h',?,?)",
-            (
-                case.book["id"],
-                "2026-10",
-                case.manager.user_id,
-                "2026-10-31T00:00:00+00:00",
-            ),
-        )
-        conn.execute(
-            "INSERT INTO internal_close_runs(id,book_id,period,status,version,inputs_fingerprint,"
-            "checks_json,report_run_id,created_by,created_at) "
-            "VALUES('f03-close',?,?,'reviewed',1,'x','[]','f03-report',?,?)",
-            (
-                case.book["id"],
-                "2026-10",
-                case.manager.user_id,
-                "2026-10-31T00:00:00+00:00",
-            ),
-        )
-        conn.execute(
-            "INSERT INTO drafts(id,book_id,source_id,description,status,version,explanation) "
-            "VALUES('f03-draft',?,?,'F03 待审草稿','draft',1,'')",
-            (case.book["id"], source_id),
-        )
-    close = CloseService(case.db)
-    monkeypatch.setattr(close.reports, "_current", lambda *args, **kwargs: {"id": "f03-report"})
+    accounting.suggestions(case.manager, case.book["id"])
     with pytest.raises(AccountingError, match="预检已变化"):
         close.lock(
             case.manager,
-            "f03-close",
+            case.run["close"]["id"],
             CloseCommand(expected_version=1, reason="F03 锁期"),
         )
 
@@ -356,19 +328,10 @@ def test_f01_editor_cannot_review_report(business):
         )
 
 
-def test_f08_close_get_requires_book_scope(business):
-    case = business
-    opening, _, _ = _case(case)
-    run_id = "r01-close-scope"
-    with case.db.transaction(write=True) as conn:
-        conn.execute(
-            "INSERT INTO internal_close_runs(id,book_id,period,status,version,inputs_fingerprint,"
-            "checks_json,report_run_id,created_by,created_at) VALUES(?,?,?,'preflight_passed',1,"
-            "'x','[]',NULL,?,?)",
-            (run_id, case.book["id"], "2026-10", case.manager.user_id, "2026-10-31T00:00:00+00:00"),
-        )
+def test_f08_close_get_requires_book_scope(close_case):
+    case = close_case
     from app.b04_close.service import CloseService
 
     with pytest.raises(AccountingError) as error:
-        CloseService(case.db).get(case.actors["employee"], run_id)
+        CloseService(case.db).get(case.actors["employee"], case.run["close"]["id"])
     assert error.value.status == 404

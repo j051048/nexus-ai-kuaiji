@@ -396,6 +396,19 @@ class LedgersService:
             if not mapping or mapping["ledger_id"] != request.expected_ledger_id:
                 raise AccountingError("历史账套映射已变化，请刷新后核对", 409)
             if conn.execute(
+                "SELECT 1 FROM internal_period_locks WHERE book_id=?", (source["id"],)
+            ).fetchone():
+                raise AccountingError("已内部锁期的账套不能修改长期账套归属", 409)
+            if mapping["ledger_id"] != ledger["id"] and (
+                conn.execute(
+                    "SELECT 1 FROM opening_bindings WHERE book_id=?", (source["id"],)
+                ).fetchone()
+                or conn.execute(
+                    "SELECT 1 FROM vouchers WHERE book_id=?", (source["id"],)
+                ).fetchone()
+            ):
+                raise AccountingError("已绑定正式期初或已有正式凭证的账套不能改绑长期账套", 409)
+            if conn.execute(
                 "SELECT 1 FROM ledger_periods WHERE ledger_id=? AND period=? AND book_id<>?",
                 (ledger["id"], source["period"], source["id"]),
             ).fetchone():

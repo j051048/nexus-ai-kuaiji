@@ -265,6 +265,12 @@ class Database:
                 ) from None
         conn = sqlite3.connect(self.path, timeout=15)
         conn.row_factory = sqlite3.Row
+        conn.create_function(
+            "accounting_actor_user", 0, lambda: getattr(transaction_actor.get(), "user_id", "")
+        )
+        conn.create_function(
+            "accounting_actor_firm", 0, lambda: getattr(transaction_actor.get(), "firm_id", "")
+        )
         conn.execute("PRAGMA foreign_keys=ON")
         conn.execute("PRAGMA busy_timeout=15000")
         return conn

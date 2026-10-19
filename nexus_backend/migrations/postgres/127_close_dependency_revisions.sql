@@ -68,14 +68,31 @@ BEGIN
    SELECT firm_id,company_id INTO b FROM accounting.books WHERE id=scope->>'id';
    PERFORM accounting.lock_company_write(b.firm_id,b.company_id);
   END IF;
+  IF TG_TABLE_NAME='books' THEN
+   IF TG_OP='UPDATE' THEN
+    IF EXISTS(SELECT 1 FROM accounting.internal_period_locks WHERE book_id=OLD.id)
+     AND (NEW.period IS DISTINCT FROM OLD.period OR NEW.firm_id IS DISTINCT FROM OLD.firm_id
+      OR NEW.company_id IS DISTINCT FROM OLD.company_id) THEN
+     RAISE EXCEPTION 'Locked book identity cannot change' USING ERRCODE='23514';
+    END IF;
+   END IF;
+  END IF;
+  IF TG_TABLE_NAME='ledger_periods' AND TG_OP IN('UPDATE','DELETE') THEN
+   IF (TG_OP='DELETE' OR NEW.ledger_id IS DISTINCT FROM OLD.ledger_id) AND (
+    EXISTS(SELECT 1 FROM accounting.opening_bindings WHERE book_id=OLD.book_id)
+    OR EXISTS(SELECT 1 FROM accounting.vouchers WHERE book_id=OLD.book_id)) THEN
+    RAISE EXCEPTION 'Formally bound book ledger identity cannot change' USING ERRCODE='23514';
+   END IF;
+  END IF;
   IF TG_TABLE_NAME='drafts' AND TG_OP='UPDATE' THEN
    allowed_delivery:=OLD.status='approved' AND NEW.status='exported'
-    AND (to_jsonb(NEW)-'status'-'exported_at')=(to_jsonb(OLD)-'status'-'exported_at');
+    AND NEW.version=OLD.version+1
+    AND (to_jsonb(NEW)-'status'-'exported_at'-'version')=(to_jsonb(OLD)-'status'-'exported_at'-'version');
   ELSIF TG_TABLE_NAME='report_runs' AND TG_OP='UPDATE' THEN
    allowed_delivery:=OLD.status='reviewed' AND NEW.status='published'
     AND (to_jsonb(NEW)-'status'-'published_by'-'published_at')=(to_jsonb(OLD)-'status'-'published_by'-'published_at');
   END IF;
-  IF NOT allowed_delivery AND TG_TABLE_NAME NOT IN('books','periods','accounts','ledger_periods')
+  IF NOT allowed_delivery AND TG_TABLE_NAME NOT IN('books','periods','accounts')
    AND EXISTS(SELECT 1 FROM accounting.internal_period_locks WHERE book_id=scope->>'id') THEN
    RAISE EXCEPTION 'Internally locked period evidence cannot change' USING ERRCODE='23514';
   END IF;
@@ -284,42 +301,109 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION accounting.close_dependencies_match(TEXT,TEXT) FROM PUBLIC,accounting_app,accounting_worker,accounting_system;
 
+-- Bind the vector to the report actually checked, rather than accepting an
+-- arbitrary template key with an absent (zero) counter.
+CREATE FUNCTION accounting.close_report_binding_valid(target_book TEXT,target_period TEXT,target_report TEXT,value TEXT)
+ RETURNS BOOLEAN LANGUAGE sql STABLE SECURITY DEFINER
+ SET search_path=pg_catalog,accounting,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM accounting.report_runs r
+  JOIN accounting.books b ON b.id=r.book_id
+  JOIN accounting.periods p ON p.book_id=b.id AND p.period=b.period
+  JOIN accounting.report_templates t ON t.id=r.template_id AND t.version=r.template_version
+  WHERE r.id=target_report AND r.book_id=target_book AND r.period=target_period
+   AND b.period=target_period AND p.status='open' AND r.status IN('reviewed','published')
+   AND t.active=1 AND value::jsonb->'template'->>'id'=r.template_id)
+$$;
+REVOKE ALL ON FUNCTION accounting.close_report_binding_valid(TEXT,TEXT,TEXT,TEXT)
+ FROM PUBLIC,accounting_app,accounting_worker,accounting_system;
+
 CREATE FUNCTION accounting.close_revision_guard() RETURNS TRIGGER
  LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,accounting,pg_temp AS $$
 DECLARE run accounting.internal_close_runs; book accounting.books; ledger TEXT;
+ allowed_fields TEXT[]; checks JSONB;
 BEGIN
  SELECT * INTO book FROM accounting.books WHERE id=NEW.book_id;
  PERFORM accounting.lock_company_write(book.firm_id,book.company_id);
+ IF NOT accounting.book_review_allowed(NEW.book_id) THEN
+  RAISE EXCEPTION 'Current close review permission required' USING ERRCODE='42501';
+ END IF;
  IF TG_TABLE_NAME='internal_period_locks' THEN
   SELECT * INTO run FROM accounting.internal_close_runs WHERE id=NEW.close_run_id;
   SELECT ledger_id INTO ledger FROM accounting.ledger_periods WHERE book_id=NEW.book_id;
-  IF NOT accounting.book_review_allowed(NEW.book_id)
-   OR run.id IS NULL OR run.book_id<>NEW.book_id OR run.period<>NEW.period OR run.status<>'reviewed'
-   OR NEW.firm_id<>book.firm_id OR NEW.company_id<>book.company_id OR NEW.ledger_id<>ledger
-   OR run.reviewed_by IS NULL OR run.reviewed_by=run.created_by
-   OR NOT accounting.close_dependencies_match(NEW.book_id,run.dependencies_json) THEN
+  IF run.id IS NULL OR run.book_id<>NEW.book_id OR run.period<>NEW.period OR run.status<>'reviewed'
+   OR NEW.period<>book.period OR NEW.firm_id<>book.firm_id OR NEW.company_id<>book.company_id OR NEW.ledger_id<>ledger
+   OR NEW.locked_by IS DISTINCT FROM accounting.actor_user()
+   OR run.reviewed_by IS NULL OR run.reviewed_by=run.created_by OR run.reviewed_at IS NULL
+   OR NOT accounting.close_dependencies_match(NEW.book_id,run.dependencies_json)
+   OR NOT accounting.close_report_binding_valid(NEW.book_id,NEW.period,run.report_run_id,run.dependencies_json) THEN
    RAISE EXCEPTION 'Current independently reviewed close dependencies required' USING ERRCODE='23514';
   END IF;
- ELSIF TG_TABLE_NAME='internal_close_runs' THEN
-  IF (to_jsonb(NEW)-'status'-'reviewed_by'-'reviewed_at'-'locked_by'-'locked_at'-'published_by'-'published_at')
-   IS DISTINCT FROM
-   (to_jsonb(OLD)-'status'-'reviewed_by'-'reviewed_at'-'locked_by'-'locked_at'-'published_by'-'published_at') THEN
-   RAISE EXCEPTION 'Close preflight evidence is immutable' USING ERRCODE='23514';
+ ELSIF TG_OP='INSERT' THEN
+  IF NEW.status NOT IN('preflight_passed','preflight_failed')
+   OR NEW.created_by IS DISTINCT FROM accounting.actor_user()
+   OR NEW.reviewed_by IS NOT NULL OR NEW.reviewed_at IS NOT NULL
+   OR NEW.locked_by IS NOT NULL OR NEW.locked_at IS NOT NULL
+   OR NEW.published_by IS NOT NULL OR NEW.published_at IS NOT NULL
+   OR NEW.version<1 OR NEW.inputs_fingerprint !~ '^[0-9a-f]{64}$'
+   OR NOT accounting.close_dependencies_match(NEW.book_id,NEW.dependencies_json)
+   OR NOT accounting.close_report_binding_valid(NEW.book_id,NEW.period,NEW.report_run_id,NEW.dependencies_json)
+   OR EXISTS(SELECT 1 FROM accounting.internal_period_locks WHERE book_id=NEW.book_id AND period=NEW.period) THEN
+   RAISE EXCEPTION 'Current actor must create an unreviewed current preflight' USING ERRCODE='23514';
   END IF;
-  IF NEW.status='reviewed' AND OLD.status IS DISTINCT FROM NEW.status AND (
-   OLD.status<>'preflight_passed' OR NEW.reviewed_by IS DISTINCT FROM accounting.actor_user()
-   OR NEW.created_by=accounting.actor_user()) THEN
-   RAISE EXCEPTION 'Independent current close reviewer required' USING ERRCODE='42501';
+  checks:=NEW.checks_json::jsonb;
+  IF jsonb_typeof(checks)<>'array' OR jsonb_array_length(checks)<>6
+   OR (SELECT count(DISTINCT c->>'code') FROM jsonb_array_elements(checks) c
+    WHERE c->>'code' IN('unposted_periodic','unapproved_drafts','subledger_control',
+     'bank_reconciliation','trial_balance','report_checks'))<>6
+   OR EXISTS(SELECT 1 FROM jsonb_array_elements(checks) c WHERE coalesce(c->>'status','') NOT IN('pass','blocked'))
+   OR (NEW.status='preflight_passed' AND EXISTS(SELECT 1 FROM jsonb_array_elements(checks) c WHERE c->>'status'<>'pass'))
+   OR (NEW.status='preflight_failed' AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(checks) c WHERE c->>'status'='blocked')) THEN
+   RAISE EXCEPTION 'Close preflight checks must be complete and consistent' USING ERRCODE='23514';
   END IF;
-  IF NEW.status IN('reviewed','locked') AND OLD.status IS DISTINCT FROM NEW.status
-   AND NOT accounting.close_dependencies_match(NEW.book_id,NEW.dependencies_json) THEN
+ ELSE
+  IF NEW.status=OLD.status THEN
+   IF to_jsonb(NEW) IS DISTINCT FROM to_jsonb(OLD) THEN
+    RAISE EXCEPTION 'Close preflight evidence and approvals are immutable' USING ERRCODE='23514';
+   END IF;
+   RETURN NEW;
+  END IF;
+  CASE
+   WHEN OLD.status='preflight_passed' AND NEW.status='reviewed' THEN
+    allowed_fields:=ARRAY['status','reviewed_by','reviewed_at'];
+    IF NEW.reviewed_by IS DISTINCT FROM accounting.actor_user() OR NEW.created_by=accounting.actor_user()
+     OR NEW.reviewed_at IS NULL THEN
+     RAISE EXCEPTION 'Independent current close reviewer required' USING ERRCODE='42501';
+    END IF;
+   WHEN OLD.status='reviewed' AND NEW.status='locked' THEN
+    allowed_fields:=ARRAY['status','locked_by','locked_at'];
+    IF NEW.locked_by IS DISTINCT FROM accounting.actor_user() OR NEW.locked_at IS NULL
+     OR NOT EXISTS(SELECT 1 FROM accounting.internal_period_locks l
+       WHERE l.close_run_id=NEW.id AND l.book_id=NEW.book_id AND l.period=NEW.period
+        AND l.locked_by=accounting.actor_user()) THEN
+     RAISE EXCEPTION 'Matching current period lock required' USING ERRCODE='23514';
+    END IF;
+   WHEN OLD.status='locked' AND NEW.status='published' THEN
+    allowed_fields:=ARRAY['status','published_by','published_at'];
+    IF NEW.published_by IS DISTINCT FROM accounting.actor_user() OR NEW.published_at IS NULL
+     OR NOT EXISTS(SELECT 1 FROM accounting.report_runs r WHERE r.id=NEW.report_run_id
+       AND r.book_id=NEW.book_id AND r.period=NEW.period AND r.status='published') THEN
+     RAISE EXCEPTION 'Published bound report required' USING ERRCODE='23514';
+    END IF;
+   ELSE RAISE EXCEPTION 'Invalid close status transition' USING ERRCODE='23514';
+  END CASE;
+  IF (to_jsonb(NEW)-allowed_fields) IS DISTINCT FROM (to_jsonb(OLD)-allowed_fields) THEN
+   RAISE EXCEPTION 'Close preflight evidence and prior approvals are immutable' USING ERRCODE='23514';
+  END IF;
+  IF NEW.status IN('reviewed','locked') AND (
+   NOT accounting.close_dependencies_match(NEW.book_id,NEW.dependencies_json)
+   OR NOT accounting.close_report_binding_valid(NEW.book_id,NEW.period,NEW.report_run_id,NEW.dependencies_json)) THEN
    RAISE EXCEPTION 'Close dependencies changed; repeat preflight and review' USING ERRCODE='23514';
   END IF;
  END IF;
  RETURN NEW;
 END $$;
 REVOKE ALL ON FUNCTION accounting.close_revision_guard() FROM PUBLIC,accounting_app,accounting_worker,accounting_system;
-CREATE TRIGGER p0_close_revision_guard BEFORE UPDATE ON accounting.internal_close_runs
+CREATE TRIGGER p0_close_revision_guard BEFORE INSERT OR UPDATE ON accounting.internal_close_runs
  FOR EACH ROW EXECUTE FUNCTION accounting.close_revision_guard();
 CREATE TRIGGER p0_close_lock_revision_guard BEFORE INSERT ON accounting.internal_period_locks
  FOR EACH ROW EXECUTE FUNCTION accounting.close_revision_guard();

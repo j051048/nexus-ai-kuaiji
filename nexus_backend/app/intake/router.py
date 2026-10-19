@@ -54,8 +54,15 @@ def build_intake_router(actor_dependency):
         stored = None
         try:
             if claimed:
-                return uploads.consume(current, upload_id, "intake_attachment", draft_id,
-                    lambda conn, metadata: intake.add_attachment(current, draft_id, expected_version, metadata, conn=conn))
+                return uploads.consume(
+                    current,
+                    upload_id,
+                    "intake_attachment",
+                    draft_id,
+                    lambda conn, metadata: intake.add_attachment(
+                        current, draft_id, expected_version, metadata, conn=conn
+                    ),
+                )
             intake.require_upload(current, draft_id, expected_version)
             if file is None:
                 raise AccountingError("请选择文件，或先完成大文件上传校验", 422)

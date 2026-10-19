@@ -739,7 +739,9 @@ class CaseService:
             with self.db.transaction(
                 write=True, actor=actor, company_id=company_id, write_scope="company"
             ) as transaction:
-                return self.add_attachment(actor, case_id, expected_version, idempotency_key, stored, transaction)
+                return self.add_attachment(
+                    actor, case_id, expected_version, idempotency_key, stored, transaction
+                )
         from .models import CaseCommand
 
         payload = CaseCommand(

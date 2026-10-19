@@ -296,8 +296,13 @@ class UploadIntentService:
         changed = conn.execute(
             "UPDATE upload_intents SET state='consumed',consumed_ref=?,binding_json=? "
             "WHERE id=? AND firm_id=? AND user_id=? AND state='consuming'",
-            (ref, json.dumps(binding, ensure_ascii=False, sort_keys=True, separators=(",", ":")),
-             upload_id, actor.firm_id, actor.user_id),
+            (
+                ref,
+                json.dumps(binding, ensure_ascii=False, sort_keys=True, separators=(",", ":")),
+                upload_id,
+                actor.firm_id,
+                actor.user_id,
+            ),
         )
         if changed.rowcount != 1:
             raise AccountingError("上传凭证状态已变化，请核对处理结果", 409)
@@ -322,7 +327,9 @@ class UploadIntentService:
             # A row lock serializes one intent even when two allowed companies
             # contend under different company advisory locks.
             if self.db.is_postgres:
-                conn.execute("SELECT id FROM upload_intents WHERE id=? FOR UPDATE", (upload_id,)).fetchone()
+                conn.execute(
+                    "SELECT id FROM upload_intents WHERE id=? FOR UPDATE", (upload_id,)
+                ).fetchone()
             row = self._owned(conn, actor, upload_id)
             if row["purpose"] != purpose:
                 raise AccountingError("上传凭证用途不一致", 409)
@@ -337,7 +344,11 @@ class UploadIntentService:
                 if binding.get("target_id") != target_id or binding.get("purpose") != purpose:
                     raise AccountingError("上传凭证已绑定其他企业或事项", 409)
                 actual = reference(conn, actor, row, target_id)
-                if binding != actual or row["consumed_ref"] != f"{actual['attachment_table']}:{actual['attachment_id']}":
+                if (
+                    binding != actual
+                    or row["consumed_ref"]
+                    != f"{actual['attachment_table']}:{actual['attachment_id']}"
+                ):
                     raise AccountingError("上传消费绑定与实际原件不一致", 409)
             elif row["state"] != "stored":
                 raise AccountingError("上传尚未校验或正在处理中，请核对结果", 409)
@@ -345,11 +356,15 @@ class UploadIntentService:
                 raise AccountingError("上传凭证已过期，请重新上传", 410)
             else:
                 changed = conn.execute(
-                    "UPDATE upload_intents SET state='consuming' WHERE id=? AND state='stored'", (upload_id,)
+                    "UPDATE upload_intents SET state='consuming' WHERE id=? AND state='stored'",
+                    (upload_id,),
                 )
                 if changed.rowcount != 1:
                     raise AccountingError("上传凭证正在被处理，请核对结果", 409)
-            metadata = {key: row[key] for key in ("filename", "media_type", "storage_key", "sha256", "size_bytes")}
+            metadata = {
+                key: row[key]
+                for key in ("filename", "media_type", "storage_key", "sha256", "size_bytes")
+            }
             metadata.update(id=row["storage_key"].split("/")[1], _upload_replay=replay)
             result = register(conn, metadata)
             if not replay:

@@ -724,9 +724,9 @@ class PostingService:
                 "SELECT v.voucher_date,v.voucher_no,v.voucher_type,v.description,"
                 "l.account_id,l.code_snapshot,l.name_snapshot,l.debit_cents,l.credit_cents,"
                 "l.aux_json,l.line_no FROM voucher_lines l JOIN vouchers v ON v.id=l.voucher_id "
-                "WHERE v.book_id=? AND (l.code_snapshot LIKE '1001%' OR l.code_snapshot LIKE '1002%') "
+                "WHERE v.book_id=? AND (l.code_snapshot LIKE ? OR l.code_snapshot LIKE ?) "
                 "ORDER BY v.voucher_date,v.voucher_type,v.voucher_no,l.line_no",
-                (book["id"],),
+                (book["id"], "1001%", "1002%"),
             ).fetchall()
             opening = {
                 row["account_id"]: int(row["total"])
@@ -734,9 +734,9 @@ class PostingService:
                     "SELECT ol.account_id,COALESCE(SUM(ol.opening_cents),0) AS total "
                     "FROM opening_lines ol JOIN ledger_account_versions av "
                     "ON av.account_id=ol.account_id AND av.version=ol.account_version "
-                    "WHERE ol.package_version_id=? AND (av.code LIKE '1001%' OR av.code LIKE '1002%') "
+                    "WHERE ol.package_version_id=? AND (av.code LIKE ? OR av.code LIKE ?) "
                     "GROUP BY ol.account_id",
-                    (binding["package_version_id"],),
+                    (binding["package_version_id"], "1001%", "1002%"),
                 )
             }
             running = dict(opening)

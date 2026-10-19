@@ -216,8 +216,15 @@ class MaterialAttachmentService:
                 return self.add(actor, request_id, expected_version, stored, transaction)
         if stored.get("_upload_replay"):
             self.plans._request(conn, actor, request_id)
-            previous = conn.execute("SELECT * FROM material_attachments WHERE id=? AND request_id=?", (stored["id"], request_id)).fetchone()
-            return {"attachment": {key: previous[key] for key in METADATA}, "version": expected_version, "duplicate": True}
+            previous = conn.execute(
+                "SELECT * FROM material_attachments WHERE id=? AND request_id=?",
+                (stored["id"], request_id),
+            ).fetchone()
+            return {
+                "attachment": {key: previous[key] for key in METADATA},
+                "version": expected_version,
+                "duplicate": True,
+            }
         row = self._uploadable(conn, actor, request_id, expected_version)
         previous = conn.execute(
             "SELECT * FROM material_attachments WHERE request_id=? AND sha256=? AND filename=? AND media_type=?",
@@ -362,8 +369,15 @@ def build_material_attachments_router(actor_dependency):
         stored = None
         try:
             if claimed:
-                return uploads.consume(actor, upload_id, "material_attachment", request_id,
-                    lambda conn, metadata: attachments.add(actor, request_id, expected_version, metadata, conn=conn))
+                return uploads.consume(
+                    actor,
+                    upload_id,
+                    "material_attachment",
+                    request_id,
+                    lambda conn, metadata: attachments.add(
+                        actor, request_id, expected_version, metadata, conn=conn
+                    ),
+                )
             attachments.require_upload(actor, request_id, expected_version)
             if file is None:
                 raise AccountingError("请选择文件，或先完成大文件上传校验", 422)

@@ -1,6 +1,5 @@
 """F10 portable reference evidence is complete and matches the DB snapshot."""
 
-from copy import deepcopy
 import hashlib
 from importlib.util import module_from_spec, spec_from_file_location
 import json
@@ -25,10 +24,18 @@ def original(tmp_path):
     (storage / "aa/original").write_bytes(payload)
     digest = hashlib.sha256(payload).hexdigest()
     binding = {
-        "version": 1, "firm_id": "firm-a", "company_id": "company-a",
-        "purpose": "event_attachment", "target_kind": "business_event", "target_id": "event-a",
-        "attachment_table": "business_attachments", "attachment_id": "attachment-a",
-        "event_id": "event-a", "source_id": None, "book_id": None, "response_id": None,
+        "version": 1,
+        "firm_id": "firm-a",
+        "company_id": "company-a",
+        "purpose": "event_attachment",
+        "target_kind": "business_event",
+        "target_id": "event-a",
+        "attachment_table": "business_attachments",
+        "attachment_id": "attachment-a",
+        "event_id": "event-a",
+        "source_id": None,
+        "book_id": None,
+        "response_id": None,
         "storage": {"storage_key": "aa/original", "sha256": digest, "size_bytes": len(payload)},
     }
     with sqlite3.connect(database) as conn:
@@ -44,11 +51,34 @@ def original(tmp_path):
             CREATE TABLE upload_intents(id TEXT,firm_id TEXT,user_id TEXT,purpose TEXT,
                 storage_key TEXT,sha256 TEXT,size_bytes INTEGER,state TEXT,consumed_ref TEXT,binding_json TEXT);
         """)
-        conn.execute("INSERT INTO business_attachments VALUES(?,?,?,?,?,?,?,?)", (
-            "attachment-a", "event-a", "firm-a", "company-a", "aa/original", digest, len(payload), "employee-a"))
-        conn.execute("INSERT INTO upload_intents VALUES(?,?,?,?,?,?,?,?,?,?)", (
-            "intent-a", "firm-a", "employee-a", "event_attachment", "aa/original", digest,
-            len(payload), "consumed", "business_attachments:attachment-a", json.dumps(binding)))
+        conn.execute(
+            "INSERT INTO business_attachments VALUES(?,?,?,?,?,?,?,?)",
+            (
+                "attachment-a",
+                "event-a",
+                "firm-a",
+                "company-a",
+                "aa/original",
+                digest,
+                len(payload),
+                "employee-a",
+            ),
+        )
+        conn.execute(
+            "INSERT INTO upload_intents VALUES(?,?,?,?,?,?,?,?,?,?)",
+            (
+                "intent-a",
+                "firm-a",
+                "employee-a",
+                "event_attachment",
+                "aa/original",
+                digest,
+                len(payload),
+                "consumed",
+                "business_attachments:attachment-a",
+                json.dumps(binding),
+            ),
+        )
     return database, storage, binding
 
 
@@ -68,8 +98,10 @@ def test_manifest_round_trip_retains_every_reference_and_binding(original, tmp_p
     assert attachment["row_id"] == "attachment-a" and attachment["links"] == {"event_id": "event-a"}
     assert intent["row_id"] == "intent-a" and intent["upload"]["binding"] == binding
     assert manifest["reference_verification"] == {
-        "reference_count": 2, "legacy_unbound_uploads": 0,
-        "unidentified_references": 0, "all_consumed_bindings_verified": True,
+        "reference_count": 2,
+        "legacy_unbound_uploads": 0,
+        "unidentified_references": 0,
+        "all_consumed_bindings_verified": True,
     }
     assert recovery.verify(target) == manifest
     restored = tmp_path / "restored"
@@ -78,15 +110,25 @@ def test_manifest_round_trip_retains_every_reference_and_binding(original, tmp_p
     assert receipt["serving_enabled"] is False
     with sqlite3.connect(restored / "database.sqlite") as conn:
         assert conn.execute("SELECT hold FROM restore_state").fetchone()[0] == 1
-        assert json.loads(conn.execute("SELECT binding_json FROM upload_intents").fetchone()[0]) == binding
+        assert (
+            json.loads(conn.execute("SELECT binding_json FROM upload_intents").fetchone()[0])
+            == binding
+        )
 
 
-@pytest.mark.parametrize("field,value", [
-    ("firm_id", "foreign-firm"), ("company_id", "company-b"),
-    ("target_id", "event-other"), ("event_id", "event-other"),
-    ("attachment_id", "missing-attachment"), ("purpose", "invoice_import"),
-    ("target_kind", "book"), ("version", 999),
-])
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("firm_id", "foreign-firm"),
+        ("company_id", "company-b"),
+        ("target_id", "event-other"),
+        ("event_id", "event-other"),
+        ("attachment_id", "missing-attachment"),
+        ("purpose", "invoice_import"),
+        ("target_kind", "book"),
+        ("version", 999),
+    ],
+)
 def test_consumed_binding_cannot_claim_another_scope_or_target(original, tmp_path, field, value):
     database, storage, binding = original
     binding[field] = value
@@ -96,13 +138,52 @@ def test_consumed_binding_cannot_claim_another_scope_or_target(original, tmp_pat
     assert not (tmp_path / "must-not-complete/manifest.json").exists()
 
 
-@pytest.mark.parametrize("field,value", [("sha256", "0" * 64), ("size_bytes", 1), ("storage_key", "aa/other")])
+@pytest.mark.parametrize(
+    "field,value", [("sha256", "0" * 64), ("size_bytes", 1), ("storage_key", "aa/other")]
+)
 def test_binding_must_name_the_exact_original_bytes(original, tmp_path, field, value):
     database, storage, binding = original
     binding["storage"][field] = value
     update_binding(database, binding)
     with pytest.raises(ValueError, match="原件身份"):
         recovery.backup(str(database), storage, tmp_path / "bad-identity")
+
+
+@pytest.mark.parametrize("field", ["event_id", "source_id", "book_id", "response_id"])
+def test_manifest_binding_protocol_requires_explicit_optional_fields(original, tmp_path, field):
+    database, storage, binding = original
+    del binding[field]
+    update_binding(database, binding)
+    with pytest.raises(ValueError, match="字段不完整"):
+        recovery.backup(str(database), storage, tmp_path / "incomplete-binding")
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("source_id", "invented-source"),
+        ("book_id", "invented-book"),
+        ("response_id", "invented-response"),
+    ],
+)
+def test_manifest_binding_cannot_invent_optional_relationships(original, tmp_path, field, value):
+    database, storage, binding = original
+    binding[field] = value
+    update_binding(database, binding)
+    with pytest.raises(ValueError, match="关联"):
+        recovery.backup(str(database), storage, tmp_path / "invented-relationship")
+
+
+@pytest.mark.parametrize("field", ["version", "size_bytes"])
+def test_manifest_binding_rejects_boolean_instead_of_integer(original, tmp_path, field):
+    database, storage, binding = original
+    if field == "version":
+        binding[field] = True
+    else:
+        binding["storage"][field] = True
+    update_binding(database, binding)
+    with pytest.raises(ValueError):
+        recovery.backup(str(database), storage, tmp_path / "boolean-identity")
 
 
 def test_parent_scope_is_checked_even_if_attachment_and_binding_agree(original, tmp_path):
@@ -159,7 +240,9 @@ def test_manifest_cannot_rewrite_or_omit_snapshot_references(original, tmp_path,
         intent["upload"]["binding"]["target_id"] = "event-other"
         intent["upload"]["binding"]["event_id"] = "event-other"
     else:
-        intent["upload"].update(binding=None, binding_status="legacy_unbound", consumed_ref="attachment")
+        intent["upload"].update(
+            binding=None, binding_status="legacy_unbound", consumed_ref="attachment"
+        )
     manifest["reference_verification"] = recovery.reference_verification(manifest["files"])
     (target / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     with pytest.raises(ValueError, match="引用"):
@@ -178,3 +261,24 @@ def test_malformed_binding_and_fake_raw_ref_fail_closed(original, tmp_path):
         conn.execute("UPDATE upload_intents SET consumed_ref='attachment'")
     with pytest.raises(ValueError, match="引用标识"):
         recovery.backup(str(database), storage, tmp_path / "fake-ref")
+
+
+def test_partial_restore_keeps_database_hold_when_original_copy_fails(
+    original, tmp_path, monkeypatch
+):
+    database, storage, _ = original
+    backup, restored = tmp_path / "complete", tmp_path / "partial"
+    recovery.backup(str(database), storage, backup)
+    real_copy = recovery.shutil.copyfileobj
+
+    def fail_on_original(source, destination, *args, **kwargs):
+        if "originals" in Path(source.name).parts:
+            raise OSError("synthetic original transfer interrupted")
+        return real_copy(source, destination, *args, **kwargs)
+
+    monkeypatch.setattr(recovery.shutil, "copyfileobj", fail_on_original)
+    with pytest.raises(OSError, match="interrupted"):
+        recovery.restore(backup, restored)
+    with sqlite3.connect(restored / "database.sqlite") as conn:
+        assert conn.execute("SELECT hold FROM restore_state").fetchone()[0] == 1
+    assert not (restored / "restore-verification.json").exists()

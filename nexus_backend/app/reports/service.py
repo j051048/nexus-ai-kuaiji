@@ -200,8 +200,8 @@ class ReportService:
             for row in conn.execute(
                 "SELECT a.id FROM ledger_accounts a JOIN ledger_account_versions v "
                 "ON v.account_id=a.id AND v.version=a.current_version WHERE a.ledger_id=? "
-                "AND (v.code LIKE '1001%' OR v.code LIKE '1002%')",
-                (binding["ledger_id"],),
+                "AND (v.code LIKE ? OR v.code LIKE ?)",
+                (binding["ledger_id"], "1001%", "1002%"),
             )
         }
         cash_flow = self._cash_flow(conn, book, cash_ids)
@@ -419,25 +419,15 @@ class ReportService:
         return row
 
     def review(self, actor, report_id, request: ReportCommand):
-        row = self._current(actor, report_id)
-        if row["status"] != "validated":
-            raise AccountingError("只有核验通过的报表才能复核", 409)
-        if int(row["version"]) != request.expected_version:
-            raise AccountingError("报表版本已变化", 409)
-        if row["created_by"] == actor.user_id:
-            raise AccountingError("报表编制人与复核人必须分离", 403)
         with self.db.transaction(write=True, actor=actor) as conn:
-            self.accounting.access.book(conn, actor, row["book_id"], "review")
-            current = conn.execute(
-                "SELECT status,version,created_by FROM report_runs WHERE id=?", (report_id,)
-            ).fetchone()
-            if (
-                not current
-                or current["status"] != "validated"
-                or int(current["version"]) != request.expected_version
-                or current["created_by"] == actor.user_id
-            ):
-                raise AccountingError("报表状态或复核权限已变化", 409)
+            row = self._report(conn, actor, report_id, write=True)
+            self._current_in_transaction(conn, actor, report_id)
+            if row["status"] != "validated":
+                raise AccountingError("只有核验通过的报表才能复核", 409)
+            if int(row["version"]) != request.expected_version:
+                raise AccountingError("报表版本已变化", 409)
+            if row["created_by"] == actor.user_id:
+                raise AccountingError("报表编制人与复核人必须分离", 403)
             conn.execute(
                 "UPDATE report_runs SET status='reviewed',reviewed_by=?,reviewed_at=? WHERE id=?",
                 (actor.user_id, now(), report_id),
@@ -445,26 +435,15 @@ class ReportService:
             return self._view(conn, report_id)
 
     def publish(self, actor, report_id, request: ReportCommand):
-        row = self._current(actor, report_id)
-        if row["status"] == "published":
-            with self.db.transaction(actor=actor) as conn:
-                self.accounting.access.book(conn, actor, row["book_id"], "review")
-                return self._view(conn, report_id)
-        if row["status"] != "reviewed":
-            raise AccountingError("只有已复核的报表才能发布", 409)
-        if int(row["version"]) != request.expected_version:
-            raise AccountingError("报表版本已变化", 409)
         with self.db.transaction(write=True, actor=actor) as conn:
-            self.accounting.access.book(conn, actor, row["book_id"], "review")
-            current = conn.execute(
-                "SELECT status,version FROM report_runs WHERE id=?", (report_id,)
-            ).fetchone()
-            if (
-                not current
-                or current["status"] != "reviewed"
-                or int(current["version"]) != request.expected_version
-            ):
-                raise AccountingError("报表状态或复核权限已变化", 409)
+            row = self._report(conn, actor, report_id, write=True)
+            self._current_in_transaction(conn, actor, report_id)
+            if row["status"] == "published":
+                return self._view(conn, report_id)
+            if row["status"] != "reviewed":
+                raise AccountingError("只有已复核的报表才能发布", 409)
+            if int(row["version"]) != request.expected_version:
+                raise AccountingError("报表版本已变化", 409)
             lock = conn.execute(
                 "SELECT 1 FROM internal_period_locks WHERE book_id=? AND period=?",
                 (row["book_id"], row["period"]),

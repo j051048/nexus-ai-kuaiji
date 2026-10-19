@@ -65,11 +65,24 @@ class ImportWizardService:
             self._book(conn, actor, book_id)
         stored = self.uploads.peek(actor, upload_id, "bank_import", allow_consumed=True)
         data = self.storage.read(stored)
-        filename, media_type = validate_import_original(stored["filename"], stored["media_type"], data)
+        filename, media_type = validate_import_original(
+            stored["filename"], stored["media_type"], data
+        )
         table = parse_file(filename, data)
-        return self.uploads.consume(actor, upload_id, "bank_import", book_id,
-            lambda conn, metadata: self._record(actor, book_id, None,
-                {**metadata, "filename": filename, "media_type": media_type}, table, conn=conn))
+        return self.uploads.consume(
+            actor,
+            upload_id,
+            "bank_import",
+            book_id,
+            lambda conn, metadata: self._record(
+                actor,
+                book_id,
+                None,
+                {**metadata, "filename": filename, "media_type": media_type},
+                table,
+                conn=conn,
+            ),
+        )
 
     def _record(self, actor, book_id, company_id, metadata, table, conn=None):
         if conn is None:

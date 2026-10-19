@@ -8,7 +8,12 @@ BINDINGS = {
     "intake_attachment": ("intake_draft", "intake_drafts", "intake_attachments", "intake_id"),
     "event_attachment": ("business_event", "business_events", "business_attachments", "event_id"),
     "case_attachment": ("case_task", "case_tasks", "case_attachments", "case_id"),
-    "material_attachment": ("material_request", "material_requests", "material_attachments", "request_id"),
+    "material_attachment": (
+        "material_request",
+        "material_requests",
+        "material_attachments",
+        "request_id",
+    ),
     "bank_import": ("book", "books", "bank_import_files", "book_id"),
     "invoice_import": ("book", "books", "invoice_import_batches", "book_id"),
 }
@@ -51,9 +56,17 @@ def reference(conn, actor, intent, target_id):
         "target_id": target_id,
         "attachment_table": table,
         "attachment_id": item["id"],
-        "event_id": target_id if purpose == "event_attachment" else target.get("event_id") if purpose == "case_attachment" else None,
+        "event_id": target_id
+        if purpose == "event_attachment"
+        else target.get("event_id")
+        if purpose == "case_attachment"
+        else None,
         "source_id": target.get("source_id") if purpose == "case_attachment" else None,
-        "book_id": target_id if kind == "book" else target.get("book_id") if purpose in {"case_attachment", "material_attachment"} else None,
+        "book_id": target_id
+        if kind == "book"
+        else target.get("book_id")
+        if purpose in {"case_attachment", "material_attachment"}
+        else None,
         "response_id": item.get("response_id") if purpose == "case_attachment" else None,
         "storage": {key: intent[key] for key in ("storage_key", "sha256", "size_bytes")},
     }
