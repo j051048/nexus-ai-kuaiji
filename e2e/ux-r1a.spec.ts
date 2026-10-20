@@ -24,10 +24,16 @@ test('R1A 导航唯一高亮、菜单目标与能力过滤', async ({ page }) =>
 });
 
 test('R1A 负责人根入口落到全所概览，显式深链接不被吞掉', async ({ page }) => {
-  await page.goto('/workspace/home', { waitUntil: 'domcontentloaded' });
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
   await choosePersona(page, 'accountant');
   await expect(page).toHaveURL(/\/workspace\/firm/);
   await expect(page.getByRole('heading', { name: '事务所运营驾驶舱' })).toBeVisible({
+    timeout: 30_000,
+  });
+
+  await page.goto('/workspace/home', { waitUntil: 'domcontentloaded' });
+  await expect(page).toHaveURL(/\/workspace\/home/);
+  await expect(page.getByRole('heading', { name: '会计工作台' })).toBeVisible({
     timeout: 30_000,
   });
 

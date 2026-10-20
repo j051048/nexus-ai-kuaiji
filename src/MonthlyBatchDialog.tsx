@@ -86,6 +86,32 @@ export function MonthlyBatchDialog({
     }
   }
 
+  async function retryFailed() {
+    if (!batch || busy) return;
+    setBusy(true);
+    setError('');
+    try {
+      const value = await api<BatchOperation>(
+        `/firm/batch-operations/${encodeURIComponent(batch.id)}/retry`,
+        session,
+        {
+          method: 'POST',
+          body: {
+            idempotency_key: crypto.randomUUID(),
+            reason: '只重试失败的客户开期',
+          },
+        },
+      );
+      setBatch(value);
+      if (['queued', 'running'].includes(value.status)) void poll(value.id);
+      else onOpened();
+    } catch (failure) {
+      setError(errorMessage(failure));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function run() {
     if (reason.trim().length < 3) {
       setError('请填写至少 3 个字的操作依据。');
@@ -184,6 +210,17 @@ export function MonthlyBatchDialog({
             </p>
           )}
           <div className="batch-actions">
+            {batch.failed > 0 && (
+              <button
+                className="button secondary"
+                type="button"
+                disabled={busy || ['queued', 'running'].includes(batch.status)}
+                onClick={() => void retryFailed()}
+              >
+                <RefreshCw size={14} />
+                只重试失败项
+              </button>
+            )}
             <button
               className="button secondary"
               type="button"

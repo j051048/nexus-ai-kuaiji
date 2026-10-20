@@ -15,7 +15,7 @@ class FakeProvider:
     settings = AISettings(base_url="https://supplier.example.test/v1", api_key="never-exposed-key", vision_model="vision-test", journal_model="journal-test")
     def __init__(self):
         self.extractions = 0
-    def extract_invoice(self, pages):
+    def extract_invoice(self, pages, **kwargs):
         self.extractions += 1
         assert len(pages) == 1 and pages[0].image_data_url.startswith("data:image/")
         return ProviderResult(

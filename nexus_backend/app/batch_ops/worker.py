@@ -34,7 +34,7 @@ class BatchWorker:
             self.service.finish(
                 item,
                 "failed",
-                error_code=error.code,
+                error_code=getattr(error, "code", "company_blocked"),
                 error_detail=str(error),
             )
         except Exception:

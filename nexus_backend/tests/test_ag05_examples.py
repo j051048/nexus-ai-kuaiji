@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 from tools.ai_inference_lab.examples import (
@@ -74,8 +76,8 @@ def test_e07_duplicate_results_do_not_change_denominator():
 
 
 def test_e08_missing_unknown_and_all_abstain_keep_denominator():
-    baseline = [{"amount_correct": True}, {"amount_correct": False}]
-    candidate = [{"unknown": True}, {"missing": True}]
+    baseline = [{"sample_id": "a", "amount_correct": True}, {"sample_id": "b", "amount_correct": False}]
+    candidate = [{"sample_id": "a", "unknown": True}, {"sample_id": "b", "missing": True}]
     result = evaluate(baseline, candidate)
     assert result["denominator"] == 2
     assert result["unknown"] == 1 and result["missing"] == 1
@@ -83,14 +85,135 @@ def test_e08_missing_unknown_and_all_abstain_keep_denominator():
 
 
 def test_e09_critical_error_increase_is_regression_even_if_average_improves():
-    baseline = [{"amount_correct": False}, {"amount_correct": False}, {"amount_correct": False}]
-    candidate = [{"amount_correct": True}, {"amount_correct": True}, {"cross_company": True}]
+    baseline = [{"sample_id": "a", "amount_correct": False}, {"sample_id": "b", "amount_correct": False}, {"sample_id": "c", "amount_correct": False}]
+    candidate = [{"sample_id": "a", "amount_correct": True}, {"sample_id": "b", "amount_correct": True}, {"sample_id": "c", "cross_company": True}]
     result = evaluate(baseline, candidate)
     assert result["candidate"]["average"] > result["baseline"]["average"]
     assert result["regression"] is True
 
 
-def test_e10_manifest_change_invalidates_comparison():
+def test_r2_manifest_cannot_exempt_identity_fields():
+    base = {"dataset_id": "d1", "policy_version": "p1", "prompt_version": "p1",
+            "context_version": "c1", "split": "test", "sample_ids": ["a"]}
+    with pytest.raises(RetrievalError, match="差异"):
+        validate_manifest(base, {**base, "dataset_id": "d2"}, allowed_differences={"dataset_id"})
     with pytest.raises(RetrievalError, match="不一致"):
-        validate_manifest({"policy_version": "p1", "prompt_version": "p1", "context_version": "c1", "split": "test"},
-                          {"policy_version": "p2", "prompt_version": "p1", "context_version": "c1", "split": "test"})
+        validate_manifest(base, {**base, "prompt_version": "p2"})
+    validate_manifest(base, {**base, "prompt_version": "p2"}, allowed_differences={"prompt_version"})
+
+
+def test_r1_manifest_requires_identity_even_when_both_sides_empty():
+    with pytest.raises(RetrievalError, match="缺少|为空"):
+        validate_manifest({}, {})
+
+
+def test_r1_evaluation_uses_sample_identity_not_array_order():
+    from tools.ai_inference_lab.examples import evaluate_samples
+    baseline = [{"sample_id": "a", "amount_correct": True}, {"sample_id": "b", "amount_correct": False}]
+    with pytest.raises(RetrievalError, match="身份"):
+        evaluate_samples(baseline, [{"sample_id": "c", "amount_correct": True}, {"sample_id": "b", "amount_correct": True}])
+    reordered = [{"sample_id": "b", "amount_correct": True}, {"sample_id": "a", "amount_correct": True}]
+    assert evaluate_samples(baseline, reordered)["result"] == "improvement"
+
+
+def test_r1_critical_regression_beats_average_improvement():
+    from tools.ai_inference_lab.examples import evaluate_samples
+    baseline = [{"sample_id": str(i), "amount_correct": False} for i in range(3)]
+    candidate = [
+        {"sample_id": "0", "amount_correct": True},
+        {"sample_id": "1", "amount_correct": True},
+        {"sample_id": "2", "cross_company": True},
+    ]
+    result = evaluate_samples(baseline, candidate)
+    assert result["result"] == "regression"
+
+
+def test_r1_current_fact_120_cannot_be_replaced_by_history_100():
+    from tools.ai_inference_lab.answers import AnswerError, Claim, EvidenceFact, Suggestion, validate_suggestion
+    from tools.ai_inference_lab.examples import retrieve
+
+    history = example(amount="100.00")
+    assert retrieve(query(), [history])[0].amount == "100.00"
+    current = EvidenceFact("gross_amount", "120.00", "c1", "b1", 1, "CNY", "current")
+    fake = Claim("gross_amount", "100.00", "source_fact", "c1", "b1", 1, currency="CNY", evidence_ids=("current",))
+    with pytest.raises(AnswerError):
+        validate_suggestion(
+            Suggestion("suggestion_ready", lines=[{"account_code": "6602"}], claims=[fake]),
+            company_id="c1", book_id="b1", fact_version=1, evidence=[current],
+        )
+
+
+def test_r4_frozen_denominator_keeps_missing_and_unknown():
+    from tools.ai_inference_lab.examples import evaluate_samples
+    result = evaluate_samples(
+        [{"sample_id": "a", "amount_correct": True}],
+        [{"sample_id": "a", "amount_correct": True}],
+        required_ids={"a", "b", "c"},
+    )
+    assert result["denominator"] == 3
+    assert result["missing"] == ["b", "c"]
+    assert result["absolute_safety_failed"] is True
+    assert result["result"] == "regression"
+
+
+def test_r4_unknown_self_report_does_not_count_correct():
+    from tools.ai_inference_lab.examples import evaluate_samples
+    result = evaluate_samples(
+        [{"sample_id": "a", "amount_correct": False}],
+        [{"sample_id": "a", "amount_correct": True, "unknown": True}],
+        required_ids={"a"},
+    )
+    assert result["candidate_correct"] == 0
+    assert result["absolute_safety_failed"] is True
+
+
+def test_r5_risk_false_positive_and_false_negative_are_separate():
+    from tools.ai_inference_lab.examples import evaluate_samples
+    result = evaluate_samples(
+        [{"sample_id": "risk", "risk": True, "risk_escalated": True},
+         {"sample_id": "normal", "risk": False, "risk_escalated": False}],
+        [{"sample_id": "risk", "risk": True, "risk_escalated": False},
+         {"sample_id": "normal", "risk": False, "risk_escalated": True}],
+        required_ids={"risk", "normal"},
+    )
+    assert result["risk"]["false_negatives"] == ["risk"]
+    assert result["risk"]["false_positives"] == ["normal"]
+
+
+def test_r5_h01_result_level_identity_reuses_replay_validator():
+    from tools.ai_inference_lab.examples import h01_validate_result
+    fixture = Path(__file__).resolve().parent / "fixtures" / "ocr_replay" / "manifest.json"
+    assert fixture.exists()
+    with pytest.raises(RetrievalError) as invalid:
+        h01_validate_result(fixture, "A1", {})
+    assert invalid.value.code in {"RESULT_SHAPE", "RESULT_SCHEMA"}
+    with pytest.raises(RetrievalError) as missing:
+        h01_validate_result(fixture, "missing", {})
+    assert missing.value.code == "h01_sample_unknown"
+
+
+def test_r3_h01_manifest_adapter_reuses_frozen_identity():
+    from pathlib import Path
+
+    from tools.ai_inference_lab.examples import h01_manifest_identity
+
+    fixture = Path(__file__).resolve().parent / "fixtures" / "ocr_replay" / "manifest.json"
+    assert fixture.exists()
+    identity = h01_manifest_identity(fixture)
+    assert identity["dataset_id"] and len(identity["sample_ids"]) > 0
+    assert set(identity["sample_ids"]) == set(identity["companies"])
+
+    from tools.ai_inference_lab.examples import evaluate_samples, evaluation_report
+    baseline = [{"sample_id": "a", "amount_correct": True}, {"sample_id": "b", "amount_correct": False}]
+    candidate = [{"sample_id": "a", "amount_correct": True}, {"sample_id": "b", "cross_company": True}]
+    report = evaluation_report(evaluate_samples(baseline, candidate))
+    assert '"sample_id": "b"' in report["json"]
+    assert "关键退步" in report["markdown"]
+    assert "b" in report["markdown"]
+
+
+def test_e10_manifest_change_invalidates_comparison():
+    base = {"dataset_id": "d1", "policy_version": "p1", "prompt_version": "p1",
+            "context_version": "c1", "split": "test", "sample_ids": ["a"]}
+    with pytest.raises(RetrievalError, match="不一致"):
+        validate_manifest(base, {**base, "policy_version": "p2"})

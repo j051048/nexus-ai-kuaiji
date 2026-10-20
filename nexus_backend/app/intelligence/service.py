@@ -199,6 +199,16 @@ class IntelligenceService:
         if enabled and not self._enabled(conn, actor, event):
             raise AccountingError("企业尚未启用票据与模型处理，请联系管理员", 403)
 
+    @staticmethod
+    def _limits(evidence):
+        from .provider import ExecutionLimits
+
+        return ExecutionLimits(
+            context_tokens=int(evidence.get("context_limit", 128_000)),
+            output_tokens=int(evidence.get("output_limit", 4096)),
+            timeout_seconds=float(evidence.get("timeout_seconds", 45)),
+        )
+
     def _policy_check(self, conn, actor, company_id, scenario, data_categories):
         from .endpoints import AIEndpointPolicyService
 
@@ -435,6 +445,7 @@ class IntelligenceService:
             return self._public_run(run)
         error, result, pages, cache_hit = None, None, [], False
         processing_deadline = time.monotonic() + 150
+        send_limits = None
         budget, attempted = self._meter().context(actor, run), False
         try:
             data = self.storage.read(attachment)
@@ -516,6 +527,7 @@ class IntelligenceService:
                                 pages,
                                 authorization_check=reauthorize,
                                 processing_deadline=processing_deadline,
+                                limits=send_limits,
                             )
                             if engine_enabled(self.provider.settings)
                             else self.provider.extract_invoice(pages)
@@ -1316,6 +1328,7 @@ class IntelligenceService:
         if not execute:
             return self._public_run(run)
         result, error = None, None
+        journal_limits = None
         budget, attempted = self._meter().context(actor, run), False
         try:
             with self.db.transaction(write=True, actor=actor) as conn:
@@ -1327,6 +1340,8 @@ class IntelligenceService:
                 if execution:
                     execution.inputs(current[0], current[1])
                     execution.before_send(conn)
+                # The journal path's policy was rechecked in _proposal_context;
+                # keep its established template/no-model branch unchanged.
                 budget.before_send(conn)
             attempted = True
             try:
@@ -1336,7 +1351,7 @@ class IntelligenceService:
                 from ..concurrency.provider import provider_scope
 
                 with provider_scope(self.db, actor, run["company_id"]):
-                    result = self.provider.suggest_journal(context)
+                    result = self.provider.suggest_journal(context, limits=journal_limits)
             finally:
                 after_model = getattr(execution, "after_model", None)
                 if callable(after_model):

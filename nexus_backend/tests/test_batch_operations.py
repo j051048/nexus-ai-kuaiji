@@ -5,6 +5,38 @@ from test_monthly_batch import monthly_batch
 from test_business import business
 
 
+def test_monthly_open_partial_failure_retries_only_failed_item(monthly_batch):
+    c = monthly_batch
+    service = BatchOperationsService(c.db, c.monthly_batch)
+    created = service.create_monthly_open(
+        c.manager,
+        CreateMonthlyOpenBatch(
+            period="2026-11",
+            scope="awaiting",
+            reason="部分失败回归",
+            idempotency_key="batch-monthly-partial-0001",
+        ),
+    )
+    calls = {"count": 0}
+    def execute(item):
+        calls["count"] += 1
+        if calls["count"] == 1:
+            return {"status": "created", "book_id": "synthetic-book"}
+        from app.accounting.domain import AccountingError
+        raise AccountingError("合成第二户被阻断", 409)
+    service.execute = execute
+    worker = BatchWorker(service, worker_id="batch-partial")
+    assert worker.run_once() and worker.run_once()
+    finished = service.get(c.manager, created["id"])
+    assert finished["succeeded"] == 1
+    assert finished["failed"] == 1
+    assert finished["progress"]["completed"] == 2
+    assert sorted(item["status"] for item in finished["items"]) == ["failed", "succeeded"]
+    retry = service.retry(c.manager, created["id"])
+    assert retry["failed"] == 1
+    assert sum(1 for item in retry["items"] if item["status"] == "queued") == 1
+
+
 def test_monthly_open_batch_is_durable_idempotent_and_retryable(monthly_batch):
     c = monthly_batch
     service = BatchOperationsService(c.db, c.monthly_batch)

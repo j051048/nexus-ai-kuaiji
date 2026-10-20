@@ -254,13 +254,14 @@ class AssistantWorker:
             return None
         context = self.meter.context(self._actor(turn), turn)
         attempted, result, error = False, None, None
+        chat_limits = None
         try:
             if not self.provider.available:
                 raise ProviderError("unavailable", "会计对话模型尚未配置，未发送任何资料")
             with self.db.transaction(write=True, actor=self._actor(turn)) as conn:
                 snapshot = self._check(conn, turn)
                 chat = effective_settings(self.provider.settings, "chat")
-                AIEndpointPolicyService(self.db).check_send(
+                evidence = AIEndpointPolicyService(self.db).check_send(
                     conn,
                     self._actor(turn),
                     turn["company_id"],
@@ -269,6 +270,13 @@ class AssistantWorker:
                     chat.base_url,
                     chat.model,
                     bool(chat.api_key),
+                )
+                from app.intelligence.provider import ExecutionLimits
+
+                chat_limits = ExecutionLimits(
+                    context_tokens=int(evidence.get("context_limit", 128_000)),
+                    output_tokens=int(evidence.get("output_limit", 4096)),
+                    timeout_seconds=float(evidence.get("timeout_seconds", 45)),
                 )
                 context.before_send(conn)
                 if self.db.is_postgres:
@@ -290,7 +298,10 @@ class AssistantWorker:
 
             with provider_scope(self.db, self._actor(turn), turn["company_id"]):
                 result = self.provider.reply(
-                    snapshot, turn["question"], json.loads(turn["history_json"])
+                    snapshot,
+                    turn["question"],
+                    json.loads(turn["history_json"]),
+                    limits=chat_limits,
                 )
             reply = (
                 result.data

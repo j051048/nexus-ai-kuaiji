@@ -230,6 +230,24 @@ def test_explicit_zero_and_partial_zero_usage_are_known(usage):
     assert result.usage is not None and result.usage.total_tokens == usage["total_tokens"]
 
 
+@pytest.mark.parametrize("total,accepted", [
+    (10_000_000, True),
+    (10_000_001, False),
+    (100_000_000, False),
+    (100_000_001, False),
+])
+def test_usage_upper_bound_matches_billing_contract(total, accepted):
+    usage = {"prompt_tokens": total, "completion_tokens": 0, "total_tokens": total}
+    if accepted:
+        result = provider(lambda _: httpx.Response(200, json=envelope(usage=usage))).extract_invoice([page()])
+        assert result.usage.total_tokens == total
+    else:
+        with pytest.raises(ProviderError) as caught:
+            provider(lambda _: httpx.Response(200, json=envelope(usage=usage))).extract_invoice([page()])
+        assert caught.value.code == "schema_invalid"
+        assert caught.value.usage is None
+
+
 def test_implausibly_large_usage_is_rejected_not_billed_as_known():
     usage = {"prompt_tokens": 100_000_001, "completion_tokens": 0, "total_tokens": 100_000_001}
     with pytest.raises(ProviderError) as caught:

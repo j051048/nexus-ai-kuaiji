@@ -336,6 +336,7 @@ export function WorkspaceRouteContent({
           paused={navigationLocked}
           onOpen={openWorkspaceTask}
           onNew={openNewIntake}
+          onCompanyChange={setWorkCompany}
           onAccounting={() => navigate('accounting')}
           onReview={() => navigate('review')}
           onBriefing={(target) => {

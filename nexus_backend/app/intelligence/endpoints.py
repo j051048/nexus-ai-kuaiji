@@ -321,7 +321,14 @@ class AIEndpointPolicyService:
                     "生产环境未配置企业 AI 外发政策，已阻断该调用；请由管理员完成端点与数据授权后再启用",
                     403,
                 )
-            return {"managed": False, "legacy": True, "policy_version": 0}
+            return {
+                "managed": False,
+                "legacy": True,
+                "policy_version": 0,
+                "context_limit": 128_000,
+                "output_limit": 4096,
+                "timeout_seconds": 45,
+            }
         if scenario not in policy["allowed_scenarios"]:
             raise AccountingError("企业未授权该 AI 场景外发", 403)
         if not set(data_categories).issubset(set(policy["allowed_data_categories"])):
@@ -331,7 +338,8 @@ class AIEndpointPolicyService:
         for endpoint_id in policy["allowed_endpoint_ids"]:
             endpoint = conn.execute(
                 "SELECT e.*,c.scenario,c.model AS capability_model,c.response_format,c.auth_mode,"
-                "c.data_location,c.active AS capability_active FROM ai_trusted_endpoints e "
+                "c.data_location,c.context_limit,c.output_limit,c.timeout_seconds,"
+                "c.active AS capability_active FROM ai_trusted_endpoints e "
                 "JOIN ai_endpoint_capabilities c ON c.endpoint_id=e.id "
                 "WHERE e.id=? AND e.active=1 AND c.scenario=? AND c.active=1",
                 (endpoint_id, scenario),
@@ -363,6 +371,9 @@ class AIEndpointPolicyService:
             "service_identity": endpoint["service_identity"],
             "auth_mode": endpoint["auth_mode"],
             "data_location": endpoint["data_location"],
+            "context_limit": endpoint["context_limit"],
+            "output_limit": endpoint["output_limit"],
+            "timeout_seconds": endpoint["timeout_seconds"],
         }
 
     @staticmethod

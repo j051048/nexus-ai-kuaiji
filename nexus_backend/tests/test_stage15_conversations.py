@@ -33,7 +33,7 @@ class SyntheticChatProvider:
     def configuration_fingerprint(self):
         return fingerprint({"synthetic": self.config_revision})
 
-    def reply(self, context, question, history):
+    def reply(self, context, question, history, **kwargs):
         self.calls += 1; self.contexts.append((context, question, history))
         if self.hook:
             self.hook()

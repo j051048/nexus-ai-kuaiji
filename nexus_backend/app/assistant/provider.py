@@ -3,7 +3,7 @@
 import hashlib
 import json
 
-from ..intelligence.provider import ProviderError, effective_settings
+from ..intelligence.provider import ExecutionLimits, ProviderError, effective_settings
 
 PROMPT_VERSION = "accounting-assistant-v1"
 
@@ -31,7 +31,7 @@ class AssistantProvider:
             ).encode()
         ).hexdigest()
 
-    def reply(self, context, question, history):
+    def reply(self, context, question, history, *, limits: ExecutionLimits | None = None):
         from .models import AssistantReply
 
         if not self.available:
@@ -75,4 +75,5 @@ class AssistantProvider:
                 ensure_ascii=False,
                 allow_nan=False,
             ),
+            limits=limits,
         )

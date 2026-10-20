@@ -42,9 +42,12 @@ jobs:
       - run: python scripts/env_doctor.py
       - run: python -m ruff check nexus_backend/app services/api_gateway services/paddle_ocr scripts
       - run: python -m ruff format --check nexus_backend/app services/api_gateway services/paddle_ocr scripts
+      - run: python scripts/check_migration_idempotency.py
       - run: python scripts/migrate_accounting.py migrate
+      - run: python scripts/migrate_accounting.py status --strict
       - run: python scripts/migrate_accounting.py provision-login --username accounting_ci
       - run: python scripts/migrate_accounting.py provision-worker-login --username accounting_ci_worker
+      - run: python scripts/check_pg_test_target.py
       - run: npm test
       - run: npm run build
       - run: python -m pytest nexus_backend/tests -q

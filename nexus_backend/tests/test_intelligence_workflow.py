@@ -14,11 +14,18 @@ from app.accounting.service import AccountingService
 from app.business.models import BusinessEventCreate, BusinessEventUpdate, HandoffRequest
 from app.business.service import BusinessService
 from app.business.storage import AttachmentStore
-from app.intelligence.models import InvoiceExtraction, JournalSuggestion, ProviderResult
+from app.intelligence.models import InvoiceExtraction, JournalSuggestion, ProviderResult, ProviderUsage
 from app.intelligence.provider import AISettings, EXTRACTION_PROMPT_VERSION, JOURNAL_PROMPT_VERSION, ProviderError
 from app.intelligence.requests import BankLinkRequest, OCRRequest, ProposalRequest
 from app.intelligence.service import IntelligenceService
 from app.main import create_app
+from app.closing.models import CloseRequest, PreflightRequest, SnapshotReview
+from app.closing.service import ClosingService
+from app.delivery.models import ReceiptCreate
+from app.delivery.service import DeliveryService
+from app.operations.pricing import Pricing, Rate
+from uuid import uuid4
+import json
 
 
 def invoice_document(amount="0.30", net_amount="0.30", tax_amount="0.00", **changes):
@@ -47,8 +54,9 @@ class FakeProvider:
         self.proposal_hook = None
         self.proposal_mutator = None
         self.contexts = []
+        self.usage = None
 
-    def extract_invoice(self, pages):
+    def extract_invoice(self, pages, **kwargs):
         self.extract_calls += 1
         assert pages and pages[0].image_data_url.startswith("data:image/")
         if not self.settings.extraction_available:
@@ -58,9 +66,9 @@ class FakeProvider:
         if self.failure:
             raise self.failure
         output = InvoiceExtraction.model_validate({"documents": [self.document]})
-        return ProviderResult(output, "synthetic-test-provider", self.settings.vision_model, EXTRACTION_PROMPT_VERSION, None)
+        return ProviderResult(output, "synthetic-test-provider", self.settings.vision_model, EXTRACTION_PROMPT_VERSION, self.usage)
 
-    def suggest_journal(self, context):
+    def suggest_journal(self, context, **kwargs):
         self.proposal_calls += 1
         self.contexts.append(context)
         if not self.settings.suggestion_available:
@@ -82,7 +90,7 @@ class FakeProvider:
         if self.proposal_mutator:
             self.proposal_mutator(output)
         validated = JournalSuggestion.model_validate(output)
-        return ProviderResult(validated, "synthetic-test-provider", self.settings.journal_model, JOURNAL_PROMPT_VERSION, None)
+        return ProviderResult(validated, "synthetic-test-provider", self.settings.journal_model, JOURNAL_PROMPT_VERSION, self.usage)
 
 
 @pytest.fixture
@@ -298,6 +306,66 @@ def test_positive_ocr_proposal_apply_independent_review_and_export_is_exact_and_
     assert not frozen["process"] and not frozen["apply_proposal"] and not frozen["resolve"]
 
 
+def test_same_customer_invoice_export_delivery_and_close(ai_case):
+    ai_case.provider.usage = ProviderUsage(prompt_tokens=3, completion_tokens=4, total_tokens=7)
+    ai_case.intelligence._meter().pricing = Pricing(
+        ocr=Rate("1.000000", "2.000000"),
+        proposal=Rate("1.000000", "2.000000"),
+    )
+    event = create_event(ai_case)
+    extract(ai_case, event)
+    receipt = handoff(ai_case, event)
+    draft = next(
+        row
+        for row in ai_case.ledger.get_book(ai_case.actors["accountant"], ai_case.book["id"])["drafts"]
+        if row["id"] == receipt["draft_id"]
+    )
+    proposal = propose(ai_case, draft["id"])
+    ai_case.intelligence.apply(ai_case.actors["accountant"], proposal["id"], 1)
+    approved = ai_case.ledger.approve(
+        ai_case.actors["accountant"],
+        ai_case.book["id"],
+        draft["id"],
+        ApprovalRequest(expected_version=2),
+    )
+    export = ai_case.ledger.export(
+        ai_case.actors["accountant"],
+        ai_case.book["id"],
+        ExportRequest(draft_ids=[draft["id"]], idempotency_key="same-customer-export"),
+    )
+    delivery = DeliveryService(ai_case.db)
+    body = json.loads(delivery.template(
+        ai_case.actors["accountant"], ai_case.book["id"], export["id"]
+    ))
+    for item in body["items"]:
+        item.update(status="accepted", external_voucher_id="客户凭证-001")
+    created = delivery.create_receipt(
+        ai_case.actors["accountant"],
+        ai_case.book["id"],
+        export["id"],
+        ReceiptCreate(**body, idempotency_key=uuid4().hex, reason="同一客户合成回执"),
+    )
+    assert created["summary"]["verified"] == 1
+    closing = ClosingService(ai_case.db)
+    snapshot = closing.preflight(
+        ai_case.actors["accountant"],
+        ai_case.book["id"],
+        PreflightRequest(idempotency_key=uuid4().hex),
+    )
+    assert snapshot["report"]["passed"], snapshot["report"]["counts"]
+    closing.review(
+        ai_case.actors["accountant"],
+        ai_case.book["id"],
+        snapshot["id"],
+        SnapshotReview(reason="同一客户回执与导出已核对", materials_confirmed=True),
+    )
+    request = CloseRequest(snapshot_id=snapshot["id"], reason="同一客户合成月结")
+    closed = closing.close(ai_case.actors["accountant"], ai_case.book["id"], request)
+    assert closed["status"] == "closed"
+    assert closing.close(ai_case.actors["accountant"], ai_case.book["id"], request)["replayed"]
+    assert approved["status"] == "approved"
+
+
 @pytest.mark.parametrize("fault", ["account", "balance", "unpaid_bank", "missing_refs", "wrong_ref_page"])
 def test_invalid_model_journal_never_changes_the_existing_draft(ai_case, fault):
     event = create_event(ai_case)
@@ -483,6 +551,85 @@ def test_http_end_to_end_synthetic_ocr_apply_review_export_and_private_original(
     original = client.get(f"/api/business/attachments/{event['attachments'][0]['id']}/content", headers=accountant)
     assert original.status_code == 200 and original.headers["content-type"] == "image/png"
     assert client.provider.extract_calls == 1 and client.provider.proposal_calls == 1
+
+
+def test_http_same_customer_export_receipt_reaches_close_gate(ai_client):
+    client = ai_client
+    client.provider.usage = ProviderUsage(prompt_tokens=3, completion_tokens=4, total_tokens=7)
+    client.app.state.intelligence._meter().pricing = Pricing(
+        ocr=Rate("1.000000", "2.000000"),
+        proposal=Rate("1.000000", "2.000000"),
+    )
+    employee, department, finance, accountant = [
+        http_auth(client, role) for role in ("employee", "department", "finance", "accountant")
+    ]
+    event, company = http_create(client, employee)
+    client.provider.document = invoice_document(buyer_name=company["name"], buyer_tax_id=None)
+    assert client.put(
+        f"/api/companies/{company['id']}/intelligence/settings",
+        headers=accountant,
+        json={"enabled": True},
+    ).status_code == 200
+    ocr = client.post(
+        f"/api/business/events/{event['id']}/ocr",
+        headers=employee,
+        json={"attachment_id": event["attachments"][0]["id"], "expected_version": event["version"], "idempotency_key": "http-close-ocr"},
+    )
+    assert ocr.status_code == 200 and ocr.json()["status"] == "succeeded", ocr.text
+    receipt, book = http_handoff(client, event, employee, department, finance)
+    proposal = client.post(
+        f"/api/books/{book['id']}/drafts/{receipt['draft_id']}/ai-proposals",
+        headers=accountant,
+        json={"expected_version": 1, "idempotency_key": "http-close-proposal"},
+    )
+    assert proposal.status_code == 200 and proposal.json()["status"] == "succeeded", proposal.text
+    applied = client.post(
+        f"/api/intelligence/proposals/{proposal.json()['id']}/apply",
+        headers=accountant,
+        json={"expected_version": 1},
+    )
+    assert applied.status_code == 200 and applied.json()["version"] == 2, applied.text
+    reviewed = client.post(
+        f"/api/books/{book['id']}/drafts/{receipt['draft_id']}/approve",
+        headers=accountant,
+        json={"expected_version": 2},
+    )
+    assert reviewed.status_code == 200, reviewed.text
+    export = client.post(
+        f"/api/books/{book['id']}/exports",
+        headers=accountant,
+        json={"draft_ids": [receipt["draft_id"]], "idempotency_key": "http-close-export"},
+    )
+    assert export.status_code == 200, export.text
+    template = client.get(
+        f"/api/books/{book['id']}/delivery/exports/{export.json()['id']}/template",
+        headers=accountant,
+        params={"format": "json"},
+    )
+    assert template.status_code == 200, template.text
+    body = template.json()
+    for item in body["items"]:
+        item.update(status="accepted", external_voucher_id="客户凭证-HTTP-001")
+    imported = client.post(
+        f"/api/books/{book['id']}/delivery/exports/{export.json()['id']}/receipts",
+        headers=accountant,
+        json={**body, "idempotency_key": "http-close-receipt", "reason": "HTTP合成回执"},
+    )
+    assert imported.status_code == 201 and imported.json()["summary"]["verified"] == 1, imported.text
+    preflight = client.post(
+        f"/api/books/{book['id']}/closing/preflights",
+        headers=accountant,
+        json={"idempotency_key": "http-close-preflight"},
+    )
+    assert preflight.status_code == 201, preflight.text
+    snapshot = preflight.json()
+    # The HTTP fixture uses the seeded demo company, so unrelated seed books
+    # leave explicit blockers. The clean same-customer close is covered by the
+    # service-level test above; this test proves the HTTP close gate is visible.
+    assert snapshot["report"]["passed"] is False
+    assert {"background_pending", "unmatched_bank", "unreviewed"} <= set(
+        snapshot["report"]["counts"]
+    )
 
 
 def test_http_scope_settings_and_unlink_reason_require_json_body(ai_client):

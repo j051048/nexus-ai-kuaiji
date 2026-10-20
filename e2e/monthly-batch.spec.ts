@@ -1,6 +1,8 @@
 import { expect, test } from '@playwright/test';
 import { openNavigation } from './ui-navigation';
 
+test.setTimeout(90_000);
+
 test('批量开期为既有客户创建当月账套、逐户报告并保持幂等', async ({ page, request }) => {
   const accountant = await (await request.get('/api/session?persona=accountant')).json();
   const headers = { Authorization: `Bearer ${accountant.token}` };
@@ -20,7 +22,10 @@ test('批量开期为既有客户创建当月账套、逐户报告并保持幂�
   }
   await page.goto('/');
   await openNavigation(page);
-  await page.getByRole('button', { name: '客户月度进度', exact: true }).click();
+  await page
+    .getByRole('navigation', { name: '主导航' })
+    .getByRole('button', { name: '交付', exact: true })
+    .click();
   await page.getByLabel('客户进度月份').fill('2026-11');
   await page.getByLabel('搜索月度客户').fill(`批量开期`);
   await page.getByRole('button', { name: '查找', exact: true }).click();

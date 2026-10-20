@@ -73,7 +73,7 @@ const defaultViews: Record<PresentationRole, string> = {
 };
 
 export function roleHome(role: PresentationRole) {
-  return { ...labels[role], surface: workSurface(role), defaultView: defaultViews[role] };
+  return { ...labels[role], defaultView: defaultViews[role] };
 }
 
 function rolePrimaryNav(role: PresentationRole): PresentationNavItem[] {
@@ -174,6 +174,30 @@ export function clientPortalTabs(profile: WorkspaceProfile): ClientPortalTab[] {
   if (role === 'employee') return ['home', 'submit', 'materials', 'messages'];
   if (role === 'approver') return ['home', 'submit', 'materials', 'messages'];
   return ['home', 'submit', 'materials', 'messages', 'briefing'];
+}
+
+export type BriefingTarget = NonNullable<WorkspaceProfile['briefings']>[number];
+
+/**
+ * Never select by array position. A report is usable only when the current
+ * company/period is known and exactly one book matches (or the book is known).
+ */
+export function selectBriefing(
+  briefings: BriefingTarget[] | undefined,
+  scope: { companyId?: string; bookId?: string; period?: string },
+): BriefingTarget | undefined {
+  const rows = briefings ?? [];
+  const companyId = scope.companyId ?? '';
+  const period = scope.period ?? '';
+  const bookId = scope.bookId ?? '';
+  if (!companyId && !period && !bookId) return undefined;
+  const candidates = rows.filter(
+    (item) =>
+      (!companyId || item.company_id === companyId) &&
+      (!period || item.period === period) &&
+      (!bookId || item.book_id === bookId),
+  );
+  return candidates.length === 1 ? candidates[0] : undefined;
 }
 
 export function contextMode(profile: WorkspaceProfile | null) {

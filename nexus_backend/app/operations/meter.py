@@ -237,14 +237,14 @@ class MeterContext:
             "context_invalid",
             "context_too_large",
         }
+        # retryable is a caller policy hint, not proof that the supplier did not
+        # receive/charge the request. Only explicit local-before-send evidence
+        # may release a reservation.
         safe = (
             not attempted
             or getattr(error, "llm_attempted", None) is False
             or error is not None
-            and (
-                getattr(error, "code", None) in local_rejections
-                or getattr(error, "retryable", False)
-            )
+            and getattr(error, "code", None) in local_rejections
         )
         # Cost facts may be recorded after accounting permission is revoked.
         # Only this request's opaque token can settle; no original data is read.

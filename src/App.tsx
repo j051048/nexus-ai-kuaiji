@@ -36,6 +36,7 @@ import {
   presentationRole,
   primaryNav,
   roleHome,
+  selectBriefing,
 } from './workspace-presentation';
 import type { WorkspaceProfile, WorkspaceTask } from './workspace-types';
 import type { BusinessTemplate } from './business-types';
@@ -195,10 +196,12 @@ export default function App() {
     session && auth.homeBootstrap?.scope_key === session.scope_key ? auth.homeBootstrap : null;
   const profile = storedProfile ?? homeBootstrap?.profile ?? null;
   const defaultLandingFor = useRef('');
-  // Role default landing applies only to an explicit bare home entry. Deep
-  // links with a company/book/draft/case identifier are never swallowed.
+  const entryPath = useRef(location.pathname);
+  // Role default landing applies only to the bare root login. An explicit
+  // /workspace/home (including refresh) is a user target and must be preserved.
   useEffect(() => {
     if (!session || !profile) return;
+    if (entryPath.current !== '/') return;
     const key = session.scope_key;
     if (defaultLandingFor.current === key) return;
     const explicit = readWorkspaceRoute(location.pathname, location.search);
@@ -1133,8 +1136,27 @@ export default function App() {
             else navigate('business');
           }}
           onBriefing={() => {
-            const target = profile.briefings?.[0];
+            const scoped = (profile.briefings ?? []).filter(
+              (item) =>
+                (!workCompany || item.company_id === workCompany) &&
+                (!workPeriod || item.period === workPeriod) &&
+                (!bookId || item.book_id === bookId),
+            );
+            const target = selectBriefing(profile.briefings, {
+              companyId: workCompany,
+              bookId,
+              period: workPeriod,
+            });
             if (!target) {
+              setNotice({
+                kind: 'error',
+                text:
+                  !workCompany && !workPeriod && !bookId
+                    ? '请先选择企业、账套和期间，再打开报告。'
+                    : scoped.length > 1
+                      ? '当前范围有多份报告，请先明确账套后再打开。'
+                      : '当前范围没有可打开的报告，请确认企业、账套和期间。',
+              });
               navigate('home');
               return;
             }
@@ -1154,6 +1176,11 @@ export default function App() {
           {auth.error && (
             <p className="form-error" role="alert">
               {auth.error}
+            </p>
+          )}
+          {notice && (
+            <p className={notice.kind === 'error' ? 'form-error' : 'form-success'} role="alert">
+              {notice.text}
             </p>
           )}
           <WorkspaceMfaPrompt

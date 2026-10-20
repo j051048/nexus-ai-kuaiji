@@ -42,12 +42,12 @@ class UsageProvider(FakeProvider):
         super().__init__(*args, **kwargs)
         self.usage = usage
 
-    def extract_invoice(self, pages):
-        result = super().extract_invoice(pages)
+    def extract_invoice(self, pages, **kwargs):
+        result = super().extract_invoice(pages, **kwargs)
         return ProviderResult(result.data, result.provider, result.model, result.prompt_version, self.usage)
 
-    def suggest_journal(self, context):
-        result = super().suggest_journal(context)
+    def suggest_journal(self, context, **kwargs):
+        result = super().suggest_journal(context, **kwargs)
         return ProviderResult(result.data, result.provider, result.model, result.prompt_version, self.usage)
 
 

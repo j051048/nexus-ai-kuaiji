@@ -8,6 +8,7 @@ import {
   presentationRole,
   primaryNav,
   roleHome,
+  selectBriefing,
   workSurface,
 } from './workspace-presentation';
 
@@ -133,6 +134,18 @@ describe('UX01 role presentation contract', () => {
     expect(roleHome('firm_owner').defaultView).toBe('firm');
     expect(roleHome('admin').defaultView).toBe('admin');
     expect(roleHome('accountant').defaultView).toBe('home');
+  });
+
+  it('selects a briefing by current company/book/period, never array order', () => {
+    const reports = [
+      { book_id: 'b-b', book_name: 'B', company_id: 'c-b', company_name: 'B', period: '2026-10' },
+      { book_id: 'b-a', book_name: 'A', company_id: 'c-a', company_name: 'A', period: '2026-10' },
+    ];
+    expect(selectBriefing(reports, { companyId: 'c-a' })?.book_id).toBe('b-a');
+    expect(selectBriefing(reports, { companyId: 'c-a', period: '2026-09' })).toBeUndefined();
+    expect(selectBriefing(reports, {})).toBeUndefined();
+    expect(selectBriefing([reports[1]], {})).toBeUndefined();
+    expect(selectBriefing(reports, { companyId: 'c-a', bookId: 'b-b' })).toBeUndefined();
   });
 
   it('filters customer tabs by presentation role rather than one fixed menu', () => {

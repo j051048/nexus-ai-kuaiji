@@ -51,6 +51,7 @@ export function WorkspaceHome({
   onRetryProfile,
   onOpen,
   onNew,
+  onCompanyChange,
   onAccounting,
   onReview,
   onBriefing,
@@ -67,6 +68,7 @@ export function WorkspaceHome({
   onRetryProfile: () => void;
   onOpen: (task: WorkspaceTask) => void;
   onNew: (template: BusinessTemplate) => void;
+  onCompanyChange?: (companyId: string) => void;
   onAccounting: () => void;
   onReview: () => void;
   onBriefing?: (target: {
@@ -638,6 +640,7 @@ export function WorkspaceHome({
               onChange={(id) => {
                 setCompany(id);
                 setOffset(0);
+                onCompanyChange?.(id);
               }}
             />
           )}

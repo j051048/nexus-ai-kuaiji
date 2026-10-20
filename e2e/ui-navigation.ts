@@ -31,10 +31,15 @@ export async function openBusiness(page: Page) {
 
 export async function openAccounting(page: Page) {
   await openNavigation(page);
-  await page
-    .getByRole('navigation', { name: '主导航', exact: true })
-    .getByRole('button', { name: '客户企业', exact: true })
-    .click();
+  const nav = page.getByRole('navigation', { name: '主导航', exact: true });
+  const primary = nav.getByRole('button', { name: '客户账套', exact: true });
+  if (await primary.count()) {
+    await primary.click();
+  } else {
+    const summary = page.locator('summary').filter({ hasText: /^更多工具$/ });
+    if ((await summary.locator('..').getAttribute('open')) === null) await summary.click();
+    await nav.getByRole('button', { name: '客户企业', exact: true }).click();
+  }
   await expect(page.getByLabel('搜索企业名称').first()).toBeVisible({ timeout: 30_000 });
 }
 

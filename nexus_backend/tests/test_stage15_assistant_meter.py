@@ -22,7 +22,7 @@ class SyntheticChat:
         self.calls, self.failure, self.hook = 0, None, None
     def configuration_fingerprint(self):
         return "a" * 64
-    def reply(self, context, question, history):
+    def reply(self, context, question, history, **kwargs):
         self.calls += 1
         if self.hook:
             self.hook()

@@ -101,6 +101,19 @@ def migrate(url):
     return applied
 
 
+def classify_migrations(current, files):
+    """Pure classification so status semantics can be tested without a DB."""
+    result = []
+    for version, checksum in files:
+        if version not in current:
+            result.append((version, "缺失"))
+        elif current[version] != checksum:
+            result.append((version, "校验不符"))
+        else:
+            result.append((version, "已应用"))
+    return result
+
+
 def status(url):
     with admin_connection(url) as conn:
         exists = conn.execute(
@@ -114,15 +127,11 @@ def status(url):
             if exists
             else {}
         )
-        return [
-            (
-                int(path.name.split("_", 1)[0]),
-                "已应用"
-                if current.get(int(path.name.split("_", 1)[0])) == migration_digest(path)
-                else "待应用或校验不符",
-            )
+        files = [
+            (int(path.name.split("_", 1)[0]), migration_digest(path))
             for path in migration_files("postgres")
         ]
+        return classify_migrations(current, files)
 
 
 def provision_login(url, username, password, *, worker=False):
@@ -194,6 +203,7 @@ def main():
         "command", choices=["migrate", "status", "provision-login", "provision-worker-login"]
     )
     parser.add_argument("--username", default=None)
+    parser.add_argument("--strict", action="store_true", help="非全部已应用时返回非零")
     args = parser.parse_args()
     url = os.getenv("ACCOUNTING_ADMIN_DATABASE_URL", "")
     try:
@@ -201,8 +211,11 @@ def main():
             applied = migrate(url)
             print("迁移完成；新增版本：" + (",".join(map(str, applied)) or "无（已是最新版本）"))
         elif args.command == "status":
-            for version, state in status(url):
+            rows = status(url)
+            for version, state in rows:
                 print(f"{version:03d}: {state}")
+            if args.strict and any(state != "已应用" for _, state in rows):
+                raise SystemExit(1)
         elif args.command == "provision-login":
             password = os.getenv("ACCOUNTING_RUNTIME_PASSWORD") or getpass.getpass(
                 "运行数据库账号密码（隐藏输入）："

@@ -43,3 +43,39 @@ def test_monitor_timeout_hold_can_accept_late_usage_but_not_override_manual_conf
     assert cost_rows(case)[0]["state"] == "uncertain"
     context.finish(result=SimpleNamespace(usage=ProviderUsage(prompt_tokens=3, completion_tokens=4, total_tokens=7)), attempted=True)
     assert cost_rows(case)[0]["state"] == "estimated" and cost_rows(case)[0]["estimated_micro"] == 11
+
+
+@pytest.mark.parametrize("usage,state", [
+    (ProviderUsage(prompt_tokens=6, completion_tokens=4, total_tokens=10), "estimated"),
+    (ProviderUsage(prompt_tokens=0, completion_tokens=0, total_tokens=0), "estimated"),
+    (None, "uncertain"),
+])
+def test_429_never_releases_reservation_without_explicit_trusted_evidence(cost_case, usage, state):
+    case = cost_case
+    policy(case)
+    context, _ = claimed_context(case)
+    before_send(case, context)
+    error = ProviderError("http_error", "429", status=429, retryable=True)
+    error.usage = usage
+    context.finish(error=error, attempted=True)
+    row = cost_rows(case)[0]
+    assert row["state"] == state
+    if usage is None:
+        assert row["estimated_micro"] is None
+    else:
+        assert row["input_tokens"] == usage.prompt_tokens
+        assert row["output_tokens"] == usage.completion_tokens
+    assert row["state"] != "released"
+
+
+def test_retryable_sent_with_usage_is_not_safe_rejection(cost_case):
+    case = cost_case
+    policy(case)
+    context, _ = claimed_context(case)
+    before_send(case, context)
+    error = ProviderError("http_error", "retryable but sent", status=429, retryable=True)
+    error.usage = ProviderUsage(prompt_tokens=1, completion_tokens=2, total_tokens=3)
+    context.finish(error=error, attempted=True)
+    row = cost_rows(case)[0]
+    assert row["state"] == "estimated"
+    assert row["estimated_micro"] > 0
