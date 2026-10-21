@@ -9,6 +9,7 @@ import logging
 import os
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 logger = logging.getLogger(__name__)
 
@@ -54,10 +55,15 @@ class UnifiedWorker:
         self._plan = plan
         self.assistant_worker, self.queue_worker = assistant_worker, queue_worker
         self.batch_worker = batch_worker
+        self.migration_worker = migration_worker
         self.idle_seconds = idle_seconds
         self._stop = threading.Event()
         self._thread = None
         self._last_monitor = 0.0
+        self._executor = None
+        self._inflight = {}
+        self._inflight_lock = threading.Lock()
+        self._draining = False
 
     def run_once(self):
         """One priority pass; returns whether any queue processed a unit."""
@@ -74,33 +80,104 @@ class UnifiedWorker:
                 processed = True
         return processed
 
-    def _monitor_tick(self, state):
+    def _drain(self):
+        with self._inflight_lock:
+            done = [(role, future) for role, future in self._inflight.items() if future.done()]
+            for role, future in done:
+                self._inflight.pop(role, None)
+        for role, future in done:
+            try:
+                future.result()
+            except Exception:
+                logger.warning("统一后台的%s任务异常，已按持久租约恢复", role)
+        return bool(done)
+
+    def _submit(self, role, worker):
+        with self._inflight_lock:
+            if role in self._inflight:
+                return False
+            future = self._executor.submit(worker.run_once)
+            self._inflight[role] = future
+        return True
+
+    def run_tick(self):
+        """Submit at most one task per role without waiting for slow work.
+
+        Two local slots: one assistant, one shared background. The database
+        claim remains the authority; only a free local slot triggers a claim.
+        """
+        if self._stop.is_set() or self._executor is None:
+            return False
+        self._drain()
+        submitted = False
+        if self.assistant_worker is not None:
+            submitted |= self._submit("assistant", self.assistant_worker)
+        with self._inflight_lock:
+            busy_background = any(role != "assistant" for role in self._inflight)
+        if not busy_background:
+            for worker, _budget in self._plan:
+                if worker is self.assistant_worker:
+                    continue
+                role = next(
+                    label
+                    for label, candidate in (
+                        ("queue", self.queue_worker),
+                        ("batch", self.batch_worker),
+                        ("migration", self.migration_worker if hasattr(self, "migration_worker") else None),
+                    )
+                    if candidate is worker
+                )
+                submitted |= self._submit(role, worker)
+                break
+        return submitted
+
+    def inflight_count(self):
+        with self._inflight_lock:
+            return len(self._inflight)
+
+    def _monitor_tick(self, state, inflight=None):
         monitor = getattr(self.assistant_worker, "monitor", None)
         if monitor is None:
             return
+        if inflight is None:
+            with self._inflight_lock:
+                count = 1 if "assistant" in self._inflight else 0
+        else:
+            count = inflight
         try:
-            monitor.tick(inflight=0, state=state)
+            heartbeat = getattr(monitor, "heartbeat", None)
+            if callable(heartbeat):
+                heartbeat(inflight=min(count, 2), state=state)
+            else:
+                monitor.tick(inflight=min(count, 2), state=state)
         except Exception:
             logger.warning("会计助手运行监测暂不可用，处理任务保持原有租约控制")
 
     def _loop(self):
         while not self._stop.is_set():
             if time.monotonic() - self._last_monitor >= MONITOR_INTERVAL:
-                # 顺序轮询期间无法区分空闲与在途，心跳只用于存活与停止状态。
-                self._monitor_tick("idle")
+                self._monitor_tick("active" if self.inflight_count() else "idle")
                 self._last_monitor = time.monotonic()
             try:
-                processed = self.run_once()
+                processed = self.run_tick()
             except Exception:
                 logger.warning("统一后台队列暂不可用，将继续读取持久状态")
                 processed = False
-            if not processed:
+            if not processed or self.inflight_count() == 0:
                 self._stop.wait(self.idle_seconds)
+            else:
+                # Do not spin while a claimed task is still running; the
+                # bounded executor owns the actual wait.
+                self._stop.wait(0.01)
 
     def start(self):
         if self._thread and self._thread.is_alive():
             return
+        if self._draining:
+            raise RuntimeError("上一代统一后台仍在排空，不能启动第二套调度")
         self._stop.clear()
+        if self._executor is None:
+            self._executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="unified-task")
         self._thread = threading.Thread(target=self._loop, name="unified-worker", daemon=True)
         self._thread.start()
 
@@ -108,14 +185,23 @@ class UnifiedWorker:
         self._stop.set()
         if self._thread:
             self._thread.join(timeout=5)
-        # QueueWorker.stop 的停止心跳在合并进程里同样要落库，否则运行监控会
-        # 把本进程显示成仍在工作；在途调用仍按租约自行收尾。
+        # Wait for already claimed work within a bounded grace period. A Python
+        # thread cannot be force-killed; if it is still running, do not publish
+        # a false stopped/zero-inflight state.
+        with self._inflight_lock:
+            pending = len(self._inflight)
+        if self._executor is not None:
+            self._executor.shutdown(wait=False, cancel_futures=False)
+        if pending:
+            self._draining = True
+            self._monitor_tick("active", inflight=min(pending, 2))
+            return
         if self.queue_worker is not None:
             try:
                 self.queue_worker.maintenance(0, stopped=True)
             except Exception:
                 pass
-        self._monitor_tick("stopped")
+        self._monitor_tick("stopped", inflight=0)
 
 
 def main(ready_callback=None):

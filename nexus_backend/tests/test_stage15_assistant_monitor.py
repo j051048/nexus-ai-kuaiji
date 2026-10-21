@@ -85,6 +85,20 @@ def test_chat_heartbeat_cannot_hide_processing_worker_unavailable(chat_case):
     assert not current["workers"]["available"] and "worker_unavailable" in open_codes(current)
 
 
+def test_ak05_lightweight_heartbeat_does_not_run_refresh(chat_case, monkeypatch):
+    c = chat_case
+    def failure(*args):
+        raise AssertionError("轻量心跳不得触发告警刷新")
+    monkeypatch.setattr(c.operations, "refresh_pending", failure)
+    monitor = AssistantMonitor(c.db, "synthetic-ak05-heartbeat", c.operations)
+    monitor.heartbeat(1, "active")
+    with c.db.transaction() as conn:
+        row = conn.execute(
+            "SELECT state,inflight_count FROM assistant_worker_heartbeats WHERE worker_id='synthetic-ak05-heartbeat'"
+        ).fetchone()
+    assert row["state"] == "active" and row["inflight_count"] == 1
+
+
 def test_heartbeat_commits_even_when_incremental_refresh_fails(chat_case, monkeypatch):
     c = chat_case
     def failure(*args):

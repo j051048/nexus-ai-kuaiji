@@ -29,7 +29,8 @@ class AssistantMonitor:
         finally:
             conn.close()
 
-    def tick(self, inflight=0, state="idle"):
+    def heartbeat(self, inflight=0, state="idle"):
+        """Persist liveness only; never run alert refresh on a task thread."""
         if (
             state not in {"active", "idle", "stopped"}
             or type(inflight) is not int
@@ -37,7 +38,6 @@ class AssistantMonitor:
             or (state != "active" and inflight != 0)
         ):
             raise ValueError("助手心跳状态或运行数量不合法")
-        # A failed alert refresh cannot roll back the liveness observation.
         with self._transaction() as conn:
             if self.db.is_postgres:
                 valid = conn.execute(
@@ -52,5 +52,9 @@ class AssistantMonitor:
                     "INSERT INTO assistant_worker_heartbeats(worker_id,started_at,heartbeat_at,state,inflight_count) VALUES(?,?,?,?,?) ON CONFLICT(worker_id) DO UPDATE SET started_at=CASE WHEN assistant_worker_heartbeats.state='stopped' AND excluded.state<>'stopped' THEN excluded.started_at ELSE assistant_worker_heartbeats.started_at END,heartbeat_at=excluded.heartbeat_at,state=excluded.state,inflight_count=excluded.inflight_count",
                     (self.worker_id, stamp, stamp, state, inflight),
                 )
+
+    def tick(self, inflight=0, state="idle"):
+        """Compatibility entry: liveness first, then bounded alert refresh."""
+        self.heartbeat(inflight, state)
         with self._transaction() as conn:
             return self.operations.refresh_pending(conn)
