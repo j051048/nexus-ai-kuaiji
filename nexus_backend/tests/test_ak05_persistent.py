@@ -43,6 +43,17 @@ def test_revoke_during_assistant_provider_call_never_publishes(chat_case):
         ).fetchone()[0] == 0
 
 
+def test_restart_does_not_resend_a_leased_job(queue_case):
+    case = queue_case
+    enqueue(case, [create_event(case)])
+    job = case.queue.claim("dead-process", lease_seconds=180, concurrency=2)
+    assert job is not None
+    # The dead process never released its lease. A fresh worker must not
+    # claim or send the same job immediately.
+    assert case.worker.run_once() in {None, False}
+    assert case.provider.extract_calls == 0
+
+
 def test_slow_ocr_keeps_persistent_inflight_heartbeat(queue_case):
     case = queue_case
     event = create_event(case)
