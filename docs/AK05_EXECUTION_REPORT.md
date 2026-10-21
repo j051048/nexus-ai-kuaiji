@@ -58,7 +58,7 @@ test_unified_worker.py + test_ak05_persistent.py + test_ak05_unified_concurrency
 
 ```text
 test_ak05_persistent.py
-2 passed
+3 passed（含真实慢 OCR 周期心跳）
 
 test_ak05_two_process.py
 1 passed（两个真实 OS 进程，恰好一个领取）
@@ -159,7 +159,7 @@ test_queue_workflow.py
   `test_ag05_examples`、`test_intelligence_workflow`，262 passed；
 - T13 bool/负数/小数/越界、assistant-only/queue-only/migration-only、重复 stop 已测；
 - 真实隔离 PG 多进程；
-- QueueWorker 已增加独立轻量心跳线程（10 秒）；周期线程有测试，真实慢 OCR 跨周期落库未测；
+- QueueWorker 已增加独立轻量心跳线程（默认 10 秒）；真实慢 OCR 跨周期落库已测；
 - 并发路径未严格使用 assistant/queue/batch/migration 预算权重，当前每 tick 一角色一任务。
 
 ## 分层结论

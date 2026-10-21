@@ -43,6 +43,47 @@ def test_revoke_during_assistant_provider_call_never_publishes(chat_case):
         ).fetchone()[0] == 0
 
 
+def test_slow_ocr_keeps_persistent_inflight_heartbeat(queue_case):
+    case = queue_case
+    event = create_event(case)
+    enqueue(case, [event])
+    started, release = threading.Event(), threading.Event()
+
+    def slow_extract():
+        started.set()
+        release.wait(5)
+
+    case.provider.extract_hook = slow_extract
+    case.worker.heartbeat_seconds = 0.01
+    thread = threading.Thread(target=case.worker.run_once)
+    thread.start()
+    try:
+        assert started.wait(2)
+        deadline = time.monotonic() + 2
+        row = None
+        while time.monotonic() < deadline:
+            with case.db.transaction() as conn:
+                row = conn.execute(
+                    "SELECT state,inflight_count FROM worker_heartbeats WHERE worker_id=?",
+                    (case.worker.worker_id,),
+                ).fetchone()
+            if row and row["state"] == "active" and row["inflight_count"] == 1:
+                break
+            time.sleep(0.02)
+        assert row is not None, "慢 OCR 未写心跳"
+        assert row["state"] == "active" and row["inflight_count"] == 1
+    finally:
+        release.set()
+        thread.join(5)
+    assert not thread.is_alive()
+    with case.db.transaction() as conn:
+        row = conn.execute(
+            "SELECT state,inflight_count FROM worker_heartbeats WHERE worker_id=?",
+            (case.worker.worker_id,),
+        ).fetchone()
+    assert row["state"] == "idle" and row["inflight_count"] == 0
+
+
 def test_persistent_slow_ocr_does_not_block_another_company_assistant(
     queue_case, chat_case
 ):

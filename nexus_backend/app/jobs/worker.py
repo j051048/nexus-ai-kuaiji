@@ -398,6 +398,7 @@ class QueueWorker:
             lease_seconds,
             poll_seconds,
         )
+        self.heartbeat_seconds = 10.0
         self._stop = threading.Event()
         self._thread = None
         self._operations = None
@@ -695,7 +696,7 @@ class QueueWorker:
         stop_heartbeat = threading.Event()
         heartbeat = threading.Thread(
             target=self._heartbeat_loop,
-            args=(stop_heartbeat,),
+            args=(stop_heartbeat, self.heartbeat_seconds),
             name="ocr-heartbeat",
             daemon=True,
         )
