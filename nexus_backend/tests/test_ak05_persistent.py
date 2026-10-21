@@ -54,6 +54,26 @@ def test_restart_does_not_resend_a_leased_job(queue_case):
     assert case.provider.extract_calls == 0
 
 
+def test_dead_after_marking_sending_is_not_resent(queue_case):
+    case = queue_case
+    enqueue(case, [create_event(case)])
+    job = case.queue.claim("dead-after-send", lease_seconds=180, concurrency=2)
+    assert job is not None
+    with case.db.transaction(write=True) as conn:
+        changed = conn.execute(
+            "UPDATE ocr_attempts SET phase='sending' WHERE job_id=? AND status='running'",
+            (job["id"],),
+        ).rowcount
+    assert changed == 1
+    assert case.worker.run_once() in {None, False}
+    assert case.provider.extract_calls == 0
+    with case.db.transaction() as conn:
+        row = conn.execute(
+            "SELECT phase,status FROM ocr_attempts WHERE job_id=?", (job["id"],)
+        ).fetchone()
+    assert row["phase"] == "sending" and row["status"] == "running"
+
+
 def test_slow_ocr_keeps_persistent_inflight_heartbeat(queue_case):
     case = queue_case
     event = create_event(case)
