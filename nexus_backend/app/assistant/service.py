@@ -17,7 +17,7 @@ def encode(value):
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 
-TURN_PUBLIC = "id,conversation_id,firm_id,company_id,created_by,question,status,provider,model,expected_scope_version,input_fingerprint,model_fingerprint,attempt_count,available_at,sent_at,error_code,error_detail,reply_json,created_at,updated_at,finished_at"
+TURN_PUBLIC = "id,conversation_id,firm_id,company_id,created_by,question,status,provider,model,expected_scope_version,input_fingerprint,model_fingerprint,snapshot_json,attempt_count,available_at,sent_at,error_code,error_detail,reply_json,created_at,updated_at,finished_at"
 
 
 class AssistantService:
@@ -834,9 +834,14 @@ class AssistantService:
 
     @staticmethod
     def _execution_in_transaction(conn, actor, row):
+        from hashlib import sha256
         from app.execution.records import can_diagnose, execution_record
 
         diagnostics = can_diagnose(conn, actor)
+        snapshot = row["snapshot_json"] if "snapshot_json" in row.keys() else None
+        context_pack_hash = (
+            sha256(snapshot.encode("utf-8")).hexdigest() if snapshot else None
+        )
         costs = []
         if diagnostics:
             # Conversation authorization is required by the caller before this
@@ -850,7 +855,7 @@ class AssistantService:
         return execution_record("chat", dict(row), costs=costs, diagnostics=diagnostics, context={
             "input_fingerprint": row["input_fingerprint"],
             "model_fingerprint": row["model_fingerprint"],
-            "context_pack_hash": None,
+            "context_pack_hash": context_pack_hash,
         })
 
     def execution(self, actor, conversation_id, turn_id):

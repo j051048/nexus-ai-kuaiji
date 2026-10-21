@@ -49,10 +49,15 @@ test_background_budgets_are_weighted_not_ignored
 queue 2 : batch 2 : migration 1
 ```
 
+### ExecutionTrace context_pack_hash
+
+`assistant/service.py` 的 execution record 现在从持久 `snapshot_json`
+计算 SHA-256，写入 `diagnostics.context_pack_hash`；
+不再固定为 `None`。
+
 ## 未完成
 
 - 真实 PG 投影失败项；
 - T11 provider 已发送后强杀/恢复；
-- ExecutionTrace 的 context_pack_hash 仍为空；
 - 超大文件/授权谓词收敛；
 - 完整 PG 多进程矩阵。
