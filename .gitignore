@@ -130,8 +130,8 @@ vite.config.ts.timestamp-*
 artifacts/
 ag01-readonly-audit-*/
 ux-audit-venv-*/
-tmpkmjdgmie
-tmpxnwdl4rj
+pytest-of-*/
+tmp*
 
 # Vercel local project/build state (environment and account metadata)
 .vercel/
