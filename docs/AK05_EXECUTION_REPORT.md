@@ -141,10 +141,12 @@ test_queue_workflow.py
 - T06 监控心跳抛异常不阻断队列处理已测；慢 refresh 真实故障注入未测；
 - T07 干净 stop/start、draining 拒绝、Future 异常消费已有测试；main 关闭前等待 `wait_for_idle(30)`，未排空不提前关库；进程级关闭未测；
 - T08 Future 异常和 submit 失败不泄漏在途已测试；claim 成功后真实 submit 竞争未测；
-- T09 撤权范围交错；
+- T09 现有 AK01 attempt/AK03 撤权测试覆盖领取前/接纳前，未新增并发交错专项；
 - T10 复用 `test_ak01_attempt_matrix.py` + `test_batch2_concurrency.py`，51 passed；真实 PG/真实供应商未验证；
-- T11 两个真实进程竞争；
-- T12 AK02–AK04 完整联合回归；
+- T11 两个真实进程竞争、发送后终止、恢复进程（未执行）；
+- T12 AK02–AK05 受影响回归：
+  `test_ag02_context_pack`、`test_ag03_answers`、`test_ag04_investigation`、
+  `test_ag05_examples`、`test_intelligence_workflow`，262 passed；
 - T13 bool/负数/小数/越界配置边界已测；角色冲突组合未完整覆盖；
 - 真实隔离 PG 多进程；
 - QueueWorker 慢任务期间只有一次 inflight=1，尚无独立周期心跳线程；
