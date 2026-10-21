@@ -12,6 +12,37 @@ from test_queue_workflow import create_event, enqueue, queue_case
 from test_stage15_assistant_meter import chat_case, question
 
 
+def test_revoke_during_assistant_provider_call_never_publishes(chat_case):
+    case = chat_case
+    actor, conversation, turn = question(case, case.actors["employee"])
+    started, release = threading.Event(), threading.Event()
+
+    def block():
+        started.set()
+        release.wait(5)
+
+    case.chat_provider.hook = block
+    worker = threading.Thread(target=case.chat_worker.run_once)
+    worker.start()
+    try:
+        assert started.wait(2)
+        case.directory.revoke_company_member(
+            case.manager, case.company["id"], case.actors["employee"].user_id
+        )
+        release.set()
+        worker.join(5)
+        assert not worker.is_alive()
+    finally:
+        release.set()
+    with case.db.transaction() as conn:
+        assert conn.execute(
+            "SELECT status FROM assistant_turns WHERE id=?", (turn["id"],)
+        ).fetchone()[0] == "stale"
+        assert conn.execute(
+            "SELECT COUNT(*) FROM assistant_messages WHERE turn_id=? AND role='assistant'", (turn["id"],)
+        ).fetchone()[0] == 0
+
+
 def test_persistent_slow_ocr_does_not_block_another_company_assistant(
     queue_case, chat_case
 ):

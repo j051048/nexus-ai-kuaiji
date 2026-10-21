@@ -58,7 +58,7 @@ test_unified_worker.py + test_ak05_persistent.py + test_ak05_unified_concurrency
 
 ```text
 test_ak05_persistent.py
-1 passed
+2 passed
 ```
 
 ```text
@@ -147,7 +147,7 @@ test_queue_workflow.py
 - T06 监控心跳抛异常不阻断队列、慢 refresh 期间心跳已落库；QueueWorker 周期心跳线程已实现并单测；
 - T07 干净 stop/start、draining 拒绝、Future 异常消费已有测试；main 关闭前等待 `wait_for_idle(30)`，未排空不提前关库；进程级关闭未测；
 - T08 Future 异常和 submit 失败不泄漏在途已测试；claim 成功后真实 submit 竞争未测；
-- T09 现有 AK01 attempt/AK03 撤权测试覆盖领取前/接纳前，未新增并发交错专项；
+- T09 新增真实并发撤权：助手已进入 provider 后撤销企业成员，turn 必须 stale 且无 assistant 消息；
 - T10 复用 `test_ak01_attempt_matrix.py` + `test_batch2_concurrency.py`，51 passed；真实 PG/真实供应商未验证；
 - T11 两个真实进程竞争、发送后终止、恢复进程（未执行）；
 - T12 AK02–AK05 受影响回归：
