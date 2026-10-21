@@ -150,6 +150,21 @@ def test_background_roles_rotate_without_queue_starvation():
         unified.stop()
 
 
+def test_queue_heartbeat_loop_emits_periodic_inflight():
+    from app.jobs.worker import QueueWorker
+
+    calls = []
+    worker = object.__new__(QueueWorker)
+    worker.heartbeat = lambda count: calls.append(count)
+    stop = threading.Event()
+    thread = threading.Thread(target=worker._heartbeat_loop, args=(stop, 0.01))
+    thread.start()
+    time.sleep(0.05)
+    stop.set()
+    thread.join(2)
+    assert calls and set(calls) == {1}
+
+
 def test_monitor_failure_does_not_stop_queue_processing():
     class BrokenMonitor:
         def heartbeat(self, inflight=0, state="idle"):

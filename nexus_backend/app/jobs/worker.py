@@ -692,11 +692,41 @@ class QueueWorker:
         # A claimed job is real in-flight work. Do not leave the last
         # observation at zero while a slow provider call is running.
         self.maintenance(1)
+        stop_heartbeat = threading.Event()
+        heartbeat = threading.Thread(
+            target=self._heartbeat_loop,
+            args=(stop_heartbeat,),
+            name="ocr-heartbeat",
+            daemon=True,
+        )
+        heartbeat.start()
         try:
             self.process(job)
         finally:
+            stop_heartbeat.set()
+            heartbeat.join(timeout=2)
             self.maintenance(0)
         return True
+
+    def _heartbeat_loop(self, stop, interval=10.0):
+        while not stop.wait(interval):
+            try:
+                self.heartbeat(1)
+            except Exception:
+                logger.warning("票据队列心跳暂不可用，任务租约保持不变")
+
+    def heartbeat(self, inflight=1):
+        """Persist a lightweight in-flight observation without alert refresh."""
+        if self._operations is None:
+            from ..operations.service import OperationsService
+
+            self._operations = OperationsService(
+                self.queue.db,
+                self.queue.intelligence._meter(),
+                intelligence=self.queue.intelligence,
+            )
+        with self.queue.worker_transaction() as conn:
+            self._operations.heartbeat(conn, self.worker_id, inflight, "active")
 
     def maintenance(self, inflight=0, stopped=False):
         if self._operations is None:
