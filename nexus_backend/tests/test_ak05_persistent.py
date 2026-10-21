@@ -1,0 +1,66 @@
+"""AK05: real SQLite queues, one slow OCR and a later assistant turn."""
+import threading
+import time
+
+from uuid import uuid4
+
+from app.assistant.models import ConversationCreate, TurnCreate
+from app.unified_worker import UnifiedWorker
+from test_intelligence_workflow import ai_case
+from test_model_cost_workflow import cost_case
+from test_queue_workflow import create_event, enqueue, queue_case
+from test_stage15_assistant_meter import chat_case, question
+
+
+def test_persistent_slow_ocr_does_not_block_another_company_assistant(
+    queue_case, chat_case
+):
+    case = queue_case
+    event = create_event(case)
+    enqueue(case, [event])
+    started, release = threading.Event(), threading.Event()
+
+    def slow_extract():
+        started.set()
+        release.wait(5)
+
+    case.provider.extract_hook = slow_extract
+    b_company = chat_case.other_company
+    actor = chat_case.manager
+    conversation = chat_case.chat_service.create(
+        actor,
+        ConversationCreate(
+            company_id=b_company["id"],
+            title="B 企业并发助手",
+            idempotency_key=uuid4().hex,
+        ),
+    )["conversation"]
+    turn = chat_case.chat_service.enqueue(
+        actor,
+        conversation["id"],
+        TurnCreate(
+            question="B 企业当前资料是否完整？",
+            expected_scope_version=1,
+            idempotency_key=uuid4().hex,
+        ),
+    )["turn"]
+    unified = UnifiedWorker(
+        assistant_worker=case.chat_worker,
+        queue_worker=case.worker,
+        idle_seconds=0.05,
+    )
+    unified.start()
+    try:
+        assert started.wait(3), "OCR 未开始"
+        deadline = time.monotonic() + 5
+        status = None
+        while time.monotonic() < deadline:
+            status = case.chat_service.turn(actor, conversation["id"], turn["id"])["turn"]["status"]
+            if status == "succeeded":
+                break
+            time.sleep(0.02)
+        assert status == "succeeded", f"助手未在 OCR 释放前完成：{status}"
+        assert not release.is_set()
+    finally:
+        release.set()
+        unified.stop()

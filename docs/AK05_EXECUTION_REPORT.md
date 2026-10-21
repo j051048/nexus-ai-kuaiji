@@ -50,6 +50,15 @@ test_ak05_unified_concurrency.py
 6 passed
 ```
 
+```text
+test_ak05_persistent.py
+1 passed
+```
+
+真实 SQLite 持久队列：
+A 企业 OCR provider hook 阻塞；
+B 企业助手先完成，且 OCR 尚未释放。
+
 - 慢后台任务不阻塞助手；
 - 助手在途=1，后台不计入助手心跳；
 - 停止时未完成任务不报 stopped。
@@ -106,9 +115,12 @@ test_queue_workflow.py
 
 ## 未完成
 
-- T01 使用真实持久队列 + 真实 OCR/助手 worker（当前为受控 FakeWorker 时序测试）；
+- T01 真实持久队列 + 真实 OCR/助手 worker **已补**：
+  `test_ak05_persistent.py` 使用同一 SQLite 持久队列，
+  A 企业 OCR 传输阻塞，B 企业助手在释放前成功；
+- T01 仍未覆盖 PG/多进程；
 - T02 已有“最多 2 个在途”测试，未覆盖大规模峰值/连接池；
-- T03 多企业公平与后台不饥饿；
+- T03 多企业公平与后台不饥饿（多企业共享后台槽仍只有一次机会）；
 - T04 全局/供应商上限；
 - T06 慢 refresh/心跳落库失败（轻量心跳已隔离）；
 - T07 干净 stop/start、draining 拒绝、Future 异常消费已有测试；数据库关闭顺序未测；
