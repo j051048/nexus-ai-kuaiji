@@ -240,9 +240,10 @@ class MeterContext:
         # retryable is a caller policy hint, not proof that the supplier did not
         # receive/charge the request. Only explicit local-before-send evidence
         # may release a reservation.
-        safe = (
+        send_evidence = getattr(error, "llm_attempted", None)
+        safe = usage is None and send_evidence is not True and (
             not attempted
-            or getattr(error, "llm_attempted", None) is False
+            or send_evidence is False
             or error is not None
             and getattr(error, "code", None) in local_rejections
         )

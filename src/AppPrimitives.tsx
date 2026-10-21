@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useId, useRef, type ReactNode } from 'react';
 import { FolderOpen, LoaderCircle, TriangleAlert, X } from 'lucide-react';
 export function Spinner() {
   return <LoaderCircle className="spinner" size={16} aria-hidden="true" />;
@@ -66,6 +66,7 @@ export function Modal({
   children,
   busy = false,
   error,
+  describedBy,
 }: {
   title: string;
   subtitle?: string;
@@ -73,16 +74,26 @@ export function Modal({
   children: ReactNode;
   busy?: boolean;
   error?: string;
+  describedBy?: string;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
+  const errorId = useId();
   useEffect(() => {
-    dialog.current?.showModal();
+    const element = dialog.current;
+    const opener = document.activeElement;
+    element?.showModal();
+    return () => {
+      element?.close();
+      if (opener instanceof HTMLElement && opener.isConnected) opener.focus();
+    };
   }, []);
   return (
     <dialog
       ref={dialog}
       className="modal"
-      aria-labelledby="modal-title"
+      aria-labelledby={titleId}
+      aria-describedby={[describedBy, error ? errorId : ''].filter(Boolean).join(' ') || undefined}
       onCancel={(event) => {
         event.preventDefault();
         if (!busy) onClose();
@@ -90,7 +101,7 @@ export function Modal({
     >
       <div className="modal-header">
         <div>
-          <h2 id="modal-title">{title}</h2>
+          <h2 id={titleId}>{title}</h2>
           {subtitle && <p>{subtitle}</p>}
         </div>
         <button
@@ -104,7 +115,7 @@ export function Modal({
         </button>
       </div>
       {error && (
-        <div className="dialog-error" role="alert">
+        <div className="dialog-error" id={errorId} role="alert">
           <TriangleAlert size={16} />
           {error}
         </div>

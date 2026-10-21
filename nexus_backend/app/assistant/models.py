@@ -1,5 +1,5 @@
 from typing import Literal
-from pydantic import Field, StrictInt, StrictStr, field_validator, model_validator
+from pydantic import ConfigDict, Field, StrictInt, StrictStr, field_validator, model_validator
 from app.accounting.models import InputModel
 from app.intelligence.models import OutputModel
 
@@ -54,3 +54,33 @@ class AssistantReply(OutputModel):
         if len(set(value)) != len(value) or any(not item or len(item) > 200 for item in value):
             raise ValueError("证据引用 ID 无效")
         return value
+
+
+class AssistantFactClaim(OutputModel):
+    """Supplier assertions are internal and never persisted as trusted facts."""
+
+    fact_key: StrictStr = Field(min_length=1, max_length=300)
+    path: StrictStr = Field(min_length=1, max_length=200)
+    field: StrictStr = Field(min_length=1, max_length=100)
+    value: StrictStr | StrictInt | None
+    company_id: StrictStr = Field(min_length=1, max_length=100)
+    book_id: StrictStr | None
+    evidence_id: StrictStr = Field(min_length=1, max_length=200)
+    evidence_version: StrictInt = Field(ge=1)
+    source: StrictStr = Field(min_length=1, max_length=40)
+    unit: StrictStr = Field(max_length=20)
+    currency: StrictStr = Field(max_length=10)
+
+
+class AssistantModelReply(AssistantReply):
+    """Internal response envelope; publication projects to AssistantReply."""
+
+    model_config = ConfigDict(
+        extra="forbid", strict=True,
+        json_schema_extra=lambda schema: schema["required"].extend(["fact_status", "claims"]),
+    )
+
+    fact_status: Literal[
+        "verified", "missing_facts", "conflicting_evidence", "unsupported_case", "requires_accountant",
+    ] = "requires_accountant"
+    claims: list[AssistantFactClaim] = Field(default_factory=list, max_length=40)

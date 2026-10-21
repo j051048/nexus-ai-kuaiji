@@ -14,6 +14,8 @@
 | 批量部分失败状态机 | 通过 | `test_batch_operations.py` 2 |
 | 批量失败前端展示/重试 | 通过（前端 mock） | `p0-batch-partial-ui.spec.ts` 1 |
 | 迁移 status 分类 | 通过 | `test_ag00_migrate_status.py` 1 |
+| 真实 PG 迁移 | 通过（135 文件 / 134 版本） | WSL PG 14.24 + `status --strict` |
+| PG 对等抽样 | 80 passed / 0 failed（138 独立投影） | 4 个 PG 套件 |
 | 迁移幂等 lint | 通过 | `test_ag00_migration_idempotency.py` 3 |
 | PG 假绿守卫 | 通过 | `test_p0_pg_target.py` 1 |
 | 合成收票到导出 | 通过（API/服务） | `test_intelligence_workflow` 2 |
@@ -48,3 +50,4 @@
 2. 补银行对账与交付；
 3. 一般纳税人分支；
 4. 真实 PG 环境后跑对等套件。
+

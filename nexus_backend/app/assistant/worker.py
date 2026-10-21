@@ -14,7 +14,7 @@ from app.accounting.service import now
 from app.intelligence.endpoints import AIEndpointPolicyService
 from app.intelligence.provider import ProviderError, effective_settings
 from app.operations.meter import BudgetError
-from .models import AssistantReply
+from .models import AssistantModelReply
 from .monitor import AssistantMonitor
 from .service import encode
 
@@ -206,13 +206,40 @@ class AssistantWorker:
                 )
         return None
 
-    def finish(self, turn, outcome, reply=None, code="", detail=""):
+    def _acceptance_policy(self, conn, turn, expected):
+        chat = effective_settings(self.provider.settings, "chat")
+        current = AIEndpointPolicyService(self.db).check_send(
+            conn, self._actor(turn), turn["company_id"], "chat", {"chat"},
+            chat.base_url, chat.model, bool(chat.api_key),
+        )
+        if current != expected:
+            raise AccountingError("模型处理政策已改变，旧回复不会发布", 409)
+
+    def finish(self, turn, outcome, reply=None, code="", detail="", policy_evidence=None):
         answer = encode(reply.model_dump()) if reply else None
-        if self.db.is_postgres:
+        if self.db.is_postgres and policy_evidence is None:
             return self._private(
                 "assistant_finish", (turn["id"], turn["lease_token"], outcome, answer, code, detail)
             )
-        with self.db.transaction(write=True) as conn:
+        with self.db.transaction(write=True, actor=self._actor(turn)) as conn:
+            if self.db.is_postgres:
+                # Policy proof and publication share the normal domain write
+                # lock. A read check followed by a separate finish transaction
+                # would leave a policy-revocation race between the two.
+                try:
+                    self._check(conn, turn)
+                    self._acceptance_policy(conn, turn, policy_evidence)
+                except AccountingError:
+                    outcome, answer, code, detail = (
+                        "stale", None, "scope_changed", "资料、权限或模型处理政策已变化，旧回复不会发布",
+                    )
+                # Only the dedicated worker login has this role; keep the
+                # existing SECURITY DEFINER completion and its lease fences.
+                conn.execute("SET LOCAL ROLE accounting_worker")
+                return conn.execute(
+                    "SELECT accounting.assistant_finish(?,?,?,?,?,?)",
+                    (turn["id"], turn["lease_token"], outcome, answer, code, detail),
+                ).fetchone()[0]
             row = conn.execute(
                 "SELECT * FROM assistant_turns WHERE id=? AND status='running' AND lease_token=? AND lease_until>?",
                 (turn["id"], turn["lease_token"], now()),
@@ -221,6 +248,8 @@ class AssistantWorker:
                 return False
             try:
                 self._current(conn, turn)
+                if policy_evidence is not None:
+                    self._acceptance_policy(conn, turn, policy_evidence)
             except AccountingError:
                 outcome, answer, code, detail = (
                     "stale",
@@ -249,6 +278,7 @@ class AssistantWorker:
             return True
 
     def run_once(self):
+        started_at = time.monotonic()
         turn = self.claim()
         if turn is None:
             return None
@@ -273,10 +303,20 @@ class AssistantWorker:
                 )
                 from app.intelligence.provider import ExecutionLimits
 
-                chat_limits = ExecutionLimits(
-                    context_tokens=int(evidence.get("context_limit", 128_000)),
-                    output_tokens=int(evidence.get("output_limit", 4096)),
-                    timeout_seconds=float(evidence.get("timeout_seconds", 45)),
+                chat_limits = ExecutionLimits.from_evidence(
+                    evidence,
+                    started_at=started_at,
+                    timeout_cap=chat.timeout_seconds,
+                )
+                from .context_pack import build_assistant_context_pack
+                from .provider import PROMPT_VERSION
+                from app.intelligence.context_pack import fingerprint as context_fingerprint
+
+                model_context = build_assistant_context_pack(
+                    snapshot, turn["question"], json.loads(turn["history_json"]),
+                    firm_id=turn["firm_id"], company_id=turn["company_id"],
+                    limits=chat_limits, policy_version=context_fingerprint(evidence),
+                    prompt_version=PROMPT_VERSION,
                 )
                 context.before_send(conn)
                 if self.db.is_postgres:
@@ -302,22 +342,26 @@ class AssistantWorker:
                     turn["question"],
                     json.loads(turn["history_json"]),
                     limits=chat_limits,
+                    context_pack=model_context,
                 )
             reply = (
                 result.data
-                if isinstance(result.data, AssistantReply)
-                else AssistantReply.model_validate(result.data)
+                if isinstance(result.data, AssistantModelReply)
+                else AssistantModelReply.model_validate(result.data.model_dump() if hasattr(result.data, "model_dump") else result.data)
             )
             allowed = {item["id"] for item in snapshot["evidence"]}
             if set(reply.citation_ids) - allowed:
                 raise ProviderError(
                     "citation_invalid", "模型引用了当前资料范围之外的证据，回复未发布"
                 )
+            from .fact_validation import render_assistant_reply
+
+            reply, validation_code = render_assistant_reply(reply, model_context, with_validation=True)
             with self.db.transaction(actor=self._actor(turn)) as conn:
                 self._check(conn, turn)
             # Cost facts survive a later authorization change; content does not.
             context.finish(result=result, attempted=True)
-            self.finish(turn, "succeeded", reply)
+            self.finish(turn, "succeeded", reply, code=validation_code, policy_evidence=evidence)
         except BudgetError as caught:
             error = ProviderError(caught.code, caught.detail)
             context.finish(result=result, error=error, attempted=attempted)
@@ -327,6 +371,9 @@ class AssistantWorker:
                 "scope_changed" if caught.status in {403, 404, 409} else "policy_rejected",
                 caught.detail,
             )
+            if hasattr(caught, "llm_attempted"):
+                error.llm_attempted = caught.llm_attempted
+            error.usage = getattr(caught, "usage", None)
             context.finish(result=result, error=error, attempted=attempted)
             self.finish(
                 turn,
@@ -337,7 +384,7 @@ class AssistantWorker:
         except ProviderError as caught:
             error = caught
             context.finish(result=result, error=error, attempted=attempted)
-            unknown = attempted and caught.code in {
+            unknown = attempted and getattr(caught, "llm_attempted", None) is not False and caught.code in {
                 "timeout",
                 "network",
                 "network_error",

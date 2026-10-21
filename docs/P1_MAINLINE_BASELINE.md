@@ -102,6 +102,17 @@ test_http_same_customer_export_receipt_reaches_close_gate
 - HTTP 真正关闭未在该 seeded fixture 完成；
 - 干净同客户关闭由服务层测试覆盖。
 
+另尝试新建独立企业/部门/账套走 HTTP 全链路：
+
+- 建企业、授权、提交、审批、OCR、建议均成功；
+- 在 apply 建议时被现有门禁阻止：
+
+```text
+409 尚有票据或流水核对异常，须人工处理后才能采用建议
+```
+
+这是业务异常核对门槛，不是环境错误。未绕过，也未把该路径写成 HTTP 关闭通过。
+
 ## 缺口
 
 仍缺：

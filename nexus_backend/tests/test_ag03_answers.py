@@ -86,17 +86,25 @@ def test_c05_source_gross_total_cannot_be_relabelled_as_revenue():
 
 
 def test_c06_calculation_is_program_checked_and_inference_is_not_fact():
+    calculation = {"operator": "-", "inputs": [
+        {"evidence_id": "e1", "field": "gross_amount"},
+        {"evidence_id": "tax", "field": "tax_amount"},
+    ]}
+    proof = source(evidence=[
+        EvidenceFact("gross_amount", "100.00", "c1", "b1", 3, "CNY", "e1"),
+        EvidenceFact("tax_amount", "20.00", "c1", "b1", 3, "CNY", "tax"),
+    ])
     calc = claim(
-        field="net_amount", value="80.00", kind="calculation", calculation={"operator": "-", "inputs": ["100.00", "20.00"]}
+        field="net_amount", value="80.00", kind="calculation", evidence_ids=("e1", "tax"), calculation=calculation
     )
     result = Suggestion(status="suggestion_ready", lines=[{"account_code": "6602"}], claims=[calc])
-    assert validate_suggestion(result, **source()).status == "suggestion_ready"
+    assert validate_suggestion(result, **proof).status == "suggestion_ready"
     bad = claim(
-        field="net_amount", value="81.00", kind="calculation", calculation={"operator": "-", "inputs": ["100.00", "20.00"]}
+        field="net_amount", value="81.00", kind="calculation", evidence_ids=("e1", "tax"), calculation=calculation
     )
     with pytest.raises(AnswerError, match="计算"):
         validate_suggestion(
-            Suggestion(status="suggestion_ready", lines=[{"account_code": "6602"}], claims=[bad]), **source()
+            Suggestion(status="suggestion_ready", lines=[{"account_code": "6602"}], claims=[bad]), **proof
         )
 
 

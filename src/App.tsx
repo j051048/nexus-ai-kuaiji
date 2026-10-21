@@ -32,12 +32,7 @@ import type {
 import { clearReviewSession } from './review-session';
 import { roleCopy, taskDestination } from './workspace-types';
 import { workspaceExperience } from './workspace-experience';
-import {
-  presentationRole,
-  primaryNav,
-  roleHome,
-  selectBriefing,
-} from './workspace-presentation';
+import { presentationRole, primaryNav, roleHome, selectBriefing } from './workspace-presentation';
 import type { WorkspaceProfile, WorkspaceTask } from './workspace-types';
 import type { BusinessTemplate } from './business-types';
 import type { OperationsCompany } from './operations-types';
@@ -101,6 +96,7 @@ export default function App() {
   const [workCompany, setWorkCompany] = useState('');
   const [workPeriod, setWorkPeriod] = useState('');
   const [workBook, setWorkBook] = useState('');
+  const [briefingPicker, setBriefingPicker] = useState(false);
   const [monthlyDirty, setMonthlyDirty] = useState(false);
   const changeMonthlyDirty = useCallback((value: boolean) => setMonthlyDirty(value), []);
   const [intakeTarget, setIntakeTarget] = useState('');
@@ -138,6 +134,7 @@ export default function App() {
   loginLocation.current = location;
 
   const clearWorkspace = useCallback(() => {
+    setBriefingPicker(false);
     setCommandOpen(false);
     setAssistantTarget(null);
     setGlobalAssistant(null);
@@ -207,19 +204,19 @@ export default function App() {
     const explicit = readWorkspaceRoute(location.pathname, location.search);
     const hasTarget = Boolean(
       explicit.companyId ||
-        explicit.bookId ||
-        explicit.draftId ||
-        explicit.caseId ||
-        explicit.eventId ||
-        explicit.reviewBookId ||
-        explicit.intakeId ||
-        explicit.batchId ||
-        explicit.jobId ||
-        explicit.migrationId ||
-        explicit.deliveryId ||
-        explicit.proposalId ||
-        explicit.materialId ||
-        explicit.search,
+      explicit.bookId ||
+      explicit.draftId ||
+      explicit.caseId ||
+      explicit.eventId ||
+      explicit.reviewBookId ||
+      explicit.intakeId ||
+      explicit.batchId ||
+      explicit.jobId ||
+      explicit.migrationId ||
+      explicit.deliveryId ||
+      explicit.proposalId ||
+      explicit.materialId ||
+      explicit.search,
     );
     if (explicit.view !== 'home' || hasTarget || adminMode) {
       defaultLandingFor.current = key;
@@ -229,7 +226,8 @@ export default function App() {
     const target = roleHome(role).defaultView;
     defaultLandingFor.current = key;
     if (target === 'admin') {
-      if (me?.permissions.manage_admin || me?.permissions.manage_firm) void routerNavigate('/admin');
+      if (me?.permissions.manage_admin || me?.permissions.manage_firm)
+        void routerNavigate('/admin');
       return;
     }
     if (target !== 'home') {
@@ -291,10 +289,32 @@ export default function App() {
       clearProtectedBookData();
       bootstrapProfile.current = null;
       auth.consumeHomeBootstrap(session.scope_key);
-      setProfile(null);
+      // Keep only the client's presentation identity. Revoked capabilities and
+      // cached company/report names must disappear without switching to the
+      // accountant shell or repeating the denied request.
+      setProfile((current) =>
+        current && !current.can_accounting
+          ? {
+              role: current.role,
+              display_role: current.display_role,
+              can_submit: false,
+              can_approve: false,
+              can_finance: false,
+              can_review: false,
+              can_accounting: false,
+              can_manage: false,
+              can_operations: false,
+              can_firm_operations: false,
+              companies: [],
+              briefings: [],
+              book_count: 0,
+            }
+          : null,
+      );
       setProfileError('权限不足或授权已变更，请确认权限后刷新。');
       setOperationsCompanies([]);
       setCommandOpen(false);
+      setBriefingPicker(false);
       setAssistantTarget(null);
       setGlobalAssistant(null);
       inlineContext.current = null;
@@ -1116,6 +1136,26 @@ export default function App() {
             : 'home';
 
   if (clientPortal && profile) {
+    // The accounting workspace may retain a different book while the client is
+    // choosing a company on the home screen. Only use the active route's scope.
+    const reportScope = {
+      companyId: workCompany,
+      bookId: routeUsesBook ? bookId : workBook,
+      period: workPeriod,
+    };
+    const reportChoices = (profile.briefings ?? []).filter(
+      (item) => !workCompany || item.company_id === workCompany,
+    );
+    const openBriefing = (target: NonNullable<WorkspaceProfile['briefings']>[number]) => {
+      if (navigationLocked) return;
+      setBriefingPicker(false);
+      navigate('briefing');
+      setWorkCompany(target.company_id);
+      setWorkPeriod(target.period);
+      setBookId(target.book_id);
+      focusBookRef.current = target.book_id;
+      if (routeUsesBook) void initialize(undefined, target.book_id);
+    };
     return (
       <>
         {routeGuard.blocked && (
@@ -1136,37 +1176,13 @@ export default function App() {
             else navigate('business');
           }}
           onBriefing={() => {
-            const scoped = (profile.briefings ?? []).filter(
-              (item) =>
-                (!workCompany || item.company_id === workCompany) &&
-                (!workPeriod || item.period === workPeriod) &&
-                (!bookId || item.book_id === bookId),
-            );
-            const target = selectBriefing(profile.briefings, {
-              companyId: workCompany,
-              bookId,
-              period: workPeriod,
-            });
+            if (navigationLocked) return;
+            const target = selectBriefing(profile.briefings, reportScope);
             if (!target) {
-              setNotice({
-                kind: 'error',
-                text:
-                  !workCompany && !workPeriod && !bookId
-                    ? '请先选择企业、账套和期间，再打开报告。'
-                    : scoped.length > 1
-                      ? '当前范围有多份报告，请先明确账套后再打开。'
-                      : '当前范围没有可打开的报告，请确认企业、账套和期间。',
-              });
-              navigate('home');
+              setBriefingPicker(true);
               return;
             }
-            navigate('accounting');
-            setWorkCompany(target.company_id);
-            setWorkPeriod(target.period);
-            setBookId(target.book_id);
-            focusBookRef.current = target.book_id;
-            setRouteView('briefing');
-            void initialize(undefined, target.book_id);
+            openBriefing(target);
           }}
           onLogout={() => void auth.logout()}
           persona={auth.persona}
@@ -1183,6 +1199,14 @@ export default function App() {
               {notice.text}
             </p>
           )}
+          {profileError && routeView !== 'home' && (
+            <p className="form-error" role="alert">
+              {profileError}
+              <button className="text-button" onClick={() => void loadProfile()}>
+                重新读取权限
+              </button>
+            </p>
+          )}
           <WorkspaceMfaPrompt
             key={`mfa:${session.scope_key}`}
             session={session}
@@ -1190,6 +1214,29 @@ export default function App() {
             onLogout={auth.logout}
           />
           {routeContent}
+          {briefingPicker && (
+            <Modal
+              title="选择财税简报"
+              subtitle="按企业、账套和期间选择。打开时会重新核验报告权限。"
+              onClose={() => setBriefingPicker(false)}
+            >
+              {reportChoices.length ? (
+                <div className="workspace-briefing-links">
+                  {reportChoices.map((target) => (
+                    <button
+                      key={`${target.company_id}:${target.book_id}:${target.period}`}
+                      type="button"
+                      onClick={() => openBriefing(target)}
+                    >
+                      {target.company_name} · {target.book_name} · {target.period}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p role="status">当前企业范围没有可打开的报告。</p>
+              )}
+            </Modal>
+          )}
         </ClientPortalShell>
       </>
     );

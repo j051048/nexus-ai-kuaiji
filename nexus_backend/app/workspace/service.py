@@ -10,7 +10,7 @@ from app.closing.queries import receipt_valid_sql
 from app.jobs.visibility import book_edit_scope, event_scope
 from .projection import (
     pending_companies,
-    projection_clean,
+    reachable_companies_sql,
     refresh_company_scoped,
     status_snapshot,
 )
@@ -51,7 +51,7 @@ ALERTS = {
 
 
 class WorkspaceService:
-    def __init__(self, db, accounting, business, review, cases):
+    def __init__(self, db, accounting, business, review, cases, projection_db=None):
         self.db, self.accounting, self.business, self.review, self.cases = (
             db,
             accounting,
@@ -59,6 +59,7 @@ class WorkspaceService:
             review,
             cases,
         )
+        self.projection_db = projection_db
         self.access = accounting.access
         # 后台投影刷新器（由 create_app 注入）；未注入时读取始终回退实时查询。
         self.refresher = None
@@ -215,7 +216,10 @@ class WorkspaceService:
               EXISTS(SELECT 1 FROM company_memberships cm WHERE cm.user_id=? AND cm.role='finance') AS finance,
               EXISTS(SELECT 1 FROM department_approvers da WHERE da.firm_id=? AND da.user_id=?) AS approver,
               EXISTS(SELECT 1 FROM book_access ba WHERE ba.firm_id=? AND ba.user_id=?) AS book_access,
-              EXISTS(SELECT 1 FROM book_access ba WHERE ba.firm_id=? AND ba.user_id=? AND ba.role='reviewer') AS book_reviewer
+              EXISTS(SELECT 1 FROM book_access ba WHERE ba.firm_id=? AND ba.user_id=? AND ba.role='reviewer') AS book_reviewer,
+              NOT EXISTS(SELECT 1 FROM (""" + reachable_companies_sql() + """) c WHERE NOT EXISTS(
+                SELECT 1 FROM workspace_projection_state s WHERE s.firm_id=? AND s.company_id=c.company_id
+                AND s.revision<=s.built_revision)) AS projection_clean
             FROM users u LEFT JOIN memberships m ON m.user_id=u.id AND m.firm_id=?
             WHERE u.id=? AND u.active=1""",
             (
@@ -230,6 +234,10 @@ class WorkspaceService:
                 actor.user_id,
                 actor.firm_id,
                 actor.user_id,
+                actor.user_id,
+                actor.user_id,
+                actor.user_id,
+                actor.firm_id,
                 actor.firm_id,
                 actor.user_id,
             ),
@@ -268,7 +276,7 @@ class WorkspaceService:
             "material": any_task,
             "migration": book_worker,
         }
-        return row["firm_role"], gates
+        return row["firm_role"], gates, bool(row["projection_clean"])
 
     def projection_status(self, actor):
         """只读诊断：脏、从未构建与连续失败的企业分布（事务所管理层）。"""
@@ -284,8 +292,9 @@ class WorkspaceService:
             self.access.require_manager(conn, actor)
             pending = pending_companies(conn, actor.firm_id, limit)
         rebuilt = failed = 0
+        projection_db = self.projection_db or self.db
         for firm_id, company_id in pending:
-            outcome = refresh_company_scoped(self.db, firm_id, company_id)
+            outcome = refresh_company_scoped(projection_db, firm_id, company_id)
             if outcome == "rebuilt":
                 rebuilt += 1
             elif outcome == "failed":
@@ -295,7 +304,7 @@ class WorkspaceService:
             remaining = len(pending_companies(conn, actor.firm_id, 1000))
         return {"rebuilt": rebuilt, "failed": failed, "remaining": remaining}
 
-    def _projected_query(self, conn, actor):
+    def _projected_query(self, conn, actor, role_gates=None):
         """Same task projection as _query, served from the materialized rows.
 
         条件分两类：与操作者无关的结构条件已在刷新时冻结；此处只保留实时授权
@@ -303,7 +312,7 @@ class WorkspaceService:
         """
         events, ep = event_scope(actor)
         edits, bp = book_edit_scope(actor)
-        firm_role, gates = self._task_gates(conn, actor)
+        firm_role, gates, _ = role_gates or self._task_gates(conn, actor)
         reviews, rp, _ = self.review._review_scope(conn, actor, role=firm_role)
         params = [*ep, *rp, *bp]
         ctes = f"""WITH visible_events AS (SELECT e.* FROM business_events e WHERE {events}),
@@ -761,13 +770,13 @@ class WorkspaceService:
             )
         return ctes + ", tasks AS (" + " UNION ALL ".join(parts) + ") ", params
 
-    def _query(self, conn, actor):
+    def _query(self, conn, actor, role_gates=None):
         # Authorization is part of every branch, before count, sort and limit.
         # PostgreSQL additionally retains FORCE RLS. No cached role/assignment
         # and no client supplied list of companies is treated as authority.
         events, ep = event_scope(actor)
         edits, bp = book_edit_scope(actor)
-        firm_role, gates = self._task_gates(conn, actor)
+        firm_role, gates, _ = role_gates or self._task_gates(conn, actor)
         reviews, rp, _ = self.review._review_scope(conn, actor, role=firm_role)
         case_scope, cp = self.cases._scope_sql(actor)
         params = [*ep, *rp, *bp, actor.firm_id, *cp]
@@ -1157,12 +1166,15 @@ class WorkspaceService:
             raise AccountingError("待办筛选参数无效")
         # _query resolves the active user and current firm role through the
         # review scope; do not repeat that identical authorization round trip.
-        projected = use_projection and projection_clean(conn, actor)
+        role_gates = self._task_gates(conn, actor)
+        projected = use_projection and role_gates[2]
         if use_projection and not projected and self.refresher is not None:
             # 读请求只唤醒后台刷新，绝不在请求内写库。
             self.refresher.wake(actor.firm_id)
         query, params = (
-            self._projected_query(conn, actor) if projected else self._query(conn, actor)
+            self._projected_query(conn, actor, role_gates)
+            if projected
+            else self._query(conn, actor, role_gates)
         )
         where, filters = ["1=1"], []
         for col, value in (
@@ -1246,11 +1258,14 @@ class WorkspaceService:
             raise AccountingError("企业搜索文字过长")
         with self.db.transaction(actor=actor) as conn:
             self.access.require_user(conn, actor.user_id)
-            projected = use_projection and projection_clean(conn, actor)
+            role_gates = self._task_gates(conn, actor)
+            projected = use_projection and role_gates[2]
             if use_projection and not projected and self.refresher is not None:
                 self.refresher.wake(actor.firm_id)
             query, params = (
-                self._projected_query(conn, actor) if projected else self._query(conn, actor)
+                self._projected_query(conn, actor, role_gates)
+                if projected
+                else self._query(conn, actor, role_gates)
             )
             search = " WHERE c.name LIKE ? ESCAPE '!'" if q.strip() else ""
             args = [*params, *([self._search(q)] if q.strip() else [])]

@@ -1,0 +1,180 @@
+.execution-record {
+  --er-ink: #254a39;
+  --er-muted: #69786c;
+  --er-line: #dce3d8;
+  margin-top: 10px;
+  color: var(--er-ink);
+  font-size: 12px;
+  min-width: 0;
+}
+.execution-record-toggle,
+.execution-record-refresh {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--er-ink);
+  background: transparent;
+  border: 0;
+  padding: 4px 0;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+.execution-record-toggle {
+  font-weight: 600;
+}
+.execution-record-toggle[aria-expanded='true'] > svg:last-child {
+  transform: rotate(180deg);
+}
+.execution-record-body {
+  margin-top: 7px;
+  padding: 14px;
+  border: 1px solid var(--er-line);
+  border-left: 3px solid #8ca784;
+  border-radius: 4px;
+  background: #f8faf5;
+  overflow-wrap: anywhere;
+}
+.execution-record-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.execution-record-heading > strong {
+  font:
+    600 15px/1.4 'Noto Serif SC',
+    'Source Han Serif SC',
+    'Songti SC',
+    serif;
+}
+.execution-record-refresh {
+  font-size: 11px;
+}
+.execution-record-summary,
+.execution-record-diagnostics dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 16px;
+  margin: 0 0 12px;
+}
+.execution-record dt {
+  color: var(--er-muted);
+  font-size: 11px;
+  margin-bottom: 4px;
+}
+.execution-record dd {
+  margin: 0;
+  font-weight: 600;
+}
+.execution-record-body p {
+  line-height: 1.65;
+  margin: 9px 0;
+}
+.execution-record-warning,
+.execution-record-error {
+  padding: 9px 10px;
+  background: #fff5e3;
+  color: #805826;
+  border-radius: 3px;
+}
+.execution-record-timeline {
+  padding: 0 0 0 12px;
+  margin: 14px 0;
+  list-style: none;
+  border-left: 1px solid #b9c9b2;
+}
+.execution-record-timeline li {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 5px 0;
+}
+.execution-record-timeline time {
+  color: var(--er-muted);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+}
+.execution-record-boundary {
+  color: var(--er-muted);
+  font-size: 11px;
+  border-top: 1px solid var(--er-line);
+  padding-top: 10px;
+}
+.execution-record-form {
+  display: grid;
+  gap: 9px;
+  margin-top: 14px;
+}
+.execution-record-form label {
+  display: grid;
+  gap: 7px;
+  font-weight: 600;
+}
+.execution-record-form textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  border: 1px solid #c9d4c2;
+  background: #fff;
+  color: var(--er-ink);
+  border-radius: 4px;
+  padding: 9px;
+  resize: vertical;
+  font: inherit;
+  line-height: 1.5;
+}
+.execution-record-form > button {
+  justify-self: start;
+  max-width: 100%;
+}
+.execution-record button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.execution-record button:focus-visible,
+.execution-record textarea:focus-visible,
+.execution-record summary:focus-visible {
+  outline: 2px solid #52784b;
+  outline-offset: 3px;
+}
+.execution-record-receipt {
+  color: #315c3a;
+  font-weight: 600;
+}
+.execution-record-receipt span {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  font-weight: 400;
+}
+.execution-record-status {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+  color: var(--er-muted);
+}
+.execution-record-diagnostics {
+  padding-top: 6px;
+  font-size: 11px;
+}
+.execution-record-diagnostics summary {
+  cursor: pointer;
+  color: var(--er-muted);
+}
+.execution-record-diagnostics dl {
+  margin-top: 10px;
+}
+@media (max-width: 440px) {
+  .execution-record-body {
+    padding: 11px;
+  }
+  .execution-record-summary {
+    grid-template-columns: 1fr;
+  }
+  .execution-record-timeline li {
+    flex-wrap: wrap;
+    gap: 3px 10px;
+  }
+}

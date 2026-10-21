@@ -14,6 +14,7 @@ from ..business.service import BusinessService, encode
 from ..business.templates import validate_payload
 from ..intelligence.cache import config_key, store_cache
 from ..intelligence.documents import prepare_document
+from ..intelligence.endpoints import AIEndpointPolicyService
 from ..intelligence.models import ProviderResult
 from ..intelligence.ocr import (
     engine_enabled,
@@ -22,7 +23,9 @@ from ..intelligence.ocr import (
     usage_payload,
     stored_extraction,
 )
-from ..intelligence.provider import EXTRACTION_PROMPT_VERSION, ProviderError, effective_settings
+from ..intelligence.provider import (
+    EXTRACTION_PROMPT_VERSION, ExecutionLimits, ProviderError, effective_settings,
+)
 from ..intelligence.structured import (
     is_structured,
     parse_invoice_xml,
@@ -105,9 +108,18 @@ class IntakeService:
         ).fetchone()
         return bool(row and row["enabled"])
 
+    def _egress_policy(self, conn, actor, company_id):
+        settings = effective_settings(self.provider.settings, "ocr")
+        return AIEndpointPolicyService(self.db).check_send(
+            conn, actor, company_id, "ocr", {"document", "counterparty", "amount"},
+            settings.base_url, settings.model, bool(settings.api_key),
+        )
+
     @staticmethod
-    def _run_json(row):
-        return {
+    def _run_json(row, execution=None):
+        from ..execution.records import execution_record
+
+        value = {
             key: row[key]
             for key in (
                 "id",
@@ -123,14 +135,57 @@ class IntakeService:
             "checks": json.loads(row["checks_json"]),
             **extraction_metadata(row),
         }
+        safe = execution or execution_record("intake", row)
+        value["error_code"] = safe["failure"]["code"] if safe["failure"] else ""
+        value["error_detail"] = safe["failure"]["message"] if safe["failure"] else ""
+        if execution is not None:
+            value["execution"] = execution
+        return value
+
+    def _run_execution(self, conn, actor, run, *, diagnostic=None):
+        from ..execution.records import can_diagnose, execution_record
+
+        checks = json.loads(run["checks_json"])
+        if diagnostic is None:
+            diagnostic = can_diagnose(conn, actor)
+        costs = [dict(row) for row in conn.execute(
+            "SELECT * FROM model_costs WHERE id=? AND intake_run_id=? AND firm_id=? AND company_id=?",
+            (run["id"], run["id"], actor.firm_id, run["company_id"]),
+        )] if diagnostic else []
+        validation = {
+            "code": "requires_accountant" if run["status"] == "succeeded" else "not_checked",
+            "status": ("blocked" if any(item["severity"] == "blocking" for item in checks)
+                       else "requires_review") if run["status"] == "succeeded" else "not_checked",
+            "finding_codes": sorted({item["code"] for item in checks}),
+        }
+        return execution_record(
+            "intake", run, costs=costs, findings=checks,
+            diagnostics=diagnostic, validation=validation,
+            context={"company_id": run["company_id"], "intake_id": run["intake_id"],
+                     "input_fingerprint": run["input_fingerprint"]},
+        )
+
+    def run_execution(self, actor, draft_id, run_id):
+        with self.db.transaction(actor=actor) as conn:
+            draft = self._draft(conn, actor, draft_id)
+            run = conn.execute(
+                "SELECT * FROM intake_runs WHERE id=? AND intake_id=? AND firm_id=? AND company_id=? AND created_by=?",
+                (run_id, draft_id, actor.firm_id, draft["company_id"], actor.user_id),
+            ).fetchone()
+            if not run:
+                raise AccountingError("执行记录不存在或无权访问", 404)
+            return self._run_execution(conn, actor, run)
 
     def _json(self, conn, actor, draft):
+        from ..execution.records import can_diagnose
+
+        diagnostic = can_diagnose(conn, actor)
         attachments = [
             {key: row[key] for key in ("id", "filename", "media_type", "sha256", "size_bytes")}
             for row in self._attachments(conn, draft["id"])
         ]
         runs = [
-            self._run_json(row)
+            self._run_json(row, self._run_execution(conn, actor, row, diagnostic=diagnostic))
             for row in conn.execute(
                 "SELECT * FROM intake_runs WHERE intake_id=? ORDER BY created_at DESC,id DESC",
                 (draft["id"],),
@@ -315,6 +370,7 @@ class IntakeService:
         return self.storage.read(metadata), metadata
 
     def recognize(self, actor, draft_id, attachment_id, request):
+        started_at = time.monotonic()
         company_id = self._company_of(actor, draft_id)
         with self.db.transaction(
             write=True, actor=actor, company_id=company_id, write_scope="company"
@@ -332,6 +388,13 @@ class IntakeService:
             structured = is_structured(attachment["media_type"])
             if not structured and not self.provider.settings.extraction_available:
                 raise AccountingError("尚未配置票据识别服务，请继续手工填写", 409)
+            egress_policy = None if structured else self._egress_policy(conn, actor, company_id)
+            limits = None if structured else ExecutionLimits.from_evidence(
+                egress_policy,
+                started_at=None if engine_enabled(self.provider.settings) else started_at,
+                timeout_cap=effective_settings(self.provider.settings, "ocr").timeout_seconds,
+                deadline_monotonic=started_at + 150,
+            )
             digest = self._configuration_input(attachment)
             prior = conn.execute(
                 "SELECT * FROM intake_runs WHERE intake_id=? AND idempotency_key=?",
@@ -394,7 +457,7 @@ class IntakeService:
             ) | {"kind": "ocr"}
             metadata = dict(attachment)
         budget, attempted, result, error = self.meter.context(actor, run), False, None, None
-        processing_deadline = time.monotonic() + 150
+        processing_deadline = started_at + 150
         try:
             data = self.storage.read(metadata)
             local = parse_invoice_xml(data) if structured else None
@@ -411,12 +474,23 @@ class IntakeService:
                 write=True, actor=actor, company_id=company_id, write_scope="company"
             ) as conn:
                 current = self._draft(conn, actor, draft_id, editable=True)
+                self._version(current, draft["version"])
                 if (
                     not self._enabled(conn, current)
                     or self._configuration_input(metadata) != digest
                 ):
                     raise AccountingError("企业处理配置已改变，识别未发送", 403)
                 if not local:
+                    if self._egress_policy(conn, actor, company_id) != egress_policy:
+                        raise AccountingError("企业外发政策已改变，票据识别未发送", 409)
+                    from ..intelligence.runtime_context import invoice_context
+
+                    model_context = invoice_context(
+                        actor=actor, company_id=company_id, owner_kind="intake", owner_id=draft_id,
+                        version=draft["version"], attachment=metadata, run_id=run_id,
+                        policy=egress_policy, pages=pages, limits=limits,
+                        prompt_version=prompt_version(self.provider.settings),
+                    )
                     budget.before_send(conn)
             if local:
                 result = local.result
@@ -427,9 +501,11 @@ class IntakeService:
                 def reauthorize():
                     with self.db.transaction(actor=actor) as check_conn:
                         checked = self._draft(check_conn, actor, draft_id, editable=True)
+                        self._version(checked, draft["version"])
                         if (
                             not self._enabled(check_conn, checked)
                             or self._configuration_input(metadata) != digest
+                            or self._egress_policy(check_conn, actor, company_id) != egress_policy
                         ):
                             raise AccountingError("授权或识别配置已改变，字段提取未发送", 403)
 
@@ -439,9 +515,13 @@ class IntakeService:
                             pages,
                             authorization_check=reauthorize,
                             processing_deadline=processing_deadline,
+                            limits=limits,
+                            context_pack=model_context,
                         )
                         if engine_enabled(self.provider.settings)
-                        else self.provider.extract_invoice(pages)
+                        else self.provider.extract_invoice(
+                            pages, limits=limits, context_pack=model_context,
+                        )
                     )
                     if getattr(result.data, "ocr_evidence", None):
                         result.data.ocr_evidence.attachment_sha256 = metadata["sha256"]
@@ -462,9 +542,14 @@ class IntakeService:
                 write=True, actor=actor, company_id=company_id, write_scope="company"
             ) as conn:
                 current = self._draft(conn, actor, draft_id, editable=True)
+                self._version(current, draft["version"])
                 if (
                     not self._enabled(conn, current)
                     or self._configuration_input(metadata) != digest
+                    or (
+                        not structured
+                        and self._egress_policy(conn, actor, company_id) != egress_policy
+                    )
                 ):
                     raise AccountingError("企业处理配置已改变，识别结果未发布", 403)
                 checks = [] if error else extraction_findings(result.data, pages)

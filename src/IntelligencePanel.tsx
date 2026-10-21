@@ -14,6 +14,7 @@ import { api, errorMessage } from './api';
 import { OcrEvidenceViewer, type OcrEvidenceSelection } from './OcrEvidenceViewer';
 import { bindingLabel, fieldBinding, OCR_FIELD_LABELS } from './ocr-evidence';
 import { QueueJobRecord } from './QueueJobRecord';
+import { ExecutionRecordPanel } from './ExecutionRecordPanel';
 import { canRetryJob, jobActive, latestQueueJobs, QUEUE_POLL_MS } from './queue-helpers';
 import type { QueueBatch } from './queue-types';
 import { formatMoney } from './csv';
@@ -588,7 +589,9 @@ export function IntelligencePanel({
                         <p className={`intelligence-run-status ${run.status}`}>
                           {runStatusLabel(run, currentTime)}
                           <span>
-                            {run.provider} · {run.model}
+                            {run.provider && run.model
+                              ? `${run.provider} · ${run.model}`
+                              : run.method_label || '识别结果待核对原件'}
                           </span>
                         </p>
                       )}
@@ -887,7 +890,8 @@ export function IntelligencePanel({
                         <p className={`intelligence-run-status ${run.status}`}>
                           {runStatusLabel(run, currentTime)}
                           <span>
-                            草稿版本 {run.input_version} · {run.model}
+                            草稿版本 {run.input_version}
+                            {run.model ? ` · ${run.model}` : ''}
                           </span>
                         </p>
                         {run.status === 'failed' && (
@@ -1000,10 +1004,23 @@ export function IntelligencePanel({
                         {runStatusLabel(run, currentTime)}
                       </strong>
                       <small>
-                        {run.created_at} · {run.provider} / {run.model} · 提示版本{' '}
-                        {run.prompt_version}
+                        {run.created_at}
+                        {run.provider && run.model
+                          ? ` · ${run.provider} / ${run.model} · 提示版本 ${run.prompt_version}`
+                          : ''}
                       </small>
                       <small>任务编号 {run.id}</small>
+                      {run.kind !== 'proposal' || run.book_id ? (
+                        <ExecutionRecordPanel
+                          session={session}
+                          companyId={event?.company_id ?? ''}
+                          kind={run.kind === 'proposal' ? 'journal' : 'ocr'}
+                          runId={run.id}
+                          contextKey={`${eventId}:${event?.version ?? ''}:${detail.context_fingerprint ?? ''}`}
+                        />
+                      ) : (
+                        <small>分录执行记录由有账套权限的会计查看。</small>
+                      )}
                     </div>
                   ))}
                 </details>

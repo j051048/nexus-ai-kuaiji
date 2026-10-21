@@ -23,7 +23,8 @@ logger = logging.getLogger(__name__)
 
 def _database_url() -> str:
     return (
-        os.getenv("ACCOUNTING_MAINTENANCE_DATABASE_URL")
+        os.getenv("ACCOUNTING_PROJECTION_DATABASE_URL")
+        or os.getenv("ACCOUNTING_MAINTENANCE_DATABASE_URL")
         or os.getenv("ACCOUNTING_SYSTEM_DATABASE_URL")
         or os.getenv("ACCOUNTING_DATABASE_URL")
         or "data/accounting.db"
@@ -56,12 +57,12 @@ def main(ready_callback=None):
         or parse_qs(urlsplit(url).query).get("sslmode", [""])[0]
         not in {"require", "verify-ca", "verify-full"}
     ):
-        parser.error("生产投影维护须使用可切换 accounting_system 的独立 PostgreSQL 账号与显式 TLS")
+        parser.error("生产投影维护须使用 accounting_projection 独立 PostgreSQL 账号与显式 TLS")
 
     database = None
     refresher = None
     try:
-        database = Database(url)
+        database = Database(url, default_role="accounting_projection")
         database.assert_restore_hold()
         poll_seconds = float(os.getenv("ACCOUNTING_PROJECTION_POLL_SECONDS", "5"))
         if not 1 <= poll_seconds <= 60:

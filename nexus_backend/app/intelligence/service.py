@@ -11,6 +11,7 @@ from ..accounting.models import DraftUpdate, money_to_cents
 from ..accounting.queries import inactive_source_sql
 from ..accounting.service import AccountingService, fingerprint, now
 from ..business.service import BusinessService, encode
+from ..execution.records import can_diagnose, execution_record
 from .checks import reconcile_checks, finding, normalized, invoice_key
 from .documents import prepare_document, preview_page_bytes
 from .models import InvoiceExtraction, JournalSuggestion, ProviderResult
@@ -200,14 +201,10 @@ class IntelligenceService:
             raise AccountingError("企业尚未启用票据与模型处理，请联系管理员", 403)
 
     @staticmethod
-    def _limits(evidence):
+    def _limits(evidence, **bounds):
         from .provider import ExecutionLimits
 
-        return ExecutionLimits(
-            context_tokens=int(evidence.get("context_limit", 128_000)),
-            output_tokens=int(evidence.get("output_limit", 4096)),
-            timeout_seconds=float(evidence.get("timeout_seconds", 45)),
-        )
+        return ExecutionLimits.from_evidence(evidence, **bounds)
 
     def _policy_check(self, conn, actor, company_id, scenario, data_categories):
         from .endpoints import AIEndpointPolicyService
@@ -241,15 +238,77 @@ class IntelligenceService:
         return config_key(self.provider.settings, media_type, policy_key=policy_key)
 
     @staticmethod
-    def _public_run(row):
+    def _public_run(row, execution=None, diagnostics=False):
         result = dict(row)
         result["result"] = json.loads(result.pop("result_json")) if result["result_json"] else None
         result["usage"] = json.loads(result.pop("usage_json"))
         result.pop("input_fingerprint", None)
         result.pop("idempotency_key", None)
+        if not diagnostics:
+            result.update(provider=None, model=None, usage={})
+        # Supplier error bodies are diagnostic data. Business readers receive
+        # the same fixed, code-based message as the execution projection.
+        safe = execution or execution_record("journal" if row["kind"] == "proposal" else "ocr", row)
+        result["error_code"] = safe["failure"]["code"] if safe["failure"] else ""
+        result["error_detail"] = safe["failure"]["message"] if safe["failure"] else ""
+        if execution is not None:
+            result["execution"] = execution
         if result["kind"] == "ocr":
             result.update(extraction_metadata(row))
         return result
+
+    def _run_execution(self, conn, actor, run, findings=(), *, diagnostic=None):
+        """Project evidence only inside the already authorized object transaction."""
+        if diagnostic is None:
+            diagnostic = can_diagnose(conn, actor)
+        costs, attempts = [], []
+        if diagnostic:
+            costs = [dict(row) for row in conn.execute(
+                "SELECT * FROM model_costs WHERE id=? AND firm_id=? AND company_id=?",
+                (run["id"], actor.firm_id, run["company_id"]),
+            )]
+            table = "proposal_attempts" if run["kind"] == "proposal" else "ocr_attempts"
+            attempts = [dict(row) for row in conn.execute(
+                "SELECT * FROM " + table + " WHERE ai_run_id=? AND firm_id=? AND company_id=? AND event_id=? ORDER BY attempt_no",
+                (run["id"], actor.firm_id, run["company_id"], run["event_id"]),
+            )]
+        unresolved = [item for item in findings if not item.get("resolved", False)]
+        validation = {
+            "code": "not_checked", "status": "not_checked",
+            "finding_codes": sorted({item["code"] for item in unresolved}),
+        }
+        if run["status"] == "succeeded":
+            # Both source confirmation and accounting review retain their own
+            # authority. A successful supplier response is never an approval.
+            validation.update(
+                code="requires_accountant",
+                status="blocked" if any(item["severity"] == "blocking" for item in unresolved) else "requires_review",
+            )
+        elif run["error_code"] == "invalid_proposal":
+            validation.update(code="invalid", status="blocked")
+        return execution_record(
+            "journal" if run["kind"] == "proposal" else "ocr", run,
+            costs=costs, attempts=attempts, findings=findings,
+            diagnostics=diagnostic, validation=validation,
+            context={"company_id": run["company_id"], "event_id": run["event_id"],
+                     "book_id": run["book_id"], "draft_id": run["draft_id"],
+                     "input_version": run["input_version"],
+                     "input_fingerprint": run["input_fingerprint"]},
+        )
+
+    def run_execution(self, actor, event_id, run_id):
+        with self.db.transaction(actor=actor) as conn:
+            event = self.business._event(conn, actor, event_id)
+            run = conn.execute(
+                "SELECT * FROM ai_runs WHERE id=? AND event_id=? AND firm_id=? AND company_id=?",
+                (run_id, event_id, actor.firm_id, event["company_id"]),
+            ).fetchone()
+            if not run:
+                raise AccountingError("执行记录不存在或无权访问", 404)
+            if run["kind"] == "proposal":
+                self.access.book(conn, actor, run["book_id"])
+            findings = self._assessment(conn, actor, event)["findings"]
+            return self._run_execution(conn, actor, run, findings)
 
     @staticmethod
     def _reason(value):
@@ -383,6 +442,7 @@ class IntelligenceService:
         return conn.execute("SELECT * FROM ai_runs WHERE id=?", (run["id"],)).fetchone()
 
     def extract(self, actor, event_id, request, execution=None):
+        started_at = time.monotonic()
         transaction_options = (
             {"company_id": execution.job["company_id"], "write_scope": "company"}
             if execution
@@ -414,6 +474,17 @@ class IntelligenceService:
             ).fetchone():
                 raise AccountingError("该票据正在后台识别，请查看任务进度", 409)
             structured = is_structured(attachment["media_type"])
+            # Bind before preprocessing. Reauthorization below may tighten
+            # limits but must not grant a fresh deadline.
+            initial_limits = None if structured else self._limits(
+                self._policy_check(
+                    conn, actor, event["company_id"], "ocr",
+                    {"document", "counterparty", "amount"},
+                ),
+                started_at=None if engine_enabled(self.provider.settings) else started_at,
+                timeout_cap=effective_settings(self.provider.settings, "ocr").timeout_seconds,
+                deadline_monotonic=started_at + 150,
+            )
             cache_key = self._ocr_cache_key(conn, actor, event, attachment["media_type"])
             digest = fingerprint(
                 {
@@ -441,11 +512,11 @@ class IntelligenceService:
             )
             if execution and execute:
                 execution.bind(conn, run)
-        if not execute:
-            return self._public_run(run)
+            if not execute:
+                return self._public_run(run, diagnostics=can_diagnose(conn, actor))
         error, result, pages, cache_hit = None, None, [], False
-        processing_deadline = time.monotonic() + 150
-        send_limits = None
+        processing_deadline = started_at + 150
+        send_limits = initial_limits
         budget, attempted = self._meter().context(actor, run), False
         try:
             data = self.storage.read(attachment)
@@ -494,6 +565,25 @@ class IntelligenceService:
                     elif execution:
                         execution.before_send(conn)
                     if not local:
+                        send_policy = self._policy_check(
+                                conn, actor, current["company_id"], "ocr",
+                                {"document", "counterparty", "amount"},
+                            )
+                        send_limits = self._limits(
+                            send_policy,
+                            started_at=None if engine_enabled(self.provider.settings) else started_at,
+                            timeout_cap=initial_limits.timeout_seconds,
+                            deadline_monotonic=initial_limits.deadline_monotonic,
+                            prior_limits=initial_limits,
+                        )
+                        from .runtime_context import invoice_context
+
+                        model_context = invoice_context(
+                            actor=actor, company_id=event["company_id"], owner_kind="event",
+                            owner_id=event_id, version=event["fact_version"], attachment=attachment,
+                            run_id=run["id"], policy=send_policy, pages=pages, limits=send_limits,
+                            prompt_version=prompt_version(self.provider.settings),
+                        )
                         budget.before_send(conn)
             if not cache_hit and not local:
                 attempted = True
@@ -528,9 +618,12 @@ class IntelligenceService:
                                 authorization_check=reauthorize,
                                 processing_deadline=processing_deadline,
                                 limits=send_limits,
+                                context_pack=model_context,
                             )
                             if engine_enabled(self.provider.settings)
-                            else self.provider.extract_invoice(pages)
+                            else self.provider.extract_invoice(
+                                pages, limits=send_limits, context_pack=model_context,
+                            )
                         )
                         if getattr(result.data, "ocr_evidence", None):
                             result.data.ocr_evidence.attachment_sha256 = attachment["sha256"]
@@ -585,7 +678,7 @@ class IntelligenceService:
                 if execution:
                     execution.finish(conn, finished, error)
                 self._assessment(conn, actor, current, persist=True)
-                return self._public_run(finished)
+                return self._public_run(finished, diagnostics=can_diagnose(conn, actor))
         except AccountingError:
             self._abandon(actor, run["id"])
             raise
@@ -772,10 +865,21 @@ class IntelligenceService:
                 )
                 continue
             result = json.loads(run["result_json"])
+            # Older runs did not distinguish a model's transcript from an
+            # independent original. A new prompt/cache fingerprint alone must
+            # not silently bless those saved outputs during adoption.
+            from .structured import STRUCTURED_VERSION
+            if run["prompt_version"] not in {prompt_version(self.provider.settings), STRUCTURED_VERSION}:
+                issues.append(finding(
+                    "fact_validation_upgrade_" + run["id"],
+                    "旧识别结果未通过当前事实校验，请重新识别或由会计独立核对原件",
+                    attachment_id=attachment["id"],
+                ))
             documents.extend(result["documents"])
             reference = {"attachment_id": attachment["id"], "extraction_id": run["id"]}
             references.append(reference)
-            document_evidence.extend({**document, **reference} for document in result["documents"])
+            document_evidence.extend({**document, **reference, "document_index": index}
+                                     for index, document in enumerate(result["documents"]))
             for row in extraction_findings_by_run.get(run["id"], []):
                 issues.append(
                     {
@@ -1042,27 +1146,34 @@ class IntelligenceService:
     def detail(self, actor, event_id):
         with self.db.transaction(actor=actor) as conn:
             event = self.business._event(conn, actor, event_id)
-            runs = [
-                self._public_run(row)
-                for row in conn.execute(
+            assessment = self._assessment(conn, actor, event)
+            diagnostic = can_diagnose(conn, actor)
+            rows = list(conn.execute(
                     "SELECT * FROM ai_runs WHERE event_id=? ORDER BY created_at DESC,id DESC",
                     (event_id,),
-                )
-            ]
-            for run in runs:
-                if run["kind"] == "proposal":
+                ))
+            runs = []
+            for row in rows:
+                run = self._public_run(row, diagnostics=diagnostic)
+                accessible = True
+                if row["kind"] == "proposal":
                     try:
                         self.access.book(conn, actor, run["book_id"])
                     except AccountingError as error:
                         if error.status not in {403, 404}:
                             raise
+                        accessible = False
                         run.update(
                             result=None,
                             book_id=None,
                             draft_id=None,
                             error_detail="分录建议由有账套权限的会计查看",
                         )
-            assessment = self._assessment(conn, actor, event)
+                if accessible:
+                    run["execution"] = self._run_execution(
+                        conn, actor, row, assessment["findings"], diagnostic=diagnostic
+                    )
+                runs.append(run)
             findings = assessment["findings"] if self._enabled(conn, actor, event) or runs else []
             candidates, links = assessment["bank_candidates"], assessment["links"]
             public_bank = lambda row: {
@@ -1193,6 +1304,7 @@ class IntelligenceService:
         }
         context = {
             "currency": "CNY",
+            "business_type": event["template_id"],
             "book": {"id": book_id, "period": book["period"], "company_id": event["company_id"]},
             "business": json.loads(event["payload"]),
             "source": self.ledger._source_json(conn, source),
@@ -1236,6 +1348,8 @@ class IntelligenceService:
         return event, draft, source, assessment, context, fingerprint(fact_context)
 
     def _validate_proposal(self, conn, source, context, suggestion, actor=None):
+        from .journal_facts import journal_fact_issues
+
         lines = [
             {
                 "account_code": row.account_code,
@@ -1250,6 +1364,7 @@ class IntelligenceService:
             {row["code"] for row in context["accounts"]},
             context["source"]["evidence_ref"],
         )
+        issues.extend(journal_fact_issues(source, context, suggestion))
         bank = (
             sum(row["debit_cents"] for row in lines if row["account_code"].startswith("1002")),
             sum(row["credit_cents"] for row in lines if row["account_code"].startswith("1002")),
@@ -1303,8 +1418,15 @@ class IntelligenceService:
             raise ProviderError(
                 "invalid_proposal", "分录建议未通过金额、科目或证据校验，请会计人工处理", 422
             )
+        # Amount provenance cannot authenticate the model's free-form claims
+        # about profits, deductions or executed actions. Publish only a fixed
+        # draft explanation; keep genuine risks in deterministic findings.
+        suggestion.description = "AI 待复核凭证草稿"
+        suggestion.reasoning = "当前来源金额、逐票引用及分录已通过程序校验；科目判断、税务处理仍待会计复核。"
+        suggestion.warnings = ["模型提示存在待人工核对事项，请核对原件与业务资料"] if suggestion.warnings else []
 
     def propose(self, actor, book_id, draft_id, request, execution=None):
+        started_at = time.monotonic()
         with self.db.transaction(write=True, actor=actor) as conn:
             event, draft, source, assessment, context, digest = self._proposal_context(
                 conn, actor, book_id, draft_id, request.expected_version
@@ -1312,6 +1434,15 @@ class IntelligenceService:
             if execution:
                 execution.check(conn)
                 execution.inputs(event, draft)
+            journal_policy = self._policy_check(
+                conn, actor, event["company_id"], "journal",
+                {"accounting", "counterparty", "document"},
+            )
+            journal_limits = self._limits(
+                journal_policy,
+                started_at=started_at,
+                timeout_cap=effective_settings(self.provider.settings, "journal").timeout_seconds,
+            )
             run, execute = self._claim(
                 conn,
                 actor,
@@ -1325,10 +1456,9 @@ class IntelligenceService:
             )
             if execution and execute:
                 execution.bind(conn, run)
-        if not execute:
-            return self._public_run(run)
+            if not execute:
+                return self._public_run(run, diagnostics=can_diagnose(conn, actor))
         result, error = None, None
-        journal_limits = None
         budget, attempted = self._meter().context(actor, run), False
         try:
             with self.db.transaction(write=True, actor=actor) as conn:
@@ -1337,11 +1467,29 @@ class IntelligenceService:
                 )
                 if current[-1] != digest:
                     raise AccountingError("记账资料已改变，请刷新后重新生成建议", 409)
+                context = current[4]
                 if execution:
                     execution.inputs(current[0], current[1])
                     execution.before_send(conn)
-                # The journal path's policy was rechecked in _proposal_context;
-                # keep its established template/no-model branch unchanged.
+                current_policy = self._policy_check(
+                    conn, actor, current[0]["company_id"], "journal",
+                    {"accounting", "counterparty", "document"},
+                )
+                if current_policy != journal_policy:
+                    raise AccountingError("企业模型处理政策已改变，记账建议未发送", 409)
+                journal_limits = self._limits(
+                    current_policy,
+                    started_at=started_at,
+                    timeout_cap=journal_limits.timeout_seconds,
+                    deadline_monotonic=journal_limits.deadline_monotonic,
+                    prior_limits=journal_limits,
+                )
+                from .runtime_context import journal_context
+
+                model_context = journal_context(
+                    actor=actor, event=current[0], context=current[4], input_fingerprint=digest,
+                    policy=current_policy, limits=journal_limits,
+                )
                 budget.before_send(conn)
             attempted = True
             try:
@@ -1351,14 +1499,18 @@ class IntelligenceService:
                 from ..concurrency.provider import provider_scope
 
                 with provider_scope(self.db, actor, run["company_id"]):
-                    result = self.provider.suggest_journal(context, limits=journal_limits)
+                    result = self.provider.suggest_journal(
+                        context, limits=journal_limits, context_pack=model_context,
+                    )
             finally:
                 after_model = getattr(execution, "after_model", None)
                 if callable(after_model):
                     after_model()
         except ProviderError as caught:
             error = caught
-        except AccountingError:
+        except AccountingError as caught:
+            if getattr(caught, "llm_attempted", None) is False:
+                error = caught
             self._abandon(actor, run["id"])
             raise
         except Exception:
@@ -1372,6 +1524,11 @@ class IntelligenceService:
                 )
                 if current_digest != digest:
                     raise AccountingError("记账资料已改变，旧建议未发布，请重新生成", 409)
+                if self._policy_check(
+                    conn, actor, event["company_id"], "journal",
+                    {"accounting", "counterparty", "document"},
+                ) != journal_policy:
+                    raise AccountingError("企业模型处理政策已改变，旧建议未发布", 409)
                 if execution:
                     execution.check(conn)
                     execution.inputs(event, draft)
@@ -1386,7 +1543,7 @@ class IntelligenceService:
                 self._assessment(conn, actor, event, persist=True)
                 if execution:
                     execution.finish(conn, finished, error)
-                return self._public_run(finished)
+                return self._public_run(finished, diagnostics=can_diagnose(conn, actor))
         except AccountingError:
             self._abandon(actor, run["id"])
             raise

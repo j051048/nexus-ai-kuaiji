@@ -107,7 +107,18 @@ def test_manual_path_available_without_ai_and_original_survives_backup(ai_case, 
     assert event['status'] == 'submitted' and c.provider.extract_calls == 0
 
 
-def test_ai_suggestions_never_write_facts_and_transfer_does_not_charge_twice(ai_case):
+def test_ai_suggestions_never_write_facts_and_transfer_does_not_charge_twice(ai_case, monkeypatch):
+    from dataclasses import replace
+    from app.intelligence import service as intelligence_module
+    from app.intake import service as intake_module
+    from test_intelligence_workflow import invoice_document
+    # This cache-positive test declares an independent synthetic original text
+    # layer. The separate AK03 test covers unverified blank-image output.
+    original = invoice_document()["pages"][0]["raw_text"]
+    prepare = intelligence_module.prepare_document
+    prepare_original = lambda *args, **kwargs: [replace(page, native_text=original) for page in prepare(*args, **kwargs)]
+    monkeypatch.setattr(intelligence_module, "prepare_document", prepare_original)
+    monkeypatch.setattr(intake_module, "prepare_document", prepare_original)
     c = ai_case; service = intake(c); draft = attach_intake(c, service, create_intake(c, service))
     request = IntakeRecognize(expected_version=draft['version'], idempotency_key=uuid4().hex)
     run = service.recognize(c.actors['employee'], draft['id'], draft['attachments'][0]['id'], request)

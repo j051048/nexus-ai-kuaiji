@@ -84,8 +84,8 @@ export interface IntelligenceRun {
   book_id?: string | null;
   input_version: number;
   result: OcrResult | JournalProposal | null;
-  provider: string;
-  model: string;
+  provider: string | null;
+  model: string | null;
   prompt_version: string;
   error_code?: string | null;
   error_detail?: string | null;

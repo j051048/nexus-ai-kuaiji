@@ -323,10 +323,11 @@ def test_highest_legal_token_counts_and_rates_do_not_overflow_intermediate_math(
     case.meter.pricing = Pricing(ocr=Rate("1000000.000000", "1000000.000000"), proposal=Rate())
     context, _ = claimed_context(case)
     before_send(case, context)
-    context.finish(result=SimpleNamespace(usage=ProviderUsage(prompt_tokens=10_000_000, completion_tokens=10_000_000, total_tokens=20_000_000)), attempted=True)
+    # ProviderUsage caps each scenario at 10,000,000 total tokens.
+    context.finish(result=SimpleNamespace(usage=ProviderUsage(prompt_tokens=5_000_000, completion_tokens=5_000_000, total_tokens=10_000_000)), attempted=True)
     cost = cost_rows(case)[0]
-    assert cost["state"] == "estimated" and cost["estimated_micro"] == 20_000_000_000_000
-    assert case.operations.overview(case.manager, case.company["id"])["usage"]["estimated_cost"] == "20000000.000000"
+    assert cost["state"] == "estimated" and cost["estimated_micro"] == 10_000_000_000_000
+    assert case.operations.overview(case.manager, case.company["id"])["usage"]["estimated_cost"] == "10000000.000000"
 
 
 @pytest.mark.parametrize("tokens", [True, "3", -1, 10_000_001])

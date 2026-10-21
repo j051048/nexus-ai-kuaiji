@@ -47,6 +47,16 @@ def test_xml_known_shape_uses_exact_money_and_anchored_evidence():
     assert validate_attachment("原件.xml", "text/xml; charset=utf-8", xml_bytes()) == ("原件.xml", "application/xml")
 
 
+@pytest.mark.parametrize("field,other", [("gross_amount", "net_amount"), ("net_amount", "gross_amount"), ("tax_amount", "net_amount")])
+def test_xml_paths_cannot_qualify_another_money_column(field, other):
+    output = parse_invoice_xml(xml_bytes())
+    document = output.result.data.documents[0].model_dump()
+    quote = next(item["quote"] for item in document["evidence"] if item["field"] == other)
+    next(item for item in document["evidence"] if item["field"] == field)["quote"] = quote
+    codes = {item["code"] for item in extraction_checks([document], [1], {1: output.pages[0].native_text})}
+    assert "document_1_evidence_" + field in codes
+
+
 @pytest.mark.parametrize("replacement", ["-0.30", "1e2", "0.301", "NaN", "9999999999999.00"])
 def test_xml_never_rounds_or_sanitizes_invalid_amounts(replacement):
     raw = xml_bytes().replace(b"<TotalTax-includedAmount>0.30", ("<TotalTax-includedAmount>" + replacement).encode())
@@ -84,7 +94,11 @@ def test_xml_local_processing_no_model_credentials_charge_or_fact_mutation(ai_ca
     event = xml_event(c)
     run = extract(c, event)
     assert run["status"] == "succeeded" and run["extraction_method"] == "structured_xml"
-    assert run["verification_status"] == "not_verified" and run["provider"] == "local-structured-parser"
+    assert run["verification_status"] == "not_verified" and run["provider"] is None and run["usage"] == {}
+    # Source provenance is retained by the server while supplier diagnostics
+    # are hidden from the employee-facing response.
+    with c.db.transaction(actor=c.actors["employee"]) as conn:
+        assert conn.execute("SELECT provider FROM ai_runs WHERE id=?", (run["id"],)).fetchone()[0] == "local-structured-parser"
     assert extract(c, event)["id"] == run["id"] and c.provider.extract_calls == 0
     assert c.business.get_event(c.actors["employee"], event["id"])["payload"] == event["payload"]
     with c.db.transaction(actor=c.manager) as conn:
@@ -145,7 +159,9 @@ def test_xml_employee_intake_transfers_evidence_without_model_or_second_charge(a
         service.download(c.actors["peer"], draft["attachments"][0]["id"])
     event = service.complete(c.actors["employee"], draft["id"], confirmed(draft))["event"]
     run = c.intelligence.detail(c.actors["employee"], event["id"])["runs"][0]
-    assert run["provider"] == "local-structured-parser" and run["verification_status"] == "not_verified"
+    assert run["provider"] is None and run["extraction_method"] == "structured_xml" and run["verification_status"] == "not_verified"
+    with c.db.transaction(actor=c.actors["employee"]) as conn:
+        assert conn.execute("SELECT provider FROM ai_runs WHERE id=?", (run["id"],)).fetchone()[0] == "local-structured-parser"
     with c.db.transaction(actor=c.manager) as conn:
         assert conn.execute("SELECT COUNT(*) FROM model_costs").fetchone()[0] == 0
         assert conn.execute("PRAGMA foreign_key_check").fetchall() == []

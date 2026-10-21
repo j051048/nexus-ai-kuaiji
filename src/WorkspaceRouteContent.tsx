@@ -324,7 +324,7 @@ export function WorkspaceRouteContent({
     >
       {routeView === 'home' ? (
         <WorkspaceHome
-          key={`${session.scope_key}:${workCompany}`}
+          key={session.scope_key}
           initialCompanyId={workCompany}
           session={session}
           profile={profile}
@@ -336,7 +336,11 @@ export function WorkspaceRouteContent({
           paused={navigationLocked}
           onOpen={openWorkspaceTask}
           onNew={openNewIntake}
-          onCompanyChange={setWorkCompany}
+          onCompanyChange={(companyId) => {
+            setWorkCompany(companyId);
+            setWorkBook('');
+            setWorkPeriod('');
+          }}
           onAccounting={() => navigate('accounting')}
           onReview={() => navigate('review')}
           onBriefing={(target) => {
@@ -565,6 +569,13 @@ export function WorkspaceRouteContent({
             setBusinessTarget(id);
             setRouteView('business');
           }}
+        />
+      ) : routeView === 'briefing' && bookId && profile && !profile.can_accounting ? (
+        <MonthlyBriefing
+          key={session.scope_key + ':' + bookId}
+          session={session}
+          bookId={bookId}
+          onBack={() => navigate('home')}
         />
       ) : showBusiness ? (
         <BusinessWorkspace

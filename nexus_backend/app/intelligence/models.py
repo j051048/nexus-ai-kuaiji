@@ -119,10 +119,15 @@ class JournalLine(OutputModel):
 
 
 class JournalEvidenceRef(OutputModel):
+    model_config = ConfigDict(
+        extra="forbid", strict=True,
+        json_schema_extra=lambda schema: schema["required"].append("document_index"),
+    )
     attachment_id: StrictStr = Field(min_length=1, max_length=100)
     extraction_id: StrictStr = Field(min_length=1, max_length=100)
     field: EvidenceField
     page: StrictInt = Field(ge=1, le=6)
+    document_index: StrictInt | None = Field(default=None, ge=0, le=19)
 
 
 class JournalSuggestion(OutputModel):

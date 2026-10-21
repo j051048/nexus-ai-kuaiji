@@ -1,6 +1,7 @@
 from period_fixtures import restore_period_state
 """Real local transactions with explicit synthetic OCR/model output, no network."""
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 import json
 from types import SimpleNamespace
 
@@ -15,29 +16,45 @@ from app.intelligence.provider import ProviderError
 from app.jobs.requests import BatchItem, BatchRequest, ProposalRetryRequest
 from app.jobs.service import QueueService
 from app.jobs.worker import ProposalExecution, QueueWorker
-from test_intelligence_workflow import ai_case, create_event, extract, handoff
+from test_intelligence_workflow import ai_case, create_event, extract, handoff, invoice_document
 from test_queue_workflow import TestClock, create_other_event
 from test_model_cost_workflow import cost_case, policy
 
 
 @pytest.fixture
-def proposal_case(ai_case):
+def proposal_case(ai_case, monkeypatch):
     case = ai_case
     case.clock = TestClock()
     case.queue = QueueService(case.db, case.intelligence, clock=case.clock)
     case.business.proposal_queue = case.queue.proposals
     case.worker = QueueWorker(case.queue, worker_id="stage7-synthetic-worker")
     case.catalog = CatalogService(case.db)
+    independent_original(case, monkeypatch)
     return case
 
 
 @pytest.fixture
-def proposal_cost_case(cost_case):
+def proposal_cost_case(cost_case, monkeypatch):
     case = cost_case
     case.queue = QueueService(case.db, case.intelligence, clock=case.clock)
     case.business.proposal_queue = case.queue.proposals
     case.worker = QueueWorker(case.queue, worker_id="stage7-synthetic-cost-worker")
+    independent_original(case, monkeypatch)
     return case
+
+
+def independent_original(case, monkeypatch):
+    """Automation positives have a separate, immutable synthetic OCR original.
+
+    The blank PNG fixture proves storage only. This parser stub supplies an
+    explicitly archived text layer, independent of mutable model output.
+    """
+    from app.intelligence import service
+    prepare = service.prepare_document
+    case.original_text = invoice_document()["pages"][0]["raw_text"]
+    monkeypatch.setattr(service, "prepare_document", lambda *args, **kwargs: [
+        replace(page, native_text=case.original_text) for page in prepare(*args, **kwargs)
+    ])
 
 
 def current(case, result):
@@ -140,6 +157,7 @@ def test_tax_template_consumes_only_verified_net_tax_after_ocr(proposal_case):
         page["raw_text"] = page["raw_text"].replace("net_amount: 0.30", "net_amount: 0.20").replace("tax_amount: 0.00", "tax_amount: 0.10")
     for evidence in case.provider.document["evidence"]:
         evidence["quote"] = evidence["quote"].replace("net_amount: 0.30", "net_amount: 0.20").replace("tax_amount: 0.00", "tax_amount: 0.10")
+    case.original_text = invoice_document(net_amount="0.20", tax_amount="0.10")["pages"][0]["raw_text"]
     result = handoff(case, create_event(case))
     assert draft(case, result)["lines"] == []
     assert case.worker.run_once() and case.worker.run_once()

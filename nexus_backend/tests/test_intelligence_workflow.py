@@ -24,6 +24,7 @@ from app.closing.service import ClosingService
 from app.delivery.models import ReceiptCreate
 from app.delivery.service import DeliveryService
 from app.operations.pricing import Pricing, Rate
+from app.accounting.seed import LOCAL_ACTOR
 from uuid import uuid4
 import json
 
@@ -142,11 +143,24 @@ def extract(ai_case, event, actor="employee", key="synthetic-ocr-key"):
     return ai_case.intelligence.extract(ai_case.actors[actor], event["id"], OCRRequest(attachment_id=event["attachments"][0]["id"], expected_version=event["version"], idempotency_key=key))
 
 
-def handoff(ai_case, event):
+def handoff(ai_case, event, *, verify_original=True):
     event = ai_case.business.submit(ai_case.actors["employee"], event["id"], event["version"])
     event = ai_case.business.approve_department(ai_case.actors["approver"], event["id"], event["version"])
     event = ai_case.business.approve_finance(ai_case.actors["finance"], event["id"], event["version"])
-    return ai_case.business.handoff(ai_case.actors["finance"], event["id"], HandoffRequest(expected_version=event["version"], book_id=ai_case.book["id"], idempotency_key="synthetic-handoff-" + event["id"]))
+    receipt = ai_case.business.handoff(ai_case.actors["finance"], event["id"], HandoffRequest(expected_version=event["version"], book_id=ai_case.book["id"], idempotency_key="synthetic-handoff-" + event["id"]))
+    if verify_original:
+        # The synthetic fixture is a blank bitmap, not independent OCR proof.
+        # Positive reviewed workflows explicitly model the accountant checking
+        # the original. Negative AK03 cases opt out and assert adoption blocks.
+        review_original(ai_case, event)
+    return receipt
+
+
+def review_original(ai_case, event):
+    checks = ai_case.intelligence.reconcile(ai_case.actors["accountant"], event["id"])["findings"]
+    for issue in checks:
+        if issue["code"].endswith("_original_unverified") and not issue["resolved"]:
+            ai_case.intelligence.resolve(ai_case.actors["accountant"], issue["id"], "合成流程：会计独立核对原始票据金额、日期和交易对方")
 
 
 def test_config_is_public_and_only_company_manager_can_enable(ai_case):
@@ -167,7 +181,8 @@ def test_ocr_stores_strict_output_once_without_mutating_business_facts(ai_case):
     latest = ai_case.business.get_event(ai_case.actors["employee"], event["id"])
     assert latest["version"] == event["version"] and latest["payload"] == event["payload"]
     detail = ai_case.intelligence.reconcile(ai_case.actors["finance"], event["id"])
-    assert detail["findings"] == [] and detail["bank_candidates"] == []
+    assert [row["code"] for row in detail["findings"]] == ["document_1_original_unverified"]
+    assert detail["findings"][0]["severity"] == "blocking" and detail["bank_candidates"] == []
 
 
 def test_disabled_company_does_not_send_employee_evidence(ai_case):
@@ -396,14 +411,23 @@ def test_human_resolution_is_required_before_applying_amount_mismatch_proposal(a
     extract(ai_case, event)
     receipt = handoff(ai_case, event)
     suggestion = propose(ai_case, receipt["draft_id"])
-    assert suggestion["status"] == "succeeded"
-    with pytest.raises(AccountingError, match="异常"):
+    assert suggestion["status"] == "failed" and suggestion["error_code"] == "invalid_proposal"
+    with pytest.raises(AccountingError):
         ai_case.intelligence.apply(ai_case.actors["accountant"], suggestion["id"], 1)
     findings = ai_case.intelligence.detail(ai_case.actors["accountant"], event["id"])["findings"]
     for finding in findings:
         if finding["severity"] == "blocking" and not finding["resolved"]:
             ai_case.intelligence.resolve(ai_case.actors["accountant"], finding["id"], "已核对完整凭据与业务事项，差异经人工确认")
-    result = ai_case.intelligence.apply(ai_case.actors["accountant"], suggestion["id"], 1)
+    # An explanation cannot turn a 0.30 original into evidence for 0.40.
+    with pytest.raises(AccountingError):
+        ai_case.intelligence.apply(ai_case.actors["accountant"], suggestion["id"], 1)
+    ai_case.provider.document = invoice_document(amount="0.40", net_amount="0.40")
+    current = ai_case.business.get_event(ai_case.actors["accountant"], event["id"])
+    assert extract(ai_case, current, actor="accountant", key="corrected-original") ["status"] == "succeeded"
+    review_original(ai_case, event)
+    corrected = propose(ai_case, receipt["draft_id"], key="corrected-proposal")
+    assert corrected["status"] == "succeeded"
+    result = ai_case.intelligence.apply(ai_case.actors["accountant"], corrected["id"], 1)
     assert result["status"] == "draft" and result["version"] == 2
 
 
@@ -453,6 +477,7 @@ def test_paid_event_bank_link_blocks_duplicate_bank_draft_review_and_export(ai_c
     linked = ai_case.intelligence.link_bank(ai_case.actors["accountant"], event["id"], BankLinkRequest(bank_source_ids=[bank["id"]], reason="已核对银行回单金额及交易对方"))
     assert linked["bank_links"][0]["bank_source_id"] == bank["id"]
     assert not any(issue["code"] == "bank_match_review" for issue in linked["findings"])
+    review_original(ai_case, event)
     bank_draft = next(row for row in ai_case.ledger.get_book(ai_case.actors["accountant"], ai_case.book["id"])["drafts"] if row["source_id"] == bank["id"])
     assert any("重复" in issue for issue in bank_draft["issues"])
     with pytest.raises(AccountingError):
@@ -481,7 +506,10 @@ def test_bank_link_never_crosses_company_book_or_direction(ai_case):
 @pytest.fixture
 def ai_client(tmp_path):
     provider = FakeProvider()
-    app = create_app(tmp_path / "http-intelligence.db", seed=True, attachment_root=tmp_path / "http-private", intelligence_provider=provider)
+    # These HTTP tests explicitly drive OCR, proposal and review in sequence.
+    # Queue/process tests exercise workers separately; a background worker here
+    # races the assertions about pending work and may consume the same draft.
+    app = create_app(tmp_path / "http-intelligence.db", seed=True, attachment_root=tmp_path / "http-private", intelligence_provider=provider, queue_worker_enabled=False)
     with TestClient(app, base_url="http://127.0.0.1", client=("127.0.0.1", 6789)) as client:
         client.provider = provider
         yield client
@@ -516,6 +544,14 @@ def http_handoff(client, event, employee, department, finance):
     book = next(row for row in client.get("/api/workbench", headers=finance).json()["books"] if row["company_id"] == event["company_id"])
     response = client.post(path + "/handoff", headers=finance, json={"expected_version": event["version"], "book_id": book["id"], "idempotency_key": "synthetic-http-handoff"})
     assert response.status_code == 200, response.text
+    accountant = http_auth(client, "accountant")
+    checks = client.post(path + "/reconcile", headers=accountant)
+    assert checks.status_code == 200, checks.text
+    for issue in checks.json()["findings"]:
+        if issue["code"].endswith("_original_unverified") and not issue["resolved"]:
+            resolved = client.post(f"/api/intelligence/findings/{issue['id']}/resolve", headers=accountant,
+                                   json={"reason": "合成HTTP流程：会计独立核对原始票据"})
+            assert resolved.status_code == 200, resolved.text
     return response.json(), book
 
 

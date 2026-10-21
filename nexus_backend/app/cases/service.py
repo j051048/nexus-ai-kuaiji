@@ -421,12 +421,17 @@ class CaseService:
                 return self.business._event(conn, actor, payload.event_id)["company_id"]
             return self.access.book(conn, actor, payload.book_id)["company_id"]
 
-    def create(self, actor, payload):
+    def create(self, actor, payload, *, source_guard=None):
         company_id = self._company_of_source(actor, payload)
         with self.db.transaction(
             write=True, actor=actor, company_id=company_id, write_scope="company"
         ) as conn:
             self.access.require_user(conn, actor.user_id)
+            # An internal adapter may bind a current AI execution to this case.
+            # Recheck under the existing company write lock, before any receipt
+            # or task write. HTTP callers cannot supply this callable.
+            if source_guard is not None:
+                source_guard(conn)
             event = (
                 self.business._event(conn, actor, payload.event_id) if payload.event_id else None
             )

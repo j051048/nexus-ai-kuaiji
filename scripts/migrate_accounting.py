@@ -189,6 +189,30 @@ def provision_login(url, username, password, *, worker=False):
     return username
 
 
+def provision_projection_login(url, username, password):
+    """Create a LOGIN role that has ONLY the projection role, never app/system."""
+    import psycopg
+
+    if not username:
+        raise ValueError("请提供独立 projection 登录名")
+    if len(password) < 20:
+        raise ValueError("projection 密码至少 20 个字符")
+    with admin_connection(url) as conn:
+        require_admin(conn)
+        with conn.transaction():
+            existing = conn.execute(
+                "SELECT rolname FROM pg_roles WHERE rolname=%s", (username,)
+            ).fetchone()
+            if existing:
+                raise ValueError("该 projection 账号已存在")
+            conn.execute(
+                psycopg.sql.SQL(
+                    "CREATE ROLE {} LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS PASSWORD {} IN ROLE accounting_projection"
+                ).format(psycopg.sql.Identifier(username), psycopg.sql.Literal(password))
+            )
+    return username
+
+
 def provision_worker_login(url, username, password):
     """Workers can act in authenticated scopes and use bounded queue helpers.
 
@@ -200,7 +224,14 @@ def provision_worker_login(url, username, password):
 def main():
     parser = argparse.ArgumentParser(description="会计 PostgreSQL 显式迁移与受限账号配置")
     parser.add_argument(
-        "command", choices=["migrate", "status", "provision-login", "provision-worker-login"]
+        "command",
+        choices=[
+            "migrate",
+            "status",
+            "provision-login",
+            "provision-worker-login",
+            "provision-projection-login",
+        ],
     )
     parser.add_argument("--username", default=None)
     parser.add_argument("--strict", action="store_true", help="非全部已应用时返回非零")
@@ -223,6 +254,16 @@ def main():
             print(
                 "已创建受限运行账号："
                 + provision_login(url, args.username or "accounting_runtime", password)
+            )
+        elif args.command == "provision-projection-login":
+            password = os.getenv("ACCOUNTING_PROJECTION_PASSWORD") or getpass.getpass(
+                "投影数据库账号密码（隐藏输入）："
+            )
+            print(
+                "已创建 projecton 账号："
+                + provision_projection_login(
+                    url, args.username or "accounting_projection_runtime", password
+                )
             )
         else:
             password = os.getenv("ACCOUNTING_WORKER_PASSWORD") or getpass.getpass(

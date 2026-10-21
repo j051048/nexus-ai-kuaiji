@@ -1,4 +1,4 @@
-import { expect, type Page } from '@playwright/test';
+import { expect, type Page, type Response } from '@playwright/test';
 
 export async function openNavigation(page: Page) {
   const opener = page.getByRole('button', { name: '打开工作空间导航', exact: true });
@@ -12,8 +12,38 @@ export async function openNavigation(page: Page) {
 
 export async function choosePersona(page: Page, persona: string) {
   await openNavigation(page);
-  await page.getByLabel('切换验证身份').selectOption(persona);
-  await expect(page.locator('.agent-sidebar, .client-portal')).toBeVisible({ timeout: 30_000 });
+  // A direct-page reload can briefly render a generic firm shell before the
+  // newly signed-in employee's profile arrives. Observe that identity's real
+  // profile response; do not add a hidden extra API read or guess from its name.
+  const profiles: Response[] = [];
+  const observe = (response: Response) => {
+    if (['/api/workspace/bootstrap', '/api/workspace/profile'].includes(new URL(response.url()).pathname))
+      profiles.push(response);
+  };
+  page.on('response', observe);
+  try {
+    const [session] = await Promise.all([
+      page.waitForResponse((response) => {
+        const url = new URL(response.url());
+        return url.pathname === '/api/session' && url.searchParams.get('persona') === persona;
+      }),
+      page.getByLabel('切换验证身份').selectOption(persona),
+    ]);
+    expect(session.ok()).toBe(true);
+    const { token } = await session.json();
+    const selectedProfile = () => profiles.find((response) =>
+      response.request().headers().authorization === `Bearer ${token}` && response.ok(),
+    );
+    await expect.poll(() => !!selectedProfile(), { timeout: 30_000 }).toBe(true);
+    const result = await selectedProfile()!.json();
+    const profile = result.profile ?? result;
+    expect(typeof profile.can_accounting).toBe('boolean');
+    await expect(page.locator(profile.can_accounting ? '.agent-sidebar' : '.client-portal'))
+      .toBeVisible({ timeout: 30_000 });
+    await expect(page.getByLabel('切换验证身份')).toHaveValue(persona);
+  } finally {
+    page.off('response', observe);
+  }
 }
 
 export async function openBusiness(page: Page) {
@@ -41,6 +71,26 @@ export async function openAccounting(page: Page) {
     await nav.getByRole('button', { name: '客户企业', exact: true }).click();
   }
   await expect(page.getByLabel('搜索企业名称').first()).toBeVisible({ timeout: 30_000 });
+}
+
+/** The firm-owner primary menu has no home item; use its real brand link. */
+export async function returnWorkspaceHome(page: Page) {
+  await page.getByRole('link', { name: '衡账，返回工作台', exact: true }).click();
+  await expect(page).toHaveURL(/\/workspace\/home(?:[?#]|$)/);
+}
+
+/** Management tools remain in the collapsible "更多工具" group. */
+export async function openFirmTool(page: Page, name: string) {
+  await openNavigation(page);
+  const nav = page.getByRole('navigation', { name: '主导航', exact: true });
+  const group = nav.locator('details').filter({
+    has: page.locator('summary').filter({ hasText: /^更多工具$/ }),
+  });
+  await expect(group).toHaveCount(1);
+  if ((await group.getAttribute('open')) === null) await group.locator('summary').click();
+  const target = group.getByRole('button', { name, exact: true });
+  await expect(target).toBeVisible();
+  await target.click();
 }
 
 async function expand(page: Page, label: string) {

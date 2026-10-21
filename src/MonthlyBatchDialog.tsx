@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { CalendarPlus, RefreshCw } from 'lucide-react';
 import { api, errorMessage } from './api';
 import { Modal, Spinner } from './AppPrimitives';
@@ -64,6 +64,7 @@ export function MonthlyBatchDialog({
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const errorId = useId();
   const [batch, setBatch] = useState<BatchOperation | null>(null);
   const requestKey = useRef('');
   const openedRef = useRef(onOpened);
@@ -148,6 +149,7 @@ export function MonthlyBatchDialog({
       subtitle={`${period} · 为尚未建账的企业批量创建账套、继承上月分工并生成催资清单`}
       onClose={onClose}
       busy={busy}
+      describedBy={error ? errorId : undefined}
     >
       {batch ? (
         <div className="batch-result">
@@ -205,7 +207,7 @@ export function MonthlyBatchDialog({
             )}
           </div>
           {error && (
-            <p className="form-error" role="alert">
+            <p className="form-error" role="alert" id={errorId}>
               {error}
             </p>
           )}
@@ -274,6 +276,7 @@ export function MonthlyBatchDialog({
             操作依据
             <textarea
               aria-label="批量开期操作依据"
+              aria-describedby={error ? errorId : undefined}
               minLength={3}
               maxLength={1000}
               required
@@ -283,7 +286,7 @@ export function MonthlyBatchDialog({
             />
           </label>
           {error && (
-            <p className="form-error" role="alert">
+            <p className="form-error" role="alert" id={errorId}>
               {error}
             </p>
           )}

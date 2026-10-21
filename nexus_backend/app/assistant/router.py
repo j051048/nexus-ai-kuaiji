@@ -101,6 +101,15 @@ def build_assistant_router(actor_dependency):
     ):
         return assistant.turn(current, conversation_id, turn_id)
 
+    @router.get("/conversations/{conversation_id}/turns/{turn_id}/execution")
+    def execution(
+        conversation_id: str,
+        turn_id: str,
+        current=Depends(actor_dependency),
+        assistant=Depends(service),
+    ):
+        return assistant.execution(current, conversation_id, turn_id)
+
     @router.post("/conversations/{conversation_id}/turns/{turn_id}/cancel")
     def cancel(
         conversation_id: str,

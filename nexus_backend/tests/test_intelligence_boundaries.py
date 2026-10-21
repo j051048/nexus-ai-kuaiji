@@ -24,8 +24,8 @@ def test_late_ocr_after_scope_or_company_setting_change_never_publishes(client, 
     employee, event = uploaded_event(client)
     enable(client, event)
     original = client.supplier.extract_invoice
-    def response(pages):
-        result = original(pages)
+    def response(pages, **kwargs):
+        result = original(pages, **kwargs)
         if change == "revoked":
             client.app.state.directory.revoke_company_member(LOCAL_ACTOR, event["company_id"], PERSONAS["employee"]["user_id"])
         else:
@@ -44,10 +44,10 @@ def test_parallel_same_key_calls_supplier_once_and_returns_pending_conflict(clie
     enable(client, event)
     entered, release = Event(), Event()
     original = client.supplier.extract_invoice
-    def delayed(pages):
+    def delayed(pages, **kwargs):
         entered.set()
         assert release.wait(10)
-        return original(pages)
+        return original(pages, **kwargs)
     client.supplier.extract_invoice = delayed
     path = f"/api/business/events/{event['id']}/ocr"
     with ThreadPoolExecutor(max_workers=2) as pool:

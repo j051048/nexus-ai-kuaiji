@@ -43,10 +43,41 @@ ruff check scripts/migrate_accounting.py: pass
 
 本地未连接 PG，因此未实际执行 `migrate status`；CI 会执行。
 
+## 真实 PostgreSQL 演练
+
+WSL Ubuntu-22.04 PostgreSQL 14.24 可用。
+
+- 创建独立临时库 `accounting_ag_r1`；
+- 真实执行 `migrate`：135 个文件、134 个版本全部应用；
+- `status --strict` 通过；
+- 受限账号 `accounting_ci` / `accounting_ci_worker` 创建成功；
+- `check_pg_test_target.py` 通过（134 个迁移版本）。
+
+PG 对等套件抽样：
+
+```text
+test_postgres_integration.py
+test_business_postgres.py
+test_admin_workspace_postgres.py
+test_intelligence_workflow_postgres.py
+79 passed, 1 failed
+```
+
+唯一失败：
+
+```text
+test_business_postgres_all_new_tables_force_rls_and_functions_are_private
+期望 accounting_system 读取 business_events 抛 InsufficientPrivilege
+实际：迁移 090 明确授予 accounting_system SELECT + workspace_refresh_read
+```
+
+这是**现有测试与当前投影授权的契约冲突**，不是环境问题。  
+未擅自 REVOKE，因为会破坏工作台任务投影刷新；需单独设计 SECURITY DEFINER 投影函数后再收紧。
+
 ## 未完成
 
 - 迁移函数/触发器/策略的幂等重建规范尚未落地；
-- 未做真实 PG 迁移演练（本机无 PostgreSQL 服务/psql/测试 DSN）；
+- PG 套件 1 项授权契约冲突未解决；
 - 已新增 CI `check_pg_test_target.py`：缺 DSN、迁移表为空、受限角色缺失、运行账号是超级用户时直接失败，避免 PG 套件全 skip 仍绿；
 - 未证明线上部署自动迁移；
 - 批量部分成功尚未有真实失败项证据（月初批量开期当前 scope 会排除已存在账套）；

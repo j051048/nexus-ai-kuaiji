@@ -337,6 +337,10 @@ def status_snapshot(conn, firm_id, samples=10):
     }
 
 
+def _identity(db):
+    return {} if getattr(db, "default_role", "accounting_app") == "accounting_projection" else {"system": True}
+
+
 def refresh_company_scoped(db, firm_id, company_id):
     """Refresh one company with the system identity plus a company write lock.
 
@@ -346,10 +350,10 @@ def refresh_company_scoped(db, firm_id, company_id):
     try:
         with db.transaction(
             write=True,
-            system=True,
             write_scope="company",
             company_id=company_id,
             firm_id=firm_id,
+            **_identity(db),
         ) as conn:
             state = conn.execute(
                 "SELECT revision,built_revision,failures FROM workspace_projection_state "
@@ -364,15 +368,15 @@ def refresh_company_scoped(db, firm_id, company_id):
         try:
             with db.transaction(
                 write=True,
-                system=True,
                 write_scope="company",
                 company_id=company_id,
                 firm_id=firm_id,
+                **_identity(db),
             ) as conn:
                 mark_failure(conn, firm_id, company_id)
         except Exception:
             try:
-                with db.transaction(write=True, system=True) as conn:
+                with db.transaction(write=True, **_identity(db)) as conn:
                     mark_failure(conn, firm_id, company_id)
             except Exception:
                 pass
@@ -413,7 +417,7 @@ class ProjectionRefresher:
 
     def _refresh_firm(self, firm_id):
         try:
-            with self.db.transaction(system=True) as conn:
+            with self.db.transaction(**_identity(self.db)) as conn:
                 todo = pending_companies(conn, firm_id, REFRESH_PER_PASS + 1)
         except Exception:
             logger.warning("统一待办投影队列读取失败，将在下一轮重试")
@@ -425,7 +429,7 @@ class ProjectionRefresher:
 
     def _sweep(self):
         try:
-            with self.db.transaction(system=True) as conn:
+            with self.db.transaction(**_identity(self.db)) as conn:
                 firms = [
                     row[0]
                     for row in conn.execute(
@@ -523,3 +527,5 @@ def projection_clean(conn, actor):
         (actor.user_id, actor.user_id, actor.user_id, actor.firm_id),
     ).fetchone()
     return row["count"] == 0
+
+

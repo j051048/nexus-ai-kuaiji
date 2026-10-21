@@ -89,6 +89,8 @@ export function WorkspaceHome({
   const experience = workspaceExperience(profile);
   const [kind, setKind] = useState<TaskKind | ''>('');
   const [company, setCompany] = useState(initialCompanyId);
+  const initialCompany = useRef(initialCompanyId);
+  initialCompany.current = initialCompanyId;
   const [offset, setOffset] = useState(0);
   const [sort, setSort] = useState<WorkspaceSort>('priority');
   const [density, setDensity] = useState<WorkspaceDensity>('list');
@@ -202,7 +204,7 @@ export function WorkspaceHome({
     setViews([]);
     setBucket('action');
     setKind('');
-    setCompany(initialCompanyId);
+    setCompany(initialCompany.current);
     setOffset(0);
     setSort('priority');
     setDensity('list');
@@ -219,7 +221,11 @@ export function WorkspaceHome({
       epoch.current++;
       openingController.current?.abort();
     };
-  }, [session.scope_key, initialCompanyId]);
+  }, [session.scope_key]);
+  useEffect(() => {
+    setCompany(initialCompanyId);
+    setOffset(0);
+  }, [initialCompanyId]);
   useEffect(() => {
     const timeout = setTimeout(() => {
       setSearch(query.trim());
@@ -315,6 +321,7 @@ export function WorkspaceHome({
     setBucket(view.bucket);
     setKind(view.kind);
     setCompany(view.company_id);
+    onCompanyChange?.(view.company_id);
     setSort(view.sort);
     setDensity(view.density);
     setQuery('');

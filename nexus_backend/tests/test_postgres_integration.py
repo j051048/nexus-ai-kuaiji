@@ -161,11 +161,13 @@ def test_postgres_read_transaction_keeps_consistent_snapshot(case):
 
 
 def test_postgres_system_role_cannot_access_ledger_and_runtime_is_restricted(case):
-    # Projection maintenance deliberately has read-only access to source/draft
-    # summaries. It must not reach the formal ledger or write a business table.
-    with case.db.transaction(system=True) as conn:
-        assert conn.execute("SELECT COUNT(*) FROM sources").fetchone()[0] >= 0
-        with pytest.raises(case.psycopg.errors.InsufficientPrivilege):
+    # Projection reads moved to the dedicated accounting_projection login.
+    # accounting_system must not read business sources or the formal ledger.
+    with pytest.raises(case.psycopg.errors.InsufficientPrivilege):
+        with case.db.transaction(system=True) as conn:
+            conn.execute("SELECT COUNT(*) FROM sources")
+    with pytest.raises(case.psycopg.errors.InsufficientPrivilege):
+        with case.db.transaction(system=True) as conn:
             conn.execute("SELECT * FROM vouchers")
     with pytest.raises(case.psycopg.errors.InsufficientPrivilege):
         with case.db.transaction(write=True, system=True) as conn:

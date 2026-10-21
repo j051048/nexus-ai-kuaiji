@@ -246,7 +246,7 @@ def test_projection_refresher_uses_system_company_scope(business):
         for call in calls
         if call.get("write") and call.get("system") and call.get("write_scope") == "company"
     ]
-    assert scoped, "投影刷新必须走系统身份的企业写事务，不能再抢全库写锁"
+    assert scoped, "投影刷新必须走 projection 身份的企业写事务，不能再抢全库写锁"
     firm_companies = {c.company["id"], c.other["id"]}
     assert all(
         call.get("company_id") in firm_companies and call.get("firm_id") == c.manager.firm_id
@@ -273,3 +273,4 @@ def test_projection_refresher_sweeps_before_draining(business):
     refresher.drain = lambda: calls.append("drain") or 0
     refresher._tick()
     assert calls == ["sweep", "drain"]
+

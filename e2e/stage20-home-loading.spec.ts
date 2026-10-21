@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { choosePersona, openAccounting, openManagement, openNavigation } from './ui-navigation';
+import { choosePersona, openAccounting, openManagement, returnWorkspaceHome } from './ui-navigation';
 
 test.setTimeout(90_000);
 
@@ -70,32 +70,30 @@ test('离开会计工作区取消慢读取；回到首页不再启动凭证瀑�
     await released.promise;
     await route.fulfill({ response }).catch(() => {});
   });
-  await page.goto('/workspace/home');
-  await readyHome(page);
-  expect(reads).not.toContain('/api/workspace/tasks');
-  const summary = page.locator('summary').filter({ hasText: /^会计工作区$/ });
-  await summary.click();
-  await page
-    .getByRole('navigation', { name: '会计协作', exact: true })
-    .getByRole('button', { name: '会计工作台', exact: true })
-    .click();
-  await arrived.promise;
-  await openNavigation(page);
-  await page
-    .getByRole('navigation', { name: '主导航', exact: true })
-    .getByRole('button', { name: '我的待办', exact: true })
-    .click();
-  released.resolve();
-  await readyHome(page);
-  await expect.poll(() => reads.filter((path) => path === '/api/workspace/tasks').length).toBe(1);
-  expect(reads.filter((path) => path === '/api/workspace/bootstrap')).toHaveLength(1);
-  expect(reads.filter((path) => path === '/api/workbench').length).toBe(1);
-  expect(reads.some((path) => /^\/api\/books\/[^/]+/.test(path))).toBe(false);
-  await openAccounting(page);
-  await expect.poll(() => reads.filter((path) => path === '/api/workbench').length).toBe(2);
-  await expect(
-    page.getByRole('list', { name: '客户企业', exact: true }).getByRole('listitem').first(),
-  ).toBeVisible();
+  try {
+    await page.goto('/workspace/home');
+    await readyHome(page);
+    expect(reads).not.toContain('/api/workspace/tasks');
+    await page
+      .getByRole('navigation', { name: '主导航', exact: true })
+      .getByRole('button', { name: '客户账套', exact: true })
+      .click();
+    await arrived.promise;
+    await returnWorkspaceHome(page);
+    released.resolve();
+    await readyHome(page);
+    await expect.poll(() => reads.filter((path) => path === '/api/workspace/tasks').length).toBe(1);
+    expect(reads.filter((path) => path === '/api/workspace/bootstrap')).toHaveLength(1);
+    expect(reads.filter((path) => path === '/api/workbench').length).toBe(1);
+    expect(reads.some((path) => /^\/api\/books\/[^/]+/.test(path))).toBe(false);
+    await openAccounting(page);
+    await expect.poll(() => reads.filter((path) => path === '/api/workbench').length).toBe(2);
+    await expect(
+      page.getByRole('list', { name: '客户企业', exact: true }).getByRole('listitem').first(),
+    ).toBeVisible();
+  } finally {
+    released.resolve();
+  }
 });
 
 test('切换为员工后不保留会计和运行监控入口，不恢复旧账套或隐藏预取', async ({ page }) => {
@@ -187,11 +185,7 @@ test('初始待办只消费一次，筛选、手动刷新及回到首页都实�
   await readyHome(page);
   expect(reads.filter((path) => path === '/api/workspace/profile')).toHaveLength(1);
   await openAccounting(page);
-  await openNavigation(page);
-  await page
-    .getByRole('navigation', { name: '主导航', exact: true })
-    .getByRole('button', { name: '我的待办', exact: true })
-    .click();
+  await returnWorkspaceHome(page);
   await expect.poll(() => reads.filter((path) => path === '/api/workspace/tasks').length).toBe(3);
   await readyHome(page);
   expect(reads.filter((path) => path === '/api/workspace/bootstrap')).toHaveLength(1);

@@ -50,6 +50,15 @@ def build_intelligence_router(actor_dependency):
     ):
         return service.extract(current, event_id, payload)
 
+    @router.get("/business/events/{event_id}/intelligence/runs/{run_id}/execution")
+    def run_execution(
+        event_id: str,
+        run_id: str,
+        current=Depends(actor_dependency),
+        service=Depends(intelligence),
+    ):
+        return service.run_execution(current, event_id, run_id)
+
     @router.get("/business/events/{event_id}/intelligence/runs/{run_id}/pages/{page}")
     def evidence_page(
         event_id: str,

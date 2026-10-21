@@ -30,6 +30,15 @@ def build_intake_router(actor_dependency):
     def get_draft(draft_id: str, current=Depends(actor_dependency), intake=Depends(service)):
         return intake.get(current, draft_id)
 
+    @router.get("/drafts/{draft_id}/runs/{run_id}/execution")
+    def run_execution(
+        draft_id: str,
+        run_id: str,
+        current=Depends(actor_dependency),
+        intake=Depends(service),
+    ):
+        return intake.run_execution(current, draft_id, run_id)
+
     @router.patch("/drafts/{draft_id}")
     def update_draft(
         draft_id: str,

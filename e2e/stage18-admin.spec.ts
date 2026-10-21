@@ -13,7 +13,8 @@ test('后台企业创建、修订、暂停、恢复及归档保留历史，刷�
   // The first local navigation includes Vite's cold CSS and lazy module transforms.
   // This case verifies administration behavior; production timing has its own benchmark.
   test.setTimeout(60_000);
-  const name = `管理验证企业-${crypto.randomUUID().slice(0, 8)}`;
+  const tag = crypto.randomUUID().slice(0, 8);
+  const name = `管理验证企业-${tag}`;
   const headers = await ownerHeaders(request);
   await page.goto('/admin');
   await expect(page.getByRole('heading', { name: '企业管理', exact: true })).toBeVisible({
@@ -22,8 +23,11 @@ test('后台企业创建、修订、暂停、恢复及归档保留历史，刷�
   await page.getByRole('button', { name: '新建企业', exact: true }).click();
   let dialog = page.getByRole('dialog', { name: '新建企业', exact: true });
   await dialog.getByLabel('企业名称', { exact: true }).fill(name);
-  await dialog.getByLabel('统一社会信用代码／税号').fill('SYNTHETIC-ADMIN-18');
+  await dialog.getByLabel('统一社会信用代码／税号').fill(`SYNTHETIC-ADMIN-${tag}`);
   await dialog.getByRole('button', { name: '创建企业', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await page.getByLabel('搜索企业', { exact: true }).fill(name);
+  await page.getByRole('button', { name: '查询', exact: true }).click();
   await page.locator('.admin-company-card').filter({ hasText: name }).click();
   await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
   await expect(page).toHaveURL(/\/admin\/organizations\//);
@@ -345,7 +349,7 @@ test('新用户激活先设本人密码，接受失败后重试不重复消费�
   ).not.toMatch(/synthetic-(acceptance|verification|refresh|password)/);
 });
 
-test('本人主动请求密码重置邮件，恢复回跳凭据不落盘且更新后重新登录', async ({ page }) => {
+test('本人主动请求密码重置邮件，恢复回跳凭据不落盘且更新后重新登录', async ({ page, baseURL }) => {
   const identityUrl = 'https://synthetic-recovery.example.invalid';
   const user = {
     id: '11111111-2222-4333-8444-555555555555',
@@ -376,7 +380,8 @@ test('本人主动请求密码重置邮件，恢复回跳凭据不落盘且更�
     if (url.pathname.endsWith('/recover')) {
       emails++;
       expect(requestValue.postDataJSON().email).toBe(user.email);
-      expect(url.searchParams.get('redirect_to')).toBe('http://127.0.0.1:18080/account-recovery');
+      expect(baseURL).toBeTruthy();
+      expect(url.searchParams.get('redirect_to')).toBe(new URL('/account-recovery', baseURL).href);
       return route.fulfill({ json: {} });
     }
     if (url.pathname.endsWith('/user')) {

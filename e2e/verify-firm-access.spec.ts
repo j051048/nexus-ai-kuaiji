@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { openFirmTool } from './ui-navigation';
 
 test.setTimeout(60_000);
 
@@ -127,16 +128,14 @@ async function mockFirmPages(page: Page) {
 }
 
 async function openPage(page: Page, item: (typeof pages)[number]) {
-  await page
-    .getByRole('navigation', { name: '主导航', exact: true })
-    .getByRole('button', { name: item.button, exact: true })
-    .click();
+  await openFirmTool(page, item.button);
   await expect(page).toHaveURL(new RegExp(`/workspace/${item.route}`));
   await expect(page.getByRole('heading', { name: item.heading, exact: true })).toBeVisible();
 }
 
 async function readyHome(page: Page) {
   await page.goto('/workspace/home');
+  await expect(page.getByLabel('切换验证身份')).toHaveValue('accountant');
   await expect(page.getByRole('button', { name: '刷新工作台', exact: true })).toBeEnabled({
     timeout: 30_000,
   });

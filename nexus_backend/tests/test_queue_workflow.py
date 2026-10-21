@@ -319,12 +319,13 @@ def test_cancellation_prevents_queued_call_and_preserves_reason_in_audit(queue_c
     assert "本人确认票据重复上传" in str([dict(row) for row in rows])
 
 
-@pytest.mark.parametrize("code", ["busy", "http_error"])
-def test_safe_busy_or_rate_limit_has_bounded_persistent_backoff(queue_case, code):
+@pytest.mark.parametrize("code", ["busy", "network_error"])
+def test_proven_unsent_retry_has_bounded_persistent_backoff(queue_case, code):
     case = queue_case
     event = create_event(case)
     batch = enqueue(case, [event])
-    case.provider.failure = ProviderError(code, "合成明确繁忙或HTTP限流", retryable=code == "http_error")
+    case.provider.failure = ProviderError(code, "合成发送前容量或连接拒绝", retryable=True)
+    case.provider.failure.llm_attempted = False
     assert case.worker.run_once()
     waiting = job(case, batch["id"])
     assert waiting["status"] == "retry_wait" and waiting["attempt_count"] == 1
@@ -348,6 +349,7 @@ def test_manual_retry_opens_a_new_bounded_backoff_round(queue_case):
     case = queue_case
     batch = enqueue(case, [create_event(case)])
     case.provider.failure = ProviderError("busy", "合成繁忙")
+    case.provider.failure.llm_attempted = False
     for delay in (0, 30, 60):
         case.clock.advance(delay)
         assert case.worker.run_once()

@@ -25,6 +25,7 @@ import {
   X,
 } from 'lucide-react';
 import { api, ApiError, errorMessage } from './api';
+import { ExecutionRecordPanel } from './ExecutionRecordPanel';
 import {
   assistantAllowedProposals,
   assistantBusinessStatus,
@@ -1420,6 +1421,15 @@ export function GlobalAccountingAssistant({
                           ))}
                         </>
                       )}
+                      {message.role === 'assistant' && (
+                        <ExecutionRecordPanel
+                          session={session}
+                          companyId={companyId}
+                          kind="chat"
+                          runId={message.turn_id}
+                          contextKey={`${current.conversation.id}:${current.conversation.scope_version}:${current.context.input_fingerprint}`}
+                        />
+                      )}
                     </article>
                   );
                 })}
@@ -1457,6 +1467,13 @@ export function GlobalAccountingAssistant({
                               ? '请求已持久保存，关闭助手后仍会继续处理。'
                               : '请核对当前资料与运行记录，再决定下一步。')}
                         </p>
+                        <ExecutionRecordPanel
+                          session={session}
+                          companyId={companyId}
+                          kind="chat"
+                          runId={turn.id}
+                          contextKey={`${current.conversation.id}:${current.conversation.scope_version}:${current.context.input_fingerprint}`}
+                        />
                       </div>
                       {assistantTurnActive(turn.status) && (
                         <button
@@ -1469,6 +1486,25 @@ export function GlobalAccountingAssistant({
                         </button>
                       )}
                     </div>
+                  ))}
+                {visibleTurns
+                  .filter(
+                    (turn) =>
+                      turn.status === 'succeeded' &&
+                      messageOffset === 0 &&
+                      !currentMessages?.messages.some(
+                        (message) => message.turn_id === turn.id && message.role === 'assistant',
+                      ),
+                  )
+                  .map((turn) => (
+                    <ExecutionRecordPanel
+                      key={`execution:${turn.id}`}
+                      session={session}
+                      companyId={companyId}
+                      kind="chat"
+                      runId={turn.id}
+                      contextKey={`${current.conversation.id}:${current.conversation.scope_version}:${current.context.input_fingerprint}`}
+                    />
                   ))}
                 {plans.map((plan) => (
                   <section className="ga-action-plan" key={plan.id}>

@@ -17,7 +17,7 @@ def encode(value):
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 
-TURN_PUBLIC = "id,conversation_id,firm_id,company_id,created_by,question,status,provider,model,expected_scope_version,input_fingerprint,model_fingerprint,sent_at,error_code,error_detail,reply_json,created_at,updated_at,finished_at"
+TURN_PUBLIC = "id,conversation_id,firm_id,company_id,created_by,question,status,provider,model,expected_scope_version,input_fingerprint,model_fingerprint,attempt_count,available_at,sent_at,error_code,error_detail,reply_json,created_at,updated_at,finished_at"
 
 
 class AssistantService:
@@ -531,7 +531,10 @@ class AssistantService:
         }
 
     @staticmethod
-    def _turn_json(row):
+    def _turn_json(row, execution=None):
+        from app.execution.records import execution_record
+
+        execution = execution if execution is not None else execution_record("chat", dict(row))
         data = {
             key: row[key]
             for key in (
@@ -553,6 +556,13 @@ class AssistantService:
         }
         data["reply"] = json.loads(row["reply_json"]) if row["reply_json"] else None
         data["mode"] = "model" if data["reply"] else None
+        # Completion codes retain fact validation without changing the legacy
+        # error contract of a successful three-field reply. Failure text is a
+        # server-owned projection, never an arbitrary persisted supplier string.
+        failure = execution["failure"]
+        data["error_code"] = failure["code"] if failure else ""
+        data["error_detail"] = failure["message"] if failure else ""
+        data["execution"] = execution
         return data
 
     def _history(self, conn, conversation_id, exclude_turn_id=None):
@@ -819,7 +829,42 @@ class AssistantService:
             ).fetchone()
             if not row:
                 raise AccountingError("对话任务不存在", 404)
-            return {"turn": self._turn_json(row)}
+            execution = self._execution_in_transaction(conn, actor, row)
+            return {"turn": self._turn_json(row, execution)}
+
+    @staticmethod
+    def _execution_in_transaction(conn, actor, row):
+        from app.execution.records import can_diagnose, execution_record
+
+        diagnostics = can_diagnose(conn, actor)
+        costs = []
+        if diagnostics:
+            # Conversation authorization is required by the caller before this
+            # query. Even administrators can diagnose only their own thread.
+            costs = [dict(cost) for cost in conn.execute(
+                "SELECT id,chat_turn_id,firm_id,company_id,kind,state,provider,model,period,reserved_micro,estimated_micro,confirmed_micro,"
+                "input_tokens,output_tokens,overrun,created_at,sent_at,finished_at "
+                "FROM model_costs WHERE chat_turn_id=? AND firm_id=? AND company_id=?",
+                (row["id"], actor.firm_id, row["company_id"]),
+            ).fetchall()]
+        return execution_record("chat", dict(row), costs=costs, diagnostics=diagnostics, context={
+            "input_fingerprint": row["input_fingerprint"],
+            "model_fingerprint": row["model_fingerprint"],
+            "context_pack_hash": None,
+        })
+
+    def execution(self, actor, conversation_id, turn_id):
+        with self.db.transaction(actor=actor) as conn:
+            # Recheck the owner and every current reference before any record,
+            # diagnostic role or cost lookup; immutable inputs grant no access.
+            self._conversation(conn, actor, conversation_id)
+            row = conn.execute(
+                "SELECT " + TURN_PUBLIC + " FROM assistant_turns WHERE id=? AND conversation_id=?",
+                (turn_id, conversation_id),
+            ).fetchone()
+            if not row:
+                raise AccountingError("对话任务不存在", 404)
+            return {"execution": self._execution_in_transaction(conn, actor, row)}
 
     def cancel(self, actor, conversation_id, turn_id, body):
         with self.db.transaction(write=True, actor=actor) as conn:

@@ -156,7 +156,12 @@ class PostgresConnection:
         domain code before every setup statement has completed successfully.
         """
         self._require_open()
-        if role not in {"accounting_app", "accounting_system", "accounting_worker"}:
+        if role not in {
+            "accounting_app",
+            "accounting_system",
+            "accounting_worker",
+            "accounting_projection",
+        }:
             raise ValueError("数据库事务角色不受支持")
         from psycopg import ClientCursor
         from psycopg.pq import TransactionStatus
@@ -217,7 +222,15 @@ class PostgresConnection:
 
 
 class Database:
-    def __init__(self, path: str | Path | None = None):
+    def __init__(
+        self,
+        path: str | Path | None = None,
+        *,
+        default_role: str = "accounting_app",
+    ):
+        if default_role not in {"accounting_app", "accounting_projection"}:
+            raise ValueError("数据库默认角色不受支持")
+        self.default_role = default_role
         self._pool = None
         self._pool_lock = Lock()
         self._closed = False
@@ -550,23 +563,29 @@ class Database:
         write: bool = False,
         actor=None,
         system: bool = False,
+        projection: bool = False,
         *,
         company_id=None,
         firm_id=None,
         write_scope="global",
     ):
+        privileged = system or projection or self.default_role == "accounting_projection"
         if write_scope not in {"global", "company"}:
             raise ValueError("写锁范围仅支持 global 或 company")
         if write_scope == "company" and (
-            not write or not company_id or (actor is None and not system)
+            not write or not company_id or (actor is None and not privileged)
         ):
-            raise ValueError("企业写事务必须显式提供 actor（或 system）与 company_id、write=True")
-        if write_scope == "company" and system and not firm_id:
-            raise ValueError("系统身份的企业写事务必须显式提供 firm_id")
-        if self.is_postgres and actor is None and not system:
-            raise ValueError("PostgreSQL 事务必须提供 actor 或显式使用 system=True 的身份事务")
-        if actor is not None and system:
-            raise ValueError("actor 与 system 身份事务不能混用")
+            raise ValueError(
+                "企业写事务必须显式提供 actor（或 system/projection）与 company_id、write=True"
+            )
+        if write_scope == "company" and privileged and not firm_id:
+            raise ValueError("系统/投影身份的企业写事务必须显式提供 firm_id")
+        if self.is_postgres and actor is None and not privileged:
+            raise ValueError(
+                "PostgreSQL 事务必须提供 actor 或显式使用 system/projection 身份事务"
+            )
+        if actor is not None and privileged:
+            raise ValueError("actor 与 system/projection 身份事务不能混用")
         started = perf_counter()
         try:
             conn = self.connect()
@@ -589,7 +608,13 @@ class Database:
             if self.is_postgres:
                 conn.begin(
                     write=write,
-                    role="accounting_system" if system else "accounting_app",
+                    role=(
+                        "accounting_projection"
+                        if projection
+                        else "accounting_system"
+                        if system
+                        else self.default_role
+                    ),
                     user_id=getattr(actor, "user_id", ""),
                     firm_id=getattr(actor, "firm_id", ""),
                 )
@@ -602,7 +627,7 @@ class Database:
                         scope=write_scope,
                         firm_id=actor.firm_id if actor else firm_id,
                         company_id=company_id,
-                        system=system,
+                        system=privileged,
                     )
                     lock_wait_ms = (perf_counter() - lock_started) * 1000
             else:
