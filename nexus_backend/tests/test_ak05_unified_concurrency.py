@@ -183,6 +183,22 @@ def test_monitor_failure_does_not_stop_queue_processing():
         unified.stop()
 
 
+def test_submit_failure_does_not_leak_inflight_count():
+    class Queue:
+        def run_once(self):
+            return True
+
+    worker = UnifiedWorker(queue_worker=Queue(), idle_seconds=0.05)
+    worker._executor = __import__("concurrent.futures", fromlist=["ThreadPoolExecutor"]).ThreadPoolExecutor(max_workers=1)
+    worker._executor.shutdown(wait=True)
+    worker._executor_closed = True
+    try:
+        worker.run_tick()
+    except RuntimeError:
+        pass
+    assert worker.inflight_count() == 0
+
+
 def test_invalid_budget_types_are_rejected():
     for kwargs in (
         {"assistant_budget": True},

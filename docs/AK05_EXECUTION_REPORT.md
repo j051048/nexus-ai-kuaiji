@@ -47,7 +47,7 @@
 
 ```text
 test_ak05_unified_concurrency.py
-9 passed
+10 passed
 ```
 
 ```text
@@ -137,7 +137,7 @@ test_queue_workflow.py
 - T04 复用 `test_batch2_concurrency.py`，本地容量测试通过；真实 PG 共享限制未验证；
 - T06 监控心跳抛异常不阻断队列处理已测；慢 refresh 真实故障注入未测；
 - T07 干净 stop/start、draining 拒绝、Future 异常消费已有测试；数据库关闭顺序未测；
-- T08 Future 异常已测试；claim 成功后 submit 失败未测；
+- T08 Future 异常和 submit 失败不泄漏在途已测试；claim 成功后真实 submit 竞争未测；
 - T09 撤权范围交错；
 - T10 复用 `test_ak01_attempt_matrix.py` + `test_batch2_concurrency.py`，51 passed；真实 PG/真实供应商未验证；
 - T11 两个真实进程竞争；
