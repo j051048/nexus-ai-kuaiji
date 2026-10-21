@@ -1,6 +1,7 @@
 """Bounded, opt-in resumption under the original execution principal."""
 
 import json
+import sqlite3
 from datetime import datetime, timedelta
 from uuid import uuid4
 
@@ -469,22 +470,27 @@ class QueueAutomationService:
         ).fetchone()
         if not current:
             return False
-        conn.execute(
-            "INSERT INTO processing_job_metrics(job_kind,job_id,generation,attempt_no,firm_id,company_id,event_id,book_id,stage,duration_ms,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(job_kind,job_id,generation,attempt_no,stage) DO NOTHING",
-            (
-                kind,
-                job["id"],
-                job.get("generation", 1),
-                job["attempt_count"],
-                job["firm_id"],
-                job["company_id"],
-                job["event_id"],
-                job.get("book_id"),
-                stage,
-                value,
-                self.queue.database_timestamp(conn),
-            ),
-        )
+        try:
+            conn.execute(
+                "INSERT INTO processing_job_metrics(job_kind,job_id,generation,attempt_no,firm_id,company_id,event_id,book_id,stage,duration_ms,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(job_kind,job_id,generation,attempt_no,stage) DO NOTHING",
+                (
+                    kind,
+                    job["id"],
+                    job.get("generation", 1),
+                    job["attempt_count"],
+                    job["firm_id"],
+                    job["company_id"],
+                    job["event_id"],
+                    job.get("book_id"),
+                    stage,
+                    value,
+                    self.queue.database_timestamp(conn),
+                ),
+            )
+        except sqlite3.OperationalError:
+            # Observability must not turn a completed accounting template into a
+            # failed job. Financial state and the job receipt are authoritative.
+            return False
         return True
 
     def metrics(self, actor, company_id, days=7):

@@ -277,6 +277,9 @@ class Database:
                     "数据库连接暂不可用或连接池等待超时，请检查容量和连接配置"
                 ) from None
         conn = sqlite3.connect(self.path, timeout=15)
+        # Savepoint statement journals otherwise depend on the process temp
+        # directory; keep SQLite's small demo/test temp store in memory.
+        conn.execute("PRAGMA temp_store=MEMORY")
         conn.row_factory = sqlite3.Row
         conn.create_function(
             "accounting_actor_user", 0, lambda: getattr(transaction_actor.get(), "user_id", "")

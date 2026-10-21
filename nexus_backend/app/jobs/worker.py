@@ -335,8 +335,8 @@ class ProposalExecution(QueueExecution):
 
     def finish_rule(self, conn, generated, applied):
         self.check(conn)
-        self.record_timings(conn)
         if self.queue.db.is_postgres:
+            self.record_timings(conn)
             company_rule = generated.get("rule_id")
             function = (
                 "worker_finish_proposal_company_rule"
@@ -368,15 +368,17 @@ class ProposalExecution(QueueExecution):
                     ),
                 )
             else:
-                conn.execute(
-                    "UPDATE proposal_jobs SET result_template_id=?,result_template_version=?,result_draft_version=? WHERE id=?",
-                    (
-                        generated["template_id"],
-                        generated["template_version"],
-                        applied["version"],
-                        self.job["id"],
-                    ),
+                statement = (
+                    "UPDATE proposal_jobs SET result_template_id=?,result_template_version=?,result_draft_version=? WHERE id=?"
                 )
+                values = (
+                    generated["template_id"],
+                    generated["template_version"],
+                    applied["version"],
+                    self.job["id"],
+                )
+                conn.execute(statement, values)
+            self.record_timings(conn)
             self.queue.proposals.finish_sqlite(conn, self.job, "succeeded")
 
 

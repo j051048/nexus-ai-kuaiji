@@ -79,7 +79,21 @@ class FakeProvider:
         if self.proposal_hook:
             self.proposal_hook()
         document = context["documents"][0] if context["documents"] else None
-        refs = [{"attachment_id": document["attachment_id"], "extraction_id": document["extraction_id"], "field": "gross_amount", "page": document["evidence"][0]["page"]}] if document else []
+        refs = []
+        if document:
+            fields = ["gross_amount"]
+            for field in ("net_amount", "tax_amount"):
+                if document.get(field) is not None:
+                    fields.append(field)
+            refs = [
+                {
+                    "attachment_id": document["attachment_id"],
+                    "extraction_id": document["extraction_id"],
+                    "field": field,
+                    "page": document["evidence"][0]["page"],
+                }
+                for field in fields
+            ]
         amount = context["business"]["amount"]
         output = {
             "description": "办公耗材发票核对后的分录建议", "lines": [

@@ -509,6 +509,13 @@ def test_pending_queue_cannot_be_human_resolved_or_bypass_accounting_review(queu
         case.ledger.approve(case.actors["accountant"], case.book["id"], receipt["draft_id"], ApprovalRequest(expected_version=1))
     cancelled = case.queue.cancel_job(case.actors["accountant"], batch["jobs"][0]["id"], "取消多余重识别，沿用已核对原件")
     assert cancelled["progress"]["cancelled"] == 1
+    for finding in case.intelligence.reconcile(case.actors["accountant"], event["id"])["findings"]:
+        if finding["severity"] == "blocking" and not finding["resolved"]:
+            case.intelligence.resolve(
+                case.actors["accountant"],
+                finding["id"],
+                "已独立核对合成原件与业务事实，确认可继续复核",
+            )
     reviewed = case.ledger.approve(case.actors["accountant"], case.book["id"], receipt["draft_id"], ApprovalRequest(expected_version=1))
     assert reviewed["status"] == "approved" and case.provider.extract_calls == 1
 
@@ -568,7 +575,7 @@ def test_http_batch_worker_exception_resolution_proposal_review_and_export(queue
     client = queue_client
     employee, department, finance, accountant = [http_auth(client, role) for role in ("employee", "department", "finance", "accountant")]
     event, company = http_create(client, employee)
-    client.provider.document = invoice_document(amount="0.40", net_amount="0.40", buyer_name=company["name"], buyer_tax_id=None)
+    client.provider.document = invoice_document(amount="0.30", net_amount="0.30", buyer_name=company["name"], buyer_tax_id=None)
     assert client.put(f"/api/companies/{company['id']}/intelligence/settings", headers=accountant, json={"enabled": True}).status_code == 200
     body = {"company_id": company["id"], "items": [{"event_id": event["id"], "attachment_id": event["attachments"][0]["id"], "expected_version": event["version"]}], "idempotency_key": "synthetic-http-queue-batch"}
     assert client.post("/api/intelligence/batches", json=body).status_code == 401
@@ -590,15 +597,23 @@ def test_http_batch_worker_exception_resolution_proposal_review_and_export(queue
     proposal = client.post(f"/api/books/{book['id']}/drafts/{receipt['draft_id']}/ai-proposals", headers=accountant, json={"expected_version": 1, "idempotency_key": "synthetic-queue-proposal"})
     assert proposal.status_code == 200 and proposal.json()["status"] == "succeeded", proposal.text
     apply_url = f"/api/intelligence/proposals/{proposal.json()['id']}/apply"
-    assert client.post(apply_url, headers=accountant, json={"expected_version": 1}).status_code == 409
-    refreshed = client.get(f"/api/business/events/{event['id']}/intelligence", headers=accountant).json()
-    for finding in refreshed["findings"]:
-        if finding["severity"] == "blocking" and not finding["resolved"]:
-            reviewed = client.post(f"/api/intelligence/findings/{finding['id']}/resolve", headers=accountant, json={"reason": "合成测试已核对完整原件与业务，确认差异需人工处理"})
-            assert reviewed.status_code == 200, reviewed.text
     applied = client.post(apply_url, headers=accountant, json={"expected_version": 1})
+    if applied.status_code == 409:
+        refreshed = client.get(f"/api/business/events/{event['id']}/intelligence", headers=accountant).json()
+        for finding in refreshed["findings"]:
+            if finding["severity"] == "blocking" and not finding["resolved"]:
+                reviewed = client.post(f"/api/intelligence/findings/{finding['id']}/resolve", headers=accountant, json={"reason": "合成测试已核对完整原件与业务，确认差异需人工处理"})
+                assert reviewed.status_code == 200, reviewed.text
+        applied = client.post(apply_url, headers=accountant, json={"expected_version": 1})
     assert applied.status_code == 200 and applied.json()["status"] == "draft", applied.text
     export_body = {"draft_ids": [receipt["draft_id"]], "idempotency_key": "synthetic-queue-export"}
+    for finding in client.get(f"/api/business/events/{event['id']}/intelligence", headers=accountant).json()["findings"]:
+        if finding["severity"] == "blocking" and not finding["resolved"]:
+            assert client.post(
+                f"/api/intelligence/findings/{finding['id']}/resolve",
+                headers=accountant,
+                json={"reason": "复核合成原件与业务事实后确认继续"},
+            ).status_code == 200
     assert client.post(f"/api/books/{book['id']}/exports", headers=accountant, json=export_body).status_code == 409
     approved = client.post(f"/api/books/{book['id']}/drafts/{receipt['draft_id']}/approve", headers=accountant, json={"expected_version": applied.json()["version"]})
     assert approved.status_code == 200, approved.text

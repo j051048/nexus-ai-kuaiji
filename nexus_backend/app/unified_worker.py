@@ -171,7 +171,9 @@ class UnifiedWorker:
     def _loop(self):
         while not self._stop.is_set():
             if time.monotonic() - self._last_monitor >= MONITOR_INTERVAL:
-                self._monitor_tick("active" if self.inflight_count() else "idle")
+                with self._inflight_lock:
+                    assistant_active = "assistant" in self._inflight
+                self._monitor_tick("active" if assistant_active else "idle")
                 self._last_monitor = time.monotonic()
             try:
                 processed = self.run_tick()
@@ -201,9 +203,9 @@ class UnifiedWorker:
         self._stop.set()
         if self._thread:
             self._thread.join(timeout=5)
-        # Wait for already claimed work within a bounded grace period. A Python
-        # thread cannot be force-killed; if it is still running, do not publish
-        # a false stopped/zero-inflight state.
+        # Completed futures are not in-flight work. Drain them before deciding
+        # whether this instance is really draining.
+        self._drain()
         with self._inflight_lock:
             pending = len(self._inflight)
         if self._executor is not None:
@@ -378,7 +380,6 @@ def main(ready_callback=None):
             worker.stop()
             if not worker.wait_for_idle(30):
                 logger.warning("统一后台在宽限期内未排空，数据库保持到进程退出，依赖持久租约恢复")
-                return 1
         if database:
             database.close()
 

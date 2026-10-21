@@ -165,6 +165,30 @@ def test_queue_heartbeat_loop_emits_periodic_inflight():
     assert calls and set(calls) == {1}
 
 
+def test_stop_does_not_treat_completed_future_as_inflight():
+    from concurrent.futures import ThreadPoolExecutor
+
+    class Idle:
+        def run_once(self):
+            return False
+
+    states = []
+
+    class Monitor:
+        def heartbeat(self, inflight=0, state="idle"):
+            states.append((inflight, state))
+
+    worker = UnifiedWorker(queue_worker=Idle(), idle_seconds=0.05)
+    worker.assistant_worker = type("A", (), {"monitor": Monitor(), "run_once": lambda self: False})()
+    worker._executor = ThreadPoolExecutor(max_workers=1)
+    future = worker._executor.submit(lambda: None)
+    future.result()
+    with worker._inflight_lock:
+        worker._inflight["queue"] = future
+    worker.stop()
+    assert states and states[-1] == (0, "stopped")
+
+
 def test_monitor_failure_does_not_stop_queue_processing():
     class BrokenMonitor:
         def heartbeat(self, inflight=0, state="idle"):
