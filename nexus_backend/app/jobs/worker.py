@@ -72,6 +72,14 @@ class QueueExecution:
     def before_model(self):
         self.model_started = time.perf_counter()
 
+    def retry_is_safe(self, error):
+        """Retry hints never prove that a dispatched request was uncharged."""
+        return (
+            (not self.sent or getattr(error, "llm_attempted", None) is False)
+            and getattr(error, "usage", None) is None
+            and (getattr(error, "retryable", False) or error.code == "busy")
+        )
+
     def record_timings(self, conn, cache_hit=False):
         model_ms = self.model_elapsed_ms or 0
         if self.model_elapsed_ms is not None:
@@ -166,14 +174,18 @@ class QueueExecution:
         self.record_timings(conn, cache_hit=bool(run["cache_hit"]))
         status, delay = run["status"], 0
         if status == "failed" and error:
-            if (getattr(error, "retryable", False) or error.code == "busy") and self.job[
+            if self.retry_is_safe(error) and self.job[
                 "attempt_count"
             ] < self.job["max_attempts"]:
                 attempt_in_round = max(
                     1, self.job["attempt_count"] - (self.job["max_attempts"] - 3)
                 )
                 status, delay = "retry_wait", 30 * (2 ** min(attempt_in_round - 1, 1))
-            elif self.sent and error.code in {"timeout", "network_error", "processing_failed"}:
+            elif (
+                self.sent
+                and getattr(error, "llm_attempted", None) is not False
+                and error.code in {"timeout", "network", "network_error", "transport", "response_unknown", "processing_failed"}
+            ):
                 status = "interrupted"
         code, detail = run["error_code"], run["error_detail"]
         if status == "interrupted":
@@ -290,14 +302,18 @@ class ProposalExecution(QueueExecution):
                     "候选建议已生成，存在需人工处理的异常或凭证已修改，请会计审阅",
                 )
         elif status == "failed" and error:
-            if (getattr(error, "retryable", False) or error.code == "busy") and self.job[
+            if self.retry_is_safe(error) and self.job[
                 "attempt_count"
             ] < self.job["max_attempts"]:
                 attempt_in_round = max(
                     1, self.job["attempt_count"] - (self.job["max_attempts"] - 3)
                 )
                 status, delay = "retry_wait", 30 * (2 ** min(attempt_in_round - 1, 1))
-            elif self.sent and error.code in {"timeout", "network_error", "processing_failed"}:
+            elif (
+                self.sent
+                and getattr(error, "llm_attempted", None) is not False
+                and error.code in {"timeout", "network", "network_error", "transport", "response_unknown", "processing_failed"}
+            ):
                 status, detail = (
                     "interrupted",
                     "模型请求结果不确定，请核对后决定是否重试；重试可能再次调用模型",
@@ -673,8 +689,13 @@ class QueueWorker:
         )
         if not job:
             return False
-        self.process(job)
-        self.maintenance(0)
+        # A claimed job is real in-flight work. Do not leave the last
+        # observation at zero while a slow provider call is running.
+        self.maintenance(1)
+        try:
+            self.process(job)
+        finally:
+            self.maintenance(0)
         return True
 
     def maintenance(self, inflight=0, stopped=False):

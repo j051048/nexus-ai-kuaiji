@@ -24,7 +24,17 @@
 - `tick()` 保留“心跳后刷新告警”的兼容行为；
 - 统一 worker 周期心跳使用 `heartbeat()`。
 
-### 3. 停止行为
+### 3. OCR/分录队列在途心跳
+
+`QueueWorker.run_once()` 不再在领取后立刻写 `maintenance(0)`：
+
+- claim 成功后写 `maintenance(1)`；
+- 执行结束在 `finally` 写 `maintenance(0)`；
+- 慢模型调用期间不再显示零在途。
+
+这保留原有维护与告警刷新，不新增队列。
+
+### 4. 停止行为
 
 - 停止后不再提交新 Future；
 - 仍在执行的任务不写 `stopped`/零在途；
@@ -73,6 +83,14 @@ test_unified_worker.py
 ```
 
 ```text
+test_ak05_unified_concurrency.py
+test_unified_worker.py
+test_stage15_assistant_monitor.py
+test_batch2_concurrency.py
+23 passed
+```
+
+```text
 test_queue_workflow.py
 34 passed, 2 failed
 ```
@@ -100,7 +118,7 @@ test_queue_workflow.py
 - T12 AK02–AK04 完整联合回归；
 - T13 配置边界；
 - 真实隔离 PG 多进程；
-- QueueWorker `maintenance(0)` 的并发覆盖仍未改；
+- QueueWorker 慢任务期间只有一次 inflight=1，尚无独立周期心跳线程；
 - 并发路径未严格使用 assistant/queue/batch/migration 预算权重，当前每 tick 一角色一任务。
 
 ## 分层结论
