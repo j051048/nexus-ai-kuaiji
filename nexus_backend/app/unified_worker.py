@@ -376,6 +376,9 @@ def main(ready_callback=None):
     finally:
         if worker_started:
             worker.stop()
+            if not worker.wait_for_idle(30):
+                logger.warning("统一后台在宽限期内未排空，数据库保持到进程退出，依赖持久租约恢复")
+                return 1
         if database:
             database.close()
 

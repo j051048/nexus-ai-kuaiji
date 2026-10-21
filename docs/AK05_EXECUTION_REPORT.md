@@ -48,6 +48,9 @@
 ```text
 test_ak05_unified_concurrency.py
 10 passed
+
+test_unified_worker.py + test_ak05_persistent.py + test_ak05_unified_concurrency.py
+17 passed
 ```
 
 ```text
@@ -136,7 +139,7 @@ test_queue_workflow.py
 - T03 后台 queue/batch/migration 已改为轮转，单元测试通过；真实数据库持续积压公平仍未测；
 - T04 复用 `test_batch2_concurrency.py`，本地容量测试通过；真实 PG 共享限制未验证；
 - T06 监控心跳抛异常不阻断队列处理已测；慢 refresh 真实故障注入未测；
-- T07 干净 stop/start、draining 拒绝、Future 异常消费已有测试；数据库关闭顺序未测；
+- T07 干净 stop/start、draining 拒绝、Future 异常消费已有测试；main 关闭前等待 `wait_for_idle(30)`，未排空不提前关库；进程级关闭未测；
 - T08 Future 异常和 submit 失败不泄漏在途已测试；claim 成功后真实 submit 竞争未测；
 - T09 撤权范围交错；
 - T10 复用 `test_ak01_attempt_matrix.py` + `test_batch2_concurrency.py`，51 passed；真实 PG/真实供应商未验证；

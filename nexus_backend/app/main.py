@@ -268,6 +268,12 @@ def create_app(
     @asynccontextmanager
     async def lifespan(application):
         database = Database(path)
+        projection_url = os.getenv("ACCOUNTING_PROJECTION_DATABASE_URL", "")
+        projection_database = (
+            Database(projection_url, default_role="accounting_projection")
+            if projection_url.startswith(("postgres://", "postgresql://"))
+            else None
+        )
         database.assert_restore_hold()
         try:
             if database.is_postgres:
@@ -368,6 +374,7 @@ def create_app(
                 application.state.business,
                 application.state.review,
                 application.state.cases,
+                projection_db=projection_database,
             )
             application.state.monthly = MonthlyService(database, application.state.service)
             application.state.service_plans = ServicePlansService(
@@ -528,12 +535,18 @@ def create_app(
                     migration_worker.stop()
                 if worker:
                     worker.stop()
+                    if not worker.wait_for_idle(30):
+                        # Do not close the pool under live worker threads; the
+                        # process exit and durable leases own recovery.
+                        application.state.unified_drain_incomplete = True
                 application.state.tokens.clear()
                 application.state.token_users.clear()
                 if application.state.authenticator and authenticator is None:
                     application.state.authenticator.close()
         finally:
             database.close()
+        if projection_database is not None:
+            projection_database.close()
 
     app = FastAPI(
         title="衡账 · 会计 Agent 工作空间",
@@ -1004,6 +1017,9 @@ def create_app(
     ):
         return dirs.create_department(current, company_id, payload)
 
+    from .execution.router import build_execution_router
+
+    app.include_router(build_execution_router(actor))
     app.include_router(build_admin_router(actor))
     app.include_router(build_admin_identity_router(actor, identity))
     app.include_router(build_business_router(actor))
