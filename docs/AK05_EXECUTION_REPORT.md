@@ -47,7 +47,7 @@
 
 ```text
 test_ak05_unified_concurrency.py
-11 passed
+12 passed
 
 test_stage15_assistant_monitor.py
 6 passed（含慢 refresh 心跳）
@@ -153,7 +153,7 @@ test_queue_workflow.py
 - T12 AK02–AK05 受影响回归：
   `test_ag02_context_pack`、`test_ag03_answers`、`test_ag04_investigation`、
   `test_ag05_examples`、`test_intelligence_workflow`，262 passed；
-- T13 bool/负数/小数/越界配置边界已测；角色冲突组合未完整覆盖；
+- T13 bool/负数/小数/越界、assistant-only/queue-only/migration-only、重复 stop 已测；
 - 真实隔离 PG 多进程；
 - QueueWorker 已增加独立轻量心跳线程（10 秒）；周期线程有测试，真实慢 OCR 跨周期落库未测；
 - 并发路径未严格使用 assistant/queue/batch/migration 预算权重，当前每 tick 一角色一任务。

@@ -214,6 +214,23 @@ def test_submit_failure_does_not_leak_inflight_count():
     assert worker.inflight_count() == 0
 
 
+def test_single_role_and_repeated_stop_are_supported():
+    class Idle:
+        def run_once(self):
+            return False
+
+    for kwargs in (
+        {"assistant_worker": Idle()},
+        {"queue_worker": Idle()},
+        {"migration_worker": Idle()},
+    ):
+        worker = UnifiedWorker(idle_seconds=0.05, **kwargs)
+        worker.start()
+        worker.stop()
+        worker.stop()  # idempotent
+        assert worker.wait_for_idle(1)
+
+
 def test_invalid_budget_types_are_rejected():
     for kwargs in (
         {"assistant_budget": True},
