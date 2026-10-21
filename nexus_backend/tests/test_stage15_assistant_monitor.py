@@ -85,6 +85,32 @@ def test_chat_heartbeat_cannot_hide_processing_worker_unavailable(chat_case):
     assert not current["workers"]["available"] and "worker_unavailable" in open_codes(current)
 
 
+def test_ak05_heartbeat_survives_blocked_refresh(chat_case, monkeypatch):
+    import threading
+    c = chat_case
+    entered, release = threading.Event(), threading.Event()
+
+    def slow_refresh(*args):
+        entered.set()
+        release.wait(5)
+
+    monkeypatch.setattr(c.operations, "refresh_pending", slow_refresh)
+    monitor = AssistantMonitor(c.db, "synthetic-ak05-slow-refresh", c.operations)
+    thread = threading.Thread(target=lambda: monitor.tick(1, "active"))
+    thread.start()
+    try:
+        assert entered.wait(2), "refresh 未进入"
+        with c.db.transaction() as conn:
+            row = conn.execute(
+                "SELECT state,inflight_count FROM assistant_worker_heartbeats WHERE worker_id='synthetic-ak05-slow-refresh'"
+            ).fetchone()
+        assert row["state"] == "active" and row["inflight_count"] == 1
+    finally:
+        release.set()
+        thread.join(5)
+    assert not thread.is_alive()
+
+
 def test_ak05_lightweight_heartbeat_does_not_run_refresh(chat_case, monkeypatch):
     c = chat_case
     def failure(*args):
