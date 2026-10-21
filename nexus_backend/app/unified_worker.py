@@ -66,6 +66,14 @@ class UnifiedWorker:
         self._draining = False
         self._executor_closed = False
         self._background_cursor = 0
+        self._background_sequence = []
+        for label, candidate, budget in (
+            ("queue", queue_worker, queue_budget),
+            ("batch", batch_worker, batch_budget),
+            ("migration", migration_worker, migration_budget),
+        ):
+            if candidate is not None:
+                self._background_sequence.extend([(label, candidate)] * budget)
 
     def run_once(self):
         """One priority pass; returns whether any queue processed a unit."""
@@ -87,12 +95,13 @@ class UnifiedWorker:
             done = [(role, future) for role, future in self._inflight.items() if future.done()]
             for role, future in done:
                 self._inflight.pop(role, None)
+        worked = False
         for role, future in done:
             try:
-                future.result()
+                worked |= bool(future.result())
             except Exception:
                 logger.warning("统一后台的%s任务异常，已按持久租约恢复", role)
-        return bool(done)
+        return worked
 
     def _submit(self, role, worker):
         with self._inflight_lock:
@@ -116,22 +125,36 @@ class UnifiedWorker:
             submitted |= self._submit("assistant", self.assistant_worker)
         with self._inflight_lock:
             busy_background = any(role != "assistant" for role in self._inflight)
-        if not busy_background:
-            backgrounds = [
-                (label, candidate)
-                for label, candidate in (
-                    ("queue", self.queue_worker),
-                    ("batch", self.batch_worker),
-                    ("migration", self.migration_worker),
-                )
-                if candidate is not None
-            ]
-            if backgrounds:
-                index = self._background_cursor % len(backgrounds)
-                role, worker = backgrounds[index]
-                self._background_cursor = (index + 1) % len(backgrounds)
-                submitted |= self._submit(role, worker)
+        if not busy_background and self._background_sequence:
+            index = self._background_cursor % len(self._background_sequence)
+            role, worker = self._background_sequence[index]
+            self._background_cursor = (index + 1) % len(self._background_sequence)
+            submitted |= self._submit(role, worker)
         return submitted
+
+    def run_until_idle(self, timeout=120.0):
+        """Concurrent one-shot mode: drain real work, then stop submitting."""
+        if self._executor is None or self._executor_closed:
+            self._executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="unified-task")
+            self._executor_closed = False
+        deadline = time.monotonic() + timeout
+        worked = False
+        try:
+            while time.monotonic() < deadline:
+                self.run_tick()
+                while self.inflight_count() and time.monotonic() < deadline:
+                    if self._drain():
+                        worked = True
+                    time.sleep(0.01)
+                if self.inflight_count():
+                    break
+                if not worked:
+                    break
+                worked = False
+            return worked
+        finally:
+            self._executor.shutdown(wait=False, cancel_futures=False)
+            self._executor_closed = True
 
     def wait_for_idle(self, timeout=5.0):
         """Wait for already claimed work; never leaves a draining instance marked active."""
@@ -358,7 +381,7 @@ def main(ready_callback=None):
         )
         if args.once:
             try:
-                worker.run_once()
+                worker.run_until_idle()
             finally:
                 worker.stop()
             return 0

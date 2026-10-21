@@ -165,6 +165,54 @@ def test_queue_heartbeat_loop_emits_periodic_inflight():
     assert calls and set(calls) == {1}
 
 
+def test_background_budgets_are_weighted_not_ignored():
+    calls = []
+
+    class Role:
+        def __init__(self, name):
+            self.name = name
+
+        def run_once(self):
+            calls.append(self.name)
+            return True
+
+    worker = UnifiedWorker(
+        queue_worker=Role("queue"),
+        batch_worker=Role("batch"),
+        queue_budget=2,
+        batch_budget=1,
+    )
+    worker._executor = __import__("concurrent.futures", fromlist=["ThreadPoolExecutor"]).ThreadPoolExecutor(max_workers=2)
+    try:
+        for _ in range(3):
+            worker.run_tick()
+            assert worker.wait_for_idle(2)
+    finally:
+        worker._executor.shutdown(wait=True)
+    assert calls == ["queue", "queue", "batch"]
+
+
+def test_run_until_idle_uses_concurrent_slots_then_stops():
+    calls = []
+
+    class Worker:
+        def __init__(self, name, results):
+            self.name, self.results = name, list(results)
+
+        def run_once(self):
+            calls.append(self.name)
+            return self.results.pop(0) if self.results else False
+
+    worker = UnifiedWorker(
+        assistant_worker=Worker("assistant", [False]),
+        queue_worker=Worker("queue", [True, False]),
+        idle_seconds=0.05,
+    )
+    worker.run_until_idle(5)
+    assert "queue" in calls
+    assert worker.inflight_count() == 0
+
+
 def test_stop_does_not_treat_completed_future_as_inflight():
     from concurrent.futures import ThreadPoolExecutor
 
