@@ -64,6 +64,7 @@ class UnifiedWorker:
         self._inflight = {}
         self._inflight_lock = threading.Lock()
         self._draining = False
+        self._executor_closed = False
 
     def run_once(self):
         """One priority pass; returns whether any queue processed a unit."""
@@ -131,6 +132,19 @@ class UnifiedWorker:
                 break
         return submitted
 
+    def wait_for_idle(self, timeout=5.0):
+        """Wait for already claimed work; never leaves a draining instance marked active."""
+        deadline = time.monotonic() + timeout
+        while self.inflight_count() and time.monotonic() < deadline:
+            self._drain()
+            time.sleep(0.01)
+        if self.inflight_count():
+            return False
+        if self._draining:
+            self._draining = False
+            self._monitor_tick("stopped", inflight=0)
+        return True
+
     def inflight_count(self):
         with self._inflight_lock:
             return len(self._inflight)
@@ -176,8 +190,9 @@ class UnifiedWorker:
         if self._draining:
             raise RuntimeError("上一代统一后台仍在排空，不能启动第二套调度")
         self._stop.clear()
-        if self._executor is None:
+        if self._executor is None or self._executor_closed:
             self._executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="unified-task")
+            self._executor_closed = False
         self._thread = threading.Thread(target=self._loop, name="unified-worker", daemon=True)
         self._thread.start()
 
@@ -192,6 +207,7 @@ class UnifiedWorker:
             pending = len(self._inflight)
         if self._executor is not None:
             self._executor.shutdown(wait=False, cancel_futures=False)
+            self._executor_closed = True
         if pending:
             self._draining = True
             self._monitor_tick("active", inflight=min(pending, 2))

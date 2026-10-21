@@ -47,7 +47,7 @@
 
 ```text
 test_ak05_unified_concurrency.py
-3 passed
+6 passed
 ```
 
 - 慢后台任务不阻塞助手；
@@ -87,7 +87,8 @@ test_ak05_unified_concurrency.py
 test_unified_worker.py
 test_stage15_assistant_monitor.py
 test_batch2_concurrency.py
-23 passed
+test_batch_operations.py
+28 passed
 ```
 
 ```text
@@ -106,12 +107,12 @@ test_queue_workflow.py
 ## 未完成
 
 - T01 使用真实持久队列 + 真实 OCR/助手 worker（当前为受控 FakeWorker 时序测试）；
-- T02 大量任务峰值 Future/线程/领取上界；
+- T02 已有“最多 2 个在途”测试，未覆盖大规模峰值/连接池；
 - T03 多企业公平与后台不饥饿；
 - T04 全局/供应商上限；
-- T06 慢 refresh/心跳落库失败；
-- T07 重复 stop/start、数据库关闭顺序；
-- T08 claim 后 submit 失败；
+- T06 慢 refresh/心跳落库失败（轻量心跳已隔离）；
+- T07 干净 stop/start、draining 拒绝、Future 异常消费已有测试；数据库关闭顺序未测；
+- T08 Future 异常已测试；claim 成功后 submit 失败未测；
 - T09 撤权范围交错；
 - T10 费用/attempt/429 矩阵；
 - T11 两个真实进程竞争；
