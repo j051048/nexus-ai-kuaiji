@@ -123,6 +123,33 @@ def test_future_exception_is_consumed_and_next_tick_recovers():
         unified.stop()
 
 
+def test_background_roles_rotate_without_queue_starvation():
+    seen = []
+
+    class Role:
+        def __init__(self, name):
+            self.name = name
+
+        def run_once(self):
+            seen.append(self.name)
+            return True
+
+    unified = UnifiedWorker(
+        queue_worker=Role("queue"),
+        batch_worker=Role("batch"),
+        migration_worker=Role("migration"),
+        idle_seconds=0.05,
+    )
+    unified.start()
+    try:
+        deadline = time.monotonic() + 2
+        while set(seen) != {"queue", "batch", "migration"} and time.monotonic() < deadline:
+            time.sleep(0.02)
+        assert set(seen) == {"queue", "batch", "migration"}
+    finally:
+        unified.stop()
+
+
 def test_monitor_failure_does_not_stop_queue_processing():
     class BrokenMonitor:
         def heartbeat(self, inflight=0, state="idle"):

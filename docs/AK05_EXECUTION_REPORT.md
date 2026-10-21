@@ -47,7 +47,7 @@
 
 ```text
 test_ak05_unified_concurrency.py
-6 passed
+9 passed
 ```
 
 ```text
@@ -60,6 +60,12 @@ test_ak05_unified_concurrency.py
 test_ak05_persistent.py
 test_unified_worker.py
 15 passed
+```
+
+```text
+test_ak01_attempt_matrix.py
+test_batch2_concurrency.py
+51 passed
 ```
 
 真实 SQLite 持久队列：
@@ -127,13 +133,13 @@ test_queue_workflow.py
   A 企业 OCR 传输阻塞，B 企业助手在释放前成功；
 - T01 仍未覆盖 PG/多进程；
 - T02 已有“最多 2 个在途”测试，未覆盖大规模峰值/连接池；
-- T03 多企业公平与后台不饥饿（多企业共享后台槽仍只有一次机会）；
-- T04 全局/供应商上限；
+- T03 后台 queue/batch/migration 已改为轮转，单元测试通过；真实数据库持续积压公平仍未测；
+- T04 复用 `test_batch2_concurrency.py`，本地容量测试通过；真实 PG 共享限制未验证；
 - T06 监控心跳抛异常不阻断队列处理已测；慢 refresh 真实故障注入未测；
 - T07 干净 stop/start、draining 拒绝、Future 异常消费已有测试；数据库关闭顺序未测；
 - T08 Future 异常已测试；claim 成功后 submit 失败未测；
 - T09 撤权范围交错；
-- T10 费用/attempt/429 矩阵；
+- T10 复用 `test_ak01_attempt_matrix.py` + `test_batch2_concurrency.py`，51 passed；真实 PG/真实供应商未验证；
 - T11 两个真实进程竞争；
 - T12 AK02–AK04 完整联合回归；
 - T13 bool/负数/小数/越界配置边界已测；角色冲突组合未完整覆盖；

@@ -65,6 +65,7 @@ class UnifiedWorker:
         self._inflight_lock = threading.Lock()
         self._draining = False
         self._executor_closed = False
+        self._background_cursor = 0
 
     def run_once(self):
         """One priority pass; returns whether any queue processed a unit."""
@@ -116,20 +117,20 @@ class UnifiedWorker:
         with self._inflight_lock:
             busy_background = any(role != "assistant" for role in self._inflight)
         if not busy_background:
-            for worker, _budget in self._plan:
-                if worker is self.assistant_worker:
-                    continue
-                role = next(
-                    label
-                    for label, candidate in (
-                        ("queue", self.queue_worker),
-                        ("batch", self.batch_worker),
-                        ("migration", self.migration_worker if hasattr(self, "migration_worker") else None),
-                    )
-                    if candidate is worker
+            backgrounds = [
+                (label, candidate)
+                for label, candidate in (
+                    ("queue", self.queue_worker),
+                    ("batch", self.batch_worker),
+                    ("migration", self.migration_worker),
                 )
+                if candidate is not None
+            ]
+            if backgrounds:
+                index = self._background_cursor % len(backgrounds)
+                role, worker = backgrounds[index]
+                self._background_cursor = (index + 1) % len(backgrounds)
                 submitted |= self._submit(role, worker)
-                break
         return submitted
 
     def wait_for_idle(self, timeout=5.0):
