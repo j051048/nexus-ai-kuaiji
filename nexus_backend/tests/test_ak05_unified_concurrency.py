@@ -1,6 +1,8 @@
 import threading
 import time
 
+import pytest
+
 from app.unified_worker import UnifiedWorker
 
 
@@ -119,6 +121,51 @@ def test_future_exception_is_consumed_and_next_tick_recovers():
         assert flaky.calls >= 2
     finally:
         unified.stop()
+
+
+def test_monitor_failure_does_not_stop_queue_processing():
+    class BrokenMonitor:
+        def heartbeat(self, inflight=0, state="idle"):
+            raise RuntimeError("synthetic monitor db failure")
+
+    class Assistant:
+        def __init__(self):
+            self.monitor = BrokenMonitor()
+
+        def run_once(self):
+            return False
+
+    class Queue:
+        def __init__(self):
+            self.calls = 0
+
+        def run_once(self):
+            self.calls += 1
+            return self.calls == 1
+
+    queue = Queue()
+    unified = UnifiedWorker(assistant_worker=Assistant(), queue_worker=queue, idle_seconds=0.05)
+    unified._monitor_tick("active")
+    unified.start()
+    try:
+        deadline = time.monotonic() + 2
+        while queue.calls == 0 and time.monotonic() < deadline:
+            time.sleep(0.02)
+        assert queue.calls >= 1
+    finally:
+        unified.stop()
+
+
+def test_invalid_budget_types_are_rejected():
+    for kwargs in (
+        {"assistant_budget": True},
+        {"queue_budget": -1},
+        {"batch_budget": 1.5},
+        {"migration_budget": 11},
+        {"idle_seconds": True},
+    ):
+        with pytest.raises(ValueError):
+            UnifiedWorker(queue_worker=BlockingWorker(), **kwargs)
 
 
 def test_clean_stop_can_restart_and_draining_stop_cannot():

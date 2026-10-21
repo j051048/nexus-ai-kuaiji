@@ -39,7 +39,7 @@ class UnifiedWorker:
         ):
             if type(budget) is not int or not 1 <= budget <= 10:
                 raise ValueError(f"统一后台每轮预算须为1–10（{label}）")
-        if not 0.05 <= idle_seconds <= 30:
+        if type(idle_seconds) not in {int, float} or not 0.05 <= idle_seconds <= 30:
             raise ValueError("统一后台空闲轮询须为0.05–30秒")
         plan = []
         if assistant_worker is not None:

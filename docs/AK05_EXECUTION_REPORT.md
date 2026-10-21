@@ -55,6 +55,13 @@ test_ak05_persistent.py
 1 passed
 ```
 
+```text
+test_ak05_unified_concurrency.py
+test_ak05_persistent.py
+test_unified_worker.py
+15 passed
+```
+
 真实 SQLite 持久队列：
 A 企业 OCR provider hook 阻塞；
 B 企业助手先完成，且 OCR 尚未释放。
@@ -122,14 +129,14 @@ test_queue_workflow.py
 - T02 已有“最多 2 个在途”测试，未覆盖大规模峰值/连接池；
 - T03 多企业公平与后台不饥饿（多企业共享后台槽仍只有一次机会）；
 - T04 全局/供应商上限；
-- T06 慢 refresh/心跳落库失败（轻量心跳已隔离）；
+- T06 监控心跳抛异常不阻断队列处理已测；慢 refresh 真实故障注入未测；
 - T07 干净 stop/start、draining 拒绝、Future 异常消费已有测试；数据库关闭顺序未测；
 - T08 Future 异常已测试；claim 成功后 submit 失败未测；
 - T09 撤权范围交错；
 - T10 费用/attempt/429 矩阵；
 - T11 两个真实进程竞争；
 - T12 AK02–AK04 完整联合回归；
-- T13 配置边界；
+- T13 bool/负数/小数/越界配置边界已测；角色冲突组合未完整覆盖；
 - 真实隔离 PG 多进程；
 - QueueWorker 慢任务期间只有一次 inflight=1，尚无独立周期心跳线程；
 - 并发路径未严格使用 assistant/queue/batch/migration 预算权重，当前每 tick 一角色一任务。
