@@ -59,6 +59,9 @@ test_unified_worker.py + test_ak05_persistent.py + test_ak05_unified_concurrency
 ```text
 test_ak05_persistent.py
 2 passed
+
+test_ak05_two_process.py
+1 passed（两个真实 OS 进程，恰好一个领取）
 ```
 
 ```text
@@ -149,7 +152,8 @@ test_queue_workflow.py
 - T08 Future 异常和 submit 失败不泄漏在途已测试；claim 成功后真实 submit 竞争未测；
 - T09 新增真实并发撤权：助手已进入 provider 后撤销企业成员，turn 必须 stale 且无 assistant 消息；
 - T10 复用 `test_ak01_attempt_matrix.py` + `test_batch2_concurrency.py`，51 passed；真实 PG/真实供应商未验证；
-- T11 两个真实进程竞争、发送后终止、恢复进程（未执行）；
+- T11 两个真实 OS 进程竞争同一 SQLite 持久任务已测（恰好一个领取）；
+  发送后终止、恢复进程、费用/供应商日志双边核对未执行；
 - T12 AK02–AK05 受影响回归：
   `test_ag02_context_pack`、`test_ag03_answers`、`test_ag04_investigation`、
   `test_ag05_examples`、`test_intelligence_workflow`，262 passed；
