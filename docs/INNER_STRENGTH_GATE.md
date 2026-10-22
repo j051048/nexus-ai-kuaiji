@@ -36,6 +36,7 @@ tmp_test/inner-gate/<UTC>/<group>.log
 HEAD d4fc7b8e
 p0          70 passed
 ak05        28 passed
+ak04        43 passed
 invariants  75 passed / 13 skipped（PG 无 DSN 时跳过）
 attempt     51 passed
 offline     262 passed

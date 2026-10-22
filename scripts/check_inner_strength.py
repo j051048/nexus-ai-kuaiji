@@ -60,7 +60,7 @@ FILES = [
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--groups", default="p0,ak05,invariants,attempt,offline")
+    parser.add_argument("--groups", default="p0,ak05,ak04,invariants,attempt,offline")
     parser.add_argument("--out", default="")
     args = parser.parse_args()
     selected = [item.strip() for item in args.groups.split(",") if item.strip()]
