@@ -522,7 +522,14 @@ class QueueWorker:
                     "context_changed",
                     "权限、期间或资料已改变，任务停止，请由获授权人员重新处理",
                 )
-        except Exception:
+        except Exception as error:
+            # Keep supplier content and exception messages out of logs; the
+            # class name is enough to separate code/resource failures from
+            # provider and authorization failures during incident triage.
+            logger.warning(
+                "后台任务异常类型=%s，按持久租约恢复",
+                type(error).__name__,
+            )
             self._failure(
                 job,
                 "interrupted" if execution.sent else "failed",
