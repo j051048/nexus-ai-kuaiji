@@ -154,7 +154,8 @@ test_queue_workflow.py
 - T10 复用 `test_ak01_attempt_matrix.py` + `test_batch2_concurrency.py`，51 passed；真实 PG/真实供应商未验证；
 - T11 两个真实 OS 进程竞争同一 SQLite 持久任务已测（恰好一个领取）；
   领取后死亡、attempt 已标记 sending 时新 worker 不重发已测；
-  发送后终止、恢复进程、费用/供应商日志双边核对未执行；
+  发送后终止、恢复进程已由真实 subprocess 测试覆盖；
+  费用/供应商 HTTP 日志双边核对未执行；
 - T12 AK02–AK05 受影响回归：
   `test_ag02_context_pack`、`test_ag03_answers`、`test_ag04_investigation`、
   `test_ag05_examples`、`test_intelligence_workflow`，262 passed；
