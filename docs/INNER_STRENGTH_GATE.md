@@ -33,9 +33,10 @@ tmp_test/inner-gate/<UTC>/<group>.log
 ## 当前基线
 
 ```text
-HEAD f3903302
-p0     70 passed
-ak05   28 passed
+HEAD 0cc8776d
+p0          70 passed
+ak05        28 passed
+invariants  75 passed / 13 skipped（PG 无 DSN 时跳过）
 ```
 
 ## 约束

@@ -35,6 +35,12 @@ GROUPS = {
         "nexus_backend/tests/test_ak01_attempt_matrix.py",
         "nexus_backend/tests/test_batch2_concurrency.py",
     ],
+    "invariants": [
+        "nexus_backend/tests/test_posting_service.py",
+        "nexus_backend/tests/test_intelligence_ledger.py",
+        "nexus_backend/tests/test_stage10_closing.py",
+        "nexus_backend/tests/test_stage9_delivery.py",
+    ],
     "offline": [
         "nexus_backend/tests/test_ag02_context_pack.py",
         "nexus_backend/tests/test_ag03_answers.py",
@@ -54,7 +60,7 @@ FILES = [
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--groups", default="p0,ak05,attempt,offline")
+    parser.add_argument("--groups", default="p0,ak05,invariants,attempt,offline")
     parser.add_argument("--out", default="")
     args = parser.parse_args()
     selected = [item.strip() for item in args.groups.split(",") if item.strip()]

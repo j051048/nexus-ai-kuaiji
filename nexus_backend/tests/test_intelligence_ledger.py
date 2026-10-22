@@ -11,7 +11,11 @@ from app.accounting.models import ApprovalRequest, ExportRequest, ImportRequest,
 from app.accounting.service import now
 from app.business.models import BusinessEventCreate, HandoffRequest
 from app.business.service import BusinessService
-from app.intelligence.provider import AISettings, OpenAICompatibleProvider
+from app.intelligence.provider import (
+    AISettings,
+    EXTRACTION_PROMPT_VERSION,
+    OpenAICompatibleProvider,
+)
 from app.intelligence.service import IntelligenceService
 from test_business import business
 from test_business_postgres import ADMIN_URL, APP_URL, business_case, business_postgres
@@ -74,8 +78,8 @@ def document(gross="0.30", **changes):
 def recorded_ocr(case, event, attachment_id, doc=None):
     run_id, stamp = uuid4().hex, now()
     with case.db.transaction(write=True, actor=case.employee) as conn:
-        conn.execute("INSERT INTO ai_runs(id,firm_id,company_id,event_id,kind,attachment_id,input_version,input_fingerprint,idempotency_key,status,provider,model,prompt_version,created_by,created_at) VALUES(?,?,?,?,'ocr',?,?,?,?,'running','test','offline-vision','ocr-test',?,?)",
-                     (run_id, case.employee.firm_id, case.company, event["id"], attachment_id, event["version"], uuid4().hex, uuid4().hex, case.employee.user_id, stamp))
+        conn.execute("INSERT INTO ai_runs(id,firm_id,company_id,event_id,kind,attachment_id,input_version,input_fingerprint,idempotency_key,status,provider,model,prompt_version,created_by,created_at) VALUES(?,?,?,?,'ocr',?,?,?,?,'running','test','offline-vision',?,?,?)",
+                     (run_id, case.employee.firm_id, case.company, event["id"], attachment_id, event["version"], uuid4().hex, uuid4().hex, EXTRACTION_PROMPT_VERSION, case.employee.user_id, stamp))
         conn.execute("UPDATE ai_runs SET status='succeeded',result_json=?,finished_at=? WHERE id=?", (json.dumps({"documents": [doc or document()]}, ensure_ascii=False), stamp, run_id))
     return run_id
 
@@ -163,6 +167,13 @@ def test_ledger_clean_current_ocr_can_review_export_without_model_config_or_netw
     monkeypatch.setattr(OpenAICompatibleProvider, "extract_invoice", no_network)
     monkeypatch.setattr(OpenAICompatibleProvider, "suggest_journal", no_network)
     assert case.ledger.intelligence is None
+    for finding in case.ai.reconcile(case.reviewer, event["id"])["findings"]:
+        if finding["severity"] == "blocking" and not finding["resolved"]:
+            case.ai.resolve(
+                case.reviewer,
+                finding["id"],
+                "合成原件已由会计独立核对，确认识别结果与业务一致",
+            )
     assert draft_value(case, draft_id)["issues"] == []
     assert approve(case, draft_id)["status"] == "approved"
     assert export(case, draft_id)["count"] == 1
