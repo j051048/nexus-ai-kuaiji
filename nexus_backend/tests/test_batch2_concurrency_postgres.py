@@ -350,43 +350,57 @@ def test_real_pg_system_company_scope_refreshes_projection_without_global_lock(c
         validation_role="accounting_projection",
     )
     stamp = "2026-01-01T00:00:00+00:00"
-    with projection.transaction(
-        write=True,
-        write_scope="company",
-        company_id=c.company,
-        firm_id=c.actor.firm_id,
-    ) as conn:
-        conn.execute(
-            "INSERT INTO workspace_projection_state(firm_id,company_id,revision,built_revision,dirty_at,built_at,failures) VALUES(?,?,1,1,?,?,0) ON CONFLICT(firm_id,company_id) DO NOTHING",
-            (c.actor.firm_id, c.company, stamp, stamp),
-        )
-        conn.execute(
-            "INSERT INTO workspace_task_projections(firm_id,company_id,kind,ref,state,title,updated_at) VALUES(?,?,'alert','scope-probe','open','探针',?)",
-            (c.actor.firm_id, c.company, stamp),
-        )
-        conn.execute(
-            "DELETE FROM workspace_task_projections WHERE firm_id=? AND company_id=? AND ref='scope-probe'",
-            (c.actor.firm_id, c.company),
-        )
-    other = c.service.create_book(c.actor, BookCreate(name="系统企业锁第二客户", period="2026-10"))
-    with pytest.raises(Exception):
+    probe_ref, other_ref = "scope-probe-" + uuid4().hex, "scope-other-" + uuid4().hex
+    owned_state, other_company = False, None
+    try:
         with projection.transaction(
             write=True,
             write_scope="company",
             company_id=c.company,
             firm_id=c.actor.firm_id,
         ) as conn:
+            inserted = conn.execute(
+                "INSERT INTO workspace_projection_state(firm_id,company_id,revision,built_revision,dirty_at,built_at,failures) VALUES(?,?,1,1,?,?,0) ON CONFLICT(firm_id,company_id) DO NOTHING RETURNING company_id",
+                (c.actor.firm_id, c.company, stamp, stamp),
+            ).fetchone()
             conn.execute(
-                "INSERT INTO workspace_task_projections(firm_id,company_id,kind,ref,state,title,updated_at) VALUES(?,?,'alert','scope-other','open','越界',?)",
-                (c.actor.firm_id, other["company_id"], stamp),
+                "INSERT INTO workspace_task_projections(firm_id,company_id,kind,ref,state,title,updated_at) VALUES(?,?,'alert',?,'open','探针',?)",
+                (c.actor.firm_id, c.company, probe_ref, stamp),
             )
-    with projection.transaction(write=True) as conn:
-        conn.execute(
-            "DELETE FROM workspace_task_projections WHERE firm_id=? AND ref='scope-other'",
-            (c.actor.firm_id,),
-        )
-        conn.execute(
-            "DELETE FROM workspace_projection_state WHERE firm_id=? AND company_id=?",
-            (c.actor.firm_id, c.company),
-        )
-    projection.close()
+            conn.execute(
+                "DELETE FROM workspace_task_projections WHERE firm_id=? AND company_id=? AND ref=?",
+                (c.actor.firm_id, c.company, probe_ref),
+            )
+        owned_state = inserted is not None
+        other = c.service.create_book(c.actor, BookCreate(name="系统企业锁第二客户", period="2026-10"))
+        other_company = other["company_id"]
+        with pytest.raises(c.psycopg.errors.InsufficientPrivilege) as denied:
+            with projection.transaction(
+                write=True,
+                write_scope="company",
+                company_id=c.company,
+                firm_id=c.actor.firm_id,
+            ) as conn:
+                conn.execute(
+                    "INSERT INTO workspace_task_projections(firm_id,company_id,kind,ref,state,title,updated_at) VALUES(?,?,'alert',?,'open','越界',?)",
+                    (c.actor.firm_id, other_company, other_ref, stamp),
+                )
+        assert denied.value.sqlstate == "42501"
+    finally:
+        try:
+            # Test infrastructure owns cleanup; projection remains unable to
+            # delete metadata. Never remove state created by the book fixture.
+            with c.psycopg.connect(ADMIN_URL) as conn:
+                for company in (c.company, other_company):
+                    if company:
+                        conn.execute(
+                            "DELETE FROM accounting.workspace_task_projections WHERE firm_id=%s AND company_id=%s AND ref IN (%s,%s)",
+                            (c.actor.firm_id, company, probe_ref, other_ref),
+                        )
+                if owned_state:
+                    conn.execute(
+                        "DELETE FROM accounting.workspace_projection_state WHERE firm_id=%s AND company_id=%s",
+                        (c.actor.firm_id, c.company),
+                    )
+        finally:
+            projection.close()
