@@ -1,6 +1,7 @@
 """Local demo or PostgreSQL accounting with verified Supabase identity."""
 
 import ipaddress
+import logging
 import os
 import secrets
 import sqlite3
@@ -160,6 +161,30 @@ from .legacy_migration.learning import LegacyLearningService
 from .legacy_migration.settlements import LegacySettlementService
 
 
+logger = logging.getLogger(__name__)
+
+
+def _drain_embedded_workers(application, workers, timeout=30):
+    """Signal all lanes before sharing one shutdown deadline across their joins."""
+    deadline = time.monotonic() + timeout
+    complete = True
+    for worker in reversed(workers):
+        try:
+            worker.stop()
+        except Exception:
+            complete = False
+            logger.warning("嵌入后台停止信号失败，数据库将保留至进程退出")
+    for worker in reversed(workers):
+        try:
+            if worker.wait_for_idle(max(0, deadline - time.monotonic())) is not True:
+                complete = False
+        except Exception:
+            complete = False
+            logger.warning("嵌入后台排空状态未知，数据库将保留至进程退出")
+    application.state.unified_drain_incomplete = not complete
+    return complete
+
+
 def is_loopback(host: str) -> bool:
     try:
         return ipaddress.ip_address(host).is_loopback
@@ -268,14 +293,13 @@ def create_app(
     @asynccontextmanager
     async def lifespan(application):
         database = Database(path)
-        projection_url = os.getenv("ACCOUNTING_PROJECTION_DATABASE_URL", "")
-        projection_database = (
-            Database(projection_url, default_role="accounting_projection")
-            if projection_url.startswith(("postgres://", "postgresql://"))
-            else None
-        )
-        database.assert_restore_hold()
+        projection_database = None
+        workers = []
         try:
+            projection_url = os.getenv("ACCOUNTING_PROJECTION_DATABASE_URL", "")
+            if projection_url.startswith(("postgres://", "postgresql://")):
+                projection_database = Database(projection_url, default_role="accounting_projection")
+            database.assert_restore_hold()
             if database.is_postgres:
                 with closing(database.connect()) as conn:
                     if conn.execute(
@@ -500,12 +524,14 @@ def create_app(
                     lease_seconds=lease_seconds,
                     poll_seconds=float(os.getenv("ACCOUNTING_QUEUE_POLL_SECONDS", "1")),
                 )
+                workers.append(worker)
                 worker.start()
             application.state.queue_worker = worker
             migration_worker = (
                 MigrationWorker(application.state.legacy_migration) if embedded else None
             )
             if migration_worker:
+                workers.append(migration_worker)
                 migration_worker.start()
             application.state.migration_worker = migration_worker
             assistant_worker = (
@@ -518,35 +544,30 @@ def create_app(
                 else None
             )
             if assistant_worker:
+                workers.append(assistant_worker)
                 assistant_worker.start()
             application.state.assistant_worker = assistant_worker
             batch_worker = BatchWorker(application.state.batch_operations) if embedded else None
             if batch_worker:
+                workers.append(batch_worker)
                 batch_worker.start()
             application.state.batch_worker = batch_worker
-            try:
-                yield
-            finally:
-                if batch_worker:
-                    batch_worker.stop()
-                if assistant_worker:
-                    assistant_worker.stop()
-                if migration_worker:
-                    migration_worker.stop()
-                if worker:
-                    worker.stop()
-                    if not worker.wait_for_idle(30):
-                        # Do not close the pool under live worker threads; the
-                        # process exit and durable leases own recovery.
-                        application.state.unified_drain_incomplete = True
-                application.state.tokens.clear()
-                application.state.token_users.clear()
-                if application.state.authenticator and authenticator is None:
-                    application.state.authenticator.close()
+            yield
         finally:
-            database.close()
-        if projection_database is not None:
-            projection_database.close()
+            drained = _drain_embedded_workers(application, workers)
+            try:
+                getattr(application.state, "tokens", {}).clear()
+                getattr(application.state, "token_users", {}).clear()
+                provider = getattr(application.state, "authenticator", None)
+                if provider and authenticator is None:
+                    provider.close()
+            finally:
+                if drained:
+                    try:
+                        database.close()
+                    finally:
+                        if projection_database is not None:
+                            projection_database.close()
 
     app = FastAPI(
         title="衡账 · 会计 Agent 工作空间",

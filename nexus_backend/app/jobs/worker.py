@@ -174,9 +174,7 @@ class QueueExecution:
         self.record_timings(conn, cache_hit=bool(run["cache_hit"]))
         status, delay = run["status"], 0
         if status == "failed" and error:
-            if self.retry_is_safe(error) and self.job[
-                "attempt_count"
-            ] < self.job["max_attempts"]:
+            if self.retry_is_safe(error) and self.job["attempt_count"] < self.job["max_attempts"]:
                 attempt_in_round = max(
                     1, self.job["attempt_count"] - (self.job["max_attempts"] - 3)
                 )
@@ -184,7 +182,15 @@ class QueueExecution:
             elif (
                 self.sent
                 and getattr(error, "llm_attempted", None) is not False
-                and error.code in {"timeout", "network", "network_error", "transport", "response_unknown", "processing_failed"}
+                and error.code
+                in {
+                    "timeout",
+                    "network",
+                    "network_error",
+                    "transport",
+                    "response_unknown",
+                    "processing_failed",
+                }
             ):
                 status = "interrupted"
         code, detail = run["error_code"], run["error_detail"]
@@ -302,9 +308,7 @@ class ProposalExecution(QueueExecution):
                     "候选建议已生成，存在需人工处理的异常或凭证已修改，请会计审阅",
                 )
         elif status == "failed" and error:
-            if self.retry_is_safe(error) and self.job[
-                "attempt_count"
-            ] < self.job["max_attempts"]:
+            if self.retry_is_safe(error) and self.job["attempt_count"] < self.job["max_attempts"]:
                 attempt_in_round = max(
                     1, self.job["attempt_count"] - (self.job["max_attempts"] - 3)
                 )
@@ -312,7 +316,15 @@ class ProposalExecution(QueueExecution):
             elif (
                 self.sent
                 and getattr(error, "llm_attempted", None) is not False
-                and error.code in {"timeout", "network", "network_error", "transport", "response_unknown", "processing_failed"}
+                and error.code
+                in {
+                    "timeout",
+                    "network",
+                    "network_error",
+                    "transport",
+                    "response_unknown",
+                    "processing_failed",
+                }
             ):
                 status, detail = (
                     "interrupted",
@@ -368,9 +380,7 @@ class ProposalExecution(QueueExecution):
                     ),
                 )
             else:
-                statement = (
-                    "UPDATE proposal_jobs SET result_template_id=?,result_template_version=?,result_draft_version=? WHERE id=?"
-                )
+                statement = "UPDATE proposal_jobs SET result_template_id=?,result_template_version=?,result_draft_version=? WHERE id=?"
                 values = (
                     generated["template_id"],
                     generated["template_version"],
@@ -404,6 +414,10 @@ class QueueWorker:
         self._stop = threading.Event()
         self._thread = None
         self._operations = None
+        self._active_lock = threading.Lock()
+        self._active = 0
+        self._maintenance_lock = threading.Lock()
+        self._last_maintenance = float("-inf")
         verify_worker_login(self.queue.db)
 
     def recover(self):
@@ -483,7 +497,10 @@ class QueueWorker:
                     logger.warning("后台任务续期暂不可用，发布结果仍需验证租约")
 
         heart = threading.Thread(target=heartbeat, name="ocr-lease-heartbeat", daemon=True)
-        heart.start()
+        try:
+            heart.start()
+        except RuntimeError:
+            logger.warning("后台租约续期线程未启动，发布仍需验证有效租约")
         try:
             if proposal:
                 return self.process_proposal(actor, job, execution)
@@ -538,7 +555,8 @@ class QueueWorker:
             )
         finally:
             heartbeat_stop.set()
-            heart.join(timeout=2)
+            if heart.ident is not None:
+                heart.join()
 
     def process_proposal(self, actor, job, execution):
         from ..accounting.catalog import CatalogService
@@ -692,16 +710,36 @@ class QueueWorker:
             self.queue.proposals.finish_sqlite(conn, job, "needs_attention", code, detail)
 
     def run_once(self):
-        self.maintenance(0)
+        if self._stop.is_set():
+            return False
+        # Maintenance is best effort and runs before a claim. Its failure must
+        # never strand a claimed job or prevent its lease renewal from starting.
+        with self._maintenance_lock:
+            if time.monotonic() - self._last_maintenance >= 10:
+                self._last_maintenance = time.monotonic()
+                try:
+                    self.maintenance(self.inflight_count())
+                except Exception:
+                    logger.warning("票据队列维护暂不可用，继续按持久任务状态处理")
+        if self._stop.is_set():
+            return False
         self.recover()
+        if self._stop.is_set():
+            return False
         job = self.queue.claim(
             self.worker_id, self.lease_seconds, SchedulingSettings.from_env().requested_global_limit
         )
         if not job:
             return False
-        # A claimed job is real in-flight work. Do not leave the last
-        # observation at zero while a slow provider call is running.
-        self.maintenance(1)
+        return self._execute_claimed(job)
+
+    def inflight_count(self):
+        with self._active_lock:
+            return self._active
+
+    def _execute_claimed(self, job):
+        with self._active_lock:
+            self._active += 1
         stop_heartbeat = threading.Event()
         heartbeat = threading.Thread(
             target=self._heartbeat_loop,
@@ -709,21 +747,41 @@ class QueueWorker:
             name="ocr-heartbeat",
             daemon=True,
         )
-        heartbeat.start()
+        try:
+            heartbeat.start()
+        except RuntimeError:
+            logger.warning("票据监控线程未启动，继续处理已领取任务")
         try:
             self.process(job)
         finally:
             stop_heartbeat.set()
-            heartbeat.join(timeout=2)
-            self.maintenance(0)
+            # A slow heartbeat still owns the database. Keep the lane alive
+            # until it exits so drain cannot close its connection pool early.
+            with self._active_lock:
+                self._active -= 1
+            if heartbeat.ident is not None:
+                heartbeat.join()
+            try:
+                self.heartbeat(self.inflight_count())
+            except Exception:
+                logger.warning("票据队列完成心跳暂不可用")
+            try:
+                # Commit business outcomes before best-effort maintenance.
+                # This preserves prompt failure alerts and OCR→proposal resume,
+                # without running maintenance between claim and execution.
+                self.maintenance(self.inflight_count())
+                self._last_maintenance = time.monotonic()
+            except Exception:
+                logger.warning("任务已完成，后续告警与任务恢复将在下一轮维护重试")
         return True
 
     def _heartbeat_loop(self, stop, interval=10.0):
-        while not stop.wait(interval):
+        while not stop.is_set():
             try:
-                self.heartbeat(1)
+                self.heartbeat(self.inflight_count())
             except Exception:
                 logger.warning("票据队列心跳暂不可用，任务租约保持不变")
+            stop.wait(interval)
 
     def heartbeat(self, inflight=1):
         """Persist a lightweight in-flight observation without alert refresh."""
@@ -736,7 +794,9 @@ class QueueWorker:
                 intelligence=self.queue.intelligence,
             )
         with self.queue.worker_transaction() as conn:
-            self._operations.heartbeat(conn, self.worker_id, inflight, "active")
+            self._operations.heartbeat(
+                conn, self.worker_id, inflight, "active" if inflight else "idle"
+            )
 
     def maintenance(self, inflight=0, stopped=False):
         if self._operations is None:
@@ -760,9 +820,31 @@ class QueueWorker:
                 self._operations.refresh_pending(conn)
 
     def _loop(self):
+        monitor_stop = threading.Event()
+        monitor = threading.Thread(
+            target=self._heartbeat_loop,
+            args=(monitor_stop, self.heartbeat_seconds),
+            name="ocr-dispatch-monitor",
+            daemon=True,
+        )
+        try:
+            try:
+                monitor.start()
+            except RuntimeError:
+                logger.warning("票据调度监控未启动，持久领取继续")
+            self._dispatch_loop()
+        finally:
+            monitor_stop.set()
+            if monitor.ident is not None:
+                monitor.join()
+            try:
+                self.maintenance(0, stopped=True)
+            except Exception:
+                logger.warning("票据队列停止心跳暂不可用")
+
+    def _dispatch_loop(self):
         with ThreadPoolExecutor(max_workers=self.concurrency, thread_name_prefix="ocr-job") as pool:
             futures = set()
-            last_monitor = 0
             while not self._stop.is_set():
                 for future in [value for value in futures if value.done()]:
                     futures.remove(future)
@@ -771,41 +853,37 @@ class QueueWorker:
                     except Exception:
                         logger.warning("后台任务暂未完成，将按持久租约恢复")
                 try:
-                    if time.monotonic() - last_monitor >= 10:
-                        self.maintenance(len(futures))
-                        last_monitor = time.monotonic()
-                    self.recover()
                     while len(futures) < self.concurrency and not self._stop.is_set():
-                        job = self.queue.claim(
-                            self.worker_id,
-                            self.lease_seconds,
-                            SchedulingSettings.from_env().requested_global_limit,
-                        )
-                        if not job:
-                            break
-                        futures.add(pool.submit(self.process, job))
+                        futures.add(pool.submit(self.run_once))
                 except Exception:
                     logger.warning("后台队列暂不可用，将继续读取持久状态")
                 self._stop.wait(self.poll_seconds)
 
+    def prepare_run(self):
+        if (self._thread and self._thread.is_alive()) or self.inflight_count():
+            raise RuntimeError("上一代票据后台仍在运行")
+        self._stop.clear()
+
     def start(self):
         if self._thread and self._thread.is_alive():
             return
-        self._stop.clear()
+        self.prepare_run()
         self._thread = threading.Thread(target=self._loop, name="ocr-queue-dispatcher", daemon=True)
         self._thread.start()
 
     def stop(self):
         self._stop.set()
+
+    def wait_for_idle(self, timeout=5.0):
         if self._thread:
-            self._thread.join(timeout=5)
-            if not self._thread.is_alive():
-                try:
-                    self.maintenance(0, stopped=True)
-                except Exception:
-                    pass
+            self._thread.join(timeout=max(0, timeout))
+            if self._thread.is_alive():
+                return False
+        if self.inflight_count():
+            return False
         # In-flight calls may finish with their lease. A process kill leaves
         # durable recovery state; queued work is never deleted at shutdown.
+        return True
 
 
 def main(ready_callback=None):
@@ -864,8 +942,8 @@ def main(ready_callback=None):
         if args.once:
             worker.run_once()
             return 0
-        worker.start()
         worker_started = True
+        worker.start()
         if ready_callback:
             ready_callback()
         halted = threading.Event()
@@ -878,9 +956,16 @@ def main(ready_callback=None):
         logger.error("后台服务启动或执行失败，请检查独立账号、迁移及模型配置；连接和原件内容已隐藏")
         return 1
     finally:
+        drained = True
         if worker_started:
-            worker.stop()
-        if database:
+            try:
+                worker.stop()
+                drained = worker.wait_for_idle(30) is True
+            except Exception:
+                drained = False
+            if not drained:
+                logger.warning("票据后台尚未排空，保留数据库连接，依赖持久租约恢复")
+        if database and drained:
             database.close()
 
 

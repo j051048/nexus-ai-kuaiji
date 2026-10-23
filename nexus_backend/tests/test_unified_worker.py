@@ -111,6 +111,7 @@ def test_stop_flushes_queue_maintenance_and_assistant_monitor():
 
     worker = UnifiedWorker(assistant_worker=Assistant(), queue_worker=queue)
     worker.stop()
+    assert worker.wait_for_idle(2)
     assert queue.stopped_flushes == 1
     assert monitor.ticks[-1] == {"inflight": 0, "state": "stopped"}
 
@@ -125,6 +126,7 @@ def test_loop_polls_until_stopped():
     while len(log) < 3 and time.monotonic() < deadline:
         time.sleep(0.02)
     worker.stop()
+    assert worker.wait_for_idle(2)
     assert len(log) >= 3
     settled = len(log)
     time.sleep(0.15)

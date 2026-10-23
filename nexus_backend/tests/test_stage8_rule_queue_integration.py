@@ -21,6 +21,7 @@ from test_catalog import case
 from test_intelligence_workflow import ai_case, handoff, invoice_document
 from test_queue_workflow import TestClock
 from test_stage8_learning import ready, evaluate_publish
+from test_stage7_proposal_queue import independent_original
 
 
 def event(case, ordinal, amount='0.30', counterparty='耗材商店'):
@@ -35,6 +36,7 @@ def event(case, ordinal, amount='0.30', counterparty='耗材商店'):
 
 def seed_sample(case, learning, ordinal, counterparty='耗材商店', corrected=False, account='6602.99', auxiliaries=False):
     value = event(case, ordinal, counterparty=counterparty)
+    case.original_text = invoice_document(seller_name=counterparty, invoice_number=f'STAGE8-SEED-{ordinal}')["pages"][0]["raw_text"]
     case.provider.document = invoice_document(seller_name=counterparty, invoice_number=f'STAGE8-SEED-{ordinal}')
     case.intelligence.extract(case.actors['employee'], value['id'], OCRRequest(attachment_id=value['attachments'][0]['id'], expected_version=value['version'], idempotency_key=uuid4().hex, force_refresh=True))
     mapped = handoff(case, value)
@@ -49,8 +51,9 @@ def seed_sample(case, learning, ordinal, counterparty='耗材商店', corrected=
 
 
 @pytest.fixture
-def company_rules(ai_case):
+def company_rules(ai_case, monkeypatch):
     c = ai_case
+    independent_original(c, monkeypatch)
     c.ledger.intelligence = c.intelligence
     learning = LearningService(c.db)
     c.ledger.learning = c.intelligence.ledger.learning = learning
@@ -72,6 +75,7 @@ def company_rules(ai_case):
 
 def target(c, amount='1.20', ordinal=3):
     value = event(c, ordinal, amount)
+    c.original_text = invoice_document(amount=amount, net_amount=amount, tax_amount='0.00', invoice_number=f'STAGE8-TARGET-{ordinal}')["pages"][0]["raw_text"]
     c.provider.document = invoice_document(amount=amount, net_amount=amount, tax_amount='0.00', invoice_number=f'STAGE8-TARGET-{ordinal}')
     return handoff(c, value)
 
@@ -109,6 +113,19 @@ def test_manual_edit_wins_over_pending_published_rule_job(company_rules):
     task, after = state(c, mapped)
     assert task['status'] == 'stale' and task['result_rule_id'] is None
     assert after['description'] == updated['description'] and after['version'] == updated['version']
+    assert c.provider.proposal_calls == 0
+
+
+def test_published_rule_does_not_bypass_independent_original_mismatch(company_rules):
+    c = company_rules
+    mapped = target(c)
+    # The archived original remains 1.20 while the fake provider invents 2.40.
+    c.provider.document = invoice_document(amount='2.40', net_amount='2.40', tax_amount='0.00', invoice_number='STAGE8-TARGET-3')
+    assert c.worker.run_once() and c.worker.run_once()
+    task, draft = state(c, mapped)
+    assert task['status'] == 'needs_attention'
+    assert draft['version'] == 1 and draft['status'] == 'draft'
+    assert task['result_rule_id'] is None
     assert c.provider.proposal_calls == 0
 
 

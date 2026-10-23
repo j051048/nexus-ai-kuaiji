@@ -45,6 +45,11 @@ class AssistantWorker:
         self.monitor = monitor or AssistantMonitor(self.db, self.worker_id)
         self._stop = threading.Event()
         self._thread = None
+        self._inflight_lock = threading.Lock()
+        self._inflight = 0
+        self.monitor_interval = 15.0
+        self._monitor_stop = threading.Event()
+        self._monitor_threads = []
 
     def _private(self, name, args=(), rows=False):
         with closing(self.db.connect()) as conn:
@@ -278,10 +283,25 @@ class AssistantWorker:
             return True
 
     def run_once(self):
+        if self._stop.is_set():
+            return None
         started_at = time.monotonic()
         turn = self.claim()
         if turn is None:
             return None
+        with self._inflight_lock:
+            self._inflight += 1
+        try:
+            return self._process_claimed(turn, started_at)
+        finally:
+            with self._inflight_lock:
+                self._inflight -= 1
+
+    def inflight_count(self):
+        with self._inflight_lock:
+            return self._inflight
+
+    def _process_claimed(self, turn, started_at):
         context = self.meter.context(self._actor(turn), turn)
         attempted, result, error = False, None, None
         chat_limits = None
@@ -412,40 +432,100 @@ class AssistantWorker:
     def start(self):
         if self._thread and self._thread.is_alive():
             return
-        self._stop.clear()
+        self.prepare_run()
         self._thread = threading.Thread(target=self._loop, name=self.worker_id, daemon=True)
         self._thread.start()
 
+    def prepare_run(self):
+        if (
+            (self._thread and self._thread.is_alive())
+            or self.inflight_count()
+            or any(thread.is_alive() for thread in self._monitor_threads)
+        ):
+            raise RuntimeError("会计助手尚未排空，不能重新启动")
+        self._stop.clear()
+        self._monitor_stop.clear()
+        self._monitor_threads = []
+
+    def _record_heartbeat(self, stopped=False):
+        inflight = 0 if stopped else self.inflight_count()
+        state = "stopped" if stopped else "active" if inflight else "idle"
+        heartbeat = getattr(self.monitor, "heartbeat", None)
+        if callable(heartbeat):
+            heartbeat(inflight=inflight, state=state)
+        else:
+            # Legacy monitors expose only tick; the production monitor keeps
+            # bounded alert refresh separate from the liveness writer.
+            self.monitor.tick(inflight=inflight, state=state)
+
+    def _control_monitor(self, role):
+        try:
+            while not self._monitor_stop.is_set():
+                try:
+                    if role == "heartbeat":
+                        self._record_heartbeat()
+                    else:
+                        self.monitor.refresh()
+                except Exception:
+                    logger.warning("会计助手运行监测暂不可用，处理任务保持原有租约控制")
+                self._monitor_stop.wait(max(0.01, self.monitor_interval))
+        finally:
+            if role == "heartbeat":
+                try:
+                    self._record_heartbeat(stopped=True)
+                except Exception:
+                    logger.warning("会计助手停止心跳保存失败")
+
+    def _start_control_monitors(self):
+        if not self.monitor:
+            return
+        roles = ["heartbeat"]
+        if callable(getattr(self.monitor, "refresh", None)):
+            roles.append("refresh")
+        for role in roles:
+            thread = threading.Thread(
+                target=self._control_monitor,
+                args=(role,),
+                name=self.worker_id + "-" + role,
+                daemon=True,
+            )
+            self._monitor_threads.append(thread)
+            thread.start()
+
     def _loop(self):
-        last_tick = -15.0
-        with ThreadPoolExecutor(max_workers=self.concurrency) as pool:
-            pending = set()
-            while not self._stop.is_set():
-                for future in list(pending):
-                    if future.done():
-                        pending.remove(future)
-                        try:
-                            future.result()
-                        except Exception:
-                            logger.warning("会计助手后台任务失败，保留任务等待租约恢复")
-                if self.monitor and time.monotonic() - last_tick >= 15:
-                    try:
-                        self.monitor.tick(
-                            inflight=len(pending), state="active" if pending else "idle"
-                        )
-                    except Exception:
-                        logger.warning("会计助手运行监测暂不可用，处理任务保持原有租约控制")
-                    last_tick = time.monotonic()
-                if len(pending) < self.concurrency:
-                    pending.add(pool.submit(self.run_once))
-                self._stop.wait(self.poll_seconds)
-        if self.monitor:
-            try:
-                self.monitor.tick(inflight=0, state="stopped")
-            except Exception:
-                logger.warning("会计助手停止心跳保存失败")
+        try:
+            self._start_control_monitors()
+            with ThreadPoolExecutor(max_workers=self.concurrency) as pool:
+                pending = set()
+                while not self._stop.is_set():
+                    for future in list(pending):
+                        if future.done():
+                            pending.remove(future)
+                            try:
+                                future.result()
+                            except Exception:
+                                logger.warning("会计助手后台任务失败，保留任务等待租约恢复")
+                    if len(pending) < self.concurrency:
+                        pending.add(pool.submit(self.run_once))
+                    self._stop.wait(self.poll_seconds)
+            # Executor shutdown drains already claimed work first. Heartbeats
+            # remain active throughout that wait, including after stop().
+        finally:
+            self._monitor_stop.set()
+            for thread in self._monitor_threads:
+                if thread.ident is not None:
+                    # Dispatcher ownership includes all monitor database work;
+                    # wait_for_idle applies the caller's finite join deadline.
+                    thread.join()
 
     def stop(self):
         self._stop.set()
+
+    def wait_for_idle(self, timeout=30):
         if self._thread:
-            self._thread.join(timeout=5)
+            self._thread.join(timeout=max(0, timeout))
+            if self._thread.is_alive():
+                return False
+        return self.inflight_count() == 0 and not any(
+            thread.is_alive() for thread in self._monitor_threads
+        )

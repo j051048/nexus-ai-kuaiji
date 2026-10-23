@@ -469,6 +469,8 @@ class MigrationWorker:
                 return False
 
     def run_once(self):
+        if self._stop.is_set():
+            return None
         job = self.claim()
         if job:
             self.execute(job)
@@ -483,6 +485,8 @@ class MigrationWorker:
                 pending = {f for f in pending if not f.done()}
                 try:
                     if len(pending) < self.concurrency:
+                        if self._stop.is_set():
+                            break
                         job = self.claim()
                         if job:
                             pending.add(pool.submit(self.execute, job))
@@ -494,16 +498,25 @@ class MigrationWorker:
     def start(self):
         if self._thread and self._thread.is_alive():
             return
-        self._stop.clear()
+        self.prepare_run()
         self._thread = threading.Thread(
             target=self._loop, name="legacy-migration-dispatcher", daemon=True
         )
         self._thread.start()
 
+    def prepare_run(self):
+        if self._thread and self._thread.is_alive():
+            raise RuntimeError("旧账迁移尚未排空，不能重新启动")
+        self._stop.clear()
+
     def stop(self):
         self._stop.set()
+
+    def wait_for_idle(self, timeout=30):
         if self._thread:
-            self._thread.join(timeout=5)
+            self._thread.join(timeout=max(0, timeout))
+            return not self._thread.is_alive()
+        return True
 
 
 def hashlib_id(job_id, position):
@@ -562,8 +575,8 @@ def main(ready_callback=None):
         if args.once:
             worker.run_once()
             return 0
-        worker.start()
         worker_started = True
+        worker.start()
         if ready_callback:
             ready_callback()
         halted = threading.Event()
@@ -576,9 +589,16 @@ def main(ready_callback=None):
         logger.error("迁移后台初始化失败，请检查专用账号、迁移和原件配置；连接信息不输出")
         return 1
     finally:
+        drained = True
         if worker_started:
-            worker.stop()
-        if database:
+            try:
+                worker.stop()
+                drained = worker.wait_for_idle(30) is True
+            except Exception:
+                drained = False
+            if not drained:
+                logger.warning("迁移后台尚未排空，数据库将保留至进程退出")
+        if database and drained:
             database.close()
 
 

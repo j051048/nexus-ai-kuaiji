@@ -227,10 +227,15 @@ class Database:
         path: str | Path | None = None,
         *,
         default_role: str = "accounting_app",
+        validation_role: str | None = None,
     ):
         if default_role not in {"accounting_app", "accounting_projection"}:
             raise ValueError("数据库默认角色不受支持")
+        validation_role = validation_role or default_role
+        if validation_role not in {"accounting_app", "accounting_projection"}:
+            raise ValueError("数据库校验角色不受支持")
         self.default_role = default_role
+        self.validation_role = validation_role
         self._pool = None
         self._pool_lock = Lock()
         self._closed = False
@@ -437,7 +442,7 @@ class Database:
                         "运行服务禁止使用超级用户或 BYPASSRLS 数据库账号，请运行 migrate_accounting.py provision-login 建立受限账号"
                     )
                 conn.execute("BEGIN READ ONLY")
-                conn.execute("SET LOCAL ROLE accounting_app")
+                conn.execute("SET LOCAL ROLE " + self.validation_role)
                 effective = conn.execute(
                     "SELECT rolsuper,rolbypassrls FROM pg_roles WHERE rolname=current_user"
                 ).fetchone()
@@ -630,7 +635,8 @@ class Database:
                         scope=write_scope,
                         firm_id=actor.firm_id if actor else firm_id,
                         company_id=company_id,
-                        system=privileged,
+                        system=system,
+                        projection=projection or self.default_role == "accounting_projection",
                     )
                     lock_wait_ms = (perf_counter() - lock_started) * 1000
             else:

@@ -112,7 +112,7 @@ def test_future_exception_is_consumed_and_next_tick_recovers():
 
     flaky = Flaky()
     unified = UnifiedWorker(queue_worker=flaky, idle_seconds=0.05)
-    assert unified.run_once() is False or True
+    assert unified.run_once() is False
     unified.start()
     try:
         deadline = time.monotonic() + 2
@@ -155,6 +155,7 @@ def test_queue_heartbeat_loop_emits_periodic_inflight():
 
     calls = []
     worker = object.__new__(QueueWorker)
+    worker.inflight_count = lambda: 1
     worker.heartbeat = lambda count: calls.append(count)
     stop = threading.Event()
     thread = threading.Thread(target=worker._heartbeat_loop, args=(stop, 0.01))
@@ -234,6 +235,7 @@ def test_stop_does_not_treat_completed_future_as_inflight():
     with worker._inflight_lock:
         worker._inflight["queue"] = future
     worker.stop()
+    assert worker.wait_for_idle(2)
     assert states and states[-1] == (0, "stopped")
 
 
@@ -362,4 +364,5 @@ def test_stop_does_not_report_stopped_while_task_running():
     worker.stop()
     assert not any(state == "stopped" for _count, state in calls)
     background.release.set()
+    assert worker.wait_for_idle(2)
 

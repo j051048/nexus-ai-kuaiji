@@ -2,12 +2,14 @@
 
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
+import os
 from threading import Barrier, Event
 from time import monotonic, sleep
 from uuid import uuid4
 
 import pytest
 
+from app.accounting.database import Database
 from app.accounting.domain import Actor
 from app.accounting.models import BookCreate
 from app.concurrency.provider import _slot, _release
@@ -339,10 +341,17 @@ def test_real_pg_scoped_ocr_and_legacy_request_cannot_spend_last_company_budget_
 def test_real_pg_system_company_scope_refreshes_projection_without_global_lock(case):
     """投影刷新等系统任务走企业锁：同企业行可写、跨企业行被写门拒绝。"""
     c = case
+    projection_url = os.getenv("ACCOUNTING_PROJECTION_DATABASE_URL", "")
+    if not projection_url:
+        pytest.skip("需要独立 accounting_projection DSN")
+    projection = Database(
+        projection_url,
+        default_role="accounting_projection",
+        validation_role="accounting_projection",
+    )
     stamp = "2026-01-01T00:00:00+00:00"
-    with c.db.transaction(
+    with projection.transaction(
         write=True,
-        system=True,
         write_scope="company",
         company_id=c.company,
         firm_id=c.actor.firm_id,
@@ -361,9 +370,8 @@ def test_real_pg_system_company_scope_refreshes_projection_without_global_lock(c
         )
     other = c.service.create_book(c.actor, BookCreate(name="系统企业锁第二客户", period="2026-10"))
     with pytest.raises(Exception):
-        with c.db.transaction(
+        with projection.transaction(
             write=True,
-            system=True,
             write_scope="company",
             company_id=c.company,
             firm_id=c.actor.firm_id,
@@ -372,7 +380,7 @@ def test_real_pg_system_company_scope_refreshes_projection_without_global_lock(c
                 "INSERT INTO workspace_task_projections(firm_id,company_id,kind,ref,state,title,updated_at) VALUES(?,?,'alert','scope-other','open','越界',?)",
                 (c.actor.firm_id, other["company_id"], stamp),
             )
-    with c.db.transaction(write=True, system=True) as conn:
+    with projection.transaction(write=True) as conn:
         conn.execute(
             "DELETE FROM workspace_task_projections WHERE firm_id=? AND ref='scope-other'",
             (c.actor.firm_id,),
@@ -381,3 +389,4 @@ def test_real_pg_system_company_scope_refreshes_projection_without_global_lock(c
             "DELETE FROM workspace_projection_state WHERE firm_id=? AND company_id=?",
             (c.actor.firm_id, c.company),
         )
+    projection.close()

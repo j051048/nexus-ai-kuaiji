@@ -1,6 +1,7 @@
 """Exact local model-cost controls with synthetic usage, never supplier invoices."""
 
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from uuid import uuid4
@@ -572,13 +573,26 @@ def test_queue_retry_cannot_bypass_unknown_cost_reservation_or_company_budget(co
 
 
 @pytest.fixture
-def operations_http(tmp_path):
+def operations_http(tmp_path, monkeypatch):
     provider = UsageProvider(usage=ProviderUsage(prompt_tokens=10_000, completion_tokens=0, total_tokens=10_000))
     pricing = Pricing(ocr=Rate("1.000000", "2.000000"), proposal=Rate("1.000000", "2.000000"))
     app = create_app(tmp_path / "http-operations.db", seed=True, attachment_root=tmp_path / "private-operations", intelligence_provider=provider,
                      queue_worker_enabled=False, model_pricing=pricing)
     with TestClient(app, base_url="http://127.0.0.1", client=("127.0.0.1", 6800)) as client:
         client.provider = provider
+        # Cache-positive cases must explicitly supply independent archived text;
+        # a blank PNG plus the model's own quote is not reusable evidence.
+        from app.intelligence import service
+        prepare = service.prepare_document
+        client.original_text = None
+
+        def original(*args, **kwargs):
+            pages = prepare(*args, **kwargs)
+            if client.original_text is None:
+                return pages
+            return [replace(page, native_text=client.original_text) for page in pages]
+
+        monkeypatch.setattr(service, "prepare_document", original)
         yield client
 
 
@@ -619,6 +633,7 @@ def test_http_quota_refuses_second_send_finance_ack_and_manager_manual_cost_conf
     client = operations_http
     employee, finance, accountant = [http_auth(client, role) for role in ("employee", "finance", "accountant")]
     event, company = http_create(client, employee)
+    client.original_text = invoice_document(buyer_name=company["name"], buyer_tax_id=None)["pages"][0]["raw_text"]
     client.provider.document = invoice_document(buyer_name=company["name"], buyer_tax_id=None)
     assert client.put(f"/api/companies/{company['id']}/intelligence/settings", headers=accountant, json={"enabled": True}).status_code == 200
     assert client.put(f"/api/operations/companies/{company['id']}/policy", headers=accountant, json={

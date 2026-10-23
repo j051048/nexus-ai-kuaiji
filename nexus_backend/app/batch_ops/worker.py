@@ -52,8 +52,12 @@ class BatchWorker:
             )
 
     def run_once(self):
+        if self._stop.is_set():
+            return False
         self.started = True
         self.service.recover()
+        if self._stop.is_set():
+            return False
         item = self.service.claim(self.worker_id)
         if not item:
             return False
@@ -72,13 +76,22 @@ class BatchWorker:
     def start(self):
         if self._thread and self._thread.is_alive():
             return
-        self._stop.clear()
+        self.prepare_run()
         self._thread = threading.Thread(
             target=self._loop, name="batch-operations-worker", daemon=True
         )
         self._thread.start()
 
+    def prepare_run(self):
+        if self._thread and self._thread.is_alive():
+            raise RuntimeError("批量作业尚未排空，不能重新启动")
+        self._stop.clear()
+
     def stop(self):
         self._stop.set()
+
+    def wait_for_idle(self, timeout=30):
         if self._thread:
-            self._thread.join(timeout=5)
+            self._thread.join(timeout=max(0, timeout))
+            return not self._thread.is_alive()
+        return True

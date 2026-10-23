@@ -56,5 +56,9 @@ class AssistantMonitor:
     def tick(self, inflight=0, state="idle"):
         """Compatibility entry: liveness first, then bounded alert refresh."""
         self.heartbeat(inflight, state)
+        return self.refresh()
+
+    def refresh(self):
+        """Bounded alert maintenance; independent of the liveness writer."""
         with self._transaction() as conn:
             return self.operations.refresh_pending(conn)

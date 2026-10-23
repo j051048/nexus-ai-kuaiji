@@ -1,6 +1,7 @@
 """Real restricted PostgreSQL handoff/dependency regressions, without AI calls."""
 
 from types import SimpleNamespace
+from dataclasses import replace
 from urllib.parse import urlsplit
 from uuid import uuid4
 
@@ -216,6 +217,22 @@ def test_pg116_real_worker_ocr_and_proposal_stop_before_accountant_approval(
     handoff_case, monkeypatch, managed
 ):
     case = handoff_case
+    # The blank bitmap fixture is not independent text evidence. Declare an
+    # archived original separately, so this positive tests adoption rather than
+    # weakening AK03's model-self-quotation guard.
+    from app.intelligence import service as intelligence_module
+
+    prepare = intelligence_module.prepare_document
+    original_text = invoice_document(buyer_name="业务范围测试企业", buyer_tax_id=None)["pages"][0][
+        "raw_text"
+    ]
+    monkeypatch.setattr(
+        intelligence_module,
+        "prepare_document",
+        lambda *args, **kwargs: [
+            replace(page, native_text=original_text) for page in prepare(*args, **kwargs)
+        ],
+    )
     if managed:
         manage_ai(case)
     result = handoff(case, ready_event(case))
@@ -243,7 +260,16 @@ def test_pg116_real_worker_ocr_and_proposal_stop_before_accountant_approval(
             conn.execute("SELECT accounting.worker_refresh_proposal_dependencies()").fetchone()[0]
             == 1
         )
+    # Native provider limits may legitimately defer this claim after another
+    # parametrized case. Wait for capacity without bypassing the limiter.
+    import time
+
+    deadline = time.monotonic() + 5
     proposal = worker_queue.claim(worker.worker_id)
+    while proposal is None and time.monotonic() < deadline:
+        time.sleep(0.05)
+        proposal = worker_queue.claim(worker.worker_id)
+    assert proposal is not None, "proposal did not obtain provider capacity"
     assert proposal["id"] == result["automatic_job"]["id"]
     assert proposal["job_kind"] == "proposal"
     worker.process(proposal)
