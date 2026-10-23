@@ -15,14 +15,8 @@ from ..business.templates import validate_payload
 from ..intelligence.cache import config_key, store_cache
 from ..intelligence.documents import prepare_document
 from ..intelligence.endpoints import AIEndpointPolicyService
-from ..intelligence.models import ProviderResult
-from ..intelligence.ocr import (
-    engine_enabled,
-    extraction_findings,
-    prompt_version,
-    usage_payload,
-    stored_extraction,
-)
+from ..intelligence.checks import extraction_findings
+from ..intelligence.models import InvoiceExtraction, ProviderResult, usage_payload
 from ..intelligence.provider import (
     EXTRACTION_PROMPT_VERSION, ExecutionLimits, ProviderError, effective_settings,
 )
@@ -391,7 +385,7 @@ class IntakeService:
             egress_policy = None if structured else self._egress_policy(conn, actor, company_id)
             limits = None if structured else ExecutionLimits.from_evidence(
                 egress_policy,
-                started_at=None if engine_enabled(self.provider.settings) else started_at,
+                started_at=started_at,
                 timeout_cap=effective_settings(self.provider.settings, "ocr").timeout_seconds,
                 deadline_monotonic=started_at + 150,
             )
@@ -448,7 +442,7 @@ class IntakeService:
                     if structured
                     else urlsplit(settings.base_url).hostname or "openai-compatible",
                     "einvoice-0.3" if structured else settings.model,
-                    STRUCTURED_VERSION if structured else prompt_version(self.provider.settings),
+                    STRUCTURED_VERSION if structured else EXTRACTION_PROMPT_VERSION,
                     stamp,
                 ),
             )
@@ -457,18 +451,13 @@ class IntakeService:
             ) | {"kind": "ocr"}
             metadata = dict(attachment)
         budget, attempted, result, error = self.meter.context(actor, run), False, None, None
-        processing_deadline = started_at + 150
         try:
             data = self.storage.read(metadata)
             local = parse_invoice_xml(data) if structured else None
             pages = (
                 local.pages
                 if local
-                else (
-                    prepare_document(data, metadata["media_type"], high_resolution=True)
-                    if engine_enabled(self.provider.settings)
-                    else prepare_document(data, metadata["media_type"])
-                )
+                else prepare_document(data, metadata["media_type"])
             )
             with self.db.transaction(
                 write=True, actor=actor, company_id=company_id, write_scope="company"
@@ -489,7 +478,7 @@ class IntakeService:
                         actor=actor, company_id=company_id, owner_kind="intake", owner_id=draft_id,
                         version=draft["version"], attachment=metadata, run_id=run_id,
                         policy=egress_policy, pages=pages, limits=limits,
-                        prompt_version=prompt_version(self.provider.settings),
+                        prompt_version=EXTRACTION_PROMPT_VERSION,
                     )
                     budget.before_send(conn)
             if local:
@@ -498,33 +487,10 @@ class IntakeService:
                 attempted = True
                 from ..concurrency.provider import provider_scope
 
-                def reauthorize():
-                    with self.db.transaction(actor=actor) as check_conn:
-                        checked = self._draft(check_conn, actor, draft_id, editable=True)
-                        self._version(checked, draft["version"])
-                        if (
-                            not self._enabled(check_conn, checked)
-                            or self._configuration_input(metadata) != digest
-                            or self._egress_policy(check_conn, actor, company_id) != egress_policy
-                        ):
-                            raise AccountingError("授权或识别配置已改变，字段提取未发送", 403)
-
                 with provider_scope(self.db, actor, run["company_id"]):
-                    result = (
-                        self.provider.extract_invoice(
-                            pages,
-                            authorization_check=reauthorize,
-                            processing_deadline=processing_deadline,
-                            limits=limits,
-                            context_pack=model_context,
-                        )
-                        if engine_enabled(self.provider.settings)
-                        else self.provider.extract_invoice(
-                            pages, limits=limits, context_pack=model_context,
-                        )
+                    result = self.provider.extract_invoice(
+                        pages, limits=limits, context_pack=model_context,
                     )
-                    if getattr(result.data, "ocr_evidence", None):
-                        result.data.ocr_evidence.attachment_sha256 = metadata["sha256"]
         except ProviderError as failure:
             error = failure
         except AccountingError as caught:
@@ -576,9 +542,7 @@ class IntakeService:
             raise
 
     def _configuration_input(self, attachment):
-        if is_structured(dict(attachment).get("media_type", "")) or engine_enabled(
-            self.provider.settings
-        ):
+        if is_structured(dict(attachment).get("media_type", "")):
             return fingerprint(
                 {
                     "sha256": attachment["sha256"],
@@ -672,7 +636,9 @@ class IntakeService:
                     ).fetchone()
                     if not prior:
                         continue
-                    recognized = stored_extraction(json.loads(prior["result_json"]))
+                    recognized = InvoiceExtraction.model_validate(
+                        json.loads(prior["result_json"])
+                    )
                     transferred, _ = self.intelligence._claim(
                         conn,
                         actor,

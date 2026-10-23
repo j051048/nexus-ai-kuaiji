@@ -3,9 +3,8 @@ from copy import deepcopy
 
 import pytest
 
-from app.intelligence.checks import extraction_checks
+from app.intelligence.checks import extraction_checks, extraction_findings
 from app.intelligence.models import InvoiceExtraction, JournalSuggestion, PreparedPage
-from app.intelligence.ocr import extraction_findings
 from app.intelligence.provider import ProviderError
 from test_intelligence_workflow import (
     ai_case, create_event, extract, handoff, invoice_document, propose,

@@ -1,7 +1,9 @@
 .client-portal {
   min-height: 100vh;
   background: #f6f8f3;
-  color: #263126;
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-base);
 }
 .client-portal-header {
   min-height: 64px;
@@ -25,17 +27,18 @@
 }
 .client-portal-firm {
   color: #6c786c;
-  font-size: 13px;
+  font-size: var(--font-size-sm);
 }
 .client-portal-user {
   display: flex;
   align-items: center;
   gap: 8px;
   color: #536153;
-  font-size: 13px;
+  font-size: var(--font-size-sm);
 }
 .client-portal-user small {
-  color: #879187;
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
 }
 .client-portal-user select {
   max-width: 130px;
@@ -44,7 +47,7 @@
   border-radius: 7px;
   background: #f7faf3;
   color: #4e5e50;
-  font-size: 11px;
+  font-size: var(--font-size-xs);
 }
 .client-portal-user button {
   border: 0;
@@ -69,7 +72,7 @@
   padding: 8px 14px;
   background: transparent;
   color: #536153;
-  font-size: 13px;
+  font-size: var(--font-size-sm);
 }
 .client-portal-tabs button.active {
   background: #fffefa;
@@ -103,7 +106,9 @@
     text-overflow: ellipsis;
   }
   .client-portal-user select {
-    max-width: 110px;
+    max-width: 130px;
+    min-height: 44px;
+    font-size: var(--font-size-input-mobile);
   }
   .client-portal-firm,
   .client-portal-user small {
@@ -123,7 +128,8 @@
     gap: 4px;
     justify-content: center;
     padding: 9px 5px;
-    font-size: 11px;
+    font-size: var(--font-size-sm);
+    min-height: 44px;
   }
   .client-portal-tabs button > span {
     white-space: nowrap;

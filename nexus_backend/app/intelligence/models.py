@@ -166,6 +166,16 @@ class ProviderResult(Generic[T]):
     processing_usage: dict | None = None
 
 
+def usage_payload(result=None, error=None):
+    """Token usage recorded for a run, with the image preparation cost when known."""
+    token_usage = result.usage if result else getattr(error, "usage", None)
+    usage = token_usage.model_dump() if token_usage else {}
+    processing = getattr(result if result else error, "processing_usage", None)
+    if processing:
+        usage["ocr_processing"] = processing
+    return usage
+
+
 @dataclass(frozen=True)
 class PreparedPage:
     page: int

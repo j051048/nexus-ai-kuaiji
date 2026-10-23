@@ -286,6 +286,9 @@ class Database:
         # directory; keep SQLite's small demo/test temp store in memory.
         conn.execute("PRAGMA temp_store=MEMORY")
         conn.row_factory = sqlite3.Row
+        from .invariants import money_to_cents
+
+        conn.create_function("accounting_money_cents", 1, money_to_cents, deterministic=True)
         conn.create_function(
             "accounting_actor_user", 0, lambda: getattr(transaction_actor.get(), "user_id", "")
         )
@@ -589,9 +592,7 @@ class Database:
         if write_scope == "company" and privileged and not firm_id:
             raise ValueError("系统/投影身份的企业写事务必须显式提供 firm_id")
         if self.is_postgres and actor is None and not privileged:
-            raise ValueError(
-                "PostgreSQL 事务必须提供 actor 或显式使用 system/projection 身份事务"
-            )
+            raise ValueError("PostgreSQL 事务必须提供 actor 或显式使用 system/projection 身份事务")
         if actor is not None and privileged:
             raise ValueError("actor 与 system/projection 身份事务不能混用")
         started = perf_counter()

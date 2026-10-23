@@ -5,14 +5,14 @@
   border-left: 3px solid #5a7b60;
   border-radius: 10px;
   background: #f7faf4;
-  color: #36553e;
+  color: var(--text-secondary);
   min-width: 0;
-  font-size: 13px;
+  font-size: var(--font-size-base);
   line-height: 1.6;
 }
 .workflow-guide h3 {
   margin: 0 0 12px;
-  font-size: 14px;
+  font-size: var(--font-size-base);
   font-weight: 650;
 }
 .workflow-guide > ol {
@@ -27,7 +27,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: #7a8675;
+  color: var(--text-muted);
   min-width: 0;
 }
 .workflow-guide-number {
@@ -39,7 +39,8 @@
   border: 1px solid #d4dfcf;
   border-radius: 50%;
   background: #fff;
-  font-size: 11px;
+  font-size: var(--font-size-xs);
+  font-family: var(--font-numeric);
   font-variant-numeric: tabular-nums;
 }
 .workflow-guide-step--current,
@@ -108,7 +109,7 @@
 @media (max-width: 640px) {
   .workflow-guide {
     padding: 14px;
-    font-size: 12px;
+    font-size: var(--font-size-sm);
   }
   .workflow-guide > ol {
     gap: 8px 12px;

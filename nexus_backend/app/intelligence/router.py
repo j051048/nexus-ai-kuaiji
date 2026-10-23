@@ -1,6 +1,6 @@
 """AI evidence endpoints reuse the verified actor dependency and current database grants."""
 
-from fastapi import APIRouter, Depends, Query, Request, Response
+from fastapi import APIRouter, Depends, Query, Request
 
 from .requests import (
     ApplyRequest,
@@ -58,20 +58,6 @@ def build_intelligence_router(actor_dependency):
         service=Depends(intelligence),
     ):
         return service.run_execution(current, event_id, run_id)
-
-    @router.get("/business/events/{event_id}/intelligence/runs/{run_id}/pages/{page}")
-    def evidence_page(
-        event_id: str,
-        run_id: str,
-        page: int,
-        current=Depends(actor_dependency),
-        service=Depends(intelligence),
-    ):
-        return Response(
-            service.evidence_page(current, event_id, run_id, page),
-            media_type="image/jpeg",
-            headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"},
-        )
 
     @router.post("/business/events/{event_id}/reconcile")
     def reconcile(event_id: str, current=Depends(actor_dependency), service=Depends(intelligence)):

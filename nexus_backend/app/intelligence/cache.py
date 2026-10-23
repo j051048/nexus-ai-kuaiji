@@ -4,8 +4,8 @@ import json
 
 from ..accounting.service import fingerprint, now
 from ..business.service import encode
+from .models import InvoiceExtraction
 from .provider import EXTRACTION_PROMPT_VERSION, effective_settings
-from .ocr import engine_enabled, stored_extraction, PREPROCESSING_VERSION, PROMPT_VERSION
 
 PARSER_VERSION = "document-parser-v1"
 CACHE_VERSION = "validated-ocr-cache-v1"
@@ -19,16 +19,6 @@ def config_key(settings, media_type, policy_key=None):
             {"parser": STRUCTURED_VERSION, "cache": CACHE_VERSION, "media_type": media_type}
         )
     # Keys are deliberately absent: rotating a secret does not change OCR semantics.
-    independent = None
-    if engine_enabled(settings):
-        independent = {
-            "engine": "paddleocr",
-            "url": settings.paddle_url,
-            "model": settings.paddle_model,
-            "min_score": settings.paddle_min_score,
-            "preprocessing": PREPROCESSING_VERSION,
-            "prompt": PROMPT_VERSION,
-        }
     settings = effective_settings(settings, "ocr")
     return fingerprint(
         {
@@ -39,7 +29,9 @@ def config_key(settings, media_type, policy_key=None):
             "parser": PARSER_VERSION,
             "cache": CACHE_VERSION,
             "media_type": media_type,
-            "independent_ocr": independent,
+            # Retained as a constant so existing vision caches keep their keys
+            # after the independent OCR engine was removed.
+            "independent_ocr": None,
             "policy": policy_key or "legacy",
         }
     )
@@ -57,7 +49,14 @@ def read_cache(db, conn, actor, event, attachment, key):
             (actor.firm_id, event["company_id"], attachment["sha256"], key),
         ).fetchone()
         value = row["result_json"] if row else None
-    return stored_extraction(json.loads(value)) if value else None
+    if not value:
+        return None
+    payload = json.loads(value)
+    if isinstance(payload, dict):
+        # Rows written by the retired independent OCR engine carried a field that
+        # the current extraction contract no longer declares.
+        payload.pop("ocr_evidence", None)
+    return InvoiceExtraction.model_validate(payload)
 
 
 def store_cache(db, conn, actor, event, attachment, key, run):

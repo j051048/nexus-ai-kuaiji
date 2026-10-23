@@ -30,40 +30,6 @@ export interface OcrDocument {
 }
 export interface OcrResult {
   documents: OcrDocument[];
-  ocr_evidence?: IndependentOcrEvidence;
-}
-export interface OcrTextBlock {
-  id: string;
-  text: string;
-  score: number;
-  polygon: [number, number][];
-}
-export interface IndependentOcrPage {
-  page: number;
-  width: number;
-  height: number;
-  source: 'paddleocr' | 'pdf_native';
-  blocks: OcrTextBlock[];
-}
-export interface OcrFieldBinding {
-  document_index: number;
-  field: string;
-  page: number;
-  block_ids: string[];
-  score: number | null;
-  status: 'matched' | 'low_confidence' | 'unmatched';
-}
-export interface IndependentOcrEvidence {
-  schema_version: 'independent-ocr-v1';
-  engine: 'paddleocr';
-  engine_version: string;
-  model: string;
-  preprocessing_version: string;
-  elapsed_ms: number;
-  recognized_pages: number;
-  native_pages: number;
-  pages: IndependentOcrPage[];
-  bindings: OcrFieldBinding[];
 }
 export interface JournalProposal {
   description: string;
@@ -73,7 +39,7 @@ export interface JournalProposal {
   warnings: string[];
 }
 export interface IntelligenceRun {
-  extraction_method?: 'structured_xml' | 'vision_model' | 'independent_ocr';
+  extraction_method?: 'structured_xml' | 'vision_model';
   verification_status?: 'not_verified';
   method_label?: string;
   id: string;

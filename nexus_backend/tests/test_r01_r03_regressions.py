@@ -297,7 +297,7 @@ def test_f09_bank_without_statement_evidence_fails(business):
     assert result["passed"] is False
 
 
-def test_f09_multi_bank_requires_each_account_coverage(business):
+def test_f09_multi_bank_requires_each_account_coverage(business, tmp_path):
     case = business
     opening, _, sub = _case(case)
     from app.subledger.models import BankAccountCreate, BankCoverageCreate
@@ -327,17 +327,50 @@ def test_f09_multi_bank_requires_each_account_coverage(business):
     assert len(result["rows"]) == 2
     assert result["coverage_ok"] is False
     assert result["passed"] is False
-    sub.declare_bank_coverage(
+    from app.business.storage import AttachmentStore
+    from app.import_wizard.service import ImportWizardService
+    from app.import_wizard.models import MappingSettings, PreviewRequest
+    from app.subledger.models import BankCoverageReview
+
+    sub.storage = AttachmentStore(tmp_path / "bank-originals")
+    wizard = ImportWizardService(case.db, sub.storage)
+    source = wizard.upload(
+        case.manager,
+        case.book["id"],
+        "银行.csv",
+        "日期,摘要,金额,方向\n2026-10-01,合成银行收入,0.30,收入\n".encode(),
+    )
+    preview = wizard.preview(
+        case.manager,
+        case.book["id"],
+        PreviewRequest(
+            file_id=source["file_id"],
+            namespace="coverage",
+            bank_account=first["id"],
+            mapping=MappingSettings(
+                columns={"date": 0, "description": 1, "amount": 2, "direction": 3}
+            ),
+        ),
+    )
+    wizard.confirm(case.manager, case.book["id"], preview["id"])
+    declared = sub.declare_bank_coverage(
         case.manager,
         BankCoverageCreate(
             book_id=case.book["id"],
             account_id=first["id"],
             period="2026-10",
             opening="0.00",
-            closing="0.00",
-            source_ref="F09 合成对账单",
+            closing="0.30",
+            source_file_id=source["file_id"],
+            source_preview_id=preview["id"],
+            source_sha256=source["sha256"],
             reason="F09 覆盖声明",
         ),
+    )
+    sub.review_bank_coverage(
+        case.actors["accountant"],
+        declared["id"],
+        BankCoverageReview(expected_version=1, decision="verified", reason="独立核对银行原件"),
     )
     partial = sub.bank_reconciliation(case.manager, case.book["id"])
     assert partial["coverage_ok"] is False

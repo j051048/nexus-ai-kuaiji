@@ -182,6 +182,15 @@ def extraction_checks(documents, page_numbers, native_texts=None):
     return findings
 
 
+def extraction_findings(extraction, pages):
+    """Findings for one extraction, bound to the pages it was read from."""
+    return extraction_checks(
+        extraction.model_dump()["documents"],
+        [page.page for page in pages],
+        {page.page: page.native_text for page in pages},
+    )
+
+
 def invoice_key(document):
     number = normalized(document.get("invoice_number"))
     seller = normalized(document.get("seller_tax_id") or document.get("seller_name"))

@@ -1,11 +1,6 @@
 .agent-shell {
-  --ink: #20392e;
-  --green: #285943;
-  --green-dark: #173d30;
-  --muted: #68776e;
-  --line: #dfe6de;
-  background: #f6f7f3;
-  font-size: 14px;
+  background: var(--canvas);
+  font-size: var(--font-size-base);
 }
 .agent-shell .main-shell {
   margin-left: 232px;
@@ -16,6 +11,9 @@
   width: 232px;
   padding: 26px 16px 0;
   background: linear-gradient(155deg, #193e31, #153529);
+  --muted: var(--sidebar-muted);
+  --line: var(--sidebar-line);
+  --focus-ring: var(--sidebar-focus-ring);
 }
 .agent-brand-row {
   display: flex;
@@ -31,9 +29,9 @@
   letter-spacing: 3px;
 }
 .agent-shell .brand-name > span {
-  font-size: 8px;
-  letter-spacing: 1.25px;
-  color: #c5d6c7;
+  font-size: var(--font-size-xs);
+  letter-spacing: 0.04em;
+  color: var(--sidebar-muted);
 }
 .agent-nav-panel {
   display: flex;
@@ -58,18 +56,18 @@
   font-size: 12px;
 }
 .agent-shell .firm-block div > span {
-  font-size: 11px;
-  color: #afc3b6;
+  font-size: var(--font-size-xs);
+  color: var(--sidebar-muted);
 }
 .agent-primary-nav {
   gap: 6px;
 }
 .agent-shell .nav-item {
-  font-size: 13px;
+  font-size: var(--font-size-base);
   min-height: 40px;
   border-radius: 8px;
   padding: 10px 12px;
-  color: #c0d2c5;
+  color: var(--sidebar-text);
 }
 .agent-shell .agent-primary-item {
   min-height: 52px;
@@ -80,13 +78,13 @@
 }
 .agent-primary-item small {
   display: block;
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   font-weight: 400;
-  color: #a2bdaa;
+  color: var(--sidebar-muted);
   padding-top: 4px;
 }
 .agent-primary-item.active small {
-  color: #5f7462;
+  color: var(--text-secondary);
 }
 .agent-shell .nav-item.active {
   background: #e6ecde;
@@ -115,9 +113,9 @@
   padding-top: 4px;
 }
 .agent-shell .nav-group > summary {
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   letter-spacing: 0.2px;
-  color: #b3c9bb;
+  color: var(--sidebar-muted);
   padding: 12px 9px;
 }
 .agent-shell .nav-group nav {
@@ -128,8 +126,8 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  color: #b2c6b5;
-  font-size: 10px;
+  color: var(--sidebar-muted);
+  font-size: var(--font-size-xs);
 }
 .agent-sidebar-note > svg:last-child {
   margin-left: auto;
@@ -146,11 +144,11 @@
   font-size: 12px;
 }
 .agent-shell .user-block div > span {
-  font-size: 11px;
-  color: #b2c6b5;
+  font-size: var(--font-size-xs);
+  color: var(--sidebar-muted);
 }
 .agent-shell .help-link {
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   min-height: 36px;
   padding: 8px 3px;
 }
@@ -189,21 +187,21 @@
   border: 1px solid #e1e6dd;
   border-radius: 4px;
   padding: 2px 4px;
-  font-size: 10px;
+  font-size: var(--font-size-xs);
 }
 .agent-shell .button {
-  font-size: 13px;
-  min-height: 39px;
-  border-radius: 8px;
+  font-size: var(--font-size-sm);
+  min-height: var(--control-height);
+  border-radius: var(--radius-sm);
 }
 .agent-shell .button.small {
-  font-size: 12px;
-  min-height: 34px;
+  font-size: var(--font-size-xs);
+  min-height: var(--control-height-small);
 }
 .agent-shell input,
 .agent-shell select,
 .agent-shell textarea {
-  font-size: 14px;
+  font-size: var(--font-size-input);
 }
 .agent-shell .page-description {
   font-size: 14px;
@@ -243,7 +241,7 @@
   row-gap: 8px;
 }
 .agent-shell .badge {
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   padding: 4px 7px;
 }
 .agent-shell .panel,
@@ -289,8 +287,8 @@
 .agent-shell .book-count small,
 .agent-shell .book-exception,
 .agent-shell .panel-footnote {
-  font-size: 11px;
-  color: #617563;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
 }
 .agent-shell .transaction-table th,
 .agent-shell .draft-title > span,
@@ -316,7 +314,7 @@
 .agent-shell .rule-label,
 .agent-shell .source-card h3 > span,
 .agent-shell .workspace-footer {
-  font-size: 11px;
+  font-size: var(--font-size-xs);
 }
 .agent-shell .source-card h3 > span {
   color: #576b51;
@@ -398,7 +396,7 @@
 .agent-command-results h2,
 .agent-command-results h3 {
   padding: 8px 10px;
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   letter-spacing: 0.5px;
   color: #6c806f;
   font-weight: 500;
@@ -450,8 +448,8 @@
   gap: 14px;
   padding: 12px 20px;
   border-top: 1px solid #e4e9df;
-  font-size: 11px;
-  color: #738370;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
 }
 .agent-command-dialog footer > span {
   display: flex;
@@ -466,7 +464,7 @@
   border-radius: 10px;
 }
 .agent-workspace-context strong {
-  font-family: 'Noto Serif SC', 'Songti SC', serif;
+  font-family: var(--font-sans);
   font-size: 19px;
 }
 .agent-workspace-context p {
@@ -524,7 +522,7 @@
     font-size: 24px;
   }
   .agent-shell .brand-name > span {
-    font-size: 7px;
+    font-size: var(--font-size-xs);
     margin-top: 5px;
   }
   .agent-mobile-menu {
@@ -583,7 +581,7 @@
   }
   .agent-shell .sidebar-bottom .help-link {
     width: 100%;
-    font-size: 11px;
+    font-size: var(--font-size-xs);
   }
   .agent-shell .help-link svg:last-child {
     display: block;
@@ -596,10 +594,10 @@
     font-size: 12px;
   }
   .agent-shell .user-block div > span {
-    font-size: 11px;
+    font-size: var(--font-size-xs);
   }
   .agent-shell .persona-switch select {
-    font-size: 12px;
+    font-size: var(--font-size-input-mobile);
     padding: 8px;
   }
   .agent-shell .main-shell {
@@ -615,8 +613,10 @@
     display: none;
   }
   .agent-shell .breadcrumbs {
-    font-size: 11px;
+    font-size: var(--font-size-xs);
     min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
   }
   .agent-shell .breadcrumbs > span {
     white-space: nowrap;
@@ -636,11 +636,11 @@
     display: none;
   }
   .agent-shell .button {
-    font-size: 13px;
-    min-height: 41px;
+    font-size: var(--font-size-sm);
+    min-height: var(--control-height-touch);
   }
   .agent-shell .button.small {
-    min-height: 36px;
+    min-height: var(--control-height-touch);
   }
   .agent-shell .book-name {
     font-size: 14px;
@@ -662,7 +662,7 @@
     gap: 8px;
   }
   .agent-command-input input {
-    font-size: 14px;
+    font-size: var(--font-size-input-mobile);
   }
   .agent-command-dialog footer {
     flex-wrap: wrap;
@@ -701,7 +701,7 @@
   }
   .agent-topbar-assistant {
     padding: 7px;
-    font-size: 11px;
+    font-size: var(--font-size-xs);
   }
   .agent-topbar-command kbd {
     display: none;

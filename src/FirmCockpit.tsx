@@ -26,8 +26,9 @@ function ClientProgress({
   onOpenBook,
   onOnboarding,
 }: { row: FirmClient } & Pick<Actions, 'onOpenBook' | 'onOnboarding'>) {
+  const reasons = coordinationReasons(row);
   return (
-    <article className="cockpit-client">
+    <article className={`cockpit-client${reasons.length ? ' needs-coordination' : ''}`}>
       <div className="cockpit-client-main">
         <strong>{row.company_name}</strong>
         <span className={'cockpit-stage ' + row.stage}>{firmStageLabels[row.stage]}</span>
@@ -37,8 +38,11 @@ function ClientProgress({
         <span>主办：{row.lead_name || '主办会计待安排'}</span>
         <span>期限：{dueLabel(row.due_on)}</span>
       </p>
-      {coordinationReasons(row).length > 0 && (
-        <p className="cockpit-client-reason">{coordinationReasons(row).join('；')}</p>
+      {reasons.length > 0 && (
+        <p className="cockpit-client-reason">
+          <strong>需协调：</strong>
+          {reasons.join('；')}
+        </p>
       )}
       {row.book_id ? (
         <button
@@ -80,7 +84,11 @@ export function FirmCockpitContent({
             <p>先确认每家客户的进度，再协调负责人和阻塞事项。</p>
           </div>
           {onMonthly && (
-            <button className="button primary" type="button" onClick={() => onMonthly(data.period)}>
+            <button
+              className={`button ${data.summary.clients ? 'primary' : 'secondary'}`}
+              type="button"
+              onClick={() => onMonthly(data.period)}
+            >
               客户进度 <ArrowRight size={15} />
             </button>
           )}

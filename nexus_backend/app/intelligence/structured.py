@@ -173,13 +173,6 @@ def is_structured(media_type):
 
 
 def extraction_metadata(run):
-    from .ocr import PROMPT_VERSION
-
-    if run["prompt_version"].startswith(PROMPT_VERSION + ":"):
-        return {
-            "extraction_method": "independent_ocr",
-            "method_label": "独立 OCR 文字证据与字段提取",
-        }
     if run["prompt_version"] == STRUCTURED_VERSION:
         return {
             "extraction_method": "structured_xml",

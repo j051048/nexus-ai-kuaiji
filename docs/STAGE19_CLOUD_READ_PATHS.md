@@ -2,7 +2,7 @@
 
 日期：2026-10-15。
 
-修复已以 `f4cf8611` 发布至 Zeabur API 和三个 worker；本机回归与线上双浏览器复测均已执行。完整联调及限制见 [云端验收记录](STAGE19_CLOUD_VALIDATION.md)。
+修复已以 `f4cf8611` 发布至 Zeabur API 和三个 worker；本机回归与线上双浏览器复测均已执行。完整联调记录原见 `STAGE19_CLOUD_VALIDATION.md`，该文档随独立 OCR 服务一并移除。
 
 线上联调发现：Zeabur API 位于首尔，Supabase 位于加拿大，数据库单次往返约 192 ms。多个浏览器首页同时加载时，默认四连接池的五秒等待窗口可能用尽，原实现将该异常包装成未处理的 `RuntimeError`，最终返回 500。
 

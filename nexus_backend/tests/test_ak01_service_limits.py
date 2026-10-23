@@ -1,7 +1,6 @@
 """AK01: real domain entries and transport, synthetic responses, no network."""
 
 import json
-from contextlib import contextmanager
 from dataclasses import replace
 from types import SimpleNamespace
 from uuid import uuid4
@@ -22,10 +21,9 @@ from app.intelligence.endpoints import (
     EndpointCreate,
 )
 from app.intelligence.provider import ExecutionLimits, OpenAICompatibleProvider, ProviderError
-from app.intelligence.models import PreparedPage
 from app.operations.pricing import Pricing, Rate
-from test_intelligence_workflow import ai_case, create_event, extract, handoff, invoice_document, propose
-from test_model_cost_workflow import cost_case, policy
+from test_intelligence_workflow import ai_case, create_event, extract, handoff, invoice_document, propose  # noqa: F401 - fixture
+from test_model_cost_workflow import cost_case, policy  # noqa: F401 - fixture
 
 
 def _reply(payload):
@@ -222,69 +220,6 @@ def test_invalid_structure_retains_valid_usage_through_real_service(service_case
     assert row["state"] == "estimated"
     assert row["input_tokens"] == body["usage"]["prompt_tokens"]
     assert row["output_tokens"] == body["usage"]["completion_tokens"]
-
-
-@pytest.mark.parametrize("context_limit", [128000, 1])
-def test_paddle_native_field_model_uses_same_endpoint_limits(service_case, monkeypatch, context_limit):
-    case = service_case.setup("ocr", context_limit=context_limit)
-    case.real_provider.settings = replace(
-        case.real_provider.settings, ocr_engine="paddleocr",
-        paddle_url="https://ocr.example.invalid", paddle_token="synthetic-only",
-    )
-    from app.intelligence import service
-
-    original = service.prepare_document
-
-    def native_document(*args, **kwargs):
-        pages = original(*args, **kwargs)
-        return [PreparedPage(
-            page.page, page.image_data_url,
-            "invoice 合成发票\n" + invoice_document()["pages"][0]["raw_text"],
-        ) for page in pages]
-
-    monkeypatch.setattr(service, "prepare_document", native_document)
-    result = execute(case)
-    if context_limit == 1:
-        assert case.calls == []
-        assert result["error_code"] == "context_too_large"
-        assert all(row["state"] == "released" for row in costs(case))
-    else:
-        assert result["status"] == "succeeded"
-        assert len(case.calls) == 1
-        assert json.loads(case.calls[0].content)["max_tokens"] == 173
-        assert max(case.calls[0].extensions["timeout"].values()) <= 2
-        assert costs(case)[0]["state"] == "estimated"
-
-
-@pytest.mark.parametrize("context_limit", [128000, 1])
-def test_paddle_bitmap_field_model_limits_after_real_ocr_transport(service_case, context_limit):
-    from test_paddle_evidence import make_provider
-
-    case = service_case.setup("ocr", context_limit=context_limit)
-    synthetic, ocr_calls = make_provider()
-    case.real_provider.settings = replace(
-        case.real_provider.settings, ocr_engine="paddleocr",
-        paddle_url="https://ocr.example.invalid", paddle_token="synthetic-only",
-    )
-    case.real_provider._paddle_client = synthetic._paddle_client
-    try:
-        result = execute(case)
-        if context_limit == 1:
-            # AK02 can reject the mandatory source pack before OCR or reservation.
-            assert not ocr_calls["ocr"]
-            assert not case.calls
-            assert result["error_code"] == "context_too_large"
-            assert not costs(case)
-        else:
-            assert len(ocr_calls["ocr"]) == 1
-            assert result["status"] == "succeeded"
-            assert len(case.calls) == 1
-            assert json.loads(case.calls[0].content)["max_tokens"] == 173
-            assert max(case.calls[0].extensions["timeout"].values()) <= 2
-            assert costs(case)[0]["state"] == "estimated"
-    finally:
-        synthetic._paddle_client.close()
-        synthetic._client.close()
 
 
 def test_ocr_preparation_consumes_vision_call_deadline(service_case, monkeypatch):
@@ -564,34 +499,3 @@ def test_intake_entry_rechecks_policy_before_publishing_and_keeps_usage(service_
         run, = conn.execute("SELECT status,result_json FROM intake_runs").fetchall()
         assert run["status"] == "stale"
         assert run["result_json"] is None
-
-
-def test_paddle_capacity_denial_preserves_transport_unsent_evidence(service_case, monkeypatch):
-    from app.concurrency import provider as capacity
-    from app.intelligence import service
-
-    case = service_case.setup("ocr")
-    case.real_provider.settings = replace(
-        case.real_provider.settings, ocr_engine="paddleocr",
-        paddle_url="https://ocr.example.invalid", paddle_token="synthetic-only",
-    )
-    original = service.prepare_document
-
-    def native_document(*args, **kwargs):
-        return [PreparedPage(
-            page.page, page.image_data_url,
-            "invoice 合成发票\n" + invoice_document()["pages"][0]["raw_text"],
-        ) for page in original(*args, **kwargs)]
-
-    @contextmanager
-    def deny_capacity(*args, **kwargs):
-        raise AccountingError("合成授权变更，供应商调用未发送", 403)
-        yield  # pragma: no cover
-
-    monkeypatch.setattr(service, "prepare_document", native_document)
-    monkeypatch.setattr(capacity, "provider_capacity", deny_capacity)
-    with pytest.raises(AccountingError) as caught:
-        execute(case)
-    assert caught.value.llm_attempted is False
-    assert not case.calls
-    assert costs(case)[0]["state"] == "released"

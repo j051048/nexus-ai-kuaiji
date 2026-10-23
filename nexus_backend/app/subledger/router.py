@@ -6,6 +6,7 @@ from .models import (
     BankAccountCreate,
     BankAdjustment,
     BankCoverageCreate,
+    BankCoverageReview,
     BankLineCreate,
     BankMatch,
     ControlAccountCreate,
@@ -68,6 +69,23 @@ def build_subledger_router(actor_dependency):
         subledger=Depends(service),
     ):
         return subledger.declare_bank_coverage(current, payload)
+
+    @router.get("/bank-coverages")
+    def bank_coverages(
+        book_id: str = Query(min_length=1, max_length=100),
+        current=Depends(actor_dependency),
+        subledger=Depends(service),
+    ):
+        return {"coverages": subledger.list_bank_coverages(current, book_id)}
+
+    @router.post("/bank-coverages/{coverage_id}/review")
+    def review_bank_coverage(
+        coverage_id: str,
+        payload: BankCoverageReview,
+        current=Depends(actor_dependency),
+        subledger=Depends(service),
+    ):
+        return subledger.review_bank_coverage(current, coverage_id, payload)
 
     @router.post("/items", status_code=201)
     def create_item(

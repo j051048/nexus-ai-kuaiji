@@ -17,7 +17,7 @@ from app.operations.meter import MeterService
 from app.operations.requests import ReconcileRequest as CostReconcile, PolicyRequest as PolicyUpdate
 from app.operations.pricing import Pricing, Rate
 from app.operations.service import OperationsService
-from test_intelligence_workflow import ai_case, create_event, extract
+from test_intelligence_workflow import ai_case, create_event, extract  # noqa: F401 - fixture
 from test_stage10_backup_recovery import recovery
 
 

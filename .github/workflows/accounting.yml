@@ -40,8 +40,8 @@ jobs:
       - run: npm run lint
       - run: python -m pip install -r nexus_backend/requirements.lock
       - run: python scripts/env_doctor.py
-      - run: python -m ruff check nexus_backend/app services/api_gateway services/paddle_ocr scripts
-      - run: python -m ruff format --check nexus_backend/app services/api_gateway services/paddle_ocr scripts
+      - run: python -m ruff check nexus_backend/app services/api_gateway scripts
+      - run: python -m ruff format --check nexus_backend/app services/api_gateway scripts
       - run: python scripts/check_migration_idempotency.py
       - run: python scripts/migrate_accounting.py migrate
       - run: python scripts/migrate_accounting.py status --strict
@@ -51,8 +51,6 @@ jobs:
       - run: npm test
       - run: npm run build
       - run: python -m pytest nexus_backend/tests -q
-      # Boundary tests inject a predictor; CI does not download model weights.
-      - run: python -m pytest services/paddle_ocr/tests -q
 
   e2e:
     runs-on: ubuntu-latest
@@ -73,3 +71,64 @@ jobs:
       - run: python -m pip install -r nexus_backend/requirements.lock
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e -- --shard=${{ matrix.shard }}/4
+
+  ak05-postgres-gate:
+    name: AK05 PostgreSQL ${{ matrix.postgres }} required gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        postgres: [16, 17]
+    services:
+      postgres:
+        image: postgres:${{ matrix.postgres }}
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ak05-ephemeral-ci-admin-only
+          POSTGRES_DB: ak01_local_ak05_bootstrap
+        ports:
+          - 127.0.0.1:55432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d ak01_local_ak05_bootstrap"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -r nexus_backend/requirements.lock
+      - name: Gate negative tests
+        run: python -m pytest nexus_backend/tests/test_ak05_postgres_gate.py -q
+      - name: Write local bootstrap config without logging credentials
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          folder = Path('tmp_test/ak05-ci-bootstrap')
+          folder.mkdir(parents=True, exist_ok=True)
+          path = folder / 'admin.json'
+          path.write_text(json.dumps({'admin': 'postgresql://postgres:ak05-ephemeral-ci-admin-only@127.0.0.1:55432/ak01_local_ak05_bootstrap'}))
+          path.chmod(0o600)
+          PY
+      - name: Prepare four fresh migrated databases and restricted logins
+        run: >-
+          python scripts/ak05_postgres_gate.py prepare
+          --admin-config tmp_test/ak05-ci-bootstrap/admin.json
+          --major ${{ matrix.postgres }}
+          --out tmp_test/ak05-ci-config
+          --allow-create-local-databases
+      - name: Run frozen AK05 suites and verify every JUnit identity
+        run: >-
+          python scripts/ak05_postgres_gate.py run
+          --manifest tmp_test/ak05-ci-config/manifest.json
+          --out tmp_test/ak05-ci-reports
+      - name: Retain only sanitized gate evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ak05-postgres-${{ matrix.postgres }}-evidence
+          path: tmp_test/ak05-ci-reports/
+          if-no-files-found: warn

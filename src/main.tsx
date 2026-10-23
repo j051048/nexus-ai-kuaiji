@@ -4,6 +4,7 @@ import App from './App';
 import { createBrowserRouter, RouterProvider } from 'react-router-dom';
 import { AppErrorBoundary, AppRouteError } from './AppErrorBoundary';
 import { cleanupRecoveryParam, installPreloadRecovery } from './preload-recovery';
+import './tokens.css';
 import './styles.css';
 import './agent-shell.css';
 

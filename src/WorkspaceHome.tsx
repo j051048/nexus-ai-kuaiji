@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ArrowRight,
+  ArrowRightLeft,
   CheckCircle2,
   CircleDot,
   Clock3,
@@ -10,8 +11,10 @@ import {
   LoaderCircle,
   Play,
   RefreshCw,
+  Receipt,
   Save,
   Search,
+  ShoppingBag,
   Table2,
   TriangleAlert,
   X,
@@ -350,10 +353,16 @@ export function WorkspaceHome({
       )
     : undefined;
   return (
-    <main className={'workspace-home' + (experience.simple ? ' workspace-simple' : '')}>
+    <main
+      className={
+        'workspace-home' +
+        (experience.simple ? ' workspace-simple' : '') +
+        (employee ? ' workspace-employee' : finance ? ' workspace-finance' : '')
+      }
+    >
       <header className="workspace-heading">
         <div>
-          <p className="workspace-kicker">
+          <p className="workspace-kicker" aria-hidden="true">
             <CircleDot size={13} /> HENGZHANG · ACCOUNTING AGENT
           </p>
           <h1>{copy.name}</h1>
@@ -433,22 +442,25 @@ export function WorkspaceHome({
           <div className="workspace-template-grid">
             {(
               [
-                ['reimbursement', '提交报销', '员工垫付款项，附上票据和用途'],
-                ['procurement_expense', '采购 / 费用', '记录公司采购或日常开销'],
-                ['daily_cashflow', '日常收支', '说明收到或付出的每一笔款项'],
+                ['reimbursement', '提交报销', '员工垫付款项，附上票据和用途', Receipt],
+                ['procurement_expense', '采购 / 费用', '记录公司采购或日常开销', ShoppingBag],
+                ['daily_cashflow', '日常收支', '说明收到或付出的每一笔款项', ArrowRightLeft],
               ] as const
-            ).map(([template, label, hint]) => (
+            ).map(([template, label, hint, Icon]) => (
               <button
                 key={template}
                 className="workspace-template-button"
                 disabled={locked}
                 onClick={() => onNew(template)}
               >
-                <span>
+                <span className="workspace-template-icon" aria-hidden="true">
+                  <Icon size={18} />
+                </span>
+                <span className="workspace-template-copy">
                   <strong>{label}</strong>
                   <small>{hint}</small>
                 </span>
-                <ArrowRight size={15} />
+                <ArrowRight size={15} aria-hidden="true" />
               </button>
             ))}
           </div>
@@ -461,11 +473,12 @@ export function WorkspaceHome({
             <h2>核验资料并移交会计</h2>
             <p>核对金额、附件和业务用途；有差异就退回补充，资料完整再移交。</p>
             {financeNext ? (
-              <div className="workspace-next-task">
+              <div className={'workspace-next-task' + (financeNext.overdue ? ' overdue' : '')}>
                 <span>当前清单下一项</span>
                 <strong>{financeNext.title}</strong>
                 <small>
                   {financeNext.company_name} · {taskStateLabel(financeNext)}
+                  {financeNext.overdue ? ' · 已逾期' : ''}
                 </small>
               </div>
             ) : (
@@ -514,6 +527,7 @@ export function WorkspaceHome({
       <section className="workspace-summary" aria-label="我的工作概览">
         <button
           className={bucket === 'action' ? 'active' : ''}
+          aria-pressed={bucket === 'action'}
           disabled={locked}
           onClick={() => {
             setBucket('action');
@@ -525,10 +539,15 @@ export function WorkspaceHome({
             需要我处理
           </span>
           <strong>{visibleValue?.counts.action ?? '—'}</strong>
-          <small>{experience.actionHint}</small>
+          <small>
+            {visibleValue?.counts.action == null
+              ? '数量暂未汇总，以当前清单为准'
+              : experience.actionHint}
+          </small>
         </button>
         <button
           className={bucket === 'waiting' ? 'active' : ''}
+          aria-pressed={bucket === 'waiting'}
           disabled={locked}
           onClick={() => {
             setBucket('waiting');
@@ -596,7 +615,9 @@ export function WorkspaceHome({
             )}
             {first && (
               <button
-                className="button primary small"
+                className={
+                  financeNext?.key === first.key ? 'button secondary small' : 'button primary small'
+                }
                 disabled={locked || loading}
                 onClick={() => void open(first)}
               >
@@ -752,6 +773,7 @@ export function WorkspaceHome({
                 </div>
                 <div className="workspace-task-state">
                   <span
+                    data-state={task.state}
                     className={
                       'workspace-state-pill ' + (task.bucket === 'action' ? 'attention' : '')
                     }

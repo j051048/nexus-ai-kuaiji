@@ -1,4 +1,6 @@
 .intake-modal {
+  font-family: var(--font-sans);
+  font-size: var(--font-size-base);
   width: min(1060px, calc(100vw - 48px));
   max-height: min(92dvh, 980px);
   padding: 0;
@@ -14,7 +16,7 @@
   padding: 22px 28px;
 }
 .intake-modal .modal-header .eyebrow {
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   letter-spacing: 0.08em;
   color: var(--green);
   margin-bottom: 6px;
@@ -57,7 +59,7 @@
 }
 .intake-two-column section > h3 > span {
   margin-left: auto;
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   color: #6c796e;
   font-weight: 400;
 }
@@ -74,12 +76,12 @@
   color: var(--green);
 }
 .intake-upload > strong {
-  font-size: 14px;
+  font-size: var(--font-size-base);
   font-weight: 600;
 }
 .intake-upload p {
   color: #617363;
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   line-height: 1.65;
 }
 .intake-upload > div {
@@ -93,7 +95,7 @@
   gap: 7px;
   line-height: 1.7;
   color: #526a5a;
-  font-size: 12px;
+  font-size: var(--font-size-xs);
   margin: 14px 0;
 }
 .intake-file {
@@ -116,17 +118,17 @@
 }
 .intake-file-header strong {
   overflow-wrap: anywhere;
-  font-size: 12px;
+  font-size: var(--font-size-xs);
 }
 .intake-file-header span {
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   color: #6c796e;
 }
 .intake-candidate {
   margin-top: 14px;
   border-top: 1px solid var(--line);
   padding-top: 12px;
-  font-size: 12px;
+  font-size: var(--font-size-xs);
 }
 .intake-candidate > strong,
 .intake-candidate > span {
@@ -136,7 +138,7 @@
 }
 .intake-candidate > span {
   color: #6b776d;
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   margin-top: 4px;
 }
 .intake-suggested-field {
@@ -152,21 +154,21 @@
   gap: 3px;
 }
 .intake-suggested-field > div > span {
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   color: #69766c;
 }
 .intake-suggested-field small {
   color: #69766c;
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   overflow-wrap: anywhere;
 }
 .intake-suggested-field strong {
-  font-size: 13px;
+  font-size: var(--font-size-sm);
   overflow-wrap: anywhere;
 }
 .intake-checks {
   margin-top: 14px;
-  font-size: 12px;
+  font-size: var(--font-size-xs);
   color: #9b582e;
 }
 .intake-checks summary {
@@ -180,7 +182,7 @@
   margin: 0;
 }
 .intake-extra {
-  font-size: 12px;
+  font-size: var(--font-size-xs);
   margin-top: 18px;
 }
 .intake-extra summary {
@@ -196,7 +198,7 @@
   background: #edf4ec;
   border-radius: 8px;
   margin-top: 20px;
-  font-size: 12px;
+  font-size: var(--font-size-xs);
   line-height: 1.65;
 }
 .intake-confirm input {
@@ -216,7 +218,7 @@
   padding: 16px 28px;
 }
 .intake-footer > span {
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   color: #637768;
   flex: 1;
 }
@@ -236,7 +238,7 @@
   display: flex;
   gap: 7px;
   align-items: center;
-  font-size: 12px;
+  font-size: var(--font-size-xs);
   cursor: pointer;
 }
 .intake-resume summary > svg:last-child {
@@ -253,12 +255,12 @@
   border-radius: 6px;
   padding: 12px;
   margin-top: 8px;
-  font-size: 12px;
+  font-size: var(--font-size-xs);
 }
 .intake-resume > button > span {
   margin-left: auto;
   color: #637768;
-  font-size: 11px;
+  font-size: var(--font-size-xs);
 }
 .business-mobile-back {
   display: none;
@@ -267,7 +269,7 @@
   background: #f1f6ef;
   padding: 12px 14px;
   color: #355b43;
-  font-size: 12px;
+  font-size: var(--font-size-xs);
   line-height: 1.65;
   border-radius: 8px;
   margin-bottom: 17px;
@@ -318,7 +320,7 @@
   .intake-modal input,
   .intake-modal select,
   .intake-modal textarea {
-    font-size: 16px;
+    font-size: var(--font-size-input-mobile);
     min-height: 44px;
   }
   .intake-modal input[type='checkbox'] {
@@ -334,7 +336,7 @@
   }
   .intake-footer > span {
     flex-basis: 100%;
-    font-size: 11px;
+    font-size: var(--font-size-xs);
   }
   .intake-footer > div {
     width: 100%;
@@ -343,7 +345,8 @@
     flex: 1;
     white-space: nowrap;
     padding: 10px 8px;
-    font-size: 12px;
+    font-size: var(--font-size-sm);
+    min-height: 44px;
   }
   .business-grid.mobile-detail .business-list-panel {
     display: none;
@@ -358,7 +361,7 @@
     border: 0;
     background: transparent;
     padding: 12px 16px;
-    font-size: 13px;
+    font-size: var(--font-size-sm);
     color: var(--green);
   }
   .business-detail-content .business-actions {
@@ -380,5 +383,5 @@
   background: #eff4e9;
   border: 1px solid #dce6d1;
   border-radius: 4px;
-  font-size: 13px;
+  font-size: var(--font-size-sm);
 }

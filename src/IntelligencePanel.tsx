@@ -4,15 +4,12 @@ import {
   CheckCircle2,
   FileSearch,
   LoaderCircle,
-  MapPin,
   RefreshCw,
   ShieldCheck,
   Sparkles,
   TriangleAlert,
 } from 'lucide-react';
 import { api, errorMessage } from './api';
-import { OcrEvidenceViewer, type OcrEvidenceSelection } from './OcrEvidenceViewer';
-import { bindingLabel, fieldBinding, OCR_FIELD_LABELS } from './ocr-evidence';
 import { QueueJobRecord } from './QueueJobRecord';
 import { ExecutionRecordPanel } from './ExecutionRecordPanel';
 import { canRetryJob, jobActive, latestQueueJobs, QUEUE_POLL_MS } from './queue-helpers';
@@ -39,7 +36,6 @@ import type {
   IntelligenceDetail,
   IntelligenceRun,
   IntelligenceSettings,
-  IndependentOcrEvidence,
   OcrDocument,
 } from './intelligence-types';
 
@@ -51,35 +47,30 @@ const documentLabels: Record<string, string> = {
   other: '其他票据',
   unreadable: '无法识别',
 };
-const fieldLabels = OCR_FIELD_LABELS;
+const fieldLabels: Record<string, string> = {
+  invoice_number: '发票号码',
+  issued_on: '开票日期',
+  seller_name: '销售方',
+  seller_tax_id: '销售方税号',
+  buyer_name: '购买方',
+  buyer_tax_id: '购买方税号',
+  gross_amount: '价税合计',
+  net_amount: '不含税金额',
+  tax_amount: '税额',
+  currency: '币种',
+};
 
-export function RecognizedDocument({
-  document,
-  ocrEvidence,
-  documentIndex = 0,
-  previewContext,
-}: {
-  document: OcrDocument;
-  ocrEvidence?: IndependentOcrEvidence;
-  documentIndex?: number;
-  previewContext?: { session: Session; eventId: string; runId: string };
-}) {
-  const [selection, setSelection] = useState<OcrEvidenceSelection | null>(null);
-  const independentEvidence =
-    ocrEvidence?.schema_version === 'independent-ocr-v1' ? ocrEvidence : undefined;
+export function RecognizedDocument({ document }: { document: OcrDocument }) {
   return (
     <article className="recognized-document">
       <h5>
         {documentLabels[document.document_type] ?? document.document_type}
-        <span>
-          {independentEvidence ? '字段提取 · 可核对独立文字证据' : '识别转录 · 待核对原件'}
-        </span>
+        <span>识别转录 · 待核对原件</span>
       </h5>
       <dl className="recognized-fields">
         {Object.entries(fieldLabels).map(([field, label]) => {
           const value = document[field as keyof OcrDocument];
           const missing = value === null || value === undefined || value === '';
-          const binding = fieldBinding(independentEvidence, documentIndex, field);
           return (
             <div key={field}>
               <dt>{label}</dt>
@@ -90,41 +81,10 @@ export function RecognizedDocument({
                     ? value
                     : '待核对'}
               </dd>
-              {independentEvidence &&
-                previewContext &&
-                !missing &&
-                independentEvidence.pages.length > 0 && (
-                  <dd className="ocr-field-action">
-                    <button
-                      type="button"
-                      className={`ocr-locate-button ${!binding || binding.status !== 'matched' ? 'needs-review' : ''}`}
-                      aria-label={`核对${label}的文字证据`}
-                      aria-pressed={selection?.field === field}
-                      onClick={() =>
-                        setSelection({
-                          field,
-                          page: binding?.page ?? independentEvidence.pages[0].page,
-                        })
-                      }
-                    >
-                      <MapPin size={12} />
-                      {bindingLabel(binding)}
-                    </button>
-                  </dd>
-                )}
             </div>
           );
         })}
       </dl>
-      {independentEvidence && previewContext && (
-        <OcrEvidenceViewer
-          {...previewContext}
-          documentIndex={documentIndex}
-          evidence={independentEvidence}
-          selection={selection}
-          onSelect={setSelection}
-        />
-      )}
       <details className="recognition-evidence">
         <summary>识别依据与页码</summary>
         {document.evidence.length ? (
@@ -605,9 +565,6 @@ export function IntelligencePanel({
                         <RecognizedDocument
                           key={`${target}:${run?.id}:${index}`}
                           document={document}
-                          documentIndex={index}
-                          ocrEvidence={result.ocr_evidence}
-                          previewContext={run ? { session, eventId, runId: run.id } : undefined}
                         />
                       ))}
                       {!run && !job && (

@@ -351,6 +351,7 @@ def create_app(
                 storage_path, settings=storage_settings
             )
             await run_in_threadpool(application.state.attachment_store.verify_private)
+            application.state.subledger.storage = application.state.attachment_store
             application.state.uploads = UploadIntentService(
                 database, application.state.attachment_store
             )

@@ -123,14 +123,32 @@ class BankCoverageCreate(InputModel):
     period: StrictStr = Field(min_length=7, max_length=7)
     opening: StrictStr
     closing: StrictStr
-    source_ref: StrictStr = Field(min_length=1, max_length=500)
+    source_ref: StrictStr = Field(default="", max_length=500)
+    source_file_id: StrictStr | None = Field(default=None, min_length=1, max_length=100)
+    source_preview_id: StrictStr | None = Field(default=None, min_length=1, max_length=100)
+    source_sha256: StrictStr | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
     reason: StrictStr = Field(min_length=3, max_length=1000)
+
+    @field_validator("period")
+    @classmethod
+    def valid_period(cls, value):
+        if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", value):
+            raise ValueError("覆盖期间必须为 YYYY-MM")
+        return value
 
     @field_validator("opening", "closing")
     @classmethod
     def money(cls, value):
-        money_to_cents(value)
+        from ..accounting.invariants import signed_money_to_cents
+
+        signed_money_to_cents(value)
         return value
+
+
+class BankCoverageReview(InputModel):
+    expected_version: int = Field(strict=True, ge=1)
+    decision: Literal["verified", "rejected"]
+    reason: StrictStr = Field(min_length=3, max_length=1000)
 
 
 class BankLineCreate(InputModel):

@@ -76,7 +76,7 @@
 ### 3.1 关键优点（有证据）
 
 - **文档串就是业务契约**，且写得比注释有用：`app/posting/service.py:1` 「Formal vouchers are append-only. Draft review, internal posting and external delivery remain three separate state axes」；`app/reports/service.py:1` 「Versioned financial report snapshots over formal posted vouchers only.」——读文档串即可理解不变量。
-- **门禁真实且严格**：`.github/workflows/accounting.yml` 串起 `prettier --check` → `eslint` → `ruff check` → `ruff format --check` → `scripts/check_migration_idempotency.py` → `migrate` → `status --strict` → 双角色登录供给 → `check_pg_test_target.py` → vitest → `tsc --noEmit && vite build` → pytest（全量）→ paddle OCR 测试；e2e 另起 4 分片。这条流水线**不是装饰**。
+- **门禁真实且严格**：`.github/workflows/accounting.yml` 串起 `prettier --check` → `eslint` → `ruff check` → `ruff format --check` → `scripts/check_migration_idempotency.py` → `migrate` → `status --strict` → 双角色登录供给 → `check_pg_test_target.py` → vitest → `tsc --noEmit && vite build` → pytest（全量）；e2e 另起 4 分片。这条流水线**不是装饰**（2026-10-23 已移除独立 PaddleOCR 服务与其 CI 步骤）。
 - **迁移有幂等与兼容性断言**：`app/accounting/database.py` 对迁移做 sha256 摘要（`\r\n` 归一化）、`-- compatibility: incremental|breaking` 声明、`status --strict` 校验漂移。
 - **手写方言翻译器有专项单测**：`tests/test_postgres_adapter.py:15` 断言 `postgres_sql` 跳过字符串字面量、注释、`$$`/`$body$` 美元引用，并把 `INSERT OR IGNORE` 改写为 `ON CONFLICT DO NOTHING`。
 - **前端类型洁癖**：`src/` 下 `: any` / `as any` / `@ts-ignore` 计数 **0**，`as unknown as` 仅 6 处，`style={{` 仅 1 处（样式走 token/CSS）。
@@ -335,7 +335,7 @@
 - 定点实跑（5 个财务核心测试文件）：`61 passed, 2 failed, 3 errors in 103.31s`，失败全部源于 `app/main.py:538` 的 `QueueWorker.wait_for_idle` 缺失（见 §4.3-0），非财务计算逻辑错误——**已过账、报表、税金估算的断言全部通过**。
 - 全量 pytest 在本机运行超过 22 分钟未结束（约为 3,800 用例、均值 ≈1.5s/用例），且 `pytest-timeout` 未安装、无法用 `--timeout` 约束，因此**未取得完整通过率**；这不影响对设计的判断，但本身计入"测试工程"扣分。
 - 未做渗透测试、未做性能压测；吞吐结论来自锁粒度与连接池配置的推理，建议以 200 家客户月结场景做一次实测。
-- 未审计 `services/`（API Gateway / PaddleOCR 包装，约 4.9 万行）的深度实现，仅确认其在 CI 中被测试。
+- 未审计 `services/`（API Gateway 等本地服务包装）的深度实现，仅确认其在 CI 中被测试。
 
 ---
 

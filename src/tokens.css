@@ -1,0 +1,86 @@
+/* Shared visual contract. Keep public aliases at the root so lazy-loaded
+   workspaces and dialogs do not depend on another page's DOM or stylesheet. */
+:root {
+  --font-sans:
+    'HarmonyOS Sans SC', 'PingFang SC', 'Microsoft YaHei UI', 'Microsoft YaHei', 'Noto Sans CJK SC',
+    'Segoe UI', sans-serif;
+  --font-numeric: var(--font-sans);
+  --font-display: var(--font-sans);
+  --serif: var(--font-sans);
+  --font-size-xs: 12px;
+  --font-size-sm: 13px;
+  --font-size-base: 14px;
+  --font-size-input: 14px;
+  --font-size-input-mobile: 16px;
+  --font-size-title: 28px;
+  --font-size-section: 20px;
+  --line-height-body: 1.6;
+  --line-height-heading: 1.35;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-strong: 600;
+
+  --canvas: #f5f6f3;
+  --surface: #ffffff;
+  --surface-soft: #f2f5f1;
+  --surface-subtle: #f7f8f5;
+  --surface-hover: #eaf0e8;
+  --text-primary: #20342b;
+  --text-secondary: #4b5e53;
+  --text-muted: #586b5f;
+  --text-disabled: #748176;
+  --line: #d9e1d8;
+  --border: var(--line);
+  --control-border: #7e8f83;
+  --brand: #245441;
+  --brand-hover: #173d30;
+  --brand-soft: #eaf2ec;
+  --focus-ring: #285943;
+  --on-brand: #ffffff;
+  --sidebar-text: #eef4ee;
+  --sidebar-muted: #bdcfc2;
+  --sidebar-line: #476655;
+  --sidebar-focus-ring: #d1e9b9;
+
+  --status-success: #276344;
+  --status-success-soft: #eaf4ee;
+  --status-warning: #805415;
+  --status-warning-soft: #fbf3e3;
+  --status-danger: #9c342d;
+  --status-danger-soft: #fbedeb;
+  --status-info: #285672;
+  --status-info-soft: #eaf1f6;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-pill: 999px;
+  --shadow-low: 0 1px 3px rgb(20 32 26 / 6%);
+  --shadow-menu: 0 8px 24px rgb(20 32 26 / 12%);
+  --shadow-dialog: 0 20px 64px rgb(20 32 26 / 18%);
+  --control-height: 40px;
+  --control-height-small: 34px;
+  --control-height-touch: 44px;
+  --motion-fast: 120ms;
+  --motion-base: 180ms;
+  --motion-ease: cubic-bezier(0.2, 0, 0, 1);
+
+  /* Existing component vocabulary, migrated without changing component APIs. */
+  --ink: var(--text-primary);
+  --muted: var(--text-muted);
+  --text: var(--text-primary);
+  --text-secondary-color: var(--text-secondary);
+  --green: var(--brand);
+  --green-dark: var(--brand-hover);
+  --green-soft: var(--brand-soft);
+  --accent: var(--brand);
+  --orange: var(--status-warning);
+  --orange-soft: var(--status-warning-soft);
+}
