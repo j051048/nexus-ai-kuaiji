@@ -3,10 +3,11 @@ import { api, errorMessage } from './api';
 import { downloadCsv } from './csv';
 import type { BookDetail, Draft, JournalLine, Session, Workbench } from './types';
 import type { WorkspaceView } from './workspace-route';
+import { reviewFailureNotice, type ReviewFeedbackNotice } from './review-operation-feedback';
 
 export type BookFilter = 'all' | 'pending' | 'exception' | 'approved';
 export type BookListTab = 'drafts' | 'sources' | 'exports';
-export type BookNotice = { kind: 'success' | 'error'; text: string } | null;
+export type BookNotice = ReviewFeedbackNotice;
 type ExportRecord = { id: string; count: number; filename: string; created_at: string };
 
 export interface UseBookWorkspaceOptions {
@@ -316,7 +317,11 @@ export function useBookWorkspace({
   );
 
   const runAction = useCallback(
-    async (name: string, action: () => Promise<void>) => {
+    async (
+      name: string,
+      action: () => Promise<void>,
+      reviewTarget?: { bookId: string; draftId: string },
+    ) => {
       if (
         actionLock.current ||
         reviewNavigationLoading ||
@@ -339,7 +344,11 @@ export function useBookWorkspace({
           sessionScope.current === scope &&
           !(error instanceof DOMException && error.name === 'AbortError')
         )
-          setNotice({ kind: 'error', text: errorMessage(error) });
+          setNotice(
+            reviewTarget && scope
+              ? reviewFailureNotice(errorMessage(error), { ...reviewTarget, scopeKey: scope })
+              : { kind: 'error', text: errorMessage(error) },
+          );
       } finally {
         if (sessionScope.current === scope) {
           actionLock.current = false;
@@ -445,24 +454,28 @@ export function useBookWorkspace({
     async (draft: Draft, description: string, lines: JournalLine[], correctionReason = '') => {
       if (!session) return;
       const id = bookId;
-      await runAction('save', async () => {
-        const saved = await api<Draft>(
-          `/books/${encodeURIComponent(id)}/drafts/${encodeURIComponent(draft.id)}`,
-          session,
-          {
-            method: 'PATCH',
-            body: {
-              expected_version: draft.version,
-              description,
-              lines,
-              correction_reason: correctionReason,
+      await runAction(
+        'save',
+        async () => {
+          const saved = await api<Draft>(
+            `/books/${encodeURIComponent(id)}/drafts/${encodeURIComponent(draft.id)}`,
+            session,
+            {
+              method: 'PATCH',
+              body: {
+                expected_version: draft.version,
+                description,
+                lines,
+                correction_reason: correctionReason,
+              },
             },
-          },
-        );
-        acceptMutatedDraft(id, saved);
-        await refresh(id);
-        setNotice({ kind: 'success', text: '草稿已保存，金额和科目校验结果已更新。' });
-      });
+          );
+          acceptMutatedDraft(id, saved);
+          await refresh(id);
+          setNotice({ kind: 'success', text: '草稿已保存，金额和科目校验结果已更新。' });
+        },
+        { bookId: id, draftId: draft.id },
+      );
     },
     [acceptMutatedDraft, bookId, refresh, runAction, session, setNotice],
   );
@@ -471,22 +484,26 @@ export function useBookWorkspace({
     async (draft: Draft) => {
       if (!session) return;
       const id = bookId;
-      await runAction('approve', async () => {
-        const approved = await api<Draft>(
-          `/books/${encodeURIComponent(id)}/drafts/${encodeURIComponent(draft.id)}/approve`,
-          session,
-          {
-            method: 'POST',
-            body: { expected_version: draft.version },
-          },
-        );
-        acceptMutatedDraft(id, approved);
-        await refresh(id);
-        setNotice({
-          kind: 'success',
-          text: '凭证已审核，可选中后导出。审核不会写入外部正式账本。',
-        });
-      });
+      await runAction(
+        'approve',
+        async () => {
+          const approved = await api<Draft>(
+            `/books/${encodeURIComponent(id)}/drafts/${encodeURIComponent(draft.id)}/approve`,
+            session,
+            {
+              method: 'POST',
+              body: { expected_version: draft.version },
+            },
+          );
+          acceptMutatedDraft(id, approved);
+          await refresh(id);
+          setNotice({
+            kind: 'success',
+            text: '凭证已审核，可选中后导出。审核不会写入外部正式账本。',
+          });
+        },
+        { bookId: id, draftId: draft.id },
+      );
     },
     [acceptMutatedDraft, bookId, refresh, runAction, session, setNotice],
   );

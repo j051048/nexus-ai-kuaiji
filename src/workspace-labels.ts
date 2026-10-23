@@ -3,7 +3,7 @@ import type { WorkspaceView } from './workspace-route';
 
 export const workspaceViewLabels: Partial<Record<WorkspaceView, string>> = {
   home: '我的待办',
-  firm: '事务所驾驶舱',
+  firm: '全所概览',
   onboarding: '客户开通',
   inbox: '异常收件箱',
   observability: '运行可观测性',
@@ -15,7 +15,7 @@ export const workspaceViewLabels: Partial<Record<WorkspaceView, string>> = {
   intelligence: '票据核对异常',
   operations: '费用与运行监控',
   revision: '事实修订与调整',
-  monthly: '客户月度进度',
+  monthly: '月度交付',
   service: '月度服务单',
   materials: '资料清单',
   messages: '消息',
@@ -28,7 +28,7 @@ export const workspaceViewLabels: Partial<Record<WorkspaceView, string>> = {
   closing: '月结预检',
   efficiency: '人工效率',
   integration: '财务软件接入',
-  ingestion: '数据接入中心',
+  ingestion: '数据接入',
   ledger: '长期账套与主数据',
   reconciliation: '流水与业务匹配',
   delivery: '导入回执核验',

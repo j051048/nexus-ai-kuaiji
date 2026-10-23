@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { choosePersona, openNavigation } from './ui-navigation';
+import { presentationRole, workSurface } from '../src/workspace-presentation';
 
 test('四种真实验证身份按主业务角色进入待办首页，兼有复核权的财务仍先核验业务', async ({ page, request }) => {
   // This case includes fixture creation and four real identity changes on the cold dev server.
@@ -11,9 +12,8 @@ test('四种真实验证身份按主业务角色进入待办首页，兼有复�
   const book = await (await request.post('/api/books', { headers: ownerHeaders, data: { name: `兼有复核权的财务 ${crypto.randomUUID().slice(0, 8)}`, company_id: company.id, period: '2026-10' } })).json();
   expect((await request.put(`/api/books/${book.id}/members/local-business-finance`, { headers: ownerHeaders, data: { role: 'reviewer' } })).status()).toBe(200);
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto('/');
-  const home = page.getByRole('navigation', { name: '主导航', exact: true }).getByRole('button', { name: '我的待办', exact: true });
-  for (const [persona, role, title] of [['employee', 'employee', '我的工作台'], ['department', 'approver', '审批工作台'], ['finance', 'finance', '财务工作台'], ['accountant', 'accountant', '会计工作台']]) {
+  await page.goto('/workspace/home');
+  for (const [persona, role, title] of [['employee', 'employee', '我的工作台'], ['department', 'approver', '部门审批'], ['finance', 'finance', '财务核验'], ['accountant', 'accountant', '事务所管理']]) {
     const session = await (await request.get(`/api/session?persona=${persona}`)).json();
     const profileResponse = await request.get('/api/workspace/profile', { headers: { Authorization: `Bearer ${session.token}` } });
     expect(profileResponse.status()).toBe(200);
@@ -23,23 +23,39 @@ test('四种真实验证身份按主业务角色进入待办首页，兼有复�
     await choosePersona(page, persona);
     await expect(page.getByRole('heading', { name: title, exact: true })).toBeVisible({ timeout: 15_000 });
     await openNavigation(page);
-    await expect(home).toHaveAttribute('aria-current', 'page');
+    const client = workSurface(presentationRole(profile)) === 'client';
+    const nav = page.getByRole('navigation', { name: client ? '客户服务' : '主导航', exact: true });
+    await expect(nav.locator('[aria-current="page"]')).toHaveCount(1);
     await expect(page.getByLabel('我的工作概览')).toBeVisible();
     await expect(page.getByLabel('筛选待办类型')).toBeVisible();
     await openNavigation(page);
-    if (profile.can_accounting || profile.can_finance || profile.can_manage) {
-      await expect(page.locator('summary').filter({ hasText: /^处理记录与管理$/ })).toBeVisible();
-      await expect(page.locator('summary').filter({ hasText: /^处理记录与管理$/ }).locator('..')).not.toHaveAttribute('open', '');
+    if (!client) {
+      await expect(page.locator('summary').filter({ hasText: /^设置$/ })).toBeVisible();
+      await expect(page.locator('summary').filter({ hasText: /^设置$/ }).locator('..')).not.toHaveAttribute('open', '');
     } else {
-      await expect(page.locator('summary').filter({ hasText: /^处理记录与管理$/ })).toHaveCount(0);
+      await expect(page.getByRole('navigation', { name: '设置入口', exact: true })).toHaveCount(0);
+      const clientSettings = page.locator('.client-portal-settings');
+      if (profile.can_accounting || profile.can_manage) {
+        await expect(clientSettings.locator('summary')).toBeVisible();
+        await expect(clientSettings).not.toHaveAttribute('open', '');
+      } else {
+        await expect(clientSettings).toHaveCount(0);
+      }
       await expect(page.getByRole('button', { name: '后台运行', exact: true })).toHaveCount(0);
     }
     if (persona === 'employee' || persona === 'department') {
       await expect(page.getByRole('button', { name: '导入流水', exact: true })).toHaveCount(0);
       await expect(page.getByRole('navigation', { name: '主导航', exact: true }).getByRole('button', { name: '跨企业批量复核', exact: true })).toHaveCount(0);
-      await expect(page.getByLabel('快速录入')).toBeVisible();
+      if (persona === 'employee') {
+        await expect(page.getByRole('region', { name: '提交与进度', exact: true })).toBeVisible();
+        await expect(page.getByRole('button', { name: /提交报销/ })).toBeVisible();
+      } else {
+        await expect(page.getByRole('region', { name: '提交与进度', exact: true })).toHaveCount(0);
+        await expect(page.getByRole('button', { name: '部门事项', exact: true })).toBeVisible();
+      }
     }
-    await page.getByRole('button', { name: '关闭导航', exact: true }).click();
+    const close = page.getByRole('button', { name: '关闭导航', exact: true });
+    if (await close.isVisible()) await close.click();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
   }
   await page.getByRole('heading', { level: 1 }).scrollIntoViewIfNeeded();
@@ -58,7 +74,7 @@ test('待办打开前重新核验实时授权，撤权后不展示原件或凭�
   expect((await request.post(`/api/books/${book.id}/imports`, { headers, data: { source_name: '明确合成待办', rows: [{ external_id: name, date: '2026-10-01', description: name, counterparty: '虚构供应商', amount: '0.30', direction: 'expense', evidence_ref: '仅合成的待办验证票据' }] } })).status()).toBe(200);
   expect((await request.post(`/api/books/${book.id}/suggestions`, { headers })).status()).toBe(200);
   const draft = (await (await request.get(`/api/books/${book.id}`, { headers })).json()).drafts[0];
-  await page.goto('/');
+  await page.goto('/workspace/home');
   await page.getByLabel('切换验证身份').selectOption('finance');
   await page.getByLabel('筛选待办类型').selectOption('review');
   await expect(page.locator('.workspace-task').filter({ hasText: name })).toBeVisible();
@@ -104,7 +120,7 @@ test('审核后导出待办精确打开账套，读取前撤权后不回退到�
   const target = books[0], other = books[1];
   const exportWrites: string[] = [];
   page.on('request', req => { if (req.method() === 'POST' && /\/exports$/.test(new URL(req.url()).pathname)) exportWrites.push(req.url()); });
-  await page.goto('/');
+  await page.goto('/workspace/home');
   await page.getByLabel('筛选待办类型').selectOption('export');
   const task = page.locator(`[data-task-key="export:${target.id}"]`);
   await expect(task).toContainText('待导出凭证 · 1 张');
@@ -117,7 +133,7 @@ test('审核后导出待办精确打开账套，读取前撤权后不回退到�
   expect((await (await request.get(`/api/books/${target.id}/exports`, { headers })).json()).exports).toEqual([]);
 
   await page.getByLabel('切换验证身份').selectOption('finance');
-  await expect(page.getByRole('heading', { name: '财务工作台', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '财务核验', exact: true })).toBeVisible();
   await page.getByLabel('筛选待办类型').selectOption('export');
   await expect(task).toBeVisible();
   let revoked = false;

@@ -22,6 +22,7 @@ import { AccountingBookToolbar, bookPipelineStep } from './AccountingBookToolbar
 import { downloadCsv, formatMoney } from './csv';
 import type { Book, BookDetail, Draft, JournalLine, Me, Session, Workbench } from './types';
 import type { WorkspaceView } from './workspace-route';
+import { currentReviewError, type ReviewFeedbackNotice } from './review-operation-feedback';
 
 const ProposalTasksPanel = lazy(() =>
   import('./ProposalTasksPanel').then((module) => ({ default: module.ProposalTasksPanel })),
@@ -37,7 +38,7 @@ const statusLabels: Record<Draft['status'], string> = {
 };
 
 type Filter = 'all' | 'pending' | 'exception' | 'approved';
-type Notice = { kind: 'success' | 'error'; text: string } | null;
+type Notice = ReviewFeedbackNotice;
 
 export interface BookWorkspaceShellProps {
   session: Session;
@@ -102,6 +103,7 @@ export interface BookWorkspaceShellProps {
     value: { eventId?: string; bookId?: string; draftId?: string; title?: string } | undefined,
   ) => void;
   setNotice: (value: Notice) => void;
+  reviewNotice?: Notice;
   changeBusinessBusy: (value: boolean) => void;
   changeReviewDirty: (value: boolean) => void;
   changeIntelligenceBusy: (value: boolean) => void;
@@ -165,6 +167,7 @@ export function BookWorkspaceShell({
   setAssistantTarget,
   setCaseTarget,
   setNotice,
+  reviewNotice,
   changeBusinessBusy,
   changeReviewDirty,
   changeIntelligenceBusy,
@@ -721,6 +724,11 @@ export function BookWorkspaceShell({
                       detail={detail}
                       busy={busy}
                       externalBusy={!!operationBusy}
+                      operationError={currentReviewError(reviewNotice ?? null, {
+                        scopeKey: session.scope_key,
+                        bookId,
+                        draftId: activeDraft.id,
+                      })}
                       onAssistant={() =>
                         setAssistantTarget({
                           bookId,

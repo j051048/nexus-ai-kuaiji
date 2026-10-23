@@ -44,11 +44,13 @@ import { BusinessOrganization } from './BusinessOrganization';
 import { IntelligencePanel } from './IntelligencePanel';
 import { QueueBatchDialog } from './QueueBatchDialog';
 import { IntakeWizard } from './IntakeWizard';
+import { WorkflowGuide } from './WorkflowGuide';
+import { businessGuidance, businessHandoffNotice, businessStatusLabel } from './business-guidance';
 import './intake.css';
 
 const statusLabels: Record<BusinessStatus, string> = {
   draft: '草稿',
-  submitted: '待部门审批',
+  submitted: '待审批 / 会计接收',
   department_approved: '待财务核验',
   finance_approved: '待交接会计',
   handed_off: '已交接会计',
@@ -373,7 +375,11 @@ export function BusinessWorkspace({
       if (active.current && epoch === selectionEpoch.current) setDetailLoading(false);
     }
   }
-  async function run(name: string, action: () => Promise<BusinessEvent | void>, success: string) {
+  async function run(
+    name: string,
+    action: () => Promise<BusinessEvent | void>,
+    success: string | ((result: BusinessEvent | void) => string),
+  ) {
     if (lock.current) return;
     lock.current = true;
     setBusy(name);
@@ -384,7 +390,7 @@ export function BusinessWorkspace({
       const result = await action();
       if (!active.current || epoch !== selectionEpoch.current) return;
       if (result) setSelected(result);
-      setNotice(success);
+      setNotice(typeof success === 'function' ? success(result) : success);
       await loadList();
     } catch (failure) {
       if (
@@ -544,7 +550,7 @@ export function BusinessWorkspace({
         );
         return result.event;
       },
-      '已生成凭证草稿，仍需会计独立复核后导出。',
+      businessHandoffNotice,
     );
   }
   async function reloadContext() {
@@ -748,9 +754,7 @@ export function BusinessWorkspace({
                   <span className="business-event-summary">
                     <strong>{formatMoney(event.payload.amount)}</strong>
                     <span className={`badge business-status ${event.status}`}>
-                      {event.submission_mode === 'direct' && event.status === 'submitted'
-                        ? '待会计接收'
-                        : statusLabels[event.status]}
+                      {businessStatusLabel(event)}
                     </span>
                   </span>
                   <ChevronRight size={15} />
@@ -841,9 +845,7 @@ export function BusinessWorkspace({
             <div className="business-detail-content">
               <div className="business-detail-title">
                 <span className={`badge business-status ${selected.status}`}>
-                  {selected.submission_mode === 'direct' && selected.status === 'submitted'
-                    ? '待会计接收'
-                    : statusLabels[selected.status]}
+                  {businessStatusLabel(selected)}
                 </span>
                 <span>业务事项</span>
                 <h3>{selected.payload.description}</h3>
@@ -855,6 +857,18 @@ export function BusinessWorkspace({
                   {selected.applicant_name || '申请人'}
                 </p>
               </div>
+              <WorkflowGuide
+                label="事项办理引导"
+                guide={businessGuidance(selected, {
+                  busy: !!busy,
+                  error,
+                  booksLoading,
+                  booksError: currentBooksError,
+                  booksReady,
+                  hasEligibleBook: eligibleBooks.length > 0,
+                  selectedBookEligible: eligibleBooks.some((book) => book.id === handoffBookId),
+                })}
+              />
               <dl className="business-facts">
                 <div>
                   <dt>发生日期</dt>
@@ -889,19 +903,6 @@ export function BusinessWorkspace({
                   </div>
                 )}
               </dl>
-              <div className="business-next-step">
-                {selected.status === 'draft' || selected.status === 'returned'
-                  ? selected.submission_mode === 'direct'
-                    ? '下一步：核对资料后提交财务处理。'
-                    : '下一步：申请人核对事项与附件后提交部门审批。'
-                  : selected.status === 'submitted'
-                    ? '下一步：由获授权的部门审批人核对业务并审批。'
-                    : selected.status === 'department_approved'
-                      ? '下一步：企业财务核对金额、票据和付款状态。'
-                      : selected.status === 'finance_approved'
-                        ? '下一步：企业财务将事项交接到同企业、同期间账套。'
-                        : '下一步：会计核对凭据和科目后审核，再导出交付。'}
-              </div>
               <div className="business-evidence">
                 <h4>
                   <Paperclip size={15} />

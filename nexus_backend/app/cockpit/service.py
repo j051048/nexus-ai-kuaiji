@@ -36,17 +36,27 @@ class FirmCockpitService:
                 row["company_id"]: row
                 for row in conn.execute(book_sql + " ORDER BY b.period DESC,b.id", book_args)
             }
-            plan_rows = conn.execute(
-                "SELECT p.company_id,p.lead_user_id,p.reviewer_user_id,p.backup_user_id,"
-                "p.due_on,lead.name AS lead_name,reviewer.name AS reviewer_name "
-                "FROM service_plan_versions p LEFT JOIN users lead ON lead.id=p.lead_user_id "
-                "LEFT JOIN users reviewer ON reviewer.id=p.reviewer_user_id "
-                "WHERE p.firm_id=? AND p.version=("
-                "SELECT MAX(p2.version) FROM service_plan_versions p2 WHERE p2.book_id=p.book_id"
-                ")",
-                (actor.firm_id,),
-            ).fetchall()
-            plans = {row["company_id"]: row for row in plan_rows}
+            book_ids = [book["id"] for book in books.values()]
+            plan_rows = (
+                conn.execute(
+                    "SELECT p.book_id,p.company_id,p.lead_user_id,p.reviewer_user_id,p.backup_user_id,"
+                    "p.due_on,lead.name AS lead_name,reviewer.name AS reviewer_name "
+                    "FROM service_plan_versions p JOIN books b ON b.id=p.book_id "
+                    "AND b.firm_id=p.firm_id AND b.company_id=p.company_id "
+                    "LEFT JOIN users lead ON lead.id=p.lead_user_id "
+                    "LEFT JOIN users reviewer ON reviewer.id=p.reviewer_user_id "
+                    "WHERE p.firm_id=? AND p.book_id IN ("
+                    + ",".join("?" for _ in book_ids)
+                    + ") AND p.version=("
+                    "SELECT MAX(p2.version) FROM service_plan_versions p2 WHERE p2.book_id=p.book_id "
+                    "AND p2.firm_id=p.firm_id AND p2.company_id=p.company_id"
+                    ")",
+                    (actor.firm_id, *book_ids),
+                ).fetchall()
+                if book_ids
+                else []
+            )
+            plans = {row["book_id"]: row for row in plan_rows}
             tasks = conn.execute(
                 "SELECT company_id,kind,state,due_on,updated_at,assignee_id FROM workspace_task_projections "
                 "WHERE firm_id=?",
@@ -69,7 +79,7 @@ class FirmCockpitService:
         workload = {}
         for company in companies:
             book = books.get(company["id"])
-            plan = plans.get(company["id"])
+            plan = plans.get(book["id"]) if book else None
             company_tasks = grouped.get(company["id"], [])
             counts = {kind: 0 for kind in ("intake", "review", "exception", "delivery")}
             overdue = 0

@@ -17,6 +17,8 @@ import { Spinner } from './AppPrimitives';
 import { IntelligencePanel } from './IntelligencePanel';
 import { BankDuplicatePanel } from './BankDuplicatePanel';
 import { SourceHistoryPanel } from './SourceHistoryPanel';
+import { WorkflowGuide } from './WorkflowGuide';
+import { reviewGuidance } from './review-guidance';
 import type { Session, Draft, BookDetail, JournalLine } from './types';
 const statusLabels: Record<Draft['status'], string> = {
   draft: '待审核',
@@ -29,6 +31,7 @@ export function Reviewer({
   detail,
   busy,
   externalBusy,
+  operationError = '',
   onIntelligenceBusyChange,
   onIntelligenceChanged,
   onDirtyChange,
@@ -45,6 +48,7 @@ export function Reviewer({
   detail: BookDetail;
   busy: string;
   externalBusy: boolean;
+  operationError?: string;
   onIntelligenceBusyChange: (busy: boolean) => void;
   onIntelligenceChanged: () => Promise<void>;
   onDirtyChange: (dirty: boolean) => void;
@@ -73,7 +77,8 @@ export function Reviewer({
   const source = detail.sources.find((item) => item.id === draft.source_id);
   const [evidenceRef, setEvidenceRef] = useState(source?.evidence_ref ?? '');
   const locked = draft.status !== 'draft' || !!draft.source_inactive;
-  const readOnly = locked || !detail.book.permissions.edit;
+  const readOnly =
+    locked || !detail.book.permissions.edit || detail.book.period_status === 'closed';
   useEffect(() => {
     setDescription(draft.description);
     setCorrectionReason('');
@@ -102,6 +107,28 @@ export function Reviewer({
   const balanced = !amountError && debit === credit && debit > 0n;
   return (
     <div className="review-content">
+      <WorkflowGuide
+        label="会计复核引导"
+        guide={reviewGuidance({
+          status: draft.status,
+          sourceInactive: !!draft.source_inactive,
+          sourceAvailable: !!source,
+          hasEvidenceReference: !!source?.evidence_ref,
+          editable: !readOnly,
+          canReview: detail.book.permissions.review,
+          canOpenCase: !locked && detail.book.permissions.review,
+          canExport: detail.book.permissions.export,
+          periodClosed: detail.book.period_status === 'closed',
+          dirty,
+          balanced,
+          issueCount: draft.issues.length,
+          busy: !!busy || externalBusy,
+          error: operationError,
+          evidenceError: '',
+          requiresAcknowledgement: false,
+          acknowledged: false,
+        })}
+      />
       {!locked && detail.book.permissions.review && (
         <button
           type="button"
@@ -394,6 +421,7 @@ export function Reviewer({
               <button
                 className="button primary"
                 disabled={
+                  detail.book.period_status === 'closed' ||
                   !detail.book.permissions.review ||
                   !!busy ||
                   dirty ||

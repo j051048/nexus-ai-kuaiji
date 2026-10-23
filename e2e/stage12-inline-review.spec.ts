@@ -15,7 +15,9 @@ test('同屏复核保留包选择，修改后重新准备，手机原件详情�
   ] } }); expect(response.status()).toBe(200);
   expect((await request.post(`/api/books/${book.id}/suggestions`, { headers })).status()).toBe(200);
   await page.goto('/', { waitUntil: 'domcontentloaded' }); await page.getByLabel('切换验证身份').selectOption('accountant');
-  await page.getByRole('navigation', { name: '主导航' }).getByRole('button', { name: '跨企业批量复核', exact: true }).click();
+  const nav = page.getByRole('navigation', { name: '主导航' });
+  await nav.locator('summary').filter({ hasText: /^会计工作区$/ }).click();
+  await nav.getByRole('button', { name: '跨企业批量复核', exact: true }).click();
   await page.getByLabel('复核企业', { exact: true }).selectOption(book.company_id);
   await page.getByLabel('选择本页凭证', { exact: true }).check();
   await page.getByRole('button', { name: '准备同类复核包', exact: true }).click();

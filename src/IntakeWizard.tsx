@@ -33,6 +33,8 @@ import type { Session } from './types';
 import type { IntakeDraft, IntakeRun } from './intake-types';
 import { changeIntakeTemplate, intakeCandidates } from './intake-helpers';
 import { directUploadLimitLabel } from './transport-limits';
+import { WorkflowGuide } from './WorkflowGuide';
+import { intakeGuidance } from './intake-guidance';
 import './intake.css';
 
 export function IntakeWizard({
@@ -530,6 +532,24 @@ export function IntakeWizard({
   const aiEnabled = !editing && !!draft?.ai_enabled;
   const visionReady = !editing && !!draft?.vision_ready;
   const structuredReady = !editing && !!draft?.structured_ready;
+  const guidance = intakeGuidance({
+    companyReady: !!company,
+    departmentReady: !!departmentId,
+    templateLabel: BUSINESS_TEMPLATES.find((item) => item.id === template)?.name ?? '业务事项',
+    fieldsValidation: validateBusinessPayload(template, fields),
+    attachmentCount: attachments.length,
+    confirmed,
+    busy,
+    error,
+    saved:
+      (!!draft || !!editing) &&
+      savedSignature.current === JSON.stringify({ template_id: template, fields }),
+    direct,
+    runs: attachments.flatMap((attachment) => {
+      const run = latestRuns.get(attachment.id);
+      return run ? [run] : [];
+    }),
+  });
   return (
     <dialog
       ref={dialog}
@@ -557,6 +577,7 @@ export function IntakeWizard({
         </button>
       </header>
       <div className="intake-scroll">
+        <WorkflowGuide label="员工录入引导" guide={guidance} />
         {!!savedDrafts.length && !draft && !editing && (
           <details className="intake-resume">
             <summary>

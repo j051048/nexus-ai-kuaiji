@@ -162,6 +162,7 @@ interface WorkspaceRouteApp {
   setMigrationTarget: (value: string) => void;
   setRouteView: (view: WorkspaceView) => void;
   setNotice: (value: BookNotice) => void;
+  reviewNotice?: BookNotice;
   setInlineTarget: (value: { bookId: string; draftId: string } | null) => void;
   navigate: (view: AgentNavigationView, fromAssistant?: boolean) => void;
   openWorkspaceTask: (task: WorkspaceTask) => void;
@@ -178,6 +179,7 @@ interface WorkspaceRouteApp {
   openContextAssistant: (
     target: { bookId: string; draftId: string; version: number } | null,
   ) => void;
+  onManageTeam?: () => void;
   openBookModal: () => void;
   openImport: () => void;
 }
@@ -287,6 +289,7 @@ export function WorkspaceRouteContent({
     setMigrationTarget,
     setRouteView,
     setNotice,
+    reviewNotice,
     setInlineTarget,
     navigate,
     openWorkspaceTask,
@@ -296,6 +299,7 @@ export function WorkspaceRouteContent({
     openClosingIssue,
     openInlineReview,
     openContextAssistant,
+    onManageTeam,
     openBookModal,
     openImport,
   } = app;
@@ -352,6 +356,17 @@ export function WorkspaceRouteContent({
             setRouteView('briefing');
           }}
           onRuns={() => navigate('runs')}
+          onBusiness={() => {
+            navigate('business');
+            setWorkCompany(workCompany);
+            setWorkPeriod(workPeriod);
+          }}
+          onMaterials={() => {
+            navigate('materials');
+            setWorkCompany(workCompany);
+            setWorkBook(workBook);
+            setWorkPeriod(workPeriod);
+          }}
         />
       ) : routeView === 'runs' ? (
         <AgentActivityWorkspace
@@ -362,7 +377,7 @@ export function WorkspaceRouteContent({
           onBack={() => navigate('home')}
           onBusyChange={changeBusinessBusy}
         />
-      ) : routeView === 'firm' ? (
+      ) : routeView === 'firm' && canFirmOperations ? (
         <FirmCockpit
           key={`${session.scope_key}:${workPeriod}`}
           session={session}
@@ -376,7 +391,20 @@ export function WorkspaceRouteContent({
             void initialize(undefined, target.bookId);
           }}
           onOpenInbox={() => navigate('inbox')}
+          onMonthly={(period) => {
+            navigate('monthly');
+            setWorkPeriod(period);
+          }}
+          onTeam={onManageTeam}
+          onOnboarding={(period) => {
+            navigate('onboarding');
+            setWorkPeriod(period);
+          }}
         />
+      ) : routeView === 'firm' ? (
+        <EmptyState title="全所工作台由事务所负责人管理" icon={<ShieldCheck size={28} />}>
+          当前账号可以继续处理本企业获授权的资料和事项。
+        </EmptyState>
       ) : routeView === 'onboarding' ? (
         <FirmOnboarding
           key={`${session.scope_key}:${workPeriod}`}
@@ -820,6 +848,7 @@ export function WorkspaceRouteContent({
           setAssistantTarget={openContextAssistant}
           setCaseTarget={setCaseTarget}
           setNotice={setNotice}
+          reviewNotice={reviewNotice}
           changeBusinessBusy={changeBusinessBusy}
           changeReviewDirty={changeReviewDirty}
           changeIntelligenceBusy={changeIntelligenceBusy}

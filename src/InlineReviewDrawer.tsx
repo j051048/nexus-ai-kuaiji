@@ -22,6 +22,8 @@ import {
   type AccountingContextAction,
 } from './AccountingContextAssistant';
 import { clearReviewSession, inputOwnsKeyboard } from './review-session';
+import { WorkflowGuide } from './WorkflowGuide';
+import { reviewGuidance } from './review-guidance';
 import type { BusinessEvent } from './business-types';
 import type { SourceHistory } from './SourceHistoryPanel';
 import type { BookDetail, Draft, JournalLine, Session } from './types';
@@ -696,6 +698,28 @@ export function InlineReviewDrawer({
                 ref={facts}
                 tabIndex={-1}
               >
+                <WorkflowGuide
+                  label="会计复核引导"
+                  guide={reviewGuidance({
+                    status: draft.status,
+                    sourceInactive: !!draft.source_inactive,
+                    sourceAvailable: !!source,
+                    hasEvidenceReference: !!source?.evidence_ref,
+                    editable: !readonly,
+                    canReview: !readonly && detail.book.permissions.review,
+                    canOpenCase: false,
+                    canExport: detail.book.permissions.export,
+                    periodClosed: detail.book.period_status === 'closed',
+                    dirty,
+                    balanced,
+                    issueCount: draft.issues.length,
+                    busy: !!busy,
+                    error,
+                    evidenceError,
+                    requiresAcknowledgement: true,
+                    acknowledged,
+                  })}
+                />
                 <div className="inline-review-state">
                   <span className={`badge ${draft.status}`}>
                     {draft.status === 'draft'

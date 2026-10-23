@@ -22,6 +22,6 @@ test('UX02/UX05 角色入口、助手范围与桌面手机截图', async ({ page
 
   await choosePersona(page, 'employee');
   await expect(page.getByRole('navigation', { name: '客户服务' })).toBeVisible();
-  await expect(page.getByRole('button', { name: '提交', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '我的事项', exact: true })).toBeVisible();
   await page.screenshot({ path: 'docs/ux-screenshots/client-mobile.png', fullPage: true });
 });

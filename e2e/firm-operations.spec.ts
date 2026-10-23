@@ -4,7 +4,7 @@ import { choosePersona } from './ui-navigation';
 test('事务所驾驶舱、客户开通与客户极简门户可用', async ({ page }) => {
   test.setTimeout(120_000);
   await page.goto('/workspace/firm', { waitUntil: 'domcontentloaded' });
-  await expect(page.getByRole('heading', { name: '事务所运营驾驶舱', exact: true })).toBeVisible({
+  await expect(page.getByRole('heading', { name: '全所工作台', exact: true })).toBeVisible({
     timeout: 60_000,
   });
   await expect(page.getByLabel('全所运营概览')).toBeVisible();
@@ -38,11 +38,10 @@ test('事务所驾驶舱、客户开通与客户极简门户可用', async ({ pa
   await expect(portal).toBeVisible({ timeout: 60_000 });
   const tabLabels = await portal.getByRole('button').allTextContents();
   expect(tabLabels.map((value) => value.trim())).toEqual([
-    '待办',
-    '提交',
+    '首页',
+    '我的事项',
     '资料清单',
     '消息',
-    '本月简报',
   ]);
   await portal.getByRole('button', { name: '消息', exact: true }).click();
   await expect(page.getByRole('heading', { name: '消息与补件提醒', exact: true })).toBeVisible();

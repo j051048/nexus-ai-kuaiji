@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { roleHomeGuide } from './workspace-role-home';
 import type { WorkspaceProfile } from './workspace-types';
+import { presentationRole, roleHome } from './workspace-presentation';
 
 function profile(changes: Partial<WorkspaceProfile>): WorkspaceProfile {
   return {
@@ -36,6 +37,35 @@ describe('roleHomeGuide', () => {
   it('shows the service-side authorization boundary', () => {
     expect(roleHomeGuide(profile({ role: 'accountant', can_review: true })).boundary).toContain(
       '服务端逐次校验',
+    );
+  });
+
+  it('uses the same server identity and focus as the navigation and home', () => {
+    for (const display_role of [
+      'employee',
+      'approver',
+      'finance',
+      'manager',
+      'accountant',
+      'reviewer',
+      'firm_owner',
+      'admin',
+      'viewer',
+    ] as const) {
+      const current = profile({ role: 'employee', display_role });
+      const guide = roleHomeGuide(current);
+      const home = roleHome(presentationRole(current));
+      expect(guide.label).toBe(home.name);
+      expect(guide.focus).toBe(home.focus);
+    }
+  });
+
+  it('does not expose firm operations hints through the deprecated can_operations flag', () => {
+    expect(
+      roleHomeGuide(profile({ can_operations: true, can_firm_operations: false })).actions,
+    ).not.toContain('事务所运营视图');
+    expect(roleHomeGuide(profile({ can_firm_operations: true })).actions).toContain(
+      '事务所运营视图',
     );
   });
 });

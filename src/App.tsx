@@ -12,7 +12,6 @@ import {
   ShieldCheck,
   Sparkles,
   TriangleAlert,
-  Users,
   LogOut,
   X,
 } from 'lucide-react';
@@ -30,9 +29,15 @@ import type {
   AssistantActionReceipt,
 } from './assistant-types';
 import { clearReviewSession } from './review-session';
-import { roleCopy, taskDestination } from './workspace-types';
+import { taskDestination } from './workspace-types';
 import { workspaceExperience } from './workspace-experience';
-import { presentationRole, primaryNav, roleHome, selectBriefing } from './workspace-presentation';
+import {
+  presentationRole,
+  primaryNav,
+  roleHome,
+  selectBriefing,
+  workSurface,
+} from './workspace-presentation';
 import type { WorkspaceProfile, WorkspaceTask } from './workspace-types';
 import type { BusinessTemplate } from './business-types';
 import type { OperationsCompany } from './operations-types';
@@ -194,48 +199,6 @@ export default function App() {
   const profile = storedProfile ?? homeBootstrap?.profile ?? null;
   const defaultLandingFor = useRef('');
   const entryPath = useRef(location.pathname);
-  // Role default landing applies only to the bare root login. An explicit
-  // /workspace/home (including refresh) is a user target and must be preserved.
-  useEffect(() => {
-    if (!session || !profile) return;
-    if (entryPath.current !== '/') return;
-    const key = session.scope_key;
-    if (defaultLandingFor.current === key) return;
-    const explicit = readWorkspaceRoute(location.pathname, location.search);
-    const hasTarget = Boolean(
-      explicit.companyId ||
-      explicit.bookId ||
-      explicit.draftId ||
-      explicit.caseId ||
-      explicit.eventId ||
-      explicit.reviewBookId ||
-      explicit.intakeId ||
-      explicit.batchId ||
-      explicit.jobId ||
-      explicit.migrationId ||
-      explicit.deliveryId ||
-      explicit.proposalId ||
-      explicit.materialId ||
-      explicit.search,
-    );
-    if (explicit.view !== 'home' || hasTarget || adminMode) {
-      defaultLandingFor.current = key;
-      return;
-    }
-    const role = presentationRole(profile);
-    const target = roleHome(role).defaultView;
-    defaultLandingFor.current = key;
-    if (target === 'admin') {
-      if (me?.permissions.manage_admin || me?.permissions.manage_firm)
-        void routerNavigate('/admin');
-      return;
-    }
-    if (target !== 'home') {
-      // Bare login without a target: route once to the role default. Explicit
-      // query/deep links were returned above and are never rewritten.
-      void routerNavigate(`/workspace/${target}`, { replace: true });
-    }
-  }, [session, profile, me, location.pathname, location.search, adminMode, routerNavigate]);
   // 代账包干制：模型费用与运行监控是事务所内部的生产资料，客户企业侧不展示；
   // can_operations 仅保留给接口兼容，导航与工作区渲染都以事务所管理层能力位为准。
   const canFirmOperations = profile?.can_firm_operations ?? !!me?.permissions.manage_firm;
@@ -591,6 +554,52 @@ export default function App() {
     },
   });
 
+  // Role default landing applies only to the bare root login. An explicit
+  // /workspace/home (including refresh) is a user target and must be preserved.
+  useEffect(() => {
+    if (!session || !profile) return;
+    if (entryPath.current !== '/') return;
+    const key = session.scope_key;
+    if (defaultLandingFor.current === key) return;
+    const explicit = readWorkspaceRoute(location.pathname, location.search);
+    const hasTarget = Boolean(
+      explicit.companyId ||
+      explicit.bookId ||
+      explicit.draftId ||
+      explicit.caseId ||
+      explicit.eventId ||
+      explicit.reviewBookId ||
+      explicit.intakeId ||
+      explicit.batchId ||
+      explicit.jobId ||
+      explicit.migrationId ||
+      explicit.deliveryId ||
+      explicit.proposalId ||
+      explicit.materialId ||
+      explicit.search,
+    );
+    if (explicit.view !== 'home' || hasTarget || adminMode) {
+      defaultLandingFor.current = key;
+      return;
+    }
+    const role = presentationRole(profile);
+    const target = roleHome(role, profile).defaultView;
+    defaultLandingFor.current = key;
+    if (target === 'admin') {
+      if (me?.permissions.manage_admin || me?.permissions.manage_firm)
+        void routerNavigate('/admin');
+      return;
+    }
+    if (target !== 'home') {
+      // Keep route state and URL together. The route hook may normalize '/'
+      // in the same commit, so applying only a URL redirect can lose the target.
+      setRouteView(target as WorkspaceView);
+      // Bare login without a target: route once to the role default. Explicit
+      // query/deep links were returned above and are never rewritten.
+      void routerNavigate(`/workspace/${target}`, { replace: true });
+    }
+  }, [session, profile, me, location.pathname, location.search, adminMode, routerNavigate]);
+
   if (recoveryMode)
     return (
       <Suspense
@@ -693,7 +702,14 @@ export default function App() {
   const canSeeAccounting =
     profile?.can_accounting ??
     (!!stats?.book_count && !['client_employee', 'client_member'].includes(session.role ?? ''));
-  const clientPortal = !!profile && !canSeeAccounting;
+  // Capabilities authorize secondary work; the primary job selects the home
+  // surface. A finance member with book access stays in the client portal until
+  // explicitly opening a professional route, and returns to it on home.
+  const primarySurface = workSurface(presentationRole(profile));
+  const secondaryAccounting =
+    canSeeAccounting &&
+    !['home', 'business', 'materials', 'messages', 'briefing'].includes(routeView);
+  const clientPortal = !!profile && primarySurface === 'client' && !secondaryAccounting;
   const experience = workspaceExperience(profile);
   const navigationLocked =
     !!busy ||
@@ -1085,6 +1101,7 @@ export default function App() {
     setMigrationTarget,
     setRouteView,
     setNotice,
+    reviewNotice: notice,
     setInlineTarget,
     navigate,
     openWorkspaceTask,
@@ -1094,6 +1111,11 @@ export default function App() {
     openClosingIssue,
     openInlineReview,
     openContextAssistant,
+    onManageTeam: me?.permissions.manage_firm
+      ? () => {
+          if (!navigationLocked) void routerNavigate('/admin/members');
+        }
+      : undefined,
     openBookModal: () => {
       setNotice(null);
       setModal('book');
@@ -1134,6 +1156,80 @@ export default function App() {
           : portalRouteView === 'business' || portalRouteView === 'accounting'
             ? 'submit'
             : 'home';
+
+  // Authorized task dialogs are shared by both primary surfaces.
+  const taskDialogs = (
+    <>
+      {inlineTarget && (
+        <Suspense
+          fallback={
+            <div className="loading-block" role="status">
+              <Spinner />
+              正在打开详情…
+            </div>
+          }
+        >
+          {' '}
+          <InlineReviewDrawer
+            key={`${session.scope_key}:${inlineTarget.bookId}:${inlineTarget.draftId}`}
+            session={session}
+            bookId={inlineTarget.bookId}
+            draftId={inlineTarget.draftId}
+            queue={
+              inlineContext.current?.scope === session.scope_key
+                ? inlineContext.current.queue
+                : routeView === 'home'
+                  ? []
+                  : drafts.map((d) => ({ book_id: bookId, draft_id: d.id }))
+            }
+            onBusyChange={changeBusinessBusy}
+            onClose={() => {
+              inlineContext.current?.onClose();
+              inlineContext.current = null;
+              setInlineTarget(null);
+              setWorkspaceRevision((n) => n + 1);
+            }}
+            onNavigate={(targetBook, targetDraft) =>
+              setInlineTarget({ bookId: targetBook, draftId: targetDraft })
+            }
+            onChanged={(targetBook, draft) => {
+              if (inlineContext.current?.scope === session.scope_key)
+                inlineContext.current.onChanged(targetBook, draft);
+              acceptMutatedDraft(targetBook, draft);
+              setWorkspaceRevision((n) => n + 1);
+            }}
+          />
+        </Suspense>
+      )}
+      {proposalTarget && (
+        <Suspense
+          fallback={
+            <div className="loading-block" role="status">
+              <Spinner />
+              正在打开详情…
+            </div>
+          }
+        >
+          {' '}
+          <ProposalTaskDialog
+            key={`${session.scope_key}:${proposalTarget}`}
+            session={session}
+            jobId={proposalTarget}
+            onBusyChange={changeBusinessBusy}
+            onClose={() => {
+              setProposalTarget('');
+              setWorkspaceRevision((n) => n + 1);
+            }}
+            onChanged={() => setWorkspaceRevision((n) => n + 1)}
+            onOpenDraft={(id, targetDraft) => {
+              setProposalTarget('');
+              setInlineTarget({ bookId: id, draftId: targetDraft });
+            }}
+          />
+        </Suspense>
+      )}
+    </>
+  );
 
   if (clientPortal && profile) {
     // The accounting workspace may retain a different book while the client is
@@ -1185,6 +1281,15 @@ export default function App() {
             openBriefing(target);
           }}
           onLogout={() => void auth.logout()}
+          onAccounting={canSeeAccounting ? () => navigate('accounting') : undefined}
+          onAdmin={
+            me?.permissions.manage_admin || me?.permissions.manage_firm
+              ? () => {
+                  if (!navigationLocked) void routerNavigate('/admin');
+                }
+              : undefined
+          }
+          navigationLocked={navigationLocked}
           persona={auth.persona}
           personas={auth.config?.personas}
           onPersonaChange={(value) => void auth.choosePersona(value)}
@@ -1214,6 +1319,7 @@ export default function App() {
             onLogout={auth.logout}
           />
           {routeContent}
+          {taskDialogs}
           {briefingPicker && (
             <Modal
               title="选择财税简报"
@@ -1282,9 +1388,23 @@ export default function App() {
         }
         presentationNav={profile ? primaryNav(presentationRole(profile), profile) : undefined}
         presentationLabel={profile ? roleHome(presentationRole(profile)).name : undefined}
-        onAdmin={() => {
-          if (!navigationLocked) void routerNavigate('/admin');
-        }}
+        onAdmin={
+          me?.permissions.manage_admin || me?.permissions.manage_firm
+            ? () => {
+                if (!navigationLocked) void routerNavigate('/admin');
+              }
+            : undefined
+        }
+        onAccess={
+          me?.permissions.manage_firm
+            ? () => {
+                if (!navigationLocked) {
+                  setNotice(null);
+                  setModal('access');
+                }
+              }
+            : undefined
+        }
         canAccounting={canSeeAccounting}
         canProcessing={experience.processing}
         businessLabel={experience.businessLabel}
@@ -1318,17 +1438,6 @@ export default function App() {
         }
         footer={
           <>
-            {(me?.permissions.manage_admin || me?.permissions.manage_firm) && (
-              <button
-                className="help-link"
-                disabled={navigationLocked || commandOpen}
-                onClick={() => void routerNavigate('/admin')}
-              >
-                <ShieldCheck size={16} />
-                组织管理后台
-                <ArrowUpRight size={13} />
-              </button>
-            )}
             {session.mode === 'local' && !!auth.config?.personas?.length && (
               <label className="persona-switch">
                 <span>切换验证身份</span>
@@ -1346,20 +1455,6 @@ export default function App() {
                 </select>
               </label>
             )}
-            {me?.permissions.manage_firm && (
-              <button
-                className="help-link"
-                disabled={navigationLocked || commandOpen}
-                onClick={() => {
-                  setNotice(null);
-                  setModal('access');
-                }}
-              >
-                <Users size={16} />
-                成员与账套授权
-                <ArrowUpRight size={13} />
-              </button>
-            )}
             <button
               type="button"
               className="help-link"
@@ -1376,7 +1471,7 @@ export default function App() {
                 <strong>{session.user_name}</strong>
                 <span>
                   {profile
-                    ? roleCopy[profile.role].name
+                    ? roleHome(presentationRole(profile)).name
                     : session.role
                       ? roleLabels[session.role]
                       : '工作空间成员'}
@@ -1664,74 +1759,7 @@ export default function App() {
           />
         </Suspense>
       )}
-      {inlineTarget && (
-        <Suspense
-          fallback={
-            <div className="loading-block" role="status">
-              <Spinner />
-              正在打开详情…
-            </div>
-          }
-        >
-          {' '}
-          <InlineReviewDrawer
-            key={`${session.scope_key}:${inlineTarget.bookId}:${inlineTarget.draftId}`}
-            session={session}
-            bookId={inlineTarget.bookId}
-            draftId={inlineTarget.draftId}
-            queue={
-              inlineContext.current?.scope === session.scope_key
-                ? inlineContext.current.queue
-                : routeView === 'home'
-                  ? []
-                  : drafts.map((d) => ({ book_id: bookId, draft_id: d.id }))
-            }
-            onBusyChange={changeBusinessBusy}
-            onClose={() => {
-              inlineContext.current?.onClose();
-              inlineContext.current = null;
-              setInlineTarget(null);
-              setWorkspaceRevision((n) => n + 1);
-            }}
-            onNavigate={(targetBook, targetDraft) =>
-              setInlineTarget({ bookId: targetBook, draftId: targetDraft })
-            }
-            onChanged={(targetBook, draft) => {
-              if (inlineContext.current?.scope === session.scope_key)
-                inlineContext.current.onChanged(targetBook, draft);
-              acceptMutatedDraft(targetBook, draft);
-              setWorkspaceRevision((n) => n + 1);
-            }}
-          />
-        </Suspense>
-      )}
-      {proposalTarget && (
-        <Suspense
-          fallback={
-            <div className="loading-block" role="status">
-              <Spinner />
-              正在打开详情…
-            </div>
-          }
-        >
-          {' '}
-          <ProposalTaskDialog
-            key={`${session.scope_key}:${proposalTarget}`}
-            session={session}
-            jobId={proposalTarget}
-            onBusyChange={changeBusinessBusy}
-            onClose={() => {
-              setProposalTarget('');
-              setWorkspaceRevision((n) => n + 1);
-            }}
-            onChanged={() => setWorkspaceRevision((n) => n + 1)}
-            onOpenDraft={(id, targetDraft) => {
-              setProposalTarget('');
-              setInlineTarget({ bookId: id, draftId: targetDraft });
-            }}
-          />
-        </Suspense>
-      )}
+      {taskDialogs}
       {modal === 'help' && (
         <Modal
           title="从可靠的第一笔账开始"

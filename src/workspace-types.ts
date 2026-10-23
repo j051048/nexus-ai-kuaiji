@@ -202,17 +202,6 @@ export function taskStateLabel(task: Pick<WorkspaceTask, 'kind' | 'state'>): str
   };
   return labels[task.state] ?? '状态待核实';
 }
-export const roleCopy: Record<WorkspaceRole, { name: string; subtitle: string }> = {
-  employee: { name: '我的工作台', subtitle: '上传票据、确认事项，随时查看审批和补件进度。' },
-  approver: { name: '审批工作台', subtitle: '先处理本部门待审批事项，再查看资料与办理进度。' },
-  finance: { name: '财务工作台', subtitle: '核验业务与票据，把资料完整的事项移交会计。' },
-  accountant: {
-    name: '会计工作台',
-    subtitle: '集中处理授权企业的异常、凭证复核、旧账迁移与交付回执。',
-  },
-  manager: { name: '企业工作台', subtitle: '关注资料收集、成员协作与后台处理情况。' },
-  viewer: { name: '工作空间', subtitle: '查看当前授权范围内的事项与办理进度。' },
-};
 export const taskLabels: Record<TaskKind, string> = {
   intake: '资料草稿',
   business: '我的事项',

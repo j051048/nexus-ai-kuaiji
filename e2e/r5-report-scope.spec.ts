@@ -163,7 +163,7 @@ async function pick(page: Page, company: string) {
 async function briefing(page: Page) {
   await page
     .getByRole('navigation', { name: '客户服务' })
-    .getByRole('button', { name: '本月简报', exact: true })
+    .getByRole('button', { name: '报告', exact: true })
     .click();
 }
 async function assertB(page: Page, requests: string[]) {
@@ -179,6 +179,7 @@ async function assertB(page: Page, requests: string[]) {
 
 test('U01 保存B视图、切A、恢复B后，任务、地址与报告都使用B', async ({ page }) => {
   const { requests, errors } = await portal(page);
+  await page.getByRole('button', { name: '显示列表选项', exact: true }).click();
   await page.getByRole('button', { name: '紧凑表格视图', exact: true }).click();
   await pick(page, '合成企业B');
   await expect(page.getByRole('button', { name: '紧凑表格视图', exact: true })).toHaveAttribute(
@@ -212,7 +213,7 @@ test('U02 看A报告、返回待办、选B后不会沿用A账套', async ({ page
   await expect(page.getByRole('heading', { name: '合成企业A · 2026-10 财税简报' })).toBeVisible();
   await page
     .getByRole('navigation', { name: '客户服务' })
-    .getByRole('button', { name: '待办', exact: true })
+    .getByRole('button', { name: '企业首页', exact: true })
     .click();
   await pick(page, '合成企业B');
   await briefing(page);
@@ -232,7 +233,7 @@ test('A迟到报告不能覆盖B报告', async ({ page }) => {
     await pending;
     await page
       .getByRole('navigation', { name: '客户服务' })
-      .getByRole('button', { name: '待办', exact: true })
+      .getByRole('button', { name: '企业首页', exact: true })
       .click();
     await pick(page, '合成企业B');
     await briefing(page);

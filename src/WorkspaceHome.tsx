@@ -6,7 +6,6 @@ import {
   Clock3,
   FilePlus2,
   FileText,
-  Layers3,
   List,
   LoaderCircle,
   Play,
@@ -21,7 +20,6 @@ import { api, ApiError, errorMessage } from './api';
 import { AgentCompanyPicker } from './AgentCompanyPicker';
 import {
   formatTaskAmount,
-  roleCopy,
   savedWorkspaceViews,
   taskLabels,
   taskStateLabel,
@@ -37,11 +35,12 @@ import type {
   WorkspaceTasks,
   TaskKind,
 } from './workspace-types';
-import type { AgentSummary } from './agent-workspace-types';
 import type { Session } from './types';
 import type { BusinessTemplate } from './business-types';
 import { workspaceExperience } from './workspace-experience';
 import { roleHomeGuide } from './workspace-role-home';
+import { presentationRole, roleHome } from './workspace-presentation';
+import { currentHomeTask } from './workspace-home-focus';
 import './workspace.css';
 
 export function WorkspaceHome({
@@ -53,9 +52,10 @@ export function WorkspaceHome({
   onNew,
   onCompanyChange,
   onAccounting,
+  onMaterials,
+  onBusiness,
   onReview,
   onBriefing,
-  onRuns,
   revision,
   paused = false,
   initialCompanyId = '',
@@ -70,6 +70,8 @@ export function WorkspaceHome({
   onNew: (template: BusinessTemplate) => void;
   onCompanyChange?: (companyId: string) => void;
   onAccounting: () => void;
+  onMaterials?: () => void;
+  onBusiness?: () => void;
   onReview: () => void;
   onBriefing?: (target: {
     book_id: string;
@@ -87,6 +89,8 @@ export function WorkspaceHome({
 }) {
   const [bucket, setBucket] = useState<'action' | 'waiting'>('action');
   const experience = workspaceExperience(profile);
+  const [listOptionsOpen, setListOptionsOpen] = useState(false);
+  const showListOptions = !experience.simple || listOptionsOpen;
   const [kind, setKind] = useState<TaskKind | ''>('');
   const [company, setCompany] = useState(initialCompanyId);
   const initialCompany = useRef(initialCompanyId);
@@ -103,14 +107,11 @@ export function WorkspaceHome({
   const consumeInitialTasks = useRef(onInitialTasksConsumed);
   consumeInitialTasks.current = onInitialTasksConsumed;
   const [value, setValue] = useState<WorkspaceTasks | null>(firstTasks.current);
-  const [summary, setSummary] = useState<AgentSummary | null>(null);
-  const [summaryError, setSummaryError] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [opening, setOpening] = useState('');
   const [openError, setOpenError] = useState('');
   const [privacyRevision, setPrivacyRevision] = useState(0);
-  const [refreshTick, setRefreshTick] = useState(0);
   const epoch = useRef(0);
   const alive = useRef(true);
   const scope = useRef(session.scope_key);
@@ -121,7 +122,6 @@ export function WorkspaceHome({
       ? JSON.stringify([session.scope_key, 'action', '', '', 0, 'priority', ''])
       : '',
   );
-  const summaryScope = useRef('');
   const openingLock = useRef(false);
   const openingController = useRef<AbortController | null>(null);
   const filterKey = JSON.stringify([
@@ -178,7 +178,6 @@ export function WorkspaceHome({
           request === epoch.current
         ) {
           setValue(null);
-          setSummary(null);
           if (caught instanceof ApiError && [401, 403, 404].includes(caught.status))
             setPrivacyRevision((value) => value + 1);
           setError(errorMessage(caught));
@@ -199,7 +198,6 @@ export function WorkspaceHome({
   useEffect(() => {
     alive.current = true;
     setValue(firstTasks.current);
-    setSummary(null);
     setOpenError('');
     setViews([]);
     setBucket('action');
@@ -249,33 +247,6 @@ export function WorkspaceHome({
       epoch.current++;
     };
   }, [load, revision, filterKey]);
-  useEffect(() => {
-    const controller = new AbortController();
-    const started = session.scope_key;
-    setSummary(null);
-    setSummaryError('');
-    summaryScope.current = '';
-    if (!experience.processing) return () => controller.abort();
-    void api<AgentSummary>('/agent-workspace/summary', session, { signal: controller.signal })
-      .then((next) => {
-        if (alive.current && scope.current === started && !controller.signal.aborted) {
-          summaryScope.current = started;
-          setSummary(next);
-        }
-      })
-      .catch((caught) => {
-        if (alive.current && scope.current === started && !controller.signal.aborted) {
-          setSummary(null);
-          setSummaryError(errorMessage(caught));
-          if (caught instanceof ApiError && [401, 403, 404].includes(caught.status)) {
-            setValue(null);
-            setPrivacyRevision((value) => value + 1);
-            setError(errorMessage(caught));
-          }
-        }
-      });
-    return () => controller.abort();
-  }, [session, revision, refreshTick, experience.processing]);
 
   async function open(task: WorkspaceTask) {
     if (paused || openingLock.current) return;
@@ -296,7 +267,6 @@ export function WorkspaceHome({
     } catch (caught) {
       if (alive.current && scope.current === started && !controller.signal.aborted) {
         setValue(null);
-        setSummary(null);
         if (caught instanceof ApiError && [401, 403, 404].includes(caught.status))
           setPrivacyRevision((value) => value + 1);
         setOpenError(errorMessage(caught));
@@ -340,19 +310,45 @@ export function WorkspaceHome({
       /* No private records are stored. */
     }
   }
-  const copy = roleCopy[profile?.role ?? 'viewer'];
+  const role = presentationRole(profile);
+  const employee = role === 'employee';
+  const finance = role === 'finance';
+  const copy = roleHome(role);
   const guide = profile ? roleHomeGuide(profile) : null;
   const briefings =
-    profile && ['manager', 'finance', 'accountant'].includes(profile.role)
+    profile &&
+    ['manager', 'finance', 'accountant', 'reviewer', 'firm_owner', 'admin'].includes(role)
       ? (profile.briefings ?? [])
       : [];
   const visibleValue =
     dataScope.current === session.scope_key && dataFilter.current === filterKey ? value : null;
-  const visibleSummary = summaryScope.current === session.scope_key ? summary : null;
   const rows = visibleValue?.tasks ?? [];
   const locked = paused || !!opening;
-  const first = bucket === 'action' ? rows[0] : undefined;
-  const waiting = visibleSummary ? visibleSummary.counts.active : null;
+  const first = currentHomeTask({
+    tasks: visibleValue,
+    bucket,
+    offset,
+    company,
+    loading,
+    error: !!(error || openError || profileError),
+    scopeMatches: !onCompanyChange || company === initialCompanyId,
+    searchPending: query.trim() !== search,
+  });
+  const financeNext = profile?.can_finance
+    ? currentHomeTask(
+        {
+          tasks: visibleValue,
+          bucket,
+          offset,
+          company,
+          loading,
+          error: !!(error || openError || profileError),
+          scopeMatches: !onCompanyChange || company === initialCompanyId,
+          searchPending: query.trim() !== search,
+        },
+        true,
+      )
+    : undefined;
   return (
     <main className={'workspace-home' + (experience.simple ? ' workspace-simple' : '')}>
       <header className="workspace-heading">
@@ -371,14 +367,13 @@ export function WorkspaceHome({
             disabled={loading || locked}
             onClick={() => {
               onRetryProfile();
-              setRefreshTick((value) => value + 1);
               void load();
             }}
           >
             <RefreshCw size={15} />
             <span>刷新工作台</span>
           </button>
-          {profile?.can_review && (
+          {profile?.can_review && !employee && !finance && (
             <button className="button primary" disabled={locked} onClick={onReview}>
               开始批量复核
               <ArrowRight size={15} />
@@ -388,20 +383,27 @@ export function WorkspaceHome({
       </header>
       {guide && (
         <section className="workspace-role-guide" aria-label="当前职责与授权范围">
-          <div className="workspace-role-guide-main">
-            <span>当前身份</span>
-            <strong>{guide.label}</strong>
-            <p>{guide.focus}</p>
-          </div>
-          <div className="workspace-role-guide-actions">
-            <span>当前可操作</span>
-            <ul>
-              {guide.actions.map((action) => (
-                <li key={action}>{action}</li>
-              ))}
-            </ul>
-          </div>
-          <p className="workspace-role-guide-boundary">{guide.boundary}</p>
+          <details>
+            <summary>
+              <span>当前身份</span>
+              <strong>{guide.label}</strong>
+              <span>查看岗位与操作说明</span>
+            </summary>
+            <div className="workspace-role-guide-content">
+              <div className="workspace-role-guide-main">
+                <p>{guide.focus}</p>
+              </div>
+              <div className="workspace-role-guide-actions">
+                <span>当前可操作</span>
+                <ul>
+                  {guide.actions.map((action) => (
+                    <li key={action}>{action}</li>
+                  ))}
+                </ul>
+              </div>
+              <p className="workspace-role-guide-boundary">{guide.boundary}</p>
+            </div>
+          </details>
         </section>
       )}
       {profileError && (
@@ -418,62 +420,95 @@ export function WorkspaceHome({
           正在读取我的工作范围…
         </p>
       )}
-      {!!briefings.length && (
-        <section className="workspace-briefings" aria-label="本月财税简报入口">
-          <div className="workspace-briefings-heading">
-            <FileText size={20} />
-            <div>
-              <strong>本月财税简报</strong>
-              <span>已锁期账套可直接查看一页纸经营概览，并打印或导出 PDF。</span>
-            </div>
+      {employee && profile?.can_submit && (
+        <section
+          className="workspace-intake-actions workspace-primary-intake"
+          aria-label="提交与进度"
+        >
+          <div>
+            <FilePlus2 size={21} />
+            <h2>今天要提交什么？</h2>
+            <p>上传票据，确认金额和用途后提交；需要补充的资料会在下方提醒。</p>
           </div>
-          <div className="workspace-briefing-links">
-            {briefings.map((item) => (
+          <div className="workspace-template-grid">
+            {(
+              [
+                ['reimbursement', '提交报销', '员工垫付款项，附上票据和用途'],
+                ['procurement_expense', '采购 / 费用', '记录公司采购或日常开销'],
+                ['daily_cashflow', '日常收支', '说明收到或付出的每一笔款项'],
+              ] as const
+            ).map(([template, label, hint]) => (
               <button
-                key={item.book_id}
-                type="button"
-                disabled={locked || !onBriefing}
-                onClick={() => onBriefing?.(item)}
+                key={template}
+                className="workspace-template-button"
+                disabled={locked}
+                onClick={() => onNew(template)}
               >
                 <span>
-                  <strong>{item.company_name}</strong>
-                  <small>
-                    {item.book_name} · {item.period}
-                  </small>
+                  <strong>{label}</strong>
+                  <small>{hint}</small>
                 </span>
-                <span>
-                  查看简报
-                  <ArrowRight size={14} />
-                </span>
+                <ArrowRight size={15} />
               </button>
             ))}
           </div>
         </section>
       )}
-      {profile?.can_submit && (
-        <section className="workspace-intake-actions" aria-label="快速录入">
+      {finance && (
+        <section className="workspace-primary-finance" aria-label="资料核验与移交">
           <div>
-            <FilePlus2 size={21} />
-            <strong>记录一笔业务</strong>
-            <span>附件与事项一起提交，AI 协助填写。</span>
+            <p className="workspace-section-eyebrow">先核对资料，再交给会计</p>
+            <h2>核验资料并移交会计</h2>
+            <p>核对金额、附件和业务用途；有差异就退回补充，资料完整再移交。</p>
+            {financeNext ? (
+              <div className="workspace-next-task">
+                <span>当前清单下一项</span>
+                <strong>{financeNext.title}</strong>
+                <small>
+                  {financeNext.company_name} · {taskStateLabel(financeNext)}
+                </small>
+              </div>
+            ) : (
+              <p className="workspace-primary-status">
+                {!profile?.can_finance
+                  ? '财务权限已更新，当前无法核验或移交。请重新读取权限，或联系企业管理员。'
+                  : loading
+                    ? '正在读取当前清单…'
+                    : error || profileError || openError
+                      ? '资料状态暂时无法确认，请处理下方提示。'
+                      : '按下方当前清单继续办理，也可查看全部业务事项。'}
+              </p>
+            )}
           </div>
-          {(
-            [
-              ['reimbursement', '报销'],
-              ['procurement_expense', '采购 / 费用'],
-              ['daily_cashflow', '日常收支'],
-            ] as const
-          ).map(([template, label]) => (
-            <button
-              key={template}
-              className="button secondary"
-              disabled={locked}
-              onClick={() => onNew(template)}
-            >
-              {label}
-              <ArrowRight size={15} />
-            </button>
-          ))}
+          <div className="workspace-primary-actions">
+            {financeNext && (
+              <button
+                className="button primary"
+                disabled={locked || loading}
+                onClick={() => void open(financeNext)}
+              >
+                核验下一项
+                <ArrowRight size={15} />
+              </button>
+            )}
+            {onBusiness && (
+              <button
+                className={financeNext ? 'button secondary' : 'button primary'}
+                disabled={locked || !profile?.can_finance || !!profileError}
+                onClick={() => {
+                  if (profile?.can_finance && !profileError) onBusiness();
+                }}
+              >
+                查看待核验事项
+                <ArrowRight size={15} />
+              </button>
+            )}
+            {onMaterials && (
+              <button className="button secondary" disabled={locked} onClick={onMaterials}>
+                查看资料清单
+              </button>
+            )}
+          </div>
         </section>
       )}
       <section className="workspace-summary" aria-label="我的工作概览">
@@ -489,7 +524,7 @@ export function WorkspaceHome({
             <TriangleAlert size={16} />
             需要我处理
           </span>
-          <strong>{visibleValue ? (visibleValue.counts.action ?? 0) : '—'}</strong>
+          <strong>{visibleValue?.counts.action ?? '—'}</strong>
           <small>{experience.actionHint}</small>
         </button>
         <button
@@ -504,61 +539,34 @@ export function WorkspaceHome({
             <Clock3 size={16} />
             {experience.waitingLabel}
           </span>
-          <strong>{visibleValue ? (visibleValue.counts.waiting ?? 0) : '—'}</strong>
+          <strong>{visibleValue?.counts.waiting ?? '—'}</strong>
           <small>保留当前办理进度</small>
         </button>
-        {experience.processing && (
-          <button className="workspace-runtime-link" disabled={locked || !onRuns} onClick={onRuns}>
-            <span>
-              <Layers3 size={16} />
-              Agent 后台
-            </span>
-            <strong>{waiting ?? '—'}</strong>
-            <small>
-              {visibleSummary
-                ? `${visibleSummary.counts.attention} 项需要介入`
-                : '读取真实运行状态'}
-              <ArrowRight size={13} />
-            </small>
-          </button>
-        )}
-        {profile?.can_accounting && (
-          <button
-            className="workspace-accounting-shortcuts"
-            disabled={locked}
-            onClick={onAccounting}
-          >
-            <span>当前授权工作范围</span>
-            <strong>
-              {profile.book_count}
-              <small> 个会计期间</small>
-            </strong>
-            <span>
-              查看企业账套
-              <ArrowRight size={14} />
-            </span>
-          </button>
-        )}
       </section>
-      {summaryError && (
-        <p className="workspace-view-notice" role="status">
-          后台运行概览暂未更新，待办仍可继续处理。
-          <button className="text-button" onClick={() => setRefreshTick((value) => value + 1)}>
-            重试运行概览
-          </button>
-        </p>
-      )}
       <section className="panel workspace-inbox">
         <div className="workspace-inbox-heading">
           <div>
-            <p className="workspace-section-eyebrow">集中分诊</p>
+            <p className="workspace-section-eyebrow">
+              {employee ? '我的提交与补件' : finance ? '当前资料办理清单' : '当前工作清单'}
+            </p>
             <h2>
               {bucket === 'action' ? '需要我处理' : '办理进度'}
               <span>{visibleValue?.pagination.total ?? '—'}</span>
             </h2>
           </div>
           <div className="workspace-view-tools">
-            {!experience.simple && (
+            {experience.simple && (
+              <button
+                type="button"
+                className="button secondary small"
+                aria-expanded={listOptionsOpen}
+                disabled={locked}
+                onClick={() => setListOptionsOpen((value) => !value)}
+              >
+                {listOptionsOpen ? '收起列表选项' : '显示列表选项'}
+              </button>
+            )}
+            {showListOptions && (
               <>
                 <div className="workspace-density" role="group" aria-label="待办显示密度">
                   <button
@@ -651,7 +659,7 @@ export function WorkspaceHome({
               }}
             />
           )}
-          {!experience.simple && (
+          {showListOptions && (
             <label className="workspace-select">
               <span className="sr-only">排序</span>
               <select
@@ -672,7 +680,7 @@ export function WorkspaceHome({
             </label>
           )}
         </div>
-        {!experience.simple && !!views.length && (
+        {showListOptions && !!views.length && (
           <div className="workspace-saved-views" aria-label="常用工作视图">
             <span>常用视图</span>
             {views.map((view, index) => (
@@ -800,6 +808,89 @@ export function WorkspaceHome({
           </div>
         )}
       </section>
+      {!!briefings.length && (
+        <section aria-label="本月财税简报入口">
+          <details className="workspace-supporting">
+            <summary>
+              <FileText size={16} />
+              <strong>查看已完成期间的财税简报</strong>
+            </summary>
+            <div className="workspace-briefing-links">
+              {briefings
+                .filter((item) => !company || item.company_id === company)
+                .map((item) => (
+                  <button
+                    key={item.book_id}
+                    type="button"
+                    disabled={locked || !onBriefing}
+                    onClick={() => onBriefing?.(item)}
+                  >
+                    <span>
+                      <strong>{item.company_name}</strong>
+                      <small>
+                        {item.book_name} · {item.period}
+                      </small>
+                    </span>
+                    <span>
+                      查看简报
+                      <ArrowRight size={14} />
+                    </span>
+                  </button>
+                ))}
+            </div>
+          </details>
+        </section>
+      )}
+      {profile?.can_submit && !employee && (
+        <details className="workspace-supporting">
+          <summary>
+            <FilePlus2 size={16} />
+            <strong>记录本人业务</strong>
+            <span>报销、采购费用与日常收支</span>
+          </summary>
+          <div className="workspace-supporting-actions">
+            {(
+              [
+                ['reimbursement', '提交报销'],
+                ['procurement_expense', '采购 / 费用'],
+                ['daily_cashflow', '日常收支'],
+              ] as const
+            ).map(([template, label]) => (
+              <button
+                className="button secondary"
+                key={template}
+                disabled={locked}
+                onClick={() => onNew(template)}
+              >
+                {label}
+                <ArrowRight size={15} />
+              </button>
+            ))}
+          </div>
+        </details>
+      )}
+      {(profile?.can_accounting || (profile?.can_review && (employee || finance))) && (
+        <details className="workspace-supporting">
+          <summary>
+            <FileText size={16} />
+            <strong>其他已授权工作</strong>
+          </summary>
+          <div className="workspace-supporting-actions">
+            {profile.can_accounting && (
+              <button className="button secondary" disabled={locked} onClick={onAccounting}>
+                进入会计账套
+                <ArrowRight size={15} />
+              </button>
+            )}
+            {profile.can_review && (employee || finance) && (
+              <button className="button secondary" disabled={locked} onClick={onReview}>
+                开始批量复核
+                <ArrowRight size={15} />
+              </button>
+            )}
+          </div>
+        </details>
+      )}
       <p className="workspace-boundary">
         <CircleDot size={12} />
         AI 在后台识别、核对与生成草稿；会计复核后导出。

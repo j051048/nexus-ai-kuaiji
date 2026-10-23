@@ -149,35 +149,32 @@ class WorkspaceService:
         can_manage = manager or any(row["role"] in {"owner", "admin"} for row in companies)
         raw_briefings = rows[0]["briefings_json"]
         briefings = json.loads(raw_briefings) if isinstance(raw_briefings, str) else raw_briefings
-        # The firm's accounting role is primary; a company's finance member
-        # keeps the finance workflow even when additionally allowed to review.
+        # Primary jobs precede additive submission/approval/book capabilities.
+        # This is a firm-wide presentation identity: management in one company
+        # never grants management in another; resource authorization stays live.
         role = (
             "accountant"
             if firm_role in {"owner", "admin", "operator", "reviewer"}
+            else "manager"
+            if can_manage
             else "finance"
             if can_finance
             else "approver"
             if can_approve
             else "employee"
             if can_submit
-            else "manager"
-            if can_manage
             else "accountant"
             if can_review
             else "viewer"
         )
         # Additive read-only presentation identity. It does not alter grants;
         # API authorization still uses the existing capability/scope checks.
-        display_role = (
-            "firm_owner" if firm_role == "owner"
-            else "admin" if firm_role == "admin"
-            else "reviewer" if firm_role == "reviewer"
-            else "accountant" if firm_role == "operator"
-            else "finance" if can_finance
-            else "approver" if can_approve
-            else "manager" if role == "manager"
-            else role
-        )
+        display_role = {
+            "owner": "firm_owner",
+            "admin": "admin",
+            "reviewer": "reviewer",
+            "operator": "accountant",
+        }.get(firm_role, role)
         result = {
             "role": role,
             "display_role": display_role,

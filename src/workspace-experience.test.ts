@@ -22,17 +22,61 @@ describe('角色工作入口', () => {
     expect(workspaceExperience(employee)).toMatchObject({
       processing: false,
       simple: true,
-      businessLabel: '我的提交',
+      businessLabel: '我的事项',
       kinds: ['intake', 'business', 'case', 'material'],
     });
     expect(workspaceExperience({ ...employee, role: 'approver', can_approve: true })).toMatchObject(
       { processing: false, businessLabel: '部门事项' },
     );
   });
-  it('兼任能力来自当前服务端能力位，角色标题不遮蔽合法工作', () => {
-    expect(workspaceExperience({ ...employee, can_finance: true }).processing).toBe(true);
-    expect(workspaceExperience({ ...employee, can_accounting: true }).kinds).toBeNull();
-    expect(workspaceExperience({ ...employee, can_manage: true }).processing).toBe(true);
-    expect(workspaceExperience({ ...employee, role: 'accountant' }).processing).toBe(false);
+  it('兼任权限不把客户岗位变成专业主界面', () => {
+    for (const role of ['employee', 'approver', 'finance', 'manager', 'viewer'] as const) {
+      expect(
+        workspaceExperience({
+          ...employee,
+          role,
+          can_finance: true,
+          can_accounting: true,
+          can_review: true,
+          can_manage: true,
+        }).processing,
+      ).toBe(false);
+    }
+    expect(workspaceExperience({ ...employee, role: 'accountant' }).processing).toBe(true);
+  });
+  it('工作体验跟随服务端主身份，不跟随旧角色或附加权限', () => {
+    expect(
+      workspaceExperience({ ...employee, display_role: 'finance', can_accounting: true }),
+    ).toMatchObject({
+      processing: false,
+      businessLabel: '业务事项',
+      actionHint: '资料核验 · 移交会计',
+    });
+    expect(workspaceExperience({ ...employee, display_role: 'reviewer' })).toMatchObject({
+      processing: true,
+      simple: false,
+      kinds: null,
+    });
+    expect(
+      workspaceExperience({
+        ...employee,
+        role: 'accountant',
+        display_role: 'employee',
+        can_accounting: true,
+      }),
+    ).toMatchObject({ processing: false, businessLabel: '我的事项' });
+  });
+  it('保留当前授权的财务核验、移交和兼任复核筛选入口', () => {
+    const finance = workspaceExperience({ ...employee, role: 'finance', can_finance: true });
+    expect(finance.processing).toBe(false);
+    expect(finance.kinds).toEqual(expect.arrayContaining(['finance', 'handoff']));
+    const reviewer = workspaceExperience({ ...employee, can_review: true });
+    expect(reviewer.processing).toBe(false);
+    expect(reviewer.kinds).toEqual(expect.arrayContaining(['review', 'export', 'delivery']));
+    const accounting = workspaceExperience({ ...employee, can_accounting: true });
+    expect(accounting.kinds).toEqual(
+      expect.arrayContaining(['handoff', 'ocr', 'proposal', 'migration']),
+    );
+    expect(workspaceExperience(employee).kinds).not.toContain('review');
   });
 });

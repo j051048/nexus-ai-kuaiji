@@ -1,0 +1,121 @@
+.workflow-guide {
+  margin: 16px 0;
+  padding: 16px 18px;
+  border: 1px solid #d6e2d2;
+  border-left: 3px solid #5a7b60;
+  border-radius: 10px;
+  background: #f7faf4;
+  color: #36553e;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.workflow-guide h3 {
+  margin: 0 0 12px;
+  font-size: 14px;
+  font-weight: 650;
+}
+.workflow-guide > ol {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  list-style: none;
+  padding: 0;
+  margin: 0 0 12px;
+}
+.workflow-guide-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #7a8675;
+  min-width: 0;
+}
+.workflow-guide-number {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border: 1px solid #d4dfcf;
+  border-radius: 50%;
+  background: #fff;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.workflow-guide-step--current,
+.workflow-guide-step--blocked {
+  color: #244e37;
+  font-weight: 650;
+}
+.workflow-guide-step--current .workflow-guide-number,
+.workflow-guide-step--blocked .workflow-guide-number {
+  background: #285943;
+  border-color: #285943;
+  color: #fff;
+}
+.workflow-guide-step--done {
+  color: #55734f;
+}
+.workflow-guide-message p {
+  margin: 4px 0;
+  overflow-wrap: anywhere;
+}
+.workflow-guide-message strong {
+  display: inline-block;
+  margin-right: 10px;
+  color: #3e5941;
+  font-weight: 600;
+}
+.workflow-guide--warning {
+  border-color: #e6d9b8;
+  border-left-color: #ad8138;
+  background: #fdfaf2;
+}
+.workflow-guide--warning .workflow-guide-step--blocked .workflow-guide-number {
+  background: #8a642b;
+  border-color: #8a642b;
+}
+.workflow-guide details {
+  margin-top: 10px;
+  border-top: 1px solid #dce5d6;
+  padding-top: 8px;
+}
+.workflow-guide summary {
+  cursor: pointer;
+  width: fit-content;
+  min-height: 24px;
+}
+.workflow-guide summary:focus-visible {
+  outline: 2px solid #285943;
+  outline-offset: 3px;
+}
+.workflow-guide details ul {
+  margin: 8px 0 0;
+  padding-left: 20px;
+  color: #64755e;
+}
+.workflow-guide .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+@media (max-width: 640px) {
+  .workflow-guide {
+    padding: 14px;
+    font-size: 12px;
+  }
+  .workflow-guide > ol {
+    gap: 8px 12px;
+  }
+  .workflow-guide summary {
+    min-height: 36px;
+    display: flex;
+    align-items: center;
+  }
+}

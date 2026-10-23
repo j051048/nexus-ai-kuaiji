@@ -91,7 +91,7 @@ test('员工报销经过独立审批与原件上传后交接指定账套、会�
   await expect(page.getByRole('status')).toContainText('财务核验已通过');
   await page.getByLabel('交接到账套', { exact: true }).selectOption({ index: 1 });
   await page.getByRole('button', { name: '生成凭证草稿', exact: true }).click();
-  await expect(page.getByRole('status')).toContainText('已生成凭证草稿');
+  await expect(page.getByRole('status')).toContainText('已交接并关联凭证草稿');
   await expect(page.getByRole('button', { name: '提交审批', exact: true })).toHaveCount(0);
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({ path: 'artifacts/business-workbench.png', fullPage: true });
@@ -104,6 +104,18 @@ test('员工报销经过独立审批与原件上传后交接指定账套、会�
   await expect(
     page.getByRole('heading', { name: '青屿设计（虚构示例）', exact: true }),
   ).toBeVisible();
+  // The synthetic image has no OCR result. Follow the real manual exception
+  // workflow instead of expecting an unrecognized attachment to pass review.
+  await expect(page.getByRole('button', { name: '确认审核', exact: true })).toBeDisabled();
+  await page.getByRole('button', { name: '重新核对', exact: true }).click();
+  const missingOcr = page.locator('.intelligence-finding').filter({
+    hasText: '附件尚未成功识别，需人工核对或重试',
+  });
+  await missingOcr.getByRole('textbox', { name: /^异常处理依据 / }).fill(
+    '本地合成资料验收：已人工核对事项日期、金额、用途及附件；本票据为虚构流程测试，不代表真实票据验真。',
+  );
+  await missingOcr.getByRole('button', { name: '记录人工处理', exact: true }).click();
+  await expect(missingOcr).toContainText('已人工处理');
   await expect(page.getByRole('button', { name: '确认审核', exact: true })).toBeEnabled();
   await page.getByRole('button', { name: '确认审核', exact: true }).click();
   await page.getByLabel('选择凭证 ' + description, { exact: true }).check();

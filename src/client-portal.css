@@ -21,6 +21,7 @@
 .client-portal-mark {
   font-weight: 800;
   letter-spacing: 0.06em;
+  white-space: nowrap;
 }
 .client-portal-firm {
   color: #6c786c;
@@ -84,6 +85,25 @@
 @media (max-width: 640px) {
   .client-portal-header {
     padding: 10px 14px;
+    gap: 8px;
+  }
+  .client-portal-header > div:first-child {
+    flex-shrink: 0;
+  }
+  .client-portal-header > .client-portal-user {
+    min-width: 0;
+    gap: 4px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+  .client-portal-user > span {
+    max-width: 140px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .client-portal-user select {
+    max-width: 110px;
   }
   .client-portal-firm,
   .client-portal-user small {
@@ -98,8 +118,52 @@
   }
   .client-portal-tabs button {
     flex: 1;
+    min-width: 0;
+    flex-direction: column;
+    gap: 4px;
     justify-content: center;
     padding: 9px 5px;
     font-size: 11px;
   }
+  .client-portal-tabs button > span {
+    white-space: nowrap;
+  }
+}
+.client-portal-settings {
+  position: relative;
+  flex-shrink: 0;
+}
+.client-portal-settings > summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  padding: 6px 10px;
+  cursor: pointer;
+  border-radius: 8px;
+  list-style: none;
+  white-space: nowrap;
+}
+.client-portal-settings > summary::-webkit-details-marker {
+  display: none;
+}
+.client-portal-settings > summary:focus-visible {
+  outline: 2px solid #285943;
+  outline-offset: 2px;
+}
+.client-portal-settings > div {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 30;
+  width: min(240px, calc(100vw - 32px));
+  padding: 8px;
+  border: 1px solid #dfe6de;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 12px 30px #173d3014;
+}
+.client-portal-user .client-portal-settings button {
+  width: 100%;
+  min-height: 44px;
+  text-align: left;
 }

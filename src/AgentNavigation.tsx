@@ -8,12 +8,9 @@ import {
   CheckCheck,
   ClipboardCheck,
   FileCheck2,
-  FileSearch,
   FileText,
-  Layers3,
   LayoutDashboard,
   Menu,
-  Plus,
   ShieldCheck,
   X,
 } from 'lucide-react';
@@ -60,6 +57,7 @@ export function AgentNavigation({
   presentationNav,
   presentationLabel,
   onAdmin,
+  onAccess,
   onNavigate,
   onAccountingFilter,
 }: {
@@ -68,6 +66,7 @@ export function AgentNavigation({
   presentationNav?: PresentationNavItem[];
   presentationLabel?: string;
   onAdmin?: () => void;
+  onAccess?: () => void;
   canAccounting: boolean;
   canMonthly?: boolean;
   canReview: boolean;
@@ -121,10 +120,107 @@ export function AgentNavigation({
       else opener.current?.focus();
     };
   }, [mobileOpen]);
-  const workActive = current === 'home';
   function go(view: AgentNavigationView) {
     if (locked) return;
     onNavigate(view);
+    setMobileOpen(false);
+  }
+  const businessItems: PresentationNavItem[] = [
+    { id: 'home', label: '我的待办', hint: '需要我处理的工作' },
+    ...(canOperations
+      ? [
+          { id: 'firm', label: '全所概览', hint: '交付进度与人员安排' },
+          { id: 'onboarding', label: '客户开通', hint: '准备资料并完成检查' },
+          { id: 'inbox', label: '异常收件箱', hint: '分派和催办' },
+        ]
+      : []),
+    ...(canAccounting ? [{ id: 'accounting', label: '客户企业', hint: '选择客户并继续办理' }] : []),
+    ...(canMonthly ? [{ id: 'monthly', label: '月度交付', hint: '负责人、期限与进度' }] : []),
+    { id: 'materials', label: '资料清单', hint: '收集和补充资料' },
+    { id: 'business', label: businessLabel, hint: '提交、核验与移交' },
+    { id: 'cases', label: '异常与补件', hint: '处理业务阻塞' },
+  ];
+  const settingsItems: PresentationNavItem[] = [
+    ...(onAdmin ? [{ id: 'admin', label: '企业与人员管理', hint: '开户、权限与企业资料' }] : []),
+    ...(onAccess ? [{ id: 'access', label: '成员与账套授权', hint: '事务所成员与账套职责' }] : []),
+    ...(canOperations
+      ? [
+          { id: 'ingestion', label: '数据接入', hint: '连接与导入失败' },
+          { id: 'observability', label: '运行可观测性', hint: '队列、锁与耗时' },
+          { id: 'operations', label: '费用与运行监控', hint: '用量、额度与告警' },
+        ]
+      : []),
+    ...(canProcessing
+      ? [
+          { id: 'runs', label: '后台运行', hint: '处理记录与接管' },
+          { id: 'queue', label: '票据处理任务', hint: '进度与重试' },
+          { id: 'intelligence', label: '票据核对异常', hint: '查看识别与核对记录' },
+        ]
+      : []),
+    ...(canQuality ? [{ id: 'quality', label: '试点评测', hint: '验证处理效果' }] : []),
+    ...(canAccounting
+      ? [{ id: 'portfolio', label: '客户人工投入', hint: '查看人工处理时间' }]
+      : []),
+  ];
+  const canShow = (item: PresentationNavItem) => {
+    if (item.id === 'admin') return Boolean(onAdmin);
+    if (
+      ['firm', 'onboarding', 'inbox', 'ingestion', 'observability', 'operations'].includes(item.id)
+    )
+      return canOperations;
+    if (item.id === 'accounting' || item.id === 'revision') return canAccounting;
+    if (item.id === 'monthly') return canMonthly;
+    if (item.id === 'review') return canReview;
+    if (item.id === 'quality') return canQuality;
+    if (['runs', 'queue', 'intelligence'].includes(item.id)) return canProcessing;
+    return true;
+  };
+  const settingIds = new Set(settingsItems.map((item) => item.id));
+  const mainItems = (presentationNav?.length ? presentationNav : businessItems.slice(0, 1)).filter(
+    (item) => canShow(item) && !settingIds.has(item.id),
+  );
+  const mainIds = new Set(mainItems.map((item) => item.id));
+  const accountingItems = [
+    { id: 'accounting', label: '会计工作台', hint: '账套与凭证' },
+    ...(canReview ? [{ id: 'review', label: '跨企业批量复核', hint: '原件与凭证一起核对' }] : []),
+    { id: 'revision', label: '事实修订与调整', hint: '保留历史并更正事实' },
+  ].filter((item) => !mainIds.has(item.id));
+  const secondaryIds = new Set(accountingItems.map((item) => item.id));
+  const dailyItems = businessItems.filter(
+    (item) => !mainIds.has(item.id) && !secondaryIds.has(item.id),
+  );
+  function renderEntry(item: PresentationNavItem, primary = false) {
+    const Icon = navigationIcon(item.id);
+    const active = current === item.id;
+    return (
+      <button
+        key={item.id}
+        aria-label={item.label}
+        className={'nav-item ' + (primary ? 'agent-primary-item ' : '') + (active ? 'active' : '')}
+        disabled={locked || (item.id === 'admin' && !onAdmin)}
+        aria-current={active ? 'page' : undefined}
+        onClick={() => {
+          if (locked) return;
+          if (item.id === 'admin') {
+            onAdmin?.();
+            setMobileOpen(false);
+          } else if (item.id === 'access') {
+            onAccess?.();
+            setMobileOpen(false);
+          } else go(item.id as AgentNavigationView);
+        }}
+      >
+        <Icon size={primary ? 19 : 16} />
+        <span>
+          {item.label}
+          {primary && <small>{item.hint}</small>}
+        </span>
+      </button>
+    );
+  }
+  function filter(value: 'pending' | 'approved') {
+    if (locked) return;
+    onAccountingFilter(value);
     setMobileOpen(false);
   }
   return (
@@ -194,309 +290,46 @@ export function AgentNavigation({
           </div>
         </div>
         <nav aria-label="主导航" className="agent-primary-nav">
-          {presentationNav?.length ? (
-            <>
-              {presentationLabel && (
-                <p className="agent-nav-context" aria-label="当前工作视角">
-                  {presentationLabel}
-                </p>
-              )}
-              {presentationNav.map((item) => {
-                const Icon =
-                  item.id === 'review'
-                    ? CheckCheck
-                    : item.id === 'cases' || item.id === 'business'
-                      ? ClipboardCheck
-                      : item.id === 'materials'
-                        ? FileCheck2
-                        : item.id === 'monthly' || item.id === 'portfolio'
-                          ? CalendarDays
-                          : item.id === 'firm' || item.id === 'operations' || item.id === 'efficiency'
-                            ? Activity
-                            : item.id === 'accounting'
-                              ? Building2
-                              : item.id === 'messages'
-                                ? FileText
-                                : LayoutDashboard;
-                return (
-                  <button
-                    key={item.id}
-                    aria-label={item.label}
-                    className={
-                      'nav-item agent-primary-item ' +
-                      (current === item.id || (item.id === 'home' && workActive) ? 'active' : '')
-                    }
-                    disabled={locked || (item.id === 'admin' && !onAdmin)}
-                    aria-current={
-                      current === item.id || (item.id === 'home' && workActive) ? 'page' : undefined
-                    }
-                    onClick={() => {
-                      if (item.id === 'admin') onAdmin?.();
-                      else go(item.id as AgentNavigationView);
-                    }}
-                  >
-                    <Icon size={19} />
-                    <span>
-                      {item.label}
-                      <small>{item.hint}</small>
-                    </span>
-                  </button>
-                );
-              })}
-            </>
-          ) : null}
-          <details className="nav-group agent-legacy-nav" open={!presentationNav?.length}>
-            <summary>更多工具</summary>
-          <button
-            aria-label="我的待办"
-            className={'nav-item agent-primary-item ' + (workActive ? 'active' : '')}
-            disabled={locked}
-            onClick={() => go('home')}
-            aria-current={workActive ? 'page' : undefined}
-          >
-            <LayoutDashboard size={19} />
-            <span>
-              我的待办<small>我的工作</small>
-            </span>
-          </button>
-          {canOperations && (
-            <button
-              aria-label="事务所驾驶舱"
-              className={'nav-item agent-primary-item ' + (current === 'firm' ? 'active' : '')}
-              disabled={locked}
-              onClick={() => go('firm')}
-              aria-current={current === 'firm' ? 'page' : undefined}
-            >
-              <Activity size={19} />
-              <span>
-                事务所驾驶舱<small>客户、负载与风险</small>
-              </span>
-            </button>
+          {presentationLabel && (
+            <p className="agent-nav-context" aria-label="当前工作视角">
+              {presentationLabel}
+            </p>
           )}
-          {canOperations && (
-            <button
-              aria-label="数据接入中心"
-              className={'nav-item agent-primary-item ' + (current === 'ingestion' ? 'active' : '')}
-              disabled={locked}
-              onClick={() => go('ingestion')}
-              aria-current={current === 'ingestion' ? 'page' : undefined}
-            >
-              <Cable size={19} />
-              <span>
-                数据接入<small>连接、游标与失败</small>
-              </span>
-            </button>
-          )}
-          {canOperations && (
-            <button
-              aria-label="运行可观测性"
-              className={
-                'nav-item agent-primary-item ' + (current === 'observability' ? 'active' : '')
-              }
-              disabled={locked}
-              onClick={() => go('observability')}
-              aria-current={current === 'observability' ? 'page' : undefined}
-            >
-              <Activity size={19} />
-              <span>
-                运行可观测性<small>队列、锁与成本</small>
-              </span>
-            </button>
-          )}
-          {canOperations && (
-            <button
-              aria-label="客户开通"
-              className={
-                'nav-item agent-primary-item ' + (current === 'onboarding' ? 'active' : '')
-              }
-              disabled={locked}
-              onClick={() => go('onboarding')}
-              aria-current={current === 'onboarding' ? 'page' : undefined}
-            >
-              <Plus size={19} />
-              <span>
-                客户开通<small>模板复制与检查</small>
-              </span>
-            </button>
-          )}
-          {canOperations && (
-            <button
-              aria-label="异常收件箱"
-              className={'nav-item agent-primary-item ' + (current === 'inbox' ? 'active' : '')}
-              disabled={locked}
-              onClick={() => go('inbox')}
-              aria-current={current === 'inbox' ? 'page' : undefined}
-            >
-              <ClipboardCheck size={19} />
-              <span>
-                异常收件箱<small>分派、催办与 SLA</small>
-              </span>
-            </button>
+          {mainItems.map((item) => renderEntry(item, true))}
+          {dailyItems.length > 0 && (
+            <details className="nav-group" open={dailyItems.some((item) => item.id === current)}>
+              <summary>日常业务</summary>
+              {dailyItems.map((item) => renderEntry(item))}
+            </details>
           )}
           {canAccounting && (
-            <button
-              aria-label="客户企业"
-              className={
-                'nav-item agent-primary-item ' + (current === 'accounting' ? 'active' : '')
-              }
-              disabled={locked}
-              onClick={() => go('accounting')}
-              aria-current={current === 'accounting' ? 'page' : undefined}
+            <details
+              className="nav-group"
+              open={['accounting', 'review', 'revision'].includes(current)}
             >
-              <Building2 size={19} />
-              <span>
-                客户企业<small>账套与交付</small>
-              </span>
-            </button>
-          )}
-          {canMonthly && (
-            <button
-              aria-label="客户月度进度"
-              className={'nav-item agent-primary-item ' + (current === 'monthly' ? 'active' : '')}
-              disabled={locked}
-              onClick={() => go('monthly')}
-              aria-current={current === 'monthly' ? 'page' : undefined}
-            >
-              <CalendarDays size={19} />
-              <span>
-                客户月度进度<small>跨企业处理矩阵</small>
-              </span>
-            </button>
-          )}
-          {canProcessing && (
-            <button
-              aria-label="后台运行"
-              className={'nav-item agent-primary-item ' + (current === 'runs' ? 'active' : '')}
-              disabled={locked}
-              onClick={() => go('runs')}
-              aria-current={current === 'runs' ? 'page' : undefined}
-            >
-              <Activity size={19} />
-              <span>
-                后台运行<small>执行进度与接管</small>
-              </span>
-            </button>
-          )}
-          <div className="agent-work-shortcuts" aria-label="工作快捷入口">
-            <button
-              className={'nav-item ' + (current === 'materials' ? 'selected' : '')}
-              disabled={locked}
-              onClick={() => go('materials')}
-            >
-              <FileCheck2 size={16} />
-              <span>资料清单</span>
-            </button>
-            <button
-              className={'nav-item ' + (current === 'business' ? 'selected' : '')}
-              disabled={locked}
-              onClick={() => go('business')}
-            >
-              <FileText size={16} />
-              <span>{businessLabel}</span>
-            </button>
-            <button
-              className={'nav-item ' + (current === 'cases' ? 'selected' : '')}
-              disabled={locked}
-              onClick={() => go('cases')}
-            >
-              <ClipboardCheck size={16} />
-              <span>异常与补件</span>
-            </button>
-            {canReview && (
-              <button
-                className={'nav-item ' + (current === 'review' ? 'selected' : '')}
-                disabled={locked}
-                onClick={() => go('review')}
-              >
-                <CheckCheck size={16} />
-                <span>跨企业批量复核</span>
-              </button>
-            )}
-          </div>
-          </details>
-        </nav>
-        {canAccounting && (
-          <details className="nav-group" open={current === 'accounting'}>
-            <summary>会计工作区</summary>
-            <nav aria-label="会计协作">
-              <button
-                className={'nav-item ' + (current === 'accounting' ? 'selected' : '')}
-                disabled={locked}
-                onClick={() => go('accounting')}
-              >
-                <Building2 size={16} />
-                <span>会计工作台</span>
-              </button>
-              <button
-                className="nav-item"
-                disabled={locked}
-                onClick={() => {
-                  if (!locked) {
-                    onAccountingFilter('pending');
-                    setMobileOpen(false);
-                  }
-                }}
-              >
+              <summary>会计工作区</summary>
+              {accountingItems.map((item) => renderEntry(item))}
+              <button className="nav-item" disabled={locked} onClick={() => filter('pending')}>
                 <CheckCheck size={16} />
                 <span>待审核凭证</span>
               </button>
-              <button
-                className="nav-item"
-                disabled={locked}
-                onClick={() => {
-                  if (!locked) {
-                    onAccountingFilter('approved');
-                    setMobileOpen(false);
-                  }
-                }}
-              >
+              <button className="nav-item" disabled={locked} onClick={() => filter('approved')}>
                 <FileCheck2 size={16} />
                 <span>审核与导出</span>
               </button>
-              <button className="nav-item" disabled={locked} onClick={() => go('revision')}>
-                <FileCheck2 size={16} />
-                <span>事实修订与调整</span>
-              </button>
-            </nav>
-          </details>
-        )}
-        {canProcessing && (
-          <details className="nav-group agent-management-group">
-            <summary>处理记录与管理</summary>
-            <nav aria-label="处理记录与管理">
-              <button className="nav-item" disabled={locked} onClick={() => go('intelligence')}>
-                <FileSearch size={16} />
-                <span>票据核对异常</span>
-              </button>
-              <button className="nav-item" disabled={locked} onClick={() => go('queue')}>
-                <Layers3 size={16} />
-                <span>票据处理任务</span>
-              </button>
-              {canQuality && (
-                <button
-                  className={'nav-item ' + (current === 'quality' ? 'selected' : '')}
-                  disabled={locked}
-                  onClick={() => go('quality')}
-                >
-                  <ShieldCheck size={16} />
-                  <span>试点评测</span>
-                </button>
-              )}
-              {canOperations && (
-                <button className="nav-item" disabled={locked} onClick={() => go('operations')}>
-                  <Activity size={16} />
-                  <span>费用与运行监控</span>
-                </button>
-              )}
-              {canAccounting && (
-                <button className="nav-item" disabled={locked} onClick={() => go('portfolio')}>
-                  <CalendarDays size={16} />
-                  <span>客户人工投入</span>
-                </button>
-              )}
-            </nav>
-          </details>
-        )}
+            </details>
+          )}
+          {settingsItems.length > 0 && (
+            <details
+              className="nav-group agent-management-group"
+              aria-label="设置"
+              open={settingsItems.some((item) => item.id === current)}
+            >
+              <summary>设置</summary>
+              <nav aria-label="设置入口">{settingsItems.map((item) => renderEntry(item))}</nav>
+            </details>
+          )}
+        </nav>
         <div className="agent-sidebar-note">
           <ShieldCheck size={14} />
           <span>原件留存 · 会计复核后导出</span>
@@ -506,4 +339,17 @@ export function AgentNavigation({
       </div>
     </aside>
   );
+}
+
+function navigationIcon(id: string) {
+  if (id === 'review') return CheckCheck;
+  if (['cases', 'business', 'inbox'].includes(id)) return ClipboardCheck;
+  if (id === 'materials') return FileCheck2;
+  if (['monthly', 'portfolio'].includes(id)) return CalendarDays;
+  if (['firm', 'operations', 'observability', 'runs'].includes(id)) return Activity;
+  if (id === 'accounting') return Building2;
+  if (id === 'ingestion') return Cable;
+  if (id === 'admin' || id === 'quality') return ShieldCheck;
+  if (id === 'messages') return FileText;
+  return LayoutDashboard;
 }

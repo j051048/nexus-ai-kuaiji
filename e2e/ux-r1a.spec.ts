@@ -9,6 +9,7 @@ test('R1A 导航唯一高亮、菜单目标与能力过滤', async ({ page }) =>
   const nav = page.getByRole('navigation', { name: '主导航' });
   const primary = nav.locator(':scope > button');
   expect(await primary.count()).toBeLessThanOrEqual(6);
+  await nav.locator('summary').filter({ hasText: /^会计工作区/ }).click();
   const review = nav.getByRole('button', { name: '跨企业批量复核', exact: true });
   await expect(review).toBeVisible();
   await review.click();
@@ -27,13 +28,13 @@ test('R1A 负责人根入口落到全所概览，显式深链接不被吞掉', a
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await choosePersona(page, 'accountant');
   await expect(page).toHaveURL(/\/workspace\/firm/);
-  await expect(page.getByRole('heading', { name: '事务所运营驾驶舱' })).toBeVisible({
+  await expect(page.getByRole('heading', { name: '全所工作台' })).toBeVisible({
     timeout: 30_000,
   });
 
   await page.goto('/workspace/home', { waitUntil: 'domcontentloaded' });
   await expect(page).toHaveURL(/\/workspace\/home/);
-  await expect(page.getByRole('heading', { name: '会计工作台' })).toBeVisible({
+  await expect(page.getByRole('heading', { name: '事务所管理' })).toBeVisible({
     timeout: 30_000,
   });
 
@@ -49,6 +50,6 @@ test('R1A 客户角色默认首页和主导航不出现会计入口', async ({ p
   await choosePersona(page, 'employee');
   await expect(page.locator('.client-portal')).toBeVisible();
   await expect(page.getByRole('navigation', { name: '客户服务' })).toBeVisible();
-  await expect(page.getByRole('button', { name: '提交', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '我的事项', exact: true })).toBeVisible();
   await expect(page.getByRole('navigation', { name: '主导航' })).toHaveCount(0);
 });
