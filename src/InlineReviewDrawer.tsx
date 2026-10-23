@@ -548,7 +548,7 @@ export function InlineReviewDrawer({
           <div>
             <p>同屏复核{position >= 0 && ` · ${position + 1} / ${queue.length}`}</p>
             <h2 id="inline-review-title">原件与凭证，一起核对</h2>
-            <span>
+            <span className="inline-review-scope">
               {detail?.book.company_name} · {detail?.book.name} · {detail?.book.period}
             </span>
             {draft && (
@@ -927,7 +927,9 @@ export function InlineReviewDrawer({
               保存草稿
             </button>
             <button
-              className="button primary"
+              className={
+                position >= 0 && position < queue.length - 1 ? 'button secondary' : 'button primary'
+              }
               disabled={!canApprove}
               onClick={() => void mutate('approve')}
             >

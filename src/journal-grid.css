@@ -1,8 +1,10 @@
 .journal-grid-wrap {
   width: 100%;
+  container-type: inline-size;
+  container-name: journal;
   margin: 14px 0;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   overflow: hidden;
 }
 .journal-entry-grid {
@@ -10,15 +12,27 @@
   border-collapse: collapse;
   table-layout: fixed;
   font-size: var(--font-size-base);
-  background: #fff;
+  background: var(--surface);
 }
 .journal-entry-grid thead {
   background: var(--surface-soft);
   color: var(--muted);
 }
+.journal-grid-unit {
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-regular);
+  color: var(--text-muted);
+}
+.journal-grid-readonly input:disabled,
+.journal-grid-readonly select:disabled {
+  opacity: 1;
+  color: var(--text-secondary);
+  background: var(--surface-soft);
+  cursor: default;
+}
 .journal-entry-grid th,
 .journal-entry-grid td {
-  padding: 8px 6px;
+  padding: 10px 6px;
   border-bottom: 1px solid var(--line);
   text-align: left;
 }
@@ -46,7 +60,7 @@
   min-width: 0;
   padding: 8px 6px;
   border: 1px solid transparent;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   font: inherit;
   color: var(--ink);
   background: transparent;
@@ -58,9 +72,9 @@
 }
 .journal-entry-grid select:focus,
 .journal-entry-grid input:focus {
-  outline: 2px solid var(--green, #3d6041);
+  outline: 2px solid var(--focus-ring);
   outline-offset: -1px;
-  background: #fff;
+  background: var(--surface);
 }
 .journal-entry-grid input {
   font-variant-numeric: tabular-nums;
@@ -71,7 +85,7 @@
 }
 .journal-entry-grid .journal-grid-auxiliary td {
   padding: 8px 12px;
-  background: #fafbf7;
+  background: var(--surface-subtle);
 }
 .journal-grid-auxiliary td > div {
   display: flex;
@@ -89,7 +103,7 @@
 .journal-grid-auxiliary label input {
   text-align: left;
   border-color: var(--line);
-  background: #fff;
+  background: var(--surface);
 }
 @media (min-width: 1101px) {
   .inline-review-facts {
@@ -106,7 +120,8 @@
     padding: 16px 24px;
   }
 }
-@media (max-width: 700px) {
+/* The same journal can live in a full page or a narrow review pane. */
+@container journal (max-width: 640px) {
   .journal-entry-grid,
   .journal-entry-grid tbody {
     display: block;
@@ -154,7 +169,7 @@
   }
   .journal-entry-grid input,
   .journal-entry-grid select {
-    font-size: var(--font-size-input-mobile);
+    font-size: var(--font-size-input);
     border-color: var(--line);
     padding: 10px 6px;
     background: var(--surface-soft);
@@ -167,5 +182,11 @@
   }
   .journal-entry-grid .journal-grid-auxiliary td {
     display: block;
+  }
+}
+@media (max-width: 700px) {
+  .journal-entry-grid input,
+  .journal-entry-grid select {
+    font-size: var(--font-size-input-mobile);
   }
 }

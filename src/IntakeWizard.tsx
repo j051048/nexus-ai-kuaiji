@@ -611,7 +611,13 @@ export function IntakeWizard({
             >
               <Receipt size={18} />
               <strong>{item.name}</strong>
-              <span>{item.description}</span>
+              <span className="intake-template-description">{item.description}</span>
+              {template === item.id && (
+                <span className="intake-template-selected" aria-hidden="true">
+                  <CheckCircle2 size={12} />
+                  当前模板
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -668,10 +674,13 @@ export function IntakeWizard({
           </label>
         </div>
         <div className="intake-two-column">
-          <section className="intake-originals">
-            <h3>
-              <Paperclip size={17} />
-              票据与原件<span>支持多文件</span>
+          <section className="intake-originals" aria-labelledby="intake-originals-title">
+            <h3 id="intake-originals-title">
+              <span className="intake-step-number" aria-hidden="true">
+                2
+              </span>
+              <Paperclip size={17} aria-hidden="true" />
+              票据与原件<span className="intake-section-note">支持多文件</span>
             </h3>
             <div className="intake-upload">
               <Upload size={27} />
@@ -772,7 +781,7 @@ export function IntakeWizard({
                       </button>
                     )}
                   {run && (run.status === 'failed' || run.status === 'stale') && (
-                    <p className="form-error">
+                    <p className="form-error" role="alert">
                       {run.status === 'stale'
                         ? '识别已中断，未自动重发；请刷新等待管理员核定费用后再恢复。'
                         : run.error_detail}
@@ -835,9 +844,12 @@ export function IntakeWizard({
               </p>
             )}
           </section>
-          <section className="intake-fields">
-            <h3>
-              <CheckCircle2 size={17} />
+          <section className="intake-fields" aria-labelledby="intake-fields-title">
+            <h3 id="intake-fields-title">
+              <span className="intake-step-number" aria-hidden="true">
+                3
+              </span>
+              <CheckCircle2 size={17} aria-hidden="true" />
               核对业务信息
             </h3>
             <div className="business-form-grid">
@@ -857,6 +869,7 @@ export function IntakeWizard({
                 <span className="field-label">金额（人民币元）</span>
                 <input
                   inputMode="decimal"
+                  className="intake-amount"
                   aria-label="事项金额"
                   value={fields.amount}
                   placeholder="例如 128.50"
@@ -965,13 +978,14 @@ export function IntakeWizard({
             <label className="intake-confirm">
               <input
                 type="checkbox"
+                aria-describedby="intake-submit-help"
                 checked={confirmed}
                 disabled={disabled}
                 onChange={(event) => setConfirmed(event.target.checked)}
               />
               <span>我已核对原件，确认日期、金额、交易对方与本次业务一致。</span>
             </label>
-            <p className="field-help">
+            <p id="intake-submit-help" className="field-help">
               {direct
                 ? '提交后由授权会计接收资料、生成草稿并独立复核。'
                 : '提交后由部门审批、财务核验，再交给会计复核。'}
@@ -995,7 +1009,10 @@ export function IntakeWizard({
         )}
       </div>
       <footer className="modal-footer intake-footer">
-        <span role="status">{busy === 'saving' ? '正在保存草稿…' : saveState}</span>
+        <span className="intake-save-state" role="status" aria-live="polite" aria-atomic="true">
+          <Save size={15} aria-hidden="true" />
+          <span>{busy === 'saving' ? '正在保存草稿…' : saveState}</span>
+        </span>
         <div>
           <button
             className="button secondary intake-save-draft"

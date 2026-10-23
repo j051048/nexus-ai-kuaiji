@@ -68,7 +68,7 @@ export function JournalEntryGrid({
         ? `删除第 ${index + 1} 行分录`
         : `第 ${index + 1} 行${{ account: '会计科目', debit: '借方金额', credit: '贷方金额', delete: '' }[field]}`;
   return (
-    <div className="journal-grid-wrap">
+    <div className={'journal-grid-wrap' + (readonly ? ' journal-grid-readonly' : '')}>
       <table
         className="journal-entry-grid"
         aria-label={mode === 'inline' ? '同屏凭证分录表' : '凭证分录表'}
@@ -81,9 +81,11 @@ export function JournalEntryGrid({
             <th scope="col">会计科目</th>
             <th scope="col" className="journal-grid-amount">
               借方
+              <span className="journal-grid-unit">（元）</span>
             </th>
             <th scope="col" className="journal-grid-amount">
               贷方
+              <span className="journal-grid-unit">（元）</span>
             </th>
             <th scope="col" className="journal-grid-action">
               <span className="sr-only">操作</span>

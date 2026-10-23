@@ -161,6 +161,7 @@ export function EvidenceViewer({
           </label>
           {file && (
             <div className="inline-file-meta">
+              <strong className="inline-file-name">{file.filename}</strong>
               <span>
                 {(file.size_bytes / 1024).toFixed(0)} KB · SHA-256 {file.sha256.slice(0, 12)}…
               </span>
@@ -175,7 +176,12 @@ export function EvidenceViewer({
           {error && (
             <p className="inline-error" role="alert">
               <TriangleAlert size={16} />
-              {error}
+              <span>
+                {error}
+                <small className="evidence-error-help">
+                  请重新打开凭证读取原件，再继续人工核对。
+                </small>
+              </span>
             </p>
           )}
           {locationMatches && (page || focus?.text_excerpt) && (
@@ -189,7 +195,7 @@ export function EvidenceViewer({
             </div>
           )}
           {loading ? (
-            <div className="inline-evidence-placeholder">
+            <div className="inline-evidence-placeholder" role="status" aria-busy="true">
               <LoaderCircle size={24} className="spinner" />
               <p>正在核验权限并读取原件…</p>
             </div>
@@ -203,7 +209,9 @@ export function EvidenceViewer({
                   src={`${visibleUrl}${page ? `#page=${page}` : ''}`}
                 />
               ) : (
-                <p>此格式不支持同屏展示，请下载原件后核对。</p>
+                <p className="inline-document-unsupported">
+                  此格式不支持同屏展示，请下载原件后核对。
+                </p>
               )}
             </div>
           ) : null}
