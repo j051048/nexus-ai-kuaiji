@@ -218,7 +218,9 @@ export const taskLabels: Record<TaskKind, string> = {
   migration: '旧账迁移',
   material: '周期资料',
 };
-export function taskDestination(task: WorkspaceTask) {
+export function taskDestination(task: WorkspaceTask, client = false) {
+  if (client && task.kind === 'ocr' && task.event_id)
+    return { type: 'business' as const, id: task.event_id };
   switch (task.kind) {
     case 'material':
       return { type: 'material' as const, id: task.ref };

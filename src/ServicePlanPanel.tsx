@@ -1,11 +1,20 @@
 import { useEffect, useState } from 'react';
-import { CalendarDays, ClipboardList, RefreshCw, Save, ShieldCheck, Users } from 'lucide-react';
+import {
+  ArrowRight,
+  CalendarDays,
+  ClipboardList,
+  RefreshCw,
+  Save,
+  ShieldCheck,
+  Users,
+} from 'lucide-react';
 import { Spinner } from './AppPrimitives';
 import { ServicePlanMaterials } from './ServicePlanMaterials';
 import { useServicePlanData } from './service-plan-data';
 import { servicePlanAssignmentIssue } from './service-plan-types';
 import type { ServicePlanCandidate, ServicePlanOverview } from './service-plan-types';
 import type { Session } from './types';
+import { serviceJourney, type ServiceJourneyTarget } from './service-journey';
 import './service-plan.css';
 
 export interface ServicePlanPanelProps {
@@ -18,6 +27,7 @@ export interface ServicePlanPanelProps {
   onChanged?: () => void;
   onBusyChange?: (busy: boolean) => void;
   onDirtyChange?: (dirty: boolean) => void;
+  onOpenStage?: (target: ServiceJourneyTarget) => void;
 }
 
 export function ServicePlanPanel({
@@ -30,6 +40,7 @@ export function ServicePlanPanel({
   onChanged,
   onBusyChange,
   onDirtyChange,
+  onOpenStage,
 }: ServicePlanPanelProps) {
   const path = `/books/${encodeURIComponent(bookId)}/service-plan`;
   const resource = useServicePlanData<ServicePlanOverview>(session, path, revision);
@@ -58,6 +69,17 @@ export function ServicePlanPanel({
     return () => onDirtyChange?.(false);
   }, [planDirty, materialsDirty, onDirtyChange]);
   const dirty = planDirty || materialsDirty;
+  const journey = serviceJourney(
+    matching,
+    { bookId, companyId, period },
+    {
+      loading: resource.loading,
+      busy: resource.busy || materialsBusy,
+      dirty,
+      revoked: resource.revoked,
+      enabled: !!onOpenStage,
+    },
+  );
   function refresh() {
     if (!dirty || window.confirm('服务单或资料说明尚未保存，刷新会放弃本次编辑。是否继续？')) {
       setMaterialRevision((value) => value + 1);
@@ -120,6 +142,38 @@ export function ServicePlanPanel({
               分工只面向当前已授权人员，指派不会新增数据访问权限。
             </span>
           </div>
+          <nav className="service-journey" aria-label="本月办理路径">
+            <div className="service-journey-heading">
+              <h2>沿着这三步继续办理</h2>
+              <p>保留当前企业、账套和月份；每一环节以实际记录为准。</p>
+            </div>
+            <ol>
+              {journey.map((step, index) => (
+                <li key={step.view}>
+                  <span className="service-journey-number" aria-hidden="true">
+                    {index + 1}
+                  </span>
+                  <div>
+                    <h3>{step.title}</h3>
+                    <p>{step.description}</p>
+                    {step.reason && <small>{step.reason}</small>}
+                    <button
+                      type="button"
+                      className="button secondary"
+                      data-service-stage={step.view}
+                      disabled={step.disabled}
+                      onClick={() => {
+                        if (!step.disabled) onOpenStage?.(step.target);
+                      }}
+                    >
+                      {step.action}
+                      <ArrowRight size={14} aria-hidden="true" />
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          </nav>
           <ServicePlanEditor
             key={`${session.scope_key}:${bookId}:${matching.plan?.version ?? 0}:${resource.reset}`}
             overview={matching}

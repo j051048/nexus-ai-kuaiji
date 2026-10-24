@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ArrowUpRight,
   Building2,
@@ -25,6 +25,7 @@ import type {
 } from './monthly-workbench-types';
 import { MonthlyBatchDialog } from './MonthlyBatchDialog';
 import { useMonthlyData } from './useMonthlyData';
+import type { MonthlyProgress } from './workspace-progress';
 import './monthly.css';
 import './service-plan.css';
 
@@ -71,6 +72,8 @@ export function MonthlyClientWorkbench({
   revision = 0,
   onOpenServicePlan,
   canBatchOpen = false,
+  progress,
+  onProgressChange,
 }: {
   session: Session;
   period: string;
@@ -84,10 +87,14 @@ export function MonthlyClientWorkbench({
     period: string;
   }) => void;
   canBatchOpen?: boolean;
+  progress?: MonthlyProgress;
+  onProgressChange?: (value: MonthlyProgress) => void;
 }) {
-  const [query, setQuery] = useState(''),
-    [search, setSearch] = useState(''),
-    [offset, setOffset] = useState(0);
+  const initial = useRef(progress?.period === period ? progress : undefined);
+  const [query, setQuery] = useState(initial.current?.query ?? ''),
+    [search, setSearch] = useState(initial.current?.search ?? ''),
+    [offset, setOffset] = useState(initial.current?.offset ?? 0);
+  const restoredScroll = useRef(false);
   const [batchOpen, setBatchOpen] = useState(false);
   const selectedPeriod = validMonthlyPeriod(period) ? period : new Date().toISOString().slice(0, 7);
   const path =
@@ -98,6 +105,17 @@ export function MonthlyClientWorkbench({
     path,
     revision,
   );
+  useEffect(() => {
+    onProgressChange?.({ period: selectedPeriod, query, search, offset });
+  }, [selectedPeriod, query, search, offset, onProgressChange]);
+  useEffect(() => {
+    if (!data || loading || revoked || restoredScroll.current) return;
+    const frame = requestAnimationFrame(() => {
+      window.scrollTo({ top: initial.current?.scrollY ?? 0, behavior: 'instant' });
+      restoredScroll.current = true;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [data, loading, revoked]);
   function open(
     row: MonthlyClientRow,
     view: MonthlyDestination['view'],

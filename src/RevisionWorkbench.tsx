@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  ArrowLeft,
   ArrowRight,
   FileClock,
   History,
@@ -12,6 +13,7 @@ import { api, errorMessage } from './api';
 import { formatMoney } from './csv';
 import type { Session } from './types';
 import type { BusinessPayload } from './business-types';
+import { revisionIsDirty } from './revision-progress';
 import {
   revisionChanges,
   revisionStateLabel,
@@ -27,11 +29,17 @@ export function RevisionWorkbench({
   initialEventId = '',
   onBusyChange,
   onChanged,
+  onBack,
+  backLabel = '返回原业务事项',
+  onDirtyChange,
 }: {
   session: Session;
   initialEventId?: string;
   onBusyChange?: (busy: boolean) => void;
   onChanged?: () => void;
+  onBack?: () => void;
+  backLabel?: string;
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const [page, setPage] = useState<RevisionPage | null>(null),
     [offset, setOffset] = useState(0);
@@ -148,11 +156,13 @@ export function RevisionWorkbench({
       if (!active.current || scope.current !== started) return;
       setSelected(result);
       setReviewReason('');
+      setReason('');
+      setTargetBook('');
       setNotice(revisionStateLabel[result.state]);
-      if (result.state !== 'pending') {
-        setContext(null);
-        setPayload(null);
-      }
+      // The acknowledged request is now shown in selected and in the history.
+      // Only an unsuccessful/unknown submission keeps an editable local form.
+      setContext(null);
+      setPayload(null);
       onChanged?.();
       await load();
     } catch (failure) {
@@ -201,8 +211,29 @@ export function RevisionWorkbench({
     );
   }
   const changes = context && payload ? revisionChanges(context.payload, payload) : [];
+  const unsaved = revisionIsDirty({ context, payload, targetBook, reason, reviewReason });
+  useEffect(() => {
+    onDirtyChange?.(unsaved);
+    return () => onDirtyChange?.(false);
+  }, [unsaved, onDirtyChange]);
   return (
     <div className="revision-workbench">
+      {onBack && (
+        <button
+          type="button"
+          className="text-button revision-back"
+          disabled={busy}
+          onClick={() => {
+            if (
+              !unsaved ||
+              window.confirm('修订内容或原因尚未提交，返回会放弃本次编辑。是否继续？')
+            )
+              onBack();
+          }}
+        >
+          <ArrowLeft size={15} /> {backLabel}
+        </button>
+      )}
       <header className="revision-header">
         <div>
           <span className="eyebrow">事实版本 · 独立审批</span>

@@ -51,14 +51,17 @@ import { useBookWorkspace, type BookFilter, type BookNotice } from './useBookWor
 import { WorkspaceRouteContent } from './WorkspaceRouteContent';
 import { WorkspaceMfaPrompt } from './WorkspaceMfaPrompt';
 import { useWorkspaceRoute } from './useWorkspaceRoute';
+import { useWorkspaceProgress } from './useWorkspaceProgress';
 import { RouteLeaveDialog } from './RouteLeaveDialog';
 import {
   readWorkspaceRoute,
   workspaceUsesBook,
+  workspaceRouteUrl,
   type WorkspaceRoute,
   type WorkspaceView,
 } from './workspace-route';
 import type { MonthlyDestination } from './monthly-workbench-types';
+import type { ServiceJourneyTarget } from './service-journey';
 import { roleLabels, workspaceViewLabels } from './workspace-labels';
 import {
   AccessManagement,
@@ -193,6 +196,7 @@ export default function App() {
   // Keep one authenticated identity while unmounting all accounting selections
   // and suppressing workspace fetches in the separate administration surface.
   const session = adminMode || activationMode || recoveryMode ? null : auth.session;
+  const progress = useWorkspaceProgress(session?.scope_key);
   if (session) hadWorkspaceIdentity.current = true;
   const homeBootstrap =
     session && auth.homeBootstrap?.scope_key === session.scope_key ? auth.homeBootstrap : null;
@@ -490,6 +494,7 @@ export default function App() {
       !intelligenceBusy &&
       !reviewNavigationLoading,
     onRestore: (route) => {
+      progress.arrived(route);
       const initialHome =
         restoredRouteScope.current !== session?.scope_key &&
         bootstrapProfile.current?.scope_key === session?.scope_key &&
@@ -725,7 +730,7 @@ export default function App() {
   const assistantContextLabel = assistantTarget
     ? `${detail?.book.id === assistantTarget.bookId ? detail.book.name : '当前凭证'} · v${assistantTarget.version}`
     : undefined;
-  function navigate(view: AgentNavigationView, fromAssistant = false) {
+  function navigate(view: AgentNavigationView, fromAssistant = false, keepJourney = false) {
     if (
       navigationLocked &&
       (!fromAssistant ||
@@ -739,6 +744,7 @@ export default function App() {
     )
       return;
     if (view === 'quality' && !bookId) return;
+    if (!keepJourney) progress.clearTrail();
     setRouteView(
       [
         'home',
@@ -787,19 +793,14 @@ export default function App() {
       pendingReview.current = null;
     }
     if (view === 'home') setWorkspaceRevision((n) => n + 1);
-    // Keep the address bar/deep link in sync with the authorized navigation.
-    void routerNavigate(`/workspace/${view}`, { replace: false });
+    // A workflow jump sets its entity and scope in the same render. Let the
+    // route synchronizer write that complete URL; a bare URL here can restore
+    // an empty selection before the target event/book has been applied.
+    if (!keepJourney) void routerNavigate(`/workspace/${view}`, { replace: false });
   }
   function openWorkspaceTask(task: WorkspaceTask) {
     if (navigationLocked) return;
-    const target = taskDestination(task);
-    if (target.type === 'material') {
-      navigate('materials');
-      setMaterialTarget(target.id);
-      setWorkCompany(task.company_id);
-      setWorkBook(profile?.can_accounting ? (task.book_id ?? '') : '');
-      return;
-    }
+    const target = taskDestination(task, primarySurface === 'client');
     if (target.type === 'review' && target.bookId) {
       setInlineTarget({ bookId: target.bookId, draftId: target.id });
       return;
@@ -808,40 +809,49 @@ export default function App() {
       setProposalTarget(target.id);
       return;
     }
+    progress.capture(workspaceRoute, task.key);
+    if (target.type === 'material') {
+      navigate('materials', false, true);
+      setMaterialTarget(target.id);
+      setWorkCompany(task.company_id);
+      setWorkBook(profile?.can_accounting ? (task.book_id ?? '') : '');
+      return;
+    }
     if (target.type === 'business' || target.type === 'intake') {
-      navigate('business');
+      navigate('business', false, true);
+      setWorkCompany(task.company_id);
       if (target.type === 'intake') setIntakeTarget(target.id);
       else setBusinessTarget(target.id);
     } else if (target.type === 'case') {
-      navigate('cases');
+      navigate('cases', false, true);
       setInitialCaseId(target.id);
     } else if (target.type === 'ocr' && target.id) {
-      navigate('queue');
+      navigate('queue', false, true);
       setQueueTarget(target.id);
       setQueueJobTarget(target.jobId);
     } else if (target.type === 'export' && target.bookId) {
-      navigate('accounting');
+      navigate('accounting', false, true);
       setBookId(target.bookId);
       focusBookRef.current = target.bookId;
       setFilter('approved');
       setListTab('drafts');
       if (routeUsesBook) void initialize(undefined, target.bookId);
     } else if (target.type === 'delivery' && target.bookId) {
-      navigate('accounting');
+      navigate('accounting', false, true);
       setBookId(target.bookId);
       focusBookRef.current = target.bookId;
       setDeliveryTarget(target.id);
       setRouteView('delivery');
       if (routeUsesBook) void initialize(undefined, target.bookId);
     } else if (target.type === 'migration' && target.bookId) {
-      navigate('accounting');
+      navigate('accounting', false, true);
       setBookId(target.bookId);
       focusBookRef.current = target.bookId;
       setMigrationTarget(target.id);
       setRouteView('migration');
       if (routeUsesBook) void initialize(undefined, target.bookId);
     } else if (target.type === 'alert') {
-      navigate('operations');
+      navigate('operations', false, true);
       setOperationsTarget(target.id);
     }
   }
@@ -855,16 +865,20 @@ export default function App() {
     setInlineTarget({ bookId: target.book_id, draftId: target.draft_id });
   }
   function openNewIntake(template: BusinessTemplate) {
-    navigate('business');
+    progress.capture(workspaceRoute);
+    navigate('business', false, true);
     setIntakeTemplate(template);
     setNewIntake(true);
   }
   function openMonthlyTarget(target: MonthlyDestination) {
     if (navigationLocked) return;
+    progress.capture(workspaceRoute);
     navigate(
       target.view === 'business' || target.view === 'review' || target.view === 'cases'
         ? target.view
         : 'accounting',
+      false,
+      true,
     );
     setWorkCompany(target.companyId);
     setWorkPeriod(target.period);
@@ -881,6 +895,71 @@ export default function App() {
     )
       setRouteView(target.view as WorkspaceView);
     if (target.filter) setFilter(target.filter);
+  }
+  function openServicePlan(target: { bookId: string; companyId: string; period: string }) {
+    if (navigationLocked) return;
+    progress.capture(workspaceRoute);
+    navigate('monthly', false, true);
+    setRouteView('service');
+    setWorkBook(target.bookId);
+    setWorkCompany(target.companyId);
+    setWorkPeriod(target.period);
+  }
+  function openServiceStage(target: ServiceJourneyTarget) {
+    if (navigationLocked || monthlyDirty) return;
+    if (target.view !== 'materials') {
+      openMonthlyTarget({
+        view: target.view,
+        bookId: target.bookId,
+        companyId: target.companyId,
+        period: target.period,
+      });
+      return;
+    }
+    progress.capture(workspaceRoute);
+    navigate('materials', false, true);
+    setWorkBook(target.bookId);
+    setWorkCompany(target.companyId);
+    setWorkPeriod(target.period);
+    setRouteView('materials');
+  }
+  function returnToWork(discarded = false) {
+    if (busy || businessBusy || (!discarded && (reviewDirty || drawerDirty || monthlyDirty)))
+      return;
+    const origin = progress.takeOrigin();
+    if (discarded) setMonthlyDirty(false);
+    if (origin) {
+      const target = workspaceRouteUrl(origin.route);
+      if (discarded && monthlyDirty) requestAnimationFrame(() => void routerNavigate(target));
+      else void routerNavigate(target);
+    } else if (routeView === 'revision') {
+      if (businessTarget) setRouteView('business');
+      else navigate('home');
+    } else {
+      const period = workPeriod;
+      navigate('monthly');
+      setWorkPeriod(period);
+    }
+  }
+  function openRecordRevision(eventId: string, context?: { companyId: string; period: string }) {
+    if (navigationLocked) return;
+    progress.capture({
+      ...workspaceRoute,
+      eventId,
+      companyId: context?.companyId ?? workCompany,
+      period: context?.period ?? workPeriod,
+    });
+    if (context) {
+      setWorkCompany(context.companyId);
+      setWorkPeriod(context.period);
+    }
+    setBusinessTarget(eventId);
+    setRouteView('revision');
+  }
+  function openRecordDraft(targetBook: string, targetDraft: string) {
+    if (navigationLocked) return;
+    inlineContext.current = null;
+    setInlineTarget({ bookId: targetBook, draftId: targetDraft });
   }
   function openClosingIssue(issue: { type: string; id: string; bookId: string }) {
     if (issue.type === 'draft') {
@@ -1108,6 +1187,12 @@ export default function App() {
     openNewIntake,
     openAgentRun,
     openMonthlyTarget,
+    openServicePlan,
+    openServiceStage,
+    openRecordRevision,
+    openRecordDraft,
+    returnToWork,
+    progress,
     openClosingIssue,
     openInlineReview,
     openContextAssistant,
@@ -1127,24 +1212,40 @@ export default function App() {
   };
   const portalRouteView: WorkspaceView =
     clientPortal &&
-    !['home', 'accounting', 'business', 'materials', 'messages', 'briefing'].includes(routeView)
+    !['home', 'accounting', 'business', 'materials', 'messages', 'briefing'].includes(routeView) &&
+    !(routeView === 'cases' && !!initialCaseId)
       ? 'home'
       : routeView;
   const routeContent = (
-    <WorkspaceRouteContent
-      app={
-        portalRouteView === routeView
-          ? routeApp
-          : {
-              ...routeApp,
-              routeView: portalRouteView,
-              showBusiness:
-                portalRouteView === 'business' ||
-                (portalRouteView === 'accounting' && clientPortal),
-            }
-      }
-      book={bookWorkspace}
-    />
+    <>
+      {progress.origin && !['home', 'monthly', 'service', 'revision'].includes(portalRouteView) && (
+        <div className="workspace-work-return">
+          <button
+            type="button"
+            className="text-button"
+            disabled={navigationLocked || monthlyDirty}
+            onClick={() => returnToWork()}
+          >
+            {progress.origin.label}
+          </button>
+          <span>保留原列表选择，打开时重新核验权限。</span>
+        </div>
+      )}
+      <WorkspaceRouteContent
+        app={
+          portalRouteView === routeView
+            ? routeApp
+            : {
+                ...routeApp,
+                routeView: portalRouteView,
+                showBusiness:
+                  portalRouteView === 'business' ||
+                  (portalRouteView === 'accounting' && clientPortal),
+              }
+        }
+        book={bookWorkspace}
+      />
+    </>
   );
   const clientPortalTab: ClientPortalTab =
     portalRouteView === 'materials'
@@ -1178,7 +1279,7 @@ export default function App() {
             queue={
               inlineContext.current?.scope === session.scope_key
                 ? inlineContext.current.queue
-                : routeView === 'home'
+                : ['home', 'business'].includes(routeView)
                   ? []
                   : drafts.map((d) => ({ book_id: bookId, draft_id: d.id }))
             }

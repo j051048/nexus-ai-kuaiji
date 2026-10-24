@@ -44,6 +44,7 @@ import { workspaceExperience } from './workspace-experience';
 import { roleHomeGuide } from './workspace-role-home';
 import { presentationRole, roleHome } from './workspace-presentation';
 import { currentHomeTask } from './workspace-home-focus';
+import { homeProgress, type HomeProgress } from './workspace-progress';
 import './workspace.css';
 
 export function WorkspaceHome({
@@ -64,6 +65,8 @@ export function WorkspaceHome({
   initialCompanyId = '',
   initialTasks = null,
   onInitialTasksConsumed,
+  progress,
+  onProgressChange,
 }: {
   session: Session;
   profile: WorkspaceProfile | null;
@@ -89,20 +92,26 @@ export function WorkspaceHome({
   initialCompanyId?: string;
   initialTasks?: WorkspaceTasks | null;
   onInitialTasksConsumed?: () => void;
+  progress?: HomeProgress;
+  onProgressChange?: (value: HomeProgress) => void;
 }) {
-  const [bucket, setBucket] = useState<'action' | 'waiting'>('action');
+  const initialProgress = useRef(homeProgress(progress, initialCompanyId));
+  const [bucket, setBucket] = useState(initialProgress.current.bucket);
   const experience = workspaceExperience(profile);
-  const [listOptionsOpen, setListOptionsOpen] = useState(false);
+  const [listOptionsOpen, setListOptionsOpen] = useState(initialProgress.current.optionsOpen);
   const showListOptions = !experience.simple || listOptionsOpen;
-  const [kind, setKind] = useState<TaskKind | ''>('');
+  const [kind, setKind] = useState<TaskKind | ''>(initialProgress.current.kind);
   const [company, setCompany] = useState(initialCompanyId);
   const initialCompany = useRef(initialCompanyId);
   initialCompany.current = initialCompanyId;
-  const [offset, setOffset] = useState(0);
-  const [sort, setSort] = useState<WorkspaceSort>('priority');
-  const [density, setDensity] = useState<WorkspaceDensity>('list');
-  const [query, setQuery] = useState('');
-  const [search, setSearch] = useState('');
+  const [offset, setOffset] = useState(initialProgress.current.offset);
+  const [sort, setSort] = useState<WorkspaceSort>(initialProgress.current.sort);
+  const [density, setDensity] = useState<WorkspaceDensity>(initialProgress.current.density);
+  const [query, setQuery] = useState(initialProgress.current.query);
+  const [search, setSearch] = useState(initialProgress.current.query.trim());
+  const scrollRestore = useRef(initialProgress.current.scrollY ?? 0);
+  const restoredScroll = useRef(false);
+  const appliedCompany = useRef(initialCompanyId);
   const [views, setViews] = useState<SavedWorkspaceView[]>([]);
   const [viewNotice, setViewNotice] = useState('');
   const firstTasks = useRef(initialCompanyId ? null : initialTasks);
@@ -203,14 +212,14 @@ export function WorkspaceHome({
     setValue(firstTasks.current);
     setOpenError('');
     setViews([]);
-    setBucket('action');
-    setKind('');
+    setBucket(initialProgress.current.bucket);
+    setKind(initialProgress.current.kind);
     setCompany(initialCompany.current);
-    setOffset(0);
-    setSort('priority');
-    setDensity('list');
-    setSearch('');
-    setQuery('');
+    setOffset(initialProgress.current.offset);
+    setSort(initialProgress.current.sort);
+    setDensity(initialProgress.current.density);
+    setSearch(initialProgress.current.query.trim());
+    setQuery(initialProgress.current.query);
     setViewNotice('');
     try {
       setViews(savedWorkspaceViews(localStorage.getItem(viewStorageKey(session))));
@@ -224,16 +233,31 @@ export function WorkspaceHome({
     };
   }, [session.scope_key]);
   useEffect(() => {
+    if (appliedCompany.current === initialCompanyId) return;
+    appliedCompany.current = initialCompanyId;
     setCompany(initialCompanyId);
     setOffset(0);
   }, [initialCompanyId]);
   useEffect(() => {
+    onProgressChange?.({
+      bucket,
+      kind,
+      companyId: company,
+      offset,
+      sort,
+      density,
+      query,
+      optionsOpen: listOptionsOpen,
+    });
+  }, [bucket, kind, company, offset, sort, density, query, listOptionsOpen, onProgressChange]);
+  useEffect(() => {
+    if (query.trim() === search) return;
     const timeout = setTimeout(() => {
       setSearch(query.trim());
       setOffset(0);
     }, 220);
     return () => clearTimeout(timeout);
-  }, [query]);
+  }, [query, search]);
   useEffect(() => {
     if (!initialTasksConsumed.current) {
       initialTasksConsumed.current = true;
@@ -326,6 +350,19 @@ export function WorkspaceHome({
   const visibleValue =
     dataScope.current === session.scope_key && dataFilter.current === filterKey ? value : null;
   const rows = visibleValue?.tasks ?? [];
+  useEffect(() => {
+    if (loading || !visibleValue || restoredScroll.current) return;
+    const frame = requestAnimationFrame(() => {
+      window.scrollTo({ top: scrollRestore.current, behavior: 'instant' });
+      const key = initialProgress.current.taskKey;
+      if (key)
+        document
+          .querySelector<HTMLElement>(`[data-task-key="${CSS.escape(key)}"] button`)
+          ?.focus({ preventScroll: true });
+      restoredScroll.current = true;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [loading, visibleValue]);
   const locked = paused || !!opening;
   const first = currentHomeTask({
     tasks: visibleValue,
