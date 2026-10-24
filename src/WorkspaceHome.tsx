@@ -25,7 +25,6 @@ import {
   formatTaskAmount,
   savedWorkspaceViews,
   taskLabels,
-  taskStateLabel,
   viewStorageKey,
   workspaceSortLabels,
 } from './workspace-types';
@@ -44,6 +43,8 @@ import { workspaceExperience } from './workspace-experience';
 import { roleHomeGuide } from './workspace-role-home';
 import { presentationRole, roleHome } from './workspace-presentation';
 import { currentHomeTask } from './workspace-home-focus';
+import { taskPresentation } from './task-presentation';
+import { homeProgress, type HomeProgress } from './workspace-progress';
 import './workspace.css';
 
 export function WorkspaceHome({
@@ -64,6 +65,8 @@ export function WorkspaceHome({
   initialCompanyId = '',
   initialTasks = null,
   onInitialTasksConsumed,
+  progress,
+  onProgressChange,
 }: {
   session: Session;
   profile: WorkspaceProfile | null;
@@ -89,20 +92,26 @@ export function WorkspaceHome({
   initialCompanyId?: string;
   initialTasks?: WorkspaceTasks | null;
   onInitialTasksConsumed?: () => void;
+  progress?: HomeProgress;
+  onProgressChange?: (value: HomeProgress) => void;
 }) {
-  const [bucket, setBucket] = useState<'action' | 'waiting'>('action');
+  const initialProgress = useRef(homeProgress(progress, initialCompanyId));
+  const [bucket, setBucket] = useState(initialProgress.current.bucket);
   const experience = workspaceExperience(profile);
-  const [listOptionsOpen, setListOptionsOpen] = useState(false);
+  const [listOptionsOpen, setListOptionsOpen] = useState(initialProgress.current.optionsOpen);
   const showListOptions = !experience.simple || listOptionsOpen;
-  const [kind, setKind] = useState<TaskKind | ''>('');
+  const [kind, setKind] = useState<TaskKind | ''>(initialProgress.current.kind);
   const [company, setCompany] = useState(initialCompanyId);
   const initialCompany = useRef(initialCompanyId);
   initialCompany.current = initialCompanyId;
-  const [offset, setOffset] = useState(0);
-  const [sort, setSort] = useState<WorkspaceSort>('priority');
-  const [density, setDensity] = useState<WorkspaceDensity>('list');
-  const [query, setQuery] = useState('');
-  const [search, setSearch] = useState('');
+  const [offset, setOffset] = useState(initialProgress.current.offset);
+  const [sort, setSort] = useState<WorkspaceSort>(initialProgress.current.sort);
+  const [density, setDensity] = useState<WorkspaceDensity>(initialProgress.current.density);
+  const [query, setQuery] = useState(initialProgress.current.query);
+  const [search, setSearch] = useState(initialProgress.current.query.trim());
+  const scrollRestore = useRef(initialProgress.current.scrollY ?? 0);
+  const restoredScroll = useRef(false);
+  const appliedCompany = useRef(initialCompanyId);
   const [views, setViews] = useState<SavedWorkspaceView[]>([]);
   const [viewNotice, setViewNotice] = useState('');
   const firstTasks = useRef(initialCompanyId ? null : initialTasks);
@@ -203,14 +212,14 @@ export function WorkspaceHome({
     setValue(firstTasks.current);
     setOpenError('');
     setViews([]);
-    setBucket('action');
-    setKind('');
+    setBucket(initialProgress.current.bucket);
+    setKind(initialProgress.current.kind);
     setCompany(initialCompany.current);
-    setOffset(0);
-    setSort('priority');
-    setDensity('list');
-    setSearch('');
-    setQuery('');
+    setOffset(initialProgress.current.offset);
+    setSort(initialProgress.current.sort);
+    setDensity(initialProgress.current.density);
+    setSearch(initialProgress.current.query.trim());
+    setQuery(initialProgress.current.query);
     setViewNotice('');
     try {
       setViews(savedWorkspaceViews(localStorage.getItem(viewStorageKey(session))));
@@ -224,16 +233,31 @@ export function WorkspaceHome({
     };
   }, [session.scope_key]);
   useEffect(() => {
+    if (appliedCompany.current === initialCompanyId) return;
+    appliedCompany.current = initialCompanyId;
     setCompany(initialCompanyId);
     setOffset(0);
   }, [initialCompanyId]);
   useEffect(() => {
+    onProgressChange?.({
+      bucket,
+      kind,
+      companyId: company,
+      offset,
+      sort,
+      density,
+      query,
+      optionsOpen: listOptionsOpen,
+    });
+  }, [bucket, kind, company, offset, sort, density, query, listOptionsOpen, onProgressChange]);
+  useEffect(() => {
+    if (query.trim() === search) return;
     const timeout = setTimeout(() => {
       setSearch(query.trim());
       setOffset(0);
     }, 220);
     return () => clearTimeout(timeout);
-  }, [query]);
+  }, [query, search]);
   useEffect(() => {
     if (!initialTasksConsumed.current) {
       initialTasksConsumed.current = true;
@@ -326,6 +350,19 @@ export function WorkspaceHome({
   const visibleValue =
     dataScope.current === session.scope_key && dataFilter.current === filterKey ? value : null;
   const rows = visibleValue?.tasks ?? [];
+  useEffect(() => {
+    if (loading || !visibleValue || restoredScroll.current) return;
+    const frame = requestAnimationFrame(() => {
+      window.scrollTo({ top: scrollRestore.current, behavior: 'instant' });
+      const key = initialProgress.current.taskKey;
+      if (key)
+        document
+          .querySelector<HTMLElement>(`[data-task-key="${CSS.escape(key)}"] button`)
+          ?.focus({ preventScroll: true });
+      restoredScroll.current = true;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [loading, visibleValue]);
   const locked = paused || !!opening;
   const first = currentHomeTask({
     tasks: visibleValue,
@@ -477,7 +514,7 @@ export function WorkspaceHome({
                 <span>当前清单下一项</span>
                 <strong>{financeNext.title}</strong>
                 <small>
-                  {financeNext.company_name} · {taskStateLabel(financeNext)}
+                  {financeNext.company_name} · {taskPresentation(financeNext, profile).detail}
                   {financeNext.overdue ? ' · 已逾期' : ''}
                 </small>
               </div>
@@ -753,47 +790,53 @@ export function WorkspaceHome({
                 <span>下一步</span>
               </div>
             )}
-            {rows.map((task) => (
-              <article
-                className={'workspace-task ' + (task.overdue ? 'overdue' : '')}
-                key={task.key}
-                data-task-key={task.key}
-              >
-                <div className="workspace-task-main">
-                  <div className="workspace-task-meta">
-                    <span className="workspace-task-kind">{taskLabels[task.kind]}</span>
-                    <span>{task.company_name}</span>
-                    {task.overdue && <span className="case-overdue">已逾期</span>}
-                    <span className="workspace-task-mobile-amount">
-                      {formatTaskAmount(task.amount)}
-                    </span>
-                  </div>
-                  <h3>{task.title}</h3>
-                  <small>{task.responsible}</small>
-                </div>
-                <div className="workspace-task-state">
-                  <span
-                    data-state={task.state}
-                    className={
-                      'workspace-state-pill ' + (task.bucket === 'action' ? 'attention' : '')
-                    }
-                  >
-                    {taskStateLabel(task)}
-                  </span>
-                  <small>{task.due_on ? `期限 ${task.due_on}` : '未设置期限'}</small>
-                </div>
-                <span className="workspace-task-amount">{formatTaskAmount(task.amount)}</span>
-                <button
-                  className="button secondary"
-                  disabled={locked}
-                  onClick={() => void open(task)}
+            {rows.map((task) => {
+              const summary = taskPresentation(task, profileError ? null : profile);
+              return (
+                <article
+                  className={'workspace-task ' + (task.overdue ? 'overdue' : '')}
+                  key={task.key}
+                  data-task-key={task.key}
+                  data-summary={summary.key}
                 >
-                  {opening === task.key ? <LoaderCircle className="spinner" size={15} /> : null}
-                  {task.action_label}
-                  <ArrowRight size={15} />
-                </button>
-              </article>
-            ))}
+                  <div className="workspace-task-main">
+                    <div className="workspace-task-meta">
+                      <span className="workspace-task-kind">{taskLabels[task.kind]}</span>
+                      <span>{task.company_name}</span>
+                      {task.overdue && <span className="case-overdue">已逾期</span>}
+                      <span className="workspace-task-mobile-amount">
+                        {formatTaskAmount(task.amount)}
+                      </span>
+                    </div>
+                    <h3>{task.title}</h3>
+                    <small>负责人：{summary.responsible}</small>
+                    <p className="workspace-task-guidance">
+                      <span>下一步</span>
+                      {summary.next}
+                    </p>
+                  </div>
+                  <div className="workspace-task-state">
+                    <span data-summary={summary.key} className="workspace-state-pill">
+                      {summary.label}
+                    </span>
+                    <span className="workspace-task-detail" data-state={task.state}>
+                      {summary.detail}
+                    </span>
+                    <small>{task.due_on ? `期限 ${task.due_on}` : '未设置期限'}</small>
+                  </div>
+                  <span className="workspace-task-amount">{formatTaskAmount(task.amount)}</span>
+                  <button
+                    className="button secondary"
+                    disabled={locked}
+                    onClick={() => void open(task)}
+                  >
+                    {opening === task.key ? <LoaderCircle className="spinner" size={15} /> : null}
+                    {summary.actionLabel}
+                    <ArrowRight size={15} />
+                  </button>
+                </article>
+              );
+            })}
           </div>
         ) : (
           !error && (

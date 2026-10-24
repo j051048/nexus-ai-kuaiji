@@ -46,7 +46,10 @@ import { QueueBatchDialog } from './QueueBatchDialog';
 import { IntakeWizard } from './IntakeWizard';
 import { WorkflowGuide } from './WorkflowGuide';
 import { businessGuidance, businessHandoffNotice, businessStatusLabel } from './business-guidance';
+import { BusinessRecordLinks } from './BusinessRecordLinks';
+import { BusinessOriginalPreview } from './BusinessOriginalPreview';
 import './intake.css';
+import './business-record.css';
 
 const statusLabels: Record<BusinessStatus, string> = {
   draft: '草稿',
@@ -112,7 +115,7 @@ export function BusinessWorkspace({
   onOpenBatch?: (batchId: string) => void;
   onOpenCase?: (target: { eventId: string; title: string }) => void;
   initialEventId?: string;
-  onOpenRevision?: (eventId: string) => void;
+  onOpenRevision?: (eventId: string, scope?: { companyId: string; period: string }) => void;
   initialIntakeId?: string;
   initialTemplate?: BusinessTemplate;
   initialNew?: boolean;
@@ -903,11 +906,24 @@ export function BusinessWorkspace({
                   </div>
                 )}
               </dl>
+              <BusinessRecordLinks
+                event={selected}
+                book={mappedBook}
+                busy={!!busy}
+                onOpenDraft={onOpenDraft}
+                onOpenRevision={onOpenRevision}
+              />
               <div className="business-evidence">
                 <h4>
                   <Paperclip size={15} />
                   原始附件<span>{selected.attachments.length} / 10</span>
                 </h4>
+                <BusinessOriginalPreview
+                  key={`${session.scope_key}:${selected.id}:${selected.version}`}
+                  event={selected}
+                  session={session}
+                  busy={!!busy}
+                />
                 {selected.attachments.map((attachment) => (
                   <div className="business-attachment" key={attachment.id}>
                     <FileText size={16} />
@@ -1189,29 +1205,6 @@ export function BusinessWorkspace({
                     </button>
                     <p className="field-help">交接后仍需会计核对科目、金额及凭据，再审核导出。</p>
                   </div>
-                )}
-                {selected.mapping && mappedBook && onOpenRevision && (
-                  <button
-                    className="button secondary"
-                    type="button"
-                    disabled={!!busy}
-                    onClick={() => onOpenRevision(selected.id)}
-                  >
-                    申请事实修订
-                  </button>
-                )}
-                {selected.mapping && mappedBook && (
-                  <button
-                    className="button secondary"
-                    type="button"
-                    disabled={!!busy}
-                    onClick={() =>
-                      onOpenDraft(selected.mapping!.book_id, selected.mapping!.draft_id)
-                    }
-                  >
-                    <ClipboardCheck size={15} />
-                    打开会计复核
-                  </button>
                 )}
               </div>
             </div>

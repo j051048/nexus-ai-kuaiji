@@ -1,12 +1,13 @@
 import type { PresentationRole, WorkspaceProfile } from './workspace-types';
 import type { ClientPortalTab } from './ClientPortalShell';
+import {
+  navigationAllowed,
+  roleNavigation,
+  type PresentationNavItem,
+} from './workspace-navigation';
 
 export type WorkSurface = 'client' | 'accounting' | 'firm' | 'admin';
-export type PresentationNavItem = {
-  id: string;
-  label: string;
-  hint: string;
-};
+export type { PresentationNavItem } from './workspace-navigation';
 
 const roleOrder: PresentationRole[] = [
   'employee',
@@ -95,120 +96,47 @@ export function roleHome(role: PresentationRole, profile?: WorkspaceProfile | nu
   return { ...labels[role], subtitle: labels[role].focus, defaultView };
 }
 
-function rolePrimaryNav(role: PresentationRole): PresentationNavItem[] {
-  switch (role) {
-    case 'employee':
-      return [
-        { id: 'home', label: '首页', hint: '我的退回与进度' },
-        { id: 'business', label: '我的事项', hint: '提交与补件' },
-        { id: 'materials', label: '资料清单', hint: '周期资料' },
-        { id: 'messages', label: '消息', hint: '通知与沟通' },
-        { id: 'briefing', label: '报告', hint: '获授权结果' },
-      ];
-    case 'approver':
-      return [
-        { id: 'home', label: '待审批', hint: '本部门事项' },
-        { id: 'business', label: '部门事项', hint: '审批与退回' },
-        { id: 'materials', label: '资料清单', hint: '部门资料' },
-        { id: 'messages', label: '消息', hint: '通知与沟通' },
-      ];
-    case 'finance':
-      return [
-        { id: 'home', label: '待核验', hint: '资料完整性' },
-        { id: 'business', label: '业务事项', hint: '核验与移交' },
-        { id: 'materials', label: '资料清单', hint: '周期资料' },
-        { id: 'messages', label: '消息', hint: '客户沟通' },
-      ];
-    case 'manager':
-      return [
-        { id: 'home', label: '企业首页', hint: '进度与待确认' },
-        { id: 'briefing', label: '报告', hint: '获授权结果' },
-        { id: 'materials', label: '资料清单', hint: '服务资料' },
-        { id: 'messages', label: '消息', hint: '沟通记录' },
-      ];
-    case 'accountant':
-      return [
-        { id: 'home', label: '今日工作', hint: '我的异常与草稿' },
-        { id: 'review', label: '跨企业批量复核', hint: '待复核凭证与差异' },
-        { id: 'business', label: '客户事项', hint: '待处理业务' },
-        { id: 'cases', label: '异常与补件', hint: '阻塞与退回' },
-        { id: 'monthly', label: '月度交付', hint: '客户期间进度' },
-        { id: 'materials', label: '资料清单', hint: '周期资料' },
-      ];
-    case 'reviewer':
-      return [
-        { id: 'review', label: '跨企业批量复核', hint: '待复核凭证与差异' },
-        { id: 'cases', label: '异常与补件', hint: '退回重提' },
-        { id: 'monthly', label: '月度交付', hint: '复核与交付' },
-        { id: 'materials', label: '资料清单', hint: '证据查看' },
-      ];
-    case 'firm_owner':
-    case 'admin':
-      return [
-        { id: 'firm', label: '全所概览', hint: '交付进度与人员安排' },
-        { id: 'accounting', label: '客户企业', hint: '选择客户并继续办理' },
-        { id: 'monthly', label: '月度交付', hint: '负责人、期限与进度' },
-        { id: 'cases', label: '异常与补件', hint: '交付阻塞' },
-      ];
-    default:
-      return [
-        { id: 'home', label: '首页', hint: '获授权事项' },
-        { id: 'materials', label: '资料清单', hint: '获授权资料' },
-        { id: 'briefing', label: '报告', hint: '获授权结果' },
-      ];
-  }
-}
-
 export function primaryNav(
   role: PresentationRole,
   profile?: WorkspaceProfile | null,
 ): PresentationNavItem[] {
-  const items = rolePrimaryNav(role);
+  const items = roleNavigation(role);
   if (!profile) return items;
-  return items.filter((item) => {
-    if (item.id === 'firm') return Boolean(profile.can_firm_operations);
-    if (item.id === 'accounting') return profile.can_accounting || profile.can_manage;
-    if (item.id === 'review') return profile.can_review;
-    if (item.id === 'monthly') return profile.can_accounting || profile.can_manage;
-    if (item.id === 'business') {
-      return Boolean(
+  return items.filter((item) =>
+    navigationAllowed(item, {
+      accounting: profile.can_accounting || profile.can_manage,
+      monthly: profile.can_accounting || profile.can_manage,
+      review: profile.can_review,
+      operations: Boolean(profile.can_firm_operations),
+      quality: profile.can_review,
+      processing: profile.can_accounting,
+      business: Boolean(
         profile.can_submit ||
         profile.can_approve ||
         profile.can_finance ||
         profile.can_accounting ||
         profile.can_manage,
-      );
-    }
-    if (item.id === 'operations' || item.id === 'efficiency') return profile.can_firm_operations;
-    if (item.id === 'admin') return role === 'admin' && profile.can_manage;
-    return true;
-  });
+      ),
+      admin: role === 'admin' && profile.can_manage,
+      access: profile.can_manage,
+    }),
+  );
 }
 
 export function clientPortalTabs(profile: WorkspaceProfile): ClientPortalTab[] {
-  const role = presentationRole(profile);
-  if (role === 'manager') return ['home', 'materials', 'messages', 'briefing'];
-  if (role === 'viewer') return ['home', 'materials', 'briefing'];
-  if (role === 'employee') return ['home', 'submit', 'materials', 'messages'];
-  if (role === 'approver') return ['home', 'submit', 'materials', 'messages'];
-  return ['home', 'submit', 'materials', 'messages', 'briefing'];
+  return clientPortalNav(profile).map((item) => item.id);
 }
 
-/** Customer shells share the same job labels as the workspace navigation. */
+/** Customer shells and professional shells read the same menu vocabulary. */
 export function clientPortalNav(
   profile: WorkspaceProfile,
 ): (Omit<PresentationNavItem, 'id'> & { id: ClientPortalTab })[] {
-  const nav = rolePrimaryNav(presentationRole(profile));
-  return clientPortalTabs(profile).map((id) => {
-    const item = nav.find((entry) => entry.id === (id === 'submit' ? 'business' : id));
-    const shared = {
-      materials: { label: '资料清单', hint: '周期资料' },
-      messages: { label: '消息', hint: '通知与沟通' },
-      briefing: { label: '报告', hint: '获授权结果' },
-    };
-    const copy = item ?? (id in shared ? shared[id as keyof typeof shared] : undefined);
-    return { id, label: copy?.label ?? '业务事项', hint: copy?.hint ?? '当前获授权事项' };
-  });
+  const role = presentationRole(profile);
+  if (workSurface(role) !== 'client') return [];
+  return roleNavigation(role).map((item) => ({
+    ...item,
+    id: (item.id === 'business' ? 'submit' : item.id) as ClientPortalTab,
+  }));
 }
 
 export type BriefingTarget = NonNullable<WorkspaceProfile['briefings']>[number];

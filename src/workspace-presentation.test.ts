@@ -42,6 +42,11 @@ const allRoles: PresentationRole[] = [
 ];
 
 describe('UX01 role presentation contract', () => {
+  it('professional identities cannot project accounting routes into the customer tab icon contract', () => {
+    for (const display_role of ['accountant', 'reviewer', 'firm_owner', 'admin'] as const) {
+      expect(clientPortalNav(profile({ display_role }))).toEqual([]);
+    }
+  });
   it('uses the same plain management labels in navigation and page breadcrumbs', () => {
     expect(workspaceViewLabels.firm).toBe('全所概览');
     expect(workspaceViewLabels.monthly).toBe('月度交付');
@@ -63,7 +68,7 @@ describe('UX01 role presentation contract', () => {
     for (const role of allRoles) {
       expect(roleHome(role).name).toBeTruthy();
       expect(primaryNav(role).length).toBeGreaterThan(0);
-      expect(primaryNav(role).length).toBeLessThanOrEqual(6);
+      expect(primaryNav(role).length).toBeLessThanOrEqual(5);
     }
   });
 
@@ -73,7 +78,6 @@ describe('UX01 role presentation contract', () => {
       'business',
       'materials',
       'messages',
-      'briefing',
     ]);
   });
 
@@ -145,6 +149,16 @@ describe('UX01 role presentation contract', () => {
     expect(nav('manager')[0].label).toBe('企业首页');
     expect(nav('manager').some((item) => item.id === 'submit')).toBe(false);
   });
+
+  it.each(['employee', 'approver', 'finance', 'manager', 'viewer'] as const)(
+    'V04 %s 客户门户与角色配置使用同一入口及顺序',
+    (role) => {
+      const current = profile({ role });
+      expect(
+        clientPortalNav(current).map((item) => (item.id === 'submit' ? 'business' : item.id)),
+      ).toEqual(primaryNav(role).map((item) => item.id));
+    },
+  );
 
   it.each(['employee', 'approver', 'finance', 'manager', 'viewer'] as const)(
     'uses one navigation vocabulary across the %s customer shell and workspace',

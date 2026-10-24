@@ -4,6 +4,95 @@
   gap: 18px;
   min-width: 0;
 }
+.service-journey {
+  display: block;
+  padding: var(--space-5);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  min-width: 0;
+}
+.service-journey-heading h2 {
+  margin: 0 0 var(--space-2);
+  font-size: var(--font-size-section);
+  color: var(--text-primary);
+}
+.service-journey-heading p {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+.service-journey ol {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  list-style: none;
+  padding: 0;
+  margin: var(--space-5) 0 0;
+  gap: var(--space-5);
+}
+.service-journey li {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.service-journey li > div {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.service-journey-number {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  border-radius: var(--radius-pill);
+  background: var(--surface-soft);
+  color: var(--brand);
+  font-size: var(--font-size-sm);
+  font-variant-numeric: tabular-nums;
+}
+.service-journey h3 {
+  margin: 0;
+  font-size: var(--font-size-base);
+  color: var(--text-primary);
+  line-height: 1.6;
+}
+.service-journey li p,
+.service-journey li small {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.service-journey li small {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+}
+.service-journey .button {
+  justify-self: start;
+  white-space: normal;
+  margin-top: var(--space-2);
+}
+@media (max-width: 740px) {
+  .service-journey {
+    padding: var(--space-4);
+  }
+  .service-journey ol {
+    grid-template-columns: 1fr;
+    gap: var(--space-4);
+  }
+  .service-journey li + li {
+    padding-top: var(--space-4);
+    border-top: 1px solid var(--line);
+  }
+  .service-journey .button {
+    min-height: var(--control-height-touch);
+  }
+}
 .service-plan-heading,
 .service-section-heading {
   display: flex;

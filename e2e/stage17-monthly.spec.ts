@@ -1,6 +1,12 @@
 import { expect, test, type APIRequestContext } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
-import { choosePersona, openAccounting, openBookTools, openNavigation } from './ui-navigation';
+import {
+  choosePersona,
+  openAccounting,
+  openBookTools,
+  openBusiness,
+  openNavigation,
+} from './ui-navigation';
 
 async function openMonthlyTool(
   page: import('@playwright/test').Page,
@@ -167,11 +173,7 @@ test('跨企业月度矩阵分页覆盖全部授权账套，精确下钻同企�
   await expect(
     page.getByRole('heading', { name: '2026-11 · 开放期间', exact: true }),
   ).toBeVisible();
-  await openNavigation(page);
-  await page
-    .getByRole('navigation', { name: '主导航', exact: true })
-    .getByRole('button', { name: '客户月度进度', exact: true })
-    .click();
+  await page.getByRole('button', { name: '返回客户月度进度', exact: true }).click();
   await expect(page.getByLabel('客户进度月份')).toHaveValue('2026-11');
 });
 
@@ -393,7 +395,7 @@ test('结构化余额文件核对后导入，保留UTF8原文和原件下载，�
   expect(overview.reference.opening_id).toBeNull();
 });
 
-test('企业财务兼账套复核身份从月度资料下钻能看到待部门审批，范围与URL一致', async ({
+test('企业财务兼账套复核身份保留客户门户，月度资料范围与企业事项一致', async ({
   page,
   request,
 }) => {
@@ -479,18 +481,17 @@ test('企业财务兼账套复核身份从月度资料下钻能看到待部门�
     expect(matrixRow.materials.business_pending).toBeGreaterThanOrEqual(1);
     await page.goto('/');
     await choosePersona(page, 'finance');
-    await openNavigation(page);
-    await page
-      .getByRole('navigation', { name: '主导航', exact: true })
-      .getByRole('button', { name: '客户月度进度', exact: true })
-      .click();
-    await page.getByLabel('客户进度月份').fill('2026-10');
-    await page.getByLabel('搜索月度客户').fill(tag);
-    await page.getByRole('button', { name: '查找', exact: true }).click();
-    await page
-      .locator(`[data-book="${book.id}"]`)
-      .getByRole('button', { name: '资料与草稿：0 份来源', exact: true })
-      .click();
+    await expect(page.getByRole('navigation', { name: '客户服务', exact: true })).toBeVisible();
+    await expect(page.getByRole('navigation', { name: '主导航', exact: true })).toHaveCount(0);
+    // An extra reviewer grant must not replace the finance user's primary
+    // surface. Follow its real navigation and select the same company instead
+    // of expecting the old firm-only monthly menu to reappear.
+    await openBusiness(page);
+    await page.getByRole('tab', { name: '企业财务', exact: true }).click();
+    await page.getByLabel('筛选业务事项企业').selectOption(company.id);
+    // The ordinary finance queue correctly defaults to ready-for-finance work.
+    // Explicitly include waiting-for-department records for this comparison.
+    await page.getByLabel('筛选业务事项状态').selectOption('');
     await expect(page.getByRole('tab', { name: '企业财务', exact: true })).toHaveAttribute(
       'aria-selected',
       'true',
@@ -500,9 +501,8 @@ test('企业财务兼账套复核身份从月度资料下钻能看到待部门�
     await expect(
       page.getByRole('button').filter({ has: page.getByText(description, { exact: true }) }),
     ).toBeVisible();
-    await expect(page).toHaveURL(new RegExp(`company=${company.id}`));
-    await expect(page).toHaveURL(/period=2026-10/);
-    await expect(page.getByRole('status').filter({ hasText: '当前按 2026-10' })).toBeVisible();
+    await expect(page.getByRole('navigation', { name: '客户服务', exact: true })).toBeVisible();
+    await expect(page.getByRole('navigation', { name: '主导航', exact: true })).toHaveCount(0);
   } finally {
     expect(
       (

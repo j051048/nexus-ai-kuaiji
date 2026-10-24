@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { AgentNavigation } from './AgentNavigation';
 import { primaryNav, roleHome } from './workspace-presentation';
+import { navigationCurrent } from './workspace-navigation';
 import type { WorkspaceProfile } from './workspace-types';
 
 const profile: WorkspaceProfile = {
@@ -52,6 +53,61 @@ function render(current = 'firm', extra: Partial<Parameters<typeof AgentNavigati
 }
 
 describe('第二批岗位主任务与设置归位', () => {
+  it('V04 当前页从同一注册表解析，修订及旧服务单别名不落到其他页面', () => {
+    expect(navigationCurrent('revision')).toBe('revision');
+    expect(navigationCurrent('service')).toBe('monthly');
+    expect(navigationCurrent('accounting', true)).toBe('business');
+    expect(navigationCurrent('accounting', false)).toBe('accounting');
+    for (const view of ['ingestion', 'observability', 'operations', 'runs', 'quality']) {
+      expect(navigationCurrent(view)).toBe(view);
+    }
+    expect(navigationCurrent('__proto__')).toBe('accounting');
+    expect(navigationCurrent('future_unknown_route')).toBe('accounting');
+  });
+  it('V04 会计主任务最多五项，周期资料仍可从日常业务找到', () => {
+    const accountant = { ...profile, display_role: 'accountant' as const };
+    const items = primaryNav('accountant', accountant);
+    expect(items.length).toBeLessThanOrEqual(5);
+    const html = render('home', { presentationNav: items });
+    expect(html).toContain('资料清单');
+    expect(html).toContain('审核与导出');
+  });
+  it('V04 设置按人员、费用、业务处理和技术诊断分组，保留原入口', () => {
+    const html = render('firm', { onAccess: () => {} });
+    const group = (label: string) =>
+      html.match(new RegExp(`<section[^>]*aria-label="${label}"[\\s\\S]*?<\\/section>`))?.[0] ?? '';
+    expect(group('人员与授权')).toContain('企业与人员管理');
+    expect(group('人员与授权')).toContain('成员与账套授权');
+    expect(group('费用与人工投入')).toContain('费用与运行监控');
+    expect(group('费用与人工投入')).toContain('客户人工投入');
+    expect(group('资料处理与接入')).toContain('票据核对异常');
+    expect(group('资料处理与接入')).toContain('票据处理任务');
+    expect(group('技术诊断')).toContain('运行可观测性');
+    expect(group('技术诊断')).toContain('试点评测');
+    expect(group('技术诊断')).not.toContain('票据核对异常');
+  });
+  it('V04 显式空主导航不回退到另一套菜单', () => {
+    const html = render('firm', { presentationNav: [] });
+    expect(html.match(/agent-primary-item/g) ?? []).toHaveLength(0);
+  });
+  it('V04 业务能力撤销后主次菜单都不出现可办理事项入口', () => {
+    const html = render('home', {
+      presentationNav: primaryNav('finance'),
+      canBusiness: false,
+      canAccounting: false,
+      canMonthly: false,
+      canReview: false,
+      canOperations: false,
+      canProcessing: false,
+      canQuality: false,
+      onAdmin: undefined,
+      onAccess: undefined,
+    });
+    expect(html).not.toContain('aria-label="业务事项"');
+    expect(html).not.toContain('aria-label="会计工作台"');
+    expect(html).not.toContain('aria-label="全所概览"');
+    expect(html).toContain('资料清单');
+  });
   it('事务所负责人和管理员主导航聚焦四项业务，不含技术和管理后台', () => {
     const ids = ['firm', 'accounting', 'monthly', 'cases'];
     expect(primaryNav('firm_owner', profile).map((item) => item.id)).toEqual(ids);

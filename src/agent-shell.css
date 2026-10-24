@@ -129,6 +129,20 @@
   color: var(--sidebar-muted);
   font-size: var(--font-size-xs);
 }
+.agent-settings-section {
+  margin: 0;
+  padding: var(--space-2) 0;
+}
+.agent-settings-section + .agent-settings-section {
+  border-top: 1px solid var(--sidebar-line);
+}
+.agent-settings-section > .agent-nav-context {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  color: var(--sidebar-muted);
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-medium);
+}
 .agent-sidebar-note > svg:last-child {
   margin-left: auto;
   opacity: 0.5;

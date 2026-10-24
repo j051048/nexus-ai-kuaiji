@@ -1,3 +1,4 @@
+import { taskDetailLabel } from './task-presentation';
 import type { Me, Pagination, Session } from './types';
 export type WorkspaceRole =
   'accountant' | 'finance' | 'approver' | 'employee' | 'manager' | 'viewer';
@@ -155,52 +156,7 @@ export function formatTaskAmount(value: string | null | undefined): string {
 }
 
 export function taskStateLabel(task: Pick<WorkspaceTask, 'kind' | 'state'>): string {
-  if (task.kind === 'material') {
-    return (
-      (
-        {
-          pending: '待提供资料',
-          submitted: '待独立验收',
-          returned: '待补充重提',
-          accepted: '已验收',
-        } as Record<string, string>
-      )[task.state] ?? '状态待核实'
-    );
-  }
-  if (task.state === 'draft') return task.kind === 'review' ? '待会计复核' : '待完善';
-  const labels: Record<string, string> = {
-    submitted: '待部门审批',
-    department_approved: '待财务核验',
-    finance_approved: '待移交会计',
-    handed_off: '已移交会计',
-    returned: '待修改重提',
-    open: '待处理',
-    awaiting_info: '等待补件',
-    response_submitted: '补件待核验',
-    in_review: '处理中',
-    queued: '排队中',
-    waiting: '等待资料',
-    running: '后台处理中',
-    retry_wait: '等待重试',
-    needs_attention: '需要人工介入',
-    failed: '执行失败',
-    interrupted: '执行已中断',
-    stale: '事实已更新',
-    approved: '已审核待导出',
-    unverified: '等待回执核验',
-    collecting: '资料收集中',
-    processing: '后台处理中',
-    ready: '待独立验收',
-    accepted: '待接管',
-    active: '已接管',
-    cancelled: '已取消',
-    succeeded: '已完成',
-    done: '已完成',
-    resolved: '已处理',
-    unknown: '状态待核实',
-    pending: '待提供资料',
-  };
-  return labels[task.state] ?? '状态待核实';
+  return taskDetailLabel(task);
 }
 export const taskLabels: Record<TaskKind, string> = {
   intake: '资料草稿',
@@ -218,7 +174,9 @@ export const taskLabels: Record<TaskKind, string> = {
   migration: '旧账迁移',
   material: '周期资料',
 };
-export function taskDestination(task: WorkspaceTask) {
+export function taskDestination(task: WorkspaceTask, client = false) {
+  if (client && task.kind === 'ocr' && task.event_id)
+    return { type: 'business' as const, id: task.event_id };
   switch (task.kind) {
     case 'material':
       return { type: 'material' as const, id: task.ref };

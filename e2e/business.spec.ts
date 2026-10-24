@@ -1,4 +1,4 @@
-import { choosePersona, openBusiness } from './ui-navigation';
+import { choosePersona, openAccounting, openBusiness } from './ui-navigation';
 import { expect, test, type Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 
@@ -90,6 +90,10 @@ test('员工报销经过独立审批与原件上传后交接指定账套、会�
   await page.getByRole('button', { name: '财务核验通过', exact: true }).click();
   await expect(page.getByRole('status')).toContainText('财务核验已通过');
   await page.getByLabel('交接到账套', { exact: true }).selectOption({ index: 1 });
+  const targetBookName = await page
+    .getByLabel('交接到账套', { exact: true })
+    .locator('option:checked')
+    .textContent();
   await page.getByRole('button', { name: '生成凭证草稿', exact: true }).click();
   await expect(page.getByRole('status')).toContainText('已交接并关联凭证草稿');
   await expect(page.getByRole('button', { name: '提交审批', exact: true })).toHaveCount(0);
@@ -100,24 +104,37 @@ test('员工报销经过独立审批与原件上传后交接指定账套、会�
   await openBusiness(page);
   await open(page, description, '会计接收');
   await page.getByRole('button', { name: '打开会计复核', exact: true }).click();
-  await expect(page.getByLabel('凭证摘要', { exact: true })).toHaveValue(description);
-  await expect(
-    page.getByRole('heading', { name: '青屿设计（虚构示例）', exact: true }),
-  ).toBeVisible();
+  const drawer = page.getByRole('dialog', { name: '原件与凭证，一起核对', exact: true });
+  await expect(drawer.getByLabel('同屏凭证摘要', { exact: true })).toHaveValue(description);
+  await expect(drawer.locator('.inline-review-scope')).toContainText('青屿设计（虚构示例）');
   // The synthetic image has no OCR result. Follow the real manual exception
   // workflow instead of expecting an unrecognized attachment to pass review.
-  await expect(page.getByRole('button', { name: '确认审核', exact: true })).toBeDisabled();
+  await expect(drawer.getByRole('button', { name: '确认审核', exact: true })).toBeDisabled();
+  await drawer.getByRole('button', { name: '返回列表', exact: true }).click();
+  await expect(page.getByRole('heading', { name: description, exact: true })).toBeVisible();
   await page.getByRole('button', { name: '重新核对', exact: true }).click();
   const missingOcr = page.locator('.intelligence-finding').filter({
     hasText: '附件尚未成功识别，需人工核对或重试',
   });
-  await missingOcr.getByRole('textbox', { name: /^异常处理依据 / }).fill(
-    '本地合成资料验收：已人工核对事项日期、金额、用途及附件；本票据为虚构流程测试，不代表真实票据验真。',
-  );
+  await missingOcr
+    .getByRole('textbox', { name: /^异常处理依据 / })
+    .fill(
+      '本地合成资料验收：已人工核对事项日期、金额、用途及附件；本票据为虚构流程测试，不代表真实票据验真。',
+    );
   await missingOcr.getByRole('button', { name: '记录人工处理', exact: true }).click();
   await expect(missingOcr).toContainText('已人工处理');
-  await expect(page.getByRole('button', { name: '确认审核', exact: true })).toBeEnabled();
-  await page.getByRole('button', { name: '确认审核', exact: true }).click();
+  await page.getByRole('button', { name: '打开会计复核', exact: true }).click();
+  await expect(drawer.getByRole('button', { name: '确认审核', exact: true })).toBeDisabled();
+  await drawer.getByLabel('我已核对同屏原件与分录', { exact: true }).check();
+  await expect(drawer.getByRole('button', { name: '确认审核', exact: true })).toBeEnabled();
+  await drawer.getByRole('button', { name: '确认审核', exact: true }).click();
+  await expect(drawer.getByText('已审核，待导出', { exact: true })).toBeVisible();
+  await drawer.getByRole('button', { name: '返回列表', exact: true }).click();
+  await openAccounting(page);
+  await page
+    .getByRole('listitem')
+    .filter({ hasText: targetBookName!.split(' · ')[0] })
+    .click();
   await page.getByLabel('选择凭证 ' + description, { exact: true }).check();
   const exportDownload = page.waitForEvent('download');
   await page.getByRole('button', { name: '导出凭证 CSV', exact: true }).click();

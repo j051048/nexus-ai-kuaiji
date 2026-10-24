@@ -132,6 +132,7 @@ ag01-readonly-audit-*/
 ux-audit-venv-*/
 pytest-of-*/
 tmp*
+.tmp_build/
 
 # Vercel local project/build state (environment and account metadata)
 .vercel/

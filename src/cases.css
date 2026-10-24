@@ -4,6 +4,49 @@
   max-width: 1280px;
   margin: 0 auto;
 }
+.client-portal .cases-workbench {
+  padding: var(--space-5);
+  min-width: 0;
+  gap: var(--space-4);
+}
+.client-portal .cases-workbench .case-kicker {
+  display: none;
+}
+.client-portal .cases-workbench .case-detail {
+  border-radius: var(--radius-md);
+  border-color: var(--line);
+}
+.client-portal .cases-workbench .panel-heading h2 {
+  font-size: var(--font-size-section);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.client-portal .cases-workbench .case-command label,
+.client-portal .cases-workbench .case-upload label,
+.client-portal .cases-workbench .case-requirements {
+  font-size: var(--font-size-sm);
+}
+@media (max-width: 740px) {
+  .client-portal .cases-workbench {
+    padding: var(--space-4);
+  }
+  .client-portal .cases-workbench input,
+  .client-portal .cases-workbench select,
+  .client-portal .cases-workbench textarea {
+    max-width: 100%;
+    min-width: 0;
+    font-size: var(--font-size-input-mobile);
+  }
+  .client-portal .cases-workbench .button,
+  .client-portal .cases-workbench .text-button {
+    min-height: var(--control-height-touch);
+  }
+  .client-portal .cases-workbench .case-command,
+  .client-portal .cases-workbench .case-upload {
+    padding: var(--space-3);
+    min-width: 0;
+  }
+}
 .case-page-heading,
 .case-actions,
 .case-summary,

@@ -142,6 +142,9 @@ export function readWorkspaceRoute(pathname: string, search: string): WorkspaceR
   route.search = (query.get('search') ?? '').slice(0, 120);
   if (!route.bookId) route.draftId = '';
   if (!route.reviewBookId) route.reviewDraftId = '';
+  // The shell only carries a request selection on the materials page. A stale
+  // request ID on a service link must not keep route restoration unsettled.
+  if (route.view !== 'materials') route.materialId = '';
   return route;
 }
 export function workspaceRouteUrl(

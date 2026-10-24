@@ -18,6 +18,8 @@ import type { BookFilter, BookNotice, useBookWorkspace } from './useBookWorkspac
 import type { WorkspaceHomeBootstrap, WorkspaceProfile, WorkspaceTask } from './workspace-types';
 import type { AgentNavigationView } from './AgentNavigation';
 import type { WorkspaceView } from './workspace-route';
+import type { useWorkspaceProgress } from './useWorkspaceProgress';
+import type { ServiceJourneyTarget } from './service-journey';
 
 const AgentActivityWorkspace = lazy(() =>
   import('./AgentActivityWorkspace').then((module) => ({ default: module.AgentActivityWorkspace })),
@@ -169,6 +171,12 @@ interface WorkspaceRouteApp {
   openNewIntake: (template: BusinessTemplate) => void;
   openAgentRun: (route: AgentRoute) => void;
   openMonthlyTarget: (target: MonthlyDestination) => void;
+  openServicePlan: (target: { bookId: string; companyId: string; period: string }) => void;
+  openServiceStage: (target: ServiceJourneyTarget) => void;
+  openRecordRevision: (eventId: string, scope?: { companyId: string; period: string }) => void;
+  openRecordDraft: (bookId: string, draftId: string) => void;
+  returnToWork: (discarded?: boolean) => void;
+  progress: ReturnType<typeof useWorkspaceProgress>;
   openClosingIssue: (issue: { type: string; id: string; bookId: string }) => void;
   openInlineReview: (
     target: { book_id: string; draft_id: string },
@@ -296,6 +304,12 @@ export function WorkspaceRouteContent({
     openNewIntake,
     openAgentRun,
     openMonthlyTarget,
+    openServicePlan,
+    openServiceStage,
+    openRecordRevision,
+    openRecordDraft,
+    returnToWork,
+    progress,
     openClosingIssue,
     openInlineReview,
     openContextAssistant,
@@ -337,6 +351,8 @@ export function WorkspaceRouteContent({
           onInitialTasksConsumed={() => consumeHomeBootstrap(session.scope_key)}
           onRetryProfile={() => void loadProfile()}
           revision={workspaceRevision}
+          progress={progress.memory.getHome(workCompany)}
+          onProgressChange={progress.saveHome}
           paused={navigationLocked}
           onOpen={openWorkspaceTask}
           onNew={openNewIntake}
@@ -434,15 +450,10 @@ export function WorkspaceRouteContent({
           period={workPeriod}
           onPeriodChange={setWorkPeriod}
           onOpen={openMonthlyTarget}
+          progress={progress.memory.getMonthly(workPeriod)}
+          onProgressChange={progress.saveMonthly}
           revision={workspaceRevision}
-          onOpenServicePlan={(target) => {
-            if (navigationLocked) return;
-            navigate('monthly');
-            setRouteView('service');
-            setWorkBook(target.bookId);
-            setWorkCompany(target.companyId);
-            setWorkPeriod(target.period);
-          }}
+          onOpenServicePlan={openServicePlan}
           canBatchOpen={!!me?.permissions.manage_firm}
         />
       ) : routeView === 'service' ? (
@@ -450,7 +461,7 @@ export function WorkspaceRouteContent({
           <button
             className="text-button"
             disabled={businessBusy || monthlyDirty}
-            onClick={() => navigate('monthly')}
+            onClick={() => returnToWork()}
           >
             返回客户月度进度
           </button>
@@ -468,6 +479,7 @@ export function WorkspaceRouteContent({
               onBusyChange={changeBusinessBusy}
               onDirtyChange={changeMonthlyDirty}
               onChanged={() => setWorkspaceRevision((n) => n + 1)}
+              onOpenStage={openServiceStage}
             />
           ) : (
             <p className="field-help">请从客户月度进度选择具体账套和月份。</p>
@@ -517,6 +529,9 @@ export function WorkspaceRouteContent({
           session={session}
           initialEventId={businessTarget}
           onBusyChange={changeBusinessBusy}
+          onDirtyChange={changeMonthlyDirty}
+          onBack={() => returnToWork(true)}
+          backLabel={businessTarget ? '返回原业务事项' : '返回工作台'}
           onChanged={() => {
             if (bookId) void refresh(bookId);
           }}
@@ -633,15 +648,12 @@ export function WorkspaceRouteContent({
             setRouteView('queue');
           }}
           onBusyChange={changeBusinessBusy}
-          onOpenRevision={(eventId) => {
-            setBusinessTarget(eventId);
-            setRouteView('revision');
-          }}
+          onOpenRevision={openRecordRevision}
           onOpenCase={(target) => {
             setCaseTarget(target);
             setRouteView('cases');
           }}
-          onOpenDraft={openDraftInBook}
+          onOpenDraft={openRecordDraft}
         />
       ) : (
         <BookWorkspaceShell
@@ -696,7 +708,7 @@ export function WorkspaceRouteContent({
                 bookId={bookId}
                 initialExportId={deliveryTarget}
                 embedded
-                onBack={() => setRouteView('accounting')}
+                onBack={() => (progress.origin ? returnToWork() : setRouteView('accounting'))}
                 onBusyChange={changeBusinessBusy}
               />
             ) : routeView === 'recurring' && bookId ? (
