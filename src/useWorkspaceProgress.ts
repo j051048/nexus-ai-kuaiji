@@ -1,5 +1,10 @@
 import { useCallback, useMemo, useState } from 'react';
-import { WorkspaceProgress, type HomeProgress, type MonthlyProgress } from './workspace-progress';
+import {
+  WorkspaceProgress,
+  type HomeProgress,
+  type MonthlyProgress,
+  type WorkspaceHistoryVisit,
+} from './workspace-progress';
 import type { WorkspaceRoute } from './workspace-route';
 
 export function useWorkspaceProgress(scope?: string) {
@@ -18,10 +23,14 @@ export function useWorkspaceProgress(scope?: string) {
     return point;
   }, [memory]);
   const arrived = useCallback(
-    (route: WorkspaceRoute) => {
-      memory.arrived(route);
+    (route: WorkspaceRoute, visit?: WorkspaceHistoryVisit) => {
+      memory.arrived(route, visit);
       refresh((value) => value + 1);
     },
+    [memory],
+  );
+  const rememberEntry = useCallback(
+    (route: WorkspaceRoute, key: string) => memory.rememberEntry(route, key),
     [memory],
   );
   const clearTrail = useCallback(() => {
@@ -35,6 +44,7 @@ export function useWorkspaceProgress(scope?: string) {
     capture,
     takeOrigin,
     arrived,
+    rememberEntry,
     clearTrail,
     saveHome,
     saveMonthly,

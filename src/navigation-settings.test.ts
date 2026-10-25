@@ -3,7 +3,12 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { AgentNavigation } from './AgentNavigation';
 import { primaryNav, roleHome } from './workspace-presentation';
-import { navigationCurrent } from './workspace-navigation';
+import {
+  navigationCurrent,
+  type NavigationCapabilities,
+  type NavigationId,
+} from './workspace-navigation';
+import { projectNavigationCapabilities } from './navigation-capabilities';
 import type { WorkspaceProfile } from './workspace-types';
 
 const profile: WorkspaceProfile = {
@@ -20,7 +25,19 @@ const profile: WorkspaceProfile = {
   book_count: 0,
 };
 
-function render(current = 'firm', extra: Partial<Parameters<typeof AgentNavigation>[0]> = {}) {
+const capabilities = projectNavigationCapabilities(profile, {
+  accounting: true,
+  processing: true,
+  operations: true,
+  hasBook: true,
+  manageAdmin: true,
+  manageFirm: false,
+});
+
+function render(
+  current: NavigationId | null = 'firm',
+  extra: Partial<Parameters<typeof AgentNavigation>[0]> = {},
+) {
   return renderToStaticMarkup(
     createElement(AgentNavigation, {
       session: {
@@ -34,16 +51,11 @@ function render(current = 'firm', extra: Partial<Parameters<typeof AgentNavigati
         scope_key: 'offline-a',
       },
       current,
-      canAccounting: true,
-      canMonthly: true,
-      canReview: true,
-      canOperations: true,
-      canQuality: true,
-      canProcessing: true,
+      capabilities,
       locked: false,
       firmSelector: null,
       footer: null,
-      presentationNav: primaryNav('firm_owner', profile),
+      presentationNav: primaryNav('firm_owner', capabilities),
       onAdmin: () => {},
       onNavigate: () => {},
       onAccountingFilter: () => {},
@@ -61,19 +73,21 @@ describe('第二批岗位主任务与设置归位', () => {
     for (const view of ['ingestion', 'observability', 'operations', 'runs', 'quality']) {
       expect(navigationCurrent(view)).toBe(view);
     }
-    expect(navigationCurrent('__proto__')).toBe('accounting');
-    expect(navigationCurrent('future_unknown_route')).toBe('accounting');
+    expect(navigationCurrent('__proto__')).toBeNull();
+    expect(navigationCurrent('future_unknown_route')).toBeNull();
   });
   it('V04 会计主任务最多五项，周期资料仍可从日常业务找到', () => {
-    const accountant = { ...profile, display_role: 'accountant' as const };
-    const items = primaryNav('accountant', accountant);
+    const items = primaryNav('accountant', capabilities);
     expect(items.length).toBeLessThanOrEqual(5);
     const html = render('home', { presentationNav: items });
     expect(html).toContain('资料清单');
     expect(html).toContain('审核与导出');
   });
   it('V04 设置按人员、费用、业务处理和技术诊断分组，保留原入口', () => {
-    const html = render('firm', { onAccess: () => {} });
+    const html = render('firm', {
+      capabilities: { ...capabilities, access: true },
+      onAccess: () => {},
+    });
     const group = (label: string) =>
       html.match(new RegExp(`<section[^>]*aria-label="${label}"[\\s\\S]*?<\\/section>`))?.[0] ?? '';
     expect(group('人员与授权')).toContain('企业与人员管理');
@@ -90,16 +104,27 @@ describe('第二批岗位主任务与设置归位', () => {
     const html = render('firm', { presentationNav: [] });
     expect(html.match(/agent-primary-item/g) ?? []).toHaveLength(0);
   });
+  it('未知页面不高亮其他导航，已知子页仅高亮明确的父入口', () => {
+    expect(render(null)).not.toContain('aria-current="page"');
+    const html = render(navigationCurrent('ledger'));
+    expect(html.match(/aria-current="page"/g)).toHaveLength(1);
+    expect(html).toMatch(/aria-label="客户企业"[^>]*aria-current="page"/);
+  });
+  it('授权入口缺少操作回调时禁用，避免可点击但没有结果', () => {
+    const html = render('firm', {
+      capabilities: { ...capabilities, admin: true, access: true },
+      onAdmin: undefined,
+      onAccess: undefined,
+    });
+    expect(html).toMatch(/aria-label="企业与人员管理"[^>]*disabled=""/);
+    expect(html).toMatch(/aria-label="成员与账套授权"[^>]*disabled=""/);
+  });
   it('V04 业务能力撤销后主次菜单都不出现可办理事项入口', () => {
     const html = render('home', {
       presentationNav: primaryNav('finance'),
-      canBusiness: false,
-      canAccounting: false,
-      canMonthly: false,
-      canReview: false,
-      canOperations: false,
-      canProcessing: false,
-      canQuality: false,
+      capabilities: Object.fromEntries(
+        Object.keys(capabilities).map((key) => [key, false]),
+      ) as NavigationCapabilities,
       onAdmin: undefined,
       onAccess: undefined,
     });
@@ -110,16 +135,14 @@ describe('第二批岗位主任务与设置归位', () => {
   });
   it('事务所负责人和管理员主导航聚焦四项业务，不含技术和管理后台', () => {
     const ids = ['firm', 'accounting', 'monthly', 'cases'];
-    expect(primaryNav('firm_owner', profile).map((item) => item.id)).toEqual(ids);
-    expect(
-      primaryNav('admin', { ...profile, display_role: 'admin' }).map((item) => item.id),
-    ).toEqual(ids);
+    expect(primaryNav('firm_owner', capabilities).map((item) => item.id)).toEqual(ids);
+    expect(primaryNav('admin', capabilities).map((item) => item.id)).toEqual(ids);
   });
   it('只有具备全所权限的管理员默认进入全所概览', () => {
     expect(roleHome('admin', { ...profile, display_role: 'admin' }).defaultView).toBe('firm');
     expect(roleHome('admin', { ...profile, can_firm_operations: false }).defaultView).toBe('admin');
     expect(
-      primaryNav('admin', { ...profile, can_firm_operations: false }).some(
+      primaryNav('admin', { ...capabilities, operations: false }).some(
         (item) => item.id === 'firm',
       ),
     ).toBe(false);
@@ -152,7 +175,7 @@ describe('第二批岗位主任务与设置归位', () => {
     'queue',
     'runs',
     'quality',
-  ])('%s 深链接恰好有一个导航选中', (current) => {
+  ] as const)('%s 深链接恰好有一个导航选中', (current) => {
     const html = render(current);
     expect(html.match(/aria-current="page"/g)).toHaveLength(1);
     if (
@@ -162,16 +185,10 @@ describe('第二批岗位主任务与设置归位', () => {
     }
   });
   it('企业管理兼任账套权限不产生全所或技术入口，授权的专业业务可发现', () => {
-    const client = {
-      ...profile,
-      role: 'manager' as const,
-      display_role: 'manager' as const,
-      can_firm_operations: false,
-    };
+    const clientCapabilities = { ...capabilities, operations: false, quality: false, admin: false };
     const html = render('home', {
-      presentationNav: primaryNav('manager', client),
-      canOperations: false,
-      canQuality: false,
+      presentationNav: primaryNav('manager', clientCapabilities),
+      capabilities: clientCapabilities,
       onAdmin: undefined,
     });
     for (const label of [
@@ -192,13 +209,21 @@ describe('第二批岗位主任务与设置归位', () => {
     const html = render('firm', { locked: true });
     expect(html).toMatch(/<button[^>]*aria-label="企业与人员管理"[^>]*disabled=""/);
   });
-  it('成员授权仅在提供真实权限入口时归入设置，锁定时禁用', () => {
+  it('成员授权只投影统一能力，回调存在本身不能提升权限，锁定时禁用', () => {
+    expect(render('firm', { onAccess: () => {} })).not.toContain('成员与账套授权');
     expect(render()).not.toContain('成员与账套授权');
-    const enabled = render('firm', { onAccess: () => {} });
+    const enabled = render('firm', {
+      capabilities: { ...capabilities, access: true },
+      onAccess: () => {},
+    });
     expect(enabled.match(/<details[^>]*aria-label="设置"[\s\S]*?<\/details>/)?.[0]).toContain(
       '成员与账套授权',
     );
-    const locked = render('firm', { onAccess: () => {}, locked: true });
+    const locked = render('firm', {
+      capabilities: { ...capabilities, access: true },
+      onAccess: () => {},
+      locked: true,
+    });
     expect(locked).toMatch(/<button[^>]*aria-label="成员与账套授权"[^>]*disabled=""/);
   });
 });

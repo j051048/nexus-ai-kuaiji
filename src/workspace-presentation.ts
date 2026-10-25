@@ -3,6 +3,7 @@ import type { ClientPortalTab } from './ClientPortalShell';
 import {
   navigationAllowed,
   roleNavigation,
+  type NavigationCapabilities,
   type PresentationNavItem,
 } from './workspace-navigation';
 
@@ -98,29 +99,11 @@ export function roleHome(role: PresentationRole, profile?: WorkspaceProfile | nu
 
 export function primaryNav(
   role: PresentationRole,
-  profile?: WorkspaceProfile | null,
+  capabilities?: NavigationCapabilities,
 ): PresentationNavItem[] {
   const items = roleNavigation(role);
-  if (!profile) return items;
-  return items.filter((item) =>
-    navigationAllowed(item, {
-      accounting: profile.can_accounting || profile.can_manage,
-      monthly: profile.can_accounting || profile.can_manage,
-      review: profile.can_review,
-      operations: Boolean(profile.can_firm_operations),
-      quality: profile.can_review,
-      processing: profile.can_accounting,
-      business: Boolean(
-        profile.can_submit ||
-        profile.can_approve ||
-        profile.can_finance ||
-        profile.can_accounting ||
-        profile.can_manage,
-      ),
-      admin: role === 'admin' && profile.can_manage,
-      access: profile.can_manage,
-    }),
-  );
+  if (!capabilities) return items;
+  return items.filter((item) => navigationAllowed(item, capabilities));
 }
 
 export function clientPortalTabs(profile: WorkspaceProfile): ClientPortalTab[] {

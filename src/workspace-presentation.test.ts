@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { PresentationRole, WorkspaceProfile } from './workspace-types';
 import { workspaceViewLabels } from './workspace-labels';
+import { projectNavigationCapabilities } from './navigation-capabilities';
 import {
   canSeeSurface,
   clientPortalTabs,
@@ -27,6 +28,17 @@ function profile(changes: Partial<WorkspaceProfile> = {}): WorkspaceProfile {
     book_count: 0,
     ...changes,
   };
+}
+
+function capabilities(current: WorkspaceProfile) {
+  return projectNavigationCapabilities(current, {
+    accounting: current.can_accounting,
+    processing: false,
+    operations: !!current.can_firm_operations,
+    hasBook: false,
+    manageAdmin: false,
+    manageFirm: false,
+  });
 }
 
 const allRoles: PresentationRole[] = [
@@ -196,18 +208,21 @@ describe('UX01 role presentation contract', () => {
 
   it('filters primary navigation with server capabilities, not role labels alone', () => {
     const accountant = profile({ can_accounting: true, can_review: false });
-    expect(primaryNav('accountant', accountant).some((item) => item.id === 'review')).toBe(false);
+    expect(
+      primaryNav('accountant', capabilities(accountant)).some((item) => item.id === 'review'),
+    ).toBe(false);
     const reviewer = profile({ can_accounting: true, can_review: true });
-    expect(primaryNav('accountant', reviewer).some((item) => item.id === 'review')).toBe(true);
+    expect(
+      primaryNav('accountant', capabilities(reviewer)).some((item) => item.id === 'review'),
+    ).toBe(true);
     const owner = profile({
       display_role: 'firm_owner',
       can_firm_operations: true,
       can_manage: true,
       can_review: false,
     });
-    expect(primaryNav('firm_owner', owner).map((item) => item.id)).toEqual([
+    expect(primaryNav('firm_owner', capabilities(owner)).map((item) => item.id)).toEqual([
       'firm',
-      'accounting',
       'monthly',
       'cases',
     ]);
@@ -215,17 +230,17 @@ describe('UX01 role presentation contract', () => {
 
   it('keeps company administration in settings and restricts main task entries by capability', () => {
     expect(
-      primaryNav('admin', profile({ display_role: 'admin', can_manage: true })).map(
+      primaryNav('admin', capabilities(profile({ display_role: 'admin', can_manage: true }))).map(
         (item) => item.id,
       ),
-    ).toEqual(['accounting', 'monthly', 'cases']);
+    ).toEqual(['monthly', 'cases']);
     expect(
-      primaryNav('admin', profile({ display_role: 'admin', can_manage: false })).map(
+      primaryNav('admin', capabilities(profile({ display_role: 'admin', can_manage: false }))).map(
         (item) => item.id,
       ),
     ).toEqual(['cases']);
     expect(
-      primaryNav('manager', profile({ role: 'manager', can_manage: true })).some(
+      primaryNav('manager', capabilities(profile({ role: 'manager', can_manage: true }))).some(
         (item) => item.id === 'admin',
       ),
     ).toBe(false);

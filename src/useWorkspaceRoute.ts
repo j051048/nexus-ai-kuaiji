@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
-import { useBlocker, useLocation, useNavigate } from 'react-router-dom';
+import { useBlocker, useLocation, useNavigate, useNavigationType } from 'react-router-dom';
+import type { WorkspaceHistoryVisit } from './workspace-progress';
 import {
   emptyWorkspaceRoute,
   readWorkspaceRoute,
@@ -13,20 +14,25 @@ export function useWorkspaceRoute({
   value,
   metadata,
   onRestore,
+  onRecordEntry,
   locked,
   canDiscard,
 }: {
   scope?: string;
   value: WorkspaceRoute;
   metadata?: { companyId?: string; period?: string };
-  onRestore: (route: WorkspaceRoute) => void;
+  onRestore: (route: WorkspaceRoute, visit: WorkspaceHistoryVisit) => void;
+  onRecordEntry: (route: WorkspaceRoute, key: string) => void;
   locked: boolean;
   canDiscard: boolean;
 }) {
   const location = useLocation(),
-    navigate = useNavigate();
+    navigate = useNavigate(),
+    navigationType = useNavigationType();
   const restore = useRef(onRestore);
   restore.current = onRestore;
+  const record = useRef(onRecordEntry);
+  record.current = onRecordEntry;
   const activeScope = useRef<string>();
   const firstScope = useRef(true);
   const lastLocation = useRef('');
@@ -37,8 +43,9 @@ export function useWorkspaceRoute({
     ({ currentLocation, nextLocation }) =>
       !bypassBlock.current &&
       locked &&
-      currentLocation.pathname + currentLocation.search !==
-        nextLocation.pathname + nextLocation.search,
+      (currentLocation.key !== nextLocation.key ||
+        currentLocation.pathname + currentLocation.search !==
+          nextLocation.pathname + nextLocation.search),
   );
   const key = workspaceRouteKey(value);
 
@@ -53,20 +60,22 @@ export function useWorkspaceRoute({
       restoring.current = workspaceRouteKey(target);
       lastLocation.current = location.key;
       ownNavigation.current = '';
-      restore.current(target);
+      restore.current(target, { key: location.key, action: 'POP' });
       return;
     }
     if (lastLocation.current === location.key) return;
     lastLocation.current = location.key;
     const path = location.pathname + location.search;
-    if (ownNavigation.current === path) {
+    const target = readWorkspaceRoute(location.pathname, location.search);
+    if (navigationType !== 'POP' && ownNavigation.current === path) {
       ownNavigation.current = '';
+      record.current(target, location.key);
       return;
     }
-    const target = readWorkspaceRoute(location.pathname, location.search);
+    ownNavigation.current = '';
     restoring.current = workspaceRouteKey(target);
-    restore.current(target);
-  }, [scope, location.key, location.pathname, location.search]);
+    restore.current(target, { key: location.key, action: navigationType });
+  }, [scope, location.key, location.pathname, location.search, navigationType]);
 
   useEffect(() => {
     if (!scope || activeScope.current !== scope) return;

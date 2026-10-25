@@ -41,6 +41,9 @@ import type { Session } from './types';
 import type { BusinessTemplate } from './business-types';
 import { workspaceExperience } from './workspace-experience';
 import { roleHomeGuide } from './workspace-role-home';
+import { RoleQuickStart } from './RoleQuickStart';
+import { readRecovery, type ReadRecovery } from './workspace-recovery';
+import { taskKindLabel } from './task-language';
 import { presentationRole, roleHome } from './workspace-presentation';
 import { currentHomeTask } from './workspace-home-focus';
 import { taskPresentation } from './task-presentation';
@@ -120,6 +123,7 @@ export function WorkspaceHome({
   consumeInitialTasks.current = onInitialTasksConsumed;
   const [value, setValue] = useState<WorkspaceTasks | null>(firstTasks.current);
   const [error, setError] = useState('');
+  const [readHint, setReadHint] = useState<ReadRecovery | null>(null);
   const [loading, setLoading] = useState(false);
   const [opening, setOpening] = useState('');
   const [openError, setOpenError] = useState('');
@@ -153,6 +157,7 @@ export function WorkspaceHome({
       const started = session.scope_key;
       setLoading(true);
       setError('');
+      setReadHint(null);
       try {
         const params = new URLSearchParams({
           bucket,
@@ -193,6 +198,7 @@ export function WorkspaceHome({
           if (caught instanceof ApiError && [401, 403, 404].includes(caught.status))
             setPrivacyRevision((value) => value + 1);
           setError(errorMessage(caught));
+          setReadHint(readRecovery(caught));
         }
       } finally {
         if (
@@ -431,7 +437,7 @@ export function WorkspaceHome({
         <section className="workspace-role-guide" aria-label="当前职责与授权范围">
           <details>
             <summary>
-              <span>当前身份</span>
+              <span>当前工作台</span>
               <strong>{guide.label}</strong>
               <span>查看岗位与操作说明</span>
             </summary>
@@ -439,6 +445,7 @@ export function WorkspaceHome({
               <div className="workspace-role-guide-main">
                 <p>{guide.focus}</p>
               </div>
+              <RoleQuickStart guide={guide} />
               <div className="workspace-role-guide-actions">
                 <span>当前可操作</span>
                 <ul>
@@ -695,9 +702,9 @@ export function WorkspaceHome({
               <option value="">全部事项类型</option>
               {Object.entries(taskLabels)
                 .filter(([key]) => !experience.kinds || experience.kinds.includes(key as TaskKind))
-                .map(([key, label]) => (
+                .map(([key]) => (
                   <option key={key} value={key}>
-                    {label}
+                    {taskKindLabel(key as TaskKind, profileError ? null : profile)}
                   </option>
                 ))}
             </select>
@@ -746,7 +753,7 @@ export function WorkspaceHome({
                 <button disabled={locked} onClick={() => restoreView(view)}>
                   {index + 1} ·{' '}
                   {view.kind
-                    ? taskLabels[view.kind]
+                    ? taskKindLabel(view.kind, profileError ? null : profile)
                     : view.bucket === 'action'
                       ? '待处理'
                       : '办理进度'}
@@ -769,9 +776,36 @@ export function WorkspaceHome({
           </p>
         )}
         {(openError || error) && (
-          <p className="inline-error workspace-load-error" role="alert">
-            {openError || error}
-          </p>
+          <div className="inline-error workspace-load-error" role="alert">
+            <p>{openError || error}</p>
+            {error && readHint && (
+              <>
+                <p className="workspace-recovery-next">{readHint.next}</p>
+                <div className="workspace-recovery-actions">
+                  {readHint.action === 'reload' && (
+                    <button
+                      type="button"
+                      className="text-button"
+                      disabled={loading || locked}
+                      onClick={() => void load()}
+                    >
+                      重新读取待办
+                    </button>
+                  )}
+                  {readHint.action === 'permissions' && !profileError && (
+                    <button
+                      type="button"
+                      className="text-button"
+                      disabled={loading || locked}
+                      onClick={onRetryProfile}
+                    >
+                      重新读取权限
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
         )}
         {loading ? (
           <p className="loading-block">
@@ -801,7 +835,7 @@ export function WorkspaceHome({
                 >
                   <div className="workspace-task-main">
                     <div className="workspace-task-meta">
-                      <span className="workspace-task-kind">{taskLabels[task.kind]}</span>
+                      <span className="workspace-task-kind">{summary.kindLabel}</span>
                       <span>{task.company_name}</span>
                       {task.overdue && <span className="case-overdue">已逾期</span>}
                       <span className="workspace-task-mobile-amount">
@@ -850,6 +884,21 @@ export function WorkspaceHome({
                   ? '保持指定企业范围，可调整事项类型或搜索条件。'
                   : '新审批、补件、会计异常和迁移事项会集中显示在这里。'}
               </p>
+              {(query.trim() || kind) && (
+                <button
+                  type="button"
+                  className="text-button"
+                  disabled={loading || locked}
+                  onClick={() => {
+                    setQuery('');
+                    setSearch('');
+                    setKind('');
+                    setOffset(0);
+                  }}
+                >
+                  清除搜索和类型
+                </button>
+              )}
             </div>
           )
         )}

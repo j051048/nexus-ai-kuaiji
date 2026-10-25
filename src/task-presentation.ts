@@ -1,7 +1,9 @@
 import type { TaskKind, WorkspaceProfile, WorkspaceTask } from './workspace-types';
+import { plainTaskPresentation, usesPlainTaskLanguage, taskKindLabel } from './task-language';
 
 export type TaskSummaryKey = 'mine' | 'waiting' | 'running' | 'done' | 'blocked';
 export type TaskPresentation = {
+  kindLabel: string;
   key: TaskSummaryKey;
   label: string;
   detail: string;
@@ -221,7 +223,7 @@ function actionNext(task: WorkspaceTask): string {
  * responsible is display text, never an identity or a grant. Capabilities only
  * narrow suggestions; the destination endpoint remains authoritative.
  */
-export function taskPresentation(
+function taskPresentationCore(
   task: WorkspaceTask,
   profile: WorkspaceProfile | null,
 ): TaskPresentation {
@@ -233,6 +235,7 @@ export function taskPresentation(
     actionable = false,
     actionLabel = actionable ? task.action_label.trim() || '打开处理' : '查看进度',
   ): TaskPresentation => ({
+    kindLabel: taskKindLabel(task.kind, null),
     key,
     label: categories[key],
     detail,
@@ -320,14 +323,9 @@ export function taskPresentation(
   if (task.state === 'handed_off' || task.state === 'succeeded')
     return result('waiting', waitingNext(task, responsible));
 
-  const blocked = [
-    'failed',
-    'interrupted',
-    'stale',
-    'needs_attention',
-    'returned',
-    'mismatch',
-  ].includes(task.state);
+  const blocked = ['failed', 'interrupted', 'stale', 'needs_attention', 'mismatch'].includes(
+    task.state,
+  );
   const allowed = task.bucket === 'action' && !!profile && capability(task, profile);
   if (allowed) return result(blocked ? 'blocked' : 'mine', actionNext(task), true);
   if (task.bucket === 'action')
@@ -340,4 +338,12 @@ export function taskPresentation(
       '查看详情',
     );
   return result(blocked ? 'blocked' : 'waiting', waitingNext(task, responsible));
+}
+
+export function taskPresentation(
+  task: WorkspaceTask,
+  profile: WorkspaceProfile | null,
+): TaskPresentation {
+  const base = taskPresentationCore(task, profile);
+  return usesPlainTaskLanguage(profile) ? plainTaskPresentation(task, base) : base;
 }

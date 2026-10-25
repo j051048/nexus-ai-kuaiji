@@ -1,8 +1,9 @@
 import type { ReactNode } from 'react';
 import { FileCheck2, FileText, Home, LogOut, MessageSquareText, PieChart } from 'lucide-react';
-import type { Session } from './types';
+import type { Me, Session } from './types';
 import type { WorkspaceProfile } from './workspace-types';
-import { clientPortalNav, presentationRole, roleHome } from './workspace-presentation';
+import { clientPortalNav } from './workspace-presentation';
+import { AccountIdentity } from './AccountIdentity';
 import './client-portal.css';
 
 export type ClientPortalTab = 'home' | 'submit' | 'materials' | 'messages' | 'briefing';
@@ -10,6 +11,8 @@ export type ClientPortalTab = 'home' | 'submit' | 'materials' | 'messages' | 'br
 export function ClientPortalShell({
   session,
   profile,
+  me,
+  identityUnavailable = false,
   current,
   onNavigate,
   onBriefing,
@@ -24,6 +27,8 @@ export function ClientPortalShell({
 }: {
   session: Session;
   profile: WorkspaceProfile;
+  me?: Me | null;
+  identityUnavailable?: boolean;
   current: ClientPortalTab;
   onNavigate: (tab: ClientPortalTab) => void;
   onBriefing: () => void;
@@ -44,7 +49,6 @@ export function ClientPortalShell({
     briefing: PieChart,
   };
   const tabs = clientPortalNav(profile);
-  const home = roleHome(presentationRole(profile));
   return (
     <div className="client-portal">
       <header className="client-portal-header">
@@ -67,8 +71,6 @@ export function ClientPortalShell({
               ))}
             </select>
           )}
-          <span>{session.user_name}</span>
-          <small>{home.name}</small>
           {((profile.can_accounting && onAccounting) || (profile.can_manage && onAdmin)) && (
             <details className="client-portal-settings">
               <summary
@@ -98,6 +100,12 @@ export function ClientPortalShell({
           </button>
         </div>
       </header>
+      <AccountIdentity
+        session={session}
+        profile={profile}
+        me={me}
+        unavailable={identityUnavailable}
+      />
       <nav className="client-portal-tabs" aria-label="客户服务">
         {tabs.map((tab) => {
           const Icon = icons[tab.id];

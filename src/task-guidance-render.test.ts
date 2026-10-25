@@ -74,7 +74,8 @@ describe('V05 待办将身份摘要、业务事实与下一步同屏呈现', () 
   it('员工已提交资料显示等财务处理，不能被概括为已完成', () => {
     const html = render(row);
     expect(html).toContain('data-summary="waiting"');
-    expect(html).toContain('待独立验收');
+    expect(html).toContain('资料已提交，等待核对');
+    expect(html).not.toContain('待独立验收');
     expect(html).toContain('下一步');
     expect(html).toContain('企业财务');
     expect(html).not.toContain('data-summary="done"');

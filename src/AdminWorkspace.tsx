@@ -18,6 +18,7 @@ import { EmptyState, Modal, PageControls, Spinner } from './AppPrimitives';
 import { BusinessOrganization } from './BusinessOrganization';
 import { AdminMembers } from './AdminMembers';
 import { AdminAudit } from './AdminAudit';
+import { AccountIdentity } from './AccountIdentity';
 import type { Me, Session } from './types';
 import {
   canOpenAdmin,
@@ -116,6 +117,7 @@ export default function AdminWorkspace({
           </button>
         </div>
       </header>
+      <AccountIdentity session={session} me={me} administration />
       {!allowed ? (
         <main className="admin-main">
           <EmptyState title="当前账号没有管理后台权限" icon={<ShieldCheck size={28} />}>
@@ -154,11 +156,6 @@ export default function AdminWorkspace({
               <History size={16} />
               操作记录
             </button>
-            <span>
-              <ShieldCheck size={14} />
-              {session.user_name} ·{' '}
-              {me.permissions.manage_firm ? '管理本事务所全部企业' : '管理获授权企业'}
-            </span>
           </nav>
           <main className="admin-main">
             {section === 'members' && me.permissions.manage_firm ? (

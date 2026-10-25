@@ -1,4 +1,5 @@
 import type { PresentationRole } from './workspace-types';
+import type { WorkspaceView } from './workspace-route';
 
 export type PresentationNavItem = { id: string; label: string; hint: string };
 
@@ -115,13 +116,49 @@ export function roleNavigation(role: PresentationRole): PresentationNavItem[] {
   return roleEntries[role].map((id) => navigationItem(id, role));
 }
 
-/** Route aliases and registered pages share the same current-item resolver. */
-export function navigationCurrent(view: string, businessOpen = false): NavigationId {
-  if (view === 'service') return 'monthly';
+/** Every route has an explicit navigation owner; adding a route requires choosing its owner. */
+export const navigationParents = {
+  home: 'home',
+  firm: 'firm',
+  onboarding: 'onboarding',
+  inbox: 'inbox',
+  observability: 'observability',
+  runs: 'runs',
+  business: 'business',
+  accounting: 'accounting',
+  review: 'review',
+  cases: 'cases',
+  learning: 'accounting',
+  reconciliation: 'accounting',
+  delivery: 'accounting',
+  briefing: 'briefing',
+  ledger: 'accounting',
+  integration: 'accounting',
+  ingestion: 'ingestion',
+  revision: 'revision',
+  efficiency: 'accounting',
+  closing: 'accounting',
+  settlement: 'accounting',
+  quality: 'quality',
+  migration: 'accounting',
+  catalog: 'accounting',
+  queue: 'queue',
+  intelligence: 'intelligence',
+  operations: 'operations',
+  monthly: 'monthly',
+  balances: 'accounting',
+  recurring: 'accounting',
+  service: 'monthly',
+  materials: 'materials',
+  messages: 'messages',
+  portfolio: 'portfolio',
+} as const satisfies Record<WorkspaceView, NavigationId>;
+
+export function navigationCurrent(view: string, businessOpen = false): NavigationId | null {
   if (view === 'accounting' && businessOpen) return 'business';
-  return Object.prototype.hasOwnProperty.call(definitions, view)
-    ? (view as NavigationId)
-    : 'accounting';
+  return Object.prototype.hasOwnProperty.call(navigationParents, view)
+    ? navigationParents[view as WorkspaceView]
+    : null;
 }
 
 export function navigationAllowed(item: PresentationNavItem, capabilities: NavigationCapabilities) {

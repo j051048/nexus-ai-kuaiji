@@ -68,7 +68,7 @@ describe('V05 待办摘要按服务端分派与当前能力收窄', () => {
     expect(taskPresentation(submitted, employee)).toMatchObject({
       key: 'waiting',
       label: '等待处理',
-      detail: '待财务核验',
+      detail: '等待财务核对资料',
       actionable: false,
       actionLabel: '查看进度',
     });
@@ -232,7 +232,7 @@ describe('V05 待办摘要按服务端分派与当前能力收窄', () => {
 
   it('同一 accepted 状态按材料验收与迁移接管分别解释', () => {
     expect(taskPresentation(task({ kind: 'material', state: 'accepted' }), employee)).toMatchObject(
-      { key: 'done', detail: '已验收' },
+      { key: 'done', detail: '这项资料已核对' },
     );
     expect(
       taskPresentation(task({ kind: 'migration', state: 'accepted' }), allGrants),

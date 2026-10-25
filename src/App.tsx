@@ -21,6 +21,7 @@ import { useAccountingAuth } from './useAccountingAuth';
 import { ActivityTimer } from './ActivityTimer';
 import { AgentNavigation, type AgentNavigationView } from './AgentNavigation';
 import { navigationCurrent } from './workspace-navigation';
+import { projectNavigationCapabilities } from './navigation-capabilities';
 import { AgentCommandPalette, type AgentCommand } from './AgentCommandPalette';
 import { buildQuickCommands } from './quick-commands';
 import type { AgentRoute } from './agent-workspace-types';
@@ -31,6 +32,10 @@ import type {
 } from './assistant-types';
 import { clearReviewSession } from './review-session';
 import { taskDestination } from './workspace-types';
+import { RoleQuickStart } from './RoleQuickStart';
+import { AccountIdentity } from './AccountIdentity';
+import { accountIdentity } from './account-identity';
+import { roleHomeGuide } from './workspace-role-home';
 import { workspaceExperience } from './workspace-experience';
 import {
   presentationRole,
@@ -63,7 +68,7 @@ import {
 } from './workspace-route';
 import type { MonthlyDestination } from './monthly-workbench-types';
 import type { ServiceJourneyTarget } from './service-journey';
-import { roleLabels, workspaceViewLabels } from './workspace-labels';
+import { workspaceViewLabels } from './workspace-labels';
 import {
   AccessManagement,
   AccountActivation,
@@ -107,6 +112,7 @@ export default function App() {
   const [workBook, setWorkBook] = useState('');
   const [briefingPicker, setBriefingPicker] = useState(false);
   const [monthlyDirty, setMonthlyDirty] = useState(false);
+  const [acceptedDiscardEpoch, setAcceptedDiscardEpoch] = useState(0);
   const changeMonthlyDirty = useCallback((value: boolean) => setMonthlyDirty(value), []);
   const [intakeTarget, setIntakeTarget] = useState('');
   const [intakeTemplate, setIntakeTemplate] = useState<BusinessTemplate | undefined>();
@@ -494,8 +500,12 @@ export default function App() {
       !operationBusy &&
       !intelligenceBusy &&
       !reviewNavigationLoading,
-    onRestore: (route) => {
-      progress.arrived(route);
+    onRecordEntry: progress.rememberEntry,
+    onRestore: (route, visit) => {
+      progress.arrived(route, visit);
+      // Accepted navigation must discard the editor, including same-URL history entries.
+      // Staying on the page never reaches this callback and keeps unsaved input intact.
+      if (reviewDirty || drawerDirty || monthlyDirty) setAcceptedDiscardEpoch((epoch) => epoch + 1);
       const initialHome =
         restoredRouteScope.current !== session?.scope_key &&
         bootstrapProfile.current?.scope_key === session?.scope_key &&
@@ -516,7 +526,7 @@ export default function App() {
       setWorkCompany(route.companyId);
       setWorkPeriod(route.period);
       setWorkBook(
-        ['review', 'cases', 'business', 'service', 'materials'].includes(route.view)
+        ['review', 'cases', 'business', 'revision', 'service', 'materials'].includes(route.view)
           ? route.bookId
           : '',
       );
@@ -717,6 +727,14 @@ export default function App() {
     !['home', 'business', 'materials', 'messages', 'briefing'].includes(routeView);
   const clientPortal = !!profile && primarySurface === 'client' && !secondaryAccounting;
   const experience = workspaceExperience(profile);
+  const navigationCapabilities = projectNavigationCapabilities(profile, {
+    accounting: canSeeAccounting,
+    processing: experience.processing,
+    operations: canFirmOperations,
+    hasBook: !!bookId,
+    manageAdmin: !!me?.permissions.manage_admin,
+    manageFirm: !!me?.permissions.manage_firm,
+  });
   const navigationLocked =
     !!busy ||
     businessBusy ||
@@ -794,10 +812,8 @@ export default function App() {
       pendingReview.current = null;
     }
     if (view === 'home') setWorkspaceRevision((n) => n + 1);
-    // A workflow jump sets its entity and scope in the same render. Let the
-    // route synchronizer write that complete URL; a bare URL here can restore
-    // an empty selection before the target event/book has been applied.
-    if (!keepJourney) void routerNavigate(`/workspace/${view}`, { replace: false });
+    // The synchronizer writes the settled selection for menus and workflow jumps.
+    // A second bare-URL push here races it and adds duplicate history entries.
   }
   function openWorkspaceTask(task: WorkspaceTask) {
     if (navigationLocked) return;
@@ -1233,6 +1249,7 @@ export default function App() {
         </div>
       )}
       <WorkspaceRouteContent
+        key={acceptedDiscardEpoch}
         app={
           portalRouteView === routeView
             ? routeApp
@@ -1273,7 +1290,7 @@ export default function App() {
         >
           {' '}
           <InlineReviewDrawer
-            key={`${session.scope_key}:${inlineTarget.bookId}:${inlineTarget.draftId}`}
+            key={`${session.scope_key}:${inlineTarget.bookId}:${inlineTarget.draftId}:${acceptedDiscardEpoch}`}
             session={session}
             bookId={inlineTarget.bookId}
             draftId={inlineTarget.draftId}
@@ -1366,6 +1383,8 @@ export default function App() {
         <ClientPortalShell
           session={session}
           profile={profile}
+          me={me}
+          identityUnavailable={!!profileError}
           current={clientPortalTab}
           onNavigate={(tab) => {
             if (tab === 'home') navigate('home');
@@ -1462,7 +1481,9 @@ export default function App() {
       <AgentNavigation
         session={session}
         current={navigationCurrent(routeView, showBusiness)}
-        presentationNav={profile ? primaryNav(presentationRole(profile), profile) : undefined}
+        presentationNav={
+          profile ? primaryNav(presentationRole(profile), navigationCapabilities) : undefined
+        }
         presentationLabel={profile ? roleHome(presentationRole(profile)).name : undefined}
         onAdmin={
           me?.permissions.manage_admin || me?.permissions.manage_firm
@@ -1481,21 +1502,8 @@ export default function App() {
               }
             : undefined
         }
-        canAccounting={canSeeAccounting}
-        canBusiness={Boolean(
-          profile &&
-          (profile.can_submit ||
-            profile.can_approve ||
-            profile.can_finance ||
-            profile.can_accounting ||
-            profile.can_manage),
-        )}
-        canProcessing={experience.processing}
+        capabilities={navigationCapabilities}
         businessLabel={experience.businessLabel}
-        canMonthly={canSeeAccounting || !!profile?.can_manage}
-        canReview={!!profile?.can_review}
-        canQuality={!!profile?.can_review && !!bookId}
-        canOperations={canFirmOperations}
         locked={navigationLocked || !!modal || commandOpen}
         onNavigate={navigate}
         onAccountingFilter={(value) => {
@@ -1554,11 +1562,7 @@ export default function App() {
               <div>
                 <strong>{session.user_name}</strong>
                 <span>
-                  {profile
-                    ? roleHome(presentationRole(profile)).name
-                    : session.role
-                      ? roleLabels[session.role]
-                      : '工作空间成员'}
+                  {accountIdentity({ session, profile, me, unavailable: !!profileError }).role}
                 </span>
               </div>
               {session.mode === 'supabase' ? (
@@ -1638,6 +1642,7 @@ export default function App() {
             </div>
           </div>
         </header>
+        <AccountIdentity session={session} profile={profile} me={me} unavailable={!!profileError} />
         <ActivityTimer
           key={session.scope_key}
           session={session}
@@ -1853,6 +1858,7 @@ export default function App() {
           onClose={() => setModal(null)}
         >
           <div className="help-content">
+            {profile && <RoleQuickStart guide={roleHomeGuide(profile)} />}
             <p>
               适用于中国大陆企业、人民币账套。支持员工报销、采购 /
               费用、日常收支录入与附件上传；经部门审批和企业财务核验后交接凭证草稿。也支持 CSV

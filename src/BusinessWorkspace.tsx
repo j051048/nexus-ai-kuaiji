@@ -48,8 +48,11 @@ import { WorkflowGuide } from './WorkflowGuide';
 import { businessGuidance, businessHandoffNotice, businessStatusLabel } from './business-guidance';
 import { BusinessRecordLinks } from './BusinessRecordLinks';
 import { BusinessOriginalPreview } from './BusinessOriginalPreview';
+import { TermHelp } from './TermHelp';
+import { businessListEmpty, readRecovery, type ReadRecovery } from './workspace-recovery';
 import './intake.css';
 import './business-record.css';
+import './workspace-help.css';
 
 const statusLabels: Record<BusinessStatus, string> = {
   draft: '草稿',
@@ -123,6 +126,7 @@ export function BusinessWorkspace({
   initialPeriod?: string;
 }) {
   const [context, setContext] = useState<BusinessContext | null>(null);
+  const [contextAttempt, setContextAttempt] = useState(0);
   const [scope, setScope] = useState<BusinessScope>('own');
   const [companyId, setCompanyId] = useState(initialCompanyId);
   const [status, setStatus] = useState('');
@@ -136,6 +140,8 @@ export function BusinessWorkspace({
   const [intelligenceBusy, setIntelligenceBusy] = useState(false);
   const busy = operationBusy || (intelligenceBusy ? 'intelligence' : '');
   const [error, setError] = useState('');
+  const [listHint, setListHint] = useState<ReadRecovery | null>(null);
+  const emptyGuide = businessListEmpty(scope, status);
   const [notice, setNotice] = useState('');
   const [editEvent, setEditEvent] = useState<BusinessEvent | null>(null);
   const [intakeOpen, setIntakeOpen] = useState(false);
@@ -255,6 +261,9 @@ export function BusinessWorkspace({
   }, [booksTarget]);
   useEffect(() => {
     const controller = new AbortController();
+    setLoading(true);
+    setError('');
+    setListHint(null);
     void api<BusinessContext>('/business/context', session, { signal: controller.signal })
       .then((data) => {
         if (!controller.signal.aborted) setContext(data);
@@ -262,11 +271,12 @@ export function BusinessWorkspace({
       .catch((failure) => {
         if (!controller.signal.aborted) {
           setError(errorMessage(failure));
+          setListHint(readRecovery(failure));
           setLoading(false);
         }
       });
     return () => controller.abort();
-  }, [session]);
+  }, [session, contextAttempt]);
   useEffect(() => {
     if (!context || defaultScopeSet.current) return;
     defaultScopeSet.current = true;
@@ -297,6 +307,7 @@ export function BusinessWorkspace({
       const epoch = ++listEpoch.current;
       setLoading(true);
       setError('');
+      setListHint(null);
       const query = new URLSearchParams({ scope, limit: '50', offset: String(offset) });
       if (companyId) query.set('company_id', companyId);
       if (status) query.set('status', status);
@@ -311,8 +322,10 @@ export function BusinessWorkspace({
         setEvents(result.events);
         setTotal(result.total);
       } catch (failure) {
-        if (!signal?.aborted && active.current && epoch === listEpoch.current)
+        if (!signal?.aborted && active.current && epoch === listEpoch.current) {
           setError(errorMessage(failure));
+          setListHint(readRecovery(failure));
+        }
       } finally {
         if (!signal?.aborted && active.current && epoch === listEpoch.current) setLoading(false);
       }
@@ -387,6 +400,7 @@ export function BusinessWorkspace({
     lock.current = true;
     setBusy(name);
     setError('');
+    setListHint(null);
     setNotice('');
     const epoch = selectionEpoch.current;
     try {
@@ -699,15 +713,23 @@ export function BusinessWorkspace({
           {error && (
             <div className="inline-error" role="alert">
               <TriangleAlert size={16} />
-              {error}
-              <button
-                className="text-button"
-                type="button"
-                disabled={!!busy}
-                onClick={() => void loadList()}
-              >
-                刷新列表
-              </button>
+              <div>
+                <p>{error}</p>
+                {listHint && <p className="workspace-recovery-next">{listHint.next}</p>}
+                {(!listHint || listHint.action === 'reload') && (
+                  <button
+                    className="text-button"
+                    type="button"
+                    disabled={!!busy || loading}
+                    onClick={() => {
+                      if (context) void loadList();
+                      else setContextAttempt((attempt) => attempt + 1);
+                    }}
+                  >
+                    {context ? '刷新列表' : '重新读取业务范围'}
+                  </button>
+                )}
+              </div>
             </div>
           )}
           {notice && (
@@ -764,16 +786,23 @@ export function BusinessWorkspace({
                 </button>
               ))}
             </div>
-          ) : (
-            <Empty
-              title="当前范围还没有业务事项"
-              text={
-                scope === 'own'
-                  ? '从报销、采购 / 费用、日常收支中选择模板，上传原件、核对业务信息后即可提交。'
-                  : '获授权范围内的事项进入对应审批阶段后，可在这里处理。'
-              }
-            />
-          )}
+          ) : !error ? (
+            <>
+              <Empty title={emptyGuide.title} text={emptyGuide.text} />
+              {emptyGuide.action === 'all-states' && (
+                <div className="business-empty-action">
+                  <button
+                    type="button"
+                    className="text-button"
+                    disabled={!!busy || loading}
+                    onClick={() => changeFilter('status', '')}
+                  >
+                    查看全部状态
+                  </button>
+                </div>
+              )}
+            </>
+          ) : null}
           <div className="business-pagination">
             <span>
               {total} 件事项{total > 0 && ` · 第 ${Math.floor(offset / 50) + 1} 页`}
@@ -872,6 +901,9 @@ export function BusinessWorkspace({
                   selectedBookEligible: eligibleBooks.some((book) => book.id === handoffBookId),
                 })}
               />
+              {(selected.permissions.finance_approve || selected.permissions.handoff) && (
+                <TermHelp term="draft" />
+              )}
               <dl className="business-facts">
                 <div>
                   <dt>发生日期</dt>

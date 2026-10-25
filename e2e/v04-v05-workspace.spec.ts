@@ -211,7 +211,8 @@ for (const viewport of [
     const row = page.locator('[data-task-key="finance:v05-shared"]');
     await expect(row).toHaveAttribute('data-summary', 'waiting');
     await expect(row).toContainText('等待处理');
-    await expect(row).toContainText('待财务核验');
+    // V08 uses plain copy for the employee; the same stage remains professional for finance below.
+    await expect(row).toContainText('等待财务核对资料');
     await expect(row.locator('.workspace-task-guidance')).toContainText('下一步');
     await expect(row).toContainText('本企业财务核验人');
     await expect(row.getByRole('button', { name: '核验资料', exact: true })).toHaveCount(0);

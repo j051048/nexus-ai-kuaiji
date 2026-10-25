@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import {
   Camera,
   CheckCircle2,
@@ -35,6 +35,7 @@ import { changeIntakeTemplate, intakeCandidates } from './intake-helpers';
 import { directUploadLimitLabel } from './transport-limits';
 import { WorkflowGuide } from './WorkflowGuide';
 import { intakeGuidance } from './intake-guidance';
+import { TermHelp } from './TermHelp';
 import './intake.css';
 
 export function IntakeWizard({
@@ -59,6 +60,7 @@ export function IntakeWizard({
   /** A material request may only resume or submit drafts of its own company. */
   lockedCompanyId?: string;
 }) {
+  const fieldHelpId = useId();
   const companies = context.companies.filter(
     (company) => company.can_submit && (!lockedCompanyId || company.id === lockedCompanyId),
   );
@@ -132,11 +134,9 @@ export function IntakeWizard({
     let disposed = false;
     const controller = new AbortController();
     const timer = window.setInterval(() => {
-      void api<IntakeDraft>(
-        `/intake/drafts/${encodeURIComponent(draft.id)}`,
-        session,
-        { signal: controller.signal },
-      )
+      void api<IntakeDraft>(`/intake/drafts/${encodeURIComponent(draft.id)}`, session, {
+        signal: controller.signal,
+      })
         .then((value) => {
           if (!disposed && active.current) adopt(value);
         })
@@ -853,18 +853,22 @@ export function IntakeWizard({
               核对业务信息
             </h3>
             <div className="business-form-grid">
-              <label>
-                <span className="field-label">发生日期</span>
-                <input
-                  type="date"
-                  aria-label="发生日期"
-                  min="2000-01-01"
-                  max="2099-12-31"
-                  value={fields.occurred_on}
-                  disabled={disabled}
-                  onChange={(event) => field('occurred_on', event.target.value)}
-                />
-              </label>
+              <div className="term-field">
+                <label>
+                  <span className="field-label">发生日期</span>
+                  <input
+                    type="date"
+                    aria-label="发生日期"
+                    aria-describedby={`${fieldHelpId}-occurred-on`}
+                    min="2000-01-01"
+                    max="2099-12-31"
+                    value={fields.occurred_on}
+                    disabled={disabled}
+                    onChange={(event) => field('occurred_on', event.target.value)}
+                  />
+                </label>
+                <TermHelp term="occurred_on" descriptionId={`${fieldHelpId}-occurred-on`} />
+              </div>
               <label>
                 <span className="field-label">金额（人民币元）</span>
                 <input
@@ -888,17 +892,21 @@ export function IntakeWizard({
                   onChange={(event) => field('description', event.target.value)}
                 />
               </label>
-              <label className="wide-field">
-                <span className="field-label">交易对方</span>
-                <input
-                  aria-label="交易对方"
-                  value={fields.counterparty}
-                  maxLength={200}
-                  placeholder="供应商、客户或实际收款人"
-                  disabled={disabled}
-                  onChange={(event) => field('counterparty', event.target.value)}
-                />
-              </label>
+              <div className="wide-field term-field">
+                <label>
+                  <span className="field-label">交易对方</span>
+                  <input
+                    aria-label="交易对方"
+                    aria-describedby={`${fieldHelpId}-counterparty`}
+                    value={fields.counterparty}
+                    maxLength={200}
+                    placeholder="供应商、客户或实际收款人"
+                    disabled={disabled}
+                    onChange={(event) => field('counterparty', event.target.value)}
+                  />
+                </label>
+                <TermHelp term="counterparty" descriptionId={`${fieldHelpId}-counterparty`} />
+              </div>
               <label>
                 <span className="field-label">事项分类</span>
                 <select
@@ -932,23 +940,27 @@ export function IntakeWizard({
                   </select>
                 </label>
               ) : (
-                <label>
-                  <span className="field-label">企业付款状态</span>
-                  <select
-                    aria-label="企业付款状态"
-                    value={fields.payment_status}
-                    disabled={disabled || template === 'reimbursement'}
-                    onChange={(event) =>
-                      field(
-                        'payment_status',
-                        event.target.value as BusinessPayload['payment_status'],
-                      )
-                    }
-                  >
-                    <option value="unpaid">待企业付款</option>
-                    {template === 'procurement_expense' && <option value="paid">已付款</option>}
-                  </select>
-                </label>
+                <div className="term-field">
+                  <label>
+                    <span className="field-label">企业付款状态</span>
+                    <select
+                      aria-label="企业付款状态"
+                      aria-describedby={`${fieldHelpId}-payment-status`}
+                      value={fields.payment_status}
+                      disabled={disabled || template === 'reimbursement'}
+                      onChange={(event) =>
+                        field(
+                          'payment_status',
+                          event.target.value as BusinessPayload['payment_status'],
+                        )
+                      }
+                    >
+                      <option value="unpaid">待企业付款</option>
+                      {template === 'procurement_expense' && <option value="paid">已付款</option>}
+                    </select>
+                  </label>
+                  <TermHelp term="payment_status" descriptionId={`${fieldHelpId}-payment-status`} />
+                </div>
               )}
               <label className="wide-field">
                 <span className="field-label">业务用途（可选）</span>

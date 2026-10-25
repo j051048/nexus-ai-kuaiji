@@ -24,6 +24,7 @@ import {
 import { clearReviewSession, inputOwnsKeyboard } from './review-session';
 import { WorkflowGuide } from './WorkflowGuide';
 import { reviewGuidance } from './review-guidance';
+import { TermHelp } from './TermHelp';
 import type { BusinessEvent } from './business-types';
 import type { SourceHistory } from './SourceHistoryPanel';
 import type { BookDetail, Draft, JournalLine, Session } from './types';
@@ -456,7 +457,8 @@ export function InlineReviewDrawer({
           canSave &&
           !leaveTarget &&
           !(
-            event.target instanceof Element && event.target.closest('.accounting-context-assistant')
+            event.target instanceof Element &&
+            event.target.closest('.accounting-context-assistant, .term-help')
           )
         )
           void mutate('save');
@@ -465,7 +467,7 @@ export function InlineReviewDrawer({
       if (event.key === 'Tab') {
         const focusable = Array.from(
           panel.current?.querySelectorAll<HTMLElement>(
-            'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], iframe, [tabindex="0"]',
+            'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], summary, iframe, [tabindex="0"]',
           ) ?? [],
         ).filter(
           (element) =>
@@ -500,7 +502,8 @@ export function InlineReviewDrawer({
         busy ||
         loading ||
         leaveTarget ||
-        (event.target instanceof Element && !!event.target.closest('.accounting-context-assistant'))
+        (event.target instanceof Element &&
+          !!event.target.closest('.accounting-context-assistant, .term-help'))
       )
         return;
       if (event.key === '?') {
@@ -720,6 +723,11 @@ export function InlineReviewDrawer({
                     acknowledged,
                   })}
                 />
+                <div className="review-term-help" aria-label="会计术语就地说明">
+                  <TermHelp term="draft" />
+                  <TermHelp term="debit_credit" />
+                  <TermHelp term="export_receipt" />
+                </div>
                 <div className="inline-review-state">
                   <span className={`badge ${draft.status}`}>
                     {draft.status === 'draft'

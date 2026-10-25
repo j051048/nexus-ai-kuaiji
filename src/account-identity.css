@@ -1,0 +1,101 @@
+.account-identity {
+  padding: 4px 24px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  min-width: 0;
+}
+.account-identity summary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: var(--control-height-touch);
+  padding: 4px 0;
+  cursor: pointer;
+  list-style: none;
+}
+.account-identity summary::-webkit-details-marker {
+  display: none;
+}
+.account-identity summary:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+.account-identity-prefix,
+.account-identity-disclosure,
+.account-identity dt {
+  color: var(--text-secondary);
+}
+.account-identity-role {
+  border: 1px solid var(--line);
+  background: var(--surface-subtle);
+  border-radius: var(--radius-sm);
+  padding: 3px 8px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.account-identity-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.account-identity-disclosure {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  margin-left: auto;
+}
+.account-identity details[open] .account-identity-disclosure svg {
+  transform: rotate(180deg);
+}
+.account-identity-details {
+  padding: 8px 0 12px;
+  max-width: 960px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.account-identity dl {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 8px;
+}
+.account-identity dl > div {
+  display: grid;
+  font-size: var(--font-size-sm);
+  grid-template-columns: 6em minmax(0, 1fr);
+  gap: 8px;
+}
+.account-identity dt,
+.account-identity dd {
+  font-size: var(--font-size-sm);
+  text-align: left;
+  font-weight: inherit;
+}
+.account-identity dd {
+  margin: 0;
+}
+.account-identity p {
+  margin: 6px 0 0;
+}
+.admin-shell > .account-identity {
+  padding-inline: max(24px, calc((100vw - 1240px) / 2));
+}
+@media (max-width: 640px) {
+  .account-identity,
+  .admin-shell > .account-identity {
+    padding-inline: 14px;
+  }
+  .account-identity summary {
+    gap: 6px;
+  }
+  .account-identity-disclosure {
+    font-size: var(--font-size-xs);
+  }
+}
+@media print {
+  .account-identity {
+    display: none;
+  }
+}

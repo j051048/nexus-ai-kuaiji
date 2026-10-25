@@ -72,6 +72,34 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e -- --shard=${{ matrix.shard }}/4
 
+  core-regression-gate:
+    name: V07–V10 same-candidate dev and preview gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: npm ci
+      - run: python -m pip install -r nexus_backend/requirements.lock
+      - run: npx playwright install --with-deps chromium
+      - name: Reject incomplete or misleading acceptance reports
+        run: npm run test:e2e:gate
+      - name: Frozen 95 cases against dev and fresh preview, no retries
+        run: npm run test:e2e:core
+      - name: Retain only whitelisted acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v10-core-regression-evidence
+          path: test-reports/e2e-core/*/reports/*.json
+          if-no-files-found: error
+
   ak05-postgres-gate:
     name: AK05 PostgreSQL ${{ matrix.postgres }} required gate
     runs-on: ubuntu-latest

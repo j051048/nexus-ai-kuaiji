@@ -15,7 +15,12 @@ import {
   X,
 } from 'lucide-react';
 import type { Session } from './types';
-import { workspaceNavigation, type PresentationNavItem } from './workspace-navigation';
+import {
+  workspaceNavigation,
+  type NavigationCapabilities,
+  type NavigationId,
+  type PresentationNavItem,
+} from './workspace-navigation';
 
 export type AgentNavigationView =
   | 'home'
@@ -44,13 +49,7 @@ export type AgentNavigationView =
 export function AgentNavigation({
   session,
   current,
-  canAccounting,
-  canMonthly = canAccounting,
-  canReview,
-  canOperations,
-  canQuality = false,
-  canProcessing = false,
-  canBusiness = true,
+  capabilities,
   businessLabel = '业务事项',
   locked,
   firmSelector,
@@ -63,18 +62,12 @@ export function AgentNavigation({
   onAccountingFilter,
 }: {
   session: Session;
-  current: string;
+  current: NavigationId | null;
   presentationNav?: PresentationNavItem[];
   presentationLabel?: string;
   onAdmin?: () => void;
   onAccess?: () => void;
-  canAccounting: boolean;
-  canMonthly?: boolean;
-  canReview: boolean;
-  canOperations: boolean;
-  canQuality?: boolean;
-  canProcessing?: boolean;
-  canBusiness?: boolean;
+  capabilities: NavigationCapabilities;
   businessLabel?: string;
   locked: boolean;
   firmSelector: ReactNode;
@@ -132,21 +125,7 @@ export function AgentNavigation({
     daily: dailyItems,
     accounting: accountingItems,
     settings,
-  } = workspaceNavigation(
-    presentationNav,
-    {
-      accounting: canAccounting,
-      monthly: canMonthly,
-      review: canReview,
-      operations: canOperations,
-      quality: canQuality,
-      processing: canProcessing,
-      business: canBusiness,
-      admin: Boolean(onAdmin),
-      access: Boolean(onAccess),
-    },
-    businessLabel,
-  );
+  } = workspaceNavigation(presentationNav, capabilities, businessLabel);
   const settingsItems = settings.flatMap((group) => group.items);
   function renderEntry(item: PresentationNavItem, primary = false) {
     const Icon = navigationIcon(item.id);
@@ -156,7 +135,9 @@ export function AgentNavigation({
         key={item.id}
         aria-label={item.label}
         className={'nav-item ' + (primary ? 'agent-primary-item ' : '') + (active ? 'active' : '')}
-        disabled={locked || (item.id === 'admin' && !onAdmin)}
+        disabled={
+          locked || (item.id === 'admin' && !onAdmin) || (item.id === 'access' && !onAccess)
+        }
         aria-current={active ? 'page' : undefined}
         onClick={() => {
           if (locked) return;
@@ -261,10 +242,10 @@ export function AgentNavigation({
               {dailyItems.map((item) => renderEntry(item))}
             </details>
           )}
-          {canAccounting && (
+          {capabilities.accounting && (
             <details
               className="nav-group"
-              open={['accounting', 'review', 'revision'].includes(current)}
+              open={current !== null && ['accounting', 'review', 'revision'].includes(current)}
             >
               <summary>会计工作区</summary>
               {accountingItems.map((item) => renderEntry(item))}

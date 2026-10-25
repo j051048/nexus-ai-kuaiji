@@ -1,0 +1,56 @@
+.role-quick-start {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-5);
+  margin: var(--space-3) 0;
+  min-width: 0;
+}
+.role-quick-start > div {
+  display: block;
+  min-width: 0;
+  margin-top: 0;
+  padding-left: var(--space-3);
+  border-left: 2px solid var(--line);
+}
+.role-quick-start dt {
+  color: var(--text-primary);
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  margin-bottom: var(--space-2);
+}
+.role-quick-start dd {
+  margin: 0;
+  text-align: left;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.workspace-recovery-next {
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  line-height: 1.7;
+  margin: var(--space-2) 0;
+}
+.workspace-recovery-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+.workspace-clear .text-button,
+.business-empty-action .text-button,
+.workspace-recovery-actions .text-button {
+  min-height: var(--control-height-touch);
+}
+.business-empty-action {
+  display: flex;
+  justify-content: center;
+  padding: 0 var(--space-4) var(--space-4);
+}
+@media (max-width: 740px) {
+  .role-quick-start {
+    grid-template-columns: 1fr;
+    gap: var(--space-4);
+  }
+}
