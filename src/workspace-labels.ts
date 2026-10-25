@@ -30,6 +30,7 @@ export const workspaceViewLabels: Partial<Record<WorkspaceView, string>> = {
   integration: '财务软件接入',
   ingestion: '数据接入',
   ledger: '长期账套与主数据',
+  'formal-books': '正式账簿',
   reconciliation: '流水与业务匹配',
   delivery: '导入回执核验',
   briefing: '月度财税简报',

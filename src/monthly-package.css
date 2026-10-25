@@ -1,0 +1,104 @@
+.monthly-package-panel {
+  margin-bottom: var(--space-5, 20px);
+  min-width: 0;
+}
+.monthly-package-panel h2 {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
+}
+.monthly-package-panel .panel-heading {
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+.monthly-package-panel p {
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+.monthly-package-scope {
+  overflow-wrap: anywhere;
+}
+.monthly-package-blockers {
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--status-warning-soft);
+}
+.monthly-package-blockers li {
+  margin: var(--space-2, 8px) 0;
+}
+.monthly-package-form,
+.monthly-package-confirm {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: var(--space-3, 12px);
+  margin: var(--space-4, 16px) 0;
+}
+.monthly-package-form label,
+.monthly-package-confirm > label {
+  display: grid;
+  gap: var(--space-2, 8px);
+  flex: 1 1 260px;
+  min-width: 0;
+}
+.monthly-package-form select,
+.monthly-package-confirm input:not([type='checkbox']) {
+  width: 100%;
+  min-width: 0;
+}
+.monthly-package-confirm .monthly-package-check {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  line-height: 1.6;
+}
+.monthly-package-check input {
+  width: auto;
+}
+.monthly-package-list {
+  list-style: none;
+  padding: 0;
+  margin: var(--space-4, 16px) 0 0;
+}
+.monthly-package-list > li {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-4) 0;
+  border-top: 1px solid var(--line);
+}
+.monthly-package-list > li > div {
+  min-width: 0;
+}
+.monthly-package-list .status-pill {
+  margin-left: var(--space-2, 8px);
+}
+.monthly-package-list code {
+  display: block;
+  overflow-wrap: anywhere;
+  font-size: var(--font-size-sm, 12px);
+  margin-top: var(--space-2, 8px);
+}
+.monthly-package-list summary {
+  cursor: pointer;
+  font-size: var(--font-size-sm, 12px);
+}
+.monthly-package-actions {
+  display: flex;
+  align-items: start;
+  flex-wrap: wrap;
+  gap: var(--space-2, 8px);
+}
+@media (max-width: 640px) {
+  .monthly-package-list > li {
+    flex-direction: column;
+  }
+  .monthly-package-form > button,
+  .monthly-package-actions > button {
+    width: 100%;
+    min-height: 44px;
+  }
+  .monthly-package-list .status-pill {
+    display: inline-block;
+  }
+}

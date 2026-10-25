@@ -28,7 +28,7 @@ export function bookPipelineStep(
     return listTab === 'sources' ? 'intake' : listTab === 'exports' ? 'delivery' : 'queue';
   if (view === 'recurring' || view === 'materials') return 'intake';
   if (view === 'reconciliation' || view === 'settlement') return 'matching';
-  if (view === 'balances' || view === 'closing') return 'closing';
+  if (view === 'balances' || view === 'closing' || view === 'formal-books') return 'closing';
   if (view === 'delivery' || view === 'integration') return 'delivery';
   if (view === 'briefing') return 'delivery';
   return null;
@@ -49,6 +49,7 @@ const pipelineGroups: { label: string; actions: BookAction[] }[] = [
   {
     label: '④ 对账与月结',
     actions: [
+      { view: 'formal-books', label: '正式账簿', protectChanges: true },
       { view: 'balances', label: '参考余额与月度差异', protectChanges: true },
       { view: 'closing', label: '月结预检', reviewer: true, protectChanges: true },
     ],
@@ -100,7 +101,14 @@ export function AccountingBookToolbar({
       type="button"
       className="button secondary small"
       disabled={blocked(action)}
-      onClick={() => onWorkspace(action.view)}
+      onClick={(event) => {
+        const menu = event.currentTarget.closest('details');
+        if (menu) {
+          menu.open = false;
+          menu.querySelector('summary')?.focus();
+        }
+        onWorkspace(action.view);
+      }}
     >
       {action.label}
     </button>

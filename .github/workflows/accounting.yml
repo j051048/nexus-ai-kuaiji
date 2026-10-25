@@ -92,7 +92,7 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - name: Reject incomplete or misleading acceptance reports
         run: npm run test:e2e:gate
-      - name: Frozen 95 cases against dev and fresh preview, no retries
+      - name: Frozen 102 cases against dev and fresh preview, no retries
         run: npm run test:e2e:core
       - name: Retain only whitelisted acceptance evidence
         if: always()
@@ -155,6 +155,25 @@ jobs:
           python scripts/ak05_postgres_gate.py run
           --manifest tmp_test/ak05-ci-config/manifest.json
           --out tmp_test/ak05-ci-reports
+      - name: Monthly delivery and prerequisite regressions, no skips
+        run: |
+          python scripts/test_accounting_postgres_isolated.py --config tmp_test/ak05-ci-config/regression.json nexus_backend/tests/test_monthly_delivery_postgres.py nexus_backend/tests/test_monthly_delivery_prerequisite_postgres.py -q --junitxml=tmp_test/ak05-ci-reports/monthly-delivery.xml
+          python - <<'PY'
+          import xml.etree.ElementTree as ET
+          root = ET.parse('tmp_test/ak05-ci-reports/monthly-delivery.xml').getroot()
+          expected = {
+              'test_pg_freeze_download_and_independent_exact_hash_acknowledgement',
+              'test_pg_package_roles_are_append_only_and_hash_guarded',
+              'test_pg_customer_cannot_self_ack_or_forge_hash_and_revocation_is_current',
+              'test_pg_read_only_client_can_ack_despite_staff_only_service_plan_rls',
+              'test_pg_first_not_applicable_declaration_is_accepted_with_no_supersedes',
+              'test_pg_native_replacement_reference_accepts_same_ledger',
+              'test_pg_native_replacement_reference_rejects_other_company_ledger',
+          }
+          cases = root.findall('.//testcase')
+          assert len(cases) == len(expected) and {case.attrib['name'] for case in cases} == expected
+          assert all(not any(case.find(tag) is not None for tag in ('skipped', 'failure', 'error')) for case in cases)
+          PY
       - name: Retain only sanitized gate evidence
         if: always()
         uses: actions/upload-artifact@v4

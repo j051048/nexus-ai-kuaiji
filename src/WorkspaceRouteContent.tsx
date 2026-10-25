@@ -20,6 +20,7 @@ import type { AgentNavigationView } from './AgentNavigation';
 import type { WorkspaceView } from './workspace-route';
 import type { useWorkspaceProgress } from './useWorkspaceProgress';
 import type { ServiceJourneyTarget } from './service-journey';
+import { presentationRole, workSurface } from './workspace-presentation';
 
 const AgentActivityWorkspace = lazy(() =>
   import('./AgentActivityWorkspace').then((module) => ({ default: module.AgentActivityWorkspace })),
@@ -114,6 +115,9 @@ const LearningWorkbench = lazy(() =>
 );
 const LedgerWorkspace = lazy(() =>
   import('./LedgerWorkspace').then((module) => ({ default: module.LedgerWorkspace })),
+);
+const FormalBooksWorkbench = lazy(() =>
+  import('./FormalBooksWorkbench').then((module) => ({ default: module.FormalBooksWorkbench })),
 );
 const LegacyMigrationWorkspace = lazy(() => import('./LegacyMigrationWorkspace'));
 
@@ -613,12 +617,16 @@ export function WorkspaceRouteContent({
             setRouteView('business');
           }}
         />
-      ) : routeView === 'briefing' && bookId && profile && !profile.can_accounting ? (
+      ) : routeView === 'briefing' &&
+        bookId &&
+        profile &&
+        workSurface(presentationRole(profile)) === 'client' ? (
         <MonthlyBriefing
           key={session.scope_key + ':' + bookId}
           session={session}
           bookId={bookId}
           onBack={() => navigate('home')}
+          onBusyChange={changeBusinessBusy}
         />
       ) : showBusiness ? (
         <BusinessWorkspace
@@ -746,6 +754,7 @@ export function WorkspaceRouteContent({
                 bookId={bookId}
                 embedded
                 onBack={() => setRouteView('accounting')}
+                onBusyChange={changeBusinessBusy}
               />
             ) : routeView === 'integration' && bookId ? (
               <IntegrationWorkbench
@@ -775,6 +784,17 @@ export function WorkspaceRouteContent({
                 onBack={() => setRouteView('accounting')}
                 onBusyChange={changeBusinessBusy}
                 onChanged={() => refresh(bookId)}
+              />
+            ) : routeView === 'formal-books' && bookId ? (
+              <FormalBooksWorkbench
+                key={session.scope_key + ':' + bookId}
+                session={session}
+                bookId={bookId}
+                bookName={detail?.book.name}
+                companyId={detail?.book.company_id}
+                period={detail?.book.period}
+                canDownload={detail?.book.permissions.export ?? false}
+                onBack={() => setRouteView('accounting')}
               />
             ) : routeView === 'ledger' && bookId ? (
               <LedgerWorkspace

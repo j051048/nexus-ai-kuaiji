@@ -7,6 +7,7 @@ drafts.status=exported or triggers delivery.
 
 import hashlib
 import json
+from datetime import date
 from uuid import uuid4
 
 from ..accounting.domain import AccountingError
@@ -609,6 +610,7 @@ class PostingService:
     def trial_balance_in_transaction(self, conn, actor, book_id, as_of=None):
         """Read all balance inputs under the caller's transaction and locks."""
         book, _ = self._book(conn, actor, book_id)
+        self._check_read_date(book, as_of)
         binding = self._binding(conn, book["id"])
         opening = conn.execute(
             "SELECT * FROM opening_lines WHERE package_version_id=?",
@@ -621,7 +623,30 @@ class PostingService:
             + "ORDER BY v.voucher_date,v.voucher_no,l.line_no",
             (book["id"], as_of) if as_of else (book["id"],),
         ).fetchall()
-        return self._trial_balance_rows(conn, binding, opening, voucher_rows)
+        return {
+            **self._trial_balance_rows(conn, binding, opening, voucher_rows),
+            "scope": self._read_scope(book),
+        }
+
+    @staticmethod
+    def _read_scope(book):
+        return {
+            "book_id": book["id"],
+            "firm_id": book["firm_id"],
+            "company_id": book["company_id"],
+            "period": book["period"],
+        }
+
+    @staticmethod
+    def _check_read_date(book, as_of):
+        if as_of is None:
+            return
+        try:
+            valid = date.fromisoformat(as_of).isoformat() == as_of and as_of[:7] == book["period"]
+        except (ValueError, TypeError):
+            valid = False
+        if not valid:
+            raise AccountingError("截止日期必须是当前会计月份内的有效日期")
 
     def _trial_balance_rows(self, conn, binding, opening, voucher_rows):
         accounts = {
@@ -694,85 +719,105 @@ class PostingService:
 
     def account_ledger(self, actor, book_id, account_id, as_of=None):
         with self.db.transaction(actor=actor) as conn:
-            book, _ = self._book(conn, actor, book_id)
-            binding = self._binding(conn, book["id"])
-            opening = conn.execute(
-                "SELECT COALESCE(SUM(opening_cents),0) AS total FROM opening_lines "
-                "WHERE package_version_id=? AND account_id=?",
-                (binding["package_version_id"], account_id),
-            ).fetchone()["total"]
-            rows = conn.execute(
-                "SELECT v.voucher_date,v.voucher_no,v.voucher_type,v.description,"
-                "l.debit_cents,l.credit_cents,l.aux_json,l.line_no FROM voucher_lines l "
-                "JOIN vouchers v ON v.id=l.voucher_id WHERE v.book_id=? AND l.account_id=? "
-                + ("AND v.voucher_date<=? " if as_of else "")
-                + "ORDER BY v.voucher_date,v.voucher_type,v.voucher_no,l.line_no",
-                (book["id"], account_id, as_of) if as_of else (book["id"], account_id),
-            ).fetchall()
-            running = int(opening)
-            entries = []
-            for row in rows:
-                running += int(row["debit_cents"]) - int(row["credit_cents"])
-                entries.append({**dict(row), "balance_cents": running})
-            return {"opening_cents": int(opening), "entries": entries, "closing_cents": running}
+            return self.account_ledger_in_transaction(conn, actor, book_id, account_id, as_of)
+
+    def account_ledger_in_transaction(self, conn, actor, book_id, account_id, as_of=None):
+        book, _ = self._book(conn, actor, book_id)
+        self._check_read_date(book, as_of)
+        binding = self._binding(conn, book["id"])
+        if not conn.execute(
+            "SELECT 1 FROM ledger_accounts WHERE id=? AND ledger_id=?",
+            (account_id, binding["ledger_id"]),
+        ).fetchone():
+            raise AccountingError("科目不存在或不属于当前账套", 404)
+        opening = conn.execute(
+            "SELECT COALESCE(SUM(opening_cents),0) AS total FROM opening_lines "
+            "WHERE package_version_id=? AND account_id=?",
+            (binding["package_version_id"], account_id),
+        ).fetchone()["total"]
+        rows = conn.execute(
+            "SELECT v.id AS voucher_id,v.voucher_date,v.voucher_no,v.voucher_type,v.description,"
+            "l.debit_cents,l.credit_cents,l.aux_json,l.line_no FROM voucher_lines l "
+            "JOIN vouchers v ON v.id=l.voucher_id WHERE v.book_id=? AND l.account_id=? "
+            + ("AND v.voucher_date<=? " if as_of else "")
+            + "ORDER BY v.voucher_date,v.voucher_type,v.voucher_no,l.line_no",
+            (book["id"], account_id, as_of) if as_of else (book["id"], account_id),
+        ).fetchall()
+        running = int(opening)
+        entries = []
+        for row in rows:
+            running += int(row["debit_cents"]) - int(row["credit_cents"])
+            entries.append({**dict(row), "balance_cents": running})
+        return {
+            "opening_cents": int(opening),
+            "entries": entries,
+            "closing_cents": running,
+            "scope": self._read_scope(book),
+        }
 
     def daily_journal(self, actor, book_id):
         with self.db.transaction(actor=actor) as conn:
-            book, _ = self._book(conn, actor, book_id)
-            binding = self._binding(conn, book["id"])
-            rows = conn.execute(
-                "SELECT v.voucher_date,v.voucher_no,v.voucher_type,v.description,"
-                "l.account_id,l.code_snapshot,l.name_snapshot,l.debit_cents,l.credit_cents,"
-                "l.aux_json,l.line_no FROM voucher_lines l JOIN vouchers v ON v.id=l.voucher_id "
-                "WHERE v.book_id=? AND (l.code_snapshot LIKE ? OR l.code_snapshot LIKE ?) "
-                "ORDER BY v.voucher_date,v.voucher_type,v.voucher_no,l.line_no",
-                (book["id"], "1001%", "1002%"),
-            ).fetchall()
-            opening = {
-                row["account_id"]: int(row["total"])
-                for row in conn.execute(
-                    "SELECT ol.account_id,COALESCE(SUM(ol.opening_cents),0) AS total "
-                    "FROM opening_lines ol JOIN ledger_account_versions av "
-                    "ON av.account_id=ol.account_id AND av.version=ol.account_version "
-                    "WHERE ol.package_version_id=? AND (av.code LIKE ? OR av.code LIKE ?) "
-                    "GROUP BY ol.account_id",
-                    (binding["package_version_id"], "1001%", "1002%"),
-                )
-            }
-            running = dict(opening)
-            result = []
-            for row in rows:
-                running[row["account_id"]] = (
-                    running.get(row["account_id"], 0)
-                    + int(row["debit_cents"])
-                    - int(row["credit_cents"])
-                )
-                result.append({**dict(row), "balance_cents": running[row["account_id"]]})
-            return result
+            return self.daily_journal_in_transaction(conn, actor, book_id)
+
+    def daily_journal_in_transaction(self, conn, actor, book_id):
+        book, _ = self._book(conn, actor, book_id)
+        binding = self._binding(conn, book["id"])
+        rows = conn.execute(
+            "SELECT v.id AS voucher_id,v.voucher_date,v.voucher_no,v.voucher_type,v.description,"
+            "l.account_id,l.code_snapshot,l.name_snapshot,l.debit_cents,l.credit_cents,"
+            "l.aux_json,l.line_no FROM voucher_lines l JOIN vouchers v ON v.id=l.voucher_id "
+            "WHERE v.book_id=? AND (l.code_snapshot LIKE ? OR l.code_snapshot LIKE ?) "
+            "ORDER BY v.voucher_date,v.voucher_type,v.voucher_no,l.line_no",
+            (book["id"], "1001%", "1002%"),
+        ).fetchall()
+        opening = {
+            row["account_id"]: int(row["total"])
+            for row in conn.execute(
+                "SELECT ol.account_id,COALESCE(SUM(ol.opening_cents),0) AS total "
+                "FROM opening_lines ol JOIN ledger_account_versions av "
+                "ON av.account_id=ol.account_id AND av.version=ol.account_version "
+                "WHERE ol.package_version_id=? AND (av.code LIKE ? OR av.code LIKE ?) "
+                "GROUP BY ol.account_id",
+                (binding["package_version_id"], "1001%", "1002%"),
+            )
+        }
+        running = dict(opening)
+        result = []
+        for row in rows:
+            running[row["account_id"]] = (
+                running.get(row["account_id"], 0)
+                + int(row["debit_cents"])
+                - int(row["credit_cents"])
+            )
+            result.append({**dict(row), "balance_cents": running[row["account_id"]]})
+        return result
 
     def aux_ledger(self, actor, book_id, auxiliary_values):
         with self.db.transaction(actor=actor) as conn:
-            book, _ = self._book(conn, actor, book_id)
-            binding = self._binding(conn, book["id"])
-            wanted = {key: str(value) for key, value in auxiliary_values.items()}
-            opening = [
-                dict(row)
-                for row in conn.execute(
-                    "SELECT * FROM opening_lines WHERE package_version_id=?",
-                    (binding["package_version_id"],),
-                )
-                if self._aux_matches(row["aux_json"], wanted)
-            ]
-            vouchers = [
-                dict(row)
-                for row in conn.execute(
-                    "SELECT l.*,v.voucher_date,v.voucher_no,v.voucher_type,v.description "
-                    "FROM voucher_lines l JOIN vouchers v ON v.id=l.voucher_id WHERE v.book_id=?",
-                    (book["id"],),
-                )
-                if self._aux_matches(row["aux_json"], wanted)
-            ]
-            return {"opening": opening, "vouchers": vouchers}
+            return self.aux_ledger_in_transaction(conn, actor, book_id, auxiliary_values)
+
+    def aux_ledger_in_transaction(self, conn, actor, book_id, auxiliary_values):
+        book, _ = self._book(conn, actor, book_id)
+        binding = self._binding(conn, book["id"])
+        wanted = {key: str(value) for key, value in auxiliary_values.items()}
+        opening = [
+            dict(row)
+            for row in conn.execute(
+                "SELECT * FROM opening_lines WHERE package_version_id=?",
+                (binding["package_version_id"],),
+            )
+            if self._aux_matches(row["aux_json"], wanted)
+        ]
+        vouchers = [
+            dict(row)
+            for row in conn.execute(
+                "SELECT l.*,v.voucher_date,v.voucher_no,v.voucher_type,v.description "
+                "FROM voucher_lines l JOIN vouchers v ON v.id=l.voucher_id WHERE v.book_id=?",
+                (book["id"],),
+            )
+            if self._aux_matches(row["aux_json"], wanted)
+        ]
+        return {"opening": opening, "vouchers": vouchers, "scope": self._read_scope(book)}
 
     @staticmethod
     def _aux_matches(value, wanted):

@@ -14,6 +14,7 @@ export const workspaceViews = [
   'delivery',
   'briefing',
   'ledger',
+  'formal-books',
   'integration',
   'ingestion',
   'revision',

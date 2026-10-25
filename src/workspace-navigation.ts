@@ -133,6 +133,7 @@ export const navigationParents = {
   delivery: 'accounting',
   briefing: 'briefing',
   ledger: 'accounting',
+  'formal-books': 'accounting',
   integration: 'accounting',
   ingestion: 'ingestion',
   revision: 'revision',

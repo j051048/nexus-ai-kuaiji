@@ -1,6 +1,9 @@
 from fastapi import APIRouter, Depends, Query, Request
+from fastapi.responses import Response
+from typing import Literal
 
 from .models import ManualVoucher, OpeningBind, PostDraft, ReverseVoucher
+from .presentation import export_formal_book
 
 
 def build_posting_router(actor_dependency):
@@ -84,7 +87,12 @@ def build_posting_router(actor_dependency):
 
     @router.get("/books/{book_id}/daily-journal")
     def daily_journal(book_id: str, current=Depends(actor_dependency), posting=Depends(service)):
-        return {"entries": posting.daily_journal(current, book_id)}
+        with posting.db.transaction(actor=current) as conn:
+            book, _ = posting._book(conn, current, book_id)
+            return {
+                "scope": posting._read_scope(book),
+                "entries": posting.daily_journal_in_transaction(conn, current, book_id),
+            }
 
     @router.get("/books/{book_id}/aux-ledger")
     def aux_ledger(
@@ -95,5 +103,36 @@ def build_posting_router(actor_dependency):
         posting=Depends(service),
     ):
         return posting.aux_ledger(current, book_id, {key: value})
+
+    @router.get("/books/{book_id}/formal-books/export")
+    def export_book(
+        book_id: str,
+        kind: Literal["trial_balance", "account_ledger", "daily_journal", "aux_ledger"],
+        account_id: str | None = Query(default=None, max_length=100),
+        key: str | None = Query(default=None, max_length=40),
+        value: str | None = Query(default=None, max_length=200),
+        as_of: str | None = Query(default=None, max_length=10),
+        current=Depends(actor_dependency),
+        posting=Depends(service),
+    ):
+        content = export_formal_book(
+            posting,
+            current,
+            book_id,
+            kind,
+            account_id=account_id,
+            key=key,
+            value=value,
+            as_of=as_of,
+        )
+        return Response(
+            content,
+            media_type="text/csv; charset=utf-8",
+            headers={
+                "Content-Disposition": f'attachment; filename="formal-{kind}.csv"',
+                "Cache-Control": "private, no-store",
+                "X-Content-Type-Options": "nosniff",
+            },
+        )
 
     return router

@@ -70,6 +70,7 @@ from .quality.router import build_quality_router
 from .reconciliation.service import ReconciliationService
 from .reconciliation.router import build_reconciliation_router
 from .delivery.service import DeliveryService
+from .delivery.monthly_package import MonthlyPackageService
 from .delivery.router import build_delivery_router
 from .delivery.middleware import DeliveryBodyLimitMiddleware
 from .tools.accounting_tools import AccountingSuggestionTool
@@ -407,6 +408,9 @@ def create_app(
             )
             application.state.service_plans.attachments = MaterialAttachmentService(
                 application.state.service_plans, application.state.attachment_store
+            )
+            application.state.monthly_packages = MonthlyPackageService(
+                database, application.state.service_plans
             )
             application.state.onboarding = OnboardingService(
                 database,

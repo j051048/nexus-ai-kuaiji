@@ -26,6 +26,7 @@ import type {
   DeliveryWorkbenchProps,
 } from './delivery-types';
 import './delivery.css';
+import { MonthlyPackagePanel } from './MonthlyPackagePanel';
 
 export function DeliveryWorkbench({
   session,
@@ -318,6 +319,12 @@ export function DeliveryWorkbench({
           </button>
         </section>
       )}
+      <MonthlyPackagePanel
+        key={scope}
+        session={session}
+        bookId={bookId}
+        onBusyChange={onBusyChange}
+      />
       <section className="delivery-notice">
         <FileCheck2 size={25} />
         <div>

@@ -5,6 +5,7 @@ import { EmptyState, Spinner } from './AppPrimitives';
 import { formatMoney } from './csv';
 import type { Session } from './types';
 import './monthly.css';
+import { MonthlyPackagePanel } from './MonthlyPackagePanel';
 
 type Briefing = {
   book: {
@@ -34,11 +35,13 @@ export function MonthlyBriefing({
   bookId,
   onBack,
   embedded = false,
+  onBusyChange,
 }: {
   session: Session;
   bookId: string;
   onBack: () => void;
   embedded?: boolean;
+  onBusyChange?: (value: boolean) => void;
 }) {
   const { data, loading, error } = useScopedQuery(
     (signal) =>
@@ -71,6 +74,15 @@ export function MonthlyBriefing({
           打印 / 导出 PDF
         </button>
       </div>
+      {bookId && (
+        <MonthlyPackagePanel
+          key={`${session.scope_key}:${bookId}`}
+          session={session}
+          bookId={bookId}
+          clientOnly
+          onBusyChange={onBusyChange}
+        />
+      )}
       {loading ? (
         <div className="loading-block">
           <Spinner />
@@ -78,7 +90,8 @@ export function MonthlyBriefing({
         </div>
       ) : error ? (
         <EmptyState title="暂不能查看月度财税简报" icon={<ShieldCheck size={26} />}>
-          {error}
+          <span>{error}</span>
+          <span className="field-help">上方月度交付包独立核验，以会计冻结的版本为准。</span>
         </EmptyState>
       ) : data ? (
         <article className="briefing-card">

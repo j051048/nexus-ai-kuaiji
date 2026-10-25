@@ -23,6 +23,7 @@ import { downloadCsv, formatMoney } from './csv';
 import type { Book, BookDetail, Draft, JournalLine, Me, Session, Workbench } from './types';
 import type { WorkspaceView } from './workspace-route';
 import { currentReviewError, type ReviewFeedbackNotice } from './review-operation-feedback';
+import './book-focused-shell.css';
 
 const ProposalTasksPanel = lazy(() =>
   import('./ProposalTasksPanel').then((module) => ({ default: module.ProposalTasksPanel })),
@@ -176,34 +177,65 @@ export function BookWorkspaceShell({
 }: BookWorkspaceShellProps) {
   const embeddedBusy = !!bookView && bookViewBusy;
   const embeddedDirty = !!bookView && bookViewDirty;
+  const focused = !!bookView && (routeView === 'formal-books' || routeView === 'delivery');
+  const bookSelector = (
+    <AccountingBookList
+      books={filteredBooks}
+      bookId={bookId}
+      search={search}
+      filtered={filter !== 'all'}
+      busy={!!busy || reviewDirty || embeddedBusy || embeddedDirty}
+      loading={bootLoading}
+      pagination={workbench?.pagination}
+      onChoose={chooseBook}
+      onSearch={(value) => {
+        focusBookRef.current = '';
+        pendingReview.current = null;
+        setSearch(value);
+      }}
+      onPage={(value) => {
+        focusBookRef.current = '';
+        pendingReview.current = null;
+        setBookOffset(value);
+      }}
+    />
+  );
   return (
     <main>
-      <section className="page-heading">
-        <div>
-          <p className="eyebrow">ACCOUNTING, WITH CLARITY</p>
-          <h1>
-            {filter === 'all'
-              ? '每一笔，都有据可循。'
-              : navItems.find((item) => item.id === filter)?.label}
-          </h1>
-          <p className="page-description">
-            多企业协同记账，从原始流水到会计审核，在一个工作台完成。
-          </p>
-        </div>
-        <button
-          className="button primary"
-          type="button"
-          disabled={!!busy || reviewDirty || !me?.permissions.create_book}
-          title={!me?.permissions.create_book ? '当前账号没有新建账套权限' : undefined}
-          onClick={() => {
-            setNotice(null);
-            onOpenBookModal();
-          }}
-        >
-          <Plus size={16} />
-          新建账套
-        </button>
-      </section>
+      {!focused && (
+        <section className="page-heading">
+          <div>
+            <p className="eyebrow">ACCOUNTING, WITH CLARITY</p>
+            <h1>
+              {filter === 'all'
+                ? '每一笔，都有据可循。'
+                : navItems.find((item) => item.id === filter)?.label}
+            </h1>
+            <p className="page-description">
+              多企业协同记账，从原始流水到会计审核，在一个工作台完成。
+            </p>
+          </div>
+          <button
+            className="button primary"
+            type="button"
+            disabled={!!busy || reviewDirty || !me?.permissions.create_book}
+            title={!me?.permissions.create_book ? '当前账号没有新建账套权限' : undefined}
+            onClick={() => {
+              setNotice(null);
+              onOpenBookModal();
+            }}
+          >
+            <Plus size={16} />
+            新建账套
+          </button>
+        </section>
+      )}
+      {focused && routeView === 'delivery' && (
+        <header className="book-focused-title">
+          <h1>月度交付与回执</h1>
+          <p>先确认本月交付版本，再分别记录客户签收与财务软件导入结果。</p>
+        </header>
+      )}
       {bootLoading ? (
         <div className="loading-block">
           <Spinner />
@@ -223,76 +255,68 @@ export function BookWorkspaceShell({
         </div>
       ) : (
         <>
-          <section className="stats-grid" aria-label="事务所账务概览">
-            <StatCard
-              label="管理账套"
-              value={stats?.book_count ?? 0}
-              unit="家"
-              icon={<Building2 size={19} />}
-              hint="当前事务所客户企业"
-            />
-            <StatCard
-              label="待审核凭证"
-              value={stats?.pending_count ?? 0}
-              unit="张"
-              icon={<ClipboardCheck size={19} />}
-              hint="等待会计核对与确认"
-            />
-            <StatCard
-              label="待处理异常"
-              value={stats?.exception_count ?? 0}
-              unit="项"
-              icon={<TriangleAlert size={19} />}
-              hint="优先处理缺证及校验问题"
-              warning
-            />
-            <StatCard
-              label="已审核凭证"
-              value={stats?.approved_count ?? 0}
-              unit="张"
-              icon={<CheckCheck size={19} />}
-              hint="含已导出，交付后请核对回执"
-            />
-          </section>
-          <section className="process-strip" aria-label="记账流程">
-            <span>
-              <span className="step-number">01</span>导入原始流水
-            </span>
-            <ArrowRight size={15} />
-            <span>
-              <span className="step-number">02</span>规则与模型建议
-            </span>
-            <ArrowRight size={15} />
-            <span>
-              <span className="step-number">03</span>会计复核与导出
-            </span>
-            <p>
-              <ShieldCheck size={14} />
-              每一步保留来源
-            </p>
-          </section>
+          {!focused && (
+            <>
+              <section className="stats-grid" aria-label="事务所账务概览">
+                <StatCard
+                  label="管理账套"
+                  value={stats?.book_count ?? 0}
+                  unit="家"
+                  icon={<Building2 size={19} />}
+                  hint="当前事务所客户企业"
+                />
+                <StatCard
+                  label="待审核凭证"
+                  value={stats?.pending_count ?? 0}
+                  unit="张"
+                  icon={<ClipboardCheck size={19} />}
+                  hint="等待会计核对与确认"
+                />
+                <StatCard
+                  label="待处理异常"
+                  value={stats?.exception_count ?? 0}
+                  unit="项"
+                  icon={<TriangleAlert size={19} />}
+                  hint="优先处理缺证及校验问题"
+                  warning
+                />
+                <StatCard
+                  label="已审核凭证"
+                  value={stats?.approved_count ?? 0}
+                  unit="张"
+                  icon={<CheckCheck size={19} />}
+                  hint="含已导出，交付后请核对回执"
+                />
+              </section>
+              <section className="process-strip" aria-label="记账流程">
+                <span>
+                  <span className="step-number">01</span>导入原始流水
+                </span>
+                <ArrowRight size={15} />
+                <span>
+                  <span className="step-number">02</span>规则与模型建议
+                </span>
+                <ArrowRight size={15} />
+                <span>
+                  <span className="step-number">03</span>会计复核与导出
+                </span>
+                <p>
+                  <ShieldCheck size={14} />
+                  每一步保留来源
+                </p>
+              </section>
+            </>
+          )}
           <div className={'workspace-grid' + (bookView ? ' book-focus' : '')}>
             <div className="work-column">
-              <AccountingBookList
-                books={filteredBooks}
-                bookId={bookId}
-                search={search}
-                filtered={filter !== 'all'}
-                busy={!!busy || reviewDirty || embeddedBusy || embeddedDirty}
-                loading={bootLoading}
-                pagination={workbench?.pagination}
-                onChoose={chooseBook}
-                onSearch={(value) => {
-                  focusBookRef.current = '';
-                  pendingReview.current = null;
-                  setSearch(value);
-                }}
-                onPage={(value) => {
-                  focusBookRef.current = '';
-                  pendingReview.current = null;
-                  setBookOffset(value);
-                }}
-              />
+              {focused ? (
+                <details className="book-focus-selector">
+                  <summary>切换账套</summary>
+                  {bookSelector}
+                </details>
+              ) : (
+                bookSelector
+              )}
 
               <section className="panel transaction-panel">
                 <AccountingBookToolbar

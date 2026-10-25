@@ -2,6 +2,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import Response
 from .models import ReceiptCreate, ReceiptImport, DeliveryNote
+from .monthly_models import MonthlyPackageCreate, MonthlyPackageAcknowledge
 
 
 def build_delivery_router(actor_dependency):
@@ -9,6 +10,54 @@ def build_delivery_router(actor_dependency):
 
     def service(request: Request):
         return request.app.state.delivery
+
+    def packages(request: Request):
+        return request.app.state.monthly_packages
+
+    @router.get("/monthly-package")
+    def monthly_readiness(book_id: str, actor=Depends(actor_dependency), monthly=Depends(packages)):
+        return monthly.readiness(actor, book_id)
+
+    @router.post("/monthly-package", status_code=201)
+    def monthly_create(
+        book_id: str,
+        payload: MonthlyPackageCreate,
+        actor=Depends(actor_dependency),
+        monthly=Depends(packages),
+    ):
+        return monthly.create(actor, book_id, payload)
+
+    @router.get("/monthly-package/{package_id}")
+    def monthly_detail(
+        book_id: str, package_id: str, actor=Depends(actor_dependency), monthly=Depends(packages)
+    ):
+        return monthly.detail(actor, book_id, package_id)
+
+    @router.get("/monthly-package/{package_id}/download")
+    def monthly_download(
+        book_id: str, package_id: str, actor=Depends(actor_dependency), monthly=Depends(packages)
+    ):
+        content = monthly.download(actor, book_id, package_id)
+        # Package IDs are server-generated UUIDs; use a constant attachment name.
+        return Response(
+            content,
+            media_type="application/zip",
+            headers={
+                "Content-Disposition": 'attachment; filename="monthly-delivery.zip"',
+                "X-Content-Type-Options": "nosniff",
+                "Cache-Control": "no-store",
+            },
+        )
+
+    @router.post("/monthly-package/{package_id}/acknowledge")
+    def monthly_acknowledge(
+        book_id: str,
+        package_id: str,
+        payload: MonthlyPackageAcknowledge,
+        actor=Depends(actor_dependency),
+        monthly=Depends(packages),
+    ):
+        return monthly.acknowledge(actor, book_id, package_id, payload)
 
     @router.get("")
     def overview(
