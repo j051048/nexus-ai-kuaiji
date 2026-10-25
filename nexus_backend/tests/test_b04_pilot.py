@@ -34,6 +34,7 @@ from app.subledger.models import (
 )
 from app.subledger.service import SubledgerService
 from test_business import business
+from c01_bank_fixture import verified_bank_account
 from test_posting_service import admin, frozen_opening
 
 
@@ -152,10 +153,14 @@ def test_subledger_partial_payment_aging_control_and_bank(business):
         for row in payment["lines"]
         if row["code_snapshot"] == "1002" and row["credit_cents"] == 300000
     )
+    account = verified_bank_account(
+        case, subledger, opening["bank"]["id"], "10000.00", "7000.00", [("2026-10-20", "-3000.00")]
+    )
     bank_line = subledger.add_bank_line(
         case.manager,
         BankLineCreate(
             book_id=case.book["id"],
+            bank_account_id=account["id"],
             line_date="2026-10-20",
             description="银行付款",
             amount="-3000.00",
@@ -336,10 +341,14 @@ def test_periodic_accrual_asset_closing_reports_and_close(business):
         ),
     )
     sub = SubledgerService(case.db)
+    account = verified_bank_account(
+        case, sub, opening["bank"]["id"], "10000.00", "20000.00", [("2026-10-31", "10000.00")]
+    )
     evidence_line = sub.add_bank_line(
         case.manager,
         BankLineCreate(
             book_id=case.book["id"],
+            bank_account_id=account["id"],
             line_date="2026-10-31",
             description="虚构银行对账证据",
             amount="10000.00",

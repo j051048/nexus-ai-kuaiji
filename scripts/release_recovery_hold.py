@@ -1,0 +1,222 @@
+"""Explicit local-drill release; never a production switch or automatic replay.
+
+An administrator must supply completed independent verification and the exact
+live inventory digest. Unknown charges/receipts remain unchanged and quarantined
+by the normal attempt fencing. No worker or external provider is started here.
+"""
+
+from datetime import datetime, timezone
+import hashlib
+import json
+from pathlib import Path
+from urllib.parse import urlsplit
+
+try:
+    from scripts.recovery_security import (
+        capture_security,
+        digest,
+        verify_security_owners,
+        verify_sequences,
+    )
+except ModuleNotFoundError:
+    from recovery_security import capture_security, digest, verify_security_owners, verify_sequences
+
+REQUIRED_CHECKS = {
+    "database",
+    "originals",
+    "identity",
+    "permissions",
+    "workflow",
+    "outbound_reconciled",
+}
+INVENTORY_TABLES = (
+    "ocr_jobs",
+    "ocr_attempts",
+    "proposal_jobs",
+    "proposal_attempts",
+    "assistant_turns",
+    "intake_runs",
+    "model_costs",
+    "bridge_outbox",
+    "delivery_receipt_items",
+)
+
+
+def pending_inventory(conn):
+    """Content-bound operational evidence, without prompts, payloads or secrets."""
+    from psycopg import sql
+
+    inventory = {}
+    for table in INVENTORY_TABLES:
+        columns = {
+            row[0]
+            for row in conn.execute(
+                "SELECT column_name FROM information_schema.columns WHERE table_schema='accounting' AND table_name=%s",
+                (table,),
+            )
+        }
+        fields = [
+            field
+            for field in (
+                "id",
+                "receipt_id",
+                "ordinal",
+                "firm_id",
+                "company_id",
+                "intake_id",
+                "attachment_id",
+                "status",
+                "state",
+                "phase",
+                "version",
+                "attempt_no",
+                "attempt_count",
+                "generation",
+                "reserved_micro",
+                "estimated_micro",
+                "confirmed_micro",
+                "input_tokens",
+                "output_tokens",
+                "charge_token",
+                "pricing_json",
+                "sent_at",
+                "lease_token",
+                "lease_until",
+                "raw_json",
+            )
+            if field in columns
+        ]
+        if not fields:
+            raise ValueError("恢复在途清单缺少必要运行表")
+        rows = conn.execute(
+            sql.SQL("SELECT {} FROM accounting.{}").format(
+                sql.SQL(",").join(map(sql.Identifier, fields)), sql.Identifier(table)
+            )
+        ).fetchall()
+        # Include all states: converting uncertain into succeeded/released also
+        # changes the digest. Receipt payloads are hashed, never exposed.
+        normalized = []
+        for row in rows:
+            item = dict(zip(fields, row))
+            for name in ("raw_json", "lease_token", "charge_token", "pricing_json"):
+                if name in item and item[name] is not None:
+                    item[name] = hashlib.sha256(str(item[name]).encode()).hexdigest()
+            normalized.append(item)
+        inventory[table] = sorted(normalized, key=lambda value: json.dumps(value, sort_keys=True))
+    return {"tables": inventory, "sha256": digest(inventory)}
+
+
+def release_local_hold(database, restore_directory, *, operator, reason, checks, inventory_sha256):
+    import psycopg
+
+    target = urlsplit(database)
+    if not (
+        target.scheme in {"postgres", "postgresql"}
+        and target.hostname == "127.0.0.1"
+        and target.port
+        and target.port != 5432
+        and target.path.startswith("/ak01_local_ak05_")
+        and not target.query
+        and not target.fragment
+    ):
+        raise ValueError("此工具只允许明确的本机隔离恢复库，不支持生产释放")
+    if set(checks) != REQUIRED_CHECKS or any(value is not True for value in checks.values()):
+        raise ValueError("数据库、原件、身份、权限、业务与未知外发核对必须全部完成")
+    if (
+        not isinstance(operator, str)
+        or not operator.strip()
+        or not isinstance(reason, str)
+        or not reason.strip()
+    ):
+        raise ValueError("释放须记录真实操作人和原因")
+    directory = Path(restore_directory).resolve()
+    marker = directory / "restore-verification.json"
+    if marker.is_symlink() or not marker.is_file():
+        raise ValueError("恢复隔离标记不存在或不安全")
+    receipt = json.loads(marker.read_text(encoding="utf-8"))
+    if receipt.get("security_verified") is not True or not receipt.get("restore_id"):
+        raise ValueError("恢复的权限清单尚未验证")
+    with psycopg.connect(database) as conn:
+        conn.execute("SELECT pg_advisory_xact_lock(%s)", (6_420_031_786_281_903_101,))
+        hold = conn.execute(
+            "SELECT restore_id,hold FROM accounting.restore_state WHERE instance_id='restored' FOR UPDATE"
+        ).fetchone()
+        if not hold or hold != (receipt["restore_id"], True):
+            raise ValueError("数据库 hold 与本次恢复标记不一致")
+        verify_security_owners(conn)
+        verify_sequences(conn)
+        if conn.execute(
+            "SELECT count(*) FROM accounting.restore_state WHERE hold AND instance_id<>'restored'"
+        ).fetchone()[0]:
+            raise ValueError("仍有其他恢复隔离记录，不得释放")
+        security_hash = hashlib.sha256(
+            json.dumps(capture_security(conn), sort_keys=True).encode()
+        ).hexdigest()
+        if security_hash != receipt.get("security_manifest_sha256"):
+            raise ValueError("恢复核验后数据库权限或结构发生变化")
+        inventory = pending_inventory(conn)
+        if inventory["sha256"] != inventory_sha256:
+            raise ValueError("在途任务、费用或外部回执已变化，必须重新核对")
+        proof = {
+            "checks": checks,
+            "local_drill_only": True,
+            "outbound_disabled": True,
+            "worker_autostart": False,
+            "inventory_sha256": inventory_sha256,
+        }
+        stamp = datetime.now(timezone.utc).isoformat()
+        conn.execute(
+            "INSERT INTO accounting.recovery_release_audit(restore_id,operator,reason,proof_json,inventory_sha256,created_at) VALUES(%s,%s,%s,%s,%s,%s)",
+            (
+                receipt["restore_id"],
+                operator,
+                reason,
+                json.dumps(proof, sort_keys=True),
+                inventory_sha256,
+                stamp,
+            ),
+        )
+        conn.execute(
+            "UPDATE accounting.restore_state SET hold=FALSE,reason=%s,updated_by=%s,updated_at=%s WHERE instance_id='restored'",
+            (reason, operator, stamp),
+        )
+    # DB first. Failure to rename is conservative: startup still sees the file
+    # hold; operators may investigate the committed audit rather than rerun.
+    marker.rename(directory / "restore-released.json")
+    return {"restore_id": receipt["restore_id"], "released_local_only": True, **proof}
+
+
+def main():
+    import argparse
+    import os
+    import sys
+
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--database-env", required=True)
+    parser.add_argument("--restore-directory", required=True)
+    parser.add_argument("--proof", required=True)
+    parser.add_argument("--operator", required=True)
+    parser.add_argument("--reason", required=True)
+    parser.add_argument("--allow-local-drill", action="store_true", required=True)
+    args = parser.parse_args()
+    try:
+        proof = json.loads(Path(args.proof).read_text(encoding="utf-8"))
+        result = release_local_hold(
+            os.environ[args.database_env],
+            args.restore_directory,
+            operator=args.operator,
+            reason=args.reason,
+            checks=proof["checks"],
+            inventory_sha256=proof["inventory_sha256"],
+        )
+        print(json.dumps(result, ensure_ascii=False))
+    except Exception:
+        print(
+            "恢复隔离未释放：请检查本地目标、核对证明、当前权限和在途清单；连接信息未输出",
+            file=sys.stderr,
+        )
+        raise SystemExit(1) from None
+
+
+if __name__ == "__main__":
+    main()

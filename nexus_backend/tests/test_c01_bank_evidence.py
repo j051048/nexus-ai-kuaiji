@@ -153,6 +153,14 @@ def test_other_company_original_and_wrong_bank_batch_are_rejected(coverage_case)
         other_book = c.c.other_book["id"]
     with pytest.raises(AccountingError):
         c.sub.declare_bank_coverage(c.c.manager, declaration(c, book_id=other_book))
+    from app.ledgers.models import EntityCreate
+    from app.ledgers.service import LedgersService
+
+    project = LedgersService(c.c.db).create_entity(
+        c.c.manager,
+        c.c.book["id"],
+        EntityCreate(kind="project", code="SECOND-BANK", name="另一银行独立辅助桶"),
+    )
     second = c.sub.create_bank_account(
         c.c.manager,
         BankAccountCreate(
@@ -163,6 +171,7 @@ def test_other_company_original_and_wrong_bank_batch_are_rejected(coverage_case)
             ],
             ledger_account_version=1,
             reason="跨银行证据负向",
+            aux={"project": project["id"]},
         ),
     )
     with pytest.raises(AccountingError):

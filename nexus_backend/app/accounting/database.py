@@ -368,15 +368,22 @@ class Database:
         local restore directory or an optional environment variable.
         """
         try:
-            with self.connect() as conn:
+            with closing(self.connect()) as conn:
+                if getattr(self, "is_postgres", False):
+                    conn.begin(write=False, role=self.validation_role, user_id="", firm_id="")
                 row = conn.execute(
-                    "SELECT hold,instance_id,restore_id FROM restore_state LIMIT 1"
+                    "SELECT hold,instance_id,restore_id FROM restore_state WHERE hold<>FALSE OR hold IS NULL LIMIT 1"
                 ).fetchone()
-        except Exception:
-            # Older schemas and pre-migration test fixtures have no table; the
-            # normal migration/startup path will fail separately if needed.
-            return
-        if row and bool(row[0] if not hasattr(row, "keys") else row["hold"]):
+        except Exception as error:
+            # Only an explicitly absent legacy table is compatible. Permission,
+            # connection and malformed-state failures must never enable serving.
+            missing_sqlite = isinstance(error, sqlite3.OperationalError) and str(error) == (
+                "no such table: restore_state"
+            )
+            if missing_sqlite:
+                return
+            raise SystemExit("无法核验数据库恢复隔离状态，拒绝启动 API/worker") from None
+        if row is not None:
             raise SystemExit(
                 "数据库处于恢复隔离核对状态，禁止启动正常 API/worker；"
                 "请先核对在途任务与未知结果，再按受控流程释放 hold"

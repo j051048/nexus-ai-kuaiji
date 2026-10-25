@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   ArrowLeft,
   ArrowRight,
@@ -212,10 +212,12 @@ export function RevisionWorkbench({
   }
   const changes = context && payload ? revisionChanges(context.payload, payload) : [];
   const unsaved = revisionIsDirty({ context, payload, targetBook, reason, reviewReason });
-  useEffect(() => {
+  // Dirty protection must reach the router before native back can run, rather
+  // than waiting for a passive effect after the input has already changed.
+  useLayoutEffect(() => {
     onDirtyChange?.(unsaved);
-    return () => onDirtyChange?.(false);
   }, [unsaved, onDirtyChange]);
+  useLayoutEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
   return (
     <div className="revision-workbench">
       {onBack && (

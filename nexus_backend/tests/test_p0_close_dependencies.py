@@ -35,8 +35,9 @@ from app.subledger.models import (
 )
 from app.subledger.service import SubledgerService
 from test_b04_pilot import setup_b03
+from c01_bank_fixture import verified_bank_account, reviewed_export_draft
 from test_business import business
-from test_posting_service import admin, approved_draft
+from test_posting_service import admin
 
 
 @pytest.fixture
@@ -112,10 +113,14 @@ def close_case(business):
             reason="虚构期初清偿核销",
         ),
     )
+    bank_account = verified_bank_account(
+        case, sub, opening["bank"]["id"], "10000.00", "0.00", [("2026-10-20", "-10000.00")]
+    )
     bank = sub.add_bank_line(
         case.manager,
         BankLineCreate(
             book_id=case.book["id"],
+            bank_account_id=bank_account["id"],
             line_date="2026-10-20",
             amount="-10000.00",
             description="虚构期初清偿流水",
@@ -154,6 +159,7 @@ def close_case(business):
     case.payment = payment
     case.item = item
     case.allocation = allocation["allocations"][0]
+    case.bank_account = bank_account
     case.bank = bank
     case.report = report
     return case
@@ -170,6 +176,7 @@ def mutate(case, kind):
             case.manager,
             BankAdjustment(
                 book_id=book_id,
+                bank_account_id=case.bank_account["id"],
                 period="2026-10",
                 kind="error",
                 amount="1.00",
@@ -508,7 +515,7 @@ def test_new_preflight_rejects_modified_report_content_even_with_old_input_finge
 
 def test_locked_period_allows_real_reviewed_export_and_report_publication(close_case):
     case = close_case
-    draft = approved_draft(case)
+    draft = reviewed_export_draft(case)
     run = case.close.preflight(
         case.manager,
         ClosePreflight(

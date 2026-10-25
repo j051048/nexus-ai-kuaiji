@@ -625,6 +625,7 @@ def backup(database, storage_root, destination, *, storage_store=None):
         storage_store.verify_private()
     target = empty_destination(destination)
     postgres = database.startswith(("postgres://", "postgresql://"))
+    security_manifest = None
     if postgres:
         import psycopg
 
@@ -638,6 +639,11 @@ def backup(database, storage_root, destination, *, storage_store=None):
                 )
             ]
             original_tables, originals = original_rows(conn, "postgres")
+            try:
+                from scripts.recovery_security import capture_security
+            except ModuleNotFoundError:
+                from recovery_security import capture_security
+            security_manifest = capture_security(conn)
             dump = target / "database.dump"
             pg_tool(
                 "pg_dump",
@@ -689,6 +695,8 @@ def backup(database, storage_root, destination, *, storage_store=None):
         "consistency_note": "数据库为快照；对象版本由存储后端决定，当前记录 object_version=null，不宣称原子一致",
         "contains_credentials": False,
     }
+    if security_manifest is not None:
+        manifest["security"] = security_manifest
     with (target / "manifest.json").open("x", encoding="utf-8") as stream:
         json.dump(manifest, stream, ensure_ascii=False, indent=2)
     (target / "manifest.json").chmod(0o600)
@@ -708,6 +716,12 @@ def verify(directory):
         raise ValueError("不支持的备份格式")
     if manifest.get("originals_policy_version", 1) not in (1, 2, ORIGINALS_POLICY_VERSION):
         raise ValueError("不支持的原件引用策略版本")
+    if "security" in manifest:
+        try:
+            from scripts.recovery_security import validate_security_manifest
+        except ModuleNotFoundError:
+            from recovery_security import validate_security_manifest
+        validate_security_manifest(manifest["security"])
     names = set()
     expected_database = "database.sqlite" if manifest["dialect"] == "sqlite" else "database.dump"
     for item in manifest["files"]:
@@ -784,8 +798,10 @@ def _record_restore_hold(conn, dialect, restore_id):
         )
 
 
-def restore(directory, destination, postgres_target=None):
+def restore(directory, destination, postgres_target=None, *, restore_permissions=False):
     manifest = verify(directory)
+    if restore_permissions and (manifest["dialect"] != "postgres" or "security" not in manifest):
+        raise ValueError("精确授权恢复需要带安全清单的 PostgreSQL 备份")
     source, target = Path(directory).resolve(), empty_destination(destination)
     restore_id = hashlib.sha256(str(manifest).encode("utf-8")).hexdigest()[:32]
     if manifest["dialect"] == "postgres":
@@ -823,6 +839,15 @@ def restore(directory, destination, postgres_target=None):
         )
         with psycopg.connect(postgres_target) as conn:
             _record_restore_hold(conn, "postgres", restore_id)
+            # Persist isolation BEFORE ACL reconstruction. A failed structural
+            # check must roll back permissions, never the recovery hold itself.
+            conn.commit()
+            if restore_permissions:
+                try:
+                    from scripts.recovery_security import restore_security
+                except ModuleNotFoundError:
+                    from recovery_security import restore_security
+                restore_security(conn, manifest["security"])
     elif postgres_target:
         raise ValueError("SQLite 备份不能按 PostgreSQL 恢复")
     for item in manifest["files"]:
@@ -856,6 +881,11 @@ def restore(directory, destination, postgres_target=None):
                     raise ValueError("恢复后的数据库与原件不一致")
     else:
         with psycopg.connect(postgres_target) as conn:
+            try:
+                from scripts.recovery_security import verify_sequences
+            except ModuleNotFoundError:
+                from recovery_security import verify_sequences
+            sequence_receipt = verify_sequences(conn)
             migrations = [
                 {"version": row[0], "checksum": row[1]}
                 for row in conn.execute(
@@ -875,6 +905,7 @@ def restore(directory, destination, postgres_target=None):
                 ):
                     raise ValueError("恢复后的数据库与原件不一致")
     receipt = {
+        "restore_id": restore_id,
         "restored_at": datetime.now(timezone.utc).isoformat(),
         "dialect": manifest["dialect"],
         "verified_files": len(manifest["files"]),
@@ -883,6 +914,13 @@ def restore(directory, destination, postgres_target=None):
         "outbound_disabled": True,
         "worker_autostart": False,
         "in_flight_jobs_hold": True,
+        "security_verified": bool(restore_permissions),
+        "security_manifest_sha256": hashlib.sha256(
+            json.dumps(manifest.get("security"), sort_keys=True).encode()
+        ).hexdigest()
+        if restore_permissions
+        else None,
+        "sequences": sequence_receipt if manifest["dialect"] == "postgres" else None,
         "originals_policy_version": manifest.get("originals_policy_version", 1),
         "reference_verification": reference_verification(manifest["files"])
         if manifest.get("originals_policy_version", 1) >= 3
@@ -916,6 +954,11 @@ def main():
     recover.add_argument("directory")
     recover.add_argument("--destination", required=True)
     recover.add_argument("--postgres-target-env")
+    recover.add_argument(
+        "--restore-permissions",
+        action="store_true",
+        help="仅对带安全清单且处于 hold 的 PG 副本重建逐对象和逐列授权",
+    )
     args = parser.parse_args()
     try:
         if args.command == "backup":
@@ -957,6 +1000,7 @@ def main():
                 args.directory,
                 args.destination,
                 os.getenv(args.postgres_target_env) if args.postgres_target_env else None,
+                restore_permissions=args.restore_permissions,
             )
             print(json.dumps(result, ensure_ascii=False))
     except Exception as error:

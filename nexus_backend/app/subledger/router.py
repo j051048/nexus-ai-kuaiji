@@ -5,6 +5,11 @@ from .models import (
     AllocationReverse,
     BankAccountCreate,
     BankAdjustment,
+    BankAdjustmentResolve,
+    BankIdentityCreate,
+    BankBindingCreate,
+    BankBindingReview,
+    PeriodBridgeCreate,
     BankCoverageCreate,
     BankCoverageReview,
     BankLineCreate,
@@ -159,6 +164,15 @@ def build_subledger_router(actor_dependency):
     ):
         return subledger.add_bank_adjustment(current, payload)
 
+    @router.post("/bank-adjustments/{adjustment_id}/resolve")
+    def resolve_adjustment(
+        adjustment_id: str,
+        payload: BankAdjustmentResolve,
+        current=Depends(actor_dependency),
+        subledger=Depends(service),
+    ):
+        return subledger.resolve_bank_adjustment(current, adjustment_id, payload)
+
     @router.get("/bank-reconciliation")
     def bank_reconciliation(
         book_id: str = Query(min_length=1, max_length=100),
@@ -166,5 +180,48 @@ def build_subledger_router(actor_dependency):
         subledger=Depends(service),
     ):
         return subledger.bank_reconciliation(current, book_id)
+
+    @router.get("/bank-identities")
+    def identities(
+        book_id: str = Query(min_length=1, max_length=100),
+        current=Depends(actor_dependency),
+        subledger=Depends(service),
+    ):
+        return subledger.bank_identities(current, book_id)
+
+    @router.post("/bank-identities", status_code=201)
+    def identity_create(
+        payload: BankIdentityCreate, current=Depends(actor_dependency), subledger=Depends(service)
+    ):
+        return subledger.create_bank_identity(current, payload)
+
+    @router.post("/bank-bindings", status_code=201)
+    def binding_create(
+        payload: BankBindingCreate, current=Depends(actor_dependency), subledger=Depends(service)
+    ):
+        return subledger.bind_bank_identity(current, payload)
+
+    @router.post("/bank-bindings/{binding_id}/review")
+    def binding_review(
+        binding_id: str,
+        payload: BankBindingReview,
+        current=Depends(actor_dependency),
+        subledger=Depends(service),
+    ):
+        return subledger.review_bank_binding(current, binding_id, payload)
+
+    @router.get("/period-continuity")
+    def period_continuity(
+        book_id: str = Query(min_length=1, max_length=100),
+        current=Depends(actor_dependency),
+        subledger=Depends(service),
+    ):
+        return subledger.continuity(current, book_id)
+
+    @router.post("/period-bridges", status_code=201)
+    def period_bridge(
+        payload: PeriodBridgeCreate, current=Depends(actor_dependency), subledger=Depends(service)
+    ):
+        return subledger.create_period_bridge(current, payload)
 
     return router

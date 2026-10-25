@@ -7,10 +7,11 @@
 | 包 | 包含 | 不包含 | 用途 |
 |---|---|---|---|
 | **accounting 数据包** | `accounting` schema、被引用的私有原件、迁移版本、清单 | 平台身份、共享用户、角色登录、云配置、密钥 | 本产品数据恢复与演练 |
-| **企业资料交付包** | 单企业科目、凭证、账簿/报表、证据索引（规划中） | 其他企业、事务所共享主数据 | 客户解约交接/稽查（尚未实现） |
+| **月度交付包** | 已复核账期的凭证、账簿、正式报表、对账及原件索引 | 原件字节、完整历史、平台身份 | 已实现月度交付与独立签收；不是完整解约交接包 |
+| **企业完整交接包** | 全历史与原件等解约交接范围（待独立实现） | 其他企业与平台身份 | 不能用月度 ZIP 冒充完整交接 |
 | **完整系统灾难恢复** | 数据库、原件、身份系统、角色映射、配置、密钥、DNS/证书 | — | 真实生产灾难恢复（需平台配合，B07 演练） |
 
-当前脚本只实现第一类；第二类尚未提供独立导出工具；第三类需要身份、平台配置和密钥的独立恢复方案。`restore-verification.json` 会写明 `serving_enabled=false`、`outbound_disabled=true`、`worker_autostart=false`、`in_flight_jobs_hold=true`。恢复环境应设置 `ACCOUNTING_RESTORE_HOLD_FILE` 指向该文件，worker/助手启动时会拒绝运行；核对完在途与结果未知任务后再移除。该守卫是显式操作约束，不是自动数据库状态锁。
+备份脚本负责 accounting 数据包；完整系统恢复仍需身份、平台配置和密钥的独立恢复方案。`restore-verification.json` 会写明 `serving_enabled=false`、`outbound_disabled=true`、`worker_autostart=false`、`in_flight_jobs_hold=true`，同时写入数据库 `restore_state` hold。API／worker／助手／维护进程启动会检查文件及数据库；权限错误、连接失败或任意未释放 hold 都会拒绝启动。文件不存在不等于数据库已解除隔离，不要靠删除标记绕过核对。
 
 ## SQLite 本地试点
 
@@ -33,11 +34,12 @@ SQLite 使用官方 backup API，避免复制运行中的 `.db` 文件而漏掉 
 
 恢复目标需要人工事先建立**独立空数据库**，并设置 `ACCOUNTING_RECOVERY_DATABASE_URL`。脚本检查所有用户 schema 的表和函数，拒绝恢复到已有应用数据库；`pg_restore` 在单一事务里执行，出错回滚。目标须预先具备迁移中引用的 `accounting_app`、`accounting_system`、`accounting_worker` 等 NOLOGIN 角色；脚本不会复制角色登录密码。
 
-当前恢复使用 `--no-acl`，不会自动启用原环境的对象授权。恢复核验成功后，管理员仍需撤销 PUBLIC 默认权限，按当前版本审查并重建三个内部 NOLOGIN 角色的 schema、表、函数和列授权，再配置新环境的受限登录。列授权必须单独保留，尤其不能把任务公开字段的 SELECT 升成整表 SELECT。不要复制旧登录账号、PUBLIC / anon 权限或授予转授权能力；重新授权及 RLS 验证完成前，恢复库保持 `serving_enabled=false`。
+`pg_restore` 使用 `--no-acl`。新 PG 备份另外记录四个固定 NOLOGIN 能力角色的 schema、表、序列、函数和列授权，以及 RLS、触发器、约束、索引和函数结构指纹，不含密码。默认仍不恢复授权；管理员明确使用 `--restore-permissions` 时，先比对结构和角色属性，再在事务中按白名单重建精确 ACL 并逐项反查。不复制登录、PUBLIC / anon、转授权能力或 owner；列 SELECT 不得升级整表 SELECT。旧备份没有安全清单时不能使用此选项。恢复后仍保持 hold，管理员另外创建新运行登录和明确角色关系；不能用备份管理员运行 API。
 
 ```powershell
 python scripts/backup_accounting.py backup --database-env ACCOUNTING_BACKUP_DATABASE_URL --storage-root 'C:\试点原件' --destination 'C:\试点备份\pg-001'
 python scripts/backup_accounting.py restore 'C:\试点备份\pg-001' --destination 'C:\恢复演练\pg-001' --postgres-target-env ACCOUNTING_RECOVERY_DATABASE_URL
+# 已审查带安全清单的新备份，可在隔离目标显式追加 --restore-permissions
 ```
 
 数据库创建、角色授权和部署切换必须另行完成。恢复使用 `--no-owner --no-privileges`，因此 **恢复数据库不直接作为生产服务使用**：先由管理员重新核验对象所有者、SECURITY DEFINER、FORCE RLS、运行角色授权及新运行登录账号。备份管理员不能成为 API 的运行账号。Supabase Auth、Storage 和项目配置另按云服务自己的恢复方式备份，本脚本不操作真实云项目。
@@ -66,6 +68,14 @@ python scripts/backup_accounting.py verify 'C:\试点备份\supabase-001'
 逐行导入或自定义云迁移还必须核对自增序列。显式恢复 `id` 不会自动推进 PostgreSQL 序列，读接口正常也不能证明恢复后的写入可用。启用服务前，以管理员只读检查 `accounting` 中每个表拥有的 serial/identity 序列，确认下一值大于表中最大 ID；空表保留原初始状态。标准 `pg_dump` / `pg_restore` 应保留序列状态，自定义行导入需要单独处理。确需修复时，使用专用管理员，在与应用相同的全局写锁保护下重新读取最大 ID 与序列值，只向前校正落后的序列，不回退更高值，不使用 `nextval` 试探，不把修复权限授予运行账号。恢复验收必须包含隔离虚构企业的实际业务写入、审计与审核后导出。
 
 清单哈希用于检测误改和文件损坏，不代替签名或加密。备份包含真实业务资料，应放在受控且加密的存储中，并纳入保留期限管理。
+
+## 本机隔离释放工具
+
+`scripts/release_recovery_hold.py` 仅接受显式的回环地址、非 5432、`ak01_local_ak05_` 前缀的测试 PG 数据库。它不是生产切换工具。管理员必须先完成数据库、原件、身份、权限、业务和未知外发六项独立核对，并提供当时 `pending_inventory` 的指纹；核对后在途任务、费用或外部回执发生变化，须重新检查。
+
+释放时再次比对恢复 ID、精确授权／结构、全部 hold 和在途清单。在同一管理员事务中写入不可改删的 `recovery_release_audit` 后释放数据库 hold，再把文件标记改名为 `restore-released.json`。文件改名失败仍阻断正常启动，保留审计供排查。工具不修改任务、费用、未知回执，不启动 worker，也不启用模型或财务软件外发。生产恢复需要独立运行手册与授权，不能复用本机释放开关。
+
+恢复会以只读方式核验所有 accounting 自增／identity 序列的下一值高于当前数据，禁止用 `nextval` 试探或自动回退序列。角色重建与原件／身份恢复的本轮本机实证见 [C01 收口记录](C01_LOCAL_CLOSURE_20261025.md)，供应商协议替身结果不能冒充 Supabase 云平台灾难恢复。
 
 2026-10-12 已演练本机虚构 SQLite 数据与真实附件，并在独立 PostgreSQL 14 集群新建两个仅含合成资料的数据库，实际执行共享快照 `pg_dump` 与新空库 `pg_restore`。Windows Python 调用 WSL PostgreSQL 客户端，使用本脚本的真实快照、清单和恢复校验路径；迁移清单、企业账套、FORCE RLS 标记及原件字节哈希一致，重复恢复到已有数据库被拒绝。恢复结果保持 `serving_enabled=false`。这次演练未启用恢复库对外服务，也未覆盖生产规模、云服务恢复、运行角色重新授权和真实 RPO/RTO；这些仍须按试点部署环境演练。
 

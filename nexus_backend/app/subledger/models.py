@@ -178,6 +178,7 @@ class BankMatch(InputModel):
 
 
 class BankAdjustment(InputModel):
+    bank_account_id: StrictStr | None = Field(default=None, min_length=1, max_length=100)
     book_id: StrictStr = Field(min_length=1, max_length=100)
     period: StrictStr
     kind: Literal[
@@ -193,3 +194,34 @@ class BankAdjustment(InputModel):
 
         signed_money_to_cents(value)
         return value
+
+
+class BankAdjustmentResolve(InputModel):
+    bank_line_id: StrictStr = Field(min_length=1, max_length=100)
+    reason: StrictStr = Field(min_length=3, max_length=1000)
+
+
+class BankIdentityCreate(InputModel):
+    book_id: StrictStr = Field(min_length=1, max_length=100)
+    name: StrictStr = Field(min_length=1, max_length=120)
+    reason: StrictStr = Field(min_length=3, max_length=1000)
+
+
+class BankBindingCreate(InputModel):
+    book_id: StrictStr = Field(min_length=1, max_length=100)
+    bank_account_id: StrictStr = Field(min_length=1, max_length=100)
+    stable_bank_id: StrictStr = Field(min_length=1, max_length=100)
+    idempotency_key: StrictStr = Field(min_length=8, max_length=120)
+    reason: StrictStr = Field(min_length=3, max_length=1000)
+
+
+class BankBindingReview(InputModel):
+    decision: Literal["approved", "rejected"]
+    reason: StrictStr = Field(min_length=3, max_length=1000)
+
+
+class PeriodBridgeCreate(InputModel):
+    book_id: StrictStr = Field(min_length=1, max_length=100)
+    source_book_id: StrictStr = Field(min_length=1, max_length=100)
+    idempotency_key: StrictStr = Field(min_length=8, max_length=120)
+    reason: StrictStr = Field(min_length=3, max_length=1000)

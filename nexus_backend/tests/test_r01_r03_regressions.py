@@ -312,6 +312,11 @@ def test_f09_multi_bank_requires_each_account_coverage(business, tmp_path):
             reason="F09 银行账户",
         ),
     )
+    project = LedgersService(case.db).create_entity(
+        case.manager,
+        case.book["id"],
+        EntityCreate(kind="project", code="BANK-SECOND", name="第二银行辅助桶"),
+    )
     sub.create_bank_account(
         case.manager,
         BankAccountCreate(
@@ -320,6 +325,7 @@ def test_f09_multi_bank_requires_each_account_coverage(business, tmp_path):
             ledger_account_id=opening["bank"]["id"],
             ledger_account_version=1,
             reason="F09 银行账户",
+            aux={"project": project["id"]},
         ),
     )
     result = sub.bank_reconciliation(case.manager, case.book["id"])

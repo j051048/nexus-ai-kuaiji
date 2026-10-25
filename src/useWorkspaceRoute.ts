@@ -1,5 +1,11 @@
-import { useEffect, useRef } from 'react';
-import { useBlocker, useLocation, useNavigate, useNavigationType } from 'react-router-dom';
+import { useCallback, useEffect, useRef } from 'react';
+import {
+  useBlocker,
+  useLocation,
+  useNavigate,
+  useNavigationType,
+  type BlockerFunction,
+} from 'react-router-dom';
 import type { WorkspaceHistoryVisit } from './workspace-progress';
 import {
   emptyWorkspaceRoute,
@@ -39,14 +45,20 @@ export function useWorkspaceRoute({
   const ownNavigation = useRef('');
   const bypassBlock = useRef(false);
   const restoring = useRef<string | null>(null);
-  const blocker = useBlocker(
+  const latestLocked = useRef(locked);
+  latestLocked.current = locked;
+  // React Router registers this predicate in a passive effect. Keep that
+  // registered function stable and read the current render's lock immediately.
+  const shouldBlock = useCallback<BlockerFunction>(
     ({ currentLocation, nextLocation }) =>
       !bypassBlock.current &&
-      locked &&
+      latestLocked.current &&
       (currentLocation.key !== nextLocation.key ||
         currentLocation.pathname + currentLocation.search !==
           nextLocation.pathname + nextLocation.search),
+    [],
   );
+  const blocker = useBlocker(shouldBlock);
   const key = workspaceRouteKey(value);
 
   useEffect(() => {
@@ -114,13 +126,13 @@ export function useWorkspaceRoute({
 
   useEffect(() => {
     const unload = (event: BeforeUnloadEvent) => {
-      if (!locked) return;
+      if (!latestLocked.current) return;
       event.preventDefault();
       event.returnValue = '';
     };
     window.addEventListener('beforeunload', unload);
     return () => window.removeEventListener('beforeunload', unload);
-  }, [locked]);
+  }, []);
   return {
     blocked: blocker.state === 'blocked',
     canDiscard,

@@ -1,6 +1,7 @@
 """Long-term open-item subledger. Allocation never creates a second payment voucher."""
 
 import hashlib
+from calendar import monthrange
 import json
 from datetime import date, timedelta
 from uuid import uuid4
@@ -8,6 +9,7 @@ from uuid import uuid4
 from ..accounting.domain import AccountingError
 from ..accounting.invariants import money_to_cents, signed_money_to_cents
 from ..accounting.service import AccountingService, now
+from .reconciliation import auxiliary, settlement_side, control_rows, bank_rows
 from .models import (
     AllocationCreate,
     AllocationReverse,
@@ -51,13 +53,14 @@ class SubledgerService:
         params = [item_id]
         if as_of:
             allocation_sql += "AND a.allocated_on<=? "
-            reversal_sql += "AND r.created_at<=? "
+            reversal_sql += "AND SUBSTR(r.created_at,1,10)<=? "
             params.append(as_of)
         allocated = conn.execute(allocation_sql, tuple(params)).fetchone()[0]
         reversed_amount = conn.execute(reversal_sql, tuple(params)).fetchone()[0]
         return int(allocated) - int(reversed_amount)
 
     def _control_state(self, conn, ledger_id, period):
+        period = period[:7]
         row = conn.execute(
             "SELECT * FROM subledger_control_applicability WHERE ledger_id=? "
             "AND effective_from<=? AND (effective_to IS NULL OR effective_to>=?) "
@@ -275,6 +278,8 @@ class SubledgerService:
     def create_item(self, actor, request: OpenItemCreate):
         with self.db.transaction(write=True, actor=actor) as conn:
             book, ledger_id = self._book(conn, actor, request.book_id, write=True)
+            if date.fromisoformat(request.original_date).strftime("%Y-%m") > book["period"]:
+                raise AccountingError("未结事项原始日期不能晚于当前账套期末", 422)
             state = self._control_state(conn, ledger_id, request.original_date)
             if not state or state["status"] != "configured":
                 raise AccountingError("控制科目配置待确认，不能新建子账事项", 409)
@@ -384,6 +389,8 @@ class SubledgerService:
                 ).fetchall()
             result = []
             for row in rows:
+                if as_of and row["original_date"] > as_of:
+                    continue
                 value = dict(row)
                 allocated = self._remaining(conn, row["id"], as_of)
                 value["allocated_cents"] = allocated
@@ -392,15 +399,15 @@ class SubledgerService:
             return result
 
     def _voucher_control_amount(self, conn, voucher_id, item):
-        column = (
-            "credit_cents" if item["kind"] in {"receivable", "advance_received"} else "debit_cents"
+        column = settlement_side(item["kind"])
+        return sum(
+            int(row[column])
+            for row in conn.execute(
+                "SELECT aux_json,debit_cents,credit_cents FROM voucher_lines WHERE voucher_id=? AND account_id=?",
+                (voucher_id, item["control_account_id"]),
+            )
+            if auxiliary(row["aux_json"]) == auxiliary(item["aux_json"])
         )
-        row = conn.execute(
-            "SELECT COALESCE(SUM(" + column + "),0) AS total FROM voucher_lines "
-            "WHERE voucher_id=? AND account_id=?",
-            (voucher_id, item["control_account_id"]),
-        ).fetchone()
-        return int(row["total"])
 
     def allocate(self, actor, request: AllocationCreate):
         fingerprint = _fingerprint(request.model_dump())
@@ -432,6 +439,8 @@ class SubledgerService:
                 if item["id"] in seen_items:
                     raise AccountingError("同一请求不能重复分配同一未结事项", 422)
                 seen_items.add(item["id"])
+                if item["original_date"] > voucher["voucher_date"]:
+                    raise AccountingError("核销凭证不能早于未结事项原始日期", 422)
                 amount = money_to_cents(part.amount)
                 if amount > int(item["amount_cents"]) - self._remaining(conn, item["id"]):
                     raise AccountingError("分配金额超过未结余额", 409)
@@ -440,15 +449,28 @@ class SubledgerService:
             control_accounts = {item["control_account_id"] for item, _ in items}
             if len(control_accounts) != 1:
                 raise AccountingError("一次核销只能使用一个控制科目", 422)
-            control_amount = self._voucher_control_amount(conn, voucher["id"], items[0][0])
-            already = conn.execute(
-                "SELECT COALESCE(SUM(a.amount_cents),0) FROM subledger_allocations a "
-                "WHERE a.voucher_id=? AND a.item_id IN (SELECT id FROM subledger_items WHERE control_account_id=?) "
-                "AND NOT EXISTS(SELECT 1 FROM subledger_allocation_reversals r WHERE r.allocation_id=a.id)",
-                (voucher["id"], items[0][0]["control_account_id"]),
-            ).fetchone()[0]
-            if total + int(already) > control_amount:
-                raise AccountingError("核销金额超过凭证控制科目金额", 409)
+            grouped = {}
+            for item, amount in items:
+                key = (
+                    item["control_account_id"],
+                    auxiliary(item["aux_json"]),
+                    settlement_side(item["kind"]),
+                )
+                grouped.setdefault(key, [item, 0])[1] += amount
+            for key, (item, amount) in grouped.items():
+                already = sum(
+                    int(row["amount_cents"])
+                    for row in conn.execute(
+                        "SELECT a.amount_cents,i.aux_json,i.kind FROM subledger_allocations a JOIN subledger_items i ON i.id=a.item_id "
+                        "WHERE a.voucher_id=? AND i.control_account_id=? "
+                        "AND NOT EXISTS(SELECT 1 FROM subledger_allocation_reversals r WHERE r.allocation_id=a.id)",
+                        (voucher["id"], item["control_account_id"]),
+                    )
+                    if auxiliary(row["aux_json"]) == key[1]
+                    and settlement_side(row["kind"]) == key[2]
+                )
+                if amount + already > self._voucher_control_amount(conn, voucher["id"], item):
+                    raise AccountingError("核销金额超过凭证同科目同辅助维度的结算金额", 409)
             request_id = uuid4().hex
             conn.execute(
                 "INSERT INTO subledger_allocation_requests(id,firm_id,company_id,book_id,voucher_id,"
@@ -526,7 +548,10 @@ class SubledgerService:
                 (actor.firm_id, request.idempotency_key),
             ).fetchone()
             if prior:
-                if prior["request_fingerprint"] != fingerprint:
+                if (
+                    prior["request_fingerprint"] != fingerprint
+                    or prior["allocation_id"] != allocation_id
+                ):
                     raise AccountingError("撤销核销幂等键已用于不同内容", 409)
                 return {"allocation_id": allocation_id, "reversal_id": prior["id"]}
             if conn.execute(
@@ -566,6 +591,8 @@ class SubledgerService:
             buckets = {"current": 0, "1_30": 0, "31_60": 0, "61_90": 0, "over_90": 0}
             detail = []
             for row in rows:
+                if row["original_date"] > as_of:
+                    continue
                 remaining = int(row["amount_cents"]) - self._remaining(conn, row["id"], as_of)
                 if remaining <= 0:
                     continue
@@ -592,10 +619,32 @@ class SubledgerService:
             return self.control_reconciliation_in_transaction(conn, actor, book_id, as_of)
 
     def control_reconciliation_in_transaction(self, conn, actor, book_id, as_of=None, trial=None):
+        result = self._control_reconciliation_in_transaction(conn, actor, book_id, as_of, trial)
+        from .period_bridge import continuity
+
+        result["continuity"] = continuity(self, conn, actor, book_id)
+        result["passed"] = result["passed"] and result["continuity"]["passed"]
+        return result
+
+    def _control_reconciliation_in_transaction(self, conn, actor, book_id, as_of=None, trial=None):
         from ..posting.service import PostingService
 
-        groups = {}
         book, ledger_id = self._book(conn, actor, book_id)
+        year, month = map(int, book["period"].split("-"))
+        period_end = f"{book['period']}-{monthrange(year, month)[1]:02d}"
+        future_count = conn.execute(
+            "SELECT COUNT(*) FROM subledger_items WHERE book_id=? AND original_date>?",
+            (book["id"], period_end),
+        ).fetchone()[0]
+        if future_count:
+            return {
+                "status": "blocked",
+                "reason": "历史未结事项存在晚于本账套期末的原始日期，须复核原始事实",
+                "future_item_count": int(future_count),
+                "rows": [],
+                "passed": False,
+            }
+        as_of = as_of or period_end
         trial = trial or PostingService(self.db).trial_balance_in_transaction(
             conn, actor, book_id, as_of
         )
@@ -644,43 +693,7 @@ class SubledgerService:
                 "rows": [],
                 "passed": False,
             }
-        for config in configs:
-            groups.setdefault(config["kind"], {}).setdefault(config["control_account_id"], 0)
-        for kind in ("receivable", "payable", "advance_received", "advance_paid"):
-            items = conn.execute(
-                "SELECT * FROM subledger_items WHERE book_id=? AND kind=? AND status IN('open','partial')",
-                (book["id"], kind),
-            ).fetchall()
-            for item in items:
-                remaining = int(item["amount_cents"]) - self._remaining(conn, item["id"], as_of)
-                if remaining > 0:
-                    groups.setdefault(kind, {})
-                    groups[kind][item["control_account_id"]] = (
-                        groups[kind].get(item["control_account_id"], 0) + remaining
-                    )
-        balances = {row["account_id"]: row for row in trial["rows"]}
-        result = []
-        for kind, by_account in groups.items():
-            for account_id, subledger in by_account.items():
-                account = balances.get(account_id, {})
-                book_balance = int(account.get("closing_cents", 0))
-                expected = subledger if kind in {"receivable", "advance_paid"} else -subledger
-                result.append(
-                    {
-                        "kind": kind,
-                        "control_account_id": account_id,
-                        "subledger_cents": subledger,
-                        "book_cents": book_balance,
-                        "difference_cents": book_balance - expected,
-                        "passed": book_balance == expected,
-                    }
-                )
-        return {
-            "status": "configured",
-            "reason": "",
-            "rows": result,
-            "passed": all(row["passed"] for row in result),
-        }
+        return control_rows(self, conn, book, configs, as_of)
 
     # ---------- bank evidence ----------
 
@@ -692,7 +705,7 @@ class SubledgerService:
         with self.db.transaction(write=True, actor=actor) as conn:
             book, ledger_id = self._book(conn, actor, request.book_id, write=True)
             mapped = conn.execute(
-                "SELECT a.current_version,v.is_leaf,v.category FROM ledger_accounts a "
+                "SELECT a.current_version,v.is_leaf,v.category,v.auxiliary_requirements FROM ledger_accounts a "
                 "JOIN ledger_account_versions v ON v.account_id=a.id AND v.version=? "
                 "WHERE a.id=? AND a.ledger_id=?",
                 (request.ledger_account_version, request.ledger_account_id, ledger_id),
@@ -701,6 +714,23 @@ class SubledgerService:
                 raise AccountingError("银行账户映射的总账科目版本已变化或不属于当前账套", 409)
             if not mapped["is_leaf"] or mapped["category"] != "asset":
                 raise AccountingError("银行账户必须映射到末级资产科目", 422)
+            if any(
+                auxiliary(row["aux_json"]) == auxiliary(request.aux)
+                for row in conn.execute(
+                    "SELECT aux_json FROM bank_accounts WHERE book_id=? AND ledger_account_id=? AND active IS TRUE",
+                    (book["id"], request.ledger_account_id),
+                )
+            ):
+                raise AccountingError("银行账户必须使用可区分的总账科目和辅助维度", 409)
+            from .auxiliary import DIMENSIONS, _entity_valid
+
+            if not set(json.loads(mapped["auxiliary_requirements"])).issubset(request.aux):
+                raise AccountingError("缺少银行映射科目要求的必要辅助维度", 422)
+
+            if set(request.aux) - DIMENSIONS or any(
+                not _entity_valid(conn, dict(book), k, v) for k, v in request.aux.items()
+            ):
+                raise AccountingError("银行辅助维度必须为本企业有效实体", 422)
             account_id = uuid4().hex
             conn.execute(
                 "INSERT INTO bank_accounts(id,firm_id,company_id,book_id,name,currency,active,"
@@ -826,11 +856,17 @@ class SubledgerService:
                 if (
                     not bank_account
                     or voucher_line["account_id"] != bank_account["ledger_account_id"]
+                    or auxiliary(voucher_line["aux_json"]) != auxiliary(bank_account["aux_json"])
                 ):
                     raise AccountingError("银行流水与凭证账户映射不一致", 409)
             amount = int(voucher_line["debit_cents"]) - int(voucher_line["credit_cents"])
             if amount != int(line["amount_cents"]):
                 raise AccountingError("银行流水金额与正式分录不一致", 409)
+            if conn.execute(
+                "SELECT 1 FROM bank_statement_lines WHERE matched_voucher_line_id=? AND id<>?",
+                (voucher_line["id"], line_id),
+            ).fetchone():
+                raise AccountingError("正式分录已被另一银行流水使用", 409)
             if line["status"] != "unmatched":
                 raise AccountingError("银行流水已匹配或已排除", 409)
             conn.execute(
@@ -842,10 +878,22 @@ class SubledgerService:
     def add_bank_adjustment(self, actor, request: BankAdjustment):
         with self.db.transaction(write=True, actor=actor) as conn:
             book, _ = self._book(conn, actor, request.book_id, write=True)
+            if request.period != book["period"]:
+                raise AccountingError("调整项期间不属于当前账套", 422)
+            if signed_money_to_cents(request.amount) and not request.bank_account_id:
+                raise AccountingError("非零银行调整项必须归属具体银行账户", 422)
+            if (
+                request.bank_account_id
+                and not conn.execute(
+                    "SELECT 1 FROM bank_accounts WHERE id=? AND book_id=? AND active IS TRUE",
+                    (request.bank_account_id, book["id"]),
+                ).fetchone()
+            ):
+                raise AccountingError("银行账户不存在或不属于当前账套", 404)
             adjustment_id = uuid4().hex
             conn.execute(
                 "INSERT INTO bank_recon_adjustments(id,book_id,period,kind,amount_cents,"
-                "explanation,status,created_by,created_at) VALUES(?,?,?,?,?,?,'open',?,?)",
+                "explanation,status,created_by,created_at,bank_account_id) VALUES(?,?,?,?,?,?,'open',?,?,?)",
                 (
                     adjustment_id,
                     book["id"],
@@ -855,9 +903,86 @@ class SubledgerService:
                     request.explanation,
                     actor.user_id,
                     now(),
+                    request.bank_account_id,
                 ),
             )
             return {"id": adjustment_id, "status": "open"}
+
+    def resolve_bank_adjustment(self, actor, adjustment_id, request):
+        with self.db.transaction(actor=actor) as conn:
+            adjustment = conn.execute(
+                "SELECT * FROM bank_recon_adjustments WHERE id=?", (adjustment_id,)
+            ).fetchone()
+            if not adjustment:
+                raise AccountingError("银行调整项不存在", 404)
+            book, _ = self._book(conn, actor, adjustment["book_id"], write=True)
+            company_id = book["company_id"]
+        with self.db.transaction(
+            write=True, actor=actor, write_scope="company", company_id=company_id
+        ) as conn:
+            book, _ = self._book(conn, actor, book["id"], write=True)
+            adjustment = conn.execute(
+                "SELECT * FROM bank_recon_adjustments WHERE id=? AND book_id=?",
+                (adjustment_id, book["id"]),
+            ).fetchone()
+            if adjustment["created_by"] == actor.user_id:
+                raise AccountingError("银行调整必须由另一位复核人员解决", 403)
+            prior = conn.execute(
+                "SELECT * FROM bank_adjustment_resolutions WHERE adjustment_id=?", (adjustment_id,)
+            ).fetchone()
+            if prior:
+                if (
+                    prior["bank_line_id"] != request.bank_line_id
+                    or prior["reason"] != request.reason
+                    or prior["created_by"] != actor.user_id
+                ):
+                    raise AccountingError("调整项已经使用其他证据解决", 409)
+                return dict(prior)
+            line = conn.execute(
+                "SELECT * FROM bank_statement_lines WHERE id=? AND book_id=?",
+                (request.bank_line_id, book["id"]),
+            ).fetchone()
+            if (
+                not line
+                or not adjustment["bank_account_id"]
+                or line["bank_account_id"] != adjustment["bank_account_id"]
+                or line["status"] != "matched"
+                or line["amount_cents"] != adjustment["amount_cents"]
+                or not int(adjustment["amount_cents"])
+            ):
+                raise AccountingError("解决证据必须为同账户同金额的已核验正式流水", 409)
+            if conn.execute(
+                "SELECT 1 FROM bank_adjustment_resolutions WHERE bank_line_id=?", (line["id"],)
+            ).fetchone():
+                raise AccountingError("此流水已用于解决其他调整项", 409)
+            resolution_id = uuid4().hex
+            conn.execute(
+                "INSERT INTO bank_adjustment_resolutions(id,book_id,firm_id,company_id,adjustment_id,bank_line_id,reason,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
+                (
+                    resolution_id,
+                    book["id"],
+                    book["firm_id"],
+                    company_id,
+                    adjustment_id,
+                    line["id"],
+                    request.reason,
+                    actor.user_id,
+                    now(),
+                ),
+            )
+            self._audit(
+                conn,
+                actor,
+                book["id"],
+                "bank.adjustment.resolve",
+                resolution_id,
+                {"adjustment_id": adjustment_id, "bank_line_id": line["id"]},
+            )
+            return dict(
+                conn.execute(
+                    "SELECT * FROM bank_adjustment_resolutions WHERE id=?", (resolution_id,)
+                ).fetchone()
+            )
 
     def bank_reconciliation(self, actor, book_id):
         with self.db.transaction(actor=actor) as conn:
@@ -867,142 +992,60 @@ class SubledgerService:
         from ..posting.service import PostingService
 
         book, _ = self._book(conn, actor, book_id)
-        accounts = conn.execute(
-            "SELECT * FROM bank_accounts WHERE book_id=? ORDER BY name,id",
-            (book["id"],),
-        ).fetchall()
-        if accounts:
-            trial = trial or PostingService(self.db).trial_balance_in_transaction(
-                conn, actor, book_id
-            )
-            cash_rows = [
-                row
-                for row in trial["rows"]
-                if row["is_leaf"] and row["code"].startswith(("1001", "1002"))
-            ]
-            cash = sum(int(row["closing_cents"]) for row in cash_rows)
-            adjustments = conn.execute(
-                "SELECT * FROM bank_recon_adjustments WHERE book_id=? AND status='open'",
-                (book["id"],),
-            ).fetchall()
-            unassigned = conn.execute(
-                "SELECT COUNT(*) FROM bank_statement_lines WHERE book_id=? AND bank_account_id IS NULL",
-                (book["id"],),
-            ).fetchone()[0]
-            balances = {row["account_id"]: int(row["closing_cents"]) for row in trial["rows"]}
-            rows = []
-            coverage_closing = 0
-            account_book_total = 0
-            for account in accounts:
-                coverage = conn.execute(
-                    "SELECT * FROM bank_statement_coverages WHERE account_id=? AND period=? "
-                    "ORDER BY CASE WHEN state IN ('pending_review','verified') THEN 0 ELSE 1 END,created_at DESC,id DESC LIMIT 1",
-                    (account["id"], book["period"]),
-                ).fetchone()
-                lines = conn.execute(
-                    "SELECT COUNT(*),COALESCE(SUM(amount_cents),0),"
-                    "COALESCE(SUM(CASE WHEN status='unmatched' THEN 1 ELSE 0 END),0) "
-                    "FROM bank_statement_lines WHERE book_id=? AND bank_account_id=?",
-                    (book["id"], account["id"]),
-                ).fetchone()
-                opening = int(coverage["opening_cents"]) if coverage else 0
-                closing = int(coverage["closing_cents"]) if coverage else 0
-                net = int(lines[1])
-                accounted = balances.get(account["ledger_account_id"])
-                coverage_closing += closing if coverage else 0
-                account_book_total += int(accounted or 0)
-                passed = (
-                    coverage is not None
-                    and coverage["state"] == "verified"
-                    and bool(account["active"])
-                    and accounted is not None
-                    and opening + net == closing
-                    and int(accounted) == closing
-                    and int(lines[2]) == 0
-                )
-                rows.append(
-                    {
-                        "account_id": account["id"],
-                        "name": account["name"],
-                        "ledger_account_id": account["ledger_account_id"],
-                        "coverage": coverage is not None and coverage["state"] == "verified",
-                        "coverage_state": coverage["state"] if coverage else "missing",
-                        "opening_cents": opening,
-                        "net_cents": net,
-                        "closing_cents": closing,
-                        "book_cents": accounted,
-                        "line_count": int(lines[0]),
-                        "unmatched_count": int(lines[2]),
-                        "difference_cents": opening + net - closing,
-                        "passed": passed,
-                    }
-                )
-            coverage_ok = all(row["coverage"] for row in rows)
-            passed = (
-                coverage_ok
-                and unassigned == 0
-                and not adjustments
-                and account_book_total == coverage_closing
-                and all(row["passed"] for row in rows)
-            )
-            return {
-                "multi_account": True,
-                "rows": rows,
-                "coverage_ok": coverage_ok,
-                "unassigned_line_count": int(unassigned),
-                "book_cash_cents": cash,
-                "coverage_closing_cents": coverage_closing,
-                "unexplained_cents": sum(int(row["amount_cents"]) for row in adjustments),
-                "difference_cents": cash - coverage_closing,
-                "passed": passed,
-            }
-        statement = conn.execute(
-            "SELECT COALESCE(SUM(amount_cents),0) FROM bank_statement_lines WHERE book_id=?",
-            (book["id"],),
-        ).fetchone()[0]
-        statement_count = conn.execute(
-            "SELECT COUNT(*) FROM bank_statement_lines WHERE book_id=?", (book["id"],)
-        ).fetchone()[0]
-        unmatched = conn.execute(
-            "SELECT COUNT(*),COALESCE(SUM(amount_cents),0) FROM bank_statement_lines "
-            "WHERE book_id=? AND status='unmatched'",
-            (book["id"],),
-        ).fetchone()
-        adjustments = conn.execute(
-            "SELECT * FROM bank_recon_adjustments WHERE book_id=? ORDER BY created_at,id",
-            (book["id"],),
-        ).fetchall()
         trial = trial or PostingService(self.db).trial_balance_in_transaction(conn, actor, book_id)
-        cash_rows = [
-            row
-            for row in trial["rows"]
-            if row["is_leaf"] and row["code"].startswith(("1001", "1002"))
-        ]
-        cash = sum(int(row["closing_cents"]) for row in cash_rows)
-        cash_opening = sum(int(row.get("opening_cents", 0)) for row in cash_rows)
-        unexplained = sum(
-            int(row["amount_cents"]) for row in adjustments if row["status"] == "open"
-        )
-        # Missing bank evidence is not a pass. A zero-cash book may legitimately
-        # have no statement; any nonzero cash needs at least one evidence line.
-        coverage_ok = int(statement_count) > 0 or cash == 0
-        difference = cash - (cash_opening + int(statement))
-        return {
-            "statement_cents": int(statement),
-            "statement_line_count": int(statement_count),
-            "book_cash_cents": cash,
-            "opening_cash_cents": cash_opening,
-            "unmatched_count": int(unmatched[0]),
-            "unmatched_cents": int(unmatched[1]),
-            "adjustments": [dict(row) for row in adjustments],
-            "unexplained_cents": unexplained,
-            "difference_cents": difference,
-            "coverage_ok": coverage_ok,
-            "passed": coverage_ok
-            and unexplained == 0
-            and int(unmatched[0]) == 0
-            and difference == 0,
-        }
+        result = bank_rows(self, conn, actor, book, trial)
+        from .period_bridge import continuity
+
+        result["continuity"] = continuity(self, conn, actor, book_id)
+        result["identity_status"] = result["continuity"]["identity_status"]
+        result["continuity_not_verified"] = result["continuity"]["continuity_not_verified"]
+        result["passed"] = result["passed"] and result["continuity"]["passed"]
+        return result
+
+    def continuity(self, actor, book_id):
+        from .period_bridge import continuity
+
+        with self.db.transaction(actor=actor) as conn:
+            return continuity(self, conn, actor, book_id)
+
+    def create_bank_identity(self, actor, request):
+        from .period_bridge import create_identity
+
+        return create_identity(self, actor, request)
+
+    def bind_bank_identity(self, actor, request):
+        from .period_bridge import bind_identity
+
+        return bind_identity(self, actor, request)
+
+    def review_bank_binding(self, actor, binding_id, request):
+        from .period_bridge import review_binding
+
+        return review_binding(self, actor, binding_id, request)
+
+    def create_period_bridge(self, actor, request):
+        from .period_bridge import create_bridge
+
+        return create_bridge(self, actor, request)
+
+    def bank_identities(self, actor, book_id):
+        with self.db.transaction(actor=actor) as conn:
+            book, ledger = self._book(conn, actor, book_id)
+            return {
+                "identities": [
+                    dict(x)
+                    for x in conn.execute(
+                        "SELECT * FROM ledger_bank_identities WHERE ledger_id=?", (ledger,)
+                    )
+                ],
+                "bindings": [
+                    dict(x)
+                    for x in conn.execute(
+                        "SELECT b.*,r.decision,r.created_by AS reviewed_by FROM bank_identity_bindings b LEFT JOIN bank_identity_reviews r ON r.binding_id=b.id WHERE b.book_id=?",
+                        (book["id"],),
+                    )
+                ],
+            }
 
     @staticmethod
     def _audit(conn, actor, book_id, action, object_id, details):

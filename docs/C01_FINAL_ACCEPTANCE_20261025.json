@@ -1,0 +1,114 @@
+{
+  "version": 1,
+  "status": "passed_local_only",
+  "validated_base_head": "91694bb9f992619585af6b43e3a570a14b28c832",
+  "validated_candidate": {
+    "e2e_all_source_sha256": "5b27d86bdb0d595e106252b39d938abcae70211e5688beffd911924b3b10d7ac",
+    "rich_all_source_map_sha256": "3f0a04a93a095997c7288f419537da43814c6cd6f05df77eb2f02892488ec657",
+    "backend_and_migrations": {
+      "head": "91694bb9f992619585af6b43e3a570a14b28c832",
+      "source_files": 892,
+      "source_sha256": "fe20f45688dc6d545574caaccfcecd18ad5c19cd890ffcce091b8bab9ef79cb0",
+      "migration_files": 248,
+      "migration_sha256": "ff500985fe42e314554662349c9ec51aca09497da64bafc09347325c4ca547b1"
+    }
+  },
+  "postgres": {
+    "16": {
+      "existing_gate_passed": 167,
+      "new_gate_passed": 34,
+      "delivery_gate_passed": 7,
+      "total_passed": 208,
+      "summary_sha256": "697a7e0aee18c6d75b28441633fb5b7dcae551835f40b1daf4d450ff3145e635",
+      "new_summary_sha256": "891122256d240e6f2fae37d25cfd34788fb8bb935bac27f247834cbdaf4143ba",
+      "delivery_junit_sha256": "109753a47545d83f05e99a0719e35308fb7f3ca6f2928de8aff26b279eeadbb7"
+    },
+    "17": {
+      "existing_gate_passed": 167,
+      "new_gate_passed": 34,
+      "delivery_gate_passed": 7,
+      "total_passed": 208,
+      "summary_sha256": "7a74774b6ffe04166fea4d531a7705283e0b37e30c7fa7470eaff1dae3d1557d",
+      "new_summary_sha256": "4a0eb21b8480def0dc8e15bee07dca0ce8b7baaabf57585316c38193f8c9391d",
+      "delivery_junit_sha256": "0070ece167f012d4c13c1eaa0f6cbbbecc96e409d93b2d67e14eea8b46218b86"
+    }
+  },
+  "sqlite_accounting_closing_delivery_legacy_passed": 133,
+  "restore_unit_passed": 75,
+  "full_recovery_graphs_passed": 2,
+  "real_gotrue_recovery_and_application_passed": 4,
+  "structure_owner_acl_passed": 2,
+  "frontend_unit_passed": 902,
+  "browser_core": {
+    "dev": {
+      "passed": 106,
+      "retries": 0,
+      "sha256": "e087a4e853a08c053c4c5f29398c6e07322354b7a620f270542db83aef7bcb8c"
+    },
+    "preview": {
+      "passed": 106,
+      "retries": 0,
+      "sha256": "f7d6aad1a32a7210dc77921614a630934a81c9459de712ca8755c4afc47d973a"
+    }
+  },
+  "recovery_schema": {
+    "tables": 239,
+    "migrations": 149,
+    "latest_version": 161,
+    "capability_grants": 848,
+    "column_grants": 49,
+    "snapshot_identities": 5,
+    "originals": 2
+  },
+  "nonempty_recovery": {
+    "majors": [
+      16,
+      17
+    ],
+    "new_tables": 7,
+    "compared_tables": 22,
+    "source_target_hashes_equal": true,
+    "hold_preserved": true
+  },
+  "scope": {
+    "synthetic_only": true,
+    "primary_worktree_clean": true,
+    "old_migrations_unchanged": true,
+    "staged_files": 0,
+    "committed": false,
+    "pushed": false,
+    "deployed": false,
+    "production_accessed": false,
+    "real_model_called": false,
+    "cloud_supabase_restore": false,
+    "remote_ci_executed": false
+  },
+  "teardown": {
+    "all_test_listeners_stopped": true,
+    "checked_ports": [
+      25496,
+      25497,
+      25498,
+      25499,
+      25510,
+      25511,
+      25512,
+      18000,
+      18080
+    ],
+    "private_artifacts_retained": true,
+    "system_pg14_untouched": true
+  },
+  "remaining_boundaries": [
+    "Real enterprise parallel accounting and accountant sign-off",
+    "Authorized cloud upgrade rollback and restore",
+    "Specified 200-company workload capacity acceptance",
+    "Tax filing workflows and complete historical handover package",
+    "Locked historical periods without bank identity reviews remain blocked"
+  ],
+  "documentation_only_changes_after_validation": [
+    "docs/C01_LOCAL_CLOSURE_20261025.md",
+    "docs/C01_FINAL_ACCEPTANCE_20261025.json"
+  ],
+  "provenance_note": "Fingerprints identify the exact tested working tree before this documentation-only submission summary and 23-to-22 table-count correction. Runtime, SQL, tests and CI files are unchanged after verification. Raw private artifacts remain local and ignored; no cross-suite inflated total is claimed."
+}

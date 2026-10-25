@@ -228,10 +228,15 @@ for (const [device, viewport] of [
     await expect(leave).toHaveCount(0);
     await expect(page).toHaveURL(revisionUrl);
     await expect(amount).toHaveValue('38.20');
-    // Editing again after the accepted restore must re-arm protection.
-    await amount.fill('39.20');
-
-    await page.goBack();
+    // Type and press native back in one browser task. An extra Playwright
+    // roundtrip must not accidentally give passive effects time to arm safety.
+    await amount.evaluate((node) => {
+      const input = node as HTMLInputElement;
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
+      setter.call(input, '39.20');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      window.history.back();
+    });
     await expect(leave).toBeVisible();
     await expect(amount).toHaveValue('39.20');
     await leave.getByRole('button', { name: '放弃修改并离开', exact: true }).click();
