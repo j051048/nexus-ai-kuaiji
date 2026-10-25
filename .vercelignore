@@ -15,7 +15,10 @@
 **/.vercel/
 nexus_backend/.venv/
 nexus_backend/
-scripts/
+# The full TypeScript check includes the E2E configuration contract. Keep its
+# pure runtime helper, without uploading maintenance or migration scripts.
+scripts/*
+!scripts/e2e_runtime.ts
 node_modules/
 artifacts/
 test-results/

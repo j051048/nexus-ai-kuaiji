@@ -36,6 +36,8 @@ jobs:
         with:
           python-version: '3.11'
       - run: npm ci
+      - name: Build the filtered Vercel upload and reject missing dependencies
+        run: npm run test:vercel-build
       - run: npm run format:check
       - run: npm run lint
       - run: python -m pip install -r nexus_backend/requirements.lock
