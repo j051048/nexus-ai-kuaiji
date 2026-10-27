@@ -30,6 +30,112 @@ def test_exact_valid_invoice_and_original_text_agree():
     assert reconcile_checks(payload(), [value], "BUYER123") == []
 
 
+def gross_total_document(quote="Gross Total: 213.00"):
+    value = document(gross_amount="213.00", net_amount="200.00", tax_amount="13.00")
+    value["pages"][0]["raw_text"] = value["pages"][0]["raw_text"].replace(
+        "gross_amount 213.00", quote
+    )
+    next(ref for ref in value["evidence"] if ref["field"] == "gross_amount")["quote"] = quote
+    return value
+
+
+@pytest.mark.parametrize("label", ["Gross Total", "gross total", "GROSS TOTAL"])
+def test_gross_total_alias_anchors_exact_213_amount_with_original(label):
+    value = gross_total_document(f"{label}: 213.00")
+    assert extraction_checks([value], [1], {1: value["pages"][0]["raw_text"]}) == []
+    assert reconcile_checks(payload(amount="213.00"), [value], "BUYER123") == []
+
+
+def test_gross_total_alias_does_not_replace_independent_original():
+    value = gross_total_document()
+    assert codes(extraction_checks([value], [1])) == {"document_1_original_unverified"}
+
+
+@pytest.mark.parametrize(
+    "quote",
+    [
+        "Gross Total: 214.00",
+        "Net Amount: 213.00",
+        "Tax Amount: 213.00",
+        "Gross Total: 213.00 200.00",
+        "Total: 213.00",
+        "Subtotal: 213.00",
+        "Gross Total: 1213.00",
+        "Gross Total: 213.001",
+        "Gross Total: 0213.00",
+        "Gross Total: A213.00",
+        "Gross Total: .213.00",
+    ],
+)
+def test_gross_total_alias_keeps_field_amount_and_boundary_guards(quote):
+    value = gross_total_document(quote)
+    findings = extraction_checks([value], [1], {1: value["pages"][0]["raw_text"]})
+    assert "document_1_evidence_gross_amount" in codes(findings)
+    assert "document_1_original_unverified" not in codes(findings)
+
+
+@pytest.mark.parametrize("quote", ["NotGross Total: 213.00", "Gross Totalled: 213.00"])
+def test_gross_total_alias_requires_complete_label_words(quote):
+    value = gross_total_document(quote)
+    assert "document_1_evidence_gross_amount" in codes(
+        extraction_checks([value], [1], {1: value["pages"][0]["raw_text"]})
+    )
+
+
+@pytest.mark.parametrize("prefix", ["Not", "X", "1", "_"])
+@pytest.mark.parametrize("source", ["model_transcript", "independent_original"])
+def test_gross_total_quote_cannot_crop_original_label_prefix(prefix, source):
+    value = gross_total_document()
+    original = value["pages"][0]["raw_text"]
+    prefixed = original.replace("Gross Total:", f"{prefix}Gross Total:")
+    if source == "model_transcript":
+        value["pages"][0]["raw_text"] = prefixed
+    else:
+        original = prefixed
+    assert "document_1_evidence_gross_amount" in codes(
+        extraction_checks([value], [1], {1: original})
+    )
+
+
+@pytest.mark.parametrize("prefix", ["Invoice ", "Invoice\n", "票据"])
+def test_gross_total_quote_keeps_real_word_and_chinese_boundaries(prefix):
+    value = gross_total_document()
+    original = value["pages"][0]["raw_text"].replace("Gross Total:", f"{prefix}Gross Total:")
+    value["pages"][0]["raw_text"] = original
+    assert extraction_checks([value], [1], {1: original}) == []
+
+
+@pytest.mark.parametrize("original_amount", ["1213.00", "213.001", "213.00.5"])
+def test_gross_total_quote_cannot_crop_original_amount(original_amount):
+    value = gross_total_document()
+    original = value["pages"][0]["raw_text"].replace(
+        "Gross Total: 213.00", f"Gross Total: {original_amount}"
+    )
+    assert "document_1_evidence_gross_amount" in codes(
+        extraction_checks([value], [1], {1: original})
+    )
+
+
+@pytest.mark.parametrize("field", ["net_amount", "tax_amount"])
+def test_gross_total_alias_cannot_anchor_another_equal_amount_field(field):
+    value = gross_total_document()
+    value[field] = "213.00"
+    value["tax_amount" if field == "net_amount" else "net_amount"] = "0.00"
+    for amount_field in ("net_amount", "tax_amount"):
+        old = "200.00" if amount_field == "net_amount" else "13.00"
+        value["pages"][0]["raw_text"] = value["pages"][0]["raw_text"].replace(
+            f"{amount_field} {old}", f"{amount_field} {value[amount_field]}"
+        )
+        reference = next(ref for ref in value["evidence"] if ref["field"] == amount_field)
+        reference["quote"] = (
+            "Gross Total: 213.00" if amount_field == field
+            else f"{amount_field} {value[amount_field]}"
+        )
+    findings = extraction_checks([value], [1], {1: value["pages"][0]["raw_text"]})
+    assert "document_1_evidence_" + field in codes(findings)
+    assert "document_1_tax_sum" not in codes(findings)
+
+
 @pytest.mark.parametrize("changes,code", [
     ({"gross_amount": None}, "gross_missing"),
     ({"tax_amount": None}, "tax_missing"),

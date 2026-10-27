@@ -16,6 +16,7 @@ from .checks import reconcile_checks, finding, normalized, invoice_key, extracti
 from .documents import prepare_document
 from .models import InvoiceExtraction, JournalSuggestion, ProviderResult, usage_payload
 from .cache import config_key, read_cache, store_cache
+from .ocr import engine_enabled, prompt_version, source_binding, valid_source
 from .structured import (
     is_structured,
     parse_invoice_xml,
@@ -200,7 +201,7 @@ class IntelligenceService:
         from .endpoints import AIEndpointPolicyService
 
         settings = effective_settings(self.provider.settings, scenario)
-        return AIEndpointPolicyService(self.db).check_send(
+        evidence = AIEndpointPolicyService(self.db).check_send(
             conn,
             actor,
             company_id,
@@ -210,6 +211,11 @@ class IntelligenceService:
             settings.model,
             bool(settings.api_key),
         )
+        if scenario == "ocr":
+            from .ocr import check_policy
+
+            return check_policy(self.db, conn, actor, company_id, self.provider.settings, evidence)
+        return evidence
 
     def _ocr_cache_key(self, conn, actor, event, media_type):
         """Bind every OCR checkpoint to the same current egress policy evidence.
@@ -521,7 +527,7 @@ class IntelligenceService:
                 "einvoice-0.3"
                 if structured
                 else effective_settings(self.provider.settings, "ocr").model,
-                STRUCTURED_VERSION if structured else EXTRACTION_PROMPT_VERSION,
+                STRUCTURED_VERSION if structured else prompt_version(self.provider.settings),
                 attachment_id=attachment["id"],
                 input_version=request.expected_fact_version,
                 provider_name=STRUCTURED_PROVIDER if structured else None,
@@ -536,7 +542,10 @@ class IntelligenceService:
         try:
             data = self.storage.read(attachment)
             local = parse_invoice_xml(data) if structured else None
-            pages = local.pages if local else prepare_document(data, attachment["media_type"])
+            pages = local.pages if local else prepare_document(
+                data, attachment["media_type"],
+                **({"high_resolution": True} if engine_enabled(self.provider.settings) else {}),
+            )
             # Check current access immediately before sending financial evidence.
             with self.db.transaction(write=True, actor=actor, **transaction_options) as conn:
                 current = self.business._event(conn, actor, event_id)
@@ -599,7 +608,7 @@ class IntelligenceService:
                             policy=send_policy,
                             pages=pages,
                             limits=send_limits,
-                            prompt_version=EXTRACTION_PROMPT_VERSION,
+                            prompt_version=prompt_version(self.provider.settings),
                         )
                         budget.before_send(conn)
             if not cache_hit and not local:
@@ -611,10 +620,34 @@ class IntelligenceService:
                     from ..concurrency.provider import provider_scope
 
                     with provider_scope(self.db, actor, event["company_id"]):
+                        def reauthorize():
+                            # Paddle can take time. Recheck policy, ownership,
+                            # facts and queue lease before the next outbound hop.
+                            with self.db.transaction(actor=actor) as check_conn:
+                                checked = self.business._event(check_conn, actor, event_id)
+                                self._require(check_conn, actor, checked, "process", enabled=True)
+                                if (checked["fact_version"] != event["fact_version"]
+                                    or self._ocr_cache_key(check_conn, actor, checked, attachment["media_type"]) != cache_key):
+                                    raise AccountingError("业务事实或外发政策已改变，字段提取未发送", 409)
+                                if not check_conn.execute(
+                                    "SELECT 1 FROM business_attachments WHERE id=? AND event_id=? AND sha256=?",
+                                    (attachment["id"], event_id, attachment["sha256"]),
+                                ).fetchone():
+                                    raise AccountingError("原件已改变，字段提取未发送", 409)
+                                if execution:
+                                    execution.check(check_conn)
+                                    execution.inputs(checked, attachment)
+
+                        extra = {
+                            "authorization_check": reauthorize,
+                            "source_binding": source_binding(actor, event["company_id"], attachment),
+                            "processing_deadline": initial_limits.deadline_monotonic,
+                        } if engine_enabled(self.provider.settings) else {}
                         result = self.provider.extract_invoice(
                             pages,
                             limits=send_limits,
                             context_pack=model_context,
+                            **extra,
                         )
                 finally:
                     after_model = getattr(execution, "after_model", None)
@@ -649,6 +682,8 @@ class IntelligenceService:
                 if execution:
                     execution.check(conn)
                     execution.inputs(current, attachment)
+                if result and not valid_source(result.data, source_binding(actor, current["company_id"], attachment)):
+                    raise AccountingError("独立 OCR 证据与当前企业原件不一致，未发布", 409)
                 finished = self._finish(conn, actor, run, result, error, cache_hit=cache_hit)
                 if finished["status"] == "succeeded":
                     issues = extraction_findings(result.data, pages)
@@ -858,8 +893,11 @@ class IntelligenceService:
             # independent original. A new prompt/cache fingerprint alone must
             # not silently bless those saved outputs during adoption.
             from .structured import STRUCTURED_VERSION
+            from .ocr import saved_evidence_current
 
-            if run["prompt_version"] not in {EXTRACTION_PROMPT_VERSION, STRUCTURED_VERSION}:
+            if (run["prompt_version"] not in {EXTRACTION_PROMPT_VERSION, STRUCTURED_VERSION}
+                and not saved_evidence_current(result, run["prompt_version"],
+                    source_binding(actor, event["company_id"], attachment))):
                 issues.append(
                     finding(
                         "fact_validation_upgrade_" + run["id"],

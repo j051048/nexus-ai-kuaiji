@@ -2,7 +2,27 @@
 
 后端提供可配置的 OpenAI 兼容 Chat Completions 接口，视觉模型读取员工附件，记账模型只生成结构化凭证建议。供应商、模型和密钥由部署管理员配置；浏览器不能提交接口地址或模型密钥。尚未配置时页面显示不可用，原有人工核票、审核和导出流程继续使用。
 
-票据识别只保留 `vision` 模式：兼容接口直接读取 2000 像素内的图像并返回字段与原文引用。独立 CPU 文字识别（PaddleOCR）服务已移除，`paddleocr` 引擎与相关配置不再生效；识别结果始终需要人工复核。
+票据识别支持显式选择 `vision` 或 `paddleocr`。`vision` 由兼容接口读取图像；缺少独立文字证据的图片仍进入人工核票。`paddleocr` 先调用独立私有 CPU OCR 服务，再由兼容文本模型提取字段，保存文字框、识别分数、页码、原件摘要及企业范围。不会把模型自报原文充当独立证据，也不会在 OCR 故障时隐式回退视觉模型。两条路径都保留会计复核后导出的要求。
+
+## 可选独立 PaddleOCR
+
+服务构建、固定版本、模型缓存和许可证见 [独立服务说明](../services/paddle_ocr/README.md)。本轮只恢复本地接入并用模拟服务验证；没有部署、下载模型或验证真实识别准确率。启用时在 API 和相关 worker 同时配置：
+
+```dotenv
+ACCOUNTING_OCR_ENGINE=paddleocr
+ACCOUNTING_PADDLEOCR_URL=https://your-private-ocr.example
+ACCOUNTING_PADDLEOCR_TOKEN=
+ACCOUNTING_PADDLEOCR_MODEL=PP-OCRv6_small_det+PP-OCRv6_small_rec@px3.7.2-pd3.3.1-det2048-line0-doc0-unwarp0-r1
+ACCOUNTING_PADDLEOCR_MIN_SCORE=0.85
+ACCOUNTING_PADDLEOCR_ALLOW_HTTP=0
+ACCOUNTING_PADDLEOCR_ALLOWED_HOST=
+```
+
+`URL` 仅为源站，不带路径、用户名或查询参数；代码追加 `/v1/recognize`。内部 HTTP 必须显式启用并固定允许主机。服务密钥只在后台保存。模型字段提取仍使用 `ACCOUNTING_AI_OCR_*`（或默认兼容模型配置），Paddle 不依赖会计数据库或模型供应商密钥。
+
+企业开启受管外发政策时，必须分别授权私有 OCR 目标和字段提取模型目标：两者均登记为 `ocr` 场景，分别填写固定的 Paddle 模型标识和文本模型标识。`local_only` 同样约束两个目标，不因为名称是“私有 OCR”就绕过外发审批。识别和字段提取共享任务时限，OCR 后再次检查权限、原件版本及政策。
+
+低识别分数、字段/文字冲突、PDF 原生文本冲突和来源绑定错误进入人工处理。缓存按企业、原件摘要及配置隔离，旧版缺少来源绑定的独立 OCR 缓存重新识别；不会静默升级。Paddle 页数与耗时单独记录为 `unpriced`，不能当作免费；模型用量、未知费用与防重发继续沿用现有记录。
 
 ## 服务要求与配置
 
@@ -30,7 +50,7 @@ ACCOUNTING_AI_ALLOW_HTTP=0
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --app-dir nexus_backend --env-file .env.accounting --host 127.0.0.1 --port 8000
 ```
 
-修改配置后重启后端，登录企业管理账号，在“企业处理设置”中明确开启所选企业。供应商全局配置就绪不会自动开启任何企业；按企业留存启用/关闭审计，企业默认关闭。`GET /api/intelligence/config` 只返回可见范围的服务状态和供应商主机名；页面不能修改 URL、模型 ID 或密钥。
+修改配置后需在获准的发布窗口更新 API 与相关 worker。新企业处理开关默认开启，管理员明确暂停的企业保持暂停；实际发送仍要求供应商、企业外发政策和费用额度全部通过检查。启停操作按企业留存审计。`GET /api/intelligence/config` 只返回可见范围的服务状态和供应商主机名；页面不能修改 URL、模型 ID 或密钥。
 
 默认请求 `json_schema` 且 `strict: true`，对象拒绝额外字段，所有字段必填，未知票据字段明确输出 `null`。若供应商仅支持 `json_object`，由管理员显式改为该值；后端仍用同一数据模型验证响应。服务不自动降级，也不因超时、拒绝或格式错误隐式再次发送附件。修复配置后由用户明确重试。
 

@@ -1,0 +1,10 @@
+invoice_number: MVP-2026-001
+issued_on: 2026-10-03
+seller_name: Synthetic Supplies
+seller_tax_id: 913101TESTSELLER
+buyer_name: Synthetic Company A
+buyer_tax_id: 913101TESTBUYER
+gross_amount: 0.30
+net_amount: 0.30
+tax_amount: 0.00
+currency: CNY

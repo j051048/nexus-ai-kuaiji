@@ -195,8 +195,18 @@ class AISettings:
     chat_base_url: str = ""
     chat_api_key: str = field(default="", repr=False)
     chat_response_format: str = ""
+    ocr_engine: str = "vision"
+    paddle_url: str = ""
+    paddle_token: str = field(default="", repr=False)
+    paddle_model: str = "PP-OCRv6_small_det+PP-OCRv6_small_rec@px3.7.2-pd3.3.1-det2048-line0-doc0-unwarp0-r1"
+    paddle_allow_http: bool = False
+    paddle_allowed_host: str = ""
+    paddle_min_score: float = 0.85
 
     def __post_init__(self) -> None:
+        from .ocr import validate_settings
+
+        validate_settings(self)
         if self.response_format not in {"json_schema", "json_object"} or any(
             value not in {"", "json_schema", "json_object"}
             for value in (
@@ -272,6 +282,7 @@ class AISettings:
         try:
             timeout = float(env.get("ACCOUNTING_AI_TIMEOUT_SECONDS", "45"))
             concurrency = int(env.get("ACCOUNTING_AI_MAX_CONCURRENCY", "2"))
+            score = float(env.get("ACCOUNTING_PADDLEOCR_MIN_SCORE") or "0.85")
         except (TypeError, ValueError):
             raise ProviderError("configuration", "AI 超时或并发数配置无效") from None
         return cls(
@@ -296,6 +307,13 @@ class AISettings:
             chat_base_url=env.get("ACCOUNTING_AI_CHAT_BASE_URL", "").strip(),
             chat_api_key=env.get("ACCOUNTING_AI_CHAT_API_KEY", "").strip(),
             chat_response_format=env.get("ACCOUNTING_AI_CHAT_RESPONSE_FORMAT", "").strip(),
+            ocr_engine=(env.get("ACCOUNTING_OCR_ENGINE") or "vision").strip(),
+            paddle_url=env.get("ACCOUNTING_PADDLEOCR_URL", "").strip(),
+            paddle_token=env.get("ACCOUNTING_PADDLEOCR_TOKEN", "").strip(),
+            paddle_model=(env.get("ACCOUNTING_PADDLEOCR_MODEL") or cls.paddle_model).strip(),
+            paddle_min_score=score,
+            paddle_allow_http=env.get("ACCOUNTING_PADDLEOCR_ALLOW_HTTP", "") == "1",
+            paddle_allowed_host=env.get("ACCOUNTING_PADDLEOCR_ALLOWED_HOST", "").strip(),
         )
 
     def for_scenario(self, scenario: str) -> ScenarioSettings:
@@ -319,7 +337,9 @@ class AISettings:
 
     @property
     def extraction_available(self) -> bool:
-        return self.for_scenario("ocr").available
+        return self.for_scenario("ocr").available and (
+            self.ocr_engine == "vision" or bool(self.paddle_url and self.paddle_token)
+        )
 
     @property
     def suggestion_available(self) -> bool:
@@ -370,9 +390,18 @@ class OpenAICompatibleProvider:
         *,
         authorization_check=None,
         processing_deadline=None,
+        source_binding=None,
         limits: ExecutionLimits | None = None,
         context_pack=None,
     ) -> ProviderResult[InvoiceExtraction]:
+        if self.settings.ocr_engine == "paddleocr":
+            from .ocr import extract_independent
+
+            return extract_independent(
+                self, pages, authorization_check=authorization_check,
+                processing_deadline=processing_deadline, limits=limits,
+                context_pack=context_pack, source_binding=source_binding,
+            )
         if not self.settings.extraction_available:
             raise ProviderError("unavailable", "尚未配置票据视觉识别服务，请继续人工核票")
         if not 1 <= len(pages) <= 6 or len({page.page for page in pages}) != len(pages):

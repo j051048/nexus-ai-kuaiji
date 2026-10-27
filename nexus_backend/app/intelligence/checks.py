@@ -30,6 +30,7 @@ MONEY_LABELS = {
         "实付金额",
         "total amount",
         "gross amount",
+        "gross total",
         "/EInvoice/EInvoiceData/BasicInformation/TotalTax-includedAmount",
     ),
     "net_amount": (
@@ -50,7 +51,9 @@ MONEY_LABELS = {
 }
 _MONEY_LABEL = re.compile(
     "|".join(
-        re.escape(label)
+        rf"(?<![A-Za-z0-9_]){re.escape(label)}(?![A-Za-z0-9_])"
+        if re.fullmatch(r"[A-Za-z_ ]+", label)
+        else re.escape(label)
         for label in sorted(
             (label for labels in MONEY_LABELS.values() for label in labels),
             key=len,
@@ -97,12 +100,27 @@ def quote_in_text(quote, text):
     span, original = normalized(quote), normalized(text)
     if not span:
         return False
+    leading_label = _MONEY_LABEL.match(unicodedata.normalize("NFKC", quote).lstrip())
+    english_label = bool(leading_label and re.fullmatch(r"[A-Za-z_ ]+", leading_label.group()))
+    # Preserve source separators when checking an English label's left boundary.
+    # Stripping whitespace alone would make "Invoice Gross Total" look like
+    # "InvoiceGross Total", while a quote cropped from "NotGross Total" is invalid.
+    source = unicodedata.normalize("NFKC", text or "").casefold()
+    positions = (
+        [index for index, char in enumerate(source) if not char.isspace()] if english_label else []
+    )
     start = original.find(span)
     labels = list(_NORMALIZED_MONEY_LABEL.finditer(original))
     while start >= 0:
         end = start + len(span)
+        cropped_english_label = (
+            english_label
+            and positions[start] > 0
+            and re.fullmatch(r"[a-z0-9_]", source[positions[start] - 1]) is not None
+        )
         if not (
-            (span[0].isdigit() and start and original[start - 1] in "0123456789.")
+            cropped_english_label
+            or (span[0].isdigit() and start and original[start - 1] in "0123456789.")
             or (span[-1].isdigit() and end < len(original) and original[end] in "0123456789.")
             or any(label.start() < start < label.end() for label in labels)
         ):
@@ -226,6 +244,10 @@ def extraction_checks(documents, page_numbers, native_texts=None):
 
 def extraction_findings(extraction, pages):
     """Findings for one extraction, bound to the pages it was read from."""
+    if getattr(extraction, "ocr_evidence", None) is not None:
+        from .ocr import extraction_findings as independent_findings
+
+        return independent_findings(extraction, pages)
     return extraction_checks(
         extraction.model_dump()["documents"],
         [page.page for page in pages],

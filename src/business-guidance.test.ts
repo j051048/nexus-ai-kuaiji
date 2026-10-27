@@ -48,9 +48,41 @@ function item(status: BusinessStatus, changes: Partial<BusinessEvent> = {}): Bus
 }
 
 describe('业务事项引导以当前事实和权限解释下一步', () => {
+  it('员工已交接但关联受限时正常等待会计，不要求反复刷新或标成阻断', () => {
+    const event = item('handed_off', { mapping_visibility: 'restricted' });
+    const guide = businessGuidance(event);
+    expect(guide.tone).toBe('neutral');
+    expect(guide.steps.at(-1)?.state).toBe('current');
+    expect(guide.status).toContain('当前账号不显示会计关联');
+    expect(guide.next).toContain('等待会计处理');
+    expect(guide.next).not.toMatch(/重新读取|刷新|不能确认|重新交接/);
+    expect(businessHandoffNotice(event)).toContain('当前账号不显示会计关联');
+    expect(businessHandoffNotice(event)).not.toMatch(/重新读取|暂未返回/);
+  });
+  it('旧接口缺少可见性字段时保持中性，不从交接权限推断关联丢失', () => {
+    for (const handoff of [true, false]) {
+      const guide = businessGuidance(
+        item('handed_off', { permissions: { ...permissions, handoff } }),
+      );
+      expect(guide.tone).toBe('neutral');
+      expect(guide.steps.at(-1)?.state).toBe('current');
+      expect(guide.next).not.toMatch(/重新读取|刷新/);
+      expect(guide.status).not.toContain('不显示会计关联');
+    }
+    expect(businessHandoffNotice(item('handed_off'))).not.toMatch(/重新读取|暂未返回/);
+  });
+  it('明确授权可见却缺关联时保留受控警告，不把员工受限混为异常', () => {
+    const event = item('handed_off', { mapping_visibility: 'missing' });
+    const guide = businessGuidance(event);
+    expect(guide.tone).toBe('warning');
+    expect(guide.steps.at(-1)?.state).toBe('blocked');
+    expect(guide.next).toContain('授权会计核对交接记录');
+    expect(guide.next).not.toContain('重新读取');
+    expect(businessHandoffNotice(event)).toContain('授权会计核对交接记录');
+  });
   it('交接回执没有映射时不把成功提示写成已生成草稿', () => {
     expect(businessHandoffNotice(item('handed_off'))).not.toContain('已生成凭证草稿');
-    expect(businessHandoffNotice(item('handed_off'))).toContain('草稿关联暂未返回');
+    expect(businessHandoffNotice(item('handed_off'))).toContain('具体处理进度');
     expect(businessHandoffNotice(undefined)).toContain('结果暂未确认');
     expect(businessHandoffNotice(item('finance_approved'))).toContain('结果暂未确认');
     expect(
@@ -59,7 +91,7 @@ describe('业务事项引导以当前事实和权限解释下一步', () => {
           mapping: { book_id: 'book-a', source_id: 'source-a', draft_id: 'draft-a' },
         }),
       ),
-    ).toContain('仍需会计独立复核后导出');
+    ).toContain('仍需会计复核后导出');
   });
   it('本人草稿缺附件时先上传，不能声称已提交', () => {
     const guide = businessGuidance(
@@ -194,10 +226,10 @@ describe('业务事项引导以当前事实和权限解释下一步', () => {
     ).toContain('点击“生成凭证草稿”');
   });
   it('已交接但没有草稿映射，不伪造已经生成或已审核导出', () => {
-    const guide = businessGuidance(item('handed_off'));
-    expect(guide.status).toContain('草稿关联暂未显示');
+    const guide = businessGuidance(item('handed_off', { mapping_visibility: 'missing' }));
+    expect(guide.status).toContain('草稿关联暂未找到');
     expect(guide.status).not.toContain('已生成凭证草稿');
-    expect(guide.next).toContain('重新读取');
+    expect(guide.next).toContain('授权会计核对交接记录');
     expect(guide.steps[guide.steps.length - 1]?.state).toBe('blocked');
   });
   it('已交接有映射也只陈述业务交接，不推断凭证审核或导出完成', () => {

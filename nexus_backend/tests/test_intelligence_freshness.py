@@ -78,21 +78,87 @@ def test_terminal_run_cannot_be_overwritten_by_a_late_response(ai_case):
 
 def test_applied_warning_survives_new_extraction_and_manual_draft_save(ai_case):
     event = create_event(ai_case)
-    extract(ai_case, event)
+    first_extraction = extract(ai_case, event)
     receipt = handoff(ai_case, event)
-    ai_case.provider.proposal_mutator = lambda output: output.update(warnings=["请会计核对业务用途"])
+    ai_case.provider.proposal_mutator = lambda output: output.update(
+        warnings=["请会计核对业务用途"]
+    )
     suggestion = propose(ai_case, receipt["draft_id"])
-    warning = next(item for item in ai_case.intelligence.detail(ai_case.actors["accountant"], event["id"])["findings"] if item["code"].startswith("proposal_warning_"))
+    # Untrusted model prose is intentionally replaced with this fixed warning.
+    # Track its proposal identity, not the model's original wording.
+    safe_warning = "模型提示存在待人工核对事项，请核对原件与业务资料"
+    assert suggestion["result"]["warnings"] == [safe_warning]
+    warning_code = f"proposal_warning_{suggestion['id']}_0"
+    warning = next(
+        item
+        for item in ai_case.intelligence.detail(
+            ai_case.actors["accountant"], event["id"]
+        )["findings"]
+        if item["code"] == warning_code
+    )
+    assert warning["payload"]["proposal_id"] == suggestion["id"]
+    assert warning["payload"]["message"] == "模型提示需人工核对：" + safe_warning
+    assert warning["severity"] == "blocking" and warning["resolved"] is False
     with pytest.raises(AccountingError):
-        ai_case.intelligence.apply(ai_case.actors["accountant"], suggestion["id"], 1)
-    ai_case.intelligence.resolve(ai_case.actors["accountant"], warning["id"], "已核对用途及原件")
-    applied = ai_case.intelligence.apply(ai_case.actors["accountant"], suggestion["id"], 1)
+        ai_case.intelligence.apply(
+            ai_case.actors["accountant"], suggestion["id"], suggestion["input_version"]
+        )
+    resolved = ai_case.intelligence.resolve(
+        ai_case.actors["accountant"], warning["id"], "已核对用途及原件"
+    )
+    assert resolved["resolved"] is True
+    applied = ai_case.intelligence.apply(
+        ai_case.actors["accountant"], suggestion["id"], suggestion["input_version"]
+    )
     current = ai_case.business.get_event(ai_case.actors["employee"], event["id"])
-    extract(ai_case, current, key="changed-warning-context")
-    updated = ai_case.ledger.update_draft(ai_case.actors["accountant"], ai_case.book["id"], applied["id"], DraftUpdate(expected_version=2, description=applied["description"], lines=applied["lines"]))
-    assert any("业务用途" in issue for issue in updated["issues"])
-    with pytest.raises(AccountingError, match="业务用途"):
-        ai_case.ledger.approve(ai_case.actors["accountant"], ai_case.book["id"], applied["id"], ApprovalRequest(expected_version=3))
+    refreshed_extraction = extract(ai_case, current, key="changed-warning-context")
+    assert refreshed_extraction["status"] == "succeeded"
+    assert refreshed_extraction["id"] != first_extraction["id"]
+    refreshed_warning = next(
+        item
+        for item in ai_case.intelligence.detail(
+            ai_case.actors["accountant"], event["id"]
+        )["findings"]
+        if item["code"] == warning_code
+    )
+    # The employee's OCR run cannot persist book-only warnings. The accountant
+    # still sees a live derived finding, without reusing the old resolved ID.
+    assert refreshed_warning["id"] != warning["id"]
+    assert refreshed_warning["payload"] == warning["payload"]
+    assert refreshed_warning["resolved"] is False
+    assert refreshed_warning["resolution_reason"] is None
+    updated = ai_case.ledger.update_draft(
+        ai_case.actors["accountant"],
+        ai_case.book["id"],
+        applied["id"],
+        DraftUpdate(
+            expected_version=applied["version"],
+            description=applied["description"],
+            lines=applied["lines"],
+        ),
+    )
+    expected_issue = "票据核对未完成：" + warning["payload"]["message"]
+    assert expected_issue in updated["issues"]
+    assert updated["version"] == applied["version"] + 1
+    after_save = next(
+        item
+        for item in ai_case.intelligence.detail(
+            ai_case.actors["accountant"], event["id"]
+        )["findings"]
+        if item["code"] == warning_code
+    )
+    assert after_save["id"] == refreshed_warning["id"]
+    assert after_save["resolved"] is False
+    # An independent reviewer must be blocked by this live warning too; a
+    # maker's self-review restriction must not be what makes this test pass.
+    with pytest.raises(AccountingError, match=expected_issue):
+        ai_case.ledger.approve(
+            ai_case.manager,
+            ai_case.book["id"],
+            applied["id"],
+            ApprovalRequest(expected_version=updated["version"]),
+        )
+    assert draft(ai_case, applied["id"])["status"] == "draft"
 
 
 def test_stale_finding_cannot_be_resolved_for_changed_evidence(ai_case):

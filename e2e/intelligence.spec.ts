@@ -1,4 +1,4 @@
-import { choosePersona, openBusiness, openManagement } from './ui-navigation';
+import { choosePersona, openBusiness, openFirmTool } from './ui-navigation';
 import { expect, test, type Page } from '@playwright/test';
 
 const receipt = {
@@ -82,7 +82,11 @@ test('真实本地 UI：企业启用、未配置服务禁识别、员工登记�
       exact: true,
     }),
   ).toBeVisible();
-  await expect(settings.getByText('该企业未开启', { exact: true })).toBeVisible();
+  // New companies start enabled. Explicitly pause and restore through the real
+  // administrator controls instead of changing the application/seed defaults.
+  await expect(settings.getByText('该企业已开启', { exact: true })).toBeVisible();
+  await settings.getByRole('button', { name: '关闭票据与模型处理', exact: true }).click();
+  await expect(settings.getByText('管理员已暂停', { exact: true })).toBeVisible();
   await settings.getByRole('button', { name: '开启票据与模型处理', exact: true }).click();
   await expect(settings.getByText('该企业已开启', { exact: true })).toBeVisible();
   await settings.getByRole('button', { name: '完成', exact: true }).click();
@@ -114,12 +118,40 @@ test('真实本地 UI：企业启用、未配置服务禁识别、员工登记�
       panel.getByText('附件尚未成功识别，需人工核对或重试', { exact: true }),
     ).toBeVisible();
     await expect(panel.getByRole('button', { name: '记录人工处理', exact: true })).toHaveCount(0);
-    await openManagement(page);
-    await page.getByRole('button', { name: '票据核对异常', exact: true }).click();
-    await expect(page.getByText(description, { exact: true }).first()).toBeVisible();
+    // Employees inspect their own finding inline. The technical exception
+    // centre belongs to the authorized accountant's settings navigation.
+    await expect(page.getByRole('button', { name: '票据核对异常', exact: true })).toHaveCount(0);
+    await persona(page, 'accountant');
+    const [accountantExceptions] = await Promise.all([
+      page.waitForResponse(
+        (response) => new URL(response.url()).pathname === '/api/intelligence/exceptions',
+      ),
+      openFirmTool(page, '票据核对异常'),
+    ]);
+    expect(accountantExceptions.status()).toBe(200);
+    const accountantResult: { findings: { event_id: string }[] } =
+      await accountantExceptions.json();
+    expect(accountantResult.findings.some((finding) => finding.event_id === event.id)).toBe(false);
+    // Unsubmitted employee facts are not visible to a firm accountant merely
+    // because the account can open the technical page.
+    await expect(page.getByText(description, { exact: true })).toHaveCount(0);
 
     await persona(page, 'finance');
-    await openEvent(page, description, '企业财务');
+    // The customer shell omits technical navigation but an authorized finance
+    // reader can follow its existing scoped deep link. Bind only the local
+    // startup persona; the real API still evaluates every object's permission.
+    await page.route('**/api/session', async (route) => {
+      const url = new URL(route.request().url());
+      url.searchParams.set('persona', 'finance');
+      await route.fulfill({ response: await route.fetch({ url: url.toString() }) });
+    });
+    await page.goto(`/workspace/intelligence?company=${event.company_id}`);
+    const exception = page.locator('article').filter({
+      has: page.getByRole('heading', { name: description, exact: true }),
+    });
+    await expect(exception).toBeVisible();
+    await exception.getByRole('button', { name: '核对事项', exact: true }).click();
+    await expect(page.getByRole('heading', { name: description, exact: true })).toBeVisible();
     await expect(panel.getByRole('button', { name: '识别票据', exact: true })).toBeDisabled();
     const reason = '仅使用虚构测试原件，由独立企业财务核对金额，真实票据仍须会计复核。';
     await panel
@@ -144,7 +176,7 @@ test('真实本地 UI：企业启用、未配置服务禁识别、员工登记�
     const reset = await request.put(`/api/companies/${event.company_id}/intelligence/settings`, {
       timeout: 5000,
       headers: { Authorization: `Bearer ${owner.token}` },
-      data: { enabled: false },
+      data: { enabled: true },
     });
     expect(reset.status()).toBe(200);
   }

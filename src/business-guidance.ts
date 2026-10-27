@@ -16,12 +16,27 @@ export function businessStatusLabel(event: Pick<BusinessEvent, 'status' | 'submi
     : labels[event.status];
 }
 
+function handoffMapping(event: BusinessEvent) {
+  if (event.mapping_visibility === 'restricted') return 'restricted';
+  if (event.mapping?.draft_id) return 'visible';
+  if (event.mapping_visibility === 'missing' || event.mapping_visibility === 'visible')
+    return 'missing';
+  return 'unknown';
+}
+
 export function businessHandoffNotice(event: BusinessEvent | void) {
   if (event?.status !== 'handed_off')
     return '交接结果暂未确认，请重新读取事项并核对交接记录；不要重复交接。';
-  return event.mapping?.draft_id
-    ? '已交接并关联凭证草稿，仍需会计独立复核后导出。'
-    : '业务已交接，草稿关联暂未返回。请重新读取事项，再由授权会计核对进度。';
+  switch (handoffMapping(event)) {
+    case 'visible':
+      return '已交接并关联凭证草稿，仍需会计复核后导出。';
+    case 'restricted':
+      return '业务已交接会计；当前账号不显示会计关联，等待会计处理，无需重复提交。';
+    case 'missing':
+      return '业务已交接，草稿关联暂未找到。请联系授权会计核对交接记录，不要重复创建事项。';
+    default:
+      return '业务已交接会计；具体处理进度请向授权会计确认，无需重复提交。';
+  }
 }
 
 interface BusinessGuidanceState {
@@ -72,7 +87,7 @@ export function businessGuidance(
         : index > current
           ? 'upcoming'
           : event.status === 'returned' ||
-              (event.status === 'handed_off' && !event.mapping?.draft_id)
+              (event.status === 'handed_off' && handoffMapping(event) === 'missing')
             ? 'blocked'
             : 'current',
   }));
@@ -163,14 +178,24 @@ export function businessGuidance(
         : `核对原件后，在下方选择本企业 ${month} 的可交接账套，再生成凭证草稿。`;
     }
   } else {
-    guide.status = event.mapping?.draft_id
-      ? '业务已交接会计；这不代表凭证已审核或已导出。'
-      : '业务状态为已交接，但草稿关联暂未显示；不能据此确认凭证已生成。';
-    guide.next = event.mapping?.draft_id
-      ? '由有账套权限的授权会计打开会计复核，核对分录、金额和原件。审核通过后才能导出；具体进度以会计工作台为准。'
-      : '先重新读取事项；如仍没有草稿关联，请联系授权会计核对交接记录，不要重复创建事项。';
+    const mapping = handoffMapping(event);
+    if (mapping === 'visible') {
+      guide.status = '业务已交接会计；这不代表凭证已审核或已导出。';
+      guide.next =
+        '由有账套权限的授权会计打开会计复核，核对分录、金额和原件。审核通过后才能导出；具体进度以会计工作台为准。';
+    } else if (mapping === 'restricted') {
+      guide.status = '业务已交接会计；当前账号不显示会计关联，这不表示处理异常。';
+      guide.next =
+        '等待会计处理；可查看本事项的审批记录。如需了解会计处理进度，请联系本企业财务，无需重复提交。';
+    } else if (mapping === 'missing') {
+      guide.status = '业务状态为已交接，但草稿关联暂未找到；不能据此确认凭证已生成。';
+      guide.next = '请联系授权会计核对交接记录，不要重复创建事项或交接。';
+      guide.tone = 'warning';
+    } else {
+      guide.status = '业务已交接会计；当前页面未提供会计处理进度。';
+      guide.next = '具体处理进度请向授权会计确认；可查看本事项的审批记录，无需重复提交。';
+    }
     guide.checks = ['事项交接、会计审核和导出是不同阶段；业务状态不会替代凭证状态。'];
-    if (!event.mapping?.draft_id) guide.tone = 'warning';
   }
   if (state.error) {
     guide.status += ` 当前操作提示：${state.error}`;

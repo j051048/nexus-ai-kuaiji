@@ -30,6 +30,7 @@ CATEGORIES = {
         "permission_denied",
         "fact_changed",
         "stale_input",
+        "ocr_source_invalid",
     },
     "policy_or_budget": {
         "policy_rejected",
@@ -58,6 +59,7 @@ CATEGORIES = {
         "structured_unsupported",
         "structured_red_invoice",
         "ocr_version_changed",
+        "ocr_document_too_large",
     },
     "provider_or_transport": {
         "timeout",
@@ -73,6 +75,8 @@ CATEGORIES = {
         "provider_refused",
         "model_refused",
         "refusal",
+        "ocr_service_unavailable",
+        "ocr_timeout",
     },
     "output_validation": {
         "invalid_json",
@@ -86,6 +90,7 @@ CATEGORIES = {
         "output_truncated",
         "response_too_large",
         "ocr_evidence_invalid",
+        "ocr_response_invalid",
     },
     "cancelled": {"cancelled", "user_cancelled"},
     "worker_internal": {

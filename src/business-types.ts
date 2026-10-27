@@ -82,6 +82,8 @@ export interface BusinessEvent {
   attachments: BusinessAttachment[];
   actions: BusinessAction[];
   versions: BusinessVersion[];
+  /** Server projection only; absence on an older API does not mean missing linkage. */
+  mapping_visibility?: 'visible' | 'restricted' | 'missing' | 'not_applicable';
   mapping?: { book_id: string; source_id: string; draft_id: string } | null;
   permissions: {
     edit: boolean;

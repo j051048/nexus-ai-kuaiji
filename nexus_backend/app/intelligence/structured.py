@@ -173,6 +173,12 @@ def is_structured(media_type):
 
 
 def extraction_metadata(run):
+    if run["prompt_version"].startswith("independent-invoice-extraction-facts-v4:"):
+        return {
+            "extraction_method": "paddleocr",
+            "verification_status": "not_verified",
+            "method_label": "独立 OCR 文字与字段提取，仍需会计复核",
+        }
     if run["prompt_version"] == STRUCTURED_VERSION:
         return {
             "extraction_method": "structured_xml",

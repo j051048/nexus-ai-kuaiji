@@ -16,9 +16,16 @@ from ..intelligence.cache import config_key, store_cache
 from ..intelligence.documents import prepare_document
 from ..intelligence.endpoints import AIEndpointPolicyService
 from ..intelligence.checks import extraction_findings
-from ..intelligence.models import InvoiceExtraction, ProviderResult, usage_payload
+from ..intelligence.models import ProviderResult, usage_payload
+from ..intelligence.ocr import (
+    engine_enabled,
+    prompt_version,
+    source_binding,
+    stored_extraction,
+    valid_source,
+    check_policy,
+)
 from ..intelligence.provider import (
-    EXTRACTION_PROMPT_VERSION,
     ExecutionLimits,
     ProviderError,
     effective_settings,
@@ -107,7 +114,7 @@ class IntakeService:
 
     def _egress_policy(self, conn, actor, company_id):
         settings = effective_settings(self.provider.settings, "ocr")
-        return AIEndpointPolicyService(self.db).check_send(
+        evidence = AIEndpointPolicyService(self.db).check_send(
             conn,
             actor,
             company_id,
@@ -117,6 +124,7 @@ class IntakeService:
             settings.model,
             bool(settings.api_key),
         )
+        return check_policy(self.db, conn, actor, company_id, self.provider.settings, evidence)
 
     @staticmethod
     def _run_json(row, execution=None):
@@ -474,7 +482,7 @@ class IntakeService:
                     if structured
                     else urlsplit(settings.base_url).hostname or "openai-compatible",
                     "einvoice-0.3" if structured else settings.model,
-                    STRUCTURED_VERSION if structured else EXTRACTION_PROMPT_VERSION,
+                    STRUCTURED_VERSION if structured else prompt_version(self.provider.settings),
                     stamp,
                 ),
             )
@@ -486,7 +494,15 @@ class IntakeService:
         try:
             data = self.storage.read(metadata)
             local = parse_invoice_xml(data) if structured else None
-            pages = local.pages if local else prepare_document(data, metadata["media_type"])
+            pages = (
+                local.pages
+                if local
+                else prepare_document(
+                    data,
+                    metadata["media_type"],
+                    **({"high_resolution": True} if engine_enabled(self.provider.settings) else {}),
+                )
+            )
             with self.db.transaction(
                 write=True, actor=actor, company_id=company_id, write_scope="company"
             ) as conn:
@@ -513,7 +529,7 @@ class IntakeService:
                         policy=egress_policy,
                         pages=pages,
                         limits=limits,
-                        prompt_version=EXTRACTION_PROMPT_VERSION,
+                        prompt_version=prompt_version(self.provider.settings),
                     )
                     budget.before_send(conn)
             if local:
@@ -523,10 +539,40 @@ class IntakeService:
                 from ..concurrency.provider import provider_scope
 
                 with provider_scope(self.db, actor, run["company_id"]):
+
+                    def reauthorize():
+                        with self.db.transaction(actor=actor) as check_conn:
+                            checked = self._draft(check_conn, actor, draft_id, editable=True)
+                            self._version(checked, draft["version"])
+                            if (
+                                not self._enabled(check_conn, checked)
+                                or self._configuration_input(metadata) != digest
+                                or self._egress_policy(check_conn, actor, company_id)
+                                != egress_policy
+                            ):
+                                raise AccountingError(
+                                    "企业配置或外发政策已改变，字段提取未发送", 409
+                                )
+                            if not check_conn.execute(
+                                "SELECT 1 FROM intake_attachments WHERE id=? AND intake_id=? AND sha256=?",
+                                (attachment_id, draft_id, metadata["sha256"]),
+                            ).fetchone():
+                                raise AccountingError("原件已改变，字段提取未发送", 409)
+
+                    extra = (
+                        {
+                            "authorization_check": reauthorize,
+                            "source_binding": source_binding(actor, company_id, metadata),
+                            "processing_deadline": limits.deadline_monotonic,
+                        }
+                        if engine_enabled(self.provider.settings)
+                        else {}
+                    )
                     result = self.provider.extract_invoice(
                         pages,
                         limits=limits,
                         context_pack=model_context,
+                        **extra,
                     )
         except ProviderError as failure:
             error = failure
@@ -555,6 +601,10 @@ class IntakeService:
                     )
                 ):
                     raise AccountingError("企业处理配置已改变，识别结果未发布", 403)
+                if result and not valid_source(
+                    result.data, source_binding(actor, company_id, metadata)
+                ):
+                    raise AccountingError("独立 OCR 证据与当前企业原件不一致，未发布", 409)
                 checks = [] if error else extraction_findings(result.data, pages)
                 if structured and not error:
                     checks.append(verification_finding())
@@ -587,13 +637,23 @@ class IntakeService:
                 }
             )
         settings = effective_settings(self.provider.settings, "ocr")
+        if not engine_enabled(self.provider.settings):
+            # Preserve existing vision intake fingerprints and retry identity.
+            from ..intelligence.provider import EXTRACTION_PROMPT_VERSION
+
+            return fingerprint(
+                {
+                    "sha256": attachment["sha256"],
+                    "model": settings.model,
+                    "provider": settings.base_url,
+                    "format": settings.response_format,
+                    "prompt": EXTRACTION_PROMPT_VERSION,
+                }
+            )
         return fingerprint(
             {
                 "sha256": attachment["sha256"],
-                "model": settings.model,
-                "provider": settings.base_url,
-                "format": settings.response_format,
-                "prompt": EXTRACTION_PROMPT_VERSION,
+                "config": config_key(self.provider.settings, attachment["media_type"]),
             }
         )
 
@@ -673,7 +733,25 @@ class IntakeService:
                     ).fetchone()
                     if not prior:
                         continue
-                    recognized = InvoiceExtraction.model_validate(json.loads(prior["result_json"]))
+                    try:
+                        recognized = stored_extraction(json.loads(prior["result_json"]))
+                        transferable = valid_source(
+                            recognized, source_binding(actor, company_id, attachment)
+                        )
+                    except (TypeError, ValueError):
+                        transferable = False
+                    if not transferable:
+                        # Preserve original/old run, but never upgrade unbound
+                        # historical OCR into current verified evidence. Manual
+                        # facts may still be submitted through normal approvals.
+                        self.business._audit(
+                            conn,
+                            actor,
+                            "intake.ocr_transfer.skipped",
+                            prior["id"],
+                            {"reason": "unverifiable_provenance", "event_id": event["id"]},
+                        )
+                        continue
                     transferred, _ = self.intelligence._claim(
                         conn,
                         actor,

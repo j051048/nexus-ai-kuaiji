@@ -320,10 +320,14 @@ class BusinessService:
             (event["id"],),
         ).fetchone()
         result["mapping"] = None
-        if mapping:
+        result["mapping_visibility"] = "not_applicable"
+        if mapping or event["status"] == "handed_off":
+            # Explain the existing omission without disclosing whether an
+            # inaccessible mapping exists, or its book/source/draft identifiers.
+            result["mapping_visibility"] = "restricted"
             member = self._membership(conn, actor, event["company_id"])
             ledger_access = bool(member and member["role"] == "finance")
-            if not ledger_access:
+            if mapping and not ledger_access:
                 try:
                     self.access.book(conn, actor, mapping["book_id"])
                     ledger_access = True
@@ -331,7 +335,8 @@ class BusinessService:
                     if error.status not in {403, 404}:
                         raise
             if ledger_access:
-                result["mapping"] = dict(mapping)
+                result["mapping"] = dict(mapping) if mapping else None
+                result["mapping_visibility"] = "visible" if mapping else "missing"
         result["permissions"] = self._permissions(conn, actor, event)
         if getattr(self, "intelligence", None):
             result["permissions"]["process_intelligence"] = self.intelligence._permissions(

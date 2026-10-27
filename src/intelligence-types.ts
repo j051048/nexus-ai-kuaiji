@@ -39,7 +39,7 @@ export interface JournalProposal {
   warnings: string[];
 }
 export interface IntelligenceRun {
-  extraction_method?: 'structured_xml' | 'vision_model';
+  extraction_method?: 'structured_xml' | 'vision_model' | 'paddleocr';
   verification_status?: 'not_verified';
   method_label?: string;
   id: string;
