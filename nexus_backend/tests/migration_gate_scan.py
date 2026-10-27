@@ -1,8 +1,16 @@
 """静态扫描迁移里的表级隔离属性（供结构测试使用）。
 
 只做「能证伪」的窄解析：注释与字符串先被等长掩码，再做表名与触发器配对。
-动态安装（``EXECUTE format('...%I...')`` + ``VALUES`` 表名列表）与直接语句等价对待，
-因为线上 PG 里两者装出来的触发器形态相同。
+动态安装（``EXECUTE format('...%I...')`` + ``VALUES``/``ARRAY`` 表名列表，或同一语句
+里的字面量参数）与直接语句等价对待，因为线上 PG 里两者装出来的触发器形态相同。
+
+三类保护分开记录，避免互相冒充：
+
+* ``rls_enabled`` 只认 ``ENABLE ROW LEVEL SECURITY``；``FORCE`` 是加固，不是启用。
+* ``tenant_isolation`` 要求策略里出现真实的租户判定（``company_id = ...``、
+  ``book_allowed(...)`` 等）；``company_id = company_id``、``true`` 这类恒真条件不算。
+* ``gate_functions`` 是公司写入围栏（取公司级咨询锁的触发器）。RLS 策略只做隔离，
+  不能替代写入围栏。
 """
 
 from __future__ import annotations
@@ -20,22 +28,47 @@ ADD_COLUMN = re.compile(
     re.I,
 )
 RLS_ENABLE = re.compile(
-    r"ALTER\s+TABLE\s+(?:ONLY\s+)?accounting\.([a-z_][a-z0-9_]*)\s+(?:ENABLE|FORCE)\s+ROW\s+LEVEL\s+SECURITY",
+    r"ALTER\s+TABLE\s+(?:ONLY\s+)?accounting\.([a-z_][a-z0-9_]*)\s+ENABLE\s+ROW\s+LEVEL\s+SECURITY",
     re.I,
+)
+RLS_FORCE = re.compile(
+    r"ALTER\s+TABLE\s+(?:ONLY\s+)?accounting\.([a-z_][a-z0-9_]*)\s+FORCE\s+ROW\s+LEVEL\s+SECURITY",
+    re.I,
+)
+POLICY = re.compile(
+    rf"CREATE\s+POLICY\s+{IDENT}\s+ON\s+accounting\.([a-z_][a-z0-9_]*)([^;]*);", re.I | re.S
 )
 GATE_TRIGGER = re.compile(
     rf"CREATE\s+(?:CONSTRAINT\s+)?TRIGGER\s+{IDENT}[^;]*?\bON\s+(?:ONLY\s+)?accounting\.([a-z_][a-z0-9_]*)"
     r"[^;]*?EXECUTE\s+FUNCTION\s+accounting\.([a-z_][a-z0-9_]*)\s*\(",
     re.I | re.S,
 )
-FORMAT_TABLE = re.compile(r"format\s*\(\s*'([^']*accounting\.%I[^']*)'", re.I)
-VALUES_TABLES = re.compile(r"\(\s*'([a-z_][a-z0-9_]*)'\s*,", re.I)
+FORMAT_BODY = re.compile(r"format\s*\(\s*'((?:[^']|'')*)'", re.I)
+SINGLE_QUOTED = re.compile(r"'([A-Za-z_][A-Za-z0-9_]*)'")
+ARRAY_LIST = re.compile(r"ARRAY\s*\[([^\]]*)\]", re.I | re.S)
+VALUES_LIST = re.compile(r"VALUES(.*?)\)\s*AS\s+\w+", re.S | re.I)
+STATEMENT_END = re.compile(r";|\bEND\b", re.I)
+
+TENANT_COLUMNS = ("company_id", "firm_id")
+TENANT_TOKENS = ("company_id", "firm_id", "book_allowed", "actor_firm", "company_visible")
+TENANT_HELPERS = ("book_allowed", "actor_firm", "company_visible")
+SELF_COMPARE = re.compile(r"\b([a-z_][a-z0-9_]*)\s*=\s*\1\b", re.I)
+RECOGNIZED_GATES = {
+    "company_write_table_guard",
+    "close_dependency_write_guard",
+    "monthly_delivery_guard",
+    "tax_workpaper_guard",
+    "<dynamic>",
+}
+# 围栏函数进白名单的前提：函数体调用 accounting.lock_company_write（或
+# lock_dispatch_write/lock_legacy_write）真正取锁；扫描器只认名字，真锁由
+# PostgreSQL 运行时用例（tmp_test/p03_pg_workpaper.py）实证。
 
 
 def mask_sql(source: str) -> str:
     """把注释、单引号字符串、美元引用体替换为等长空格，保留换行。"""
 
-    out = []
+    out: list[str] = []
     index = 0
     length = len(source)
     while index < length:
@@ -56,7 +89,7 @@ def mask_sql(source: str) -> str:
         if char == "'":
             end = index + 1
             while end < length:
-                if source[end] == "'" and source[end : end + 2] == "''":
+                if source[end : end + 2] == "''":
                     end += 2
                     continue
                 if source[end] == "'":
@@ -80,16 +113,50 @@ def mask_sql(source: str) -> str:
     return "".join(out)
 
 
+def mask_comments(source: str) -> str:
+    """只掩码注释，保留字符串字面量：动态 DDL 的模板就在字符串里。"""
+
+    out = list(source)
+    index, length = 0, len(source)
+    while index < length:
+        if source.startswith("--", index):
+            end = source.find("\n", index)
+            end = length if end < 0 else end
+        elif source.startswith("/*", index):
+            end = source.find("*/", index + 2)
+            end = length if end < 0 else end + 2
+        else:
+            index += 1
+            continue
+        for position in range(index, min(end, length)):
+            out[position] = "\n" if out[position] == "\n" else " "
+        index = end
+    return "".join(out)
+
+
 @dataclass
 class TableFacts:
     version: int
     file: str
     columns: set[str] = field(default_factory=set)
-    rls: bool = False
+    rls_enabled: bool = False
+    rls_forced: bool = False
     policies: int = 0
+    tautological_policies: int = 0
     gate_functions: set[str] = field(default_factory=set)
-    tenant_write_policy: bool = False
+    tenant_isolation: bool = False
+    company_isolation: bool = False
     created: int | None = None
+
+    @property
+    def rls(self) -> bool:
+        """兼容旧调用：RLS 覆盖只由 ENABLE 决定。"""
+        return self.rls_enabled
+
+    @property
+    def tenant_write_policy(self) -> bool:
+        """兼容旧调用：只有真实租户判定才算写策略。"""
+        return self.tenant_isolation
 
 
 def _table_body(masked: str, start: int) -> str:
@@ -106,101 +173,162 @@ def _table_body(masked: str, start: int) -> str:
     return masked[start:]
 
 
+def _parenthesised(clause: str, start: int) -> str:
+    depth = 0
+    for index in range(start, len(clause)):
+        if clause[index] == "(":
+            depth += 1
+        elif clause[index] == ")":
+            depth -= 1
+            if depth == 0:
+                return clause[start + 1 : index]
+    return clause[start + 1 :]
+
+
+def policy_expressions(clause: str) -> list[str]:
+    """返回 USING / WITH CHECK 括号里的表达式（忽略其他子句）。"""
+
+    found: list[str] = []
+    for match in re.finditer(r"\b(?:using|with\s+check)\s*\(", clause, re.I):
+        found.append(_parenthesised(clause, match.end() - 1))
+    return found
+
+
+def policy_verdict(expression: str) -> str:
+    """把一条策略表达式分成 ``tenancy`` / ``tautology`` / ``other``。"""
+
+    text = expression.lower()
+    if re.fullmatch(r"\s*(?:true|1\s*=\s*1)\s*", text):
+        return "tautology"
+    if SELF_COMPARE.search(text) and not any(f"{helper}(" in text for helper in TENANT_HELPERS):
+        return "tautology"
+    if any(token in text for token in TENANT_TOKENS):
+        return "tenancy"
+    return "other"
+
+
+def _dynamic_installs(source: str) -> list[tuple[str, set[str]]]:
+    """返回 (format 体, 该文件可静态读到的目标表名)。
+
+    表名可能来自三处：同一 ``EXECUTE`` 语句的字面量参数、``ARRAY[...]`` 循环列表、
+    ``VALUES (...) AS t(name)`` 列表。三者都读，再与「本仓库真实建过的表」取交集，
+    避免把触发器名或策略名当成表名。
+    """
+
+    masked = mask_comments(source)
+    list_targets: set[str] = set()
+    for array in ARRAY_LIST.finditer(masked):
+        list_targets |= {value.lower() for value in SINGLE_QUOTED.findall(array.group(1))}
+    for values in VALUES_LIST.finditer(masked):
+        list_targets |= {value.lower() for value in SINGLE_QUOTED.findall(values.group(1))}
+
+    installs: list[tuple[str, set[str]]] = []
+    for match in FORMAT_BODY.finditer(masked):
+        body = match.group(1).replace("''", "'").lower()
+        if "accounting.%i" not in body:
+            continue
+        tail = STATEMENT_END.split(masked[match.end() :], maxsplit=1)[0]
+        arguments = {value.lower() for value in SINGLE_QUOTED.findall(tail)}
+        installs.append((body, arguments | list_targets))
+    return installs
+
+
 def scan(files: dict[int, tuple[str, str]]) -> dict[str, TableFacts]:
     """files: version -> (filename, source)。返回表名到事实的映射。"""
 
     order = sorted(files)
     masked_by_version = {version: mask_sql(files[version][1]) for version in order}
-    created: dict[str, int] = {}
-    for version in order:
-        masked = masked_by_version[version]
-        for match in TABLE.finditer(masked):
-            created.setdefault(match.group(1).lower(), version)
-        for match in ADD_COLUMN.finditer(masked):
-            created.setdefault(match.group(1).lower(), version)
     facts: dict[str, TableFacts] = {}
+
+    def entry_for(table: str, version: int) -> TableFacts:
+        name = files[version][0]
+        entry = facts.setdefault(table, TableFacts(version=version, file=name))
+        if entry.created is None:
+            entry.created = version
+        return entry
+
     for version in order:
-        name, _ = files[version]
         masked = masked_by_version[version]
         for match in TABLE.finditer(masked):
-            table = match.group(1).lower()
             body = _table_body(masked, match.end() - 1)
-            entry = facts.setdefault(table, TableFacts(version=version, file=name))
-            entry.created = version if entry.created is None else entry.created
-            entry.columns |= {
-                column.lower() for column in re.findall(rf"^\s*({IDENT})\s", body, re.M)
+            entry_for(match.group(1).lower(), version).columns |= {
+                column.lower() for column in re.findall(rf"(?:^|,)\s*({IDENT})\s", body, re.M)
             }
         for match in ADD_COLUMN.finditer(masked):
-            facts.setdefault(
-                match.group(1).lower(), TableFacts(version=version, file=name)
-            ).columns.add(match.group(2).strip('"').lower())
+            entry_for(match.group(1).lower(), version).columns.add(
+                match.group(2).strip('"').lower()
+            )
         for match in RLS_ENABLE.finditer(masked):
-            facts.setdefault(
-                match.group(1).lower(), TableFacts(version=version, file=name)
-            ).rls = True
-        for match in re.finditer(
-            rf"CREATE\s+POLICY\s+{IDENT}\s+ON\s+accounting\.([a-z_][a-z0-9_]*)([^;]*);",
-            masked,
-            re.I | re.S,
-        ):
-            entry = facts.setdefault(match.group(1).lower(), TableFacts(version=version, file=name))
+            entry_for(match.group(1).lower(), version).rls_enabled = True
+        for match in RLS_FORCE.finditer(masked):
+            entry_for(match.group(1).lower(), version).rls_forced = True
+        for match in POLICY.finditer(masked):
+            entry = entry_for(match.group(1).lower(), version)
             entry.policies += 1
-            clause = match.group(2).lower()
-            if ("for all" in clause or "for insert" in clause or "for update" in clause) and (
-                "with check" in clause
-            ):
-                if any(token in clause for token in ("book_allowed", "actor_firm", "company_id")):
-                    entry.tenant_write_policy = True
+            verdicts = [
+                policy_verdict(expression) for expression in policy_expressions(match.group(2))
+            ]
+            if "tenancy" in verdicts:
+                entry.tenant_isolation = True
+                if any(
+                    "company_id" in expression
+                    for expression, verdict in zip(policy_expressions(match.group(2)), verdicts)
+                    if verdict == "tenancy"
+                ):
+                    entry.company_isolation = True
+            elif "tautology" in verdicts:
+                entry.tautological_policies += 1
         for match in GATE_TRIGGER.finditer(masked):
-            entry = facts.setdefault(match.group(1).lower(), TableFacts(version=version, file=name))
-            entry.gate_functions.add(match.group(2).lower())
-        for body, names in _dynamic_targets(files[version][1]):
-            for table in names:
-                if table not in created:
+            entry_for(match.group(1).lower(), version).gate_functions.add(match.group(2).lower())
+        for body, targets in _dynamic_installs(files[version][1]):
+            for table in targets:
+                if table not in facts:
                     continue
-                entry = facts.setdefault(table, TableFacts(version=version, file=name))
+                entry = facts[table]
                 if "row level security" in body:
-                    entry.rls = True
+                    entry.rls_enabled = True
                 if "create trigger" in body:
                     entry.gate_functions.add("<dynamic>")
                 if "create policy" in body and "with check" in body:
-                    entry.tenant_write_policy = True
+                    entry.tenant_isolation = True
     return facts
 
 
-ARRAY_LIST = re.compile(r"ARRAY\s*\[([^\]]*)\]", re.I | re.S)
-FORMAT_BODY = re.compile(r"format\s*\(\s*'((?:[^']|'')*)'", re.I)
-SINGLE_QUOTED = re.compile(r"'([a-z_][a-z0-9_]*)'", re.I)
+def structure_problems(
+    facts: dict[str, TableFacts], *, since: int | None = None
+) -> list[dict[str, str]]:
+    """把表级事实转成可逐条解释的问题，三类保护分别报。"""
 
-
-def _dynamic_targets(source: str) -> list[tuple[str, set[str]]]:
-    """返回 (format 体, 该文件里由 VALUES/ARRAY 列表给出的表名)。
-
-    ``EXECUTE format('CREATE TRIGGER %I ... ON accounting.%I ...', trig, item.table_name)``
-    的表名来自循环变量，静态不可读；能读的是同一文件里 ``VALUES`` / ``ARRAY[...]``
-    列表中的字面量。文件级配对仍在可证伪范围内：这类「批量补触发器」迁移只登记
-    自己那一批表，误credit 的代价由下面的等价性用例兜底。
-    """
-
-    bodies = [match.group(1).replace("''", "'").lower() for match in FORMAT_BODY.finditer(source)]
-    installs_gate = any(
-        "accounting.%i" in body and "create trigger" in body and "company_write_table_guard" in body
-        for body in bodies
-    )
-    installs_rls = any("accounting.%i" in body and "row level security" in body for body in bodies)
-    if not installs_gate and not installs_rls:
-        return []
-    targets: set[str] = set()
-    for array in ARRAY_LIST.finditer(source):
-        targets |= {value.lower() for value in SINGLE_QUOTED.findall(array.group(1))}
-    for values in re.finditer(r"VALUES(.*?)\)\s*AS\s+\w+", source, re.S | re.I):
-        targets |= {value.lower() for value in SINGLE_QUOTED.findall(values.group(1))}
-    result = []
-    if installs_gate:
-        result.append(("create trigger company_write_table_guard", targets))
-    if installs_rls:
-        result.append(("alter table row level security", targets))
-    return result
+    problems: list[dict[str, str]] = []
+    for table, entry in sorted(facts.items()):
+        if entry.created is None:
+            continue
+        if since is not None and entry.created < since:
+            continue
+        tenant = any(column in entry.columns for column in TENANT_COLUMNS)
+        if not tenant:
+            continue
+        if not entry.rls_enabled:
+            problems.append(
+                {"table": table, "kind": "missing_rls", "detail": "缺 ENABLE ROW LEVEL SECURITY"}
+            )
+        if entry.tautological_policies and not entry.tenant_isolation:
+            problems.append(
+                {
+                    "table": table,
+                    "kind": "tautological_policy",
+                    "detail": f"{entry.tautological_policies} 条策略只有恒真条件，未证明企业隔离",
+                }
+            )
+        if entry.company_isolation and not (entry.gate_functions & RECOGNIZED_GATES):
+            problems.append(
+                {
+                    "table": table,
+                    "kind": "missing_write_gate",
+                    "detail": "按 company_id 隔离但没有公司写入围栏，写入不会被串行化",
+                }
+            )
+    return problems
 
 
 def load(root: Path) -> dict[str, TableFacts]:

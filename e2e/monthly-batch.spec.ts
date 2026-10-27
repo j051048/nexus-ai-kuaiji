@@ -24,7 +24,7 @@ test('批量开期为既有客户创建当月账套、逐户报告并保持幂�
   await openNavigation(page);
   await page
     .getByRole('navigation', { name: '主导航' })
-    .getByRole('button', { name: '交付', exact: true })
+    .getByRole('button', { name: '月度交付', exact: true })
     .click();
   await page.getByLabel('客户进度月份').fill('2026-11');
   await page.getByLabel('搜索月度客户').fill(`批量开期`);
@@ -35,7 +35,15 @@ test('批量开期为既有客户创建当月账套、逐户报告并保持幂�
   const dialog = page.getByRole('dialog', { name: '月初批量开期', exact: true });
   await dialog.getByLabel('批量开期搜索范围').fill(`批量开期`);
   await dialog.getByLabel('批量开期操作依据').fill('合成验证：月初批量开期两家客户');
-  await dialog.getByRole('button', { name: '开始批量开期', exact: true }).click();
+  // Execution stays disabled until the read-only precheck has been seen.
+  const runButton = dialog.getByRole('button', { name: '开始批量开期', exact: true });
+  await expect(runButton).toBeDisabled();
+  await dialog.getByRole('button', { name: '预检范围', exact: true }).click();
+  await expect(
+    dialog.getByText('将开期 2 家；跳过 0 家、阻塞 0 家', { exact: false }),
+  ).toBeVisible();
+  await expect(runButton).toBeEnabled();
+  await runButton.click();
   await expect(dialog.getByText('已开期 2 家')).toBeVisible({ timeout: 30_000 });
   await expect(dialog.getByText(`批量开期甲${tag}`)).toBeVisible();
   await expect(

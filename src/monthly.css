@@ -835,3 +835,30 @@ button.monthly-progress-cell:hover {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
+
+.batch-preview {
+  display: grid;
+  gap: 8px;
+  margin: 4px 0 8px;
+}
+.batch-preview-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+  max-height: 180px;
+  overflow: auto;
+}
+.batch-preview-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--wash, #f4f6f2);
+  font-size: 12px;
+}
+.batch-preview-row.blocked {
+  background: #fbefea;
+}

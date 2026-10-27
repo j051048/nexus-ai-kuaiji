@@ -1,4 +1,5 @@
 """Explicit human request -> existing case workflow, with a current-source fence."""
+
 from __future__ import annotations
 
 import hashlib
@@ -32,10 +33,24 @@ class HandoffService:
     def _event_basis(self, conn, actor, event_id):
         business = self.intelligence.business if self.intelligence else self.cases.business
         event = business._event(conn, actor, event_id)
-        mapping = conn.execute("SELECT book_id,draft_id FROM business_mappings WHERE event_id=?", (event_id,)).fetchone()
-        return {"id": event_id, "version": event["version"], "fact_version": event["fact_version"],
-                "attachments": [dict(a) for a in conn.execute("SELECT id,sha256 FROM business_attachments WHERE event_id=? ORDER BY id", (event_id,))],
-                "draft": self._draft_basis(conn, mapping["book_id"], mapping["draft_id"]) if mapping else None}
+        mapping = conn.execute(
+            "SELECT book_id,draft_id FROM business_mappings WHERE event_id=?", (event_id,)
+        ).fetchone()
+        return {
+            "id": event_id,
+            "version": event["version"],
+            "fact_version": event["fact_version"],
+            "attachments": [
+                dict(a)
+                for a in conn.execute(
+                    "SELECT id,sha256 FROM business_attachments WHERE event_id=? ORDER BY id",
+                    (event_id,),
+                )
+            ],
+            "draft": self._draft_basis(conn, mapping["book_id"], mapping["draft_id"])
+            if mapping
+            else None,
+        }
 
     @staticmethod
     def _draft_basis(conn, book_id, draft_id):
@@ -55,24 +70,50 @@ class HandoffService:
         if kind == "chat" and self.assistant:
             from app.assistant.service import TURN_PUBLIC
 
-            run = conn.execute("SELECT " + TURN_PUBLIC + " FROM assistant_turns WHERE id=? AND firm_id=?", (run_id, actor.firm_id)).fetchone()
+            run = conn.execute(
+                "SELECT " + TURN_PUBLIC + " FROM assistant_turns WHERE id=? AND firm_id=?",
+                (run_id, actor.firm_id),
+            ).fetchone()
             if not run:
                 raise AccountingError("执行记录不存在或无权访问", 404)
             conversation = self.assistant._conversation(conn, actor, run["conversation_id"])
             # A new handoff case changes assessment aggregates. Bind underlying
             # facts, periods and drafts, excluding the case we are about to make.
-            current = {"scope_version": conversation["scope_version"],
-                       "events": [self._event_basis(conn, actor, event_id) for event_id in conversation["event_ids"]],
-                       "books": [{key: book[key] for key in ("id", "period", "period_status")} for book in
-                                 (self.assistant.access.book(conn, actor, book_id) for book_id in conversation["book_ids"])],
-                       "draft": self._draft_basis(conn, conversation["book_ids"][0], conversation["draft_id"])
-                       if len(conversation["book_ids"]) == 1 and conversation["draft_id"] else None}
+            current = {
+                "scope_version": conversation["scope_version"],
+                "events": [
+                    self._event_basis(conn, actor, event_id)
+                    for event_id in conversation["event_ids"]
+                ],
+                "books": [
+                    {key: book[key] for key in ("id", "period", "period_status")}
+                    for book in (
+                        self.assistant.access.book(conn, actor, book_id)
+                        for book_id in conversation["book_ids"]
+                    )
+                ],
+                "draft": self._draft_basis(
+                    conn, conversation["book_ids"][0], conversation["draft_id"]
+                )
+                if len(conversation["book_ids"]) == 1 and conversation["draft_id"]
+                else None,
+            }
             if len(conversation["event_ids"]) == 1:
                 target = {"event_id": conversation["event_ids"][0]}
-            elif not conversation["event_ids"] and len(conversation["book_ids"]) == 1 and conversation["draft_id"]:
-                target = {"book_id": conversation["book_ids"][0], "draft_id": conversation["draft_id"]}
+            elif (
+                not conversation["event_ids"]
+                and len(conversation["book_ids"]) == 1
+                and conversation["draft_id"]
+            ):
+                target = {
+                    "book_id": conversation["book_ids"][0],
+                    "draft_id": conversation["draft_id"],
+                }
         elif kind in {"ocr", "journal"} and self.intelligence:
-            run = conn.execute("SELECT * FROM ai_runs WHERE id=? AND firm_id=? AND kind=?", (run_id, actor.firm_id, "proposal" if kind == "journal" else "ocr")).fetchone()
+            run = conn.execute(
+                "SELECT * FROM ai_runs WHERE id=? AND firm_id=? AND kind=?",
+                (run_id, actor.firm_id, "proposal" if kind == "journal" else "ocr"),
+            ).fetchone()
             if not run:
                 raise AccountingError("执行记录不存在或无权访问", 404)
             event = self.intelligence.business._event(conn, actor, run["event_id"])
@@ -81,7 +122,10 @@ class HandoffService:
             current = self._event_basis(conn, actor, event["id"])
             target = {"event_id": event["id"]}
         elif kind == "intake" and self.intake:
-            run = conn.execute("SELECT * FROM intake_runs WHERE id=? AND firm_id=? AND created_by=?", (run_id, actor.firm_id, actor.user_id)).fetchone()
+            run = conn.execute(
+                "SELECT * FROM intake_runs WHERE id=? AND firm_id=? AND created_by=?",
+                (run_id, actor.firm_id, actor.user_id),
+            ).fetchone()
             if not run:
                 raise AccountingError("执行记录不存在或无权访问", 404)
             draft = self.intake._draft(conn, actor, run["intake_id"])
@@ -91,10 +135,19 @@ class HandoffService:
         else:
             raise AccountingError("执行记录不存在或无权访问", 404)
         run = dict(run)
-        basis = fingerprint({"kind": kind, "run_id": run_id, "firm_id": actor.firm_id,
-                             "company_id": run["company_id"], "status": run["status"],
-                             "input_fingerprint": run["input_fingerprint"], "error_code": run["error_code"],
-                             "current": current, "target": target})
+        basis = fingerprint(
+            {
+                "kind": kind,
+                "run_id": run_id,
+                "firm_id": actor.firm_id,
+                "company_id": run["company_id"],
+                "status": run["status"],
+                "input_fingerprint": run["input_fingerprint"],
+                "error_code": run["error_code"],
+                "current": current,
+                "target": target,
+            }
+        )
         return run, target, basis
 
     def preview(self, actor, kind, run_id):
@@ -102,8 +155,14 @@ class HandoffService:
             run, target, basis = self._source(conn, actor, kind, run_id)
             eligible = False
             if target and run["status"] not in {"queued", "running", "retry_wait"}:
-                case_scope = {"id": "", "company_id": run["company_id"], "event_id": target.get("event_id"),
-                              "book_id": target.get("book_id"), "draft_id": target.get("draft_id"), "source_id": None}
+                case_scope = {
+                    "id": "",
+                    "company_id": run["company_id"],
+                    "event_id": target.get("event_id"),
+                    "book_id": target.get("book_id"),
+                    "draft_id": target.get("draft_id"),
+                    "source_id": None,
+                }
                 try:
                     eligible = self.cases._manage(conn, actor, case_scope)
                     if eligible:
@@ -120,9 +179,15 @@ class HandoffService:
             record = self.intelligence.run_execution(actor, run["event_id"], run_id)
         # The APIs return a record, not a mutable task or a replay permission.
         record = dict(record)
-        record["handoff"] = {**record["handoff"], "fingerprint": basis,
-                             "supported": bool(target), "can_create": eligible,
-                             "message": "可由有当前来源复核权限的会计创建内部异常任务。" if target else "请先在业务事项中确认资料并联系会计；此范围没有可发布的单一来源。"}
+        record["handoff"] = {
+            **record["handoff"],
+            "fingerprint": basis,
+            "supported": bool(target),
+            "can_create": eligible,
+            "message": "可由有当前来源复核权限的会计创建内部异常任务。"
+            if target
+            else "请先在业务事项中确认资料并联系会计；此范围没有可发布的单一来源。",
+        }
         return record
 
     def create(self, actor, kind, run_id, payload):
@@ -139,15 +204,27 @@ class HandoffService:
 
         def guard(conn):
             current_run, current_target, current_basis = self._source(conn, actor, kind, run_id)
-            if current_basis != payload.expected_fingerprint or current_target != target or current_run["company_id"] != run["company_id"]:
+            if (
+                current_basis != payload.expected_fingerprint
+                or current_target != target
+                or current_run["company_id"] != run["company_id"]
+            ):
                 raise AccountingError("执行或资料已变化，人工任务未创建", 409)
 
         # Same user key reused for a different run/reason remains a conflict in
         # case_commands. Do not incorporate run_id into this key.
         key = "ak04:" + hashlib.sha256(payload.idempotency_key.encode()).hexdigest()
-        request = CaseCreate(**target, kind="exception", title="AI 执行人工核对",
-                             reason=f"执行引用 {kind}:{run_id}；资料指纹 {basis}。人工依据：{payload.reason}",
-                             idempotency_key=key)
+        request = CaseCreate(
+            **target,
+            kind="exception",
+            title="AI 执行人工核对",
+            reason=f"执行引用 {kind}:{run_id}；资料指纹 {basis}。人工依据：{payload.reason}",
+            idempotency_key=key,
+        )
         case = self.cases.create(actor, request, source_guard=guard)
-        return {"execution_id": f"{kind}:{run_id}", "case": case, "automatic_retry": False,
-                "message": "已创建人工核对任务；凭证仍须会计独立复核后导出。"}
+        return {
+            "execution_id": f"{kind}:{run_id}",
+            "case": case,
+            "automatic_retry": False,
+            "message": "已创建人工核对任务；凭证仍须会计独立复核后导出。",
+        }

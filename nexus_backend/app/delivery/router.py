@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import Response
 from .models import ReceiptCreate, ReceiptImport, DeliveryNote
 from .monthly_models import MonthlyPackageCreate, MonthlyPackageAcknowledge
+from .followup_models import DeliveryGrantRequest, DeliveryRevokeRequest, DeliveryTaskRequest
 
 
 def build_delivery_router(actor_dependency):
@@ -13,6 +14,45 @@ def build_delivery_router(actor_dependency):
 
     def packages(request: Request):
         return request.app.state.monthly_packages
+
+    def followups(request: Request):
+        return request.app.state.delivery_followups
+
+    @router.get("/monthly-followup")
+    def followup_status(
+        book_id: str,
+        period: str = Query(min_length=7, max_length=7),
+        actor=Depends(actor_dependency),
+        followup=Depends(followups),
+    ):
+        return followup.status(actor, book_id, period)
+
+    @router.post("/monthly-followup/recipient", status_code=201)
+    def followup_configure(
+        book_id: str,
+        payload: DeliveryGrantRequest,
+        actor=Depends(actor_dependency),
+        followup=Depends(followups),
+    ):
+        return followup.configure(actor, book_id, payload)
+
+    @router.post("/monthly-followup/recipient/revoke")
+    def followup_revoke(
+        book_id: str,
+        payload: DeliveryRevokeRequest,
+        actor=Depends(actor_dependency),
+        followup=Depends(followups),
+    ):
+        return followup.revoke(actor, book_id, payload.period, payload)
+
+    @router.post("/monthly-followup/tasks", status_code=201)
+    def followup_task(
+        book_id: str,
+        payload: DeliveryTaskRequest,
+        actor=Depends(actor_dependency),
+        followup=Depends(followups),
+    ):
+        return followup.queue(actor, book_id, payload)
 
     @router.get("/monthly-package")
     def monthly_readiness(book_id: str, actor=Depends(actor_dependency), monthly=Depends(packages)):

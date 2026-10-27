@@ -18,7 +18,10 @@ from ..intelligence.endpoints import AIEndpointPolicyService
 from ..intelligence.checks import extraction_findings
 from ..intelligence.models import InvoiceExtraction, ProviderResult, usage_payload
 from ..intelligence.provider import (
-    EXTRACTION_PROMPT_VERSION, ExecutionLimits, ProviderError, effective_settings,
+    EXTRACTION_PROMPT_VERSION,
+    ExecutionLimits,
+    ProviderError,
+    effective_settings,
 )
 from ..intelligence.structured import (
     is_structured,
@@ -105,8 +108,14 @@ class IntakeService:
     def _egress_policy(self, conn, actor, company_id):
         settings = effective_settings(self.provider.settings, "ocr")
         return AIEndpointPolicyService(self.db).check_send(
-            conn, actor, company_id, "ocr", {"document", "counterparty", "amount"},
-            settings.base_url, settings.model, bool(settings.api_key),
+            conn,
+            actor,
+            company_id,
+            "ocr",
+            {"document", "counterparty", "amount"},
+            settings.base_url,
+            settings.model,
+            bool(settings.api_key),
         )
 
     @staticmethod
@@ -142,21 +151,40 @@ class IntakeService:
         checks = json.loads(run["checks_json"])
         if diagnostic is None:
             diagnostic = can_diagnose(conn, actor)
-        costs = [dict(row) for row in conn.execute(
-            "SELECT * FROM model_costs WHERE id=? AND intake_run_id=? AND firm_id=? AND company_id=?",
-            (run["id"], run["id"], actor.firm_id, run["company_id"]),
-        )] if diagnostic else []
+        costs = (
+            [
+                dict(row)
+                for row in conn.execute(
+                    "SELECT * FROM model_costs WHERE id=? AND intake_run_id=? AND firm_id=? AND company_id=?",
+                    (run["id"], run["id"], actor.firm_id, run["company_id"]),
+                )
+            ]
+            if diagnostic
+            else []
+        )
         validation = {
             "code": "requires_accountant" if run["status"] == "succeeded" else "not_checked",
-            "status": ("blocked" if any(item["severity"] == "blocking" for item in checks)
-                       else "requires_review") if run["status"] == "succeeded" else "not_checked",
+            "status": (
+                "blocked"
+                if any(item["severity"] == "blocking" for item in checks)
+                else "requires_review"
+            )
+            if run["status"] == "succeeded"
+            else "not_checked",
             "finding_codes": sorted({item["code"] for item in checks}),
         }
         return execution_record(
-            "intake", run, costs=costs, findings=checks,
-            diagnostics=diagnostic, validation=validation,
-            context={"company_id": run["company_id"], "intake_id": run["intake_id"],
-                     "input_fingerprint": run["input_fingerprint"]},
+            "intake",
+            run,
+            costs=costs,
+            findings=checks,
+            diagnostics=diagnostic,
+            validation=validation,
+            context={
+                "company_id": run["company_id"],
+                "intake_id": run["intake_id"],
+                "input_fingerprint": run["input_fingerprint"],
+            },
         )
 
     def run_execution(self, actor, draft_id, run_id):
@@ -383,11 +411,15 @@ class IntakeService:
             if not structured and not self.provider.settings.extraction_available:
                 raise AccountingError("尚未配置票据识别服务，请继续手工填写", 409)
             egress_policy = None if structured else self._egress_policy(conn, actor, company_id)
-            limits = None if structured else ExecutionLimits.from_evidence(
-                egress_policy,
-                started_at=started_at,
-                timeout_cap=effective_settings(self.provider.settings, "ocr").timeout_seconds,
-                deadline_monotonic=started_at + 150,
+            limits = (
+                None
+                if structured
+                else ExecutionLimits.from_evidence(
+                    egress_policy,
+                    started_at=started_at,
+                    timeout_cap=effective_settings(self.provider.settings, "ocr").timeout_seconds,
+                    deadline_monotonic=started_at + 150,
+                )
             )
             digest = self._configuration_input(attachment)
             prior = conn.execute(
@@ -454,11 +486,7 @@ class IntakeService:
         try:
             data = self.storage.read(metadata)
             local = parse_invoice_xml(data) if structured else None
-            pages = (
-                local.pages
-                if local
-                else prepare_document(data, metadata["media_type"])
-            )
+            pages = local.pages if local else prepare_document(data, metadata["media_type"])
             with self.db.transaction(
                 write=True, actor=actor, company_id=company_id, write_scope="company"
             ) as conn:
@@ -475,9 +503,16 @@ class IntakeService:
                     from ..intelligence.runtime_context import invoice_context
 
                     model_context = invoice_context(
-                        actor=actor, company_id=company_id, owner_kind="intake", owner_id=draft_id,
-                        version=draft["version"], attachment=metadata, run_id=run_id,
-                        policy=egress_policy, pages=pages, limits=limits,
+                        actor=actor,
+                        company_id=company_id,
+                        owner_kind="intake",
+                        owner_id=draft_id,
+                        version=draft["version"],
+                        attachment=metadata,
+                        run_id=run_id,
+                        policy=egress_policy,
+                        pages=pages,
+                        limits=limits,
                         prompt_version=EXTRACTION_PROMPT_VERSION,
                     )
                     budget.before_send(conn)
@@ -489,7 +524,9 @@ class IntakeService:
 
                 with provider_scope(self.db, actor, run["company_id"]):
                     result = self.provider.extract_invoice(
-                        pages, limits=limits, context_pack=model_context,
+                        pages,
+                        limits=limits,
+                        context_pack=model_context,
                     )
         except ProviderError as failure:
             error = failure
@@ -636,9 +673,7 @@ class IntakeService:
                     ).fetchone()
                     if not prior:
                         continue
-                    recognized = InvoiceExtraction.model_validate(
-                        json.loads(prior["result_json"])
-                    )
+                    recognized = InvoiceExtraction.model_validate(json.loads(prior["result_json"]))
                     transferred, _ = self.intelligence._claim(
                         conn,
                         actor,

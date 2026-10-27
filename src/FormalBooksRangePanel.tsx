@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { api, apiBlob, ApiError, errorMessage } from './api';
 import { FormalBooksRequestGuard, formatFormalCents } from './formal-books-types';
 import {
@@ -12,6 +12,7 @@ import {
   rangeTrialBalancePath,
 } from './formal-books-range';
 import type { RangeAccountLedger, RangeTrialBalance } from './formal-books-range';
+import { canExport, emptyRangeRead, rangeKey, reduceRead } from './range-read';
 import type { Session } from './types';
 import './formal-books-range.css';
 
@@ -65,26 +66,38 @@ export function FormalBooksRangePanel({
   const [periods, setPeriods] = useState<LedgerPeriod[]>([]);
   const [start, setStart] = useState('');
   const [end, setEnd] = useState('');
-  const [balance, setBalance] = useState<RangeTrialBalance | null>(null);
   const [accountId, setAccountId] = useState('');
-  const [ledger, setLedger] = useState<RangeAccountLedger | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [detailLoading, setDetailLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [detailError, setDetailError] = useState('');
   const [notice, setNotice] = useState('');
+  const [exportError, setExportError] = useState('');
   const [downloading, setDownloading] = useState('');
+  const [balanceRead, dispatchBalance] = useReducer(reduceRead, emptyRangeRead);
+  const [detailRead, dispatchDetail] = useReducer(reduceRead, emptyRangeRead);
+  const generation = useRef(0);
+  const balance = balanceRead.data as RangeTrialBalance | null;
+  const ledger = detailRead.data as RangeAccountLedger | null;
+  const loading = balanceRead.status === 'loading' || balanceRead.status === 'idle';
+  const detailLoading = detailRead.status === 'loading';
+  const error = balanceRead.error;
+  const detailError = detailRead.error;
   const reads = useRef(new FormalBooksRequestGuard());
   const details = useRef(new FormalBooksRequestGuard());
   const downloads = useRef(new FormalBooksRequestGuard());
   const liveScope = useRef('');
   const scope = JSON.stringify([session.scope_key, session.user_id, session.firm_id, bookId]);
+  const previousScope = useRef(scope);
   liveScope.current = scope;
 
   useEffect(() => {
+    if (previousScope.current !== scope) {
+      previousScope.current = scope;
+      dispatchBalance({ type: 'revoke' });
+      dispatchDetail({ type: 'revoke' });
+      setAccountId('');
+    }
+  }, [scope]);
+
+  useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    setError('');
     void api<unknown>(`/books/${encodeURIComponent(bookId)}/ledger`, session)
       .then((raw) => {
         if (cancelled) return;
@@ -97,11 +110,15 @@ export function FormalBooksRangePanel({
         }
       })
       .catch((failure: unknown) => {
-        if (!cancelled) setError(failureText(failure));
+        if (!cancelled)
+          dispatchBalance({
+            type: 'fail',
+            key: '',
+            ticket: generation.current,
+            message: failureText(failure),
+          });
       })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+      .finally(() => undefined);
     return () => {
       cancelled = true;
     };
@@ -114,34 +131,43 @@ export function FormalBooksRangePanel({
 
   useEffect(() => {
     if (!range || !ledgerId) {
-      setBalance(null);
+      dispatchBalance({ type: 'switch', key: '', ticket: ++generation.current });
       return;
     }
+    const key = rangeKey(ledgerId, range.start, range.end);
     const ticket = reads.current.begin(scope);
-    setLoading(true);
-    setError('');
+    const stamp = ++generation.current;
+    dispatchBalance({ type: 'switch', key, ticket: stamp });
+    dispatchDetail({ type: 'reset' });
+    setNotice('');
+    setExportError('');
     void api<unknown>(rangeTrialBalancePath(ledgerId, range.start, range.end), session, {
       signal: ticket.signal,
     })
       .then((raw) => {
         if (!reads.current.accepts(ticket, liveScope.current)) return;
-        setBalance(
-          parseRangeTrialBalance(raw, {
+        dispatchBalance({
+          type: 'ok',
+          key,
+          ticket: stamp,
+          data: parseRangeTrialBalance(raw, {
             ledgerId,
             firmId: session.firm_id,
             companyId,
             start: range.start,
             end: range.end,
           }),
-        );
+        });
       })
       .catch((failure: unknown) => {
         if (!reads.current.accepts(ticket, liveScope.current)) return;
-        setBalance(null);
-        setError(failureText(failure));
-      })
-      .finally(() => {
-        if (reads.current.accepts(ticket, liveScope.current)) setLoading(false);
+        dispatchBalance({
+          type: 'fail',
+          key,
+          ticket: stamp,
+          status: failure instanceof ApiError ? failure.status : undefined,
+          message: failureText(failure),
+        });
       });
     return () => reads.current.cancel();
   }, [range, ledgerId, session, scope, companyId]);
@@ -151,9 +177,9 @@ export function FormalBooksRangePanel({
       if (!range || !ledgerId) return;
       setAccountId(account);
       const ticket = details.current.begin(scope);
-      setLedger(null);
-      setDetailError('');
-      setDetailLoading(true);
+      const key = rangeKey(ledgerId, range.start, range.end, account);
+      const stamp = ++generation.current;
+      dispatchDetail({ type: 'switch', key, ticket: stamp });
       void api<unknown>(
         rangeAccountLedgerPath(ledgerId, account, range.start, range.end),
         session,
@@ -163,8 +189,11 @@ export function FormalBooksRangePanel({
       )
         .then((raw) => {
           if (!details.current.accepts(ticket, liveScope.current)) return;
-          setLedger(
-            parseRangeAccountLedger(raw, {
+          dispatchDetail({
+            type: 'ok',
+            key,
+            ticket: stamp,
+            data: parseRangeAccountLedger(raw, {
               ledgerId,
               firmId: session.firm_id,
               companyId,
@@ -172,14 +201,17 @@ export function FormalBooksRangePanel({
               end: range.end,
               accountId: account,
             }),
-          );
+          });
         })
         .catch((failure: unknown) => {
-          if (details.current.accepts(ticket, liveScope.current))
-            setDetailError(failureText(failure));
-        })
-        .finally(() => {
-          if (details.current.accepts(ticket, liveScope.current)) setDetailLoading(false);
+          if (!details.current.accepts(ticket, liveScope.current)) return;
+          dispatchDetail({
+            type: 'fail',
+            key,
+            ticket: stamp,
+            status: failure instanceof ApiError ? failure.status : undefined,
+            message: failureText(failure),
+          });
         });
     },
     [range, ledgerId, session, scope, companyId],
@@ -191,8 +223,19 @@ export function FormalBooksRangePanel({
       setNotice('请先点击科目行查看明细，再导出该科目连续明细账。');
       return;
     }
+    const key = rangeKey(
+      ledgerId,
+      range.start,
+      range.end,
+      kind === 'account_ledger' ? accountId : '',
+    );
+    const read = kind === 'trial_balance' ? balanceRead : detailRead;
     const shown = kind === 'trial_balance' ? balance : ledger;
-    if (!shown) return;
+    if (!shown || !canExport(read, key)) {
+      setExportError('页面数据尚未读取完成或已切换期间，请等当前范围显示完整后再导出。');
+      return;
+    }
+    setExportError('');
     const ticket = downloads.current.begin(scope);
     setDownloading(kind);
     setNotice('');
@@ -220,7 +263,8 @@ export function FormalBooksRangePanel({
       }
       setNotice('已下载，CSV 首行指纹与页面一致；这是账簿副本，不代表外部软件已接收。');
     } catch (failure) {
-      if (downloads.current.accepts(ticket, liveScope.current)) setError(failureText(failure));
+      if (downloads.current.accepts(ticket, liveScope.current))
+        setExportError(`导出未完成：${failureText(failure)}`);
     } finally {
       if (downloads.current.accepts(ticket, liveScope.current)) setDownloading('');
     }
@@ -245,7 +289,11 @@ export function FormalBooksRangePanel({
               type="button"
               className="button secondary"
               onClick={() => void exportCsv('trial_balance')}
-              disabled={!balance || downloading !== ''}
+              disabled={
+                !balance ||
+                !canExport(balanceRead, range ? rangeKey(ledgerId, range.start, range.end) : '') ||
+                downloading !== ''
+              }
             >
               {downloading === 'trial_balance' ? '正在导出…' : '导出连续余额表 CSV'}
             </button>
@@ -284,9 +332,9 @@ export function FormalBooksRangePanel({
         </p>
       </div>
 
-      {error ? (
+      {error || exportError ? (
         <p className="range-books-error" role="alert">
-          {error}
+          {error || exportError}
         </p>
       ) : null}
       {notice ? <p className="range-books-notice">{notice}</p> : null}
@@ -452,7 +500,13 @@ export function FormalBooksRangePanel({
                       type="button"
                       className="button secondary"
                       onClick={() => void exportCsv('account_ledger')}
-                      disabled={downloading !== ''}
+                      disabled={
+                        downloading !== '' ||
+                        !canExport(
+                          detailRead,
+                          range ? rangeKey(ledgerId, range.start, range.end, accountId) : '',
+                        )
+                      }
                     >
                       {downloading === 'account_ledger' ? '正在导出…' : '导出该科目连续明细账 CSV'}
                     </button>

@@ -62,6 +62,11 @@ class BatchOpen(BaseModel):
         return self
 
 
+def _chunks(items, size=400):
+    for start in range(0, len(items), size):
+        yield items[start : start + size]
+
+
 class MonthlyBatchService:
     def __init__(self, db, accounting, ledgers, plans, business):
         self.db, self.accounting, self.ledgers = db, accounting, ledgers
@@ -86,6 +91,86 @@ class MonthlyBatchService:
                 company_ids = list(request.companies)
             names = self._names(conn, actor, company_ids)
         return company_ids, names
+
+    def preview(self, actor, request: BatchOpen):
+        """Read-only precheck: what would happen, without opening anything.
+
+        The operator needs to see "already open / no history / no access" before
+        committing 200 companies; nothing here writes a book, a plan or a
+        material list.
+        """
+        company_ids, names = self.resolve_companies(actor, request)
+        rows = []
+        with self.db.transaction(actor=actor) as conn:
+            self.access.require_manager(conn, actor)
+            # Two set-based reads instead of three queries per company: at the
+            # 200-company cap the per-row form cost ~600 round trips (~7s on PG).
+            opened = self._period_books(conn, actor.firm_id, request.period, company_ids)
+            history = self._prior_books(conn, actor.firm_id, request.period, company_ids)
+            for company_id in company_ids:
+                row = self._row(company_id, names.get(company_id, ""), "ready")
+                try:
+                    self.access.company(conn, actor, company_id, manage=True)
+                except AccountingError as error:
+                    row.update(status="blocked", code="no_access", detail=error.detail)
+                else:
+                    if not names.get(company_id):
+                        row.update(status="blocked", code="not_client", detail="不是本所的在册客户")
+                    elif company_id in opened:
+                        row.update(status="skipped", code="already_open", detail="该月份账套已存在")
+                    elif company_id not in history:
+                        row.update(
+                            status="blocked",
+                            code="no_history",
+                            detail="没有历史账期，请先完成首次接入",
+                        )
+                    else:
+                        row["from_period"] = history[company_id]
+                rows.append(row)
+        ready = sum(1 for row in rows if row["status"] == "ready")
+        return {
+            "period": request.period,
+            "ready": ready,
+            "skipped": sum(1 for row in rows if row["status"] == "skipped"),
+            "blocked": sum(1 for row in rows if row["status"] == "blocked"),
+            "results": rows,
+            "notes": self._preview_notes(len(rows)),
+        }
+
+    def _period_books(self, conn, firm_id, period, company_ids):
+        found = set()
+        for chunk in _chunks(company_ids):
+            marks = ",".join("?" * len(chunk))
+            for row in conn.execute(
+                f"SELECT company_id FROM books WHERE firm_id=? AND period=? AND company_id IN ({marks})",
+                (firm_id, period, *chunk),
+            ).fetchall():
+                found.add(row["company_id"])
+        return found
+
+    def _prior_books(self, conn, firm_id, period, company_ids):
+        latest = {}
+        for chunk in _chunks(company_ids):
+            marks = ",".join("?" * len(chunk))
+            for row in conn.execute(
+                f"SELECT company_id, MAX(period) AS prior FROM books "
+                f"WHERE firm_id=? AND period<? AND company_id IN ({marks}) GROUP BY company_id",
+                (firm_id, period, *chunk),
+            ).fetchall():
+                latest[row["company_id"]] = row["prior"]
+        return latest
+
+    @staticmethod
+    def _preview_notes(count):
+        notes = [
+            "预检只读，不会创建账套、服务计划或催资清单。",
+            "标记为跳过的企业已存在该月份账套；标记为阻塞的企业需先处理接入或权限。",
+        ]
+        if count >= MAX_COMPANIES:
+            notes.append(
+                f"范围达到单批上限 {MAX_COMPANIES} 家，未列出的客户本次不会被开期，请缩小范围分批处理。"
+            )
+        return notes
 
     def open_company(self, actor, company_id, company_name, request: BatchOpen):
         return self._open_company(actor, company_id, company_name, request)
@@ -209,6 +294,18 @@ class MonthlyBatchService:
                         idempotency_key=f"monthly-batch:{period}:{company_id}",
                     ),
                 )
+                if created.get("replayed"):
+                    # Another operator committed the same key between our
+                    # pre-check and this transaction. The book exists, but this
+                    # operator did not create it, so neither the plan/material
+                    # steps nor the creation audit may run twice.
+                    return self._row(
+                        company_id,
+                        company_name,
+                        "skipped",
+                        book_id=created["book_id"],
+                        message="另一位操作员已创建该企业本月账套，本次未重复创建。",
+                    )
                 book_id = created["book_id"]
                 try:
                     plan = self.plans.inherit_plan(actor, prior["id"], book_id, request.reason)

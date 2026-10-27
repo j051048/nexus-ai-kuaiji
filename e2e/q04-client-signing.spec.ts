@@ -50,6 +50,21 @@ for (const viewport of viewports) {
     expect(clientView.package.file_count).toBe(11);
     expect(clientView.package.files[0].sha256).toMatch(/^[a-f0-9]{64}$/);
 
+    // The firm feed must describe this month before it is signed: a frozen package
+    // with no signature and no configured recipient, owned by the firm.
+    const pending = await checked(
+      await request.get('/api/delivery/followups?limit=50', { headers: f.headers }),
+      200,
+    );
+    const before = pending.items.find(
+      (item: { book_id: string; period: string }) =>
+        item.book_id === f.book.id && item.period === '2026-10',
+    );
+    expect(before).toBeTruthy();
+    expect(before.package_id).toBe(frozen.id);
+    expect(before.reasons).toContain('signature_missing');
+    expect(before.owner).toBe('firm_manager');
+
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
     const errors: string[] = [];
     page.on('pageerror', (error) => errors.push(error.message));
@@ -145,6 +160,18 @@ for (const viewport of viewports) {
         )
       ).status(),
     ).toBe(403);
+
+    // Signing satisfies the month, so the firm feed stops listing it.
+    const settled = await checked(
+      await request.get('/api/delivery/followups?limit=50', { headers: f.headers }),
+      200,
+    );
+    expect(
+      settled.items.some(
+        (item: { book_id: string; period: string }) =>
+          item.book_id === f.book.id && item.period === '2026-10',
+      ),
+    ).toBe(false);
 
     expect(errors).toEqual([]);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(

@@ -1,6 +1,12 @@
 import { useEffect, useState } from 'react';
 import { Bell, CheckCircle2, RefreshCw, UserRoundCheck } from 'lucide-react';
 import { api, errorMessage } from './api';
+import {
+  followupRows,
+  followupSummary,
+  validateFollowupFeed,
+  type DeliveryFollowupFeed,
+} from './delivery-followups';
 import { Spinner } from './AppPrimitives';
 import type { Session } from './types';
 import './firm-inbox.css';
@@ -49,6 +55,32 @@ export function FirmInbox({ session }: { session: Session }) {
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   const [revision, setRevision] = useState(0);
+  const [followups, setFollowups] = useState<DeliveryFollowupFeed | null>(null);
+  const [followupError, setFollowupError] = useState('');
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setFollowupError('');
+    void api<DeliveryFollowupFeed>('/delivery/followups?limit=8', session, {
+      signal: controller.signal,
+    })
+      .then((value) => {
+        if (controller.signal.aborted) return;
+        if (!validateFollowupFeed(value)) {
+          setFollowupError('交付待办返回格式不符，暂不展示。');
+          setFollowups(null);
+          return;
+        }
+        setFollowups(value);
+      })
+      .catch((failure) => {
+        if (controller.signal.aborted) return;
+        // The delivery feed must never hide the task inbox behind its own failure.
+        setFollowupError(errorMessage(failure));
+        setFollowups(null);
+      });
+    return () => controller.abort();
+  }, [session, revision]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -131,6 +163,9 @@ export function FirmInbox({ session }: { session: Session }) {
       setBusy('');
     }
   }
+
+  const deliveryRows = followupRows(followups);
+  const delivery = followupSummary(deliveryRows);
 
   return (
     <main className="firm-inbox">
@@ -216,6 +251,42 @@ export function FirmInbox({ session }: { session: Session }) {
           </button>
         </section>
       )}
+      <section className="firm-inbox-delivery" aria-labelledby="delivery-followup-title">
+        <div className="firm-inbox-delivery-heading">
+          <div>
+            <h2 id="delivery-followup-title">月度交付待办</h2>
+            <p>按「关账 → 生成包 → 配置签收人 → 客户签收」的顺序推进，下一步只由服务端判定。</p>
+          </div>
+          <span className="firm-inbox-delivery-count" aria-live="polite">
+            {followupError
+              ? '暂时无法读取'
+              : delivery.total
+                ? `${delivery.total} 个月份待处理 · 其中 ${delivery.waiting} 个等待客户`
+                : '暂无待处理月份'}
+          </span>
+        </div>
+        {followupError ? (
+          <p className="firm-inbox-delivery-error" role="status">
+            交付待办读取失败：{followupError}。任务列表不受影响。
+          </p>
+        ) : deliveryRows.length ? (
+          <ul className="firm-inbox-delivery-list">
+            {deliveryRows.map((row) => (
+              <li key={row.key} className={'firm-inbox-delivery-row ' + row.tone}>
+                <strong>{row.bookName}</strong>
+                <span className="firm-inbox-delivery-period">{row.period}</span>
+                <span className="firm-inbox-delivery-reason">{row.reasonText}</span>
+                <span className="firm-inbox-delivery-step">
+                  下一步：{row.nextStepText} · {row.ownerText}
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="firm-inbox-delivery-empty">所有已关账月份都已完成交付与签收。</p>
+        )}
+      </section>
+
       <section className="firm-inbox-list" aria-busy={busy === 'load'}>
         {busy === 'load' && !data ? (
           <div className="loading-block">

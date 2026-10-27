@@ -34,6 +34,20 @@ ROOT = Path(__file__).resolve().parents[1]
 MIGRATIONS = ROOT / "nexus_backend" / "migrations" / "postgres"
 LEDGER = ROOT / "scripts" / "migration_idempotency_legacy.json"
 BASELINE_VERSION = 135
+# Historical debt is a closed set, not a self-service list. The ledger may not
+# grow: a new migration at or after ``HISTORY_MAX_VERSION`` can never be
+# approved, and the registered digests pin exactly what "historical" means.
+HISTORY_MAX_VERSION = 161
+APPROVED_HISTORICAL = {
+    "153_c01_auxiliary_entity_contract.sql": "b6a82ff5c2f17683027d2c8b965e4c43d980b4c1d0f6cc7220643190284eae71",
+    "154_bank_coverage_evidence.sql": "046114cdddfd901a59ede5ac59ac5d3b70ffdd052f5bbed76dfffe14a6ecd140",
+    "155_monthly_delivery_packages.sql": "8d6fd06abe0453c0a2e891da4b68dba99eaa86a6a931c179dd4a7d4d45da1d52",
+    "157_c01_exact_reconciliation.sql": "ee2ec8c85c355936a05b2b52e8bf6ea6c94982912db182e7bfd15644cb6518b4",
+    "158_c01_period_bridge.sql": "2e58ff7b8910b7713077ae3368a708306b6ad2decee9ba1b9853fb4a757e0d43",
+    "159_recovery_release_audit.sql": "e3d47e2cb15e7eb6dacb268da9a177e6065105e36b4a096d60f0f5c48097508e",
+    "160_c01_evidence_reference_freeze.sql": "d830fa656e9923d982b9a738795868f5b5dbad1f427905ca771efaeeebad54d0",
+}
+APPROVED_DIGEST = "557bf0e0ba7c68a31e3f35fc082c1daac9531579fb7b3fc7f594f2274ef7d7c9"
 
 RULE_FUNCTION = "function_not_create_or_replace"
 RULE_FUNCTIONDEF = "functiondef_rewrite"
@@ -296,6 +310,48 @@ def _validate_entry(entry: object) -> list[str]:
     return problems
 
 
+def _approved_set_problems(approved: dict[str, str]) -> list[str]:
+    """Verify the ledger's ``approved`` list against the shipped registry.
+
+    Without this the ledger could launder a new migration by listing it in both
+    ``approved`` and ``entries``: every other check is then satisfied by the
+    file's own contents. The registry is code, so extending it requires a review
+    of this file, not an edit of data next to the migrations.
+    """
+
+    problems: list[str] = []
+    for name in sorted(set(approved) - set(APPROVED_HISTORICAL)):
+        problems.append(
+            f"{name}: not an approved historical file; the approved historical set "
+            "cannot be extended from the ledger"
+        )
+    for name in sorted(set(APPROVED_HISTORICAL) - set(approved)):
+        problems.append(f"{name}: approved historical file has no matching ledger entry")
+    for name, digest in sorted(approved.items()):
+        expected = APPROVED_HISTORICAL.get(name)
+        if expected is not None and expected != digest:
+            problems.append(
+                f"{name}: approved digest differs from the registered historical digest"
+            )
+    lines = sorted(f"{name}:{digest}" for name, digest in approved.items())
+    aggregate = hashlib.sha256("\n".join(lines).encode()).hexdigest()
+    if aggregate != APPROVED_DIGEST:
+        problems.append(
+            f"approved historical set digest does not match the registered set ({aggregate})"
+        )
+    for name in sorted(approved):
+        try:
+            version = int(name.split("_", 1)[0])
+        except ValueError:
+            problems.append(f"{name}: approved entry has no migration version prefix")
+            continue
+        if version >= HISTORY_MAX_VERSION:
+            problems.append(
+                f"{name}: approved historical set must stay below {HISTORY_MAX_VERSION}"
+            )
+    return problems
+
+
 def evaluate(
     actual: list[Violation],
     entries: list[dict],
@@ -303,6 +359,8 @@ def evaluate(
     approved: dict[str, str] | None = None,
 ) -> list[str]:
     problems: list[str] = []
+    if approved is not None:
+        problems.extend(_approved_set_problems(approved))
     by_file: dict[str, list[Violation]] = {}
     for item in actual:
         by_file.setdefault(item.file, []).append(item)

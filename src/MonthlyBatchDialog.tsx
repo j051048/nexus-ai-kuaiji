@@ -1,6 +1,12 @@
-import { useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { CalendarPlus, RefreshCw } from 'lucide-react';
 import { api, errorMessage } from './api';
+import {
+  previewLines,
+  previewVerdict,
+  validateBatchPreview,
+  type BatchPreview,
+} from './batch-preview';
 import { Modal, Spinner } from './AppPrimitives';
 import type { Session } from './types';
 
@@ -66,6 +72,8 @@ export function MonthlyBatchDialog({
   const [error, setError] = useState('');
   const errorId = useId();
   const [batch, setBatch] = useState<BatchOperation | null>(null);
+  const [preview, setPreview] = useState<BatchPreview | null>(null);
+  const [previewing, setPreviewing] = useState(false);
   const requestKey = useRef('');
   const openedRef = useRef(onOpened);
   openedRef.current = onOpened;
@@ -113,9 +121,48 @@ export function MonthlyBatchDialog({
     }
   }
 
+  useEffect(() => {
+    // Any change of scope invalidates the precheck; the operator must see the new
+    // numbers before committing.
+    setPreview(null);
+  }, [period, search, generateMaterials]);
+
+  async function check() {
+    setPreviewing(true);
+    setError('');
+    try {
+      const value = await api<BatchPreview>(
+        '/firm/batch-operations/monthly-open/preview',
+        session,
+        {
+          method: 'POST',
+          body: {
+            idempotency_key: crypto.randomUUID(),
+            period,
+            scope: 'awaiting',
+            search: search.trim(),
+            generate_materials: generateMaterials,
+            reason: reason.trim().length >= 3 ? reason.trim() : '范围预检',
+          },
+        },
+      );
+      if (!validateBatchPreview(value)) throw new Error('预检结果格式不符，请重新预检。');
+      setPreview(value);
+    } catch (failure) {
+      setPreview(null);
+      setError(errorMessage(failure));
+    } finally {
+      setPreviewing(false);
+    }
+  }
+
   async function run() {
     if (reason.trim().length < 3) {
       setError('请填写至少 3 个字的操作依据。');
+      return;
+    }
+    if (!previewVerdict(preview).canRun) {
+      setError(previewVerdict(preview).text);
       return;
     }
     setBusy(true);
@@ -206,6 +253,19 @@ export function MonthlyBatchDialog({
               <p className="field-help">当前范围内没有待建账企业，无需开期。</p>
             )}
           </div>
+          <div className="batch-preview" aria-live="polite">
+            <p className="batch-info">{previewVerdict(preview).text}</p>
+            {previewLines(preview).length > 0 && (
+              <ul className="batch-preview-rows" aria-label="预检未通过的企业">
+                {previewLines(preview).map((line) => (
+                  <li key={line.key} className={'batch-preview-row ' + line.tone}>
+                    <strong>{line.name}</strong>
+                    <span>{line.statusText}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
           {error && (
             <p className="form-error" role="alert" id={errorId}>
               {error}
@@ -285,6 +345,19 @@ export function MonthlyBatchDialog({
               onChange={(event) => setReason(event.target.value)}
             />
           </label>
+          <div className="batch-preview" aria-live="polite">
+            <p className="batch-info">{previewVerdict(preview).text}</p>
+            {previewLines(preview).length > 0 && (
+              <ul className="batch-preview-rows" aria-label="预检未通过的企业">
+                {previewLines(preview).map((line) => (
+                  <li key={line.key} className={'batch-preview-row ' + line.tone}>
+                    <strong>{line.name}</strong>
+                    <span>{line.statusText}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
           {error && (
             <p className="form-error" role="alert" id={errorId}>
               {error}
@@ -295,9 +368,18 @@ export function MonthlyBatchDialog({
               取消
             </button>
             <button
+              className="button secondary"
+              type="button"
+              disabled={busy || previewing}
+              onClick={() => void check()}
+            >
+              {previewing ? <Spinner /> : <CalendarPlus size={15} />}
+              预检范围
+            </button>
+            <button
               className="button primary"
               type="button"
-              disabled={busy || reason.trim().length < 3}
+              disabled={busy || !previewVerdict(preview).canRun}
               onClick={() => void run()}
             >
               {busy ? <Spinner /> : <CalendarPlus size={15} />}

@@ -106,7 +106,9 @@ def database_diagnostic(request, error):
         error_class = "sqlite3.OperationalError"
     return {
         "error_class": error_class,
-        "sqlstate": state if type(state) is str and len(state) == 5 and state in _SQLSTATES else None,
+        "sqlstate": state
+        if type(state) is str and len(state) == 5 and state in _SQLSTATES
+        else None,
         "functions": _functions(error),
         "route_template": _route_template(request),
     }

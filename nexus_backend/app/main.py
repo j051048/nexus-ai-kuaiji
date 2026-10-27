@@ -72,6 +72,8 @@ from .reconciliation.service import ReconciliationService
 from .reconciliation.router import build_reconciliation_router
 from .delivery.service import DeliveryService
 from .delivery.monthly_package import MonthlyPackageService
+from .delivery.followups import DeliveryFollowupService
+from .delivery.followup_router import build_delivery_followup_router
 from .delivery.router import build_delivery_router
 from .delivery.middleware import DeliveryBodyLimitMiddleware
 from .tools.accounting_tools import AccountingSuggestionTool
@@ -118,6 +120,8 @@ from .periodic.router import build_periodic_router
 from .periodic.service import PeriodicService
 from .reports.router import build_report_router
 from .reports.service import ReportService
+from .tax.router import build_tax_router
+from .tax.workpaper import TaxWorkpaperService
 from .b04_close.router import build_close_router
 from .b04_close.service import CloseService
 from .integrations.service import FinancialBridgeService
@@ -318,6 +322,7 @@ def create_app(
             application.state.subledger = SubledgerService(database)
             application.state.periodic = PeriodicService(database)
             application.state.reports = ReportService(database)
+            application.state.tax = TaxWorkpaperService(database)
             application.state.b04_close = CloseService(database)
             application.state.integrations = FinancialBridgeService(database)
             application.state.settlements = SettlementService(database)
@@ -412,6 +417,11 @@ def create_app(
             )
             application.state.monthly_packages = MonthlyPackageService(
                 database, application.state.service_plans
+            )
+            application.state.delivery_followups = DeliveryFollowupService(
+                database,
+                application.state.monthly_packages,
+                application.state.service_plans,
             )
             application.state.onboarding = OnboardingService(
                 database,
@@ -1081,12 +1091,14 @@ def create_app(
     app.include_router(build_bank_import_router(actor))
     app.include_router(build_reconciliation_router(actor))
     app.include_router(build_delivery_router(actor))
+    app.include_router(build_delivery_followup_router(actor))
     app.include_router(build_ledgers_router(actor))
     app.include_router(build_opening_router(actor))
     app.include_router(build_posting_router(actor))
     app.include_router(build_subledger_router(actor))
     app.include_router(build_periodic_router(actor))
     app.include_router(build_report_router(actor))
+    app.include_router(build_tax_router(actor))
     app.include_router(build_close_router(actor))
     app.include_router(build_integrations_router(actor))
     app.include_router(build_settlement_router(actor))

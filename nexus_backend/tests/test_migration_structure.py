@@ -96,26 +96,25 @@ def test_debt_entries_still_exist_and_still_fail():
         assert entry["reason"].strip(), "历史债必须写明原因"
 
 
-def test_new_tables_carry_rls_force_and_write_gate():
+def test_new_tables_carry_rls_and_write_gate():
+    """结构扫描的唯一权威断言：租户表必须同时具备 RLS 与公司写入围栏。
+
+    三类问题由 ``structure_problems`` 分别给出 ``missing_rls``、
+    ``tautological_policy``、``missing_write_gate``；这里只断言真实仓库为空，
+    负向能力由 ``test_qs01_migration_integrity.py`` 的构造用例保证。
+    """
+
     facts = gate_scan.load(ROOT)
-    missing_rls = []
-    missing_gate = []
-    for table, entry in sorted(facts.items()):
-        if entry.created is None or entry.created < POSTGRES_DISCIPLINE:
-            continue
-        if not entry.rls:
-            if table in GLOBAL_TABLES:
-                assert "company_id" not in entry.columns and "firm_id" not in entry.columns, (
-                    f"{table} 登记为全局表却带租户列"
-                )
-                continue
-            missing_rls.append(table)
-        if "company_id" in entry.columns:
-            if not (entry.gate_functions & RECOGNIZED_GATES) and not entry.tenant_write_policy:
-                missing_gate.append((table, sorted(entry.gate_functions)))
-    assert not missing_rls, f"缺少 ENABLE/FORCE ROW LEVEL SECURITY：{missing_rls}"
-    assert not missing_gate, f"缺少公司范围写门或带租户判定的写策略：{missing_gate}"
+    problems = gate_scan.structure_problems(facts, since=POSTGRES_DISCIPLINE)
+    assert not problems, [
+        f"{problem['table']}: {problem['kind']} ({problem['detail']})" for problem in problems
+    ]
     assert set(GLOBAL_TABLES) <= set(facts), "全局表清单里有不存在的表"
+    for table in GLOBAL_TABLES:
+        entry = facts[table]
+        assert "company_id" not in entry.columns and "firm_id" not in entry.columns, (
+            f"{table} 登记为全局表却带租户列"
+        )
 
 
 def test_scanner_recognizes_dynamic_and_direct_gates():

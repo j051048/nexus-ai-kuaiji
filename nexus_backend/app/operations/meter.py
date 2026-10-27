@@ -241,11 +241,15 @@ class MeterContext:
         # receive/charge the request. Only explicit local-before-send evidence
         # may release a reservation.
         send_evidence = getattr(error, "llm_attempted", None)
-        safe = usage is None and send_evidence is not True and (
-            not attempted
-            or send_evidence is False
-            or error is not None
-            and getattr(error, "code", None) in local_rejections
+        safe = (
+            usage is None
+            and send_evidence is not True
+            and (
+                not attempted
+                or send_evidence is False
+                or error is not None
+                and getattr(error, "code", None) in local_rejections
+            )
         )
         # Cost facts may be recorded after accounting permission is revoked.
         # Only this request's opaque token can settle; no original data is read.

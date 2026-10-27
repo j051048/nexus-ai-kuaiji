@@ -214,8 +214,14 @@ class AssistantWorker:
     def _acceptance_policy(self, conn, turn, expected):
         chat = effective_settings(self.provider.settings, "chat")
         current = AIEndpointPolicyService(self.db).check_send(
-            conn, self._actor(turn), turn["company_id"], "chat", {"chat"},
-            chat.base_url, chat.model, bool(chat.api_key),
+            conn,
+            self._actor(turn),
+            turn["company_id"],
+            "chat",
+            {"chat"},
+            chat.base_url,
+            chat.model,
+            bool(chat.api_key),
         )
         if current != expected:
             raise AccountingError("模型处理政策已改变，旧回复不会发布", 409)
@@ -236,7 +242,10 @@ class AssistantWorker:
                     self._acceptance_policy(conn, turn, policy_evidence)
                 except AccountingError:
                     outcome, answer, code, detail = (
-                        "stale", None, "scope_changed", "资料、权限或模型处理政策已变化，旧回复不会发布",
+                        "stale",
+                        None,
+                        "scope_changed",
+                        "资料、权限或模型处理政策已变化，旧回复不会发布",
                     )
                 # Only the dedicated worker login has this role; keep the
                 # existing SECURITY DEFINER completion and its lease fences.
@@ -333,9 +342,13 @@ class AssistantWorker:
                 from app.intelligence.context_pack import fingerprint as context_fingerprint
 
                 model_context = build_assistant_context_pack(
-                    snapshot, turn["question"], json.loads(turn["history_json"]),
-                    firm_id=turn["firm_id"], company_id=turn["company_id"],
-                    limits=chat_limits, policy_version=context_fingerprint(evidence),
+                    snapshot,
+                    turn["question"],
+                    json.loads(turn["history_json"]),
+                    firm_id=turn["firm_id"],
+                    company_id=turn["company_id"],
+                    limits=chat_limits,
+                    policy_version=context_fingerprint(evidence),
                     prompt_version=PROMPT_VERSION,
                 )
                 context.before_send(conn)
@@ -367,7 +380,9 @@ class AssistantWorker:
             reply = (
                 result.data
                 if isinstance(result.data, AssistantModelReply)
-                else AssistantModelReply.model_validate(result.data.model_dump() if hasattr(result.data, "model_dump") else result.data)
+                else AssistantModelReply.model_validate(
+                    result.data.model_dump() if hasattr(result.data, "model_dump") else result.data
+                )
             )
             allowed = {item["id"] for item in snapshot["evidence"]}
             if set(reply.citation_ids) - allowed:
@@ -376,7 +391,9 @@ class AssistantWorker:
                 )
             from .fact_validation import render_assistant_reply
 
-            reply, validation_code = render_assistant_reply(reply, model_context, with_validation=True)
+            reply, validation_code = render_assistant_reply(
+                reply, model_context, with_validation=True
+            )
             with self.db.transaction(actor=self._actor(turn)) as conn:
                 self._check(conn, turn)
             # Cost facts survive a later authorization change; content does not.
@@ -404,13 +421,18 @@ class AssistantWorker:
         except ProviderError as caught:
             error = caught
             context.finish(result=result, error=error, attempted=attempted)
-            unknown = attempted and getattr(caught, "llm_attempted", None) is not False and caught.code in {
-                "timeout",
-                "network",
-                "network_error",
-                "transport",
-                "response_unknown",
-            }
+            unknown = (
+                attempted
+                and getattr(caught, "llm_attempted", None) is not False
+                and caught.code
+                in {
+                    "timeout",
+                    "network",
+                    "network_error",
+                    "transport",
+                    "response_unknown",
+                }
+            )
             self.finish(
                 turn,
                 "interrupted" if unknown else "failed",

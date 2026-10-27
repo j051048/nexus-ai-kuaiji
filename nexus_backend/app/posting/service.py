@@ -858,6 +858,98 @@ class PostingService:
             ).fetchone()
         )
 
+    def _opening_map(self, conn, package_version_id):
+        """Opening balances keyed by account *and* auxiliary object."""
+
+        return {
+            (row["account_id"], self._aux_key(row["aux_json"])): int(row["total"])
+            for row in conn.execute(
+                "SELECT account_id,aux_json,COALESCE(SUM(opening_cents),0) AS total "
+                "FROM opening_lines WHERE package_version_id=? "
+                "GROUP BY account_id,aux_json",
+                (package_version_id,),
+            )
+        }
+
+    def _movement_map(self, conn, book_id):
+        return {
+            (row["account_id"], self._aux_key(row["aux_json"])): (
+                int(row["debit"]),
+                int(row["credit"]),
+            )
+            for row in conn.execute(
+                "SELECT l.account_id,l.aux_json,COALESCE(SUM(l.debit_cents),0) AS debit,"
+                "COALESCE(SUM(l.credit_cents),0) AS credit FROM voucher_lines l "
+                "JOIN vouchers v ON v.id=l.voucher_id WHERE v.book_id=? "
+                "GROUP BY l.account_id,l.aux_json",
+                (book_id,),
+            )
+        }
+
+    @staticmethod
+    def _closing_map(opening, movement):
+        closed = {
+            key: value + movement.get(key, (0, 0))[0] - movement.get(key, (0, 0))[1]
+            for key, value in opening.items()
+        }
+        for key, (debit, credit) in movement.items():
+            closed.setdefault(key, debit - credit)
+        return closed
+
+    def _boundary_blockers(
+        self, conn, source_book_id, opening, movement, carried, target_book_id, hint=""
+    ):
+        """Compare one month boundary; the first month of a range needs it too.
+
+        A window that starts mid-year must not look complete only because the
+        broken boundary sits just outside it.
+        """
+
+        expected = {
+            key: value for key, value in self._closing_map(opening, movement).items() if value
+        }
+        against = {key: value for key, value in carried.items() if value}
+        codes = []
+        if expected != against:
+            codes.append(("opening_mismatch", self.BLOCKER_TEXT["opening_mismatch"] + hint))
+        if self._bridge_required(conn, source_book_id) and not (
+            self._bridge_completed(conn, target_book_id, source_book_id)
+        ):
+            codes.append(
+                ("continuity_unverified", self.BLOCKER_TEXT["continuity_unverified"] + hint)
+            )
+        return codes
+
+    def _prior_boundary(self, conn, actor, ledger_id, start, first, capability):
+        """Check the boundary the window hides, when the month before it exists."""
+
+        row = conn.execute(
+            "SELECT period,book_id FROM ledger_periods WHERE ledger_id=? AND period<? "
+            "ORDER BY period DESC LIMIT 1",
+            (ledger_id, start),
+        ).fetchone()
+        if row is None:
+            return []
+        try:
+            self.accounting.access.book(conn, actor, row["book_id"], capability)
+            binding = self._binding(conn, row["book_id"])
+        except AccountingError:
+            # An invisible or unbound prior month cannot be verified here; the
+            # range says nothing about it rather than guessing.
+            return []
+        return [
+            {"code": code, "period": first["period"], "message": message}
+            for code, message in self._boundary_blockers(
+                conn,
+                row["book_id"],
+                self._opening_map(conn, binding["package_version_id"]),
+                self._movement_map(conn, row["book_id"]),
+                first["_opening"],
+                first["book_id"],
+                f"（上一期间 {row['period']}）",
+            )
+        ]
+
     @staticmethod
     def _months(start, end):
         try:
@@ -956,28 +1048,8 @@ class PostingService:
             # Continuity is keyed by account *and* auxiliary object: a balanced
             # package can move value between two counterparts of one account
             # and an account-level total would hide exactly that shift.
-            item["_opening"] = {
-                (row["account_id"], self._aux_key(row["aux_json"])): int(row["total"])
-                for row in conn.execute(
-                    "SELECT account_id,aux_json,COALESCE(SUM(opening_cents),0) AS total "
-                    "FROM opening_lines WHERE package_version_id=? "
-                    "GROUP BY account_id,aux_json",
-                    (binding["package_version_id"],),
-                )
-            }
-            item["_movement"] = {
-                (row["account_id"], self._aux_key(row["aux_json"])): (
-                    int(row["debit"]),
-                    int(row["credit"]),
-                )
-                for row in conn.execute(
-                    "SELECT l.account_id,l.aux_json,COALESCE(SUM(l.debit_cents),0) AS debit,"
-                    "COALESCE(SUM(l.credit_cents),0) AS credit FROM voucher_lines l "
-                    "JOIN vouchers v ON v.id=l.voucher_id WHERE v.book_id=? "
-                    "GROUP BY l.account_id,l.aux_json",
-                    (item["book_id"],),
-                )
-            }
+            item["_opening"] = self._opening_map(conn, binding["package_version_id"])
+            item["_movement"] = self._movement_map(conn, item["book_id"])
             item["opening_cents"] = sum(item["_opening"].values())
             item["debit_cents"] = sum(debit for debit, _ in item["_movement"].values())
             item["credit_cents"] = sum(credit for _, credit in item["_movement"].values())
@@ -992,39 +1064,23 @@ class PostingService:
                         "message": self.BLOCKER_TEXT["period_open"],
                     }
                 )
+        first = next((item for item in items if item["status"] == "ok"), None)
+        if first is not None:
+            blockers.extend(self._prior_boundary(conn, actor, ledger_id, start, first, capability))
         previous = None
         for item in items:
             if item["status"] != "ok":
                 continue
             if previous is not None:
-                closed = {
-                    key: opening
-                    + previous["_movement"].get(key, (0, 0))[0]
-                    - previous["_movement"].get(key, (0, 0))[1]
-                    for key, opening in previous["_opening"].items()
-                }
-                for key, (debit, credit) in previous["_movement"].items():
-                    closed.setdefault(key, debit - credit)
-                expected = {key: value for key, value in closed.items() if value}
-                carried = {key: value for key, value in item["_opening"].items() if value}
-                if expected != carried:
-                    blockers.append(
-                        {
-                            "code": "opening_mismatch",
-                            "period": item["period"],
-                            "message": self.BLOCKER_TEXT["opening_mismatch"],
-                        }
-                    )
-                if self._bridge_required(conn, previous["book_id"]) and not (
-                    self._bridge_completed(conn, item["book_id"], previous["book_id"])
+                for code, message in self._boundary_blockers(
+                    conn,
+                    previous["book_id"],
+                    previous["_opening"],
+                    previous["_movement"],
+                    item["_opening"],
+                    item["book_id"],
                 ):
-                    blockers.append(
-                        {
-                            "code": "continuity_unverified",
-                            "period": item["period"],
-                            "message": self.BLOCKER_TEXT["continuity_unverified"],
-                        }
-                    )
+                    blockers.append({"code": code, "period": item["period"], "message": message})
             previous = item
         blockers.sort(key=lambda blocker: (blocker["period"], blocker["code"]))
         return {

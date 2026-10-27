@@ -137,12 +137,14 @@ def second_month(case, period, opening_lines, *, key):
                 OpeningLineInput(
                     account_id=accounts[code][0],
                     account_version=accounts[code][1],
+                    auxiliary_values=aux,
                     year_opening=amount,
                     ytd_debit="0.00",
                     ytd_credit="0.00",
                     opening=amount,
                 )
-                for code, amount in opening_lines
+                for code, amount, *rest in opening_lines
+                for aux in [rest[0] if rest else {}]
             ],
         ),
     )

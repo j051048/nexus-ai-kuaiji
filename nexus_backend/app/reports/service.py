@@ -126,9 +126,7 @@ class ReportService:
             if len(cash) > 1 and not noncash:
                 continue
             if len(cash) != 1 or not noncash:
-                amount = sum(
-                    int(line["debit_cents"]) - int(line["credit_cents"]) for line in cash
-                )
+                amount = sum(int(line["debit_cents"]) - int(line["credit_cents"]) for line in cash)
                 unclassified += amount
                 unclassified_count += 1
                 unclassified_absolute += abs(amount)
@@ -326,9 +324,9 @@ class ReportService:
                 "cash_flow": cash_flow,
                 "closing_vouchers": closing_vouchers,
                 "policy_and_schema_revisions": {
-                    key: value for key, value in close_dependencies(
-                        conn, book["id"], self.TEMPLATE_ID
-                    ).items() if key != "book"
+                    key: value
+                    for key, value in close_dependencies(conn, book["id"], self.TEMPLATE_ID).items()
+                    if key != "book"
                 },
             }
         )

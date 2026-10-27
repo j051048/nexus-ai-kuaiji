@@ -22,6 +22,8 @@ import {
   canApproveResponsibility,
   parseReviewResponsibility,
 } from './review-policy';
+import { previewExpired, reviewAuthorization, singleOperatorNote } from './review-authorization';
+import { reviewEligibility } from './review-eligibility';
 import { clearReviewSession, readReviewWorkspace, saveReviewWorkspace } from './review-session';
 import type { Draft, Session } from './types';
 import './review.css';
@@ -70,8 +72,23 @@ export function ReviewWorkbench({
   const [confirmationReason, setConfirmationReason] = useState<string | null>(
     remembered.current?.confirmationReason ?? null,
   );
+  const [now, setNow] = useState(() => Date.now());
   const reasonRequired =
     preview?.items.some((item) => item.review_responsibility?.mode === 'single_operator') ?? false;
+  const single = singleOperatorNote(preview?.items ?? []);
+  const authorization = reviewAuthorization(preview?.items ?? [], session.user_id);
+  const expired = preview ? previewExpired(preview.expires_at, now) : false;
+  const eligibility = reviewEligibility({
+    authorization,
+    snapshot: preview
+      ? {
+          issues: [],
+          ready: preview.ready_count > 0,
+          expected_version: preview.items[0]?.expected_version ?? 1,
+        }
+      : null,
+    previewExpired: expired,
+  });
   const reviewPolicyReady =
     !!preview &&
     preview.items
@@ -98,6 +115,11 @@ export function ReviewWorkbench({
   const scope = `${session.scope_key}:${bookFilter}:${company}:${period}:${template}:${risk}:${offset}`;
   const scopeRef = useRef(scope);
   scopeRef.current = scope;
+  useEffect(() => {
+    if (!preview) return;
+    const ticker = window.setInterval(() => setNow(Date.now()), 15000);
+    return () => window.clearInterval(ticker);
+  }, [preview]);
   useEffect(() => {
     active.current = true;
     return () => {
@@ -290,7 +312,8 @@ export function ReviewWorkbench({
   }
   async function confirm() {
     if (!preview || !acknowledged || receipt || locked.current || !commandKey.current) return;
-    if (!reviewPolicyReady || (reasonRequired && reviewReason.trim().length < 3)) return;
+    if (!reviewPolicyReady || !eligibility.canConfirm) return;
+    if (reasonRequired && reviewReason.trim().length < 3) return;
     const reason = boundReviewReason(confirmationReason, reviewReason);
     setConfirmationReason(reason);
     locked.current = true;
@@ -786,6 +809,14 @@ export function ReviewWorkbench({
                       制单责任或复核政策尚未通过，请重新准备预览并按各项提示处理。
                     </p>
                   )}
+                  {reviewPolicyReady && !eligibility.canConfirm && (
+                    <p role="status">
+                      {eligibility.headline}：{eligibility.nextEntry}
+                    </p>
+                  )}
+                  {reviewPolicyReady && eligibility.canConfirm && single.required && (
+                    <p className="field-help">{single.note}</p>
+                  )}
                   <label>
                     <input
                       type="checkbox"
@@ -812,6 +843,7 @@ export function ReviewWorkbench({
                       !acknowledged ||
                       preview.ready_count === 0 ||
                       !reviewPolicyReady ||
+                      !eligibility.canConfirm ||
                       (reasonRequired && reviewReason.trim().length < 3)
                     }
                     onClick={() => void confirm()}

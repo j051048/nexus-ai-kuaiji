@@ -1,4 +1,5 @@
 """Fail CI when the PostgreSQL test target was not actually provisioned."""
+
 from __future__ import annotations
 
 import os
@@ -14,9 +15,7 @@ def main() -> int:
     import psycopg
 
     with psycopg.connect(admin) as conn:
-        count = conn.execute(
-            "SELECT count(*) FROM accounting.schema_migrations"
-        ).fetchone()[0]
+        count = conn.execute("SELECT count(*) FROM accounting.schema_migrations").fetchone()[0]
         if count < 1:
             print("schema_migrations 为空")
             return 1

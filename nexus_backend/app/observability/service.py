@@ -31,9 +31,7 @@ class FirmObservabilityService:
         the runtime role deliberately has no worker_heartbeats SELECT grant.
         """
         if self.db.is_postgres:
-            result = conn.execute(
-                "SELECT accounting.firm_worker_health()"
-            ).fetchone()[0]
+            result = conn.execute("SELECT accounting.firm_worker_health()").fetchone()[0]
             return json.loads(result) if isinstance(result, str) else result
         cutoff = (datetime.now(timezone.utc) - timedelta(seconds=90)).isoformat()
         row = conn.execute(

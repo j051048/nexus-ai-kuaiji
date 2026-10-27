@@ -31,7 +31,15 @@ class AssistantProvider:
             ).encode()
         ).hexdigest()
 
-    def reply(self, context, question, history, *, limits: ExecutionLimits | None = None, context_pack=None):
+    def reply(
+        self,
+        context,
+        question,
+        history,
+        *,
+        limits: ExecutionLimits | None = None,
+        context_pack=None,
+    ):
         from .models import AssistantModelReply
 
         if not self.available:
@@ -52,9 +60,16 @@ class AssistantProvider:
         if context_pack is not None:
             from .context_pack import validate_assistant_context_pack
 
-            supplied = {"context_pack": validate_assistant_context_pack(
-                context_pack, context, question, history, limits=limits, prompt_version=PROMPT_VERSION,
-            )}
+            supplied = {
+                "context_pack": validate_assistant_context_pack(
+                    context_pack,
+                    context,
+                    question,
+                    history,
+                    limits=limits,
+                    prompt_version=PROMPT_VERSION,
+                )
+            }
         else:
             # Compatibility for direct gateway callers. Persistent worker calls
             # always supply a pack derived from their freshly authorized snapshot.

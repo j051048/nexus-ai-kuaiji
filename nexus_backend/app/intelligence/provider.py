@@ -56,7 +56,12 @@ class ExecutionLimits:
 
     @classmethod
     def from_evidence(
-        cls, evidence, *, started_at=None, timeout_cap=None, deadline_monotonic=None,
+        cls,
+        evidence,
+        *,
+        started_at=None,
+        timeout_cap=None,
+        deadline_monotonic=None,
         prior_limits=None,
     ):
         """Build from server policy without coercing bools/strings into valid limits.
@@ -85,7 +90,8 @@ class ExecutionLimits:
         deadline = limits.deadline_monotonic
         if prior_limits is not None and prior_limits.deadline_monotonic is not None:
             deadline = (
-                prior_limits.deadline_monotonic if deadline is None
+                prior_limits.deadline_monotonic
+                if deadline is None
                 else min(deadline, prior_limits.deadline_monotonic)
             )
         if started_at is not None:
@@ -111,6 +117,8 @@ def conservative_tokens(messages: list[dict], response_format: dict) -> int:
         safe.append({"role": message.get("role"), "content": content})
     raw = json.dumps([safe, response_format], ensure_ascii=False, separators=(",", ":"))
     return max(1, (len(raw.encode("utf-8")) + 2) // 3)
+
+
 EXTRACTION_PROMPT_VERSION = "invoice-extraction-facts-v3"
 JOURNAL_PROMPT_VERSION = "journal-suggestion-facts-v4"
 T = TypeVar("T", bound=OutputModel)
@@ -386,9 +394,16 @@ class OpenAICompatibleProvider:
         if context_pack is not None:
             from .runtime_context import invoice_payload
 
-            content.append({"type": "text", "text": json.dumps(
-                invoice_payload(context_pack, pages), ensure_ascii=False, allow_nan=False,
-            )})
+            content.append(
+                {
+                    "type": "text",
+                    "text": json.dumps(
+                        invoice_payload(context_pack, pages),
+                        ensure_ascii=False,
+                        allow_nan=False,
+                    ),
+                }
+            )
         for page in pages:
             if (
                 type(page.page) is not int
@@ -546,9 +561,7 @@ class OpenAICompatibleProvider:
             timeout_seconds = min(timeout_seconds, remaining)
         from ..concurrency.provider import provider_capacity
 
-        with provider_capacity(
-            settings.base_url, self.settings.max_concurrency, timeout_seconds
-        ):
+        with provider_capacity(settings.base_url, self.settings.max_concurrency, timeout_seconds):
             if not self._semaphore.acquire(blocking=False):
                 raise ProviderError("busy", "识别服务繁忙，请稍后重试")
             owned_client = self._client is None
@@ -682,10 +695,7 @@ class OpenAICompatibleProvider:
             error.usage = usage
             return error
 
-        if (
-            not isinstance(envelope.get("choices"), list)
-            or len(envelope["choices"]) != 1
-        ):
+        if not isinstance(envelope.get("choices"), list) or len(envelope["choices"]) != 1:
             raise failure("invalid_response", "AI 服务响应结构无效，需人工处理")
         choice = envelope["choices"][0]
         if not isinstance(choice, dict) or not isinstance(choice.get("message"), dict):
@@ -729,10 +739,12 @@ def _usage_from_body(body: bytes) -> ProviderUsage | None:
     if not body:
         return None
     try:
-        envelope = _json_without_duplicates(body.decode('utf-8'))
-        raw = envelope.get('usage') if isinstance(envelope, dict) else None
+        envelope = _json_without_duplicates(body.decode("utf-8"))
+        raw = envelope.get("usage") if isinstance(envelope, dict) else None
         if not isinstance(raw, dict):
             return None
-        return ProviderUsage.model_validate({key: raw.get(key) for key in ('prompt_tokens', 'completion_tokens', 'total_tokens')})
+        return ProviderUsage.model_validate(
+            {key: raw.get(key) for key in ("prompt_tokens", "completion_tokens", "total_tokens")}
+        )
     except (UnicodeDecodeError, ValueError, RecursionError, ValidationError, TypeError):
         return None

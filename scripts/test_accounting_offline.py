@@ -3,6 +3,7 @@
 Use the repository virtualenv. PostgreSQL integration has its own isolated runner;
 this entry point deliberately removes inherited database/model credentials.
 """
+
 from __future__ import annotations
 
 import os
@@ -25,8 +26,14 @@ def main() -> int:
         if name.upper().startswith(
             ("ACCOUNTING_", "SUPABASE_", "OPENAI_", "DEEPSEEK_", "ZEABUR_", "VERCEL_")
         ) or name.upper() in {
-            "DATABASE_URL", "PGHOST", "PGPASSWORD", "PGSERVICE", "PGSERVICEFILE",
-            "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY",
+            "DATABASE_URL",
+            "PGHOST",
+            "PGPASSWORD",
+            "PGSERVICE",
+            "PGSERVICEFILE",
+            "HTTP_PROXY",
+            "HTTPS_PROXY",
+            "ALL_PROXY",
         }:
             os.environ.pop(name, None)
     os.environ["ACCOUNTING_AUTH_MODE"] = "local"
@@ -35,7 +42,9 @@ def main() -> int:
     sys.path[:0] = [str(root / "nexus_backend"), str(root / "nexus_backend" / "tests"), str(root)]
 
     connect, connect_ex, getaddrinfo = (
-        socket.socket.connect, socket.socket.connect_ex, socket.getaddrinfo
+        socket.socket.connect,
+        socket.socket.connect_ex,
+        socket.getaddrinfo,
     )
     allowed_hosts = {"127.0.0.1", "::1", "localhost"}
 
@@ -69,6 +78,7 @@ def main() -> int:
         args.extend(["--junitxml", str(artifacts / "results.xml")])
     print(f"Offline test artifacts: {artifacts}", flush=True)
     import pytest
+
     return pytest.main(args)
 
 

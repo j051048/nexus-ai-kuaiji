@@ -9,6 +9,14 @@ def build_batch_ops_router(actor_dependency):
     def service(request: Request):
         return request.app.state.batch_operations
 
+    @router.post("/monthly-open/preview")
+    def preview_monthly_open(
+        payload: CreateMonthlyOpenBatch,
+        current=Depends(actor_dependency),
+        batches=Depends(service),
+    ):
+        return batches.preview_monthly_open(current, payload)
+
     @router.post("/monthly-open", status_code=202)
     def create_monthly_open(
         payload: CreateMonthlyOpenBatch,

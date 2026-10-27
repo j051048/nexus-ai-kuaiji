@@ -43,6 +43,10 @@ class BatchOperationsService:
         finally:
             conn.close()
 
+    def preview_monthly_open(self, actor, request):
+        """Read-only dry run reused by the batch dialog before committing."""
+        return self.monthly.preview(actor, request)
+
     def create_monthly_open(self, actor, request):
         company_ids, names = self.monthly.resolve_companies(actor, request)
         request_json = self._request_json(request)

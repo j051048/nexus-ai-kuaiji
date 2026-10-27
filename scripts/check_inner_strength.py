@@ -4,6 +4,7 @@ Usage:
   .venv\\Scripts\\python.exe scripts/check_inner_strength.py
   .venv\\Scripts\\python.exe scripts/check_inner_strength.py --groups p0,ak05
 """
+
 from __future__ import annotations
 
 import argparse
@@ -67,9 +68,7 @@ def main() -> int:
     unknown = set(selected) - set(GROUPS)
     if unknown:
         raise SystemExit("未知分组：" + ",".join(sorted(unknown)))
-    head = subprocess.check_output(
-        ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True
-    ).strip()
+    head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
     files = {
         path: sha256((ROOT / path).read_bytes()).hexdigest()
         for path in FILES

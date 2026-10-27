@@ -40,6 +40,16 @@ def _has_marker(directory):
         return False
 
 
+def restore_hold_active(database_path=None, attachment_root=None):
+    """Boolean form for callers that must refuse one action instead of exiting."""
+    if os.environ.get("ACCOUNTING_RESTORE_HOLD_FILE", "").strip():
+        return True
+    return any(
+        _has_marker(directory)
+        for directory in _candidate_directories(database_path, attachment_root)
+    )
+
+
 def enforce_restore_hold(database_path=None, attachment_root=None):
     explicit = os.environ.get("ACCOUNTING_RESTORE_HOLD_FILE", "").strip()
     if explicit:

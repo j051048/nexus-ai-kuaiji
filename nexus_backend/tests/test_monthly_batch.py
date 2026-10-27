@@ -59,9 +59,7 @@ def test_batch_open_creates_next_period_and_copies_members_idempotently(monthly_
         assert period["status"] == "open"
         audits = [
             dict(item)
-            for item in conn.execute(
-                "SELECT * FROM audit_events WHERE action='monthly.batch_open'"
-            )
+            for item in conn.execute("SELECT * FROM audit_events WHERE action='monthly.batch_open'")
         ]
         assert len(audits) == 2 and all(item["company_id"] for item in audits)
     again = c.monthly_batch.open_month(
@@ -193,3 +191,50 @@ def test_batch_open_reports_blocked_rows_and_enforces_manager_scope(monthly_batc
             companies=[c.company["id"], c.company["id"]],
             reason="企业清单重复",
         )
+
+
+class _ReplayingLedgers:
+    """The concurrent winner committed the same idempotency key first."""
+
+    def __init__(self, inner, book_id):
+        self.inner, self.book_id, self.calls = inner, book_id, []
+
+    def __getattr__(self, name):
+        return getattr(self.inner, name)
+
+    def create_period(self, actor, book_id, request):
+        self.calls.append(request.idempotency_key)
+        return {"ledger_id": "ledger", "book_id": self.book_id, "replayed": True}
+
+
+def test_batch_open_reports_a_concurrent_win_as_skipped(monthly_batch):
+    c = monthly_batch
+    c.monthly_batch.open_month(
+        c.manager, BatchOpen(period="2026-11", scope="awaiting", reason="先建一期")
+    )
+    with c.db.transaction() as conn:
+        target = conn.execute(
+            "SELECT id,company_id FROM books WHERE period='2026-11' ORDER BY id LIMIT 1"
+        ).fetchone()
+    replay = _ReplayingLedgers(c.monthly_batch.ledgers, target["id"])
+    c.monthly_batch.ledgers = replay
+    before = _audit_count(c)
+    result = c.monthly_batch.open_month(
+        c.manager,
+        BatchOpen(
+            period="2026-12", scope="companies", companies=[target["company_id"]], reason="并发撞车"
+        ),
+    )
+    assert replay.calls, "预检通过的企业必须走到建期"
+    assert (result["opened"], result["skipped"]) == (0, 1)
+    row = result["results"][0]
+    assert row["status"] == "skipped" and row["book_id"] == target["id"]
+    assert "另一位" in row["message"]
+    assert _audit_count(c) == before, "别人的创建不应再写一条创建审计"
+
+
+def _audit_count(c):
+    with c.db.transaction() as conn:
+        return conn.execute(
+            "SELECT count(*) AS n FROM audit_events WHERE action LIKE 'monthly.batch%'"
+        ).fetchone()["n"]

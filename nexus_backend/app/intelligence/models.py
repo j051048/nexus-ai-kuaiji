@@ -120,7 +120,8 @@ class JournalLine(OutputModel):
 
 class JournalEvidenceRef(OutputModel):
     model_config = ConfigDict(
-        extra="forbid", strict=True,
+        extra="forbid",
+        strict=True,
         json_schema_extra=lambda schema: schema["required"].append("document_index"),
     )
     attachment_id: StrictStr = Field(min_length=1, max_length=100)

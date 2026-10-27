@@ -839,24 +839,31 @@ class AssistantService:
 
         diagnostics = can_diagnose(conn, actor)
         snapshot = row["snapshot_json"] if "snapshot_json" in row.keys() else None
-        context_pack_hash = (
-            sha256(snapshot.encode("utf-8")).hexdigest() if snapshot else None
-        )
+        context_pack_hash = sha256(snapshot.encode("utf-8")).hexdigest() if snapshot else None
         costs = []
         if diagnostics:
             # Conversation authorization is required by the caller before this
             # query. Even administrators can diagnose only their own thread.
-            costs = [dict(cost) for cost in conn.execute(
-                "SELECT id,chat_turn_id,firm_id,company_id,kind,state,provider,model,period,reserved_micro,estimated_micro,confirmed_micro,"
-                "input_tokens,output_tokens,overrun,created_at,sent_at,finished_at "
-                "FROM model_costs WHERE chat_turn_id=? AND firm_id=? AND company_id=?",
-                (row["id"], actor.firm_id, row["company_id"]),
-            ).fetchall()]
-        return execution_record("chat", dict(row), costs=costs, diagnostics=diagnostics, context={
-            "input_fingerprint": row["input_fingerprint"],
-            "model_fingerprint": row["model_fingerprint"],
-            "context_pack_hash": context_pack_hash,
-        })
+            costs = [
+                dict(cost)
+                for cost in conn.execute(
+                    "SELECT id,chat_turn_id,firm_id,company_id,kind,state,provider,model,period,reserved_micro,estimated_micro,confirmed_micro,"
+                    "input_tokens,output_tokens,overrun,created_at,sent_at,finished_at "
+                    "FROM model_costs WHERE chat_turn_id=? AND firm_id=? AND company_id=?",
+                    (row["id"], actor.firm_id, row["company_id"]),
+                ).fetchall()
+            ]
+        return execution_record(
+            "chat",
+            dict(row),
+            costs=costs,
+            diagnostics=diagnostics,
+            context={
+                "input_fingerprint": row["input_fingerprint"],
+                "model_fingerprint": row["model_fingerprint"],
+                "context_pack_hash": context_pack_hash,
+            },
+        )
 
     def execution(self, actor, conversation_id, turn_id):
         with self.db.transaction(actor=actor) as conn:

@@ -338,7 +338,11 @@ def status_snapshot(conn, firm_id, samples=10):
 
 
 def _identity(db):
-    return {} if getattr(db, "default_role", "accounting_app") == "accounting_projection" else {"system": True}
+    return (
+        {}
+        if getattr(db, "default_role", "accounting_app") == "accounting_projection"
+        else {"system": True}
+    )
 
 
 def refresh_company_scoped(db, firm_id, company_id):
@@ -527,5 +531,3 @@ def projection_clean(conn, actor):
         (actor.user_id, actor.user_id, actor.user_id, actor.firm_id),
     ).fetchone()
     return row["count"] == 0
-
-

@@ -1,0 +1,17 @@
+{
+  "derivation": "这三个投影迁移在进入 git 之前已被开发库应用，运行时按 accounting.database.migration_digest 记录 checksum。Q-R01 为满足结构测试的兼容头约定，在文件首行插入了 `-- compatibility: incremental`，从而改变了规范化摘要。此处登记的是去掉那一行之后的原内容摘要：Q-S01 依据它恢复不可变性，而不是改动历史业务。",
+  "files": {
+    "148_projection_company_guard.sql": {
+      "sha256": "25fdd7d0130767833aba38a2984e32ce915a93f5643b3208299bae30758b4dbe",
+      "lines": 47
+    },
+    "149_projection_actorless_lock.sql": {
+      "sha256": "b2c895897a8bd715052034754f5c8836f985919a1ebf99e35258e086bec5441a",
+      "lines": 44
+    },
+    "150_projection_scope_guard.sql": {
+      "sha256": "f77ea8509a8246a624ae83ebc068a6b6977a64e35f1d225bd73a231b5906f8c0",
+      "lines": 26
+    }
+  }
+}

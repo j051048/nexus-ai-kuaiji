@@ -76,11 +76,16 @@ class AssistantModelReply(AssistantReply):
     """Internal response envelope; publication projects to AssistantReply."""
 
     model_config = ConfigDict(
-        extra="forbid", strict=True,
+        extra="forbid",
+        strict=True,
         json_schema_extra=lambda schema: schema["required"].extend(["fact_status", "claims"]),
     )
 
     fact_status: Literal[
-        "verified", "missing_facts", "conflicting_evidence", "unsupported_case", "requires_accountant",
+        "verified",
+        "missing_facts",
+        "conflicting_evidence",
+        "unsupported_case",
+        "requires_accountant",
     ] = "requires_accountant"
     claims: list[AssistantFactClaim] = Field(default_factory=list, max_length=40)

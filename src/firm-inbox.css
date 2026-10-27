@@ -151,3 +151,71 @@
     justify-items: start;
   }
 }
+
+.firm-inbox-delivery {
+  border: 1px solid var(--line, #d9dfda);
+  border-radius: 10px;
+  background: var(--paper, #fffdf8);
+  padding: 14px 16px;
+  margin: 0 0 16px;
+}
+.firm-inbox-delivery-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.firm-inbox-delivery-heading h2 {
+  font-size: 15px;
+  margin: 0 0 4px;
+}
+.firm-inbox-delivery-heading p {
+  margin: 0;
+  color: var(--muted, #5c6b62);
+  font-size: 12px;
+}
+.firm-inbox-delivery-count {
+  font-size: 12px;
+  color: var(--muted, #5c6b62);
+  white-space: nowrap;
+}
+.firm-inbox-delivery-list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.firm-inbox-delivery-row {
+  display: grid;
+  grid-template-columns: minmax(140px, 1.4fr) 76px minmax(120px, 1fr) auto;
+  gap: 10px;
+  align-items: baseline;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--wash, #f4f6f2);
+  font-size: 13px;
+}
+.firm-inbox-delivery-row.waiting {
+  background: #eef3ec;
+}
+.firm-inbox-delivery-period {
+  font-variant-numeric: tabular-nums;
+  color: var(--muted, #5c6b62);
+}
+.firm-inbox-delivery-step {
+  color: var(--ink, #22302a);
+  font-weight: 600;
+}
+.firm-inbox-delivery-empty,
+.firm-inbox-delivery-error {
+  margin: 10px 0 0;
+  font-size: 13px;
+  color: var(--muted, #5c6b62);
+}
+@media (max-width: 720px) {
+  .firm-inbox-delivery-row {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+}

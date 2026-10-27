@@ -21,16 +21,44 @@ FIELDS = (
 
 # Match the longest labels first: 金额 must not consume 不含税金额.
 MONEY_LABELS = {
-    "gross_amount": ("gross_amount", "价税合计", "含税金额", "总金额", "合计金额", "实付金额", "total amount", "gross amount",
-                     "/EInvoice/EInvoiceData/BasicInformation/TotalTax-includedAmount"),
-    "net_amount": ("net_amount", "不含税金额", "未税金额", "金额", "net amount",
-                   "/EInvoice/EInvoiceData/BasicInformation/TotalAmWithoutTax"),
-    "tax_amount": ("tax_amount", "税额", "税金", "tax amount",
-                   "/EInvoice/EInvoiceData/BasicInformation/TotalTaxAm"),
+    "gross_amount": (
+        "gross_amount",
+        "价税合计",
+        "含税金额",
+        "总金额",
+        "合计金额",
+        "实付金额",
+        "total amount",
+        "gross amount",
+        "/EInvoice/EInvoiceData/BasicInformation/TotalTax-includedAmount",
+    ),
+    "net_amount": (
+        "net_amount",
+        "不含税金额",
+        "未税金额",
+        "金额",
+        "net amount",
+        "/EInvoice/EInvoiceData/BasicInformation/TotalAmWithoutTax",
+    ),
+    "tax_amount": (
+        "tax_amount",
+        "税额",
+        "税金",
+        "tax amount",
+        "/EInvoice/EInvoiceData/BasicInformation/TotalTaxAm",
+    ),
 }
-_MONEY_LABEL = re.compile("|".join(re.escape(label) for label in sorted(
-    (label for labels in MONEY_LABELS.values() for label in labels), key=len, reverse=True,
-)), re.IGNORECASE)
+_MONEY_LABEL = re.compile(
+    "|".join(
+        re.escape(label)
+        for label in sorted(
+            (label for labels in MONEY_LABELS.values() for label in labels),
+            key=len,
+            reverse=True,
+        )
+    ),
+    re.IGNORECASE,
+)
 
 
 def field_money_in_quote(field, value, quote):
@@ -46,9 +74,11 @@ def field_money_in_quote(field, value, quote):
         if match.group().casefold() not in {label.casefold() for label in MONEY_LABELS[field]}:
             continue
         end = labels[index + 1].start() if index + 1 < len(labels) else len(text)
-        segment = text[match.end():end]
+        segment = text[match.end() : end]
         # One label followed by several different numbers is ambiguous.
-        amounts = re.findall(r"(?<![\w.])(?:0|[1-9]\d{0,11})(?:\.\d{1,2})?(?![\w.])", segment.replace(",", ""))
+        amounts = re.findall(
+            r"(?<![\w.])(?:0|[1-9]\d{0,11})(?:\.\d{1,2})?(?![\w.])", segment.replace(",", "")
+        )
         if len(amounts) == 1 and money_in_quote(value, amounts[0]):
             return True
     return False
@@ -57,7 +87,10 @@ def field_money_in_quote(field, value, quote):
 def identifier_in_quote(value, quote):
     target = normalized(value)
     text = unicodedata.normalize("NFKC", quote).casefold()
-    return bool(target) and re.search(r"(?<![a-z0-9])" + re.escape(target) + r"(?![a-z0-9])", text) is not None
+    return (
+        bool(target)
+        and re.search(r"(?<![a-z0-9])" + re.escape(target) + r"(?![a-z0-9])", text) is not None
+    )
 
 
 def quote_in_text(quote, text):
@@ -82,9 +115,16 @@ def normalized(value):
     return re.sub(r"\s+", "", unicodedata.normalize("NFKC", value or "")).casefold()
 
 
-_NORMALIZED_MONEY_LABEL = re.compile("|".join(re.escape(normalized(label)) for label in sorted(
-    (label for labels in MONEY_LABELS.values() for label in labels), key=len, reverse=True,
-)))
+_NORMALIZED_MONEY_LABEL = re.compile(
+    "|".join(
+        re.escape(normalized(label))
+        for label in sorted(
+            (label for labels in MONEY_LABELS.values() for label in labels),
+            key=len,
+            reverse=True,
+        )
+    )
+)
 
 
 def finding(code, message, severity="blocking", **details):
@@ -111,11 +151,13 @@ def extraction_checks(documents, page_numbers, native_texts=None):
             )
         evidence = document["evidence"]
         if any(not native_texts.get(number, "").strip() for number in pages):
-            findings.append(finding(
-                prefix + "_original_unverified",
-                "原件尚无独立文字证据，模型自报原文不能证明字段正确；请独立核对原件后确认",
-                document_index=index,
-            ))
+            findings.append(
+                finding(
+                    prefix + "_original_unverified",
+                    "原件尚无独立文字证据，模型自报原文不能证明字段正确；请独立核对原件后确认",
+                    document_index=index,
+                )
+            )
         for field in FIELDS:
             value = document.get(field)
             if value is None:

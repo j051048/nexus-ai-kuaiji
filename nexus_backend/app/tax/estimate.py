@@ -2,6 +2,7 @@
 
 This is an offline calculation contract only. It does not file, pay or post.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass

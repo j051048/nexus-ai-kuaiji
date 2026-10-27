@@ -3,6 +3,7 @@
 Evidence is supplied by authorized service reads. This module cannot authorize
 access and never executes a ledger action or trusts model-provided arithmetic.
 """
+
 from __future__ import annotations
 
 from copy import deepcopy
@@ -60,6 +61,7 @@ class EvidenceFact:
 @dataclass(frozen=True)
 class CalculationRule:
     """A service-owned output meaning; never accepted inside model output."""
+
     target: str
     operator: Literal["+", "-", "*", "/"]
     input_fields: tuple[str, ...]
@@ -70,7 +72,14 @@ _DEFAULT_CALCULATION_RULES = (
     CalculationRule("gross_amount", "+", ("net_amount", "tax_amount")),
     CalculationRule("tax_amount", "-", ("gross_amount", "net_amount")),
 )
-_INCOME_FIELDS = {"revenue", "profit", "operating_revenue", "net_profit", "operating_profit", "income"}
+_INCOME_FIELDS = {
+    "revenue",
+    "profit",
+    "operating_revenue",
+    "net_profit",
+    "operating_profit",
+    "income",
+}
 
 
 @dataclass
@@ -85,36 +94,40 @@ class Suggestion:
     warnings: list[str] = field(default_factory=list)
 
     def as_dict(self) -> dict[str, Any]:
-        return deepcopy({
-            "version": self.version,
-            "status": self.status,
-            "lines": self.lines,
-            "claims": [
-                {
-                    "field": claim.field,
-                    "value": claim.value,
-                    "kind": claim.kind,
-                    "company_id": claim.company_id,
-                    "book_id": claim.book_id,
-                    "evidence_version": claim.evidence_version,
-                    "unit": claim.unit,
-                    "currency": claim.currency,
-                    "evidence_ids": list(claim.evidence_ids),
-                    "calculation": claim.calculation,
-                }
-                for claim in self.claims
-            ],
-            "missing_facts": self.missing_facts,
-            "conflicts": self.conflicts,
-            "requires_accountant": self.requires_accountant,
-            "warnings": self.warnings,
-        })
+        return deepcopy(
+            {
+                "version": self.version,
+                "status": self.status,
+                "lines": self.lines,
+                "claims": [
+                    {
+                        "field": claim.field,
+                        "value": claim.value,
+                        "kind": claim.kind,
+                        "company_id": claim.company_id,
+                        "book_id": claim.book_id,
+                        "evidence_version": claim.evidence_version,
+                        "unit": claim.unit,
+                        "currency": claim.currency,
+                        "evidence_ids": list(claim.evidence_ids),
+                        "calculation": claim.calculation,
+                    }
+                    for claim in self.claims
+                ],
+                "missing_facts": self.missing_facts,
+                "conflicts": self.conflicts,
+                "requires_accountant": self.requires_accountant,
+                "warnings": self.warnings,
+            }
+        )
 
 
 def _decimal(value: Any) -> Decimal:
     if type(value) not in (str, int, Decimal):
         raise AnswerError("claim_value_invalid", "数值字段不接受布尔、浮点或隐式类型转换")
-    if type(value) is str and (len(value) > 96 or not re.fullmatch(r"[+-]?[0-9]+(?:\.[0-9]+)?", value)):
+    if type(value) is str and (
+        len(value) > 96 or not re.fullmatch(r"[+-]?[0-9]+(?:\.[0-9]+)?", value)
+    ):
         raise AnswerError("claim_value_invalid", "数值字段必须是普通十进制数，不接受指数或表达式")
     try:
         result = Decimal(str(value))
@@ -122,7 +135,11 @@ def _decimal(value: Any) -> Decimal:
         raise AnswerError("claim_value_invalid", "数值字段不是有效十进制数") from None
     if not result.is_finite():
         raise AnswerError("claim_value_invalid", "数值字段不是有限数")
-    if result.copy_abs() > Decimal("1000000000000000") or len(result.as_tuple().digits) > 28 or result.as_tuple().exponent < -8:
+    if (
+        result.copy_abs() > Decimal("1000000000000000")
+        or len(result.as_tuple().digits) > 28
+        or result.as_tuple().exponent < -8
+    ):
         raise AnswerError("claim_value_invalid", "数值字段超出金额、位数或精度上限")
     return result
 
@@ -159,10 +176,22 @@ def _value_type(item: EvidenceFact) -> str:
     # including the currency/name/identifier itself. Keep those values textual;
     # new runtime adapters must declare decimal/text explicitly.
     text_fields = {
-        "currency", "invoice_number", "invoice_code", "date", "invoice_date",
-        "transaction_date", "counterparty", "counterparty_name", "company_name",
-        "tax_id", "description", "status", "document_type", "account_code",
-        "bank_account", "vendor_id",
+        "currency",
+        "invoice_number",
+        "invoice_code",
+        "date",
+        "invoice_date",
+        "transaction_date",
+        "counterparty",
+        "counterparty_name",
+        "company_name",
+        "tax_id",
+        "description",
+        "status",
+        "document_type",
+        "account_code",
+        "bank_account",
+        "vendor_id",
     }
     return "decimal" if item.currency and _semantic_field(item.field) not in text_fields else "text"
 
@@ -207,8 +236,13 @@ def _semantic_field(value):
 
 
 def _semantic_guard(claim, source):
-    if _semantic_field(source.field) == "source_gross_total" and _semantic_field(claim.field) in _INCOME_FIELDS:
-        raise AnswerError("claim_semantic_relabel", "来源合计不能改写为收入或利润，包括通过计算改写")
+    if (
+        _semantic_field(source.field) == "source_gross_total"
+        and _semantic_field(claim.field) in _INCOME_FIELDS
+    ):
+        raise AnswerError(
+            "claim_semantic_relabel", "来源合计不能改写为收入或利润，包括通过计算改写"
+        )
 
 
 def _source_for(reference, by_id):
@@ -226,22 +260,39 @@ def _calculation_rules(extra):
         if not isinstance(rule, CalculationRule):
             raise AnswerError("claim_calculation_policy_invalid", "计算规则必须由服务端显式声明")
         _text(rule.target, "calculation.target")
-        if type(rule.operator) is not str or rule.operator not in {"+", "-", "*", "/"} or type(rule.input_fields) is not tuple or not 2 <= len(rule.input_fields) <= 8:
+        if (
+            type(rule.operator) is not str
+            or rule.operator not in {"+", "-", "*", "/"}
+            or type(rule.input_fields) is not tuple
+            or not 2 <= len(rule.input_fields) <= 8
+        ):
             raise AnswerError("claim_calculation_policy_invalid", "服务端计算规则结构无效")
         for field_name in rule.input_fields:
             _text(field_name, "calculation.input_field")
         if _semantic_field(rule.target) in _INCOME_FIELDS:
-            raise AnswerError("claim_calculation_policy_invalid", "当前校验契约不支持推导收入或利润")
-        if rule.target in {item.target for item in _DEFAULT_CALCULATION_RULES} and rule not in _DEFAULT_CALCULATION_RULES:
+            raise AnswerError(
+                "claim_calculation_policy_invalid", "当前校验契约不支持推导收入或利润"
+            )
+        if (
+            rule.target in {item.target for item in _DEFAULT_CALCULATION_RULES}
+            and rule not in _DEFAULT_CALCULATION_RULES
+        ):
             raise AnswerError("claim_calculation_policy_invalid", "不得覆盖已声明的金额推导关系")
         if rule not in result:
             result.append(rule)
     return result
 
 
-def _calculation(claim: Claim, by_id: dict[str, EvidenceFact], rules: list[CalculationRule]) -> Decimal:
+def _calculation(
+    claim: Claim, by_id: dict[str, EvidenceFact], rules: list[CalculationRule]
+) -> Decimal:
     calculation = claim.calculation
-    if type(calculation) is not dict or set(calculation) != {"operator", "inputs"} or type(calculation.get("operator")) is not str or calculation["operator"] not in {"+", "-", "*", "/"}:
+    if (
+        type(calculation) is not dict
+        or set(calculation) != {"operator", "inputs"}
+        or type(calculation.get("operator")) is not str
+        or calculation["operator"] not in {"+", "-", "*", "/"}
+    ):
         raise AnswerError("claim_calculation_invalid", "计算只允许固定四则运算和证据输入")
     inputs = calculation["inputs"]
     if type(inputs) is not list or not 2 <= len(inputs) <= 8:
@@ -249,7 +300,9 @@ def _calculation(claim: Claim, by_id: dict[str, EvidenceFact], rules: list[Calcu
     sources = []
     for item in inputs:
         if type(item) is not dict or set(item) != {"evidence_id", "field"}:
-            raise AnswerError("claim_calculation_invalid", "计算输入必须逐项引用证据，不接受自报数字")
+            raise AnswerError(
+                "claim_calculation_invalid", "计算输入必须逐项引用证据，不接受自报数字"
+            )
         source = _source_for(item["evidence_id"], by_id)
         if source.field != item["field"]:
             raise AnswerError("claim_field_mismatch", "计算字段名与引用证据不一致")
@@ -262,13 +315,20 @@ def _calculation(claim: Claim, by_id: dict[str, EvidenceFact], rules: list[Calcu
         raise AnswerError("claim_calculation_invalid", "计算引用必须完整对应全部操作数")
     operator = calculation["operator"]
     input_fields = tuple(source.field for source in sources)
+
     def matches(rule):
         if rule.target != claim.field or rule.operator != operator:
             return False
-        return sorted(rule.input_fields) == sorted(input_fields) if operator in {"+", "*"} else rule.input_fields == input_fields
+        return (
+            sorted(rule.input_fields) == sorted(input_fields)
+            if operator in {"+", "*"}
+            else rule.input_fields == input_fields
+        )
 
     if not any(matches(rule) for rule in rules):
-        raise AnswerError("claim_calculation_semantic_invalid", "计算目标、运算和来源字段没有服务端声明的关系")
+        raise AnswerError(
+            "claim_calculation_semantic_invalid", "计算目标、运算和来源字段没有服务端声明的关系"
+        )
     dimensions = [(source.currency, source.unit) for source in sources]
     desired = (claim.currency, claim.unit)
     if operator in {"+", "-"}:
@@ -279,7 +339,9 @@ def _calculation(claim: Claim, by_id: dict[str, EvidenceFact], rules: list[Calcu
         dimensional = [dimension for dimension in dimensions if dimension != ("", "")]
         valid_dimensions = dimensional == ([] if desired == ("", "") else [desired])
     else:
-        valid_dimensions = dimensions[0] == desired and all(dimension == ("", "") for dimension in dimensions[1:])
+        valid_dimensions = dimensions[0] == desired and all(
+            dimension == ("", "") for dimension in dimensions[1:]
+        )
     if not valid_dimensions:
         raise AnswerError("claim_currency_mismatch", "计算单位或币种不一致")
     values = [_decimal(source.value) for source in sources]
@@ -301,13 +363,20 @@ def _calculation(claim: Claim, by_id: dict[str, EvidenceFact], rules: list[Calcu
                     result /= value
                 _decimal(result)
     except DecimalException:
-        raise AnswerError("claim_calculation_invalid", "计算需要舍入或超过精度，必须人工核定") from None
+        raise AnswerError(
+            "claim_calculation_invalid", "计算需要舍入或超过精度，必须人工核定"
+        ) from None
     return result
 
 
 def validate_bound_claims(
-    claims, *, company_id: str, book_id: str | None, fact_version: int | None,
-    evidence: list[EvidenceFact], require_verified: bool = False,
+    claims,
+    *,
+    company_id: str,
+    book_id: str | None,
+    fact_version: int | None,
+    evidence: list[EvidenceFact],
+    require_verified: bool = False,
     calculation_rules: tuple[CalculationRule, ...] = (),
 ) -> list[Claim]:
     """Validate every claim. None fact_version means per-evidence current versions.
@@ -323,7 +392,9 @@ def validate_bound_claims(
         raise AnswerError("claim_structure_invalid", "字段列表或校验模式无效")
     if require_verified and not claims:
         raise AnswerError("answer_ready_unverified", "ready 没有任何可核验事实")
-    by_id = _index_evidence(evidence, company_id=company_id, book_id=book_id, fact_version=fact_version)
+    by_id = _index_evidence(
+        evidence, company_id=company_id, book_id=book_id, fact_version=fact_version
+    )
     rules = _calculation_rules(calculation_rules)
     checked = []
     for claim in claims:
@@ -339,9 +410,18 @@ def validate_bound_claims(
             raise AnswerError("claim_scope_mismatch", "字段引用跨企业或账套")
         if fact_version is not None and claim.evidence_version != fact_version:
             raise AnswerError("claim_version_stale", "字段引用不是当前事实版本")
-        if type(claim.evidence_ids) not in (tuple, list) or any(type(ref) is not str or not ref for ref in claim.evidence_ids) or len(set(claim.evidence_ids)) != len(claim.evidence_ids):
+        if (
+            type(claim.evidence_ids) not in (tuple, list)
+            or any(type(ref) is not str or not ref for ref in claim.evidence_ids)
+            or len(set(claim.evidence_ids)) != len(claim.evidence_ids)
+        ):
             raise AnswerError("claim_structure_invalid", "证据引用列表无效或重复")
-        if type(claim.kind) is not str or claim.kind not in {"source_fact", "calculation", "unknown", "inference"}:
+        if type(claim.kind) is not str or claim.kind not in {
+            "source_fact",
+            "calculation",
+            "unknown",
+            "inference",
+        }:
             raise AnswerError("claim_source_missing", "字段来源类型无效")
         if claim.kind != "calculation" and claim.calculation is not None:
             raise AnswerError("claim_structure_invalid", "非计算字段不得附带计算结构")
@@ -416,8 +496,11 @@ def validate_suggestion(
             raise AnswerError("answer_conflict_detail", "conflicting_evidence 必须列出冲突")
 
     validate_bound_claims(
-        suggestion.claims, company_id=company_id, book_id=book_id,
-        fact_version=fact_version, evidence=evidence,
+        suggestion.claims,
+        company_id=company_id,
+        book_id=book_id,
+        fact_version=fact_version,
+        evidence=evidence,
         require_verified=suggestion.status == "suggestion_ready",
         calculation_rules=calculation_rules,
     )

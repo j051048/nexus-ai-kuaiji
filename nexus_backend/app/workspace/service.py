@@ -214,7 +214,9 @@ class WorkspaceService:
               EXISTS(SELECT 1 FROM department_approvers da WHERE da.firm_id=? AND da.user_id=?) AS approver,
               EXISTS(SELECT 1 FROM book_access ba WHERE ba.firm_id=? AND ba.user_id=?) AS book_access,
               EXISTS(SELECT 1 FROM book_access ba WHERE ba.firm_id=? AND ba.user_id=? AND ba.role='reviewer') AS book_reviewer,
-              NOT EXISTS(SELECT 1 FROM (""" + reachable_companies_sql() + """) c WHERE NOT EXISTS(
+              NOT EXISTS(SELECT 1 FROM ("""
+            + reachable_companies_sql()
+            + """) c WHERE NOT EXISTS(
                 SELECT 1 FROM workspace_projection_state s WHERE s.firm_id=? AND s.company_id=c.company_id
                 AND s.revision<=s.built_revision)) AS projection_clean
             FROM users u LEFT JOIN memberships m ON m.user_id=u.id AND m.firm_id=?

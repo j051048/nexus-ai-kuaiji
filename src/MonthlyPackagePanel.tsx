@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Download, FileArchive, RefreshCw } from 'lucide-react';
-import { api, apiBlob, errorMessage } from './api';
+import { api, apiBlob, ApiError, errorMessage } from './api';
 import type { Session } from './types';
 import {
   canAcknowledgePackage,
@@ -13,6 +13,12 @@ import {
   type MonthlyPackageFile,
   type MonthlyPackageOverview,
 } from './monthly-package-types';
+import {
+  acceptPackage,
+  packageFromSearch,
+  readRecovery,
+  selectPackage,
+} from './monthly-package-read';
 import './monthly-package.css';
 
 type MonthlyPackagePanelProps = {
@@ -20,6 +26,7 @@ type MonthlyPackagePanelProps = {
   bookId: string;
   onBusyChange?: (value: boolean) => void;
   clientOnly?: boolean;
+  focusPackageId?: string;
 };
 export function MonthlyPackagePanel(props: MonthlyPackagePanelProps) {
   return (
@@ -39,10 +46,12 @@ function MonthlyPackageContent({
   bookId,
   onBusyChange,
   clientOnly = false,
+  focusPackageId = '',
 }: MonthlyPackagePanelProps) {
   const scope = `${session.scope_key}:${bookId}`;
   const [state, setState] = useState<{ scope: string; value: MonthlyPackageOverview } | null>(null);
   const [error, setError] = useState('');
+  const [trackError, setTrackError] = useState('');
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState('');
@@ -64,7 +73,6 @@ function MonthlyPackageContent({
     async (item: MonthlyPackage, generation: number) => {
       // Seeing the package is what the firm needs to learn; neither the read receipt nor
       // the file list may block viewing or signing.
-      opened.current = item.id;
       try {
         const updated =
           item.can_open && item.customer_opening_status === 'not_opened'
@@ -78,23 +86,37 @@ function MonthlyPackageContent({
                 )
               ).package;
         if (current.current !== scope || generation !== epoch.current) return;
-        if (updated?.files?.length) setContents({ id: item.id, files: updated.files });
-        if (validatePackage(updated, { bookId, companyId: item.company_id, period: item.period }))
-          setState((prior) =>
-            prior && prior.scope === scope
-              ? {
-                  scope,
-                  value: {
-                    ...prior.value,
-                    packages: prior.value.packages.map((pack) =>
-                      pack.id === item.id ? updated : pack,
-                    ),
-                  },
-                }
-              : prior,
-          );
-      } catch {
-        // A failed read receipt only costs the view trail, not the client's ability to sign.
+        // Accept the response before touching the screen: a mismatched identity must
+        // leave both the file list and the package state exactly as they were.
+        const accepted = acceptPackage(updated, {
+          id: item.id,
+          bookId,
+          companyId: item.company_id,
+          period: item.period,
+        });
+        if (!accepted)
+          throw new Error('交付包响应与请求的版本不一致，已停止使用；请重新读取当前账套。');
+        opened.current = accepted.id;
+        setContents(accepted.files?.length ? { id: accepted.id, files: accepted.files } : null);
+        setState((prior) =>
+          prior && prior.scope === scope
+            ? {
+                scope,
+                value: {
+                  ...prior.value,
+                  packages: prior.value.packages.map((pack) =>
+                    pack.id === accepted.id ? accepted : pack,
+                  ),
+                },
+              }
+            : prior,
+        );
+        setTrackError('');
+      } catch (failure) {
+        if (current.current !== scope || generation !== epoch.current) return;
+        setTrackError(
+          readRecovery(failure instanceof ApiError ? failure.status : undefined).message,
+        );
       }
     },
     [base, bookId, scope, session],
@@ -111,8 +133,19 @@ function MonthlyPackageContent({
         setState({ scope, value: result });
         setError('');
         if (clientOnly) {
-          const newest = result.packages.find((item) => !item.superseded);
-          if (newest && opened.current !== newest.id) void track(newest, generation);
+          const wanted = focusPackageId || packageFromSearch(window.location.search);
+          if (wanted) {
+            const selection = selectPackage(result.packages, wanted);
+            if (selection.kind === 'missing') setError(selection.message);
+            else {
+              if (selection.message) setError(selection.message);
+              if (selection.item && opened.current !== selection.item.id)
+                void track(selection.item, generation);
+            }
+          } else {
+            const newest = result.packages.find((item) => !item.superseded);
+            if (newest && opened.current !== newest.id) void track(newest, generation);
+          }
         }
         setReportId((prior) =>
           result.reports.some((item) => item.id === prior && item.current)
@@ -131,7 +164,7 @@ function MonthlyPackageContent({
         if (current.current === scope && generation === epoch.current) setLoading(false);
       }
     },
-    [base, bookId, clientOnly, scope, session, track],
+    [base, bookId, clientOnly, focusPackageId, scope, session, track],
   );
   useEffect(() => {
     current.current = scope;
@@ -142,6 +175,7 @@ function MonthlyPackageContent({
     setReportId('');
     setMessage('');
     setError('');
+    setTrackError('');
     requestKey.current = { fingerprint: '', key: '' };
     opened.current = '';
     setContents(null);
@@ -278,6 +312,23 @@ function MonthlyPackageContent({
       {error && (
         <div role="alert" className="inline-error">
           {error} 请重新检查，或联系本企业获授权会计。
+        </div>
+      )}
+      {trackError && (
+        <div role="alert" className="inline-error">
+          {trackError}{' '}
+          <button
+            type="button"
+            className="button secondary small"
+            disabled={!!busy}
+            onClick={() => {
+              const wanted = focusPackageId || packageFromSearch(window.location.search);
+              const selection = value ? selectPackage(value.packages, wanted) : null;
+              if (selection?.item) void track(selection.item, epoch.current);
+            }}
+          >
+            重试读取
+          </button>
         </div>
       )}
       {message && (

@@ -63,13 +63,26 @@ def _rows(value):
 
 def _failure(error):
     code = "context_too_large" if isinstance(error, BudgetExceeded) else "context_invalid"
-    result = ProviderError(code, "会计助手上下文超出预算，请缩小资料范围" if code == "context_too_large" else "会计助手上下文与当前授权资料不匹配，未发送资料")
+    result = ProviderError(
+        code,
+        "会计助手上下文超出预算，请缩小资料范围"
+        if code == "context_too_large"
+        else "会计助手上下文与当前授权资料不匹配，未发送资料",
+    )
     result.llm_attempted = False
     return result
 
 
 def build_assistant_context_pack(
-    snapshot, question, history, *, firm_id, company_id, limits, policy_version, prompt_version,
+    snapshot,
+    question,
+    history,
+    *,
+    firm_id,
+    company_id,
+    limits,
+    policy_version,
+    prompt_version,
 ):
     """Compile without promoting saved/OCR values into approved accounting facts."""
     try:
@@ -108,19 +121,34 @@ def build_assistant_context_pack(
         for row in references:
             kind = row.get("kind")
             reference_version = 1
-            if row.get("company_id", company_id) != company_id or row.get("firm_id", firm_id) != firm_id:
+            if (
+                row.get("company_id", company_id) != company_id
+                or row.get("firm_id", firm_id) != firm_id
+            ):
                 raise ContextError("context_scope_mismatch", "证据企业不匹配")
             if kind == "book":
                 valid = row.get("book_id") in book_ids and row["id"] == "book:" + row["book_id"]
             elif kind == "event":
-                current = next((event for event in events if event["id"] == row.get("event_id")), None)
-                valid = current is not None and row["id"] == f"event:{current['id']}:v{_version(current['fact_version'])}"
+                current = next(
+                    (event for event in events if event["id"] == row.get("event_id")), None
+                )
+                valid = (
+                    current is not None
+                    and row["id"] == f"event:{current['id']}:v{_version(current['fact_version'])}"
+                )
                 if current is not None:
                     reference_version = _version(current["fact_version"])
             elif kind == "attachment":
-                valid = row.get("event_id") in event_ids and row["id"] == "attachment:" + _id(row.get("attachment_id"))
+                valid = row.get("event_id") in event_ids and row["id"] == "attachment:" + _id(
+                    row.get("attachment_id")
+                )
             elif kind == "draft":
-                valid = draft is not None and row.get("book_id") in book_ids and row.get("draft_id") == draft.get("id") and row["id"] == f"draft:{draft['id']}:v{_version(draft['version'])}"
+                valid = (
+                    draft is not None
+                    and row.get("book_id") in book_ids
+                    and row.get("draft_id") == draft.get("id")
+                    and row["id"] == f"draft:{draft['id']}:v{_version(draft['version'])}"
+                )
                 if draft is not None:
                     reference_version = _version(draft["version"])
             else:
@@ -131,11 +159,14 @@ def build_assistant_context_pack(
             reference_sources[row["id"]] = item
             evidence.append(item)
 
-        add("snapshot_binding", {
-            "input_fingerprint": snapshot["input_fingerprint"],
-            "snapshot_sha256": fingerprint(snapshot),
-            "history_sha256": fingerprint(history),
-        })
+        add(
+            "snapshot_binding",
+            {
+                "input_fingerprint": snapshot["input_fingerprint"],
+                "snapshot_sha256": fingerprint(snapshot),
+                "history_sha256": fingerprint(history),
+            },
+        )
         add("company", {"id": company_id, "name": snapshot.get("company_name", "")})
         add("citation_ids", sorted(reference_ids))
         add("scope_event_ids", sorted(event_ids))
@@ -158,10 +189,20 @@ def build_assistant_context_pack(
                 attachment_id = _id(document.get("attachment_id"))
                 attached = reference_sources.get("attachment:" + attachment_id)
                 index = document.get("document_index")
-                if attached is None or attached.value.get("event_id") != event["id"] or type(index) is not int or index < 0:
+                if (
+                    attached is None
+                    or attached.value.get("event_id") != event["id"]
+                    or type(index) is not int
+                    or index < 0
+                ):
                     raise ContextError("context_scope_mismatch", "OCR 摘要未绑定当前事项原件")
                 extraction_id = _id(document.get("extraction_id"))
-                add(f"ocr:{attachment_id}:{extraction_id}:{index}", document, source="source_unreviewed", kind="ocr_summary")
+                add(
+                    f"ocr:{attachment_id}:{extraction_id}:{index}",
+                    document,
+                    source="source_unreviewed",
+                    kind="ocr_summary",
+                )
             if event.get("documents_truncated"):
                 unresolved.append("资料摘要被截断，需缩小事项范围后人工核对")
             for check in _rows(event.get("checks", [])):
@@ -182,29 +223,53 @@ def build_assistant_context_pack(
                 raise ContextError("context_invalid", "历史消息格式无效")
             if row["role"] == "user":
                 content = row.get("content", {})
-                past.append(HistoryItem(json.dumps(content, ensure_ascii=False, allow_nan=False), "", 0, stale=True))
+                past.append(
+                    HistoryItem(
+                        json.dumps(content, ensure_ascii=False, allow_nan=False), "", 0, stale=True
+                    )
+                )
         trusted = limits or ExecutionLimits()
         output = min(trusted.output_tokens, 4096)
         return compile_context_pack(
             task="assistant_reply",
-            scope={"kind": "company", "firm_id": firm_id, "company_id": company_id, "book_id": None, "period": None,
-                   "books": [{"book_id": row["id"], "period": row["period"]} for row in books]},
-            facts=facts, evidence=evidence, rules=RULES, history=past, unresolved=unresolved,
+            scope={
+                "kind": "company",
+                "firm_id": firm_id,
+                "company_id": company_id,
+                "book_id": None,
+                "period": None,
+                "books": [{"book_id": row["id"], "period": row["period"]} for row in books],
+            },
+            facts=facts,
+            evidence=evidence,
+            rules=RULES,
+            history=past,
+            unresolved=unresolved,
             budget={"input_tokens": trusted.context_tokens + output, "output_reserve": output},
-            prompt_version=prompt_version, schema_version=SCHEMA_VERSION,
-            policy_version=str(policy_version), required_keys=[row.key for row in facts],
+            prompt_version=prompt_version,
+            schema_version=SCHEMA_VERSION,
+            policy_version=str(policy_version),
+            required_keys=[row.key for row in facts],
         )
     except (ContextError, TypeError, ValueError, KeyError, AttributeError) as error:
         raise _failure(error) from None
 
 
-def validate_assistant_context_pack(payload, snapshot, question, history, *, limits, prompt_version):
+def validate_assistant_context_pack(
+    payload, snapshot, question, history, *, limits, prompt_version
+):
     """Reject even a rehashed pack if it no longer derives from this snapshot."""
     try:
         pack = load_context_pack(payload.as_dict() if hasattr(payload, "as_dict") else payload)
         current = build_assistant_context_pack(
-            snapshot, question, history, firm_id=pack.scope["firm_id"], company_id=snapshot["company_id"],
-            limits=limits, policy_version=pack.policy_version, prompt_version=prompt_version,
+            snapshot,
+            question,
+            history,
+            firm_id=pack.scope["firm_id"],
+            company_id=snapshot["company_id"],
+            limits=limits,
+            policy_version=pack.policy_version,
+            prompt_version=prompt_version,
         )
         if current.fingerprint != pack.fingerprint:
             raise ContextError("context_binding_mismatch", "上下文与当前范围不匹配")
