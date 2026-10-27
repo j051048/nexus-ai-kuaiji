@@ -1,4 +1,3 @@
--- compatibility: incremental
 CREATE OR REPLACE FUNCTION accounting.company_write_table_guard() RETURNS TRIGGER LANGUAGE plpgsql
  SET search_path=pg_catalog,accounting,pg_temp AS $$ DECLARE value JSONB;BEGIN
  IF coalesce(current_setting('app.write_scope_company',true),'')='' THEN
