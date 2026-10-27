@@ -3,6 +3,7 @@ import json
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
+from types import SimpleNamespace
 
 import pytest
 from pydantic import ValidationError
@@ -10,8 +11,9 @@ from pydantic import ValidationError
 from app.accounting.catalog import CatalogService
 from app.accounting.catalog_models import AccountUpdate
 from app.accounting.database import Database
+from app.accounting.directory import DirectoryService
 from app.accounting.domain import AccountingError, Actor
-from app.accounting.models import BookCreate, DraftUpdate, EvidenceRequest, ExportRequest, ImportRequest, SourceRow
+from app.accounting.models import BookCreate, BookMemberGrant, DraftUpdate, EvidenceRequest, ExportRequest, FirmMemberGrant, ImportRequest, SourceRow
 from app.accounting.review import ReviewService
 from app.accounting.review_models import ReviewConfirmRequest, ReviewPreviewRequest
 from app.accounting.seed import LOCAL_ACTOR, bootstrap
@@ -28,11 +30,31 @@ def case(tmp_path):
 def draft(case, book=None, external_id="row-001", evidence="票据001", description="办公用品"):
     accounting, _ = case
     book = book or accounting.create_book(LOCAL_ACTOR, BookCreate(name="企业" + external_id, period="2026-10"))["id"]
-    accounting.import_sources(LOCAL_ACTOR, book, ImportRequest(source_name="合成试验", rows=[SourceRow(external_id=external_id, date="2026-10-01", description=description, counterparty="测试供应商", amount="100.00", direction="expense", evidence_ref=evidence)]))
-    accounting.suggestions(LOCAL_ACTOR, book)
+    maker = preparer(case, book)
+    accounting.import_sources(maker, book, ImportRequest(source_name="合成试验", rows=[SourceRow(external_id=external_id, date="2026-10-01", description=description, counterparty="测试供应商", amount="100.00", direction="expense", evidence_ref=evidence)]))
+    accounting.suggestions(maker, book)
     with accounting.db.transaction() as conn:
         row = conn.execute("SELECT d.* FROM drafts d JOIN sources s ON s.id=d.source_id WHERE d.book_id=? AND s.external_id=?", (book, external_id)).fetchone()
     return {"book_id": book, "draft_id": row["id"], "expected_version": row["version"]}
+
+
+def preparer(case, book_id):
+    """A real scoped editor prepares; the existing test actors retain review duties."""
+    accounting, _ = case
+    directory = DirectoryService(accounting.db)
+    identity = SimpleNamespace(
+        user_id="batch-fixture-maker", display_name="批量试验制单人",
+        email="batch-fixture-maker@example.test",
+    )
+    with accounting.db.transaction(actor=LOCAL_ACTOR) as conn:
+        exists = conn.execute("SELECT 1 FROM users WHERE id=?", (identity.user_id,)).fetchone()
+        assigned = conn.execute("SELECT 1 FROM book_access WHERE book_id=? AND user_id=?", (book_id, identity.user_id)).fetchone()
+    if not exists:
+        directory.register_identity(identity)
+        directory.grant_firm_member(LOCAL_ACTOR, FirmMemberGrant(email=identity.email, role="operator"))
+    if not assigned:
+        directory.grant_book_member(LOCAL_ACTOR, book_id, identity.user_id, BookMemberGrant(role="editor"))
+    return Actor(identity.user_id, LOCAL_ACTOR.firm_id)
 
 
 def preview(case, items, actor=LOCAL_ACTOR):
@@ -146,7 +168,7 @@ def test_current_context_changes_invalidate_preview(case, change):
     accounting = case[0]
     if change == "draft":
         current = accounting.get_draft(LOCAL_ACTOR, item["book_id"], item["draft_id"])
-        accounting.update_draft(LOCAL_ACTOR, item["book_id"], item["draft_id"], DraftUpdate(expected_version=1, description="会计修改", lines=current["lines"]))
+        accounting.update_draft(LOCAL_ACTOR, item["book_id"], item["draft_id"], DraftUpdate(expected_version=current["version"], description="会计修改", lines=current["lines"]))
     elif change == "evidence":
         accounting.add_evidence(LOCAL_ACTOR, item["book_id"], status(case, item)["source_id"], EvidenceRequest(evidence_ref="新的证据"))
     elif change == "account":
@@ -163,7 +185,7 @@ def test_concurrent_confirm_produces_one_approval_one_sample_and_stable_receipt(
     with ThreadPoolExecutor(max_workers=3) as pool:
         results = list(pool.map(lambda _: confirm(case, value), range(3)))
     assert results[0] == results[1] == results[2]
-    assert status(case, item)["version"] == 2
+    assert status(case, item)["version"] == item["expected_version"] + 1
     with case[0].db.transaction() as conn:
         assert conn.execute("SELECT count(*) FROM review_confirmations").fetchone()[0] == 1
         assert conn.execute("SELECT count(*) FROM review_book_receipts").fetchone()[0] == 1

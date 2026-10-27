@@ -87,7 +87,7 @@ export interface BookWorkspaceShellProps {
     lines: JournalLine[],
     correctionReason?: string,
   ) => Promise<void>;
-  approveDraft: (draft: Draft) => Promise<void>;
+  approveDraft: (draft: Draft, reviewReason?: string) => Promise<void>;
   exportDrafts: () => unknown;
   setSearch: (value: string) => void;
   setBookOffset: (value: number) => void;

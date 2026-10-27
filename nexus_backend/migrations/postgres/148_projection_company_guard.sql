@@ -1,3 +1,4 @@
+-- compatibility: incremental
 -- Projection maintenance: dedicated company lock plus company-guard branch.
 CREATE OR REPLACE FUNCTION accounting.begin_projection_company_write(
  target_firm TEXT,target_company TEXT

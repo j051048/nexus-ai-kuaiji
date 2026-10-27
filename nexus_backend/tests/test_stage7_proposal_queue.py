@@ -16,7 +16,7 @@ from app.intelligence.provider import ProviderError
 from app.jobs.requests import BatchItem, BatchRequest, ProposalRetryRequest
 from app.jobs.service import QueueService
 from app.jobs.worker import ProposalExecution, QueueWorker
-from test_intelligence_workflow import ai_case, create_event, extract, handoff, invoice_document
+from test_intelligence_workflow import ai_case, create_event, extract, handoff as workflow_handoff, invoice_document
 from test_queue_workflow import TestClock, create_other_event
 from test_model_cost_workflow import cost_case, policy
 
@@ -65,6 +65,12 @@ def draft(case, result):
     return case.ledger.get_draft(case.actors["accountant"], result["book_id"], result["draft_id"])
 
 
+def handoff(case, event, **kwargs):
+    result = workflow_handoff(case, event, **kwargs)
+    result["initial_draft_version"] = draft(case, result)["version"]
+    return result
+
+
 def template(case, tax=False, **changes):
     lines = [{"account_code": "6602.02", "side": "debit", "amount_field": "net" if tax else "gross"},
              {"account_code": "2241", "side": "credit", "amount_field": "gross"}]
@@ -98,12 +104,12 @@ def test_missing_ocr_then_model_candidate_adoption_stops_before_review_export(pr
     assert case.worker.run_once()  # Model candidate plus deterministic adoption.
     task, value = current(case, result), draft(case, result)
     assert task["status"] == "succeeded" and task["current_run_id"]
-    assert value["status"] == "draft" and value["version"] == 2 and not value["issues"]
+    assert value["status"] == "draft" and value["version"] > result["initial_draft_version"] and not value["issues"]
     assert case.provider.extract_calls == case.provider.proposal_calls == 1
     assert not case.worker.run_once()
     with pytest.raises(AccountingError):
         case.ledger.export(case.actors["accountant"], result["book_id"], ExportRequest(draft_ids=[value["id"]], idempotency_key="stage7-before-review"))
-    approved = case.ledger.approve(case.actors["accountant"], result["book_id"], value["id"], ApprovalRequest(expected_version=2))
+    approved = case.ledger.approve(case.manager, result["book_id"], value["id"], ApprovalRequest(expected_version=value["version"]))
     assert approved["status"] == "approved"
     exported = case.ledger.export(case.actors["accountant"], result["book_id"], ExportRequest(draft_ids=[value["id"]], idempotency_key="stage7-after-review"))
     assert exported["count"] == 1
@@ -141,7 +147,7 @@ def test_matching_published_template_avoids_journal_model_and_fee(proposal_case)
     assert case.worker.run_once() and case.worker.run_once()
     task, value = current(case, result), draft(case, result)
     assert task["status"] == "succeeded" and task["current_run_id"] is None
-    assert task["result_template_id"] == configured["id"] and task["result_template_version"] == 1 and task["result_draft_version"] == 2
+    assert task["result_template_id"] == configured["id"] and task["result_template_version"] == 1 and task["result_draft_version"] == value["version"] > result["initial_draft_version"]
     assert value["status"] == "draft" and not value["issues"]
     assert case.provider.proposal_calls == 0 and case.provider.extract_calls == 1
     with case.db.transaction() as conn:
@@ -185,7 +191,7 @@ def test_before_execution_rechecks_versions_permission_period_and_policy(proposa
     result = handoff(case, event)
     if change == "manual":
         value = draft(case, result)
-        case.ledger.update_draft(case.actors["accountant"], result["book_id"], result["draft_id"], DraftUpdate(expected_version=1, description="会计人工修改绝不能覆盖", lines=[{"account_code": row["account_code"], "debit": row["debit"], "credit": row["credit"]} for row in value["lines"]]))
+        case.ledger.update_draft(case.actors["accountant"], result["book_id"], result["draft_id"], DraftUpdate(expected_version=value["version"], description="会计人工修改绝不能覆盖", lines=[{"account_code": row["account_code"], "debit": row["debit"], "credit": row["credit"]} for row in value["lines"]]))
     elif change == "revoke":
         case.directory.revoke_company_member(case.manager, case.company["id"], "finance")
     elif change == "disabled":
@@ -208,7 +214,7 @@ def test_during_external_call_human_edit_wins_and_response_is_fenced(proposal_ca
     result = handoff(case, event)
     def edit():
         value = draft(case, result)
-        case.ledger.update_draft(case.actors["accountant"], result["book_id"], result["draft_id"], DraftUpdate(expected_version=1, description="模型等待期间会计修改", lines=[{"account_code": row["account_code"], "debit": row["debit"], "credit": row["credit"]} for row in value["lines"]]))
+        case.ledger.update_draft(case.actors["accountant"], result["book_id"], result["draft_id"], DraftUpdate(expected_version=value["version"], description="模型等待期间会计修改", lines=[{"account_code": row["account_code"], "debit": row["debit"], "credit": row["credit"]} for row in value["lines"]]))
     case.provider.proposal_hook = edit
     assert case.worker.run_once()
     assert current(case, result)["status"] == "stale"
@@ -223,7 +229,7 @@ def test_blocking_amount_discrepancy_waits_for_human_without_model_call(proposal
     result = handoff(case, create_event(case))
     assert case.worker.run_once() and case.worker.run_once()
     assert current(case, result)["status"] == "needs_attention" and case.provider.proposal_calls == 0
-    assert draft(case, result)["version"] == 1
+    assert draft(case, result)["version"] == result["initial_draft_version"]
 
 
 def test_failed_ocr_dependency_becomes_attention_instead_of_waiting_forever(proposal_case):
@@ -244,7 +250,7 @@ def test_dependency_timeout_is_explicit_and_does_not_infer_ocr_success(proposal_
     case.queue.recover()
     task = current(case, result)
     assert task["status"] == "needs_attention" and task["error_code"] == "ocr_dependency_timeout"
-    assert draft(case, result)["version"] == 1 and case.provider.proposal_calls == 0
+    assert draft(case, result)["version"] == result["initial_draft_version"] and case.provider.proposal_calls == 0
 
 
 def test_sent_timeout_requires_manual_retry_with_immutable_reason_receipt(proposal_case):
@@ -264,7 +270,7 @@ def test_sent_timeout_requires_manual_retry_with_immutable_reason_receipt(propos
     assert case.worker.run_once() and current(case, result)["status"] == "succeeded"
     assert case.provider.proposal_calls == 2
     value = draft(case, result)
-    case.ledger.approve(case.actors["accountant"], result["book_id"], value["id"], ApprovalRequest(expected_version=value["version"]))
+    case.ledger.approve(case.manager, result["book_id"], value["id"], ApprovalRequest(expected_version=value["version"]))
     receipt_after_review = case.queue.proposals.retry(case.actors["accountant"], task["id"], "stage7-manual-retry-key", "已核对供应商记录后重试")
     assert receipt_after_review["status"] == "succeeded" and case.provider.proposal_calls == 2
 
@@ -295,7 +301,7 @@ def test_cancel_during_model_send_fences_response_and_does_not_adopt(proposal_ca
     result = handoff(case, event)
     case.provider.proposal_hook = lambda: case.queue.proposals.cancel(case.actors["accountant"], result["automatic_job"]["id"], "会计发现资料需要重新核对")
     assert case.worker.run_once()
-    assert current(case, result)["status"] == "cancelled" and draft(case, result)["version"] == 1
+    assert current(case, result)["status"] == "cancelled" and draft(case, result)["version"] == result["initial_draft_version"]
 
 
 def test_company_isolation_and_sql_pagination_do_not_reveal_other_tasks(proposal_case):
@@ -410,7 +416,7 @@ def test_model_warning_keeps_candidate_for_human_without_overwriting_draft(propo
     assert case.worker.run_once()
     task, value = current(case, result), draft(case, result)
     assert task["status"] == "needs_attention" and task["current_run_id"]
-    assert value["version"] == 1 and value["status"] == "draft"
+    assert value["version"] == result["initial_draft_version"] and value["status"] == "draft"
     with case.db.transaction() as conn:
         candidate = conn.execute("SELECT status,result_json FROM ai_runs WHERE id=?", (task["current_run_id"],)).fetchone()
         assert candidate["status"] == "succeeded" and json.loads(candidate["result_json"])["warnings"]
@@ -426,7 +432,7 @@ def test_background_proposal_reserves_company_quota_before_external_send(proposa
     assert case.worker.run_once()
     task = current(case, result)
     assert task["status"] == "failed" and task["error_code"] == "quota_exhausted"
-    assert case.provider.proposal_calls == 0 and draft(case, result)["version"] == 1
+    assert case.provider.proposal_calls == 0 and draft(case, result)["version"] == result["initial_draft_version"]
     with case.db.transaction() as conn:
         assert conn.execute("SELECT COUNT(*) FROM model_costs WHERE kind='proposal'").fetchone()[0] == 0
 
@@ -451,7 +457,7 @@ def test_cancel_sent_background_proposal_does_not_erase_reported_cost(proposal_c
     policy(case)
     case.provider.proposal_hook = lambda: case.queue.proposals.cancel(case.actors["accountant"], result["automatic_job"]["id"], "已核对需要取消，但费用保留")
     assert case.worker.run_once()
-    assert current(case, result)["status"] == "cancelled" and draft(case, result)["version"] == 1
+    assert current(case, result)["status"] == "cancelled" and draft(case, result)["version"] == result["initial_draft_version"]
     with case.db.transaction() as conn:
         cost = conn.execute("SELECT * FROM model_costs WHERE kind='proposal'").fetchone()
         assert cost["state"] == "estimated" and cost["estimated_micro"] == 11

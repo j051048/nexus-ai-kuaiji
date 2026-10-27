@@ -225,7 +225,7 @@ function ExecutionRecordContent({ session, kind, runId, target }: Props & { targ
                     ))}
                 </ol>
               )}
-              <p className="execution-record-boundary">凭证须由会计独立复核后导出。</p>
+              <p className="execution-record-boundary">凭证须由会计复核后导出。</p>
               {!canCreate && !state.caseId && (
                 <p className="execution-record-message">
                   {record.handoff.message || '请联系有当前来源权限的会计核对处理。'}

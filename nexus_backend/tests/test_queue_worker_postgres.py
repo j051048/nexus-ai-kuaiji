@@ -14,7 +14,7 @@ from app.auth import AuthSettings
 from app.main import create_app
 from fastapi.testclient import TestClient
 from test_intelligence_workflow_postgres import pg_ai, business_case, business_postgres, ADMIN_URL, APP_URL
-from test_intelligence_workflow import create_event, handoff, draft, propose
+from test_intelligence_workflow import create_event, handoff, draft, propose, review_original
 
 WORKER_URL = os.getenv("ACCOUNTING_TEST_WORKER_DATABASE_URL")
 pytestmark = pytest.mark.skipif(not ADMIN_URL or not APP_URL or not WORKER_URL, reason="需要真实PG管理员、API和独立worker测试连接")
@@ -50,9 +50,9 @@ def test_actual_pg_worker_runs_complete_scoped_workflow(pg_queue):
     assert not case.worker.run_once()
     receipt = handoff(case, event)
     proposal = propose(case, receipt["draft_id"])
-    applied = case.intelligence.apply(case.actors["accountant"], proposal["id"], 1)
+    applied = case.intelligence.apply(case.actors["accountant"], proposal["id"], proposal["input_version"])
     assert not applied["issues"]
-    case.ledger.approve(case.actors["accountant"], case.book["id"], receipt["draft_id"], ApprovalRequest(expected_version=2))
+    case.ledger.approve(case.manager, case.book["id"], receipt["draft_id"], ApprovalRequest(expected_version=applied["version"]))
     exported = case.ledger.export(case.actors["accountant"], case.book["id"], ExportRequest(draft_ids=[receipt["draft_id"]], idempotency_key="pg-worker-export"))
     assert exported["count"] == 1 and "0.30" in exported["csv"]
 
@@ -115,4 +115,5 @@ def test_pending_queue_cannot_be_explained_away_to_approve(pg_queue):
     with pytest.raises(Exception, match="不能用说明"):
         case.intelligence.resolve(case.actors["accountant"], finding["id"], "仍在处理但想直接审核")
     assert case.worker.run_once()
+    review_original(case, event)
     assert not draft(case, receipt["draft_id"])["issues"]

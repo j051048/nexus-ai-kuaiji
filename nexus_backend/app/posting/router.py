@@ -2,8 +2,13 @@ from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import Response
 from typing import Literal
 
+from ..accounting.domain import AccountingError
 from .models import ManualVoucher, OpeningBind, PostDraft, ReverseVoucher
-from .presentation import export_formal_book
+from .presentation import (
+    export_formal_book,
+    export_range_account_ledger,
+    export_range_trial_balance,
+)
 
 
 def build_posting_router(actor_dependency):
@@ -132,6 +137,60 @@ def build_posting_router(actor_dependency):
                 "Content-Disposition": f'attachment; filename="formal-{kind}.csv"',
                 "Cache-Control": "private, no-store",
                 "X-Content-Type-Options": "nosniff",
+            },
+        )
+
+    @router.get("/ledgers/{ledger_id}/trial-balance")
+    def range_trial_balance(
+        ledger_id: str,
+        start: str = Query(max_length=7),
+        end: str = Query(max_length=7),
+        current=Depends(actor_dependency),
+        posting=Depends(service),
+    ):
+        return posting.range_trial_balance(current, ledger_id, start, end)
+
+    @router.get("/ledgers/{ledger_id}/ledger/{account_id}")
+    def range_account_ledger(
+        ledger_id: str,
+        account_id: str,
+        start: str = Query(max_length=7),
+        end: str = Query(max_length=7),
+        current=Depends(actor_dependency),
+        posting=Depends(service),
+    ):
+        return posting.range_account_ledger(current, ledger_id, account_id, start, end)
+
+    @router.get("/ledgers/{ledger_id}/books/export")
+    def export_range_book(
+        ledger_id: str,
+        kind: Literal["trial_balance", "account_ledger"],
+        start: str = Query(max_length=7),
+        end: str = Query(max_length=7),
+        account_id: str | None = Query(default=None, max_length=100),
+        current=Depends(actor_dependency),
+        posting=Depends(service),
+    ):
+        if kind == "trial_balance":
+            content, fingerprint = export_range_trial_balance(
+                posting, current, ledger_id, start, end
+            )
+        else:
+            if not account_id:
+                raise AccountingError("请先选择当前账套科目")
+            content, fingerprint = export_range_account_ledger(
+                posting, current, ledger_id, account_id, start, end
+            )
+        return Response(
+            content,
+            media_type="text/csv; charset=utf-8",
+            headers={
+                "Content-Disposition": (
+                    f'attachment; filename="formal-range-{kind}-{start}-{end}.csv"'
+                ),
+                "Cache-Control": "private, no-store",
+                "X-Content-Type-Options": "nosniff",
+                "X-Source-Fingerprint": fingerprint,
             },
         )
 

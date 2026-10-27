@@ -22,3 +22,4 @@ class ReviewPreviewRequest(InputModel):
 
 class ReviewConfirmRequest(InputModel):
     idempotency_key: StrictStr = Field(min_length=8, max_length=120, pattern=r"^[A-Za-z0-9_.:-]+$")
+    review_reason: StrictStr = Field(default="", max_length=1000)

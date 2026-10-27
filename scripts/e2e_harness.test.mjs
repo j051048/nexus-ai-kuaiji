@@ -165,6 +165,37 @@ test('missing, damaged, foreign-run or malformed reports cannot be reused', () =
   }
 });
 
+test('an embedded repository directory is bound without reading it as a file', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'v10-nested-'));
+  const commit = (cwd, message) =>
+    execFileSync(
+      'git',
+      ['-c', 'user.email=a@b.c', '-c', 'user.name=a', 'commit', '-qam', message],
+      {
+        cwd,
+      },
+    );
+  try {
+    execFileSync('git', ['init', '-q'], { cwd: dir });
+    writeFileSync(join(dir, 'source.ts'), 'first');
+    execFileSync('git', ['add', '.'], { cwd: dir });
+    const nested = join(dir, 'scratch');
+    mkdirSync(nested);
+    execFileSync('git', ['init', '-q'], { cwd: nested });
+    writeFileSync(join(nested, 'file.txt'), 'nested');
+    execFileSync('git', ['add', '.'], { cwd: nested });
+    commit(nested, 'nested one');
+    // `git ls-files -o` reports the nested repository itself, not its files.
+    const first = sourceFingerprint(dir);
+    assert.equal(sourceFingerprint(dir), first);
+    writeFileSync(join(nested, 'file.txt'), 'changed');
+    commit(nested, 'nested two');
+    assert.notEqual(sourceFingerprint(dir), first);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('candidate fingerprint includes uncommitted and new inputs, excludes ignored outputs', () => {
   const dir = mkdtempSync(join(tmpdir(), 'v10-source-'));
   try {

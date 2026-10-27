@@ -24,6 +24,8 @@ import {
 import { clearReviewSession, inputOwnsKeyboard } from './review-session';
 import { WorkflowGuide } from './WorkflowGuide';
 import { reviewGuidance } from './review-guidance';
+import { ClaimPreparation, ReviewResponsibility } from './ReviewResponsibility';
+import { approvalBody, canApproveResponsibility, parseReviewResponsibility } from './review-policy';
 import { TermHelp } from './TermHelp';
 import type { BusinessEvent } from './business-types';
 import type { SourceHistory } from './SourceHistoryPanel';
@@ -76,6 +78,7 @@ export function InlineReviewDrawer({
   const [error, setError] = useState(''),
     [notice, setNotice] = useState('');
   const [keyboardHelp, setKeyboardHelp] = useState(false);
+  const [reviewReason, setReviewReason] = useState('');
   const [leaveTarget, setLeaveTarget] = useState<InlineReviewTarget | 'close' | null>(null);
   const [assistantOpen, setAssistantOpen] = useState(
     () => window.matchMedia('(min-width: 1440px)').matches,
@@ -115,8 +118,15 @@ export function InlineReviewDrawer({
   }
   const balanced = !amountError && debit > 0n && debit === credit;
   const canSave = !readonly && !busy && dirty && !!description.trim() && !amountError;
+  const review = draft
+    ? parseReviewResponsibility(draft.review_responsibility, draft.version)
+    : null;
   const canApprove =
-    !readonly &&
+    draft?.status === 'draft' &&
+    !draft.source_inactive &&
+    detail?.book.period_status !== 'closed' &&
+    canApproveResponsibility(review, session.user_id) &&
+    (review?.mode !== 'single_operator' || reviewReason.trim().length >= 3) &&
     !!detail?.book.permissions.review &&
     !busy &&
     !!draft &&
@@ -179,6 +189,7 @@ export function InlineReviewDrawer({
         setDescription(item.description);
         setLines(structuredClone(item.lines));
         setReason('');
+        setReviewReason('');
         if (item.business_origin) {
           const historyBase = `/books/${encodeURIComponent(bookId)}/sources/${encodeURIComponent(item.source_id)}/history`;
           try {
@@ -397,6 +408,7 @@ export function InlineReviewDrawer({
   }
   async function mutate(action: 'save' | 'approve', continueTo?: InlineReviewTarget | 'close') {
     if (!draft || command.current || !detail) return;
+    if (action === 'approve' && !canApprove) return;
     command.current = true;
     setBusy(action);
     setError('');
@@ -411,7 +423,12 @@ export function InlineReviewDrawer({
           method: action === 'approve' ? 'POST' : 'PATCH',
           body:
             action === 'approve'
-              ? { expected_version: draft.version }
+              ? approvalBody(
+                  draft.review_responsibility,
+                  draft.version,
+                  session.user_id,
+                  reviewReason,
+                )
               : {
                   expected_version: draft.version,
                   description: description.trim(),
@@ -425,6 +442,7 @@ export function InlineReviewDrawer({
       setDescription(value.description);
       setLines(structuredClone(value.lines));
       setReason('');
+      setReviewReason('');
       setAcknowledged(false);
       setNotice(
         action === 'approve'
@@ -709,7 +727,9 @@ export function InlineReviewDrawer({
                     sourceAvailable: !!source,
                     hasEvidenceReference: !!source?.evidence_ref,
                     editable: !readonly,
-                    canReview: !readonly && detail.book.permissions.review,
+                    canReview:
+                      detail.book.permissions.review &&
+                      canApproveResponsibility(review, session.user_id),
                     canOpenCase: false,
                     canExport: detail.book.permissions.export,
                     periodClosed: detail.book.period_status === 'closed',
@@ -738,6 +758,35 @@ export function InlineReviewDrawer({
                   </span>
                   <span>草稿版本 {draft.version}</span>
                 </div>
+                <ReviewResponsibility
+                  value={draft.review_responsibility}
+                  version={draft.version}
+                  userId={session.user_id}
+                />
+                <ClaimPreparation
+                  key={`${scope}:${draft.version}`}
+                  session={session}
+                  bookId={bookId}
+                  draft={draft}
+                  disabled={readonly || !!busy || dirty}
+                  onChanged={(value) => {
+                    setDraft(value);
+                    setAcknowledged(false);
+                    onChanged?.(bookId, value);
+                  }}
+                />
+                {draft.status === 'draft' && review?.mode === 'single_operator' && (
+                  <label>
+                    单人办理说明（非独立复核）
+                    <textarea
+                      value={reviewReason}
+                      maxLength={1000}
+                      disabled={!!busy}
+                      onChange={(event) => setReviewReason(event.target.value)}
+                      placeholder="请说明核对依据，至少 3 个字"
+                    />
+                  </label>
+                )}
                 <dl className="inline-review-source">
                   <div>
                     <dt>来源金额</dt>

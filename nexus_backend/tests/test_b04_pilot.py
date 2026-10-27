@@ -1,5 +1,7 @@
 """B04 synthetic pilot: subledger, periodic drafts, report snapshot and close."""
 
+from review_policy_fixtures import post_reviewed_manual
+
 from types import SimpleNamespace
 
 import pytest
@@ -76,7 +78,8 @@ def test_subledger_partial_payment_aging_control_and_bank(business):
         case.book["id"],
         EntityCreate(kind="counterparty", code="B04-C001", name="B04 虚构客户"),
     )
-    payment = posting.post_manual(
+    payment = post_reviewed_manual(
+        posting,
         case.manager,
         ManualVoucher(
             command_key="b04-payment-001",
@@ -186,7 +189,8 @@ def test_report_is_stale_after_new_posting_and_reopen_is_blocked(business):
         report["report"]["id"],
         ReportCommand(expected_version=1, reason="复核初始报表"),
     )
-    posting.post_manual(
+    post_reviewed_manual(
+        posting,
         case.manager,
         ManualVoucher(
             command_key="b04-stale-posting",
@@ -267,14 +271,16 @@ def test_periodic_accrual_asset_closing_reports_and_close(business):
         ),
     )
     accrual = periodic.generate_accrual(case.manager, rule["id"])
-    periodic.approve(
-        admin(case), accrual["draft"]["id"], DraftCommand(expected_version=1, reason="复核计提")
+    accrual = periodic.approve(
+        admin(case),
+        accrual["draft"]["id"],
+        DraftCommand(expected_version=accrual["draft"]["version"], reason="复核计提"),
     )
     posted_accrual = periodic.post(
         case.manager,
         accrual["draft"]["id"],
         DraftPost(
-            expected_version=2,
+            expected_version=accrual["draft"]["version"],
             command_key="b04-accrual-post",
             voucher_date="2026-10-31",
             reason="记账计提",
@@ -300,16 +306,16 @@ def test_periodic_accrual_asset_closing_reports_and_close(business):
         ),
     )
     depreciation = periodic.generate_asset(case.manager, asset["id"])
-    periodic.approve(
+    depreciation = periodic.approve(
         admin(case),
         depreciation["draft"]["id"],
-        DraftCommand(expected_version=1, reason="复核折旧"),
+        DraftCommand(expected_version=depreciation["draft"]["version"], reason="复核折旧"),
     )
     periodic.post(
         case.manager,
         depreciation["draft"]["id"],
         DraftPost(
-            expected_version=2,
+            expected_version=depreciation["draft"]["version"],
             command_key="b04-dep-post",
             voucher_date="2026-10-31",
             reason="记账折旧",
@@ -317,7 +323,8 @@ def test_periodic_accrual_asset_closing_reports_and_close(business):
     )
     # One fully matched bank movement gives the month-end bank evidence a
     # complete coverage line before closing; the opening bank balance is 10,000.
-    bank_voucher = posting.post_manual(
+    bank_voucher = post_reviewed_manual(
+        posting,
         case.manager,
         ManualVoucher(
             command_key="b04-bank-evidence",
@@ -373,14 +380,16 @@ def test_periodic_accrual_asset_closing_reports_and_close(business):
             profit_account_version=1,
         ),
     )
-    periodic.approve(
-        admin(case), closing["draft"]["id"], DraftCommand(expected_version=1, reason="复核结转")
+    closing = periodic.approve(
+        admin(case),
+        closing["draft"]["id"],
+        DraftCommand(expected_version=closing["draft"]["version"], reason="复核结转"),
     )
     periodic.post(
         case.manager,
         closing["draft"]["id"],
         DraftPost(
-            expected_version=2,
+            expected_version=closing["draft"]["version"],
             command_key="b04-closing-post",
             voucher_date="2026-10-31",
             reason="记账结转",
@@ -450,7 +459,8 @@ def test_periodic_accrual_asset_closing_reports_and_close(business):
     )
     assert run["close"]["status"] == "published"
     with pytest.raises(AccountingError, match="锁期"):
-        posting.post_manual(
+        post_reviewed_manual(
+            posting,
             case.manager,
             ManualVoucher(
                 command_key="b04-after-lock",

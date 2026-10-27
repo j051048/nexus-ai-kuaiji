@@ -1245,7 +1245,7 @@ export function BusinessWorkspace({
       </div>
       <footer className="workspace-footer">
         <span>衡账 · 企业业务协同</span>
-        <span>本人录入 / 授权部门审批 / 企业财务核验 / 会计独立复核</span>
+        <span>本人录入 / 授权部门审批 / 企业财务核验 / 会计复核</span>
       </footer>
       {batchOpen && (
         <QueueBatchDialog

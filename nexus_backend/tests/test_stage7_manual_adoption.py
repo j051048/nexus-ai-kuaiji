@@ -30,21 +30,21 @@ def test_manual_adoption_marks_decision_and_blocks_future_automatic_candidate(ai
     receipt = handoff(ai_case, event)
     initial = propose(ai_case, receipt["draft_id"])
     with ai_case.db.transaction(write=True, actor=ai_case.actors["accountant"]) as conn:
-        ai_case.intelligence._apply_in_transaction(conn, ai_case.actors["accountant"], initial["id"], 1, automatic=automatic)
+        ai_case.intelligence._apply_in_transaction(conn, ai_case.actors["accountant"], initial["id"], initial["input_version"], automatic=automatic)
     before = draft(ai_case, receipt["draft_id"])
-    assert manual_marker(ai_case, receipt["draft_id"]) == (0 if automatic else 2)
-    candidate = propose(ai_case, receipt["draft_id"], version=2, key="after-adoption-" + uuid4().hex)
+    assert manual_marker(ai_case, receipt["draft_id"]) == (0 if automatic else before["version"])
+    candidate = propose(ai_case, receipt["draft_id"], version=before["version"], key="after-adoption-" + uuid4().hex)
     with ai_case.db.transaction() as conn:
         details = json.loads(conn.execute("SELECT details FROM audit_events WHERE action='intelligence.proposal.apply' AND object_id=? ORDER BY id DESC LIMIT 1", (receipt["draft_id"],)).fetchone()[0])
     assert details["automatic"] is automatic
     if automatic:
         with ai_case.db.transaction(write=True, actor=ai_case.actors["accountant"]) as conn:
-            after = ai_case.intelligence._apply_in_transaction(conn, ai_case.actors["accountant"], candidate["id"], 2, automatic=True)
-        assert after["version"] == 3 and manual_marker(ai_case, receipt["draft_id"]) == 0
+            after = ai_case.intelligence._apply_in_transaction(conn, ai_case.actors["accountant"], candidate["id"], before["version"], automatic=True)
+        assert after["version"] > before["version"] and manual_marker(ai_case, receipt["draft_id"]) == 0
     else:
         with pytest.raises(AccountingError, match="人工修改"):
             with ai_case.db.transaction(write=True, actor=ai_case.actors["accountant"]) as conn:
-                ai_case.intelligence._apply_in_transaction(conn, ai_case.actors["accountant"], candidate["id"], 2, automatic=True)
+                ai_case.intelligence._apply_in_transaction(conn, ai_case.actors["accountant"], candidate["id"], before["version"], automatic=True)
         assert draft(ai_case, receipt["draft_id"]) == before
         with ai_case.db.transaction() as conn:
             assert conn.execute("SELECT COUNT(*) FROM ai_proposal_applications WHERE run_id=?", (candidate["id"],)).fetchone()[0] == 0
@@ -56,7 +56,7 @@ def automatically_selected(case):
     receipt = handoff(case, event)
     candidate = propose(case, receipt["draft_id"])
     with case.db.transaction(write=True, actor=case.actors["accountant"]) as conn:
-        case.intelligence._apply_in_transaction(conn, case.actors["accountant"], candidate["id"], 1, automatic=True)
+        case.intelligence._apply_in_transaction(conn, case.actors["accountant"], candidate["id"], candidate["input_version"], automatic=True)
     return receipt, candidate
 
 
@@ -65,21 +65,21 @@ def test_current_human_confirmation_protects_an_already_automatically_adopted_ca
     before = draft(ai_case, receipt["draft_id"])
     # Replaying the old command merely recovers its receipt; it proves no current
     # version was viewed or selected and cannot convert the draft to manual.
-    replay = ai_case.intelligence.apply(ai_case.actors["accountant"], candidate["id"], 1)
+    replay = ai_case.intelligence.apply(ai_case.actors["accountant"], candidate["id"], candidate["input_version"])
     assert replay == before and manual_marker(ai_case, receipt["draft_id"]) == 0
     with ai_case.db.transaction(write=True, actor=ai_case.actors["accountant"]) as conn:
-        ai_case.intelligence._apply_in_transaction(conn, ai_case.actors["accountant"], candidate["id"], 2, automatic=True)
+        ai_case.intelligence._apply_in_transaction(conn, ai_case.actors["accountant"], candidate["id"], before["version"], automatic=True)
     assert manual_marker(ai_case, receipt["draft_id"]) == 0
-    confirmed = ai_case.intelligence.apply(ai_case.actors["accountant"], candidate["id"], 2)
-    assert confirmed == before and manual_marker(ai_case, receipt["draft_id"]) == 2
-    assert ai_case.intelligence.apply(ai_case.actors["accountant"], candidate["id"], 2) == confirmed
+    confirmed = ai_case.intelligence.apply(ai_case.actors["accountant"], candidate["id"], before["version"])
+    assert confirmed == before and manual_marker(ai_case, receipt["draft_id"]) == before["version"]
+    assert ai_case.intelligence.apply(ai_case.actors["accountant"], candidate["id"], before["version"]) == confirmed
     with ai_case.db.transaction() as conn:
         assert conn.execute("SELECT COUNT(*) FROM audit_events WHERE object_id=? AND action='intelligence.proposal.confirm'", (receipt["draft_id"],)).fetchone()[0] == 1
         assert conn.execute("SELECT COUNT(*) FROM ai_proposal_applications WHERE draft_id=?", (receipt["draft_id"],)).fetchone()[0] == 1
-    newer = propose(ai_case, receipt["draft_id"], version=2, key="after-current-confirm-" + uuid4().hex)
+    newer = propose(ai_case, receipt["draft_id"], version=before["version"], key="after-current-confirm-" + uuid4().hex)
     with pytest.raises(AccountingError, match="人工修改"):
         with ai_case.db.transaction(write=True, actor=ai_case.actors["accountant"]) as conn:
-            ai_case.intelligence._apply_in_transaction(conn, ai_case.actors["accountant"], newer["id"], 2, automatic=True)
+            ai_case.intelligence._apply_in_transaction(conn, ai_case.actors["accountant"], newer["id"], before["version"], automatic=True)
     assert draft(ai_case, receipt["draft_id"]) == confirmed
 
 
@@ -87,7 +87,7 @@ def test_current_human_confirmation_protects_an_already_automatically_adopted_ca
 def test_receipt_replay_never_confirms_a_frozen_draft(ai_case, frozen):
     receipt, candidate = automatically_selected(ai_case)
     if frozen == "approved":
-        ai_case.ledger.approve(ai_case.actors["accountant"], ai_case.book["id"], receipt["draft_id"], ApprovalRequest(expected_version=2))
+        ai_case.ledger.approve(ai_case.manager, ai_case.book["id"], receipt["draft_id"], ApprovalRequest(expected_version=draft(ai_case, receipt["draft_id"])["version"]))
     else:
         restore_period_state(ai_case.ledger.db, ai_case.book["id"])
     before = draft(ai_case, receipt["draft_id"])
@@ -106,8 +106,8 @@ def test_pg_manual_adoption_fences_old_job_and_refuses_automatic_retry(pg_stage7
     task_id = result["automatic_job"]["id"]
     assert processing_job(case, result)["status"] == "queued"
     candidate = propose(case, result["draft_id"])
-    selected = case.intelligence.apply(case.actors["accountant"], candidate["id"], 1)
-    assert selected["version"] == 2 and manual_marker(case, result["draft_id"]) == 2
+    selected = case.intelligence.apply(case.actors["accountant"], candidate["id"], candidate["input_version"])
+    assert selected["version"] > candidate["input_version"] and manual_marker(case, result["draft_id"]) == selected["version"]
     with pytest.raises(case.psycopg.errors.CheckViolation):
         with case.db.transaction(write=True, actor=case.actors["accountant"]) as conn:
             conn.execute("UPDATE drafts SET last_manual_edit_version=0 WHERE id=?", (result["draft_id"],))
@@ -134,17 +134,17 @@ def test_pg_current_human_confirmation_protects_worker_adopted_candidate(pg_stag
     task = processing_job(case, result)
     assert task["status"] == "succeeded" and task["current_run_id"]
     before = processing_draft(case, result)
-    assert before["version"] == 2 and manual_marker(case, result["draft_id"]) == 0
+    assert before["version"] > task["expected_draft_version"] and manual_marker(case, result["draft_id"]) == 0
     # A response lost by the original caller cannot itself express a new manual
     # decision. Selecting the current version can, without replacing its lines.
-    assert case.intelligence.apply(case.actors["accountant"], task["current_run_id"], 1) == before
+    assert case.intelligence.apply(case.actors["accountant"], task["current_run_id"], task["expected_draft_version"]) == before
     assert manual_marker(case, result["draft_id"]) == 0
-    assert case.intelligence.apply(case.actors["accountant"], task["current_run_id"], 2) == before
-    assert manual_marker(case, result["draft_id"]) == 2
-    newer = propose(case, result["draft_id"], version=2, key="pg-after-confirm-" + uuid4().hex)
+    assert case.intelligence.apply(case.actors["accountant"], task["current_run_id"], before["version"]) == before
+    assert manual_marker(case, result["draft_id"]) == before["version"]
+    newer = propose(case, result["draft_id"], version=before["version"], key="pg-after-confirm-" + uuid4().hex)
     with pytest.raises(AccountingError, match="人工修改"):
         with case.db.transaction(write=True, actor=case.actors["accountant"]) as conn:
-            case.intelligence._apply_in_transaction(conn, case.actors["accountant"], newer["id"], 2, automatic=True)
+            case.intelligence._apply_in_transaction(conn, case.actors["accountant"], newer["id"], before["version"], automatic=True)
     assert processing_draft(case, result) == before
     with case.db.transaction(actor=case.actors["accountant"]) as conn:
         assert conn.execute("SELECT COUNT(*) FROM audit_events WHERE object_id=? AND action='intelligence.proposal.confirm'", (result["draft_id"],)).fetchone()[0] == 1

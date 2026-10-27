@@ -1,5 +1,7 @@
 """B03: formal voucher posting, numbering, reversal and ledger read models."""
 
+from review_policy_fixtures import post_reviewed_manual, reverse_reviewed
+
 import sqlite3
 from types import SimpleNamespace
 
@@ -75,9 +77,7 @@ def frozen_opening(case):
     expense = account("6602.02", "管理费用—办公费", "expense")
     package = opening.create_package(
         case.manager,
-        OpeningPackageCreate(
-            ledger_id=ledger_id, target_period="2026-10", policy_id=policy["id"]
-        ),
+        OpeningPackageCreate(ledger_id=ledger_id, target_period="2026-10", policy_id=policy["id"]),
     )
     version = opening.import_version(
         case.manager,
@@ -163,7 +163,7 @@ def approved_draft(case):
     case.ledger.suggestions(case.manager, case.book["id"])
     draft = case.ledger.get_book(case.manager, case.book["id"])["drafts"][0]
     case.ledger.approve(
-        case.manager,
+        case.actors["accountant"],
         case.book["id"],
         draft["id"],
         ApprovalRequest(expected_version=draft["version"]),
@@ -212,7 +212,10 @@ def test_post_draft_idempotency_numbering_balance_and_no_status_change(business)
             request.model_copy(update={"command_key": "post-draft-002"}),
         )
     with case.db.transaction() as conn:
-        assert conn.execute("SELECT status FROM drafts WHERE id=?", (draft["id"],)).fetchone()[0] == "approved"
+        assert (
+            conn.execute("SELECT status FROM drafts WHERE id=?", (draft["id"],)).fetchone()[0]
+            == "approved"
+        )
         assert conn.execute("SELECT COUNT(*) FROM exports").fetchone()[0] == 0
     balance = posting.trial_balance(case.manager, case.book["id"])
     rows = {row["code"]: row for row in balance["rows"]}
@@ -232,7 +235,8 @@ def test_manual_voucher_and_reversal_preserve_original(business):
             book_id=case.book["id"], package_version_id=opening["version_id"], reason="绑定期初"
         ),
     )
-    manual = posting.post_manual(
+    manual = post_reviewed_manual(
+        posting,
         case.manager,
         ManualVoucher(
             command_key="manual-001",
@@ -256,7 +260,8 @@ def test_manual_voucher_and_reversal_preserve_original(business):
         ),
     )
     assert manual["voucher"]["voucher_no"] == 1
-    reversed_voucher = posting.reverse_voucher(
+    reversed_voucher = reverse_reviewed(
+        posting,
         case.manager,
         manual["voucher"]["id"],
         ReverseVoucher(
@@ -272,7 +277,8 @@ def test_manual_voucher_and_reversal_preserve_original(business):
     assert original["voucher"]["voucher_no"] == 1
     assert len(original["lines"]) == 2
     with pytest.raises(AccountingError, match="已经全额冲销"):
-        posting.reverse_voucher(
+        reverse_reviewed(
+            posting,
             case.manager,
             manual["voucher"]["id"],
             ReverseVoucher(
@@ -303,7 +309,8 @@ def test_manual_adjustment_links_original_without_rewriting_it(business):
             book_id=case.book["id"], package_version_id=opening["version_id"], reason="绑定期初"
         ),
     )
-    original = posting.post_manual(
+    original = post_reviewed_manual(
+        posting,
         case.manager,
         ManualVoucher(
             command_key="adjust-original",
@@ -326,7 +333,8 @@ def test_manual_adjustment_links_original_without_rewriting_it(business):
             ],
         ),
     )
-    adjustment = posting.post_manual(
+    adjustment = post_reviewed_manual(
+        posting,
         case.manager,
         ManualVoucher(
             command_key="adjust-followup",
@@ -355,9 +363,10 @@ def test_manual_adjustment_links_original_without_rewriting_it(business):
     assert adjustment["voucher"]["voucher_no"] == 2
     assert adjustment["relations"][0]["kind"] == "adjustment"
     assert adjustment["relations"][0]["original_voucher_id"] == original["voucher"]["id"]
-    assert posting.voucher_detail(case.manager, original["voucher"]["id"])["voucher"][
-        "voucher_no"
-    ] == 1
+    assert (
+        posting.voucher_detail(case.manager, original["voucher"]["id"])["voucher"]["voucher_no"]
+        == 1
+    )
     balance = posting.trial_balance(case.manager, case.book["id"])
     rows = {row["code"]: row for row in balance["rows"]}
     assert rows["6602.02"]["closing_cents"] == 12000
@@ -406,7 +415,7 @@ def test_unapproved_wrong_scope_closed_period_and_revoke_are_rejected(business):
             ),
         )
     finance = case.actors["finance"]
-    with pytest.raises(AccountingError):
+    with pytest.raises(AccountingError) as denied:
         posting.post_manual(
             finance,
             ManualVoucher(
@@ -430,9 +439,18 @@ def test_unapproved_wrong_scope_closed_period_and_revoke_are_rejected(business):
                 ],
             ),
         )
+    assert denied.value.status == 403
+    with case.db.transaction(actor=case.manager) as conn:
+        assert (
+            conn.execute(
+                "SELECT COUNT(*) FROM manual_review_requests WHERE book_id=?", (case.book["id"],)
+            ).fetchone()[0]
+            == 0
+        )
     restore_period_state(case.db, case.book["id"], status="closed")
     with pytest.raises(AccountingError, match="关闭"):
-        posting.post_manual(
+        post_reviewed_manual(
+            posting,
             case.manager,
             ManualVoucher(
                 command_key="manual-closed",
@@ -474,7 +492,8 @@ def test_rejected_posting_does_not_consume_number(business):
         "description": "失败不占号",
     }
     with pytest.raises(AccountingError, match="不平衡"):
-        posting.post_manual(
+        post_reviewed_manual(
+            posting,
             case.manager,
             ManualVoucher(
                 command_key="manual-bad-balance",
@@ -496,7 +515,8 @@ def test_rejected_posting_does_not_consume_number(business):
             ),
         )
     with pytest.raises(AccountingError, match="期间"):
-        posting.post_manual(
+        post_reviewed_manual(
+            posting,
             case.manager,
             ManualVoucher(
                 command_key="manual-bad-date",
@@ -519,7 +539,8 @@ def test_rejected_posting_does_not_consume_number(business):
                 ],
             ),
         )
-    valid = posting.post_manual(
+    valid = post_reviewed_manual(
+        posting,
         case.manager,
         ManualVoucher(
             command_key="manual-valid-after-failure",
@@ -541,9 +562,7 @@ def test_rejected_posting_does_not_consume_number(business):
         ),
     )
     assert valid["voucher"]["voucher_no"] == 1
-    ledger = posting.account_ledger(
-        case.manager, case.book["id"], opening["bank"]["id"]
-    )
+    ledger = posting.account_ledger(case.manager, case.book["id"], opening["bank"]["id"])
     assert ledger["opening_cents"] == 1000000
     assert ledger["closing_cents"] == 990000
     journal = posting.daily_journal(case.manager, case.book["id"])

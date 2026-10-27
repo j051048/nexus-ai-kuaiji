@@ -9,7 +9,7 @@ from app.accounting.domain import AccountingError
 from app.accounting.models import ApprovalRequest, DraftUpdate, ExportRequest
 from app.intelligence.provider import ProviderError
 from app.jobs.requests import BatchRequest
-from test_intelligence_workflow import create_event, extract, handoff
+from test_intelligence_workflow import create_event, extract
 from test_queue_worker_postgres import (
     ADMIN_URL,
     APP_URL,
@@ -19,7 +19,7 @@ from test_queue_worker_postgres import (
     pg_ai,
     pg_queue,
 )
-from test_stage7_proposal_queue import template
+from test_stage7_proposal_queue import template, handoff, independent_original
 
 pytestmark = pytest.mark.skipif(
     not ADMIN_URL or not APP_URL or not WORKER_URL,
@@ -28,10 +28,14 @@ pytestmark = pytest.mark.skipif(
 
 
 @pytest.fixture
-def pg_stage7(pg_queue):
+def pg_stage7(pg_queue, monkeypatch):
     case = pg_queue
     case.business.proposal_queue = case.queue.proposals
     case.catalog = CatalogService(case.db)
+    independent_original(case, monkeypatch)
+    # Freeze this PG fixture's randomized ticket/tax identifiers independently
+    # from all subsequent mutable model output and fault injection.
+    case.original_text = case.provider.document["pages"][0]["raw_text"]
     yield case
     with case.psycopg.connect(ADMIN_URL) as conn:
         cancel_fixture_jobs(conn, case.manager.firm_id)
@@ -70,7 +74,7 @@ def test_real_pg_handoff_missing_ocr_auto_model_adoption_then_independent_review
     assert case.worker.run_once()
     task, value = job(case, result), draft(case, result)
     assert task["status"] == "succeeded", task
-    assert task["current_run_id"] and value["version"] == 2 and value["status"] == "draft"
+    assert task["current_run_id"] and value["version"] > result["initial_draft_version"] and value["status"] == "draft"
     assert case.provider.extract_calls == case.provider.proposal_calls == 1
     assert not case.worker.run_once()
     with pytest.raises(AccountingError):
@@ -80,10 +84,10 @@ def test_real_pg_handoff_missing_ocr_auto_model_adoption_then_independent_review
             ExportRequest(draft_ids=[value["id"]], idempotency_key="pg-stage7-before-review"),
         )
     case.ledger.approve(
-        case.actors["accountant"],
+        case.manager,
         result["book_id"],
         value["id"],
-        ApprovalRequest(expected_version=2),
+        ApprovalRequest(expected_version=value["version"]),
     )
     assert (
         case.ledger.export(
@@ -105,7 +109,7 @@ def test_real_pg_current_ocr_is_reused_and_rule_does_not_call_journal_model(pg_s
     assert case.worker.run_once()
     task = job(case, result)
     assert task["status"] == "succeeded", task
-    assert task["result_template_id"] == configured["id"] and task["result_draft_version"] == 2
+    assert task["result_template_id"] == configured["id"] and task["result_draft_version"] == draft(case, result)["version"] > result["initial_draft_version"]
     assert case.provider.proposal_calls == 0 and case.provider.extract_calls == 1
     assert draft(case, result)["status"] == "draft"
 
@@ -179,7 +183,7 @@ def test_real_pg_revoke_executor_before_send_stops_automated_candidate(pg_stage7
     )
     assert case.worker.run_once()
     assert job(case, result)["status"] == "stale" and case.provider.proposal_calls == 0
-    assert draft(case, result)["version"] == 1
+    assert draft(case, result)["version"] == result["initial_draft_version"]
 
 
 def test_real_pg_inflight_manual_edit_is_retained_and_candidate_is_fenced(pg_stage7):
@@ -195,7 +199,7 @@ def test_real_pg_inflight_manual_edit_is_retained_and_candidate_is_fenced(pg_sta
             result["book_id"],
             value["id"],
             DraftUpdate(
-                expected_version=1,
+                expected_version=value["version"],
                 description="真实PG在途期间人工修订",
                 lines=[
                     {
@@ -223,7 +227,7 @@ def test_real_pg_cancel_sent_proposal_ignores_late_response(pg_stage7):
         case.actors["accountant"], result["automatic_job"]["id"], "真实PG会计取消在途建议"
     )
     assert case.worker.run_once()
-    assert job(case, result)["status"] == "cancelled" and draft(case, result)["version"] == 1
+    assert job(case, result)["status"] == "cancelled" and draft(case, result)["version"] == result["initial_draft_version"]
 
 
 def test_real_pg_sent_timeout_manual_retry_keeps_immutable_attempts(pg_stage7):

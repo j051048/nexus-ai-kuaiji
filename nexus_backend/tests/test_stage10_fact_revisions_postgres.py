@@ -79,7 +79,7 @@ def test_pg_cross_period_old_book_only_gets_pinned_history_after_new_scope_revok
     c.directory.grant_book_member(c.manager, new['id'], c.actors['finance'].user_id, BookMemberGrant(role='editor'))
     c.directory.grant_book_member(c.manager, new['id'], c.actors['accountant'].user_id, BookMemberGrant(role='reviewer'))
     current = c.business.get_event(c.actors['finance'], event['id'])
-    request = RevisionSubmit(expected_event_version=current['version'], expected_fact_version=current['fact_version'], expected_draft_version=1,
+    request = RevisionSubmit(expected_event_version=current['version'], expected_fact_version=current['fact_version'], expected_draft_version=c.ledger.get_draft(c.actors['finance'], c.book['id'], original['draft_id'])['version'],
         target_book_id=new['id'], payload={**current['payload'], 'occurred_on':'2026-11-03'}, reason='确认原票据属于次月，保留旧账套追溯', idempotency_key=uuid4().hex)
     revision = c.revisions.submit(c.actors['finance'], event['id'], request)
     c.revisions.review(c.actors['accountant'], revision['id'], review_request(revision))
@@ -108,7 +108,7 @@ def test_pg_exported_revision_produces_adjustment_and_leaves_ledger_frozen(pg_ai
     c = pg_ai; c.provider.document = invoice_document(amount='100.00', net_amount='100.00', buyer_tax_id=c.provider.document['buyer_tax_id'])
     event = create_event(c, amount='100.00'); extract(c, event); mapping = handoff(c, event)
     c.revisions = FactRevisionService(c.db, c.business)
-    c.ledger.approve(c.actors['accountant'], c.book['id'], mapping['draft_id'], ApprovalRequest(expected_version=1))
+    c.ledger.approve(c.actors['accountant'], c.book['id'], mapping['draft_id'], ApprovalRequest(expected_version=c.ledger.get_draft(c.actors['accountant'], c.book['id'], mapping['draft_id'])['version']))
     c.ledger.export(c.actors['accountant'], c.book['id'], ExportRequest(draft_ids=[mapping['draft_id']], idempotency_key=uuid4().hex))
     revision, _ = propose(c, event['id'])
     final = c.revisions.review(c.actors['accountant'], revision['id'], review_request(revision))

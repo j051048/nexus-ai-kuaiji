@@ -71,6 +71,12 @@ class CloseService:
             "SELECT COUNT(*) FROM drafts WHERE book_id=? AND status NOT IN('approved','exported')",
             (book["id"],),
         ).fetchone()[0]
+        manual_pending = conn.execute(
+            "SELECT COUNT(*) FROM manual_review_requests m WHERE m.book_id=? "
+            "AND NOT EXISTS(SELECT 1 FROM manual_review_withdrawals w WHERE w.request_id=m.id) "
+            "AND NOT EXISTS(SELECT 1 FROM vouchers v WHERE v.review_request_id=m.id)",
+            (book["id"],),
+        ).fetchone()[0]
         report_content = json.loads(report["content_json"])
         checks = [
             {
@@ -82,6 +88,11 @@ class CloseService:
                 "code": "unapproved_drafts",
                 "status": "blocked" if unapproved else "pass",
                 "detail": f"{unapproved} 张草稿未审核/导出",
+            },
+            {
+                "code": "unposted_manual",
+                "status": "blocked" if manual_pending else "pass",
+                "detail": f"{manual_pending} 张手工凭证尚未完成审核和记账；录错的未审版本须由制单人说明理由后撤回",
             },
             {
                 "code": "subledger_control",
@@ -115,17 +126,20 @@ class CloseService:
             },
         ]
         dependencies = close_dependencies(conn, book["id"], report["template_id"])
-        fingerprint = _fingerprint({
-            "dependencies": dependencies,
-            "report": {
-                "id": report["id"], "version": int(report["version"]),
-                "inputs_fingerprint": report["inputs_fingerprint"],
-                "content_hash": report["content_hash"],
-                "template_version": int(report["template_version"]),
-            },
-            "checks": checks,
-            "trial": trial,
-        })
+        fingerprint = _fingerprint(
+            {
+                "dependencies": dependencies,
+                "report": {
+                    "id": report["id"],
+                    "version": int(report["version"]),
+                    "inputs_fingerprint": report["inputs_fingerprint"],
+                    "content_hash": report["content_hash"],
+                    "template_version": int(report["template_version"]),
+                },
+                "checks": checks,
+                "trial": trial,
+            }
+        )
         return checks, dependencies, fingerprint
 
     def _assert_current(self, conn, actor, run):
@@ -177,10 +191,17 @@ class CloseService:
                 "checks_json,dependencies_json,report_run_id,created_by,created_at) "
                 "VALUES(?,?,?,?,?,?,?,?,?,?,?)",
                 (
-                    run_id, book["id"], request.period, status, version, fingerprint,
+                    run_id,
+                    book["id"],
+                    request.period,
+                    status,
+                    version,
+                    fingerprint,
                     json.dumps(checks, ensure_ascii=False),
                     json.dumps(dependencies, ensure_ascii=False, sort_keys=True),
-                    request.report_id, actor.user_id, now(),
+                    request.report_id,
+                    actor.user_id,
+                    now(),
                 ),
             )
             self._audit(conn, actor, book["id"], "close.preflight", run_id, {"status": status})
@@ -230,8 +251,15 @@ class CloseService:
                 "INSERT INTO internal_period_locks(id,firm_id,company_id,ledger_id,book_id,period,"
                 "close_run_id,locked_by,locked_at) VALUES(?,?,?,?,?,?,?,?,?)",
                 (
-                    lock_id, book["firm_id"], book["company_id"], ledger["ledger_id"],
-                    run["book_id"], run["period"], run_id, actor.user_id, now(),
+                    lock_id,
+                    book["firm_id"],
+                    book["company_id"],
+                    ledger["ledger_id"],
+                    run["book_id"],
+                    run["period"],
+                    run_id,
+                    actor.user_id,
+                    now(),
                 ),
             )
             conn.execute(

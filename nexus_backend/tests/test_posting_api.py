@@ -1,11 +1,14 @@
 """B03 HTTP contract for binding, manual posting, lookup and trial balance."""
 
+import secrets
+import time
 from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
 from app.accounting.domain import Actor
-from app.accounting.models import FirmMemberGrant
+from app.accounting.models import BookMemberGrant, FirmMemberGrant
+from app.auth.supabase import Identity
 from app.accounting.seed import LOCAL_ACTOR
 from app.main import create_app
 from app.opening.models import (
@@ -124,8 +127,8 @@ def test_http_bind_manual_reverse_and_balance(tmp_path):
             },
         )
         assert bound.status_code == 201, bound.text
-        manual = client.post(
-            "/api/posting/manual",
+        prepared = client.post(
+            "/api/posting/manual-requests",
             headers=headers,
             json={
                 "command_key": "http-manual-001",
@@ -148,6 +151,45 @@ def test_http_bind_manual_reverse_and_balance(tmp_path):
                 ],
             },
         )
+        assert prepared.status_code == 201, prepared.text
+        reviewer = SimpleNamespace(
+            user_id="b03-http-reviewer",
+            display_name="HTTP 独立复核",
+            email="b03-http-reviewer@example.test",
+        )
+        app.state.directory.register_identity(reviewer)
+        app.state.directory.grant_firm_member(
+            LOCAL_ACTOR, FirmMemberGrant(email=reviewer.email, role="reviewer")
+        )
+        app.state.directory.grant_book_member(
+            LOCAL_ACTOR, book["id"], reviewer.user_id, BookMemberGrant(role="reviewer")
+        )
+        review_token = secrets.token_urlsafe(32)
+        app.state.tokens[review_token] = time.monotonic() + 7200
+        app.state.token_users[review_token] = Identity(
+            reviewer.user_id, reviewer.email, reviewer.display_name
+        )
+        review_headers = {"Authorization": "Bearer " + review_token}
+        request_id = prepared.json()["request"]["id"]
+        approved = client.post(
+            f"/api/posting/manual-requests/{request_id}/approve",
+            headers=review_headers,
+            json={
+                "expected_version": prepared.json()["request"]["version"],
+                "expected_policy_version": prepared.json()["request"]["policy_version"],
+                "reason": "HTTP 独立复核逐项核对",
+            },
+        )
+        assert approved.status_code == 200, approved.text
+        assert approved.json()["request"]["independent"] is True
+        manual = client.post(
+            f"/api/posting/manual-requests/{request_id}/post",
+            headers=headers,
+            json={
+                "expected_version": approved.json()["request"]["version"],
+                "command_key": "http-manual-001",
+            },
+        )
         assert manual.status_code == 201, manual.text
         voucher_id = manual.json()["voucher"]["id"]
         assert manual.json()["voucher"]["voucher_no"] == 1
@@ -156,17 +198,55 @@ def test_http_bind_manual_reverse_and_balance(tmp_path):
         )
         assert replay.status_code == 200
         assert replay.json()["voucher"]["id"] == voucher_id
-        balance = client.get(
-            f"/api/books/{book['id']}/trial-balance", headers=headers
-        )
+        balance = client.get(f"/api/books/{book['id']}/trial-balance", headers=headers)
         assert balance.status_code == 200, balance.text
         rows = {row["code"]: row for row in balance.json()["rows"]}
         assert rows["1002"]["closing_cents"] == 1010000
         assert rows["2202"]["closing_cents"] == -1010000
+        reversal = client.post(
+            "/api/posting/manual-requests",
+            headers=headers,
+            json={
+                "command_key": "http-reverse-001",
+                "book_id": book["id"],
+                "voucher_date": "2026-10-16",
+                "description": "冲销 HTTP 手工凭证",
+                "relation_kind": "reversal",
+                "original_voucher_id": voucher_id,
+                "reason": "HTTP 冲销",
+                "lines": [
+                    {
+                        "account_id": bank["id"],
+                        "account_version": 1,
+                        "debit": "0.00",
+                        "credit": "100.00",
+                    },
+                    {
+                        "account_id": payable["id"],
+                        "account_version": 1,
+                        "debit": "100.00",
+                        "credit": "0.00",
+                    },
+                ],
+            },
+        )
+        assert reversal.status_code == 201, reversal.text
+        reversal_id = reversal.json()["request"]["id"]
+        reversal_approved = client.post(
+            f"/api/posting/manual-requests/{reversal_id}/approve",
+            headers=review_headers,
+            json={
+                "expected_version": reversal.json()["request"]["version"],
+                "expected_policy_version": reversal.json()["request"]["policy_version"],
+                "reason": "HTTP 复核冲销内容",
+            },
+        )
+        assert reversal_approved.status_code == 200, reversal_approved.text
         reversed_voucher = client.post(
             f"/api/posting/vouchers/{voucher_id}/reverse",
             headers=headers,
             json={
+                "review_request_id": reversal_id,
                 "command_key": "http-reverse-001",
                 "voucher_date": "2026-10-16",
                 "reason": "HTTP 冲销",

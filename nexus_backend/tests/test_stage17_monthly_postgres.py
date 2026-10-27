@@ -162,7 +162,7 @@ def test_pg_recurring_real_review_export_and_monthly_idempotence(business_case):
     )
     draft = case.service.get_draft(case.reviewer, case.book, generated["draft_id"])
     assert draft["status"] == "draft" and not draft["issues"]
-    case.service.approve(case.reviewer, case.book, draft["id"], ApprovalRequest(expected_version=1))
+    case.service.approve(case.reviewer, case.book, draft["id"], ApprovalRequest(expected_version=draft["version"]))
     assert (
         case.service.export(
             case.reviewer,
@@ -303,7 +303,7 @@ def test_pg_aggregate_balance_and_auxiliary_movement_stay_separate(business_case
         case.owner, case.book, row["id"], PlanGenerate(version=1, idempotency_key=uuid4().hex)
     )
     case.service.approve(
-        case.reviewer, case.book, generated["draft_id"], ApprovalRequest(expected_version=1)
+        case.reviewer, case.book, generated["draft_id"], ApprovalRequest(expected_version=case.service.get_draft(case.reviewer, case.book, generated["draft_id"])["version"])
     )
     export = case.service.export(
         case.reviewer,

@@ -208,6 +208,18 @@ class MonthlyPackageService:
             "status": "configured" if eligible else "ineligible" if user_id else "missing",
         }, plan
 
+    def _can_review(self, conn, book, user_id):
+        """Ask the same membership rules whether this person could generate the package."""
+        from ..accounting.domain import Actor
+
+        try:
+            permissions = self.access.book(conn, Actor(user_id, book["firm_id"]), book["id"])[
+                "permissions"
+            ]
+        except AccountingError:
+            return False
+        return bool(permissions["review"])
+
     def _materials(self, conn, actor, book):
         rows = self._rows(
             conn,
@@ -230,22 +242,49 @@ class MonthlyPackageService:
         return result
 
     def _inspect(self, conn, actor, book):
-        blockers = []
+        blockers, warnings = [], []
 
-        def block(code, message):
-            blockers.append({"code": code, "message": message})
+        def block(code, message, owner, entry):
+            blockers.append({"code": code, "message": message, "owner": owner, "entry": entry})
+
+        def warn(code, message, owner, entry):
+            warnings.append({"code": code, "message": message, "owner": owner, "entry": entry})
 
         contact, plan = self._contact(conn, actor, book)
         if not contact["eligible"]:
-            block(
-                "contact_missing" if not contact["user_id"] else "contact_ineligible",
-                "请配置服务单客户联系人，并授予有效企业身份及账套查看权限",
+            if contact["user_id"]:
+                block(
+                    "contact_ineligible",
+                    "客户联系人已配置，但缺少有效企业身份或账套查看权限",
+                    "事务所管理员",
+                    "企业与账号 · 账套成员",
+                )
+            else:
+                block(
+                    "contact_missing",
+                    "尚未配置客户联系人；客户看不到也签收不了本月交付包",
+                    "事务所管理员或服务会计",
+                    "客户服务单 · 客户联系人",
+                )
+        if contact["user_id"] and self._can_review(conn, book, contact["user_id"]):
+            # Generation stays allowed (a one-person firm still has to work), but the
+            # signature boundary will refuse this person, so warn before freezing.
+            warn(
+                "contact_can_review",
+                "该联系人同时拥有复核权限，本版交付包将无法由其签收；请另行指定只读联系人",
+                "事务所管理员或服务会计",
+                "客户服务单 · 客户联系人",
             )
         if not conn.execute(
             "SELECT 1 FROM internal_period_locks WHERE book_id=? AND period=?",
             (book["id"], book["period"]),
         ).fetchone():
-            block("period_not_locked", "请完成独立月结复核并锁定本月")
+            block(
+                "period_not_locked",
+                "请完成独立月结复核并锁定本月",
+                "项目复核人",
+                "月结 · 独立复核",
+            )
         trial = None
         bank = None
         try:
@@ -256,14 +295,19 @@ class MonthlyPackageService:
                 or totals["closing_cents"]
                 or totals["debit_cents"] != totals["credit_cents"]
             ):
-                block("trial_not_balanced", "正式账簿试算不平衡")
+                block("trial_not_balanced", "正式账簿试算不平衡", "记账会计", "正式账簿 · 试算平衡")
             bank = self.subledger.bank_reconciliation_in_transaction(
                 conn, actor, book["id"], trial=trial
             )
             if not bank["passed"]:
-                block("bank_not_verified", "银行核验尚未通过")
+                block("bank_not_verified", "银行核验尚未通过", "出纳或记账会计", "银行对账 · 核验")
         except AccountingError:
-            block("formal_books_not_ready", "正式期初、账簿或银行核验尚未就绪")
+            block(
+                "formal_books_not_ready",
+                "正式期初、账簿或银行核验尚未就绪",
+                "记账会计",
+                "期初与正式记账",
+            )
         reports = []
         for row in self._rows(
             conn,
@@ -284,29 +328,55 @@ class MonthlyPackageService:
                 {**pick(row, "id version status published_at content_hash"), "current": current}
             )
         if not any(row["current"] for row in reports):
-            block("published_report_missing", "缺少当前有效且经过独立复核的已发布报表")
+            block(
+                "published_report_missing",
+                "缺少当前有效且经过独立复核的已发布报表",
+                "复核人",
+                "财务报表 · 发布",
+            )
         materials = self._materials(conn, actor, book) if book["permissions"]["review"] else []
         if not book["permissions"]["review"]:
-            block("review_required", "冻结交付前请由有账套复核权限的会计核验资料与完整性")
+            block(
+                "review_required",
+                "冻结交付前请由有账套复核权限的会计核验资料与完整性",
+                "复核人",
+                "账套权限 · 复核",
+            )
         if any(
             row["required"] and (row["state"] != "accepted" or row["evidence_current"] is not True)
             for row in materials
         ):
-            block("required_materials_unaccepted", "必需资料存在缺件、未审核或证据已变化")
+            block(
+                "required_materials_unaccepted",
+                "必需资料存在缺件、未审核或证据已变化",
+                "客户或记账会计",
+                "资料请求",
+            )
         pending = conn.execute(
             "SELECT COUNT(*) FROM drafts d WHERE d.book_id=? AND (d.status NOT IN('approved','exported') OR NOT EXISTS(SELECT 1 FROM vouchers v WHERE v.book_id=d.book_id AND v.source_kind='draft' AND v.source_id=d.id))",
             (book["id"],),
         ).fetchone()[0]
         if pending:
-            block("drafts_not_posted", "存在未复核或尚未正式入账的凭证草稿")
+            block(
+                "drafts_not_posted",
+                "存在未复核或尚未正式入账的凭证草稿",
+                "记账会计",
+                "凭证 · 复核过账",
+            )
         missing_exports = conn.execute(
             "SELECT COUNT(*) FROM exports e LEFT JOIN delivery_manifests m ON m.export_id=e.id WHERE e.book_id=? AND m.export_id IS NULL",
             (book["id"],),
         ).fetchone()[0]
         if missing_exports:
-            block("export_evidence_missing", "历史导出缺少冻结交付清单，请先补齐可核验依据")
+            block(
+                "export_evidence_missing",
+                "历史导出缺少冻结交付清单，请先补齐可核验依据",
+                "记账会计",
+                "交付回执",
+            )
         return {
             "blockers": blockers,
+            "warnings": warnings,
             "reports": reports,
             "contact": contact,
             "plan": plan,
@@ -330,31 +400,46 @@ class MonthlyPackageService:
                 "period": book["period"],
                 "ready": not evidence["blockers"],
                 "blockers": evidence["blockers"],
+                "warnings": evidence["warnings"],
                 "reports": evidence["reports"],
                 "contact": evidence["contact"],
                 "permissions": {"generate": bool(book["permissions"]["review"])},
                 "packages": [self._view(conn, actor, book, row) for row in packages],
             }
 
-    def _view(self, conn, actor, book, row):
+    def _view(self, conn, actor, book, row, with_files=False):
         acknowledgement = conn.execute(
             "SELECT * FROM monthly_delivery_acknowledgements WHERE package_id=?", (row["id"],)
         ).fetchone()
+        opening = conn.execute(
+            "SELECT * FROM monthly_delivery_opens WHERE package_id=?", (row["id"],)
+        ).fetchone()
         contact, _ = self._contact(conn, actor, book)
-        can_ack = bool(
-            contact["eligible"]
-            and contact["user_id"] == row["contact_user_id"] == actor.user_id
-            and row["created_by"] != actor.user_id
+        is_contact = bool(
+            contact["eligible"] and contact["user_id"] == row["contact_user_id"] == actor.user_id
         )
-        return {
+        can_ack = bool(is_contact and row["created_by"] != actor.user_id)
+        latest = conn.execute(
+            "SELECT MAX(version) FROM monthly_delivery_packages WHERE book_id=?", (row["book_id"],)
+        ).fetchone()[0]
+        view = {
             **pick(
                 row,
                 "id version book_id company_id period report_id report_version manifest_sha256 created_at created_by contact_user_id",
             ),
             "status": "frozen",
+            "superseded": row["version"] != latest,
+            "can_open": is_contact,
             "can_acknowledge": can_ack and not acknowledgement,
+            "customer_opening_status": "opened" if opening else "not_opened",
             "customer_receipt_status": "acknowledged" if acknowledgement else "not_recorded",
             "external_import_status": "separate_workflow",
+            "opening": {
+                "opened_at": opening["opened_at"],
+                "opened_by": opening["opened_by"],
+            }
+            if opening
+            else None,
             "acknowledgement": {
                 "acknowledged_at": acknowledgement["created_at"],
                 "acknowledged_by": acknowledgement["created_by"],
@@ -363,6 +448,11 @@ class MonthlyPackageService:
             if acknowledgement
             else None,
         }
+        if with_files:
+            files = self._snapshot(row)["manifest"]["files"]
+            view["files"] = files
+            view["file_count"] = len(files)
+        return view
 
     def _package(self, conn, actor, book_id, package_id):
         book = self.access.book(conn, actor, book_id)
@@ -609,9 +699,42 @@ class MonthlyPackageService:
         with self.db.transaction(actor=actor) as conn:
             book, row = self._package(conn, actor, book_id, package_id)
             return {
-                "package": self._view(conn, actor, book, row),
+                "package": self._view(conn, actor, book, row, with_files=True),
                 "manifest": self._snapshot(row)["manifest"],
             }
+
+    def open(self, actor, book_id, package_id):
+        """Record that the contact reached this frozen version; never a receipt."""
+        company_id = self._company(actor, book_id)
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
+            book, row = self._package(conn, actor, book_id, package_id)
+            contact, _ = self._contact(conn, actor, book)
+            if (
+                not contact["eligible"]
+                or contact["user_id"] != actor.user_id
+                or row["contact_user_id"] != actor.user_id
+            ):
+                raise AccountingError(
+                    "只有仍有企业及账套查看权限的本版客户联系人可以打开交付包", 403
+                )
+            self._snapshot(row)
+            if not conn.execute(
+                "SELECT 1 FROM monthly_delivery_opens WHERE package_id=?", (package_id,)
+            ).fetchone():
+                conn.execute(
+                    "INSERT INTO monthly_delivery_opens(package_id,book_id,firm_id,company_id,opened_by,opened_at) VALUES(?,?,?,?,?,?)",
+                    (
+                        package_id,
+                        book_id,
+                        book["firm_id"],
+                        book["company_id"],
+                        actor.user_id,
+                        now(),
+                    ),
+                )
+            return self._view(conn, actor, book, row, with_files=True)
 
     def download(self, actor, book_id, package_id):
         with self.db.transaction(actor=actor) as conn:

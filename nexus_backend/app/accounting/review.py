@@ -162,6 +162,9 @@ class ReviewService:
         )
         value = self.accounting._draft_json(conn, draft, actor)
         issues = list(value["issues"])
+        responsibility = value["review_responsibility"]
+        if not responsibility["can_review"]:
+            issues.append(responsibility["blocked_reason"])
         if book["period_status"] != "open":
             issues.append("该会计期间已关闭，不可审核")
         mapping = conn.execute(
@@ -264,6 +267,7 @@ class ReviewService:
             "description": value["description"],
             "evidence_ref": value["evidence_ref"],
             "lines": value["lines"],
+            "review_responsibility": responsibility,
             "issues": sorted(set(issues)),
             "ready": not issues,
             "review_fingerprint": fingerprint(context),
@@ -327,7 +331,10 @@ class ReviewService:
                 (actor.firm_id, actor.user_id, request.idempotency_key),
             ).fetchone()
             if existing:
-                if existing["preview_id"] != preview_id:
+                if (
+                    existing["preview_id"] != preview_id
+                    or existing["review_reason"] != request.review_reason
+                ):
                     raise AccountingError("批量复核幂等键已用于其他预览", 409)
                 return existing["id"], items
             if conn.execute(
@@ -340,7 +347,7 @@ class ReviewService:
                 raise AccountingError("预览已过期，请重新预览当前凭证", 409)
             command_id = uuid4().hex
             conn.execute(
-                "INSERT INTO review_confirmations(id,preview_id,firm_id,created_by,idempotency_key,created_at) VALUES(?,?,?,?,?,?)",
+                "INSERT INTO review_confirmations(id,preview_id,firm_id,created_by,idempotency_key,created_at,review_reason) VALUES(?,?,?,?,?,?,?)",
                 (
                     command_id,
                     preview_id,
@@ -348,6 +355,7 @@ class ReviewService:
                     actor.user_id,
                     request.idempotency_key,
                     now(),
+                    request.review_reason,
                 ),
             )
             return command_id, items
@@ -403,7 +411,13 @@ class ReviewService:
                             )
                     for item in selected:
                         self.accounting._approve_in_transaction(
-                            conn, actor, book_id, item["draft_id"], item["expected_version"]
+                            conn,
+                            actor,
+                            book_id,
+                            item["draft_id"],
+                            item["expected_version"],
+                            item["review_responsibility"]["policy_version"],
+                            request.review_reason,
                         )
                     result = {
                         "book_id": book_id,

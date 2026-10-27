@@ -1,4 +1,6 @@
 from period_fixtures import restore_period_state
+from test_accounting import add_actor
+from review_policy_fixtures import independent_reviewer
 import json
 import sqlite3
 
@@ -19,6 +21,7 @@ def case(tmp_path):
     accounting = AccountingService(Database(tmp_path / "catalog.db"))
     bootstrap(accounting, seed_examples=False)
     book = accounting.create_book(LOCAL_ACTOR, BookCreate(name="客户科目", period="2026-10"))["id"]
+    add_actor(accounting, "catalog-review-peer", LOCAL_ACTOR.firm_id, "reviewer", book)
     return accounting, CatalogService(accounting.db), book
 
 
@@ -166,9 +169,10 @@ def test_auxiliary_receipt_frozen_after_approval(case):
     with accounting.db.transaction(write=True, actor=LOCAL_ACTOR) as conn:
         catalog.save_auxiliaries_in_transaction(conn, LOCAL_ACTOR, book, draft["id"], [{"counterparty": "供应商"}, {}])
         assert catalog.load_auxiliaries_in_transaction(conn, book, draft["id"])[0] == {"counterparty": "供应商"}
-    accounting.approve(LOCAL_ACTOR, book, draft["id"], ApprovalRequest(expected_version=1))
+    current = accounting.get_draft(LOCAL_ACTOR, book, draft["id"])
+    accounting.approve(independent_reviewer(accounting.db, LOCAL_ACTOR, book), book, draft["id"], ApprovalRequest(expected_version=current["version"]))
     with accounting.db.transaction(write=True) as conn:
-        with pytest.raises(sqlite3.IntegrityError, match="immutable"):
+        with pytest.raises(sqlite3.IntegrityError, match="immutable|Only pending draft content"):
             conn.execute("DELETE FROM draft_line_auxiliaries WHERE draft_id=?", (draft["id"],))
 
 
@@ -246,12 +250,12 @@ def test_accounting_person_fact_survives_authorization_removal_and_exports(case)
         conn.execute("INSERT INTO company_memberships(company_id,user_id,role) VALUES(?,'historical-worker','employee')", (company,))
     draft = make_draft(case)
     lines = [{**line, 'auxiliary_values': {'employee':'historical-worker'} if line['account_code']=='6602.02' else {}} for line in draft['lines']]
-    updated = accounting.update_draft(LOCAL_ACTOR, book, draft['id'], DraftUpdate(expected_version=1, description=draft['description'], lines=lines))
+    updated = accounting.update_draft(LOCAL_ACTOR, book, draft['id'], DraftUpdate(expected_version=draft['version'], description=draft['description'], lines=lines))
     assert updated['issues'] == []
     with accounting.db.transaction(write=True) as conn:
         conn.execute("DELETE FROM company_memberships WHERE user_id='historical-worker' AND company_id=?", (company,))
         conn.execute("UPDATE users SET name='改名后的账号',active=0 WHERE id='historical-worker'")
-    reviewed = accounting.approve(LOCAL_ACTOR, book, draft['id'], ApprovalRequest(expected_version=2))
+    reviewed = accounting.approve(independent_reviewer(accounting.db, LOCAL_ACTOR, book), book, draft['id'], ApprovalRequest(expected_version=updated['version']))
     assert reviewed['issues'] == [] and reviewed['lines'][0]['auxiliary_values']['employee'] == 'historical-worker'
     receipt = accounting.export(LOCAL_ACTOR, book, ExportRequest(draft_ids=[draft['id']], idempotency_key='historical-worker-export'))
     assert 'historical-worker' in receipt['csv']

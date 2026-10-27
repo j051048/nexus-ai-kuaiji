@@ -1,3 +1,4 @@
+import { approvalBody } from './review-policy';
 import { useCallback, useEffect, useRef, useState, type MutableRefObject } from 'react';
 import { api, errorMessage } from './api';
 import { downloadCsv } from './csv';
@@ -481,7 +482,7 @@ export function useBookWorkspace({
   );
 
   const approveDraft = useCallback(
-    async (draft: Draft) => {
+    async (draft: Draft, reviewReason = '') => {
       if (!session) return;
       const id = bookId;
       await runAction(
@@ -492,7 +493,12 @@ export function useBookWorkspace({
             session,
             {
               method: 'POST',
-              body: { expected_version: draft.version },
+              body: approvalBody(
+                draft.review_responsibility,
+                draft.version,
+                session.user_id,
+                reviewReason,
+              ),
             },
           );
           acceptMutatedDraft(id, approved);

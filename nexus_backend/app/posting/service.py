@@ -11,8 +11,9 @@ from datetime import date
 from uuid import uuid4
 
 from ..accounting.domain import AccountingError
-from ..accounting.invariants import money_to_cents
+from ..accounting.invariants import money_to_cents, validate_period
 from ..accounting.service import AccountingService, REVIEW_POLICY_VERSION
+from ..accounting.review_policy import ReviewPolicyService
 from .models import ManualVoucher, OpeningBind, PostDraft, ReverseVoucher
 
 
@@ -241,7 +242,12 @@ class PostingService:
         command_key,
         request_fingerprint,
         evidence_ref="",
+        review_receipt=None,
+        review_request_id=None,
+        periodic_review_id=None,
     ):
+        if not review_receipt:
+            raise AccountingError("正式凭证缺少版本绑定的人工复核凭据", 409)
         if voucher_date[:7] != book["period"]:
             raise AccountingError("记账日期必须属于当前账套期间", 422)
         number = self._next_number(conn, book["id"], voucher_type)
@@ -254,7 +260,9 @@ class PostingService:
             "INSERT INTO vouchers(id,firm_id,company_id,ledger_id,book_id,period,voucher_type,"
             "voucher_no,voucher_date,status,description,source_kind,source_id,source_version,"
             "opening_binding_id,review_policy_version,content_fingerprint,reversal_of,relation_kind,"
-            "command_id,posted_by,posted_at) VALUES(?,?,?,?,?,?,?,?,?,'posted',?,?,?,?,?,?,?,?,?,?,?,?)",
+            "command_id,posted_by,posted_at,review_request_id,periodic_review_id,review_mode,"
+            "review_maker_id,review_reviewer_id,voucher_review_policy_version,review_completion_id) "
+            "VALUES(?,?,?,?,?,?,?,?,?,'posted',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (
                 voucher_id,
                 book["firm_id"],
@@ -277,6 +285,13 @@ class PostingService:
                 command_id,
                 actor.user_id,
                 stamp,
+                review_request_id,
+                periodic_review_id,
+                review_receipt["mode"],
+                review_receipt["maker_user_id"],
+                review_receipt["reviewer_user_id"],
+                review_receipt["policy_version"],
+                voucher_id,
             ),
         )
         for index, line in enumerate(lines, start=1):
@@ -378,6 +393,7 @@ class PostingService:
                 raise AccountingError("只有已审核或已导出的草稿才能正式记账", 409)
             if int(draft["version"]) != request.expected_version:
                 raise AccountingError("草稿版本已变化，请重新审核", 409)
+            receipt = ReviewPolicyService.approved_receipt(conn, draft)
             source = conn.execute(
                 "SELECT * FROM sources WHERE id=? AND book_id=?",
                 (draft["source_id"], book["id"]),
@@ -447,13 +463,16 @@ class PostingService:
                 command_key=request.command_key,
                 request_fingerprint=fingerprint,
                 evidence_ref=source["evidence_ref"],
+                review_receipt=receipt,
             )
 
     def post_manual(self, actor, request: ManualVoucher):
         with self.db.transaction(write=True, actor=actor) as conn:
             return self.post_manual_in_transaction(conn, actor, request)
 
-    def post_manual_in_transaction(self, conn, actor, request: ManualVoucher):
+    def post_manual_in_transaction(
+        self, conn, actor, request: ManualVoucher, *, periodic_review_id=None
+    ):
         """Post a manual voucher on an existing write transaction.
 
         Periodic drafts call this so voucher creation, draft status, run status
@@ -464,6 +483,19 @@ class PostingService:
         replay = self._command_replay(conn, actor, book["id"], request.command_key, fingerprint)
         if replay:
             return replay
+        if periodic_review_id:
+            receipt = self._periodic_receipt(conn, request, periodic_review_id)
+        else:
+            from .manual_review import ManualReviewService
+
+            receipt = ManualReviewService(self.db).receipt_in_transaction(conn, actor, request)
+        if (
+            request.review_request_id
+            and conn.execute(
+                "SELECT 1 FROM vouchers WHERE review_request_id=?", (request.review_request_id,)
+            ).fetchone()
+        ):
+            raise AccountingError("该手工复核请求已经正式记账，请读取原命令回执", 409)
         binding = self._binding(conn, book["id"])
         validated, _ = self._validate_lines(conn, [line.model_dump() for line in request.lines])
         original = None
@@ -485,9 +517,15 @@ class PostingService:
             voucher_type=request.voucher_type,
             description=request.description,
             lines=validated,
-            source_kind="manual",
+            source_kind=request.relation_kind or "manual",
+            source_id=request.original_voucher_id if request.relation_kind == "reversal" else None,
+            reversal_of=request.original_voucher_id,
+            relation_kind=request.relation_kind,
             command_key=request.command_key,
             request_fingerprint=fingerprint,
+            review_receipt=receipt,
+            review_request_id=request.review_request_id,
+            periodic_review_id=periodic_review_id,
         )
         if original:
             conn.execute(
@@ -497,7 +535,7 @@ class PostingService:
                     uuid4().hex,
                     original["id"],
                     view["voucher"]["id"],
-                    "adjustment",
+                    request.relation_kind,
                     request.reason,
                     actor.user_id,
                     self._now(),
@@ -506,71 +544,75 @@ class PostingService:
             return self._voucher_view(conn, view["voucher"]["id"])
         return view
 
+    def _periodic_receipt(self, conn, request, identifier):
+        draft = conn.execute(
+            "SELECT * FROM periodic_drafts WHERE id=? AND book_id=?", (identifier, request.book_id)
+        ).fetchone()
+        if (
+            not draft
+            or draft["status"] != "approved"
+            or not draft["approved_by"]
+            or draft["approved_by"] == draft["created_by"]
+        ):
+            raise AccountingError("期末凭证缺少独立复核凭据", 409)
+        rows = conn.execute(
+            "SELECT * FROM periodic_draft_lines WHERE draft_id=? ORDER BY line_no", (identifier,)
+        ).fetchall()
+        expected = [
+            (
+                r["account_id"],
+                r["account_version"],
+                r["debit_cents"],
+                r["credit_cents"],
+                json.loads(r["aux_json"] or "{}"),
+                r["source_ref"],
+            )
+            for r in rows
+        ]
+        actual = [
+            (
+                r.account_id,
+                r.account_version,
+                money_to_cents(r.debit),
+                money_to_cents(r.credit),
+                r.auxiliary_values,
+                r.source_ref,
+            )
+            for r in request.lines
+        ]
+        if (
+            expected != actual
+            or request.description != draft["description"]
+            or request.voucher_type != "转"
+            or request.relation_kind
+        ):
+            raise AccountingError("期末复核内容与记账请求不一致", 409)
+        return {
+            "mode": "independent",
+            "maker_user_id": draft["created_by"],
+            "reviewer_user_id": draft["approved_by"],
+            "policy_version": 0,
+        }
+
     def reverse_voucher(self, actor, voucher_id, request: ReverseVoucher):
-        fingerprint = _fingerprint({"voucher_id": voucher_id, **request.model_dump()})
-        with self.db.transaction(write=True, actor=actor) as conn:
-            original = conn.execute("SELECT * FROM vouchers WHERE id=?", (voucher_id,)).fetchone()
-            if not original:
-                raise AccountingError("原凭证不存在", 404)
-            book, _ = self._book(conn, actor, original["book_id"], write=True)
-            replay = self._command_replay(conn, actor, book["id"], request.command_key, fingerprint)
-            if replay:
-                return replay
-            binding = self._binding(conn, book["id"])
-            if conn.execute(
-                "SELECT 1 FROM voucher_relations WHERE original_voucher_id=? AND kind='reversal'",
-                (voucher_id,),
-            ).fetchone():
-                raise AccountingError("该凭证已经全额冲销", 409)
-            original_lines = conn.execute(
-                "SELECT * FROM voucher_lines WHERE voucher_id=? ORDER BY line_no", (voucher_id,)
-            ).fetchall()
-            lines = [
-                {
-                    "account_id": row["account_id"],
-                    "account_version": row["account_version"],
-                    "code_snapshot": row["code_snapshot"],
-                    "name_snapshot": row["name_snapshot"],
-                    "category_snapshot": row["category_snapshot"],
-                    "normal_balance_snapshot": row["normal_balance_snapshot"],
-                    "debit_cents": row["credit_cents"],
-                    "credit_cents": row["debit_cents"],
-                    "aux_json": row["aux_json"],
-                    "source_ref": row["source_ref"],
-                }
-                for row in original_lines
-            ]
-            if sum(row["debit_cents"] for row in lines) <= 0:
-                raise AccountingError("原凭证没有可冲销金额", 409)
-            view = self._insert_voucher(
-                conn,
-                actor,
-                book,
-                binding,
-                voucher_date=request.voucher_date,
-                voucher_type=original["voucher_type"],
-                description="冲销 " + original["voucher_type"] + "-" + str(original["voucher_no"]),
-                lines=lines,
-                source_kind="reversal",
-                source_id=original["id"],
-                reversal_of=original["id"],
-                relation_kind="reversal",
-                command_key=request.command_key,
-                request_fingerprint=fingerprint,
+        if not request.review_request_id:
+            raise AccountingError("冲销凭证须先提交手工待审版本并完成复核", 409)
+        from .manual_review import ManualReviewService
+
+        with self.db.transaction(actor=actor) as conn:
+            row = ManualReviewService(self.db)._request(
+                conn, actor, request.review_request_id, "review"
             )
-            conn.execute(
-                "INSERT INTO voucher_relations(id,original_voucher_id,related_voucher_id,kind,"
-                "reason,created_by,created_at) VALUES(?,?,?,'reversal',?,?,?)",
-                (
-                    uuid4().hex,
-                    original["id"],
-                    view["voucher"]["id"],
-                    request.reason,
-                    actor.user_id,
-                    self._now(),
-                ),
-            )
-            return self._voucher_view(conn, view["voucher"]["id"])
+            payload = ManualVoucher(**json.loads(row["content_json"]), review_request_id=row["id"])
+            if (
+                payload.original_voucher_id != voucher_id
+                or payload.relation_kind != "reversal"
+                or payload.voucher_date != request.voucher_date
+                or payload.command_key != request.command_key
+                or payload.reason != request.reason
+            ):
+                raise AccountingError("冲销请求与已复核内容不一致", 409)
+        return self.post_manual(actor, payload)
 
     # ---------- read models ----------
 
@@ -624,7 +666,7 @@ class PostingService:
             (book["id"], as_of) if as_of else (book["id"],),
         ).fetchall()
         return {
-            **self._trial_balance_rows(conn, binding, opening, voucher_rows),
+            **self._trial_balance_rows(conn, binding, opening, voucher_rows, book["period"]),
             "scope": self._read_scope(book),
         }
 
@@ -648,16 +690,50 @@ class PostingService:
         if not valid:
             raise AccountingError("截止日期必须是当前会计月份内的有效日期")
 
-    def _trial_balance_rows(self, conn, binding, opening, voucher_rows):
-        accounts = {
-            row["id"]: dict(row)
-            for row in conn.execute(
-                "SELECT a.id,v.code,v.name,v.parent_account_id,v.level,v.is_leaf,"
-                "v.category,v.normal_balance FROM ledger_accounts a JOIN ledger_account_versions v "
-                "ON v.account_id=a.id AND v.version=a.current_version WHERE a.ledger_id=?",
-                (binding["ledger_id"],),
-            )
-        }
+    def _accounts(self, conn, ledger_id, period=None):
+        """Account identity as of one period, or the current versions.
+
+        A month keeps the version whose effective window covers it, so a later
+        rename, re-parenting or leaf split cannot rewrite a posted history. The
+        highest covering version wins when a month has several candidates.
+        """
+
+        rows = conn.execute(
+            "SELECT a.id,a.current_version,v.version,v.code,v.name,v.parent_account_id,"
+            "v.level,v.is_leaf,v.category,v.normal_balance,v.effective_from,v.effective_to "
+            "FROM ledger_accounts a JOIN ledger_account_versions v ON v.account_id=a.id "
+            "WHERE a.ledger_id=?",
+            (ledger_id,),
+        ).fetchall()
+        picked = {}
+        for row in rows:
+            item = dict(row)
+            if period is None:
+                if int(item["version"]) != int(item["current_version"]):
+                    continue
+            else:
+                start = item["effective_from"]
+                end = item["effective_to"]
+                if (start and start > period) or (end and end < period):
+                    continue
+            chosen = picked.get(item["id"])
+            if chosen is None or int(item["version"]) > int(chosen["version"]):
+                picked[item["id"]] = item
+        for item in picked.values():
+            item.pop("current_version", None)
+        return picked
+
+    def _accounts_for_periods(self, conn, ledger_id, periods):
+        """Union of the per-period identities, newest period keeping its view."""
+
+        merged = {}
+        for period in periods:
+            for account_id, meta in self._accounts(conn, ledger_id, period).items():
+                merged[account_id] = meta
+        return merged
+
+    def _trial_balance_rows(self, conn, binding, opening, voucher_rows, period=None):
+        accounts = self._accounts(conn, binding["ledger_id"], period)
         own = {account_id: {"opening": 0, "debit": 0, "credit": 0} for account_id in accounts}
         for row in opening:
             if row["account_id"] in own:
@@ -666,6 +742,10 @@ class PostingService:
             if row["account_id"] in own:
                 own[row["account_id"]]["debit"] += int(row["debit_cents"])
                 own[row["account_id"]]["credit"] += int(row["credit_cents"])
+        return self._balance_rows(accounts, own)
+
+    @staticmethod
+    def _balance_rows(accounts, own):
         children = {}
         for account_id, meta in accounts.items():
             parent = meta["parent_account_id"]
@@ -710,12 +790,449 @@ class PostingService:
                     "direction": "debit" if closing >= 0 else "credit",
                 }
             )
-        leaf_rows = [row for row in rows if row["is_leaf"]]
+        # The ledger's own movement never depends on how the tree is shaped:
+        # summing the leaf rows loses a parent's own posting the moment a child
+        # is added to it, while the parent row stays visible.
         totals_out = {
-            key: sum(row[key] for row in leaf_rows)
-            for key in ("opening_cents", "debit_cents", "credit_cents", "closing_cents")
+            "opening_cents": sum(values["opening"] for values in own.values()),
+            "debit_cents": sum(values["debit"] for values in own.values()),
+            "credit_cents": sum(values["credit"] for values in own.values()),
         }
+        totals_out["closing_cents"] = (
+            totals_out["opening_cents"] + totals_out["debit_cents"] - totals_out["credit_cents"]
+        )
         return {"rows": rows, "totals": totals_out}
+
+    # ---------- continuous period ranges ----------
+
+    BLOCKER_TEXT = {
+        "missing_period": "该月份尚未建立账套，无法形成连续账簿",
+        "unauthorized": "当前账号无权查看该月份账套",
+        "opening_missing": "该月份尚未绑定冻结期初",
+        "period_open": "该月份尚未关账，结果不能当作已结账账簿使用",
+        "opening_mismatch": "该月份期初与上一期间期末不一致",
+        "continuity_unverified": "上期存在银行或子账证据，但本期缺少已完成的期间桥接，结果不能当作完整账簿",
+    }
+
+    @staticmethod
+    def _aux_key(value):
+        """Canonical grouping key for one auxiliary dimension payload."""
+
+        if not value:
+            return ""
+        if isinstance(value, (bytes, bytearray)):
+            value = value.decode("utf-8", "replace")
+        if isinstance(value, str):
+            try:
+                value = json.loads(value)
+            except ValueError:
+                return value
+        if not isinstance(value, dict):
+            return json.dumps(value, sort_keys=True, ensure_ascii=False)
+        return json.dumps(
+            {str(key): str(item) for key, item in sorted(value.items())},
+            sort_keys=True,
+            ensure_ascii=False,
+        )
+
+    @staticmethod
+    def _bridge_required(conn, book_id):
+        """A period only needs a bridge when the period before it had evidence."""
+
+        for sql in (
+            "SELECT 1 FROM bank_accounts WHERE book_id=? LIMIT 1",
+            "SELECT 1 FROM subledger_items WHERE book_id=? LIMIT 1",
+        ):
+            if conn.execute(sql, (book_id,)).fetchone():
+                return True
+        return False
+
+    @staticmethod
+    def _bridge_completed(conn, book_id, source_book_id):
+        return bool(
+            conn.execute(
+                "SELECT 1 FROM subledger_period_bridges p"
+                " JOIN subledger_bridge_completions c ON c.bridge_id=p.id"
+                " WHERE p.book_id=? AND p.source_book_id=? LIMIT 1",
+                (book_id, source_book_id),
+            ).fetchone()
+        )
+
+    @staticmethod
+    def _months(start, end):
+        try:
+            validate_period(start)
+            validate_period(end)
+        except ValueError as error:
+            raise AccountingError(str(error)) from error
+        if start > end:
+            raise AccountingError("开始期间不能晚于结束期间")
+        year, month = int(start[:4]), int(start[5:])
+        last_year, last_month = int(end[:4]), int(end[5:])
+        months = []
+        while (year, month) <= (last_year, last_month):
+            months.append(f"{year:04d}-{month:02d}")
+            year, month = (year + 1, 1) if month == 12 else (year, month + 1)
+            if len(months) > 240:
+                raise AccountingError("连续账簿最多查询 240 个月")
+        return months
+
+    def _range_coverage(self, conn, actor, ledger_id, start, end, capability="read"):
+        """Enumerate every month in the range; never silently drop a gap.
+
+        Each month is classified as ok, missing, unauthorized, unbound or open.
+        Blockers are returned to the caller instead of being folded into a
+        total that would look complete.
+        """
+
+        months = self._months(start, end)
+        if not conn.execute("SELECT 1 FROM ledgers WHERE id=?", (ledger_id,)).fetchone():
+            raise AccountingError("长期账套不存在或无权访问", 404)
+        linked = {
+            row["period"]: row["book_id"]
+            for row in conn.execute(
+                "SELECT period,book_id FROM ledger_periods WHERE ledger_id=? "
+                "AND period BETWEEN ? AND ? ORDER BY period",
+                (ledger_id, start, end),
+            )
+        }
+        items, blockers, visible = [], [], 0
+        for period in months:
+            book_id = linked.get(period)
+            item = {
+                "period": period,
+                "book_id": book_id,
+                "status": "missing",
+                "opening_cents": 0,
+                "debit_cents": 0,
+                "credit_cents": 0,
+                "closing_cents": 0,
+            }
+            if book_id is None:
+                blockers.append(
+                    {
+                        "code": "missing_period",
+                        "period": period,
+                        "message": self.BLOCKER_TEXT["missing_period"],
+                    }
+                )
+            else:
+                try:
+                    book = self.accounting.access.book(conn, actor, book_id, capability)
+                except AccountingError as error:
+                    if error.status not in {403, 404}:
+                        raise
+                    item["status"] = "unauthorized"
+                    blockers.append(
+                        {
+                            "code": "unauthorized",
+                            "period": period,
+                            "message": self.BLOCKER_TEXT["unauthorized"],
+                        }
+                    )
+                else:
+                    item["status"] = "ok"
+                    item["book"] = book
+                    visible += 1
+            items.append(item)
+        if not visible:
+            raise AccountingError("长期账套不存在或无权访问", 404)
+        for item in items:
+            if item["status"] != "ok":
+                continue
+            try:
+                binding = self._binding(conn, item["book_id"])
+            except AccountingError:
+                item["status"] = "unbound"
+                blockers.append(
+                    {
+                        "code": "opening_missing",
+                        "period": item["period"],
+                        "message": self.BLOCKER_TEXT["opening_missing"],
+                    }
+                )
+                continue
+            item["binding"] = binding
+            # Continuity is keyed by account *and* auxiliary object: a balanced
+            # package can move value between two counterparts of one account
+            # and an account-level total would hide exactly that shift.
+            item["_opening"] = {
+                (row["account_id"], self._aux_key(row["aux_json"])): int(row["total"])
+                for row in conn.execute(
+                    "SELECT account_id,aux_json,COALESCE(SUM(opening_cents),0) AS total "
+                    "FROM opening_lines WHERE package_version_id=? "
+                    "GROUP BY account_id,aux_json",
+                    (binding["package_version_id"],),
+                )
+            }
+            item["_movement"] = {
+                (row["account_id"], self._aux_key(row["aux_json"])): (
+                    int(row["debit"]),
+                    int(row["credit"]),
+                )
+                for row in conn.execute(
+                    "SELECT l.account_id,l.aux_json,COALESCE(SUM(l.debit_cents),0) AS debit,"
+                    "COALESCE(SUM(l.credit_cents),0) AS credit FROM voucher_lines l "
+                    "JOIN vouchers v ON v.id=l.voucher_id WHERE v.book_id=? "
+                    "GROUP BY l.account_id,l.aux_json",
+                    (item["book_id"],),
+                )
+            }
+            item["opening_cents"] = sum(item["_opening"].values())
+            item["debit_cents"] = sum(debit for debit, _ in item["_movement"].values())
+            item["credit_cents"] = sum(credit for _, credit in item["_movement"].values())
+            item["closing_cents"] = (
+                item["opening_cents"] + item["debit_cents"] - item["credit_cents"]
+            )
+            if item["book"]["period_status"] != "closed":
+                blockers.append(
+                    {
+                        "code": "period_open",
+                        "period": item["period"],
+                        "message": self.BLOCKER_TEXT["period_open"],
+                    }
+                )
+        previous = None
+        for item in items:
+            if item["status"] != "ok":
+                continue
+            if previous is not None:
+                closed = {
+                    key: opening
+                    + previous["_movement"].get(key, (0, 0))[0]
+                    - previous["_movement"].get(key, (0, 0))[1]
+                    for key, opening in previous["_opening"].items()
+                }
+                for key, (debit, credit) in previous["_movement"].items():
+                    closed.setdefault(key, debit - credit)
+                expected = {key: value for key, value in closed.items() if value}
+                carried = {key: value for key, value in item["_opening"].items() if value}
+                if expected != carried:
+                    blockers.append(
+                        {
+                            "code": "opening_mismatch",
+                            "period": item["period"],
+                            "message": self.BLOCKER_TEXT["opening_mismatch"],
+                        }
+                    )
+                if self._bridge_required(conn, previous["book_id"]) and not (
+                    self._bridge_completed(conn, item["book_id"], previous["book_id"])
+                ):
+                    blockers.append(
+                        {
+                            "code": "continuity_unverified",
+                            "period": item["period"],
+                            "message": self.BLOCKER_TEXT["continuity_unverified"],
+                        }
+                    )
+            previous = item
+        blockers.sort(key=lambda blocker: (blocker["period"], blocker["code"]))
+        return {
+            "months": months,
+            "items": items,
+            "blockers": blockers,
+            "complete": not blockers,
+        }
+
+    @staticmethod
+    def _coverage_view(coverage):
+        return [
+            {key: value for key, value in item.items() if key != "book" and not key.startswith("_")}
+            for item in coverage["items"]
+        ]
+
+    @staticmethod
+    def _range_shape(coverage, rows):
+        return {
+            "coverage": [
+                {
+                    key: item[key]
+                    for key in (
+                        "period",
+                        "status",
+                        "opening_cents",
+                        "debit_cents",
+                        "credit_cents",
+                        "closing_cents",
+                    )
+                }
+                for item in coverage["items"]
+            ],
+            "blockers": coverage["blockers"],
+            "rows": [
+                {
+                    key: row[key]
+                    for key in (
+                        "account_id",
+                        "code",
+                        "opening_cents",
+                        "debit_cents",
+                        "credit_cents",
+                        "closing_cents",
+                    )
+                }
+                for row in rows
+            ],
+        }
+
+    @staticmethod
+    def _range_scope(coverage, ledger_id):
+        """Scope of the first readable month; an incomplete range still has one."""
+
+        for item in coverage["items"]:
+            book = item.get("book")
+            if book:
+                return {
+                    "firm_id": book["firm_id"],
+                    "company_id": book["company_id"],
+                    "ledger_id": ledger_id,
+                    "book_id": item["book_id"],
+                    "start": coverage["months"][0],
+                    "end": coverage["months"][-1],
+                    "complete": coverage["complete"],
+                }
+        raise AccountingError("长期账套不存在或无权访问", 404)
+
+    def _snapshot_names(self, conn, book_ids):
+        names = {}
+        if not book_ids:
+            return names
+        marks = ",".join("?" for _ in book_ids)
+        for row in conn.execute(
+            "SELECT DISTINCT l.account_id,l.name_snapshot FROM voucher_lines l "
+            f"JOIN vouchers v ON v.id=l.voucher_id WHERE v.book_id IN ({marks})",
+            tuple(book_ids),
+        ):
+            names.setdefault(row["account_id"], set()).add(row["name_snapshot"])
+        return names
+
+    def range_trial_balance(self, actor, ledger_id, start, end):
+        with self.db.transaction(actor=actor) as conn:
+            return self.range_trial_balance_in_transaction(conn, actor, ledger_id, start, end)
+
+    def range_trial_balance_in_transaction(
+        self, conn, actor, ledger_id, start, end, capability="read"
+    ):
+        """Balance for [start, end] aggregated from the first period's opening.
+
+        The opening package of a later month repeats the closing balance of the
+        month before it; adding those packages again would double count, so only
+        the first visible period contributes opening amounts.
+        """
+
+        coverage = self._range_coverage(conn, actor, ledger_id, start, end, capability)
+        ok_items = [item for item in coverage["items"] if item["status"] == "ok"]
+        periods = [item["period"] for item in ok_items] or [coverage["months"][-1]]
+        accounts = self._accounts_for_periods(conn, ledger_id, periods)
+        own = {account_id: {"opening": 0, "debit": 0, "credit": 0} for account_id in accounts}
+        for item in ok_items[:1]:
+            for row in conn.execute(
+                "SELECT account_id,opening_cents FROM opening_lines WHERE package_version_id=?",
+                (item["binding"]["package_version_id"],),
+            ):
+                if row["account_id"] in own:
+                    own[row["account_id"]]["opening"] += int(row["opening_cents"])
+        book_ids = [item["book_id"] for item in ok_items]
+        names = self._snapshot_names(conn, book_ids)
+        if book_ids:
+            marks = ",".join("?" for _ in book_ids)
+            for row in conn.execute(
+                "SELECT account_id,debit_cents,credit_cents FROM voucher_lines l "
+                f"JOIN vouchers v ON v.id=l.voucher_id WHERE v.book_id IN ({marks})",
+                tuple(book_ids),
+            ):
+                if row["account_id"] in own:
+                    own[row["account_id"]]["debit"] += int(row["debit_cents"])
+                    own[row["account_id"]]["credit"] += int(row["credit_cents"])
+        data = self._balance_rows(accounts, own)
+        for row in data["rows"]:
+            seen = names.get(row["account_id"], set())
+            row["names"] = sorted(seen | {row["name"]})
+            row["renamed"] = any(name != row["name"] for name in seen)
+        return {
+            **data,
+            "scope": self._range_scope(coverage, ledger_id),
+            "start": coverage["months"][0],
+            "end": coverage["months"][-1],
+            "complete": coverage["complete"],
+            "coverage": self._coverage_view(coverage),
+            "blockers": coverage["blockers"],
+            "fingerprint": _fingerprint(self._range_shape(coverage, data["rows"])),
+        }
+
+    def range_account_ledger(self, actor, ledger_id, account_id, start, end):
+        with self.db.transaction(actor=actor) as conn:
+            return self.range_account_ledger_in_transaction(
+                conn, actor, ledger_id, account_id, start, end
+            )
+
+    def range_account_ledger_in_transaction(
+        self, conn, actor, ledger_id, account_id, start, end, capability="read"
+    ):
+        coverage = self._range_coverage(conn, actor, ledger_id, start, end, capability)
+        ok_items = [item for item in coverage["items"] if item["status"] == "ok"]
+        periods = [item["period"] for item in ok_items] or [coverage["months"][-1]]
+        accounts = self._accounts_for_periods(conn, ledger_id, periods)
+        if account_id not in accounts:
+            raise AccountingError("科目不存在或不属于当前账套", 404)
+        opening = 0
+        for item in ok_items[:1]:
+            opening = int(
+                conn.execute(
+                    "SELECT COALESCE(SUM(opening_cents),0) AS total FROM opening_lines "
+                    "WHERE package_version_id=? AND account_id=?",
+                    (item["binding"]["package_version_id"], account_id),
+                ).fetchone()["total"]
+            )
+        running = opening
+        entries = []
+        for item in coverage["items"]:
+            if item["status"] != "ok":
+                continue
+            for row in conn.execute(
+                "SELECT v.id AS voucher_id,v.voucher_date,v.voucher_no,v.voucher_type,"
+                "v.description,l.debit_cents,l.credit_cents,l.aux_json,l.line_no "
+                "FROM voucher_lines l JOIN vouchers v ON v.id=l.voucher_id "
+                "WHERE v.book_id=? AND l.account_id=? "
+                "ORDER BY v.voucher_date,v.voucher_type,v.voucher_no,l.line_no",
+                (item["book_id"], account_id),
+            ):
+                running += int(row["debit_cents"]) - int(row["credit_cents"])
+                entries.append({**dict(row), "period": item["period"], "balance_cents": running})
+        shape = {
+            **self._range_shape(coverage, []),
+            "account_id": account_id,
+            "opening_cents": opening,
+            "entries": [
+                {
+                    key: entry[key]
+                    for key in (
+                        "voucher_id",
+                        "debit_cents",
+                        "credit_cents",
+                        "balance_cents",
+                    )
+                }
+                for entry in entries
+            ],
+        }
+        return {
+            "account": {
+                "id": account_id,
+                "code": accounts[account_id]["code"],
+                "name": accounts[account_id]["name"],
+            },
+            "opening_cents": opening,
+            "entries": entries,
+            "closing_cents": running,
+            "scope": self._range_scope(coverage, ledger_id),
+            "start": coverage["months"][0],
+            "end": coverage["months"][-1],
+            "complete": coverage["complete"],
+            "coverage": self._coverage_view(coverage),
+            "blockers": coverage["blockers"],
+            "fingerprint": _fingerprint(shape),
+        }
 
     def account_ledger(self, actor, book_id, account_id, as_of=None):
         with self.db.transaction(actor=actor) as conn:

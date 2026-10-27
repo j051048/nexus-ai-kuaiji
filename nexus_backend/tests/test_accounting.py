@@ -1,4 +1,5 @@
 from period_fixtures import restore_period_state, complete_month_close
+from review_policy_fixtures import independent_reviewer
 import csv
 import io
 import json
@@ -28,7 +29,9 @@ def service(tmp_path):
 
 @pytest.fixture
 def book(service):
-    return service.create_book(LOCAL_ACTOR, BookCreate(name="测试企业", period="2026-10"))["id"]
+    identifier = service.create_book(LOCAL_ACTOR, BookCreate(name="测试企业", period="2026-10"))["id"]
+    add_actor(service, "review-policy-peer", LOCAL_ACTOR.firm_id, "reviewer", identifier)
+    return identifier
 
 
 def row(**changes):
@@ -47,7 +50,8 @@ def make_draft(service, book, **changes):
 
 
 def approve(service, book, draft):
-    return service.approve(LOCAL_ACTOR, book, draft["id"], ApprovalRequest(expected_version=draft["version"]))
+    actor = independent_reviewer(service.db, LOCAL_ACTOR, book)
+    return service.approve(actor, book, draft["id"], ApprovalRequest(expected_version=draft["version"]))
 
 
 def add_actor(service, user_id="other", firm_id="other-firm", role="reviewer", book_id=None):
@@ -75,7 +79,7 @@ def test_precision_roundtrip_and_split_amounts(service, book):
     with pytest.raises(ValueError):
         signed_cents_to_money(-(10**15))
     draft = make_draft(service, book)
-    updated = service.update_draft(LOCAL_ACTOR, book, draft["id"], DraftUpdate(expected_version=1, description="分摊办公费", lines=[
+    updated = service.update_draft(LOCAL_ACTOR, book, draft["id"], DraftUpdate(expected_version=draft["version"], description="分摊办公费", lines=[
         {"account_code": "6602.02", "debit": "0.10", "credit": "0"},
         {"account_code": "6602.99", "debit": "0.20", "credit": "0"},
         {"account_code": "1002", "debit": "0", "credit": "0.30"},
@@ -131,7 +135,7 @@ def test_cross_book_source_and_account_references_are_rejected(service, book):
     with service.db.transaction(write=True) as conn:
         conn.execute("INSERT INTO accounts(book_id,code,name) VALUES(?,?,?)", (other, "9999", "仅其他账套科目"))
     with pytest.raises(AccountingError, match="不属于当前账套"):
-        service.update_draft(LOCAL_ACTOR, book, draft["id"], DraftUpdate(expected_version=1, description="非法科目", lines=[{"account_code": "9999", "debit": "0.30", "credit": "0.00"}]))
+        service.update_draft(LOCAL_ACTOR, book, draft["id"], DraftUpdate(expected_version=draft["version"], description="非法科目", lines=[{"account_code": "9999", "debit": "0.30", "credit": "0.00"}]))
     with pytest.raises(sqlite3.IntegrityError):
         with service.db.transaction(write=True) as conn:
             conn.execute("INSERT INTO draft_lines VALUES(?,?,?,?,?,?)", (draft["id"], other, 3, "9999", 30, 0))
@@ -139,16 +143,16 @@ def test_cross_book_source_and_account_references_are_rejected(service, book):
 
 def test_optimistic_version_and_approved_freeze(service, book):
     draft = make_draft(service, book)
-    update = DraftUpdate(expected_version=1, description="人工复核办公费", lines=draft["lines"])
+    update = DraftUpdate(expected_version=draft["version"], description="人工复核办公费", lines=draft["lines"])
     changed = service.update_draft(LOCAL_ACTOR, book, draft["id"], update)
-    assert changed["version"] == 2
+    assert changed["version"] > draft["version"]
     for call in (lambda: service.update_draft(LOCAL_ACTOR, book, draft["id"], update), lambda: approve(service, book, draft)):
         with pytest.raises(AccountingError, match="版本已更新"):
             call()
     approved = approve(service, book, changed)
-    assert approved["version"] == 3
+    assert approved["version"] == changed["version"] + 1
     with pytest.raises(AccountingError, match="已冻结"):
-        service.update_draft(LOCAL_ACTOR, book, draft["id"], update.model_copy(update={"expected_version": 3}))
+        service.update_draft(LOCAL_ACTOR, book, draft["id"], update.model_copy(update={"expected_version": approved["version"]}))
     with pytest.raises(AccountingError, match="已冻结"):
         service.add_evidence(LOCAL_ACTOR, book, draft["source_id"], EvidenceRequest(evidence_ref="替换证据"))
 
@@ -239,7 +243,7 @@ def test_concurrent_approval_one_success(service, book):
 ])
 def test_approval_validates_balance_amount_and_bank_direction(service, book, lines, issue):
     draft = make_draft(service, book)
-    changed = service.update_draft(LOCAL_ACTOR, book, draft["id"], DraftUpdate(expected_version=1, description="异常分录", lines=lines))
+    changed = service.update_draft(LOCAL_ACTOR, book, draft["id"], DraftUpdate(expected_version=draft["version"], description="异常分录", lines=lines))
     with pytest.raises(AccountingError, match=issue):
         approve(service, book, changed)
     assert service.get_book(LOCAL_ACTOR, book)["drafts"][0]["status"] == "draft"
@@ -424,7 +428,8 @@ def test_http_full_happy_path_and_scope_validation(client):
     assert client.post(url + "/imports", json={"source_name": "文件", "rows": [raw]}).json()["imported"] == 1
     assert client.post(url + "/suggestions", json={}).json()["created"] == 1
     draft = client.get(url).json()["drafts"][0]
-    assert client.post(url + f"/drafts/{draft['id']}/approve", json={"expected_version": 1}).status_code == 200
+    reviewer = http_independent_reviewer(client, book)
+    assert client.post(url + f"/drafts/{draft['id']}/approve", headers=reviewer, json={"expected_version": draft["version"]}).status_code == 200
     export = client.post(url + "/exports", json={"draft_ids": [draft["id"]], "idempotency_key": "http-flow-001"})
     assert export.status_code == 200 and export.json()["count"] == 1
     assert client.get("/api/books/not-authorized").status_code == 404
@@ -446,11 +451,30 @@ def test_http_review_requires_current_book_permission(client):
     assert denied.status_code in {403, 404}
     with client.app.state.service.db.transaction() as conn:
         assert conn.execute("SELECT status FROM drafts WHERE id=?", (draft["id"],)).fetchone()[0] == "draft"
+    reviewer = http_independent_reviewer(client, book)
     approved = client.post(
         url + f"/drafts/{draft['id']}/approve",
+        headers=reviewer,
         json={"expected_version": draft["version"]},
     )
     assert approved.status_code == 200
+
+
+def http_independent_reviewer(client, book_id):
+    # seed=False intentionally creates no demo staff. Register a separate
+    # synthetic identity before exercising the public assignment/review APIs.
+    from types import SimpleNamespace
+    from app.accounting.directory import DirectoryService
+    DirectoryService(client.app.state.service.db).register_identity(SimpleNamespace(
+        user_id="local-business-finance", display_name="独立测试会计", email="finance@demo.example.invalid"
+    ))
+    token = client.get("/api/session", params={"persona": "finance"}).json()["token"]
+    company_id = client.get(f"/api/books/{book_id}").json()["book"]["company_id"]
+    assert client.put(f"/api/companies/{company_id}/members", json={
+        "email": "finance@demo.example.invalid", "role": "finance", "department_id": None
+    }).status_code == 200
+    assert client.put(f"/api/books/{book_id}/members/local-business-finance", json={"role": "reviewer"}).status_code == 200
+    return {"Authorization": "Bearer " + token}
 
 
 @pytest.mark.parametrize("key,value", [("ACCOUNTING_ENV", "production"), ("APP_ENV", "production"), ("ENVIRONMENT", "staging")])

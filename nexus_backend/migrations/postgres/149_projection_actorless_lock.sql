@@ -1,3 +1,4 @@
+-- compatibility: incremental
 -- Projection maintenance has no end-user actor. It must take the same company
 -- advisory lock without impersonating a user or bypassing ordinary app checks.
 CREATE OR REPLACE FUNCTION accounting.begin_projection_company_write(

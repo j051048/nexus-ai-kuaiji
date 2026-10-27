@@ -37,8 +37,11 @@ WITH args AS (SELECT ? AS company_id,? AS firm_id,? AS period),
   (SELECT COUNT(*) FROM people) AS active_members,
   (SELECT COUNT(*) FROM submitters) AS submitters,
   (SELECT COUNT(*) FROM month_books) AS books,
-  (SELECT COUNT(*) FROM month_books b WHERE EXISTS(SELECT 1 FROM capabilities x WHERE x.book_id=b.id AND x.can_edit=1)
-     AND EXISTS(SELECT 1 FROM capabilities x WHERE x.book_id=b.id AND x.can_review=1)) AS staffed_books,
+  (SELECT COUNT(*) FROM month_books b JOIN rr_book_policies rp ON rp.book_id=b.id
+    WHERE EXISTS(SELECT 1 FROM capabilities x JOIN capabilities y ON y.book_id=x.book_id
+      WHERE x.book_id=b.id AND x.can_edit=1 AND y.can_review=1
+       AND (rp.mode='single_operator' OR x.user_id<>y.user_id))) AS staffed_books,
+  (SELECT COUNT(*) FROM month_books b JOIN rr_book_policies rp ON rp.book_id=b.id WHERE rp.mode='single_operator') AS single_operator_books,
   (SELECT COUNT(*) FROM submitters s WHERE
     (c.mode='direct' AND NOT EXISTS(SELECT 1 FROM capabilities x WHERE x.can_edit=1 AND x.user_id<>s.user_id))
     OR (c.mode='department' AND NOT EXISTS(
@@ -125,7 +128,7 @@ def company_onboarding(service, actor, company_id, period):
                 "complete": facts["books"] > 0 and facts["staffed_books"] == facts["books"],
                 "required": True,
                 "tab": "books",
-                "detail": f"本月 {facts['books']} 个账套，{facts['staffed_books']} 个具有有效经办及复核权限。",
+                "detail": f"本月 {facts['books']} 个账套，{facts['staffed_books']} 个满足当前复核政策的人员分工；{facts['single_operator_books']} 个显式单人办理（非独立复核）。独立复核须有不同经办人与复核人。",
             },
             {
                 "id": "trial",

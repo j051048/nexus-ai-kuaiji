@@ -1,5 +1,7 @@
 """C01 remaining controls: dimensions, capacity and independent bank evidence."""
 
+from review_policy_fixtures import post_reviewed_manual, seed_pre_review_manual_voucher
+
 import json
 import sqlite3
 from uuid import uuid4
@@ -36,7 +38,8 @@ def command(case, voucher, item, amount="3000.00"):
 
 
 def payment(case, account, bank, aux=None):
-    return PostingService(case.db).post_manual(
+    return post_reviewed_manual(
+        PostingService(case.db),
         case.manager,
         ManualVoucher(
             book_id=case.book["id"],
@@ -140,7 +143,8 @@ def test_legacy_unresolved_adjustments_cannot_cancel_each_other(tmp_path, monkey
     c = business.__wrapped__(tmp_path)
     opening, posting = setup_b03(c)
     sub = SubledgerService(c.db)
-    voucher = posting.post_manual(
+    voucher = seed_pre_review_manual_voucher(
+        posting,
         c.manager,
         ManualVoucher(
             book_id=c.book["id"],
@@ -241,7 +245,8 @@ def test_adjustment_requires_account_and_independent_exact_resolution(coverage_c
         payable = conn.execute(
             "SELECT a.id FROM ledger_accounts a JOIN ledger_account_versions v ON v.account_id=a.id WHERE v.code='2202'"
         ).fetchone()[0]
-    voucher = PostingService(c.db).post_manual(
+    voucher = post_reviewed_manual(
+        PostingService(c.db),
         c.manager,
         ManualVoucher(
             book_id=c.book["id"],
@@ -334,7 +339,8 @@ def test_bank_net_zero_cannot_hide_unmatched_formal_or_wrong_opening(coverage_ca
         ).fetchone()[0]
 
     def post(amount, income=False):
-        return PostingService(c.db).post_manual(
+        return post_reviewed_manual(
+            PostingService(c.db),
             c.manager,
             ManualVoucher(
                 book_id=c.book["id"],
@@ -420,7 +426,8 @@ def test_manual_legacy_bank_lines_without_account_and_original_cannot_close(busi
     c = business
     opening, posting = setup_b03(c)
     sub = SubledgerService(c.db)
-    voucher = posting.post_manual(
+    voucher = post_reviewed_manual(
+        posting,
         c.manager,
         ManualVoucher(
             book_id=c.book["id"],

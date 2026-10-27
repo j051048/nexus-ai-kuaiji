@@ -90,7 +90,7 @@ def test_auxiliary_values_frozen_when_draft_approved_sql(business_case):
         conn.execute("INSERT INTO draft_lines VALUES(?,?,1,'2202',0,1234)", (draft_id, case.book))
         conn.execute("INSERT INTO draft_line_auxiliaries VALUES(?,?,0,?)", (draft_id, case.book, json.dumps({'counterparty':'供应商'})))
     with case.db.transaction(write=True, actor=case.owner) as conn:
-        conn.execute("UPDATE drafts SET status='approved',approved_by=?,approved_at='2026-10-12T00:00:00+00:00' WHERE id=?", (case.owner.user_id, draft_id))
+        conn.execute("UPDATE drafts SET status='approved',version=version+1,approved_by=?,approved_at='2026-10-12T00:00:00+00:00' WHERE id=?", (case.owner.user_id, draft_id))
     with pytest.raises(case.psycopg.Error, match="draft and open period"):
         with case.db.transaction(write=True, actor=case.owner) as conn:
             conn.execute("DELETE FROM draft_line_auxiliaries WHERE draft_id=?", (draft_id,))
@@ -127,10 +127,10 @@ def test_proven_accounting_employee_outlives_membership_without_granting_access(
     case.service.suggestions(case.owner,case.book)
     draft = case.service.get_book(case.owner,case.book)['drafts'][0]
     lines = [{**line,'auxiliary_values':{'employee':case.employee.user_id} if line['account_code']=='6602.02' else {}} for line in draft['lines']]
-    case.service.update_draft(case.owner,case.book,draft['id'],DraftUpdate(expected_version=1,description=draft['description'],lines=lines))
+    updated = case.service.update_draft(case.owner,case.book,draft['id'],DraftUpdate(expected_version=draft['version'],description=draft['description'],lines=lines))
     with case.db.transaction(write=True,actor=case.owner) as conn:
         conn.execute("DELETE FROM company_memberships WHERE company_id=? AND user_id=?",(case.company,case.employee.user_id))
-    reviewed = case.service.approve(case.owner,case.book,draft['id'],ApprovalRequest(expected_version=2))
+    reviewed = case.service.approve(case.reviewer,case.book,draft['id'],ApprovalRequest(expected_version=updated['version']))
     assert reviewed['issues'] == []
     receipt = case.service.export(case.owner,case.book,ExportRequest(draft_ids=[draft['id']],idempotency_key='historical-person-export'))
     assert case.employee.user_id in receipt['csv']

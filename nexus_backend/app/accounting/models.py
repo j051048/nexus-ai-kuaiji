@@ -99,6 +99,8 @@ class DraftUpdate(InputModel):
 
 class ApprovalRequest(InputModel):
     expected_version: int = Field(strict=True, ge=1)
+    expected_policy_version: int | None = Field(default=None, strict=True, ge=0)
+    review_reason: StrictStr = Field(default="", max_length=1000)
 
 
 class ExportRequest(InputModel):

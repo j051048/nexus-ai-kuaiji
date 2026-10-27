@@ -16,6 +16,12 @@ import { reviewGroups, reviewSelection, reviewTemplateLabels } from './review-he
 import type { ReviewList, ReviewPreview, ReviewReceipt, ReviewSelection } from './review-types';
 import { ReviewPackageWorkbench } from './ReviewPackageWorkbench';
 import { InlineReviewDrawer, type InlineReviewTarget } from './InlineReviewDrawer';
+import { ReviewResponsibility } from './ReviewResponsibility';
+import {
+  boundReviewReason,
+  canApproveResponsibility,
+  parseReviewResponsibility,
+} from './review-policy';
 import { clearReviewSession, readReviewWorkspace, saveReviewWorkspace } from './review-session';
 import type { Draft, Session } from './types';
 import './review.css';
@@ -60,6 +66,22 @@ export function ReviewWorkbench({
   );
   const [receipt, setReceipt] = useState<ReviewReceipt | null>(null);
   const [acknowledged, setAcknowledged] = useState(false);
+  const [reviewReason, setReviewReason] = useState(remembered.current?.reviewReason ?? '');
+  const [confirmationReason, setConfirmationReason] = useState<string | null>(
+    remembered.current?.confirmationReason ?? null,
+  );
+  const reasonRequired =
+    preview?.items.some((item) => item.review_responsibility?.mode === 'single_operator') ?? false;
+  const reviewPolicyReady =
+    !!preview &&
+    preview.items
+      .filter((item) => item.ready)
+      .every((item) =>
+        canApproveResponsibility(
+          parseReviewResponsibility(item.review_responsibility, item.expected_version),
+          session.user_id,
+        ),
+      );
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
@@ -93,6 +115,8 @@ export function ReviewWorkbench({
     setPackageItems(null);
     setReceipt(null);
     setAcknowledged(false);
+    setReviewReason('');
+    setConfirmationReason(null);
     setError('');
     commandKey.current = '';
   }, []);
@@ -186,6 +210,8 @@ export function ReviewWorkbench({
       previewId: preview?.id ?? null,
       commandKey: commandKey.current,
       packageItems,
+      reviewReason,
+      confirmationReason,
     });
   }, [
     session.scope_key,
@@ -199,6 +225,8 @@ export function ReviewWorkbench({
     packageItems,
     loading,
     restoring,
+    reviewReason,
+    confirmationReason,
   ]);
   useEffect(() => {
     const revoke = () => {
@@ -246,6 +274,8 @@ export function ReviewWorkbench({
       if (!active.current || scopeRef.current !== started || generation !== epoch.current) return;
       setPreview(value);
       setReceipt(null);
+      setReviewReason('');
+      setConfirmationReason(null);
       setAcknowledged(false);
       commandKey.current = crypto.randomUUID();
     } catch (failure) {
@@ -260,6 +290,9 @@ export function ReviewWorkbench({
   }
   async function confirm() {
     if (!preview || !acknowledged || receipt || locked.current || !commandKey.current) return;
+    if (!reviewPolicyReady || (reasonRequired && reviewReason.trim().length < 3)) return;
+    const reason = boundReviewReason(confirmationReason, reviewReason);
+    setConfirmationReason(reason);
     locked.current = true;
     setBusy('confirm');
     setError('');
@@ -269,7 +302,13 @@ export function ReviewWorkbench({
       const value = await api<ReviewReceipt>(
         `/review/previews/${encodeURIComponent(preview.id)}/confirm`,
         session,
-        { method: 'POST', body: { idempotency_key: commandKey.current } },
+        {
+          method: 'POST',
+          body: {
+            idempotency_key: commandKey.current,
+            review_reason: reason,
+          },
+        },
       );
       if (!active.current || scopeRef.current !== started || generation !== epoch.current) return;
       setReceipt(value);
@@ -289,6 +328,8 @@ export function ReviewWorkbench({
     setReceipt(null);
     setAcknowledged(false);
     commandKey.current = '';
+    setReviewReason('');
+    setConfirmationReason(null);
     setList((old) =>
       old
         ? {
@@ -637,6 +678,11 @@ export function ReviewWorkbench({
                     </strong>
                   </div>
                   <h3>{item.description}</h3>
+                  <ReviewResponsibility
+                    value={item.review_responsibility}
+                    version={item.expected_version}
+                    userId={session.user_id}
+                  />
                   <p>
                     {item.book_name} · ¥{item.source_amount} · 草稿版本 {item.expected_version}
                     {item.fact_version !== null && ` · 事实版本 ${item.fact_version}`}
@@ -718,6 +764,28 @@ export function ReviewWorkbench({
                 </section>
               ) : (
                 <section className="batch-review-confirm">
+                  {reasonRequired && (
+                    <label>
+                      本批单人办理说明（非独立复核）
+                      <textarea
+                        value={reviewReason}
+                        maxLength={1000}
+                        disabled={!!busy || confirmationReason !== null}
+                        onChange={(event) => setReviewReason(event.target.value)}
+                        placeholder="请说明核对依据，至少 3 个字"
+                      />
+                    </label>
+                  )}
+                  {confirmationReason !== null && reasonRequired && (
+                    <p className="field-help">
+                      已保留首次提交的办理说明，重试将使用同一说明；修改说明须重新准备预览。
+                    </p>
+                  )}
+                  {!reviewPolicyReady && (
+                    <p role="status">
+                      制单责任或复核政策尚未通过，请重新准备预览并按各项提示处理。
+                    </p>
+                  )}
                   <label>
                     <input
                       type="checkbox"
@@ -739,7 +807,13 @@ export function ReviewWorkbench({
                   <button
                     type="button"
                     className="button primary"
-                    disabled={!!busy || !acknowledged || preview.ready_count === 0}
+                    disabled={
+                      !!busy ||
+                      !acknowledged ||
+                      preview.ready_count === 0 ||
+                      !reviewPolicyReady ||
+                      (reasonRequired && reviewReason.trim().length < 3)
+                    }
                     onClick={() => void confirm()}
                   >
                     {busy === 'confirm' ? (

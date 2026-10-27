@@ -246,3 +246,28 @@
     flex-wrap: wrap;
   }
 }
+
+/* 阻断项面板：先说「还不能确认」，再列原因与下一位负责人。 */
+.batch-preview-blockers {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--status-warning);
+  border-radius: var(--radius-md);
+  background: var(--status-warning-soft);
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-body);
+}
+.batch-preview-blockers ul {
+  padding-left: 18px;
+  color: var(--text-muted);
+}
+.batch-preview-blockers details {
+  margin-top: 4px;
+}
+.batch-preview-blockers details code {
+  display: block;
+  overflow-wrap: anywhere;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}

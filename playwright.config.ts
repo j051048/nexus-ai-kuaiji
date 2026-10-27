@@ -30,6 +30,10 @@ export const config = defineConfig({
   fullyParallel: false,
   workers: 1,
   timeout: 30_000,
+  // Dev mode transforms modules on demand; warm the entry bundle once so a cold
+  // compile does not consume the 30s a frozen case may spend on product
+  // behaviour. Preview runs prebuilt assets and needs no warm-up.
+  ...(runtime.mode === 'dev' ? { globalSetup: './e2e/warmup.ts' } : {}),
   use: { baseURL: runtime.baseURL, trace: core ? 'off' : 'retain-on-failure' },
   webServer: [
     {

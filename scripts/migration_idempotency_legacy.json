@@ -1,0 +1,342 @@
+{
+ "version": 2,
+ "approved": [
+  {
+   "file": "153_c01_auxiliary_entity_contract.sql",
+   "sha256": "b6a82ff5c2f17683027d2c8b965e4c43d980b4c1d0f6cc7220643190284eae71",
+   "approved_on": "2026-10-25",
+   "basis": "Q01 验收记录登记（docs/Q01_ACCEPTANCE_20261025.md §4）：该文件已随 C01 迁移应用，字节不可变；违规逐条登记，任何改动都必须以新的前向迁移解决。"
+  },
+  {
+   "file": "154_bank_coverage_evidence.sql",
+   "sha256": "046114cdddfd901a59ede5ac59ac5d3b70ffdd052f5bbed76dfffe14a6ecd140",
+   "approved_on": "2026-10-25",
+   "basis": "Q01 验收记录登记（docs/Q01_ACCEPTANCE_20261025.md §4）：该文件已随 C01 迁移应用，字节不可变；违规逐条登记，任何改动都必须以新的前向迁移解决。"
+  },
+  {
+   "file": "155_monthly_delivery_packages.sql",
+   "sha256": "8d6fd06abe0453c0a2e891da4b68dba99eaa86a6a931c179dd4a7d4d45da1d52",
+   "approved_on": "2026-10-25",
+   "basis": "Q01 验收记录登记（docs/Q01_ACCEPTANCE_20261025.md §4）：该文件已随 C01 迁移应用，字节不可变；违规逐条登记，任何改动都必须以新的前向迁移解决。"
+  },
+  {
+   "file": "157_c01_exact_reconciliation.sql",
+   "sha256": "ee2ec8c85c355936a05b2b52e8bf6ea6c94982912db182e7bfd15644cb6518b4",
+   "approved_on": "2026-10-25",
+   "basis": "Q01 验收记录登记（docs/Q01_ACCEPTANCE_20261025.md §4）：该文件已随 C01 迁移应用，字节不可变；违规逐条登记，任何改动都必须以新的前向迁移解决。"
+  },
+  {
+   "file": "158_c01_period_bridge.sql",
+   "sha256": "2e58ff7b8910b7713077ae3368a708306b6ad2decee9ba1b9853fb4a757e0d43",
+   "approved_on": "2026-10-25",
+   "basis": "Q01 验收记录登记（docs/Q01_ACCEPTANCE_20261025.md §4）：该文件已随 C01 迁移应用，字节不可变；违规逐条登记，任何改动都必须以新的前向迁移解决。"
+  },
+  {
+   "file": "159_recovery_release_audit.sql",
+   "sha256": "e3d47e2cb15e7eb6dacb268da9a177e6065105e36b4a096d60f0f5c48097508e",
+   "approved_on": "2026-10-25",
+   "basis": "Q01 验收记录登记（docs/Q01_ACCEPTANCE_20261025.md §4）：该文件已随 C01 迁移应用，字节不可变；违规逐条登记，任何改动都必须以新的前向迁移解决。"
+  },
+  {
+   "file": "160_c01_evidence_reference_freeze.sql",
+   "sha256": "d830fa656e9923d982b9a738795868f5b5dbad1f427905ca771efaeeebad54d0",
+   "approved_on": "2026-10-25",
+   "basis": "Q01 验收记录登记（docs/Q01_ACCEPTANCE_20261025.md §4）：该文件已随 C01 迁移应用，字节不可变；违规逐条登记，任何改动都必须以新的前向迁移解决。"
+  }
+ ],
+ "entries": [
+  {
+   "file": "153_c01_auxiliary_entity_contract.sql",
+   "sha256": "b6a82ff5c2f17683027d2c8b965e4c43d980b4c1d0f6cc7220643190284eae71",
+   "reason": "C01 辅助核算契约早于幂等规则落地；这些函数随后续迁移再次替换，改写历史文件会改变已应用迁移的校验和。",
+   "violations": [
+    {
+     "rule": "function_not_create_or_replace",
+     "object": "accounting.c01_aux_requirements_valid"
+    },
+    {
+     "rule": "function_not_create_or_replace",
+     "object": "accounting.c01_subledger_aux_valid"
+    },
+    {
+     "rule": "function_not_create_or_replace",
+     "object": "accounting.c01_control_aux_guard"
+    },
+    {
+     "rule": "function_not_create_or_replace",
+     "object": "accounting.c01_item_aux_guard"
+    },
+    {
+     "rule": "trigger_without_drop_if_exists",
+     "object": "c01_control_aux_guard on accounting.subledger_control_accounts"
+    },
+    {
+     "rule": "trigger_without_drop_if_exists",
+     "object": "c01_item_aux_guard on accounting.subledger_items"
+    }
+   ]
+  },
+  {
+   "file": "154_bank_coverage_evidence.sql",
+   "sha256": "046114cdddfd901a59ede5ac59ac5d3b70ffdd052f5bbed76dfffe14a6ecd140",
+   "reason": "银行覆盖证据守卫属 C01 首批迁移，创建函数未用 OR REPLACE，触发器未先 DROP。",
+   "violations": [
+    {
+     "rule": "function_not_create_or_replace",
+     "object": "accounting.bank_coverage_evidence_guard"
+    },
+    {
+     "rule": "trigger_without_drop_if_exists",
+     "object": "c01_bank_coverage_evidence on accounting.bank_statement_coverages"
+    }
+   ]
+  },
+  {
+   "file": "155_monthly_delivery_packages.sql",
+   "sha256": "8d6fd06abe0453c0a2e891da4b68dba99eaa86a6a931c179dd4a7d4d45da1d52",
+   "reason": "月度交付包守卫含动态表名触发器，历史上按单次执行编写；文件已应用，字节不可变。",
+   "violations": [
+    {
+     "rule": "function_not_create_or_replace",
+     "object": "accounting.monthly_delivery_contact_eligible"
+    },
+    {
+     "rule": "function_not_create_or_replace",
+     "object": "accounting.monthly_delivery_guard"
+    }
+   ]
+  },
+  {
+   "file": "157_c01_exact_reconciliation.sql",
+   "sha256": "ee2ec8c85c355936a05b2b52e8bf6ea6c94982912db182e7bfd15644cb6518b4",
+   "reason": "精确对账守卫在多张子账表上重复建触发器，均未先 DROP；属已应用的历史写法。",
+   "violations": [
+    {
+     "rule": "function_not_create_or_replace",
+     "object": "accounting.c01_exact_fact_guard"
+    },
+    {
+     "rule": "trigger_without_drop_if_exists",
+     "object": "c01_exact_fact_guard on accounting.subledger_allocations"
+    },
+    {
+     "rule": "trigger_without_drop_if_exists",
+     "object": "c01_exact_fact_guard on accounting.subledger_allocation_reversals"
+    },
+    {
+     "rule": "trigger_without_drop_if_exists",
+     "object": "c01_exact_fact_guard on accounting.bank_accounts"
+    },
+    {
+     "rule": "trigger_without_drop_if_exists",
+     "object": "c01_exact_fact_guard on accounting.bank_recon_adjustments"
+    },
+    {
+     "rule": "trigger_without_drop_if_exists",
+     "object": "c01_exact_fact_guard on accounting.bank_adjustment_resolutions"
+    },
+    {
+     "rule": "trigger_without_drop_if_exists",
+     "object": "c01_exact_fact_guard on accounting.bank_statement_lines"
+    },
+    {
+     "rule": "trigger_without_drop_if_exists",
+     "object": "c01_resolution_company on accounting.bank_adjustment_resolutions"
+    },
+    {
+     "rule": "trigger_without_drop_if_exists",
+     "object": "c01_resolution_closed on accounting.bank_adjustment_resolutions"
+    },
+    {
+     "rule": "trigger_without_drop_if_exists",
+     "object": "c01_resolution_revision on accounting.bank_adjustment_resolutions"
+    },
+    {
+     "rule": "trigger_without_drop_if_exists",
+     "object": "c01_resolution_immutable on accounting.bank_adjustment_resolutions"
+    },
+    {
+     "rule": "trigger_without_drop_if_exists",
+     "object": "c01_adjustment_immutable on accounting.bank_recon_adjustments"
+    }
+   ]
+  },
+  {
+   "file": "158_c01_period_bridge.sql",
+   "sha256": "2e58ff7b8910b7713077ae3368a708306b6ad2decee9ba1b9853fb4a757e0d43",
+   "reason": "期间桥接迁移为 16 张表成对创建守卫触发器（32 条），历史上未做 DROP IF EXISTS。",
+   "violations": [
+    {
+     "rule": "function_not_create_or_replace",
+     "object": "accounting.c01_prior_period"
+    },
+    {
+     "rule": "function_not_create_or_replace",
+     "object": "accounting.c01_bridge_guard"
+    },
+    {
+     "rule": "trigger_without_drop_if_exists",
+     "object": "c01_bridge_guard on accounting.ledger_bank_identities"
+    },
+    {
+     "rule": "trigger_without_drop_if_exists",
+     "object": "c01_bridge_company on accounting.ledger_bank_identities"
+    },
+    {
+     "rule": "trigger_without_drop_if_exists",
+     "object": "c01_bridge_closed on accounting.ledger_bank_identities"
+    },
+    {
+     "rule": "trigger_without_drop_if_exists",
+     "object": "c01_bridge_revision on accounting.ledger_bank_identities"
+    },
+    {
+     "rule": "trigger_without_drop_if_exists",
+     "object": "c01_bridge_immutable on accounting.ledger_bank_identities"
+    },
+    {
+     "rule": "trigger_without_drop_if_exists",
+     "object": "c01_bridge_guard on accounting.bank_identity_bindings"
+    },
+    {
+     "rule": "trigger_without_drop_if_exists",
+     "object": "c01_bridge_company on accounting.bank_identity_bindings"
+    },
+    {
+     "rule": "trigger_without_drop_if_exists",
+     "object": "c01_bridge_closed on accounting.bank_identity_bindings"
+    },
+    {
+     "rule": "trigger_without_drop_if_exists",
+     "object": "c01_bridge_revision on accounting.bank_identity_bindings"
+    },
+    {
+     "rule": "trigger_without_drop_if_exists",
+     "object": "c01_bridge_immutable on accounting.bank_identity_bindings"
+    },
+    {
+     "rule": "trigger_without_drop_if_exists",
+     "object": "c01_bridge_guard on accounting.bank_identity_reviews"
+    },
+    {
+     "rule": "trigger_without_drop_if_exists",
+     "object": "c01_bridge_company on accounting.bank_identity_reviews"
+    },
+    {
+     "rule": "trigger_without_drop_if_exists",
+     "object": "c01_bridge_closed on accounting.bank_identity_reviews"
+    },
+    {
+     "rule": "trigger_without_drop_if_exists",
+     "object": "c01_bridge_revision on accounting.bank_identity_reviews"
+    },
+    {
+     "rule": "trigger_without_drop_if_exists",
+     "object": "c01_bridge_immutable on accounting.bank_identity_reviews"
+    },
+    {
+     "rule": "trigger_without_drop_if_exists",
+     "object": "c01_bridge_guard on accounting.subledger_period_bridges"
+    },
+    {
+     "rule": "trigger_without_drop_if_exists",
+     "object": "c01_bridge_company on accounting.subledger_period_bridges"
+    },
+    {
+     "rule": "trigger_without_drop_if_exists",
+     "object": "c01_bridge_closed on accounting.subledger_period_bridges"
+    },
+    {
+     "rule": "trigger_without_drop_if_exists",
+     "object": "c01_bridge_revision on accounting.subledger_period_bridges"
+    },
+    {
+     "rule": "trigger_without_drop_if_exists",
+     "object": "c01_bridge_immutable on accounting.subledger_period_bridges"
+    },
+    {
+     "rule": "trigger_without_drop_if_exists",
+     "object": "c01_bridge_guard on accounting.subledger_bridge_items"
+    },
+    {
+     "rule": "trigger_without_drop_if_exists",
+     "object": "c01_bridge_company on accounting.subledger_bridge_items"
+    },
+    {
+     "rule": "trigger_without_drop_if_exists",
+     "object": "c01_bridge_closed on accounting.subledger_bridge_items"
+    },
+    {
+     "rule": "trigger_without_drop_if_exists",
+     "object": "c01_bridge_revision on accounting.subledger_bridge_items"
+    },
+    {
+     "rule": "trigger_without_drop_if_exists",
+     "object": "c01_bridge_immutable on accounting.subledger_bridge_items"
+    },
+    {
+     "rule": "trigger_without_drop_if_exists",
+     "object": "c01_bridge_guard on accounting.subledger_bridge_completions"
+    },
+    {
+     "rule": "trigger_without_drop_if_exists",
+     "object": "c01_bridge_company on accounting.subledger_bridge_completions"
+    },
+    {
+     "rule": "trigger_without_drop_if_exists",
+     "object": "c01_bridge_closed on accounting.subledger_bridge_completions"
+    },
+    {
+     "rule": "trigger_without_drop_if_exists",
+     "object": "c01_bridge_revision on accounting.subledger_bridge_completions"
+    },
+    {
+     "rule": "trigger_without_drop_if_exists",
+     "object": "c01_bridge_immutable on accounting.subledger_bridge_completions"
+    }
+   ]
+  },
+  {
+   "file": "159_recovery_release_audit.sql",
+   "sha256": "e3d47e2cb15e7eb6dacb268da9a177e6065105e36b4a096d60f0f5c48097508e",
+   "reason": "恢复放行审计只增表守卫创建时未用 OR REPLACE，触发器未先 DROP。",
+   "violations": [
+    {
+     "rule": "function_not_create_or_replace",
+     "object": "accounting.recovery_audit_append_only"
+    },
+    {
+     "rule": "trigger_without_drop_if_exists",
+     "object": "recovery_audit_immutable on accounting.recovery_release_audit"
+    }
+   ]
+  },
+  {
+   "file": "160_c01_evidence_reference_freeze.sql",
+   "sha256": "d830fa656e9923d982b9a738795868f5b5dbad1f427905ca771efaeeebad54d0",
+   "reason": "证据引用冻结守卫跨多表建触发器；文件已应用，字节不可变。",
+   "violations": [
+    {
+     "rule": "function_not_create_or_replace",
+     "object": "accounting.c01_evidence_reference_guard"
+    },
+    {
+     "rule": "trigger_without_drop_if_exists",
+     "object": "c01_evidence_reference_guard on accounting.bank_statement_lines"
+    },
+    {
+     "rule": "trigger_without_drop_if_exists",
+     "object": "c01_evidence_reference_guard on accounting.bank_accounts"
+    },
+    {
+     "rule": "trigger_without_drop_if_exists",
+     "object": "c01_evidence_reference_guard on accounting.subledger_allocation_requests"
+    },
+    {
+     "rule": "trigger_without_drop_if_exists",
+     "object": "c01_allocation_request_immutable on accounting.subledger_allocation_requests"
+    }
+   ]
+  }
+ ]
+}

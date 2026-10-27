@@ -44,6 +44,7 @@ from test_monthly_delivery_postgres import p0_case, p0_pg  # noqa: F401
 from test_p0_close_upload_postgres import _await_blocked, _runtime_transaction
 from test_business_postgres import business_case, business_postgres  # noqa: F401
 from test_c01_bank_evidence_postgres import coverage_pg  # noqa: F401
+from review_policy_fixtures import post_reviewed_manual
 
 
 def _accounts(c):
@@ -61,7 +62,8 @@ def _accounts(c):
 
 
 def _post(c, accounts, income=True):
-    return PostingService(c.db).post_manual(
+    return post_reviewed_manual(
+        PostingService(c.db),
         c.manager,
         ManualVoucher(
             book_id=c.book["id"],
@@ -582,7 +584,8 @@ def auxiliary_case(declaration_case, request):
 def _aux_voucher(a, *, project=1, payment=True):
     aux = {"counterparty": a.party["id"], "project": a.projects[project]["id"]}
     control_debit = payment == (a.kind in {"payable", "advance_received"})
-    return PostingService(a.c.db).post_manual(
+    return post_reviewed_manual(
+        PostingService(a.c.db),
         a.c.manager,
         ManualVoucher(
             book_id=a.c.book["id"],
@@ -1066,7 +1069,8 @@ def test_pg_two_bank_differences_cannot_cancel_at_total_level(bank_case):
         )
     _review(bank, bank.sub.declare_bank_coverage(c.manager, request))
     assert bank.sub.bank_reconciliation(c.manager, c.book["id"])["passed"] is True
-    PostingService(c.db).post_manual(
+    post_reviewed_manual(
+        PostingService(c.db),
         c.manager,
         ManualVoucher(
             book_id=c.book["id"],

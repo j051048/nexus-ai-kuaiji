@@ -1,5 +1,7 @@
 """Read/export contracts reuse formal posting, never provisional draft balances."""
 
+from review_policy_fixtures import post_reviewed_manual
+
 import csv
 import io
 
@@ -23,7 +25,8 @@ def formal(business):
             book_id=case.book["id"], package_version_id=opening["version_id"], reason="展示冻结期初"
         ),
     )
-    voucher = posting.post_manual(
+    voucher = post_reviewed_manual(
+        posting,
         case.manager,
         ManualVoucher(
             command_key="formal-display-001",

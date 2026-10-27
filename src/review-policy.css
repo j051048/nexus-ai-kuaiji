@@ -1,0 +1,112 @@
+.review-policy-panel,
+.manual-review-panel,
+.review-responsibility,
+.review-responsibility-claim {
+  min-width: 0;
+  padding: var(--space-4);
+  margin-block: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text-primary);
+  font: var(--font-size-base) / var(--line-height-body) var(--font-sans);
+  overflow-wrap: anywhere;
+}
+.review-responsibility {
+  background: var(--surface-soft);
+}
+.review-policy-panel h3,
+.manual-review-panel h3,
+.manual-review-panel h4 {
+  margin: 0 0 var(--space-2);
+  font-size: var(--font-size-base);
+  font-weight: var(--weight-strong);
+}
+.review-policy-panel p,
+.manual-review-panel p,
+.review-responsibility p {
+  margin: var(--space-2) 0;
+}
+.review-policy-panel form,
+.review-policy-panel label,
+.manual-review-panel form,
+.manual-review-panel label,
+.review-responsibility-claim label {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.review-policy-panel form,
+.manual-review-panel form {
+  gap: var(--space-4);
+  margin-block: var(--space-3);
+}
+.review-policy-panel textarea,
+.review-policy-panel select,
+.manual-review-panel input,
+.manual-review-panel select,
+.manual-review-panel textarea,
+.review-responsibility-claim textarea {
+  width: 100%;
+  box-sizing: border-box;
+  min-width: 0;
+}
+.review-policy-panel textarea,
+.manual-review-panel textarea,
+.review-responsibility-claim textarea {
+  min-height: 80px;
+  resize: vertical;
+}
+.manual-review-panel fieldset {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+  margin: 0;
+}
+.manual-review-panel legend {
+  padding-inline: var(--space-2);
+  font-weight: var(--weight-medium);
+}
+.manual-review-panel .table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+}
+.manual-review-panel table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+.manual-review-panel td,
+.manual-review-panel th {
+  padding: var(--space-2);
+  border-bottom: 1px solid var(--line);
+}
+.manual-review-panel td small {
+  display: block;
+}
+.manual-review-panel summary {
+  cursor: pointer;
+  padding-block: var(--space-2);
+  font-weight: var(--weight-medium);
+}
+.manual-review-panel .button,
+.review-policy-panel .button {
+  justify-self: start;
+}
+@media (max-width: 600px) {
+  .manual-review-panel,
+  .review-policy-panel,
+  .review-responsibility {
+    padding: var(--space-3);
+  }
+  .manual-review-panel input,
+  .manual-review-panel select,
+  .manual-review-panel textarea,
+  .review-policy-panel select,
+  .review-policy-panel textarea {
+    font-size: var(--font-size-input-mobile);
+  }
+}

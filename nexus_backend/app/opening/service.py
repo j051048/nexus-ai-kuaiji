@@ -238,7 +238,9 @@ class OpeningService:
                 ),
             )
             if parent and parent["is_leaf"]:
-                self._revise_parent_leaf(conn, actor, ledger["id"], parent, stamp)
+                self._revise_parent_leaf(
+                    conn, actor, ledger["id"], parent, stamp, request.effective_from
+                )
             self._audit(
                 conn,
                 actor,
@@ -252,19 +254,24 @@ class OpeningService:
             )
             return self._account(conn, ledger["id"], account_id)
 
-    def _revise_parent_leaf(self, conn, actor, ledger_id, parent, stamp):
+    def _revise_parent_leaf(self, conn, actor, ledger_id, parent, stamp, effective_from):
         parent_row = self._account(conn, ledger_id, parent["id"])
         version = int(parent_row["version"]) + 1
+        # The parent only becomes a summary when the child starts: copying the
+        # parent's original start date would retroactively rewrite months that
+        # were already posted with the parent as a leaf.
+        started = max(str(parent_row["effective_from"]), effective_from)
         conn.execute(
             "INSERT INTO ledger_account_versions(id,account_id,ledger_id,firm_id,company_id,version,"
             "code,name,parent_account_id,level,is_leaf,category,normal_balance,"
             "auxiliary_requirements,effective_from,effective_to,status,reason,created_by,created_at) "
             "SELECT ?,account_id,ledger_id,firm_id,company_id,?,code,name,parent_account_id,level,0,"
-            "category,normal_balance,auxiliary_requirements,effective_from,effective_to,'active',?,?,? "
+            "category,normal_balance,auxiliary_requirements,?,effective_to,'active',?,?,? "
             "FROM ledger_account_versions WHERE account_id=? AND version=?",
             (
                 uuid4().hex,
                 version,
+                started,
                 "新增子科目后父级转为汇总科目",
                 actor.user_id,
                 stamp,

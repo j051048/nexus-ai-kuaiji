@@ -1,5 +1,7 @@
 """Real frozen opening -> reviewed close -> next-period residual bridge."""
 
+from review_policy_fixtures import post_reviewed_manual
+
 from types import SimpleNamespace
 from uuid import uuid4
 import pytest
@@ -143,7 +145,8 @@ def prepare_bridge(x, delta=0):
             reason="桥接期初应付事项",
         ),
     )
-    voucher = PostingService(c.db).post_manual(
+    voucher = post_reviewed_manual(
+        PostingService(c.db),
         c.manager,
         ManualVoucher(
             book_id=c.book["id"],

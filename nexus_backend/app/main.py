@@ -58,6 +58,7 @@ from .accounting.catalog_router import build_catalog_router
 from .accounting.review import ReviewService
 from .accounting.packages import ReviewPackagesService
 from .accounting.review_router import build_review_router
+from .accounting.review_policy_router import build_review_policy_router
 from .accounting.bank_imports import BankImportService
 from .accounting.bank_import_router import build_bank_import_router
 from .cases.service import CaseService
@@ -1073,6 +1074,7 @@ def create_app(
     app.include_router(build_operations_router(actor))
     app.include_router(build_catalog_router(actor))
     app.include_router(build_review_router(actor))
+    app.include_router(build_review_policy_router(actor))
     app.include_router(build_cases_router(actor))
     app.include_router(build_learning_router(actor))
     app.include_router(build_quality_router(actor))

@@ -14,6 +14,7 @@ import {
   X,
 } from 'lucide-react';
 import { api, apiBlob, ApiError, errorMessage } from './api';
+import { presentApiError, type ErrorPresentation } from './api-error-presentation';
 import { attachmentForm, prepareDirectUpload } from './upload-client';
 import {
   BUSINESS_CATEGORIES,
@@ -86,6 +87,7 @@ export function IntakeWizard({
   const [busy, setBusy] = useState('');
   const [saveState, setSaveState] = useState('内容与原件仅保存在当前账号获授权的企业');
   const [error, setError] = useState('');
+  const [failureInfo, setFailureInfo] = useState<ErrorPresentation | null>(null);
   const [confirmed, setConfirmed] = useState(false);
   const [touched, setTouched] = useState(false);
   const active = useRef(true);
@@ -263,6 +265,7 @@ export function IntakeWizard({
     lock.current = true;
     setBusy(name);
     setError('');
+    setFailureInfo(null);
     try {
       await action();
     } catch (failure) {
@@ -281,6 +284,7 @@ export function IntakeWizard({
       const uncertain =
         failure instanceof TypeError ||
         (failure instanceof ApiError && [409, 503].includes(failure.status));
+      setFailureInfo(presentApiError(failure));
       setError(
         errorMessage(failure) +
           (uncertain
@@ -999,14 +1003,27 @@ export function IntakeWizard({
             </label>
             <p id="intake-submit-help" className="field-help">
               {direct
-                ? '提交后由授权会计接收资料、生成草稿并独立复核。'
+                ? '提交后由授权会计接收资料、生成草稿并按账套政策复核。'
                 : '提交后由部门审批、财务核验，再交给会计复核。'}
             </p>
           </section>
         </div>
         {error && (
           <div className="form-error" role="alert">
+            {failureInfo && <strong className="form-error-title">{failureInfo.title}</strong>}
             {error}
+            {failureInfo && (
+              <>
+                <p className="field-help">{failureInfo.nextStep}</p>
+                <details>
+                  <summary>技术信息（复制给支持）</summary>
+                  <code>
+                    {failureInfo.requestId ? `请求编号 ${failureInfo.requestId} · ` : ''}
+                    {failureInfo.technical}
+                  </code>
+                </details>
+              </>
+            )}
             {draft && (
               <button
                 className="text-button"

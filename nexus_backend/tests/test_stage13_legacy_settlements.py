@@ -135,7 +135,7 @@ def test_clearing_replaces_current_draft_then_human_review_and_export(legacy_cas
     assert draft['status'] == 'draft' and draft['version'] == source['draft_version'] + 1
     assert {line['account_code'] for line in draft['lines']} == {'2202.HIST', '1002'}
     assert c.settlements.list(c.manager, c.book['id'], c.project)['items'][0]['remaining'] == '900.00'
-    approved = c.ledger.approve(c.actors['accountant'], c.book['id'], draft['id'], ApprovalRequest(expected_version=draft['version']))
+    approved = c.ledger.approve(c.manager, c.book['id'], draft['id'], ApprovalRequest(expected_version=draft['version']))
     result = c.ledger.export(c.actors['accountant'], c.book['id'], ExportRequest(draft_ids=[approved['id']], idempotency_key=uuid4().hex))
     assert result['count'] == 1
     assert '2202' in result['csv'] and '6602' not in result['csv']

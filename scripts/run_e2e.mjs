@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { spawn, execFileSync } from 'node:child_process';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
@@ -31,15 +31,40 @@ export function sourceFingerprint(root) {
   for (const file of [...new Set(files)].sort()) {
     hash.update(file).update('\0');
     // A tracked deletion is part of the candidate too.
+    const full = join(root, file);
+    let stats;
     try {
-      hash.update(readFileSync(join(root, file)));
+      stats = statSync(full);
     } catch (error) {
       if (error.code !== 'ENOENT') throw error;
       hash.update('<deleted>');
+      hash.update('\0');
+      continue;
+    }
+    if (stats.isDirectory()) {
+      // `git ls-files` reports an embedded repository (scratch worktree,
+      // submodule) as one directory entry. Reading it as a file fails with
+      // EISDIR, so bind the revision it points at instead of its contents.
+      hash.update('<repository>');
+      hash.update(embeddedRevision(full) ?? '<unborn>');
+    } else {
+      hash.update(readFileSync(full));
     }
     hash.update('\0');
   }
   return hash.digest('hex');
+}
+
+function embeddedRevision(directory) {
+  try {
+    return execFileSync('git', ['-C', directory, 'rev-parse', 'HEAD'], {
+      stdio: ['ignore', 'pipe', 'ignore'],
+    })
+      .toString('utf8')
+      .trim();
+  } catch {
+    return null;
+  }
 }
 
 export function readRunResult(path, runId, mode) {

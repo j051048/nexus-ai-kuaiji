@@ -468,7 +468,9 @@ class PeriodicService:
                     for row in lines
                 ],
             )
-            view = self.posting.post_manual_in_transaction(conn, actor, manual)
+            view = self.posting.post_manual_in_transaction(
+                conn, actor, manual, periodic_review_id=draft_id
+            )
             voucher_id = view["voucher"]["id"]
             changed = conn.execute(
                 "UPDATE periodic_drafts SET status='posted',posted_voucher_id=? "

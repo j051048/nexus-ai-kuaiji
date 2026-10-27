@@ -10,6 +10,8 @@ export interface ReviewWorkspaceSession {
   previewId: string | null;
   commandKey: string;
   packageItems: ReviewSelection[] | null;
+  reviewReason?: string;
+  confirmationReason?: string | null;
 }
 export interface ReviewPackageSession {
   signature: string;
@@ -19,13 +21,15 @@ export interface ReviewPackageSession {
   confirmationKey: string;
   selectionKey: { signature: string; key: string };
   changed: boolean;
+  reviewReason?: string;
+  confirmationReason?: string | null;
 }
 let currentScope: string | null = null;
 let workspace: ReviewWorkspaceSession | null = null;
 let packet: ReviewPackageSession | null = null;
 
-/** Only navigation and command identifiers live in memory. No tokens, facts,
- * attachments or accounting lines are written to browser storage. */
+/** Navigation and the current confirmation command/reason live only in scoped
+ * memory. No tokens, audit reasons, facts, attachments or lines enter browser storage. */
 export function clearReviewSession(): void {
   currentScope = null;
   workspace = null;

@@ -8,7 +8,7 @@ from app.accounting.domain import AccountingError
 from app.accounting.seed import LOCAL_ACTOR
 from app.reconciliation.service import ReconciliationService
 from app.intelligence.service import IntelligenceService
-from test_accounting import service, book, row
+from test_accounting import service, book, row, approve
 from test_business import business, approved, handoff
 from test_stage9_bank_imports import statement
 from test_stage9_reconciliation import selection, command
@@ -30,21 +30,21 @@ def test_approved_legacy_then_identified_import_blocks_new_and_preserves_origina
     service.import_sources(LOCAL_ACTOR, book, ImportRequest(source_name="旧银行导入", rows=[row(external_id="legacy-approved")]))
     service.suggestions(LOCAL_ACTOR, book)
     old_draft = service.get_book(LOCAL_ACTOR, book)["drafts"][0]
-    service.approve(LOCAL_ACTOR, book, old_draft["id"], ApprovalRequest(expected_version=1))
+    approve(service, book, old_draft)
     service.import_sources(LOCAL_ACTOR, book, statement())
     service.suggestions(LOCAL_ACTOR, book)
     new_source = by_external(service, LOCAL_ACTOR, book, "display-1")
     new_draft = next(draft for draft in service.get_book(LOCAL_ACTOR, book)["drafts"] if draft["source_id"] == new_source["id"])
     assert any("独立交易" in issue for issue in new_draft["issues"])
     with pytest.raises(AccountingError):
-        service.approve(LOCAL_ACTOR, book, new_draft["id"], ApprovalRequest(expected_version=1))
+        approve(service, book, new_draft)
     checks = BankImportService(service.db)
     from_new = checks.overview(LOCAL_ACTOR, book, new_source["id"])
     assert from_new["candidates"][0]["external_id"] == "legacy-approved"
     assert from_new["candidates"][0]["stable_transaction_id"] == "legacy-approved"
     from_old = checks.overview(LOCAL_ACTOR, book, old_draft["source_id"])
     assert from_old["identity"] is None and from_old["total"] == 1
-    assert distinct(checks, LOCAL_ACTOR, book, new_source["id"], 1)["distinct"]
+    assert distinct(checks, LOCAL_ACTOR, book, new_source["id"], new_draft["version"])["distinct"]
     assert not service.get_draft(LOCAL_ACTOR, book, new_draft["id"])["issues"]
     assert service.get_draft(LOCAL_ACTOR, book, old_draft["id"])["status"] == "approved"
     assert len(service.get_book(LOCAL_ACTOR, book)["sources"]) == 2

@@ -144,7 +144,7 @@ def test_approved_and_exported_pending_receipt_do_not_become_reference_movement(
     confirmed(case, "opening", "100.00")
     draft = make_draft(case.accounting, case.book)
     draft = case.accounting.approve(
-        case.owner, case.book, draft["id"], ApprovalRequest(expected_version=draft["version"])
+        case.reviewer, case.book, draft["id"], ApprovalRequest(expected_version=draft["version"])
     )
     lines = {
         x["account_code"]: x
@@ -221,7 +221,7 @@ def test_recurring_draft_independent_approval_month_idempotence_review_export(mo
             ExportRequest(draft_ids=[draft["id"]], idempotency_key=uuid4().hex),
         )
     case.accounting.approve(
-        case.reviewer, case.book, draft["id"], ApprovalRequest(expected_version=1)
+        case.reviewer, case.book, draft["id"], ApprovalRequest(expected_version=draft["version"])
     )
     assert (
         case.accounting.export(
@@ -475,7 +475,7 @@ def test_reference_only_counts_complete_exact_receipt_and_rechecks_newer_unknown
     case = monthly_case
     confirmed(case, "opening", "100.00")
     draft = make_draft(case.accounting, case.book)
-    case.accounting.approve(case.owner, case.book, draft["id"], ApprovalRequest(expected_version=1))
+    case.accounting.approve(case.reviewer, case.book, draft["id"], ApprovalRequest(expected_version=draft["version"]))
     export = case.accounting.export(
         case.owner, case.book, ExportRequest(draft_ids=[draft["id"]], idempotency_key=uuid4().hex)
     )

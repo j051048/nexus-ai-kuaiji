@@ -1,3 +1,5 @@
+import type { ReviewResponsibilityData } from './review-policy';
+
 export interface Session {
   token: string;
   mode: 'local' | 'supabase';
@@ -119,6 +121,7 @@ export interface JournalLine {
 }
 
 export interface Draft {
+  review_responsibility?: ReviewResponsibilityData;
   source_inactive?: boolean;
   id: string;
   source_id: string;

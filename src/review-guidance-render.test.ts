@@ -122,12 +122,34 @@ describe('常规会计复核接入引导而不新增业务动作', () => {
   });
   it('常规入口仅复核权限仍可核对审核，不要求新增编辑权限', () => {
     const html = render(
-      {},
+      {
+        review_responsibility: {
+          state: 'awaiting_review',
+          draft_version: 1,
+          maker_user_id: 'another-maker',
+          maker_name: '制单会计',
+          content_revision: 1,
+          policy_version: 1,
+          mode: 'independent',
+          label: '独立复核',
+          independent: null,
+          can_review: true,
+          blocked_reason: null,
+          reviewer_user_id: null,
+          reviewer_name: null,
+          reviewed_version: null,
+        },
+      },
       { permissions: { edit: false, review: true, export: false, manage: false } },
     );
     expect(html).not.toContain('当前凭证为只读权限');
     expect(html).toMatch(/<button class="button primary">[\s\S]*?确认审核/);
     expect(html).toMatch(/<textarea[^>]*id="journal-description"[^>]*disabled=""/);
+  });
+  it('缺少责任投影时不能只因已有review权限就放行审核', () => {
+    const html = render();
+    expect(html).toContain('复核政策尚未核验');
+    expect(html).toMatch(/<button class="button primary" disabled=""[^>]*>[\s\S]*?确认审核/);
   });
   it('外层精确绑定的保存或审核失败进入引导，要求重新读取', () => {
     const html = render({}, {}, '版本已变化');

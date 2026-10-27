@@ -253,18 +253,27 @@ class IntelligenceService:
             diagnostic = can_diagnose(conn, actor)
         costs, attempts = [], []
         if diagnostic:
-            costs = [dict(row) for row in conn.execute(
-                "SELECT * FROM model_costs WHERE id=? AND firm_id=? AND company_id=?",
-                (run["id"], actor.firm_id, run["company_id"]),
-            )]
+            costs = [
+                dict(row)
+                for row in conn.execute(
+                    "SELECT * FROM model_costs WHERE id=? AND firm_id=? AND company_id=?",
+                    (run["id"], actor.firm_id, run["company_id"]),
+                )
+            ]
             table = "proposal_attempts" if run["kind"] == "proposal" else "ocr_attempts"
-            attempts = [dict(row) for row in conn.execute(
-                "SELECT * FROM " + table + " WHERE ai_run_id=? AND firm_id=? AND company_id=? AND event_id=? ORDER BY attempt_no",
-                (run["id"], actor.firm_id, run["company_id"], run["event_id"]),
-            )]
+            attempts = [
+                dict(row)
+                for row in conn.execute(
+                    "SELECT * FROM "
+                    + table
+                    + " WHERE ai_run_id=? AND firm_id=? AND company_id=? AND event_id=? ORDER BY attempt_no",
+                    (run["id"], actor.firm_id, run["company_id"], run["event_id"]),
+                )
+            ]
         unresolved = [item for item in findings if not item.get("resolved", False)]
         validation = {
-            "code": "not_checked", "status": "not_checked",
+            "code": "not_checked",
+            "status": "not_checked",
             "finding_codes": sorted({item["code"] for item in unresolved}),
         }
         if run["status"] == "succeeded":
@@ -272,18 +281,28 @@ class IntelligenceService:
             # authority. A successful supplier response is never an approval.
             validation.update(
                 code="requires_accountant",
-                status="blocked" if any(item["severity"] == "blocking" for item in unresolved) else "requires_review",
+                status="blocked"
+                if any(item["severity"] == "blocking" for item in unresolved)
+                else "requires_review",
             )
         elif run["error_code"] == "invalid_proposal":
             validation.update(code="invalid", status="blocked")
         return execution_record(
-            "journal" if run["kind"] == "proposal" else "ocr", run,
-            costs=costs, attempts=attempts, findings=findings,
-            diagnostics=diagnostic, validation=validation,
-            context={"company_id": run["company_id"], "event_id": run["event_id"],
-                     "book_id": run["book_id"], "draft_id": run["draft_id"],
-                     "input_version": run["input_version"],
-                     "input_fingerprint": run["input_fingerprint"]},
+            "journal" if run["kind"] == "proposal" else "ocr",
+            run,
+            costs=costs,
+            attempts=attempts,
+            findings=findings,
+            diagnostics=diagnostic,
+            validation=validation,
+            context={
+                "company_id": run["company_id"],
+                "event_id": run["event_id"],
+                "book_id": run["book_id"],
+                "draft_id": run["draft_id"],
+                "input_version": run["input_version"],
+                "input_fingerprint": run["input_fingerprint"],
+            },
         )
 
     def run_execution(self, actor, event_id, run_id):
@@ -466,14 +485,21 @@ class IntelligenceService:
             structured = is_structured(attachment["media_type"])
             # Bind before preprocessing. Reauthorization below may tighten
             # limits but must not grant a fresh deadline.
-            initial_limits = None if structured else self._limits(
-                self._policy_check(
-                    conn, actor, event["company_id"], "ocr",
-                    {"document", "counterparty", "amount"},
-                ),
-                started_at=started_at,
-                timeout_cap=effective_settings(self.provider.settings, "ocr").timeout_seconds,
-                deadline_monotonic=started_at + 150,
+            initial_limits = (
+                None
+                if structured
+                else self._limits(
+                    self._policy_check(
+                        conn,
+                        actor,
+                        event["company_id"],
+                        "ocr",
+                        {"document", "counterparty", "amount"},
+                    ),
+                    started_at=started_at,
+                    timeout_cap=effective_settings(self.provider.settings, "ocr").timeout_seconds,
+                    deadline_monotonic=started_at + 150,
+                )
             )
             cache_key = self._ocr_cache_key(conn, actor, event, attachment["media_type"])
             digest = fingerprint(
@@ -510,11 +536,7 @@ class IntelligenceService:
         try:
             data = self.storage.read(attachment)
             local = parse_invoice_xml(data) if structured else None
-            pages = (
-                local.pages
-                if local
-                else prepare_document(data, attachment["media_type"])
-            )
+            pages = local.pages if local else prepare_document(data, attachment["media_type"])
             # Check current access immediately before sending financial evidence.
             with self.db.transaction(write=True, actor=actor, **transaction_options) as conn:
                 current = self.business._event(conn, actor, event_id)
@@ -551,9 +573,12 @@ class IntelligenceService:
                         execution.before_send(conn)
                     if not local:
                         send_policy = self._policy_check(
-                                conn, actor, current["company_id"], "ocr",
-                                {"document", "counterparty", "amount"},
-                            )
+                            conn,
+                            actor,
+                            current["company_id"],
+                            "ocr",
+                            {"document", "counterparty", "amount"},
+                        )
                         send_limits = self._limits(
                             send_policy,
                             started_at=started_at,
@@ -564,9 +589,16 @@ class IntelligenceService:
                         from .runtime_context import invoice_context
 
                         model_context = invoice_context(
-                            actor=actor, company_id=event["company_id"], owner_kind="event",
-                            owner_id=event_id, version=event["fact_version"], attachment=attachment,
-                            run_id=run["id"], policy=send_policy, pages=pages, limits=send_limits,
+                            actor=actor,
+                            company_id=event["company_id"],
+                            owner_kind="event",
+                            owner_id=event_id,
+                            version=event["fact_version"],
+                            attachment=attachment,
+                            run_id=run["id"],
+                            policy=send_policy,
+                            pages=pages,
+                            limits=send_limits,
                             prompt_version=EXTRACTION_PROMPT_VERSION,
                         )
                         budget.before_send(conn)
@@ -580,7 +612,9 @@ class IntelligenceService:
 
                     with provider_scope(self.db, actor, event["company_id"]):
                         result = self.provider.extract_invoice(
-                            pages, limits=send_limits, context_pack=model_context,
+                            pages,
+                            limits=send_limits,
+                            context_pack=model_context,
                         )
                 finally:
                     after_model = getattr(execution, "after_model", None)
@@ -824,17 +858,22 @@ class IntelligenceService:
             # independent original. A new prompt/cache fingerprint alone must
             # not silently bless those saved outputs during adoption.
             from .structured import STRUCTURED_VERSION
+
             if run["prompt_version"] not in {EXTRACTION_PROMPT_VERSION, STRUCTURED_VERSION}:
-                issues.append(finding(
-                    "fact_validation_upgrade_" + run["id"],
-                    "旧识别结果未通过当前事实校验，请重新识别或由会计独立核对原件",
-                    attachment_id=attachment["id"],
-                ))
+                issues.append(
+                    finding(
+                        "fact_validation_upgrade_" + run["id"],
+                        "旧识别结果未通过当前事实校验，请重新识别或由会计独立核对原件",
+                        attachment_id=attachment["id"],
+                    )
+                )
             documents.extend(result["documents"])
             reference = {"attachment_id": attachment["id"], "extraction_id": run["id"]}
             references.append(reference)
-            document_evidence.extend({**document, **reference, "document_index": index}
-                                     for index, document in enumerate(result["documents"]))
+            document_evidence.extend(
+                {**document, **reference, "document_index": index}
+                for index, document in enumerate(result["documents"])
+            )
             for row in extraction_findings_by_run.get(run["id"], []):
                 issues.append(
                     {
@@ -1066,10 +1105,12 @@ class IntelligenceService:
             event = self.business._event(conn, actor, event_id)
             assessment = self._assessment(conn, actor, event)
             diagnostic = can_diagnose(conn, actor)
-            rows = list(conn.execute(
+            rows = list(
+                conn.execute(
                     "SELECT * FROM ai_runs WHERE event_id=? ORDER BY created_at DESC,id DESC",
                     (event_id,),
-                ))
+                )
+            )
             runs = []
             for row in rows:
                 run = self._public_run(row, diagnostics=diagnostic)
@@ -1340,8 +1381,12 @@ class IntelligenceService:
         # about profits, deductions or executed actions. Publish only a fixed
         # draft explanation; keep genuine risks in deterministic findings.
         suggestion.description = "AI 待复核凭证草稿"
-        suggestion.reasoning = "当前来源金额、逐票引用及分录已通过程序校验；科目判断、税务处理仍待会计复核。"
-        suggestion.warnings = ["模型提示存在待人工核对事项，请核对原件与业务资料"] if suggestion.warnings else []
+        suggestion.reasoning = (
+            "当前来源金额、逐票引用及分录已通过程序校验；科目判断、税务处理仍待会计复核。"
+        )
+        suggestion.warnings = (
+            ["模型提示存在待人工核对事项，请核对原件与业务资料"] if suggestion.warnings else []
+        )
 
     def propose(self, actor, book_id, draft_id, request, execution=None):
         started_at = time.monotonic()
@@ -1353,7 +1398,10 @@ class IntelligenceService:
                 execution.check(conn)
                 execution.inputs(event, draft)
             journal_policy = self._policy_check(
-                conn, actor, event["company_id"], "journal",
+                conn,
+                actor,
+                event["company_id"],
+                "journal",
                 {"accounting", "counterparty", "document"},
             )
             journal_limits = self._limits(
@@ -1390,7 +1438,10 @@ class IntelligenceService:
                     execution.inputs(current[0], current[1])
                     execution.before_send(conn)
                 current_policy = self._policy_check(
-                    conn, actor, current[0]["company_id"], "journal",
+                    conn,
+                    actor,
+                    current[0]["company_id"],
+                    "journal",
                     {"accounting", "counterparty", "document"},
                 )
                 if current_policy != journal_policy:
@@ -1405,8 +1456,12 @@ class IntelligenceService:
                 from .runtime_context import journal_context
 
                 model_context = journal_context(
-                    actor=actor, event=current[0], context=current[4], input_fingerprint=digest,
-                    policy=current_policy, limits=journal_limits,
+                    actor=actor,
+                    event=current[0],
+                    context=current[4],
+                    input_fingerprint=digest,
+                    policy=current_policy,
+                    limits=journal_limits,
                 )
                 budget.before_send(conn)
             attempted = True
@@ -1418,7 +1473,9 @@ class IntelligenceService:
 
                 with provider_scope(self.db, actor, run["company_id"]):
                     result = self.provider.suggest_journal(
-                        context, limits=journal_limits, context_pack=model_context,
+                        context,
+                        limits=journal_limits,
+                        context_pack=model_context,
                     )
             finally:
                 after_model = getattr(execution, "after_model", None)
@@ -1442,10 +1499,16 @@ class IntelligenceService:
                 )
                 if current_digest != digest:
                     raise AccountingError("记账资料已改变，旧建议未发布，请重新生成", 409)
-                if self._policy_check(
-                    conn, actor, event["company_id"], "journal",
-                    {"accounting", "counterparty", "document"},
-                ) != journal_policy:
+                if (
+                    self._policy_check(
+                        conn,
+                        actor,
+                        event["company_id"],
+                        "journal",
+                        {"accounting", "counterparty", "document"},
+                    )
+                    != journal_policy
+                ):
                     raise AccountingError("企业模型处理政策已改变，旧建议未发布", 409)
                 if execution:
                     execution.check(conn)
@@ -1572,6 +1635,14 @@ class IntelligenceService:
             ],
         )
         self.ledger._save_auxiliaries(conn, actor, draft, update.lines)
+        applied_version = conn.execute(
+            "SELECT version FROM drafts WHERE id=? AND book_id=?", (draft["id"], draft["book_id"])
+        ).fetchone()["version"]
+        if not automatic:
+            conn.execute(
+                "UPDATE drafts SET last_manual_edit_version=version WHERE id=? AND book_id=? AND status='draft'",
+                (draft["id"], draft["book_id"]),
+            )
         conn.execute(
             "INSERT INTO ai_proposal_applications(id,run_id,firm_id,company_id,event_id,book_id,draft_id,applied_draft_version,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
             (
@@ -1582,7 +1653,7 @@ class IntelligenceService:
                 event["id"],
                 draft["book_id"],
                 draft["id"],
-                expected_version + 1,
+                applied_version,
                 actor.user_id,
                 now(),
             ),

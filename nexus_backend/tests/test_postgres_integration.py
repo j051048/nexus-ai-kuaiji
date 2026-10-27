@@ -38,7 +38,10 @@ def case(postgres):
         conn.execute("INSERT INTO accounting.memberships(firm_id,user_id,role) VALUES(%s,%s,'owner')", (actor.firm_id, actor.user_id))
     service = AccountingService(db)
     book = service.create_book(actor, BookCreate(name="真实PG测试企业", period="2026-10"))
-    return SimpleNamespace(db=db, psycopg=psycopg, service=service, actor=actor, book=book["id"], company=book["company_id"])
+    result = SimpleNamespace(db=db, psycopg=psycopg, service=service, actor=actor, book=book["id"], company=book["company_id"])
+    # A real, separate reviewer; the maker gains no additional permission.
+    result.reviewer = peer(result, firm_role="reviewer", book_role="reviewer")
+    return result
 
 
 def request(**changes):
@@ -71,7 +74,7 @@ def test_postgres_full_workflow_precision_dedup_close_and_receipt(case):
     draft = create_draft(case, amount="999999999999.99")
     assert draft["source_amount"] == "999999999999.99"
     assert case.service.import_sources(case.actor, case.book, request(amount="999999999999.99")) == {"imported": 0, "duplicates": 1}
-    case.service.approve(case.actor, case.book, draft["id"], ApprovalRequest(expected_version=1))
+    case.service.approve(case.reviewer, case.book, draft["id"], ApprovalRequest(expected_version=draft["version"]))
     export = ExportRequest(draft_ids=[draft["id"]], idempotency_key="pg-complete-export")
     receipt = case.service.export(case.actor, case.book, export)
     complete_month_close(case.service, case.actor, case.book)
@@ -92,7 +95,7 @@ def test_postgres_concurrent_import_approval_and_export_are_atomic(case):
     draft = case.service.get_book(case.actor, case.book)["drafts"][0]
     def approve(_):
         try:
-            return case.service.approve(case.actor, case.book, draft["id"], ApprovalRequest(expected_version=1))["status"]
+            return case.service.approve(case.reviewer, case.book, draft["id"], ApprovalRequest(expected_version=draft["version"]))["status"]
         except AccountingError as error:
             return error.status
     with ThreadPoolExecutor(max_workers=4) as pool:
@@ -129,7 +132,7 @@ def test_postgres_viewer_cannot_write_and_operator_cannot_approve(case):
     assert error.value.status == 403
     operator = peer(case, firm_role="operator", book_role="reviewer")
     with pytest.raises(AccountingError) as error:
-        case.service.approve(operator, case.book, draft["id"], ApprovalRequest(expected_version=1))
+        case.service.approve(operator, case.book, draft["id"], ApprovalRequest(expected_version=draft["version"]))
     assert error.value.status == 403
 
 
@@ -172,6 +175,17 @@ def test_postgres_system_role_cannot_access_ledger_and_runtime_is_restricted(cas
     with pytest.raises(case.psycopg.errors.InsufficientPrivilege):
         with case.db.transaction(write=True, system=True) as conn:
             conn.execute("INSERT INTO sources(id,book_id) VALUES('x','y')")
+    # Migration159 defines an administrator-only, global recovery audit.
+    # It is not a tenant table and application users must not read or write it.
+    with pytest.raises(case.psycopg.errors.InsufficientPrivilege):
+        with case.db.transaction(actor=case.actor) as conn:
+            conn.execute("SELECT * FROM recovery_release_audit")
+    with pytest.raises(case.psycopg.errors.InsufficientPrivilege):
+        with case.db.transaction(write=True, actor=case.actor) as conn:
+            conn.execute(
+                "INSERT INTO recovery_release_audit(restore_id,operator,reason,proof_json,inventory_sha256,created_at) VALUES(?,?,?,?,?,?)",
+                (uuid4().hex, "synthetic", "runtime must not release", "{}", "0" * 64, "2026-10-25T10:00:00Z"),
+            )
     with pytest.raises(RuntimeError, match="禁止"):
         Database(ADMIN_URL)
     with pytest.raises(ValueError, match="actor"):
@@ -179,14 +193,14 @@ def test_postgres_system_role_cannot_access_ledger_and_runtime_is_restricted(cas
             pass
     with case.db.transaction(actor=case.actor) as conn:
         tables = conn.execute("SELECT relname,relrowsecurity,relforcerowsecurity FROM pg_class JOIN pg_namespace n ON n.oid=relnamespace WHERE n.nspname='accounting' AND relkind='r'").fetchall()
-        # These three are global catalogs (trusted endpoint directory, capability
-        # metadata, report templates), not tenant rows. Every tenant table must
-        # still have both ENABLE and FORCE RLS.
+        # Explicit global catalogs/control records are not tenant rows.
+        # Every tenant table must still have both ENABLE and FORCE RLS.
         global_catalogs = {
             "ai_endpoint_capabilities",
             "ai_trusted_endpoints",
             "report_templates",
             "restore_state",
+            "recovery_release_audit",
         }
         tenant_tables = [row for row in tables if row["relname"] not in global_catalogs]
         assert tenant_tables and all(
@@ -212,7 +226,7 @@ def test_postgres_onboarding_first_owner_and_multi_firm_discovery(postgres):
 
 def test_postgres_export_audit_failure_rolls_back_status_and_receipt(case, monkeypatch):
     draft = create_draft(case)
-    case.service.approve(case.actor, case.book, draft["id"], ApprovalRequest(expected_version=1))
+    case.service.approve(case.reviewer, case.book, draft["id"], ApprovalRequest(expected_version=draft["version"]))
     def fail(*args):
         raise RuntimeError("模拟审计失败")
     monkeypatch.setattr(case.service, "_audit", fail)
@@ -249,7 +263,7 @@ def test_postgres_directory_grants_department_and_client_firm_discovery(case):
     assert discovered["permissions"]["manage_firm"] is False
     finance = Actor(user_id, case.actor.firm_id)
     draft = create_draft(case)
-    assert case.service.approve(finance, case.book, draft["id"], ApprovalRequest(expected_version=1))["status"] == "approved"
+    assert case.service.approve(finance, case.book, draft["id"], ApprovalRequest(expected_version=draft["version"]))["status"] == "approved"
     directory.revoke_company_member(case.actor, case.company, user_id)
     with pytest.raises(AccountingError) as error:
         case.service.get_book(finance, case.book)

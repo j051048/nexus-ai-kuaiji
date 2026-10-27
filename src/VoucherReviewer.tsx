@@ -19,6 +19,8 @@ import { BankDuplicatePanel } from './BankDuplicatePanel';
 import { SourceHistoryPanel } from './SourceHistoryPanel';
 import { WorkflowGuide } from './WorkflowGuide';
 import { reviewGuidance } from './review-guidance';
+import { ClaimPreparation, ReviewResponsibility } from './ReviewResponsibility';
+import { canApproveResponsibility, parseReviewResponsibility } from './review-policy';
 import type { Session, Draft, BookDetail, JournalLine } from './types';
 const statusLabels: Record<Draft['status'], string> = {
   draft: '待审核',
@@ -64,7 +66,7 @@ export function Reviewer({
     lines: JournalLine[],
     correctionReason?: string,
   ) => Promise<void>;
-  onApprove: (draft: Draft) => Promise<void>;
+  onApprove: (draft: Draft, reviewReason?: string) => Promise<void>;
   onEvidence: (evidenceRef: string) => Promise<void>;
   onBusinessEvidence: (eventId: string) => void;
   onOpenBatch: (batchId: string) => void;
@@ -72,6 +74,7 @@ export function Reviewer({
 }) {
   const [description, setDescription] = useState(draft.description);
   const [correctionReason, setCorrectionReason] = useState('');
+  const [reviewReason, setReviewReason] = useState('');
   const [intelligenceOpen, setIntelligenceOpen] = useState(true);
   const [lines, setLines] = useState<JournalLine[]>(draft.lines.map((line) => ({ ...line })));
   const source = detail.sources.find((item) => item.id === draft.source_id);
@@ -79,9 +82,12 @@ export function Reviewer({
   const locked = draft.status !== 'draft' || !!draft.source_inactive;
   const readOnly =
     locked || !detail.book.permissions.edit || detail.book.period_status === 'closed';
+  const review = parseReviewResponsibility(draft.review_responsibility, draft.version);
+  const eligibleReview = canApproveResponsibility(review, session.user_id);
   useEffect(() => {
     setDescription(draft.description);
     setCorrectionReason('');
+    setReviewReason('');
     setLines(draft.lines.map((line) => ({ ...line })));
   }, [draft.id, draft.version, draft.description, draft.lines]);
   useEffect(() => {
@@ -115,7 +121,7 @@ export function Reviewer({
           sourceAvailable: !!source,
           hasEvidenceReference: !!source?.evidence_ref,
           editable: !readOnly,
-          canReview: detail.book.permissions.review,
+          canReview: detail.book.permissions.review && eligibleReview,
           canOpenCase: !locked && detail.book.permissions.review,
           canExport: detail.book.permissions.export,
           periodClosed: detail.book.period_status === 'closed',
@@ -155,6 +161,31 @@ export function Reviewer({
           {detail.book.period}
         </span>
       </div>
+      <ReviewResponsibility
+        value={draft.review_responsibility}
+        version={draft.version}
+        userId={session.user_id}
+      />
+      <ClaimPreparation
+        key={`${session.scope_key}:${detail.book.id}:${draft.id}:${draft.version}`}
+        session={session}
+        bookId={detail.book.id}
+        draft={draft}
+        disabled={readOnly || !!busy || dirty}
+        onChanged={() => void onIntelligenceChanged()}
+      />
+      {!locked && review?.mode === 'single_operator' && eligibleReview && (
+        <label className="review-section">
+          单人办理说明（非独立复核）
+          <textarea
+            value={reviewReason}
+            maxLength={1000}
+            disabled={!!busy}
+            onChange={(event) => setReviewReason(event.target.value)}
+            placeholder="请说明核对依据，至少 3 个字"
+          />
+        </label>
+      )}
       {!locked && !detail.book.permissions.review && (
         <p className="permission-note">
           <ShieldCheck size={14} />
@@ -423,13 +454,15 @@ export function Reviewer({
                 disabled={
                   detail.book.period_status === 'closed' ||
                   !detail.book.permissions.review ||
+                  !eligibleReview ||
+                  (review?.mode === 'single_operator' && reviewReason.trim().length < 3) ||
                   !!busy ||
                   dirty ||
                   !balanced ||
                   draft.issues.length > 0 ||
                   !source?.evidence_ref
                 }
-                onClick={() => void onApprove(draft)}
+                onClick={() => void onApprove(draft, reviewReason)}
               >
                 {busy === 'approve' ? <Spinner /> : <Check size={16} />}确认审核
               </button>

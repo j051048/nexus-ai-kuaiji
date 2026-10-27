@@ -334,6 +334,7 @@ test('直提资料按实际模式等待会计接收，不虚构部门或财务�
 
 test('常规复核失败后引导要求重新读取，不把冲突当审核成功或自动重发', async ({ page, request }) => {
   const owner = await identity(request, 'accountant');
+  const preparer = await identity(request, 'finance');
   const bookResponse = await request.post('/api/books', {
     headers: owner,
     data: {
@@ -345,8 +346,24 @@ test('常规复核失败后引导要求重新读取，不把冲突当审核成�
   const book = await bookResponse.json();
   expect(
     (
-      await request.post(`/api/books/${book.id}/imports`, {
+      await request.put(`/api/companies/${book.company_id}/members`, {
         headers: owner,
+        data: { email: 'finance@demo.example.invalid', role: 'finance', department_id: null },
+      })
+    ).status(),
+  ).toBe(200);
+  expect(
+    (
+      await request.put(`/api/books/${book.id}/members/local-business-finance`, {
+        headers: owner,
+        data: { role: 'editor' },
+      })
+    ).status(),
+  ).toBe(200);
+  expect(
+    (
+      await request.post(`/api/books/${book.id}/imports`, {
+        headers: preparer,
         data: {
           source_name: '本地故障注入',
           rows: [
@@ -365,10 +382,12 @@ test('常规复核失败后引导要求重新读取，不把冲突当审核成�
     ).status(),
   ).toBe(200);
   expect(
-    (await request.post(`/api/books/${book.id}/suggestions`, { headers: owner })).status(),
+    (await request.post(`/api/books/${book.id}/suggestions`, { headers: preparer })).status(),
   ).toBe(200);
   const draft = (await (await request.get(`/api/books/${book.id}`, { headers: owner })).json())
     .drafts[0];
+  expect(draft.review_responsibility.maker_user_id).toBe('local-business-finance');
+  expect(draft.review_responsibility.can_review).toBe(true);
   let sends = 0;
   await page.route(`**/api/books/${book.id}/drafts/${draft.id}/approve`, async (route) => {
     sends++;

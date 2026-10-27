@@ -13,6 +13,7 @@ from uuid import uuid4
 from .database import Database
 from .domain import Actor, AccountingError
 from .access import AccessControl
+from .review_policy import ReviewPolicyService
 from .queries import health_cte, book_filter, page_bounds, inactive_source_sql
 from .models import (
     ApprovalRequest,
@@ -461,6 +462,9 @@ class AccountingService:
             "evidence_ref": self._effective_evidence(conn, source),
             "source_kind": source["source_kind"],
             "business_origin": mapping,
+            "review_responsibility": ReviewPolicyService(self.db).responsibility_in_transaction(
+                conn, actor, draft
+            ),
             "source_inactive": bool(
                 conn.execute(
                     "SELECT 1 FROM sources s WHERE s.id=? AND s.book_id=? AND "
@@ -1087,6 +1091,12 @@ class AccountingService:
             ).fetchone()
             if not account or not account["active"]:
                 raise AccountingError(f"科目 {line.account_code} 不属于当前账套或已停用")
+        changed = conn.execute(
+            "UPDATE drafts SET description=?,version=version+1,last_manual_edit_version=version+1 WHERE id=? AND book_id=? AND version=?",
+            (request.description, draft_id, book_id, request.expected_version),
+        )
+        if changed.rowcount != 1:
+            raise AccountingError("草稿版本已变化，请刷新后重新编辑", 409)
         conn.execute("DELETE FROM draft_lines WHERE draft_id=? AND book_id=?", (draft_id, book_id))
         conn.executemany(
             "INSERT INTO draft_lines VALUES(?,?,?,?,?,?)",
@@ -1103,9 +1113,11 @@ class AccountingService:
             ],
         )
         self._save_auxiliaries(conn, actor, draft, request.lines)
+        # Line/auxiliary triggers advance the pending version as well. The
+        # human decision protects the final content, not an intermediate header.
         conn.execute(
-            "UPDATE drafts SET description=?,version=version+1,last_manual_edit_version=version+1 WHERE id=? AND book_id=? AND version=?",
-            (request.description, draft_id, book_id, request.expected_version),
+            "UPDATE drafts SET last_manual_edit_version=version WHERE id=? AND book_id=? AND status='draft'",
+            (draft_id, book_id),
         )
         updated = self._draft_json(
             conn,
@@ -1147,6 +1159,12 @@ class AccountingService:
             raise AccountingError("会计已经修改草稿，自动任务不能覆盖", 409)
         if generated["issues"]:
             raise AccountingError("模板辅助核算仍有异常，须人工处理", 409)
+        changed = conn.execute(
+            "UPDATE drafts SET explanation=?,version=version+1 WHERE id=? AND book_id=? AND version=? AND status='draft' AND last_manual_edit_version=0",
+            (generated["explanation"], draft_id, book_id, expected_version),
+        )
+        if changed.rowcount != 1:
+            raise AccountingError("草稿版本已改变，自动模板未发布", 409)
         conn.execute("DELETE FROM draft_lines WHERE draft_id=? AND book_id=?", (draft_id, book_id))
         conn.executemany(
             "INSERT INTO draft_lines(draft_id,book_id,ordinal,account_code,debit_cents,credit_cents) VALUES(?,?,?,?,?,?)",
@@ -1155,12 +1173,6 @@ class AccountingService:
         CatalogService(self.db).save_auxiliaries_in_transaction(
             conn, actor, book_id, draft_id, generated["auxiliaries"]
         )
-        changed = conn.execute(
-            "UPDATE drafts SET explanation=?,version=version+1 WHERE id=? AND book_id=? AND version=? AND status='draft' AND last_manual_edit_version=0",
-            (generated["explanation"], draft_id, book_id, expected_version),
-        )
-        if changed.rowcount != 1:
-            raise AccountingError("草稿版本已改变，自动模板未发布", 409)
         result = self._draft_json(
             conn,
             conn.execute(
@@ -1182,7 +1194,7 @@ class AccountingService:
                 "rule_id": generated.get("rule_id"),
                 "rule_version": generated.get("rule_version"),
                 "previous_version": expected_version,
-                "applied_version": expected_version + 1,
+                "applied_version": result["version"],
             },
         )
         return result
@@ -1193,10 +1205,25 @@ class AccountingService:
             write=True, actor=actor, company_id=company_id, write_scope="company"
         ) as conn:
             return self._approve_in_transaction(
-                conn, actor, book_id, draft_id, request.expected_version
+                conn,
+                actor,
+                book_id,
+                draft_id,
+                request.expected_version,
+                request.expected_policy_version,
+                request.review_reason,
             )
 
-    def _approve_in_transaction(self, conn, actor, book_id, draft_id, expected_version):
+    def _approve_in_transaction(
+        self,
+        conn,
+        actor,
+        book_id,
+        draft_id,
+        expected_version,
+        expected_policy_version=None,
+        review_reason="",
+    ):
         """Single and batch review share every guard and the caller's transaction."""
         book = self._book(conn, actor, book_id, reviewer=True)
         self._open(book)
@@ -1210,9 +1237,20 @@ class AccountingService:
         value = self._draft_json(conn, draft, actor)
         if value["issues"]:
             raise AccountingError("不能审核通过：" + "；".join(value["issues"]))
+        policy_version, review_reason = ReviewPolicyService(self.db).validate_review(
+            conn, actor, draft, expected_policy_version, review_reason
+        )
         changed = conn.execute(
-            "UPDATE drafts SET status='approved',version=version+1,approved_by=?,approved_at=? WHERE id=? AND book_id=? AND version=? AND status='draft'",
-            (actor.user_id, now(), draft_id, book_id, expected_version),
+            "UPDATE drafts SET status='approved',version=version+1,approved_by=?,approved_at=?,review_policy_version=?,review_reason=? WHERE id=? AND book_id=? AND version=? AND status='draft'",
+            (
+                actor.user_id,
+                now(),
+                policy_version,
+                review_reason,
+                draft_id,
+                book_id,
+                expected_version,
+            ),
         )
         if changed.rowcount != 1:
             raise AccountingError("凭证版本已变化，审核未提交", 409)
@@ -1230,6 +1268,10 @@ class AccountingService:
                 "lines": value["lines"],
                 "evidence_ref": value["evidence_ref"],
                 "review_policy_version": REVIEW_POLICY_VERSION,
+                "ledger_review_policy_version": policy_version,
+                "review_mode": value["review_responsibility"]["mode"],
+                "maker_user_id": value["review_responsibility"]["maker_user_id"],
+                "review_reason": review_reason,
             },
         )
         return self._draft_json(
@@ -1263,6 +1305,7 @@ class AccountingService:
                 ).fetchone()
                 if not draft or draft["status"] != "approved":
                     raise AccountingError("只能导出当前账套内已审核且未导出的凭证", 409)
+                ReviewPolicyService.approved_receipt(conn, draft)
                 value = self._draft_json(conn, draft, actor)
                 if value["issues"]:
                     raise AccountingError(

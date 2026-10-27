@@ -735,7 +735,7 @@ export function InvoiceImportsPanel({
                 </p>
               )}
               <p className="invoice-accrual-note">
-                系统只按发票金额和所选科目生成借贷平衡草稿，不会自动审核或导出；另一名会计仍需独立复核。
+                系统只按发票金额和所选科目生成借贷平衡草稿，不会自动审核或导出；会计仍需按账套政策复核。
               </p>
               <div className="invoice-accrual-actions">
                 <button

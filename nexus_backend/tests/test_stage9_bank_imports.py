@@ -7,7 +7,7 @@ from app.accounting.bank_imports import BankImportService, DuplicateDistinction
 from app.accounting.domain import AccountingError
 from app.accounting.models import ApprovalRequest, BookCreate, ExportRequest, ImportRequest
 from app.accounting.seed import LOCAL_ACTOR
-from test_accounting import service, book, row, add_actor
+from test_accounting import service, book, row, add_actor, approve
 
 
 def statement(external='display-1', stable='bank-transaction-1', namespace='statement', account='bank-last1234', **facts):
@@ -65,18 +65,18 @@ def test_near_duplicates_require_explicit_review_without_deleting_sources(servic
     drafts = detail['drafts']
     assert all(any('独立交易' in issue for issue in draft['issues']) for draft in drafts)
     with pytest.raises(AccountingError):
-        service.approve(LOCAL_ACTOR, book, drafts[0]['id'], ApprovalRequest(expected_version=1))
+        approve(service, book, drafts[0])
     checks = BankImportService(service.db)
     view = checks.overview(LOCAL_ACTOR, book, drafts[0]['source_id'])
     other = view['candidates'][0]
-    request = DuplicateDistinction(source_fingerprint=view['fingerprint'], other_fingerprint=other['fingerprint'], expected_version=1, reason='已核对两份不同银行原始付款回执')
+    request = DuplicateDistinction(source_fingerprint=view['fingerprint'], other_fingerprint=other['fingerprint'], expected_version=drafts[0]['version'], reason='已核对两份不同银行原始付款回执')
     assert checks.distinguish(LOCAL_ACTOR, book, view['source_id'], other['id'], request) == {'distinct': True, 'duplicate': False}
     assert checks.distinguish(LOCAL_ACTOR, book, view['source_id'], other['id'], request)['duplicate']
     current = service.get_draft(LOCAL_ACTOR, book, drafts[0]['id'])
-    assert current['version'] == 2 and current['issues'] == []
+    assert current['version'] == drafts[0]['version'] + 1 and current['issues'] == []
     with pytest.raises(AccountingError, match='版本'):
-        service.approve(LOCAL_ACTOR, book, current['id'], ApprovalRequest(expected_version=1))
-    service.approve(LOCAL_ACTOR, book, current['id'], ApprovalRequest(expected_version=2))
+        approve(service, book, drafts[0])
+    approve(service, book, current)
     assert service.export(LOCAL_ACTOR, book, ExportRequest(draft_ids=[current['id']], idempotency_key='distinct-only-after-review'))['count'] == 1
     assert len(service.get_book(LOCAL_ACTOR, book)['sources']) == 2
 

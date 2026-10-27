@@ -24,7 +24,7 @@ def test_pg_approved_legacy_overlap_blocks_new_identity_and_native_distinction_p
     c.service.import_sources(c.owner, c.book, ImportRequest(source_name="旧流水", rows=[row(external_id="legacy-approved")]))
     c.service.suggestions(c.owner, c.book)
     old = c.service.get_book(c.reviewer, c.book)["drafts"][0]
-    c.service.approve(c.reviewer, c.book, old["id"], ApprovalRequest(expected_version=1))
+    c.service.approve(c.reviewer, c.book, old["id"], ApprovalRequest(expected_version=old["version"]))
     c.service.import_sources(c.owner, c.book, statement())
     c.service.suggestions(c.owner, c.book)
     new = source_by_external(c.service, c.reviewer, c.book, "display-1")
@@ -37,7 +37,7 @@ def test_pg_approved_legacy_overlap_blocks_new_identity_and_native_distinction_p
         assert conn.execute("SELECT accounting.bank_source_import_blocked(?,?)", (c.book, new["id"])).fetchone()[0]
         assert conn.execute("SELECT accounting.bank_source_import_blocked(?,?)", (c.book, old["source_id"])).fetchone()[0]
     other = view["candidates"][0]
-    checks.distinguish(c.reviewer, c.book, new["id"], other["id"], DuplicateDistinction(source_fingerprint=view["fingerprint"], other_fingerprint=other["fingerprint"], expected_version=1, reason="已比对两份银行原件确认是独立交易"))
+    checks.distinguish(c.reviewer, c.book, new["id"], other["id"], DuplicateDistinction(source_fingerprint=view["fingerprint"], other_fingerprint=other["fingerprint"], expected_version=next(item["version"] for item in c.service.get_book(c.reviewer, c.book)["drafts"] if item["source_id"] == new["id"]), reason="已比对两份银行原件确认是独立交易"))
     with c.db.transaction(actor=c.reviewer) as conn:
         assert not conn.execute("SELECT accounting.bank_source_import_blocked(?,?)", (c.book, new["id"])).fetchone()[0]
     assert c.service.get_draft(c.reviewer, c.book, old["id"])["status"] == "approved"
@@ -67,7 +67,7 @@ def test_pg_linked_legacy_then_namespaced_duplicate_blocks_business_approval_unt
     checks = BankImportService(c.db)
     view = checks.overview(c.actors["accountant"], c.book["id"], new["id"])
     other = view["candidates"][0]
-    checks.distinguish(c.actors["accountant"], c.book["id"], new["id"], other["id"], DuplicateDistinction(source_fingerprint=view["fingerprint"], other_fingerprint=other["fingerprint"], expected_version=1, reason="已核对两个独立银行交易编号及原始回单"))
+    checks.distinguish(c.actors["accountant"], c.book["id"], new["id"], other["id"], DuplicateDistinction(source_fingerprint=view["fingerprint"], other_fingerprint=other["fingerprint"], expected_version=next(item["version"] for item in c.ledger.get_book(c.actors["accountant"], c.book["id"])["drafts"] if item["source_id"] == new["id"]), reason="已核对两个独立银行交易编号及原始回单"))
     assert not c.ledger.get_draft(c.actors["accountant"], c.book["id"], mapped["draft_id"])["issues"]
     assert len(c.ledger.get_book(c.manager, c.book["id"])["sources"]) == 3
 

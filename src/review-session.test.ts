@@ -35,6 +35,20 @@ describe('复核会话只在当前授权内存范围保留', () => {
     expect(readReviewWorkspace('scope-b')).toBeNull();
     expect(readReviewWorkspace('scope-a')).toBeNull();
   });
+  it('审核命令和首次发送理由在同一内存范围恢复，撤权后一同清空', () => {
+    saveReviewWorkspace('scope-a', {
+      ...state,
+      reviewReason: '本次原件已核对',
+      confirmationReason: '本次原件已核对',
+    });
+    const restored = readReviewWorkspace('scope-a')!;
+    expect(restored.commandKey).toBe('key1');
+    expect(restored.confirmationReason).toBe('本次原件已核对');
+    restored.confirmationReason = '不能改变保留的原命令';
+    expect(readReviewWorkspace('scope-a')?.confirmationReason).toBe('本次原件已核对');
+    expect(readReviewWorkspace('scope-b')).toBeNull();
+    expect(readReviewWorkspace('scope-a')).toBeNull();
+  });
   it('显式撤权清空工作区与复核包，包选择签名不串用', () => {
     saveReviewWorkspace('scope-a', state);
     saveReviewPackage('scope-a', {

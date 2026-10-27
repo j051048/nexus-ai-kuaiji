@@ -6,6 +6,7 @@ import type { Book, CompanyRole, Member, Session } from './types';
 import type { Department, SubmissionPolicy } from './business-types';
 import { adminRoleLabels, type AccountRequest, type AdminCompany } from './admin-types';
 import { MemberHandoverDialog } from './MemberHandoverDialog';
+import { ReviewPolicyPanel } from './ReviewPolicyPanel';
 
 export function AdminMembers({
   session,
@@ -193,6 +194,15 @@ export function AdminMembers({
             ))}
           </select>
         </label>
+      )}
+      {kind === 'book' && bookId && (
+        <ReviewPolicyPanel
+          session={session}
+          bookId={bookId}
+          disabled={disabled}
+          onBusyChange={setBusy}
+          onChanged={onChanged}
+        />
       )}
       {error && (
         <p role="alert" className="form-error">

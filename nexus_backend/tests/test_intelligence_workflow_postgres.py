@@ -66,12 +66,12 @@ def test_pg_ai_full_pipeline_masks_proposals_and_requires_independent_accounting
         assert public["result"] is None and public["book_id"] is None and public["draft_id"] is None
         assert detail["bank_candidates"] == [] and detail["bank_links"] == []
         with pytest.raises(AccountingError):
-            case.intelligence.apply(actor, proposal["id"], 1)
-    applied = case.intelligence.apply(case.actors["accountant"], proposal["id"], 1)
-    assert applied["status"] == "draft" and applied["version"] == 2 and not applied["issues"]
+            case.intelligence.apply(actor, proposal["id"], proposal["input_version"])
+    applied = case.intelligence.apply(case.actors["accountant"], proposal["id"], proposal["input_version"])
+    assert applied["status"] == "draft" and applied["version"] > proposal["input_version"] and not applied["issues"]
     with pytest.raises(AccountingError):
-        case.ledger.approve(case.actors["finance"], case.book["id"], applied["id"], ApprovalRequest(expected_version=2))
-    reviewed = case.ledger.approve(case.actors["accountant"], case.book["id"], applied["id"], ApprovalRequest(expected_version=2))
+        case.ledger.approve(case.actors["finance"], case.book["id"], applied["id"], ApprovalRequest(expected_version=applied["version"]))
+    reviewed = case.ledger.approve(case.manager, case.book["id"], applied["id"], ApprovalRequest(expected_version=applied["version"]))
     request = ExportRequest(draft_ids=[reviewed["id"]], idempotency_key="pg-export-" + uuid4().hex)
     exported = case.ledger.export(case.actors["accountant"], case.book["id"], request)
     assert exported["count"] == 1 and "0.30" in exported["csv"] and "2241" in exported["csv"]
@@ -124,11 +124,11 @@ def test_pg_ai_draft_edit_during_external_proposal_rejects_old_output_atomically
     extract(case, event)
     receipt = handoff(case, event)
     original = draft(case, receipt["draft_id"])
-    case.provider.proposal_hook = lambda: case.ledger.update_draft(case.actors["accountant"], case.book["id"], original["id"], DraftUpdate(expected_version=1, description="会计在模型请求期间修改摘要", lines=original["lines"]))
+    case.provider.proposal_hook = lambda: case.ledger.update_draft(case.actors["accountant"], case.book["id"], original["id"], DraftUpdate(expected_version=original["version"], description="会计在模型请求期间修改摘要", lines=original["lines"]))
     with pytest.raises(AccountingError, match="版本已更新"):
         propose(case, original["id"])
     current = draft(case, original["id"])
-    assert current["version"] == 2 and current["description"] == "会计在模型请求期间修改摘要"
+    assert current["version"] > original["version"] and current["description"] == "会计在模型请求期间修改摘要"
     assert admin_rows(case, "SELECT status,result_json FROM accounting.ai_runs WHERE event_id=%s AND kind='proposal'", (event["id"],)) == [("stale", None)]
     assert admin_rows(case, "SELECT COUNT(*) FROM accounting.ai_proposal_applications WHERE event_id=%s", (event["id"],))[0][0] == 0
 
@@ -183,8 +183,8 @@ def test_pg_ai_concurrent_apply_retries_create_one_receipt_and_one_draft_change(
     receipt = handoff(case, event)
     proposal = propose(case, receipt["draft_id"])
     with ThreadPoolExecutor(max_workers=3) as pool:
-        results = list(pool.map(lambda _: case.intelligence.apply(case.actors["accountant"], proposal["id"], 1), range(3)))
-    assert all(result["version"] == 2 and result["status"] == "draft" for result in results)
+        results = list(pool.map(lambda _: case.intelligence.apply(case.actors["accountant"], proposal["id"], proposal["input_version"]), range(3)))
+    assert all(result["version"] == results[0]["version"] > proposal["input_version"] and result["status"] == "draft" for result in results)
     assert admin_rows(case, "SELECT COUNT(*) FROM accounting.ai_proposal_applications WHERE run_id=%s", (proposal["id"],))[0][0] == 1
     assert admin_rows(case, "SELECT COUNT(*) FROM accounting.audit_events WHERE object_id=%s AND action='intelligence.proposal.apply'", (receipt["draft_id"],))[0][0] == 1
 
@@ -269,15 +269,18 @@ def test_pg_ai_applied_warning_cannot_disappear_by_editing_same_draft_after_new_
     for issue in case.intelligence.detail(case.actors["accountant"], event["id"])["findings"]:
         if issue["severity"] == "blocking" and not issue["resolved"]:
             case.intelligence.resolve(case.actors["accountant"], issue["id"], "会计已核对费用用途与现有原件")
-    applied = case.intelligence.apply(case.actors["accountant"], proposal["id"], 1)
+    applied = case.intelligence.apply(case.actors["accountant"], proposal["id"], proposal["input_version"])
     assert not applied["issues"]
     current_event = case.business.get_event(case.actors["employee"], event["id"])
     extract(case, current_event, key="pg-new-ocr-facts")
-    assert any("费用用途" in issue for issue in draft(case, receipt["draft_id"])["issues"])
-    edited = case.ledger.update_draft(case.actors["accountant"], case.book["id"], applied["id"], DraftUpdate(expected_version=2, description=applied["description"], lines=applied["lines"]))
-    assert edited["version"] == 3 and any("费用用途" in issue for issue in edited["issues"])
-    with pytest.raises(AccountingError, match="费用用途"):
-        case.ledger.approve(case.actors["accountant"], case.book["id"], edited["id"], ApprovalRequest(expected_version=3))
+    warning_code = "proposal_warning_" + proposal["id"] + "_0"
+    warning = next(item for item in case.intelligence.detail(case.actors["accountant"], event["id"])["findings"] if item["code"] == warning_code)
+    assert not warning["resolved"] and warning["payload"]["proposal_id"] == proposal["id"]
+    assert any("模型提示需人工核对" in issue for issue in draft(case, receipt["draft_id"])["issues"])
+    edited = case.ledger.update_draft(case.actors["accountant"], case.book["id"], applied["id"], DraftUpdate(expected_version=applied["version"], description=applied["description"], lines=applied["lines"]))
+    assert edited["version"] > applied["version"] and any("模型提示需人工核对" in issue for issue in edited["issues"])
+    with pytest.raises(AccountingError, match="模型提示需人工核对"):
+        case.ledger.approve(case.manager, case.book["id"], edited["id"], ApprovalRequest(expected_version=edited["version"]))
 
 
 def test_pg_ai_foreign_company_cannot_read_event_runs_or_findings_even_with_raw_sql(pg_ai):

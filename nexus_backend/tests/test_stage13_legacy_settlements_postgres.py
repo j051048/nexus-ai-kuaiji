@@ -48,7 +48,10 @@ def test_native_confirm_and_review_export_keep_old_history_separate(legacy_pg_ca
     receipt = confirm(c, prepared)
     draft = c.ledger.get_draft(c.actors['accountant'], c.book['id'], source['draft_id'])
     assert {line['account_code'] for line in draft['lines']} == {'2202.HIST', '1002'}
-    approved = c.ledger.approve(c.actors['accountant'], c.book['id'], draft['id'], ApprovalRequest(expected_version=draft['version']))
+    with pytest.raises(AccountingError, match='制单责任人') as rejected:
+        c.ledger.approve(c.actors['accountant'], c.book['id'], draft['id'], ApprovalRequest(expected_version=draft['version']))
+    assert rejected.value.status == 403
+    approved = c.ledger.approve(c.manager, c.book['id'], draft['id'], ApprovalRequest(expected_version=draft['version']))
     result = c.ledger.export(c.actors['accountant'], c.book['id'], ExportRequest(draft_ids=[approved['id']], idempotency_key=uuid4().hex))
     assert result['count'] == 1 and c.settlements.list(c.manager, c.book['id'], c.project)['items'][0]['remaining'] == '900.00'
     with pytest.raises(c.psycopg.Error):

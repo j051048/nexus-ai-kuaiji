@@ -281,7 +281,9 @@ class Database:
                 raise RuntimeError(
                     "数据库连接暂不可用或连接池等待超时，请检查容量和连接配置"
                 ) from None
-        conn = sqlite3.connect(self.path, timeout=15)
+        from .sqlite_connection import AccountingSQLiteConnection
+
+        conn = sqlite3.connect(self.path, timeout=15, factory=AccountingSQLiteConnection)
         # Savepoint statement journals otherwise depend on the process temp
         # directory; keep SQLite's small demo/test temp store in memory.
         conn.execute("PRAGMA temp_store=MEMORY")
@@ -290,6 +292,12 @@ class Database:
 
         conn.create_function("accounting_money_cents", 1, money_to_cents, deterministic=True)
         conn.create_function(
+            "accounting_sha256",
+            1,
+            lambda text: hashlib.sha256(str(text).encode("utf-8")).hexdigest(),
+            deterministic=True,
+        )
+        conn.create_function(
             "accounting_actor_user", 0, lambda: getattr(transaction_actor.get(), "user_id", "")
         )
         conn.create_function(
@@ -297,6 +305,66 @@ class Database:
         )
         conn.execute("PRAGMA foreign_keys=ON")
         conn.execute("PRAGMA busy_timeout=15000")
+        preparation_triggers = {
+            "rr_draft_insert",
+            "rr_draft_update",
+            "rr_line_insert",
+            "rr_line_update",
+            "rr_line_delete",
+            "rr_aux_insert",
+            "rr_aux_update",
+            "rr_aux_delete",
+        }
+        internal_writers = {
+            "draft_preparations": preparation_triggers,
+            "draft_preparation_history": preparation_triggers,
+            "draft_review_receipts": {"rr_draft_approve"},
+            "voucher_review_completions": {"rr_posting_complete"},
+        }
+
+        def authorize(action, table, column, database_name, trigger):
+            # Runtime SQL may inspect enforcement settings but cannot turn off
+            # foreign keys/checks or write the schema around review receipts.
+            # The connection sets its safe defaults before installing this
+            # authorizer; only the dedicated migration connection opts out.
+            if (
+                action == sqlite3.SQLITE_PRAGMA
+                and column is not None
+                and str(table).lower()
+                in {
+                    "foreign_keys",
+                    "writable_schema",
+                    "ignore_check_constraints",
+                }
+            ):
+                return sqlite3.SQLITE_DENY
+            # A runtime connection cannot replace one of the trusted trigger
+            # names or alter its supporting schema. Migrations use a separate
+            # private connection with this authorizer disabled.
+            ddl = {
+                sqlite3.SQLITE_CREATE_TABLE,
+                sqlite3.SQLITE_DROP_TABLE,
+                sqlite3.SQLITE_CREATE_VIEW,
+                sqlite3.SQLITE_DROP_VIEW,
+                sqlite3.SQLITE_CREATE_TRIGGER,
+                sqlite3.SQLITE_DROP_TRIGGER,
+                sqlite3.SQLITE_CREATE_TEMP_TRIGGER,
+                sqlite3.SQLITE_DROP_TEMP_TRIGGER,
+                sqlite3.SQLITE_ALTER_TABLE,
+            }
+            if action in ddl and (
+                str(table).startswith("rr_")
+                or table in internal_writers
+                or column in internal_writers
+            ):
+                return sqlite3.SQLITE_DENY
+            if action in {sqlite3.SQLITE_INSERT, sqlite3.SQLITE_UPDATE, sqlite3.SQLITE_DELETE}:
+                allowed = internal_writers.get(table)
+                if allowed is not None and trigger not in allowed:
+                    return sqlite3.SQLITE_DENY
+            return sqlite3.SQLITE_OK
+
+        conn.set_authorizer(authorize)
         return conn
 
     @staticmethod
@@ -508,6 +576,10 @@ class Database:
 
     def _migrate_sqlite(self):
         with closing(self.connect()) as conn:
+            # Only this dedicated schema-migration connection may backfill
+            # historical unverified responsibility. Runtime connections retain
+            # the fixed-trigger write restriction throughout their lifetime.
+            conn.set_authorizer(None)
             conn.execute("PRAGMA journal_mode=WAL")
             conn.execute("PRAGMA foreign_keys=OFF")
             conn.execute(

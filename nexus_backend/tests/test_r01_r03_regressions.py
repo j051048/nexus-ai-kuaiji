@@ -1,5 +1,7 @@
 """R01/R03 regressions for the 14-item review findings."""
 
+from review_policy_fixtures import post_reviewed_manual
+
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -66,7 +68,8 @@ def _item(case, opening, sub, amount="5000.00"):
 
 
 def _payment(case, opening, posting, amount="3000.00", key="r01-payment"):
-    return posting.post_manual(
+    return post_reviewed_manual(
+        posting,
         case.manager,
         ManualVoucher(
             command_key=key,
@@ -441,8 +444,10 @@ def test_f02_periodic_post_rolls_back_voucher_and_draft_together(business, monke
         ),
     )
     draft = periodic.generate_accrual(case.manager, rule["id"])
-    periodic.approve(
-        admin(case), draft["draft"]["id"], DraftCommand(expected_version=1, reason="复核计提")
+    draft = periodic.approve(
+        admin(case),
+        draft["draft"]["id"],
+        DraftCommand(expected_version=draft["draft"]["version"], reason="复核计提"),
     )
 
     def fail(*args, **kwargs):
@@ -454,7 +459,7 @@ def test_f02_periodic_post_rolls_back_voucher_and_draft_together(business, monke
             case.manager,
             draft["draft"]["id"],
             DraftPost(
-                expected_version=2,
+                expected_version=draft["draft"]["version"],
                 command_key="r01-atomic-post",
                 voucher_date="2026-10-31",
                 reason="原子记账",
@@ -556,7 +561,8 @@ def test_f05_unclassified_cash_cannot_net_to_zero(business):
             )
             for account, debit, credit in values
         ]
-        posting.post_manual(
+        post_reviewed_manual(
+            posting,
             case.manager,
             ManualVoucher(
                 book_id=case.book["id"],

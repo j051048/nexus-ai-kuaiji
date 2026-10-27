@@ -33,6 +33,12 @@ def build_delivery_router(actor_dependency):
     ):
         return monthly.detail(actor, book_id, package_id)
 
+    @router.post("/monthly-package/{package_id}/open")
+    def monthly_open(
+        book_id: str, package_id: str, actor=Depends(actor_dependency), monthly=Depends(packages)
+    ):
+        return monthly.open(actor, book_id, package_id)
+
     @router.get("/monthly-package/{package_id}/download")
     def monthly_download(
         book_id: str, package_id: str, actor=Depends(actor_dependency), monthly=Depends(packages)

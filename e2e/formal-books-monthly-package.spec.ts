@@ -16,6 +16,40 @@ async function checked(response: APIResponse, expected = 201) {
   return response.json();
 }
 
+/** Use the public responsibility flow; no fixture bypass of independent review. */
+async function reviewedManual(
+  request: APIRequestContext,
+  preparer: { Authorization: string },
+  reviewer: { Authorization: string },
+  data: Record<string, unknown>,
+) {
+  const prepared = await checked(
+    await request.post('/api/posting/manual-requests', {
+      headers: preparer,
+      data,
+    }),
+  );
+  expect(prepared.request.prepared_by).not.toBe('local-business-finance');
+  const approved = await checked(
+    await request.post(`/api/posting/manual-requests/${prepared.request.id}/approve`, {
+      headers: reviewer,
+      data: {
+        expected_version: prepared.request.version,
+        expected_policy_version: prepared.request.policy_version,
+        reason: '真实本地独立身份逐项核对手工凭证',
+      },
+    }),
+    200,
+  );
+  expect(approved.request.independent).toBe(true);
+  return checked(
+    await request.post(`/api/posting/manual-requests/${prepared.request.id}/post`, {
+      headers: preparer,
+      data: { expected_version: approved.request.version, command_key: data.command_key },
+    }),
+  );
+}
+
 async function expandBookSwitcher(page: Page) {
   const summary = page.locator('summary').filter({ hasText: /^切换账套/ });
   if (await summary.count()) {
@@ -60,24 +94,19 @@ test('正式账簿 A 迟到响应经 B 返回 A 后不能覆盖新事实', async
     const workspace = page.locator('.formal-books-workspace');
     await expect(workspace).toContainText(second.tag);
     await expect(workspace.getByText('10,100.00', { exact: true }).first()).toBeVisible();
-    await checked(
-      await request.post('/api/posting/manual', {
-        headers: first.headers,
-        data: {
-          book_id: first.book.id,
-          command_key: `late-${crypto.randomUUID()}`,
-          voucher_date: '2026-10-16',
-          description: '虚构 A 期间产生的新正式事实',
-          reason: '本地晚到响应不得覆盖新事实测试',
-          lines: first.accounts.map((account, index) => ({
-            account_id: account.id,
-            account_version: 1,
-            debit: index === 0 ? '50.00' : '0.00',
-            credit: index === 1 ? '50.00' : '0.00',
-          })),
-        },
-      }),
-    );
+    await reviewedManual(request, first.headers, first.finance, {
+      book_id: first.book.id,
+      command_key: `late-${crypto.randomUUID()}`,
+      voucher_date: '2026-10-16',
+      description: '虚构 A 期间产生的新正式事实',
+      reason: '本地晚到响应不得覆盖新事实测试',
+      lines: first.accounts.map((account, index) => ({
+        account_id: account.id,
+        account_version: 1,
+        debit: index === 0 ? '50.00' : '0.00',
+        credit: index === 1 ? '50.00' : '0.00',
+      })),
+    });
     hold = false;
     await expandBookSwitcher(page);
     await page.getByRole('listitem').filter({ hasText: first.tag }).click();
@@ -233,24 +262,19 @@ async function formalFixture(
   );
   const voucher = zeroActivity
     ? null
-    : await checked(
-        await request.post('/api/posting/manual', {
-          headers,
-          data: {
-            book_id: book.id,
-            command_key: `manual-${crypto.randomUUID()}`,
-            voucher_date: '2026-10-15',
-            description: `${tag}-真实接口正式凭证`,
-            reason: '虚构资料会计复核后正式记账',
-            lines: accounts.map((account, index) => ({
-              account_id: account.id,
-              account_version: 1,
-              debit: index === 0 ? '100.00' : '0.00',
-              credit: index === 1 ? '100.00' : '0.00',
-            })),
-          },
-        }),
-      );
+    : await reviewedManual(request, headers, finance, {
+        book_id: book.id,
+        command_key: `manual-${crypto.randomUUID()}`,
+        voucher_date: '2026-10-15',
+        description: `${tag}-真实接口正式凭证`,
+        reason: '虚构资料会计复核后正式记账',
+        lines: accounts.map((account, index) => ({
+          account_id: account.id,
+          account_version: 1,
+          debit: index === 0 ? '100.00' : '0.00',
+          credit: index === 1 ? '100.00' : '0.00',
+        })),
+      });
   return { headers, finance, employee, tag, company, book, accounts, voucher };
 }
 
@@ -351,6 +375,164 @@ for (const viewport of [
   { name: 'desktop', width: 1280, height: 900 },
   { name: 'mobile', width: 390, height: 844 },
 ]) {
+  test(`待审手工凭证只由制单本人撤回并保留责任历史：${viewport.name}`, async ({
+    page,
+    request,
+  }, testInfo) => {
+    const f = await formalFixture(request, true);
+    const content = {
+      book_id: f.book.id,
+      command_key: `withdraw-${crypto.randomUUID()}`,
+      voucher_date: '2026-10-20',
+      description: `${f.tag}-待撤回`,
+      reason: '虚构数据准备后发现摘要需更正',
+      lines: f.accounts.map((account, index) => ({
+        account_id: account.id,
+        account_version: 1,
+        debit: index === 0 ? '25.00' : '0.00',
+        credit: index === 1 ? '25.00' : '0.00',
+      })),
+    };
+    const prepared = await checked(
+      await request.post('/api/posting/manual-requests', { headers: f.headers, data: content }),
+    );
+    const item = prepared.request;
+    expect(
+      (
+        await request.post(`/api/posting/manual-requests/${item.id}/withdraw`, {
+          headers: f.finance,
+          data: { expected_version: item.version, reason: '他人不可替代制单本人撤回' },
+        })
+      ).status(),
+    ).toBe(403);
+    await page.setViewportSize(viewport);
+    await page.goto(
+      `/workspace/formal-books?book=${f.book.id}&company=${f.company.id}&period=2026-10`,
+    );
+    await page.getByText('手工凭证办理（按制单、复核、记账三步办理）', { exact: true }).click();
+    const panel = page.getByRole('region', { name: '手工凭证办理', exact: true });
+    await panel.getByText('录错或政策变更？撤回此待审凭证', { exact: true }).click();
+    await expect(
+      panel.getByRole('button', { name: '确认撤回待审凭证', exact: true }),
+    ).toBeDisabled();
+    await panel
+      .getByLabel('撤回原因', { exact: true })
+      .fill('虚构测试：摘要录错，保留原件并重新准备');
+    await panel.getByRole('button', { name: '确认撤回待审凭证', exact: true }).click();
+    await expect(panel.getByText('已撤回，保留历史', { exact: false })).toBeVisible();
+    await expect(panel.getByRole('button', { name: '确认手工凭证审核', exact: true })).toHaveCount(
+      0,
+    );
+    await expect(panel.getByRole('button', { name: '确认正式记账', exact: true })).toHaveCount(0);
+    const after = await checked(
+      await request.get(`/api/books/${f.book.id}/manual-review-requests`, { headers: f.headers }),
+      200,
+    );
+    expect(after.requests).toHaveLength(1);
+    expect(after.requests[0].withdrawn).toBe(true);
+    expect(after.requests[0].prepared_by).toBe(item.prepared_by);
+    expect(after.requests[0].content).toEqual(item.content);
+    expect(after.requests[0].withdrawal_reason).toContain('摘要录错');
+    expect([403, 409]).toContain(
+      (
+        await request.post(`/api/posting/manual-requests/${item.id}/approve`, {
+          headers: f.finance,
+          data: {
+            expected_version: after.requests[0].version,
+            expected_policy_version: item.policy_version,
+            reason: '已撤回不能继续审核',
+          },
+        })
+      ).status(),
+    );
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(
+      true,
+    );
+    await page.screenshot({
+      path: testInfo.outputPath(`manual-withdrawal-${viewport.name}.png`),
+      fullPage: true,
+    });
+  });
+  test(`手工凭证必须绑定制单责任并经独立复核再正式记账：${viewport.name}`, async ({
+    page,
+    request,
+  }, testInfo) => {
+    const f = await formalFixture(request, true);
+    await page.setViewportSize(viewport);
+    const path = `/workspace/formal-books?book=${f.book.id}&company=${f.company.id}&period=2026-10`;
+    await page.goto(path);
+    await page.getByText('手工凭证办理（按制单、复核、记账三步办理）', { exact: true }).click();
+    const panel = page.getByRole('region', { name: '手工凭证办理', exact: true });
+    await panel.getByLabel('凭证摘要', { exact: true }).fill(`${f.tag}-界面责任闭环`);
+    await panel.getByLabel('制单说明', { exact: true }).fill('虚构原件已核对，本人承担制单责任');
+    await panel.getByLabel('第 1 行正式科目', { exact: true }).selectOption(f.accounts[0].id);
+    await panel.getByLabel('第 2 行正式科目', { exact: true }).selectOption(f.accounts[1].id);
+    await panel.getByLabel('第 1 行借方金额', { exact: true }).fill('88.00');
+    await panel.getByLabel('第 2 行贷方金额', { exact: true }).fill('88.00');
+    await panel.getByRole('button', { name: '提交待复核', exact: true }).click();
+    await expect(panel.getByRole('heading', { name: `${f.tag}-界面责任闭环` })).toBeVisible();
+    await expect(panel.getByRole('button', { name: '确认手工凭证审核', exact: true })).toHaveCount(
+      0,
+    );
+    const list = await checked(
+      await request.get(`/api/books/${f.book.id}/manual-review-requests`, { headers: f.headers }),
+      200,
+    );
+    const item = list.requests[0];
+    expect(item.prepared_by).toBe('local-accountant');
+    expect(item.status).toBe('pending');
+    expect(
+      (
+        await request.post(`/api/posting/manual-requests/${item.id}/approve`, {
+          headers: f.headers,
+          data: {
+            expected_version: item.version,
+            expected_policy_version: item.policy_version,
+            reason: '禁止本人独立复核',
+          },
+        })
+      ).status(),
+    ).toBe(403);
+    // Select the real local finance identity; no fabricated token or role projection.
+    await page.route('**/api/session', async (route) => {
+      const url = new URL(route.request().url());
+      url.searchParams.set('persona', 'finance');
+      await route.fulfill({ response: await route.fetch({ url: url.toString() }) });
+    });
+    await page.goto(path);
+    await page.getByText('手工凭证办理（按制单、复核、记账三步办理）', { exact: true }).click();
+    await panel.getByRole('button', { name: '确认手工凭证审核', exact: true }).click();
+    await expect(panel.getByRole('button', { name: '确认正式记账', exact: true })).toBeVisible();
+    await panel.getByRole('button', { name: '确认正式记账', exact: true }).click();
+    await expect(panel.getByText('已正式记账', { exact: false })).toBeVisible();
+    const final = await checked(
+      await request.get(`/api/books/${f.book.id}/manual-review-requests`, { headers: f.headers }),
+      200,
+    );
+    expect(final.requests[0].reviewed_by).toBe('local-business-finance');
+    expect(final.requests[0].independent).toBe(true);
+    expect(final.requests[0].posted_voucher_id).toBeTruthy();
+    expect(
+      (
+        await checked(
+          await request.get(`/api/books/${f.book.id}/exports`, { headers: f.headers }),
+          200,
+        )
+      ).exports,
+    ).toEqual([]);
+    expect(
+      (
+        await request.get(`/api/books/${f.book.id}/manual-review-requests`, { headers: f.employee })
+      ).status(),
+    ).toBe(404);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(
+      true,
+    );
+    await page.screenshot({
+      path: testInfo.outputPath(`manual-policy-${viewport.name}.png`),
+      fullPage: true,
+    });
+  });
   test(`正式账簿真实查询、原凭证与会计授权 CSV：${viewport.name}`, async ({
     page,
     request,
@@ -498,7 +680,7 @@ for (const viewport of [
     });
     await page.goto(`/workspace/briefing?book=${f.book.id}&company=${f.company.id}&period=2026-10`);
     const clientPanel = page.getByRole('region', { name: '月度交付包', exact: true });
-    await expect(clientPanel.getByText('待客户签收', { exact: true })).toBeVisible({
+    await expect(clientPanel.getByText(/本月资料包（第 1 版）/)).toBeVisible({
       timeout: 30_000,
     });
     await expect(page.getByRole('region', { name: '事务所账务概览', exact: true })).toHaveCount(0);
@@ -508,15 +690,20 @@ for (const viewport of [
     await expect(
       clientPanel.getByRole('button', { name: '生成本月交付包', exact: true }),
     ).toHaveCount(0);
+    await expect(
+      clientPanel.getByText(/待客户查看|客户已查看 · 待签收/, { exact: true }),
+    ).toBeVisible({ timeout: 30_000 });
     await clientPanel
-      .getByLabel('交付或签收说明', { exact: true })
+      .getByLabel('签收说明', { exact: true })
       .fill('客户已查看本月版本及原件索引，确认收到资料');
-    await clientPanel.getByRole('checkbox', { name: '我已核对本企业、本月份及本次版本' }).check();
-    await clientPanel.getByRole('button', { name: '确认收到 V1', exact: true }).click();
+    await clientPanel
+      .getByRole('checkbox', { name: '我已核对月份与版本，并确认收到本版全部文件' })
+      .check();
+    await clientPanel.getByRole('button', { name: '确认收到第 1 版', exact: true }).click();
     await expect(clientPanel.getByText('客户已签收', { exact: true })).toBeVisible();
-    await expect(clientPanel.getByRole('button', { name: '确认收到 V1', exact: true })).toHaveCount(
-      0,
-    );
+    await expect(
+      clientPanel.getByRole('button', { name: '确认收到第 1 版', exact: true }),
+    ).toHaveCount(0);
     await page.screenshot({
       path: testInfo.outputPath(`monthly-customer-${viewport.name}.png`),
       fullPage: true,

@@ -21,7 +21,7 @@ from app.jobs.worker import QueueExecution, QueueWorker
 from app.main import create_app
 from test_intelligence_workflow import (
     FakeProvider, ai_case, create_event, draft, extract, handoff, http_auth,
-    http_create, http_handoff, invoice_document, propose,
+    http_create, http_handoff, http_independent_approval, invoice_document, propose,
 )
 
 
@@ -502,11 +502,12 @@ def test_pending_queue_cannot_be_human_resolved_or_bypass_accounting_review(queu
     assert duplicate.value.status == 409 and case.provider.extract_calls == 1
     receipt = handoff(case, event)
     detail = case.intelligence.reconcile(case.actors["accountant"], event["id"])
+    pending_version = case.ledger.get_draft(case.actors["accountant"], case.book["id"], receipt["draft_id"])["version"]
     pending = next(row for row in detail["findings"] if row["code"].startswith("queue_pending_"))
     with pytest.raises(AccountingError):
         case.intelligence.resolve(case.actors["accountant"], pending["id"], "会计试图直接忽略未完成识别")
     with pytest.raises(AccountingError):
-        case.ledger.approve(case.actors["accountant"], case.book["id"], receipt["draft_id"], ApprovalRequest(expected_version=1))
+        case.ledger.approve(case.actors["accountant"], case.book["id"], receipt["draft_id"], ApprovalRequest(expected_version=pending_version))
     cancelled = case.queue.cancel_job(case.actors["accountant"], batch["jobs"][0]["id"], "取消多余重识别，沿用已核对原件")
     assert cancelled["progress"]["cancelled"] == 1
     for finding in case.intelligence.reconcile(case.actors["accountant"], event["id"])["findings"]:
@@ -516,7 +517,7 @@ def test_pending_queue_cannot_be_human_resolved_or_bypass_accounting_review(queu
                 finding["id"],
                 "已独立核对合成原件与业务事实，确认可继续复核",
             )
-    reviewed = case.ledger.approve(case.actors["accountant"], case.book["id"], receipt["draft_id"], ApprovalRequest(expected_version=1))
+    reviewed = case.ledger.approve(case.actors["accountant"], case.book["id"], receipt["draft_id"], ApprovalRequest(expected_version=pending_version))
     assert reviewed["status"] == "approved" and case.provider.extract_calls == 1
 
 
@@ -594,17 +595,17 @@ def test_http_batch_worker_exception_resolution_proposal_review_and_export(queue
         if finding["severity"] == "blocking" and not finding["resolved"]:
             assert client.post(f"/api/intelligence/findings/{finding['id']}/resolve", headers=employee, json={"reason": "申请人尝试自审"}).status_code == 403
     receipt, book = http_handoff(client, event, employee, department, finance)
-    proposal = client.post(f"/api/books/{book['id']}/drafts/{receipt['draft_id']}/ai-proposals", headers=accountant, json={"expected_version": 1, "idempotency_key": "synthetic-queue-proposal"})
+    proposal = client.post(f"/api/books/{book['id']}/drafts/{receipt['draft_id']}/ai-proposals", headers=accountant, json={"expected_version": receipt["initial_draft_version"], "idempotency_key": "synthetic-queue-proposal"})
     assert proposal.status_code == 200 and proposal.json()["status"] == "succeeded", proposal.text
     apply_url = f"/api/intelligence/proposals/{proposal.json()['id']}/apply"
-    applied = client.post(apply_url, headers=accountant, json={"expected_version": 1})
+    applied = client.post(apply_url, headers=accountant, json={"expected_version": receipt["initial_draft_version"]})
     if applied.status_code == 409:
         refreshed = client.get(f"/api/business/events/{event['id']}/intelligence", headers=accountant).json()
         for finding in refreshed["findings"]:
             if finding["severity"] == "blocking" and not finding["resolved"]:
                 reviewed = client.post(f"/api/intelligence/findings/{finding['id']}/resolve", headers=accountant, json={"reason": "合成测试已核对完整原件与业务，确认差异需人工处理"})
                 assert reviewed.status_code == 200, reviewed.text
-        applied = client.post(apply_url, headers=accountant, json={"expected_version": 1})
+        applied = client.post(apply_url, headers=accountant, json={"expected_version": receipt["initial_draft_version"]})
     assert applied.status_code == 200 and applied.json()["status"] == "draft", applied.text
     export_body = {"draft_ids": [receipt["draft_id"]], "idempotency_key": "synthetic-queue-export"}
     for finding in client.get(f"/api/business/events/{event['id']}/intelligence", headers=accountant).json()["findings"]:
@@ -615,7 +616,7 @@ def test_http_batch_worker_exception_resolution_proposal_review_and_export(queue
                 json={"reason": "复核合成原件与业务事实后确认继续"},
             ).status_code == 200
     assert client.post(f"/api/books/{book['id']}/exports", headers=accountant, json=export_body).status_code == 409
-    approved = client.post(f"/api/books/{book['id']}/drafts/{receipt['draft_id']}/approve", headers=accountant, json={"expected_version": applied.json()["version"]})
+    approved = http_independent_approval(client, book['id'], receipt['draft_id'], applied.json()['version'], accountant, finance)
     assert approved.status_code == 200, approved.text
     exported = client.post(f"/api/books/{book['id']}/exports", headers=accountant, json=export_body)
     assert exported.status_code == 200 and "0.30" in exported.json()["csv"], exported.text

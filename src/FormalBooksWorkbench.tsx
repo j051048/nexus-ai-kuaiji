@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, apiBlob, ApiError, errorMessage } from './api';
 import type { Session } from './types';
+import { ManualVoucherReviewPanel } from './ManualVoucherReviewPanel';
 import {
   FormalBooksRequestGuard,
   formalBooksPath,
@@ -16,6 +17,7 @@ import type {
   FormalEntry,
   FormalVoucher,
 } from './formal-books-types';
+import { FormalBooksRangePanel } from './FormalBooksRangePanel';
 import './formal-books.css';
 
 export interface FormalBooksWorkbenchProps {
@@ -72,6 +74,7 @@ function FormalBooksContent({
   onBack,
 }: FormalBooksWorkbenchProps) {
   const [kind, setKind] = useState<FormalBookKind>('trial_balance');
+  const [manualOpen, setManualOpen] = useState(false);
   const [accountId, setAccountId] = useState('');
   const [asOf, setAsOf] = useState('');
   const [auxKey, setAuxKey] = useState('');
@@ -90,6 +93,7 @@ function FormalBooksContent({
   const [voucherLoading, setVoucherLoading] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [notice, setNotice] = useState('');
+  const [range, setRange] = useState(false);
   const reads = useRef(new FormalBooksRequestGuard());
   const details = useRef(new FormalBooksRequestGuard());
   const downloads = useRef(new FormalBooksRequestGuard());
@@ -279,6 +283,17 @@ function FormalBooksContent({
       if (downloads.current.accepts(ticket, liveScope.current)) setDownloading(false);
     }
   }
+  if (range)
+    return (
+      <FormalBooksRangePanel
+        session={session}
+        bookId={bookId}
+        bookName={bookName}
+        companyId={companyId ?? confirmedScope?.company_id}
+        canDownload={canDownload}
+        onBack={() => setRange(false)}
+      />
+    );
   const selectionNeeded =
     kind === 'account_ledger' && !accountId
       ? '请先选择科目，或从科目余额表点击“查看明细”。'
@@ -296,13 +311,27 @@ function FormalBooksContent({
             {confirmedScope ? ` · ${confirmedScope.period}` : period ? ` · ${period}` : ''}
           </p>
         </div>
-        <button type="button" className="button secondary" onClick={onBack}>
-          返回工作台
-        </button>
+        <div className="formal-books-heading-actions">
+          <button type="button" className="button secondary" onClick={() => setRange(true)}>
+            连续期间账簿
+          </button>
+          <button type="button" className="button secondary" onClick={onBack}>
+            返回工作台
+          </button>
+        </div>
       </header>
       <p className="formal-books-boundary">
         余额来自已绑定的正式期初与正式凭证；未审核、未记账草稿不计入余额。查看与下载不会审核或记账。
       </p>
+      <details
+        className="review-section"
+        onToggle={(event) => setManualOpen(event.currentTarget.open)}
+      >
+        <summary>手工凭证办理（按制单、复核、记账三步办理）</summary>
+        {manualOpen && (
+          <ManualVoucherReviewPanel session={session} bookId={bookId} companyId={companyId} />
+        )}
+      </details>
       <nav className="formal-books-tabs" aria-label="账簿类型">
         {(Object.entries(bookLabels) as [FormalBookKind, string][]).map(([key, label]) => (
           <button

@@ -1,3 +1,4 @@
+import type { ReviewResponsibilityData } from './review-policy';
 import type { JournalLine, Pagination } from './types';
 
 export interface ReviewSelection {
@@ -23,6 +24,7 @@ export interface ReviewList {
   risk_scope: string;
 }
 export interface ReviewSnapshot extends ReviewSelection {
+  review_responsibility?: ReviewResponsibilityData;
   company_id: string;
   company_name: string;
   book_name: string;

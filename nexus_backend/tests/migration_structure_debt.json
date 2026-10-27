@@ -1,0 +1,23 @@
+{
+ "version": 1,
+ "entries": [
+  {
+   "dialect": "sqlite",
+   "file": "088_upload_reference_binding.sql",
+   "sha256": "c9c1d832af97b826842d3ab5fcec162c872775e4b98b6866493f272e307b9646",
+   "reason": "已上线历史迁移，字节不可改；缺少 compatibility 头属历史债，新迁移不得沿用"
+  },
+  {
+   "dialect": "postgres",
+   "file": "128_upload_reference_binding.sql",
+   "sha256": "3660518da39f572a478d599035e78011c0607bc2d21b5683928d88cd89a52d4e",
+   "reason": "已上线历史迁移，字节不可改；缺少 compatibility 头属历史债，新迁移不得沿用"
+  },
+  {
+   "dialect": "postgres",
+   "file": "138_projection_identity.sql",
+   "sha256": "3896fcbe7ea8d26b96060597b5a7ebb638cdc2acfdefb822486845e133a5494f",
+   "reason": "已上线历史迁移，字节不可改；缺少 compatibility 头属历史债，新迁移不得沿用"
+  }
+ ]
+}

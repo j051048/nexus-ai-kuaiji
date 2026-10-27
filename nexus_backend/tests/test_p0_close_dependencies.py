@@ -4,6 +4,8 @@ SQLite validates domain behavior; PostgreSQL lock races are separately covered
 in test_p0_close_upload_postgres.py and must never be inferred from this suite.
 """
 
+from review_policy_fixtures import post_reviewed_manual
+
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 from threading import Event
@@ -46,7 +48,8 @@ def close_case(business):
     opening, posting = setup_b03(case)
     reviewer = admin(case)
     sub = SubledgerService(case.db)
-    payment = posting.post_manual(
+    payment = post_reviewed_manual(
+        posting,
         case.manager,
         ManualVoucher(
             book_id=case.book["id"],
@@ -266,7 +269,8 @@ def mutate(case, kind):
     elif kind == "posting":
         from app.posting.service import PostingService
 
-        PostingService(case.db).post_manual(
+        post_reviewed_manual(
+            PostingService(case.db),
             case.manager,
             ManualVoucher(
                 book_id=book_id,

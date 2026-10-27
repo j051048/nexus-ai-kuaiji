@@ -162,7 +162,7 @@ def handoff(ai_case, event, *, verify_original=True):
     event = ai_case.business.approve_department(ai_case.actors["approver"], event["id"], event["version"])
     event = ai_case.business.approve_finance(ai_case.actors["finance"], event["id"], event["version"])
     receipt = ai_case.business.handoff(ai_case.actors["finance"], event["id"], HandoffRequest(expected_version=event["version"], book_id=ai_case.book["id"], idempotency_key="synthetic-handoff-" + event["id"]))
-    if verify_original:
+    if verify_original and ai_case.intelligence.company_settings(ai_case.manager, event["company_id"])["enabled"]:
         # The synthetic fixture is a blank bitmap, not independent OCR proof.
         # Positive reviewed workflows explicitly model the accountant checking
         # the original. Negative AK03 cases opt out and assert adoption blocks.
@@ -299,7 +299,9 @@ def draft(ai_case, draft_id):
     return next(row for row in ai_case.ledger.get_book(ai_case.actors["accountant"], ai_case.book["id"])["drafts"] if row["id"] == draft_id)
 
 
-def propose(ai_case, draft_id, version=1, actor="accountant", key="synthetic-proposal-key"):
+def propose(ai_case, draft_id, version=None, actor="accountant", key="synthetic-proposal-key"):
+    if version is None:
+        version = ai_case.ledger.get_draft(ai_case.actors[actor], ai_case.book["id"], draft_id)["version"]
     return ai_case.intelligence.propose(ai_case.actors[actor], ai_case.book["id"], draft_id, ProposalRequest(expected_version=version, idempotency_key=key))
 
 
@@ -318,14 +320,14 @@ def test_positive_ocr_proposal_apply_independent_review_and_export_is_exact_and_
     public_proposal = next(row for row in employee_view["runs"] if row["id"] == proposal["id"])
     assert public_proposal["result"] is None and public_proposal["book_id"] is None and public_proposal["draft_id"] is None
     with pytest.raises(AccountingError):
-        ai_case.intelligence.apply(ai_case.actors["employee"], proposal["id"], 1)
-    applied = ai_case.intelligence.apply(ai_case.actors["accountant"], proposal["id"], 1)
-    assert applied["status"] == "draft" and applied["version"] == 2 and applied["issues"] == []
+        ai_case.intelligence.apply(ai_case.actors["employee"], proposal["id"], initial["version"])
+    applied = ai_case.intelligence.apply(ai_case.actors["accountant"], proposal["id"], initial["version"])
+    assert applied["status"] == "draft" and applied["version"] > initial["version"] and applied["issues"] == []
     assert applied["description"] == proposal["result"]["description"]
-    assert ai_case.intelligence.apply(ai_case.actors["accountant"], proposal["id"], 1)["version"] == 2
+    assert ai_case.intelligence.apply(ai_case.actors["accountant"], proposal["id"], initial["version"])["version"] == applied["version"]
     with pytest.raises(AccountingError):
-        ai_case.ledger.approve(ai_case.actors["finance"], ai_case.book["id"], initial["id"], ApprovalRequest(expected_version=2))
-    reviewed = ai_case.ledger.approve(ai_case.actors["accountant"], ai_case.book["id"], initial["id"], ApprovalRequest(expected_version=2))
+        ai_case.ledger.approve(ai_case.actors["finance"], ai_case.book["id"], initial["id"], ApprovalRequest(expected_version=applied["version"]))
+    reviewed = ai_case.ledger.approve(ai_case.manager, ai_case.book["id"], initial["id"], ApprovalRequest(expected_version=applied["version"]))
     assert reviewed["status"] == "approved"
     request = ExportRequest(draft_ids=[initial["id"]], idempotency_key="synthetic-export-key")
     exported = ai_case.ledger.export(ai_case.actors["accountant"], ai_case.book["id"], request)
@@ -350,12 +352,12 @@ def test_same_customer_invoice_export_delivery_and_close(ai_case):
         if row["id"] == receipt["draft_id"]
     )
     proposal = propose(ai_case, draft["id"])
-    ai_case.intelligence.apply(ai_case.actors["accountant"], proposal["id"], 1)
+    applied = ai_case.intelligence.apply(ai_case.actors["accountant"], proposal["id"], draft["version"])
     approved = ai_case.ledger.approve(
-        ai_case.actors["accountant"],
+        ai_case.manager,
         ai_case.book["id"],
         draft["id"],
-        ApprovalRequest(expected_version=2),
+        ApprovalRequest(expected_version=applied["version"]),
     )
     export = ai_case.ledger.export(
         ai_case.actors["accountant"],
@@ -441,8 +443,8 @@ def test_human_resolution_is_required_before_applying_amount_mismatch_proposal(a
     review_original(ai_case, event)
     corrected = propose(ai_case, receipt["draft_id"], key="corrected-proposal")
     assert corrected["status"] == "succeeded"
-    result = ai_case.intelligence.apply(ai_case.actors["accountant"], corrected["id"], 1)
-    assert result["status"] == "draft" and result["version"] == 2
+    result = ai_case.intelligence.apply(ai_case.actors["accountant"], corrected["id"], corrected["input_version"])
+    assert result["status"] == "draft" and result["version"] > corrected["input_version"]
 
 
 def test_changed_draft_version_rejects_old_suggestion_without_mutation(ai_case):
@@ -451,7 +453,7 @@ def test_changed_draft_version_rejects_old_suggestion_without_mutation(ai_case):
     receipt = handoff(ai_case, event)
     suggestion = propose(ai_case, receipt["draft_id"])
     original = draft(ai_case, receipt["draft_id"])
-    updated = ai_case.ledger.update_draft(ai_case.actors["accountant"], ai_case.book["id"], original["id"], DraftUpdate(expected_version=1, description="会计已经手工修改", lines=original["lines"]))
+    updated = ai_case.ledger.update_draft(ai_case.actors["accountant"], ai_case.book["id"], original["id"], DraftUpdate(expected_version=original["version"], description="会计已经手工修改", lines=original["lines"]))
     with pytest.raises(AccountingError):
         ai_case.intelligence.apply(ai_case.actors["accountant"], suggestion["id"], updated["version"])
     assert draft(ai_case, original["id"])["description"] == "会计已经手工修改"
@@ -469,7 +471,7 @@ def test_other_book_and_actor_cannot_generate_or_apply_a_business_proposal(ai_ca
     proposal = propose(ai_case, receipt["draft_id"])
     with pytest.raises(AccountingError):
         ai_case.intelligence.apply(ai_case.actors["outsider"], proposal["id"], 1)
-    assert draft(ai_case, receipt["draft_id"])["version"] == 1
+    assert draft(ai_case, receipt["draft_id"])["version"] == proposal["input_version"]
 
 
 def import_bank(ai_case, book_id=None, external_id="bank-synthetic-1", amount="0.30", direction="expense"):
@@ -498,7 +500,7 @@ def test_paid_event_bank_link_blocks_duplicate_bank_draft_review_and_export(ai_c
         ai_case.ledger.approve(ai_case.actors["accountant"], ai_case.book["id"], bank_draft["id"], ApprovalRequest(expected_version=bank_draft["version"]))
     proposal = propose(ai_case, receipt["draft_id"])
     assert proposal["status"] == "succeeded"
-    applied = ai_case.intelligence.apply(ai_case.actors["accountant"], proposal["id"], 1)
+    applied = ai_case.intelligence.apply(ai_case.actors["accountant"], proposal["id"], proposal["input_version"])
     assert applied["issues"] == [] and any(line["account_code"] == "1002" and line["credit"] == "0.30" for line in applied["lines"])
     unlinked = ai_case.intelligence.unlink_bank(ai_case.actors["accountant"], event["id"], bank["id"], "发现关联回单需要重新核对")
     assert not unlinked["bank_links"] and any(issue["code"] == "bank_match_review" for issue in unlinked["findings"])
@@ -566,7 +568,22 @@ def http_handoff(client, event, employee, department, finance):
             resolved = client.post(f"/api/intelligence/findings/{issue['id']}/resolve", headers=accountant,
                                    json={"reason": "合成HTTP流程：会计独立核对原始票据"})
             assert resolved.status_code == 200, resolved.text
-    return response.json(), book
+    receipt = response.json()
+    current = client.get(f"/api/books/{book['id']}/drafts/{receipt['draft_id']}", headers=accountant)
+    assert current.status_code == 200, current.text
+    receipt["initial_draft_version"] = current.json()["version"]
+    return receipt, book
+
+
+def http_independent_approval(client, book_id, draft_id, version, owner, reviewer):
+    path = f"/api/books/{book_id}/drafts/{draft_id}/approve"
+    assert client.post(path, headers=owner, json={"expected_version": version}).status_code == 403
+    granted = client.put(f"/api/books/{book_id}/members/local-business-finance", headers=owner, json={"role": "reviewer"})
+    assert granted.status_code == 200, granted.text
+    reviewed = client.post(path, headers=reviewer, json={"expected_version": version})
+    assert reviewed.status_code == 200, reviewed.text
+    assert reviewed.json()["review_responsibility"]["independent"] is True
+    return reviewed
 
 
 def test_http_end_to_end_synthetic_ocr_apply_review_export_and_private_original(ai_client):
@@ -585,16 +602,16 @@ def test_http_end_to_end_synthetic_ocr_apply_review_export_and_private_original(
     assert client.post(path + "/ocr", headers=employee, json=body).json()["id"] == ocr.json()["id"]
     receipt, book = http_handoff(client, event, employee, department, finance)
     proposal_url = f"/api/books/{book['id']}/drafts/{receipt['draft_id']}/ai-proposals"
-    proposal_body = {"expected_version": 1, "idempotency_key": "synthetic-http-proposal"}
+    proposal_body = {"expected_version": receipt["initial_draft_version"], "idempotency_key": "synthetic-http-proposal"}
     assert client.post(proposal_url, headers=employee, json=proposal_body).status_code in {403, 404}
     proposal = client.post(proposal_url, headers=accountant, json=proposal_body)
     assert proposal.status_code == 200 and proposal.json()["status"] == "succeeded", proposal.text
     result_url = f"/api/intelligence/proposals/{proposal.json()['id']}/apply"
-    assert client.post(result_url, headers=department, json={"expected_version": 1}).status_code in {403, 404}
-    applied = client.post(result_url, headers=accountant, json={"expected_version": 1})
-    assert applied.status_code == 200 and applied.json()["status"] == "draft" and applied.json()["version"] == 2, applied.text
+    assert client.post(result_url, headers=department, json={"expected_version": receipt["initial_draft_version"]}).status_code in {403, 404}
+    applied = client.post(result_url, headers=accountant, json={"expected_version": receipt["initial_draft_version"]})
+    assert applied.status_code == 200 and applied.json()["status"] == "draft" and applied.json()["version"] > receipt["initial_draft_version"], applied.text
     assert client.post(f"/api/books/{book['id']}/exports", headers=accountant, json={"draft_ids": [receipt["draft_id"]], "idempotency_key": "synthetic-premature-export"}).status_code == 409
-    reviewed = client.post(f"/api/books/{book['id']}/drafts/{receipt['draft_id']}/approve", headers=accountant, json={"expected_version": 2})
+    reviewed = http_independent_approval(client, book['id'], receipt['draft_id'], applied.json()['version'], accountant, finance)
     assert reviewed.status_code == 200, reviewed.text
     export = client.post(f"/api/books/{book['id']}/exports", headers=accountant, json={"draft_ids": [receipt["draft_id"]], "idempotency_key": "synthetic-http-export"})
     assert export.status_code == 200 and "0.30" in export.json()["csv"] and "2241" in export.json()["csv"], export.text
@@ -630,20 +647,16 @@ def test_http_same_customer_export_receipt_reaches_close_gate(ai_client):
     proposal = client.post(
         f"/api/books/{book['id']}/drafts/{receipt['draft_id']}/ai-proposals",
         headers=accountant,
-        json={"expected_version": 1, "idempotency_key": "http-close-proposal"},
+        json={"expected_version": receipt["initial_draft_version"], "idempotency_key": "http-close-proposal"},
     )
     assert proposal.status_code == 200 and proposal.json()["status"] == "succeeded", proposal.text
     applied = client.post(
         f"/api/intelligence/proposals/{proposal.json()['id']}/apply",
         headers=accountant,
-        json={"expected_version": 1},
+        json={"expected_version": receipt["initial_draft_version"]},
     )
-    assert applied.status_code == 200 and applied.json()["version"] == 2, applied.text
-    reviewed = client.post(
-        f"/api/books/{book['id']}/drafts/{receipt['draft_id']}/approve",
-        headers=accountant,
-        json={"expected_version": 2},
-    )
+    assert applied.status_code == 200 and applied.json()["version"] > receipt["initial_draft_version"], applied.text
+    reviewed = http_independent_approval(client, book['id'], receipt['draft_id'], applied.json()['version'], accountant, finance)
     assert reviewed.status_code == 200, reviewed.text
     export = client.post(
         f"/api/books/{book['id']}/exports",

@@ -15,6 +15,12 @@ import { basisLabel, eligiblePacketIds, packetSelection } from './review-package
 import type { ReviewPacketSet } from './review-package-types';
 import type { ReviewReceipt, ReviewSelection } from './review-types';
 import { InlineReviewDrawer, type InlineReviewTarget } from './InlineReviewDrawer';
+import { ReviewResponsibility } from './ReviewResponsibility';
+import {
+  boundReviewReason,
+  canApproveResponsibility,
+  parseReviewResponsibility,
+} from './review-policy';
 import {
   clearReviewPackage,
   clearReviewSession,
@@ -51,6 +57,20 @@ export function ReviewPackageWorkbench({
   const [packets, setPackets] = useState<ReviewPacketSet | null>(null);
   const [selected, setSelected] = useState(new Set<string>(remembered.current?.selected ?? []));
   const [acknowledged, setAcknowledged] = useState(false);
+  const [reviewReason, setReviewReason] = useState(remembered.current?.reviewReason ?? '');
+  const [confirmationReason, setConfirmationReason] = useState<string | null>(
+    remembered.current?.confirmationReason ?? null,
+  );
+  const reasonRequired =
+    packets?.items.some((item) => item.review_responsibility?.mode === 'single_operator') ?? false;
+  const reviewPolicyReady =
+    !!packets &&
+    packets.items.every((item) =>
+      canApproveResponsibility(
+        parseReviewResponsibility(item.review_responsibility, item.expected_version),
+        session.user_id,
+      ),
+    );
   const [receipt, setReceipt] = useState<ReviewReceipt | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -123,6 +143,8 @@ export function ReviewPackageWorkbench({
       setSelected((old) => new Set(packetSelection(value, old)));
       setAcknowledged(false);
       setReceipt(null);
+      setReviewReason('');
+      setConfirmationReason(null);
       setChanged(false);
     });
   }, [session, items, run]);
@@ -152,8 +174,19 @@ export function ReviewPackageWorkbench({
       confirmationKey: confirmationKey.current,
       selectionKey: selectionKey.current,
       changed,
+      reviewReason,
+      confirmationReason,
     });
-  }, [session.scope_key, signature, packets, selected, busy, changed]);
+  }, [
+    session.scope_key,
+    signature,
+    packets,
+    selected,
+    busy,
+    changed,
+    reviewReason,
+    confirmationReason,
+  ]);
   useEffect(() => {
     const revoke = () => {
       authorized.current = false;
@@ -210,16 +243,27 @@ export function ReviewPackageWorkbench({
       setAcknowledged(false);
       setReceipt(null);
       confirmationKey.current = crypto.randomUUID();
+      setReviewReason('');
+      setConfirmationReason(null);
     });
   }
   async function confirm() {
     if (!packets?.parent_preview_id || !acknowledged || receipt || changed) return;
+    if (!reviewPolicyReady || (reasonRequired && reviewReason.trim().length < 3)) return;
+    const reason = boundReviewReason(confirmationReason, reviewReason);
+    setConfirmationReason(reason);
     const id = packets.id;
     await run(async (valid) => {
       const result = await api<ReviewReceipt>(
         `/review/packages/${encodeURIComponent(id)}/confirm`,
         session,
-        { method: 'POST', body: { idempotency_key: confirmationKey.current } },
+        {
+          method: 'POST',
+          body: {
+            idempotency_key: confirmationKey.current,
+            review_reason: reason,
+          },
+        },
       );
       if (!valid()) return;
       setReceipt(result);
@@ -251,6 +295,8 @@ export function ReviewPackageWorkbench({
       prepareKey.current = crypto.randomUUID();
       selectionKey.current = { signature: '', key: '' };
       confirmationKey.current = crypto.randomUUID();
+      setReviewReason('');
+      setConfirmationReason(null);
       const value = await api<ReviewPacketSet>('/review/packages', session, {
         method: 'POST',
         body: { items: current, idempotency_key: prepareKey.current },
@@ -496,6 +542,11 @@ export function ReviewPackageWorkbench({
                       {item.source_date} · ¥{item.source_amount} · 草稿 v{item.expected_version}
                       {item.fact_version !== null && ` / 事实 v${item.fact_version}`}
                     </p>
+                    <ReviewResponsibility
+                      value={item.review_responsibility}
+                      version={item.expected_version}
+                      userId={session.user_id}
+                    />
                     <p>
                       原始往来名称：{item.comparison.original_counterparty || '未填写'} · 业务税额：
                       {item.comparison.business_tax_amount ?? '未填写'}
@@ -583,6 +634,26 @@ export function ReviewPackageWorkbench({
             isPreview && (
               <section className="panel review-package-confirm">
                 <h2>确认所选复核包</h2>
+                {reasonRequired && (
+                  <label>
+                    本批单人办理说明（非独立复核）
+                    <textarea
+                      value={reviewReason}
+                      maxLength={1000}
+                      disabled={busy || confirmationReason !== null}
+                      onChange={(event) => setReviewReason(event.target.value)}
+                      placeholder="请说明核对依据，至少 3 个字"
+                    />
+                  </label>
+                )}
+                {confirmationReason !== null && reasonRequired && (
+                  <p className="field-help">
+                    已保留首次提交的办理说明，重试将使用同一说明；修改说明须重新准备复核包。
+                  </p>
+                )}
+                {!reviewPolicyReady && (
+                  <p role="status">制单责任或复核政策尚未通过，请重新准备并按各项提示处理。</p>
+                )}
                 <label>
                   <input
                     type="checkbox"
@@ -607,6 +678,8 @@ export function ReviewPackageWorkbench({
                     busy ||
                     changed ||
                     !acknowledged ||
+                    !reviewPolicyReady ||
+                    (reasonRequired && reviewReason.trim().length < 3) ||
                     packets.stale_count > 0 ||
                     packets.blocked_count > 0 ||
                     packets.confirmed

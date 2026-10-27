@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "cases": [
+    "nexus_backend.tests.test_review_policy_postgres::test_pg_committed_review_wins_duplicate_waiting_request",
+    "nexus_backend.tests.test_review_policy_postgres::test_pg_committed_revocation_wins_waiting_approval",
+    "nexus_backend.tests.test_review_policy_postgres::test_pg_content_edit_rebinds_maker_to_current_version",
+    "nexus_backend.tests.test_review_policy_postgres::test_pg_default_independent_rejects_maker_self_review",
+    "nexus_backend.tests.test_review_policy_postgres::test_pg_distinct_reviewer_can_review",
+    "nexus_backend.tests.test_review_policy_postgres::test_pg_duplicate_approval_does_not_duplicate_receipt",
+    "nexus_backend.tests.test_review_policy_postgres::test_pg_independent_receipt_exactly_binds_reviewed_version",
+    "nexus_backend.tests.test_review_policy_postgres::test_pg_manual_approved_request_cannot_authorize_changed_content",
+    "nexus_backend.tests.test_review_policy_postgres::test_pg_manual_review_binds_content_and_blocks_self_review",
+    "nexus_backend.tests.test_review_policy_postgres::test_pg_manual_single_operator_still_requires_recorded_review",
+    "nexus_backend.tests.test_review_policy_postgres::test_pg_manual_withdrawal_rejects_forged_scope_and_identity[book]",
+    "nexus_backend.tests.test_review_policy_postgres::test_pg_manual_withdrawal_rejects_forged_scope_and_identity[signer]",
+    "nexus_backend.tests.test_review_policy_postgres::test_pg_manual_withdrawal_rejects_forged_scope_and_identity[version]",
+    "nexus_backend.tests.test_review_policy_postgres::test_pg_native_line_change_cannot_accept_old_pending_version",
+    "nexus_backend.tests.test_review_policy_postgres::test_pg_native_policy_cannot_bind_other_company",
+    "nexus_backend.tests.test_review_policy_postgres::test_pg_native_sql_cannot_self_review",
+    "nexus_backend.tests.test_review_policy_postgres::test_pg_policy_change_does_not_relabel_historical_review",
+    "nexus_backend.tests.test_review_policy_postgres::test_pg_policy_change_rejects_old_review_request",
+    "nexus_backend.tests.test_review_policy_postgres::test_pg_policy_commit_wins_waiting_approval",
+    "nexus_backend.tests.test_review_policy_postgres::test_pg_review_commits_before_policy_change_retains_old_policy_receipt",
+    "nexus_backend.tests.test_review_policy_postgres::test_pg_review_permission_does_not_grant_policy_management",
+    "nexus_backend.tests.test_review_policy_postgres::test_pg_review_receipt_is_immutable_and_hidden_from_unassigned_user",
+    "nexus_backend.tests.test_review_policy_postgres::test_pg_runtime_cannot_forge_preparer_or_reviewer",
+    "nexus_backend.tests.test_review_policy_postgres::test_pg_single_operator_has_explicit_non_independent_receipt",
+    "nexus_backend.tests.test_review_policy_postgres::test_pg_unposted_manual_is_explicit_close_blocker_and_withdrawal_can_release[approved]",
+    "nexus_backend.tests.test_review_policy_postgres::test_pg_unposted_manual_is_explicit_close_blocker_and_withdrawal_can_release[pending]",
+    "nexus_backend.tests.test_review_policy_postgres::test_pg_unreviewed_manual_cannot_post",
+    "nexus_backend.tests.test_review_policy_postgres::test_pg_withdrawn_manual_request_cannot_be_reviewed"
+  ]
+}

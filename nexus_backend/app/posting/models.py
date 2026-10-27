@@ -47,13 +47,14 @@ class ManualLine(InputModel):
 
 
 class ManualVoucher(InputModel):
+    review_request_id: StrictStr | None = Field(default=None, min_length=1, max_length=100)
     command_key: StrictStr = Field(min_length=8, max_length=120)
     book_id: StrictStr = Field(min_length=1, max_length=100)
     voucher_date: StrictStr
     voucher_type: VoucherType = "记"
     description: StrictStr = Field(min_length=1, max_length=500)
     lines: list[ManualLine] = Field(min_length=2, max_length=200)
-    relation_kind: Literal["adjustment"] | None = None
+    relation_kind: Literal["adjustment", "reversal"] | None = None
     original_voucher_id: StrictStr | None = Field(default=None, max_length=100)
     reason: StrictStr = Field(default="手工凭证", min_length=3, max_length=1000)
 
@@ -73,6 +74,7 @@ class ManualVoucher(InputModel):
 
 
 class ReverseVoucher(InputModel):
+    review_request_id: StrictStr | None = Field(default=None, min_length=1, max_length=100)
     command_key: StrictStr = Field(min_length=8, max_length=120)
     voucher_date: StrictStr
     reason: StrictStr = Field(min_length=3, max_length=1000)

@@ -16,7 +16,7 @@ def prepare(c):
     checks = BankImportService(c.db)
     view = checks.overview(c.reviewer, c.book, draft['source_id'])
     other = view['candidates'][0]
-    request = DuplicateDistinction(source_fingerprint=view['fingerprint'], other_fingerprint=other['fingerprint'], expected_version=1, reason='已对照两笔不同原始交易及业务凭据')
+    request = DuplicateDistinction(source_fingerprint=view['fingerprint'], other_fingerprint=other['fingerprint'], expected_version=draft['version'], reason='已对照两笔不同原始交易及业务凭据')
     return checks, draft, view, other, request
 
 
@@ -27,8 +27,8 @@ def test_pg_stable_bank_identity_and_duplicate_guard_use_canonical_facts(busines
     assert any('独立交易' in issue for issue in draft['issues'])
     assert checks.distinguish(c.reviewer, c.book, view['source_id'], other['id'], request)['distinct']
     refreshed = c.service.get_draft(c.reviewer, c.book, draft['id'])
-    assert refreshed['version'] == 2 and not refreshed['issues']
-    assert c.service.approve(c.reviewer, c.book, draft['id'], ApprovalRequest(expected_version=2))['status'] == 'approved'
+    assert refreshed['version'] == draft['version'] + 1 and not refreshed['issues']
+    assert c.service.approve(c.reviewer, c.book, draft['id'], ApprovalRequest(expected_version=refreshed['version']))['status'] == 'approved'
 
 
 def test_pg_bank_identity_and_decisions_force_rls_and_no_worker_access(business_case):
@@ -54,10 +54,10 @@ def test_pg_sql_editor_cannot_manufacture_duplicate_clearance(business_case):
     prints = {view['source_id']: view['fingerprint'], other['id']: other['fingerprint']}
     with pytest.raises(c.psycopg.errors.InsufficientPrivilege):
         with c.db.transaction(write=True, actor=c.finance) as conn:
-            conn.execute('INSERT INTO bank_duplicate_decisions VALUES(?,?,?,?,?,?,?,?,?,?)', (low, high, c.book, c.owner.firm_id, prints[low], prints[high], 1, request.reason, c.finance.user_id, '2026-10-12T01:00:00+00:00'))
+            conn.execute('INSERT INTO bank_duplicate_decisions VALUES(?,?,?,?,?,?,?,?,?,?)', (low, high, c.book, c.owner.firm_id, prints[low], prints[high], request.expected_version, request.reason, c.finance.user_id, '2026-10-12T01:00:00+00:00'))
     with pytest.raises(c.psycopg.errors.CheckViolation):
         with c.db.transaction(write=True, actor=c.reviewer) as conn:
-            conn.execute('INSERT INTO bank_duplicate_decisions VALUES(?,?,?,?,?,?,?,?,?,?)', (low, high, c.book, c.owner.firm_id, '0' * 64, prints[high], 1, request.reason, c.reviewer.user_id, '2026-10-12T01:00:00+00:00'))
+            conn.execute('INSERT INTO bank_duplicate_decisions VALUES(?,?,?,?,?,?,?,?,?,?)', (low, high, c.book, c.owner.firm_id, '0' * 64, prints[high], request.expected_version, request.reason, c.reviewer.user_id, '2026-10-12T01:00:00+00:00'))
 
 
 def test_pg_hidden_same_company_book_cannot_duplicate_stable_identity(business_case):

@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "cases": [
+    "nexus_backend.tests.test_review_policy_logical_version_postgres::test_pg_logical_version_counts_commands_but_history_counts_each_fact_change",
+    "nexus_backend.tests.test_review_policy_logical_version_postgres::test_pg_noop_header_cannot_consume_next_native_fact_version"
+  ]
+}

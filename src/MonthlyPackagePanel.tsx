@@ -4,10 +4,13 @@ import { api, apiBlob, errorMessage } from './api';
 import type { Session } from './types';
 import {
   canAcknowledgePackage,
+  formatBytes,
+  packageOpeningLabel,
   packageReceiptLabel,
   validatePackage,
   validateMonthlyOverview,
   type MonthlyPackage,
+  type MonthlyPackageFile,
   type MonthlyPackageOverview,
 } from './monthly-package-types';
 import './monthly-package.css';
@@ -46,6 +49,10 @@ function MonthlyPackageContent({
   const [reportId, setReportId] = useState('');
   const [reason, setReason] = useState('');
   const [confirmed, setConfirmed] = useState(false);
+  const [contents, setContents] = useState<{ id: string; files: MonthlyPackageFile[] } | null>(
+    null,
+  );
+  const opened = useRef('');
   const current = useRef(scope);
   current.current = scope;
   const epoch = useRef(0),
@@ -53,6 +60,45 @@ function MonthlyPackageContent({
   const requestKey = useRef({ fingerprint: '', key: '' });
   const value = state?.scope === scope ? state.value : null;
   const base = `/books/${encodeURIComponent(bookId)}/delivery/monthly-package`;
+  const track = useCallback(
+    async (item: MonthlyPackage, generation: number) => {
+      // Seeing the package is what the firm needs to learn; neither the read receipt nor
+      // the file list may block viewing or signing.
+      opened.current = item.id;
+      try {
+        const updated =
+          item.can_open && item.customer_opening_status === 'not_opened'
+            ? await api<MonthlyPackage>(`${base}/${encodeURIComponent(item.id)}/open`, session, {
+                method: 'POST',
+              })
+            : (
+                await api<{ package: MonthlyPackage }>(
+                  `${base}/${encodeURIComponent(item.id)}`,
+                  session,
+                )
+              ).package;
+        if (current.current !== scope || generation !== epoch.current) return;
+        if (updated?.files?.length) setContents({ id: item.id, files: updated.files });
+        if (validatePackage(updated, { bookId, companyId: item.company_id, period: item.period }))
+          setState((prior) =>
+            prior && prior.scope === scope
+              ? {
+                  scope,
+                  value: {
+                    ...prior.value,
+                    packages: prior.value.packages.map((pack) =>
+                      pack.id === item.id ? updated : pack,
+                    ),
+                  },
+                }
+              : prior,
+          );
+      } catch {
+        // A failed read receipt only costs the view trail, not the client's ability to sign.
+      }
+    },
+    [base, bookId, scope, session],
+  );
   const load = useCallback(
     async (signal?: AbortSignal) => {
       const generation = ++epoch.current;
@@ -64,6 +110,10 @@ function MonthlyPackageContent({
           throw new Error('交付包范围或版本无效，请重新读取当前账套。');
         setState({ scope, value: result });
         setError('');
+        if (clientOnly) {
+          const newest = result.packages.find((item) => !item.superseded);
+          if (newest && opened.current !== newest.id) void track(newest, generation);
+        }
         setReportId((prior) =>
           result.reports.some((item) => item.id === prior && item.current)
             ? prior
@@ -81,7 +131,7 @@ function MonthlyPackageContent({
         if (current.current === scope && generation === epoch.current) setLoading(false);
       }
     },
-    [base, bookId, scope, session],
+    [base, bookId, clientOnly, scope, session, track],
   );
   useEffect(() => {
     current.current = scope;
@@ -93,6 +143,8 @@ function MonthlyPackageContent({
     setMessage('');
     setError('');
     requestKey.current = { fingerprint: '', key: '' };
+    opened.current = '';
+    setContents(null);
     void load(controller.signal);
     return () => {
       controller.abort();
@@ -241,6 +293,24 @@ function MonthlyPackageContent({
               <strong>交付前还需处理</strong>
               <ul>
                 {value.blockers.map((item, i) => (
+                  <li key={`${item.code}:${i}`}>
+                    {item.message}
+                    {item.owner && (
+                      <span className="monthly-package-owner">
+                        {' '}
+                        处理人：{item.owner} · 入口：{item.entry ?? '—'}
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {!clientOnly && value.warnings.length > 0 && (
+            <div className="monthly-package-warnings">
+              <strong>建议在交付前确认</strong>
+              <ul>
+                {value.warnings.map((item, i) => (
                   <li key={`${item.code}:${i}`}>{item.message}</li>
                 ))}
               </ul>
@@ -288,13 +358,15 @@ function MonthlyPackageContent({
             value.packages.some((item) => canAcknowledgePackage(item, session.user_id))) && (
             <div className="monthly-package-confirm">
               <label>
-                交付或签收说明
+                {clientOnly ? '签收说明' : '交付或签收说明'}
                 <input
                   value={reason}
                   maxLength={500}
                   disabled={!!busy}
                   onChange={(event) => setReason(event.target.value)}
-                  placeholder="说明本次交付范围或收到的资料"
+                  placeholder={
+                    clientOnly ? '例如：已收到本月报表与账务资料' : '说明本次交付范围或收到的资料'
+                  }
                 />
               </label>
               <label className="monthly-package-check">
@@ -304,8 +376,15 @@ function MonthlyPackageContent({
                   disabled={!!busy}
                   onChange={(event) => setConfirmed(event.target.checked)}
                 />
-                我已核对本企业、本月份及本次版本
+                {clientOnly
+                  ? '我已核对月份与版本，并确认收到本版全部文件'
+                  : '我已核对本企业、本月份及本次版本'}
               </label>
+              {clientOnly && (
+                <p className="monthly-package-note">
+                  签收仅表示收到资料，不代表税务机关已受理，也不代表财务软件已入账。
+                </p>
+              )}
             </div>
           )}
           {!value.packages.length && (
@@ -320,14 +399,37 @@ function MonthlyPackageContent({
               <li key={item.id}>
                 <div>
                   <strong>
-                    {item.period} · 交付包 V{item.version}
+                    {item.period} ·{' '}
+                    {clientOnly ? `本月资料包（第 ${item.version} 版）` : `交付包 V${item.version}`}
                   </strong>
                   <span className="status-pill">
-                    {packageReceiptLabel(item.customer_receipt_status)}
+                    {clientOnly
+                      ? packageOpeningLabel(item)
+                      : packageReceiptLabel(item.customer_receipt_status)}
                   </span>
-                  <p>报表 V{item.report_version} · 原件索引 · 财务软件导入回执另行核验</p>
+                  <p>
+                    {clientOnly
+                      ? `${item.period} · 第 ${item.version} 版 · 报表 V${item.report_version}${item.superseded ? ' · 已有更新版本' : ''}`
+                      : `报表 V${item.report_version} · 原件索引 · 财务软件导入回执另行核验`}
+                  </p>
+                  {clientOnly && item.opening && (
+                    <p className="monthly-package-note">首次查看：{item.opening.opened_at}</p>
+                  )}
+                  {clientOnly && contents?.id === item.id && (
+                    <details className="monthly-package-contents">
+                      <summary>本版包含 {contents.files.length} 个文件</summary>
+                      <ul>
+                        {contents.files.map((file) => (
+                          <li key={file.path}>
+                            <code>{file.path}</code>
+                            <span>{formatBytes(file.size_bytes)}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </details>
+                  )}
                   <details>
-                    <summary>查看版本校验信息</summary>
+                    <summary>{clientOnly ? '校验信息（供技术核对）' : '查看版本校验信息'}</summary>
                     <code>{item.manifest_sha256}</code>
                     <p>冻结时间：{item.created_at}</p>
                   </details>
@@ -338,21 +440,21 @@ function MonthlyPackageContent({
                 <div className="monthly-package-actions">
                   <button
                     type="button"
-                    className="button secondary small"
+                    className={clientOnly ? 'button' : 'button secondary small'}
                     disabled={!!busy}
                     onClick={() => void download(item)}
                   >
                     <Download size={14} />
-                    下载交付包 V{item.version}
+                    {clientOnly ? `下载第 ${item.version} 版资料包` : `下载交付包 V${item.version}`}
                   </button>
                   {canAcknowledgePackage(item, session.user_id) && (
                     <button
                       type="button"
-                      className="button secondary small"
+                      className={clientOnly ? 'button' : 'button secondary small'}
                       disabled={!!busy || reason.trim().length < 3 || !confirmed}
                       onClick={() => void acknowledge(item)}
                     >
-                      确认收到 V{item.version}
+                      {clientOnly ? `确认收到第 ${item.version} 版` : `确认收到 V${item.version}`}
                     </button>
                   )}
                 </div>
