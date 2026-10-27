@@ -198,7 +198,9 @@ class AISettings:
     ocr_engine: str = "vision"
     paddle_url: str = ""
     paddle_token: str = field(default="", repr=False)
-    paddle_model: str = "PP-OCRv6_small_det+PP-OCRv6_small_rec@px3.7.2-pd3.3.1-det2048-line0-doc0-unwarp0-r1"
+    paddle_model: str = (
+        "PP-OCRv6_small_det+PP-OCRv6_small_rec@px3.7.2-pd3.3.1-det2048-line0-doc0-unwarp0-r1"
+    )
     paddle_allow_http: bool = False
     paddle_allowed_host: str = ""
     paddle_min_score: float = 0.85
@@ -398,9 +400,13 @@ class OpenAICompatibleProvider:
             from .ocr import extract_independent
 
             return extract_independent(
-                self, pages, authorization_check=authorization_check,
-                processing_deadline=processing_deadline, limits=limits,
-                context_pack=context_pack, source_binding=source_binding,
+                self,
+                pages,
+                authorization_check=authorization_check,
+                processing_deadline=processing_deadline,
+                limits=limits,
+                context_pack=context_pack,
+                source_binding=source_binding,
             )
         if not self.settings.extraction_available:
             raise ProviderError("unavailable", "尚未配置票据视觉识别服务，请继续人工核票")

@@ -542,9 +542,14 @@ class IntelligenceService:
         try:
             data = self.storage.read(attachment)
             local = parse_invoice_xml(data) if structured else None
-            pages = local.pages if local else prepare_document(
-                data, attachment["media_type"],
-                **({"high_resolution": True} if engine_enabled(self.provider.settings) else {}),
+            pages = (
+                local.pages
+                if local
+                else prepare_document(
+                    data,
+                    attachment["media_type"],
+                    **({"high_resolution": True} if engine_enabled(self.provider.settings) else {}),
+                )
             )
             # Check current access immediately before sending financial evidence.
             with self.db.transaction(write=True, actor=actor, **transaction_options) as conn:
@@ -620,15 +625,23 @@ class IntelligenceService:
                     from ..concurrency.provider import provider_scope
 
                     with provider_scope(self.db, actor, event["company_id"]):
+
                         def reauthorize():
                             # Paddle can take time. Recheck policy, ownership,
                             # facts and queue lease before the next outbound hop.
                             with self.db.transaction(actor=actor) as check_conn:
                                 checked = self.business._event(check_conn, actor, event_id)
                                 self._require(check_conn, actor, checked, "process", enabled=True)
-                                if (checked["fact_version"] != event["fact_version"]
-                                    or self._ocr_cache_key(check_conn, actor, checked, attachment["media_type"]) != cache_key):
-                                    raise AccountingError("业务事实或外发政策已改变，字段提取未发送", 409)
+                                if (
+                                    checked["fact_version"] != event["fact_version"]
+                                    or self._ocr_cache_key(
+                                        check_conn, actor, checked, attachment["media_type"]
+                                    )
+                                    != cache_key
+                                ):
+                                    raise AccountingError(
+                                        "业务事实或外发政策已改变，字段提取未发送", 409
+                                    )
                                 if not check_conn.execute(
                                     "SELECT 1 FROM business_attachments WHERE id=? AND event_id=? AND sha256=?",
                                     (attachment["id"], event_id, attachment["sha256"]),
@@ -638,11 +651,17 @@ class IntelligenceService:
                                     execution.check(check_conn)
                                     execution.inputs(checked, attachment)
 
-                        extra = {
-                            "authorization_check": reauthorize,
-                            "source_binding": source_binding(actor, event["company_id"], attachment),
-                            "processing_deadline": initial_limits.deadline_monotonic,
-                        } if engine_enabled(self.provider.settings) else {}
+                        extra = (
+                            {
+                                "authorization_check": reauthorize,
+                                "source_binding": source_binding(
+                                    actor, event["company_id"], attachment
+                                ),
+                                "processing_deadline": initial_limits.deadline_monotonic,
+                            }
+                            if engine_enabled(self.provider.settings)
+                            else {}
+                        )
                         result = self.provider.extract_invoice(
                             pages,
                             limits=send_limits,
@@ -682,7 +701,9 @@ class IntelligenceService:
                 if execution:
                     execution.check(conn)
                     execution.inputs(current, attachment)
-                if result and not valid_source(result.data, source_binding(actor, current["company_id"], attachment)):
+                if result and not valid_source(
+                    result.data, source_binding(actor, current["company_id"], attachment)
+                ):
                     raise AccountingError("独立 OCR 证据与当前企业原件不一致，未发布", 409)
                 finished = self._finish(conn, actor, run, result, error, cache_hit=cache_hit)
                 if finished["status"] == "succeeded":
@@ -895,9 +916,14 @@ class IntelligenceService:
             from .structured import STRUCTURED_VERSION
             from .ocr import saved_evidence_current
 
-            if (run["prompt_version"] not in {EXTRACTION_PROMPT_VERSION, STRUCTURED_VERSION}
-                and not saved_evidence_current(result, run["prompt_version"],
-                    source_binding(actor, event["company_id"], attachment))):
+            if run["prompt_version"] not in {
+                EXTRACTION_PROMPT_VERSION,
+                STRUCTURED_VERSION,
+            } and not saved_evidence_current(
+                result,
+                run["prompt_version"],
+                source_binding(actor, event["company_id"], attachment),
+            ):
                 issues.append(
                     finding(
                         "fact_validation_upgrade_" + run["id"],

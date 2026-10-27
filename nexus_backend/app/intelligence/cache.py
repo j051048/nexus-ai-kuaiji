@@ -19,10 +19,16 @@ def config_key(settings, media_type, policy_key=None):
             {"parser": STRUCTURED_VERSION, "cache": CACHE_VERSION, "media_type": media_type}
         )
     # Keys are deliberately absent: rotating a secret does not change OCR semantics.
-    independent = None if not engine_enabled(settings) else {
-        "url": settings.paddle_url, "model": settings.paddle_model,
-        "score": settings.paddle_min_score, "version": "independent-ocr-v2",
-    }
+    independent = (
+        None
+        if not engine_enabled(settings)
+        else {
+            "url": settings.paddle_url,
+            "model": settings.paddle_model,
+            "score": settings.paddle_min_score,
+            "version": "independent-ocr-v2",
+        }
+    )
     prompt = prompt_version(settings)
     settings = effective_settings(settings, "ocr")
     return fingerprint(
@@ -60,7 +66,11 @@ def read_cache(db, conn, actor, event, attachment, key):
         # Old/unbound or malformed proof is a miss, never silently upgraded to
         # independently verified text. Re-recognize or require a human check.
         return None
-    return extraction if valid_source(extraction, source_binding(actor, event["company_id"], attachment)) else None
+    return (
+        extraction
+        if valid_source(extraction, source_binding(actor, event["company_id"], attachment))
+        else None
+    )
 
 
 def store_cache(db, conn, actor, event, attachment, key, run):
