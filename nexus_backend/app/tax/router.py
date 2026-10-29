@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, Query, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, StrictInt
 
 from .workpaper import TaxWorkpaperService
+from .context import tax_context
 
 
 class TaxProfileWrite(BaseModel):
@@ -42,6 +43,15 @@ def build_tax_router(actor_dependency):
 
     def service(request: Request) -> TaxWorkpaperService:
         return request.app.state.tax
+
+    @router.get("/context")
+    def preparation_context(
+        book_id: str = Query(min_length=1, max_length=100),
+        period: str | None = Query(default=None, max_length=7),
+        current=Depends(actor_dependency),
+        tax=Depends(service),
+    ):
+        return tax_context(tax, current, book_id, period)
 
     @router.put("/profile")
     def write_profile(
