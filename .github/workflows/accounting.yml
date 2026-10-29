@@ -52,7 +52,14 @@ jobs:
       - run: python scripts/check_pg_test_target.py
       - run: npm test
       - run: npm run build
-      - run: python -m pytest nexus_backend/tests -q
+      # These suites require the four-role, non-default-port isolation contract.
+      # They run below on BOTH PG16/17, with exact identities and zero skips.
+      - run: >-
+          python -m pytest nexus_backend/tests -q
+          --ignore=nexus_backend/tests/test_tax_workpaper_postgres.py
+          --ignore=nexus_backend/tests/test_n02_tax_concurrency_postgres.py
+          --ignore=nexus_backend/tests/test_n03_notification_postgres.py
+          --ignore=nexus_backend/tests/test_n03_worker_postgres.py
 
   e2e:
     runs-on: ubuntu-latest
@@ -197,3 +204,112 @@ jobs:
           name: ak05-postgres-${{ matrix.postgres }}-evidence
           path: tmp_test/ak05-ci-reports/
           if-no-files-found: warn
+
+  n02-n03-postgres-gate:
+    name: N02/N03 PostgreSQL ${{ matrix.postgres }} required gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        postgres: [16, 17]
+    services:
+      postgres:
+        image: postgres:${{ matrix.postgres }}
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: n02-n03-ephemeral-ci-admin-only
+          POSTGRES_DB: ak01_local_ak05_bootstrap
+        ports:
+          - 127.0.0.1:55432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d ak01_local_ak05_bootstrap"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -r nexus_backend/requirements.lock
+      - name: Negative tests for target, exact-case evidence and release preflight
+        run: >-
+          python -m pytest nexus_backend/tests/test_pg_suite_target.py
+          nexus_backend/tests/test_n02_n03_postgres_gate.py
+          nexus_backend/tests/test_n02_n03_ci_contract.py
+          nexus_backend/tests/test_release_candidate.py -q
+      - name: Write ephemeral local bootstrap configuration
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          folder = Path('tmp_test/n02-n03-ci-bootstrap')
+          folder.mkdir(parents=True, exist_ok=True)
+          path = folder / 'admin.json'
+          path.write_text(json.dumps({'admin': 'postgresql://postgres:n02-n03-ephemeral-ci-admin-only@127.0.0.1:55432/ak01_local_ak05_bootstrap'}))
+          path.chmod(0o600)
+          PY
+      - name: Reuse isolated provisioning, separate from AK05/C01 data
+        run: >-
+          python scripts/ak05_postgres_gate.py prepare
+          --admin-config tmp_test/n02-n03-ci-bootstrap/admin.json
+          --major ${{ matrix.postgres }}
+          --out tmp_test/n02-n03-ci-config
+          --allow-create-local-databases
+      - name: N02/N03 exact identities, real PG and no skipped cases
+        run: >-
+          python scripts/n02_n03_postgres_gate.py
+          --config tmp_test/n02-n03-ci-config/regression.json
+          --major ${{ matrix.postgres }}
+          --out tmp_test/n02-n03-ci-reports
+      - name: Retain sanitized N02/N03 evidence only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: n02-n03-postgres-${{ matrix.postgres }}-evidence
+          path: tmp_test/n02-n03-ci-reports/
+          if-no-files-found: error
+
+  controlled-candidate-check:
+    name: Same-candidate evidence check (no deployment)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [verify, e2e, core-regression-gate, ak05-postgres-gate, n02-n03-postgres-gate]
+    if: always()
+    steps:
+      - name: Require every predecessor including both PG matrices
+        env:
+          REQUIRED_RESULTS: ${{ toJSON(needs) }}
+        run: |
+          python - <<'PY'
+          import json, os
+          results = json.loads(os.environ['REQUIRED_RESULTS'])
+          if not results or any(result["result"] != "success" for result in results.values()):
+              raise SystemExit('Candidate not ready: a required gate failed, was cancelled or skipped')
+          PY
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/download-artifact@v4
+        with:
+          name: n02-n03-postgres-16-evidence
+          path: tmp_test/candidate-evidence/pg16
+      - uses: actions/download-artifact@v4
+        with:
+          name: n02-n03-postgres-17-evidence
+          path: tmp_test/candidate-evidence/pg17
+      - name: Independently verify exact cases, hashes and current candidate
+        run: >-
+          python scripts/check_release_candidate.py
+          --mode technical
+          --pg16 tmp_test/candidate-evidence/pg16
+          --pg17 tmp_test/candidate-evidence/pg17
+          --out tmp_test/candidate-evidence/technical-summary.json
+      - name: Retain technical readiness evidence, never a deployment approval
+        uses: actions/upload-artifact@v4
+        with:
+          name: controlled-candidate-technical-evidence
+          path: tmp_test/candidate-evidence/technical-summary.json
+          if-no-files-found: error

@@ -6,9 +6,7 @@ Attack statements deliberately bypass Python AccessControl, never database roles
 
 from contextlib import contextmanager
 import json
-import os
 from types import SimpleNamespace
-from urllib.parse import urlsplit
 from uuid import uuid4
 
 import pytest
@@ -17,31 +15,22 @@ from app.accounting.database import Database, PostgresConnection
 from app.accounting.domain import Actor
 from app.delivery.followup_models import DeliveryGrantRequest, DeliveryTaskRequest
 from app.delivery.followups import DeliveryFollowupService
+from scripts.pg_suite_target import load_suite_target, verify_suite_target
 from test_monthly_delivery_postgres import package_case  # noqa: F401
 from test_p0_close_upload_postgres import p0_case  # noqa: F401
 
 
 @pytest.fixture(scope="module")
 def p0_pg():
-    admin = os.getenv("ACCOUNTING_TEST_POSTGRES_URL")
-    runtime = os.getenv("ACCOUNTING_TEST_DATABASE_URL")
-    worker = os.getenv("ACCOUNTING_TEST_WORKER_DATABASE_URL")
-    if not all((admin, runtime, worker)):
+    target = load_suite_target()
+    if target is None:
         pytest.skip("N03 requires an explicit isolated PostgreSQL runner")
-    for value in (admin, runtime, worker):
-        target = urlsplit(value)
-        assert target.hostname == "127.0.0.1" and target.port in (25531, 25532)
-        assert target.path.startswith("/n03_local_") and not target.query
+    target = verify_suite_target(target)
+    admin, runtime, worker = (target[key] for key in ("admin", "app", "worker"))
     import psycopg
     from scripts.migrate_accounting import migrate
 
     migrate(admin)
-    for value in (runtime, worker):
-        with psycopg.connect(value) as conn:
-            assert conn.execute(
-                "SELECT rolsuper,rolbypassrls,rolcreatedb,rolcreaterole "
-                "FROM pg_roles WHERE rolname=current_user"
-            ).fetchone() == (False, False, False, False)
     db = Database(runtime)
     worker_db = Database(worker)
     yield SimpleNamespace(

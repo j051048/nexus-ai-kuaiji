@@ -18,12 +18,13 @@ from app.accounting.database import Database, PostgresConnection
 from app.accounting.models import BookCreate
 from app.accounting.service import AccountingService, Actor
 from app.tax.workpaper import TaxWorkpaperService
+from scripts.pg_suite_target import load_suite_target, verify_suite_target
 
 ADMIN_URL = os.getenv("ACCOUNTING_TEST_POSTGRES_URL")
 APP_URL = os.getenv("ACCOUNTING_TEST_DATABASE_URL")
-pytestmark = pytest.mark.skipif(
-    not ADMIN_URL or not APP_URL, reason="需要独立测试 PostgreSQL 管理员及受限运行 DSN"
-)
+# Imported by the service-race module. Missing required-runner configuration
+# must reach the fixture and fail, not disappear behind a module skip marker.
+pytestmark = []
 
 
 @pytest.fixture(scope="module")
@@ -31,13 +32,15 @@ def pg():
     import psycopg
     from scripts.migrate_accounting import migrate
 
-    migrate(ADMIN_URL)
-    with psycopg.connect(APP_URL) as conn:
-        role = conn.execute(
-            "SELECT rolsuper,rolbypassrls FROM pg_roles WHERE rolname=current_user"
-        ).fetchone()
-        assert role == (False, False), "业务测试必须使用受限登录账号"
-    database = Database(APP_URL)
+    target = load_suite_target()
+    if target is None:
+        pytest.skip("N02 requires an explicit isolated PostgreSQL runner")
+    target = verify_suite_target(target)
+    assert (ADMIN_URL, APP_URL) == (target["admin"], target["app"]), (
+        "N02 target changed after test collection"
+    )
+    migrate(target["admin"])
+    database = Database(target["app"])
     yield database, psycopg
     database.close()
 
