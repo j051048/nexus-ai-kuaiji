@@ -98,15 +98,16 @@ def test_small_scale_tax_and_variance_follow_integer_basis_points(tax):
     assert len(paper["source_digest"]) == 64
 
 
-def test_general_taxpayer_offsets_input_tax_and_reports_carry(tax):
+def test_general_taxpayer_requires_supported_deduction_and_carry_contract(tax):
     tax.tax.set_profile(
         tax.manager, tax.book["id"], profile(taxpayer_type="general", vat_rate_bp=1300)
     )
     invoices(tax, [row("output", 200_000, 26_000), row("input", 100_000, 30_000)])
-    paper = tax.tax.generate(tax.manager, tax.book["id"], "2026-10")
-    assert paper["tax"] == "0.00"
-    assert paper["credit_carry"] == "40.00"
-    assert paper["surtax"] == "0.00"
+    # Imported input-tax amounts alone do not prove deductible adoption.
+    with pytest.raises(AccountingError) as error:
+        tax.tax.generate(tax.manager, tax.book["id"], "2026-10")
+    assert error.value.status == 409
+    assert "进项抵扣" in error.value.detail
 
 
 def test_own_workpaper_cannot_be_reviewed_by_its_maker(tax):
@@ -134,10 +135,18 @@ def test_draft_workpaper_cannot_be_exported(tax):
     invoices(tax, [row("output", 100_000, 3_000)])
     paper = tax.tax.generate(tax.actor_accountant, tax.book["id"], "2026-10")
     with pytest.raises(AccountingError) as error:
-        tax.tax.csv(tax.actor_accountant, tax.book["id"], paper["id"])
+        tax.tax.csv(
+            tax.actor_accountant,
+            tax.book["id"],
+            paper["id"],
+            paper["version"],
+            paper["source_digest"],
+        )
     assert error.value.status == 409
     tax.tax.review(tax.manager, tax.book["id"], paper["id"], "账表差异已说明", 1)
-    text = tax.tax.csv(tax.actor_accountant, tax.book["id"], paper["id"])
+    text = tax.tax.csv(
+        tax.actor_accountant, tax.book["id"], paper["id"], paper["version"], paper["source_digest"]
+    )
     assert text.startswith("\ufeff")
     assert "1000.00" in text and "30.00" in text
 

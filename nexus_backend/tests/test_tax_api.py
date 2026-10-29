@@ -119,7 +119,11 @@ def test_http_profile_workpaper_review_and_csv(tmp_path):
         draft_csv = client.get(
             f"/api/tax/workpapers/{workpaper['id']}/csv",
             headers=headers,
-            params={"book_id": book["id"]},
+            params={
+                "book_id": book["id"],
+                "expected_version": workpaper["version"],
+                "source_digest": workpaper["source_digest"],
+            },
         )
         assert draft_csv.status_code == 409, "未复核底稿不得导出"
 

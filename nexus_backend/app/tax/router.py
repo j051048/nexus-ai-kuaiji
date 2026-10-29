@@ -1,7 +1,8 @@
 import hashlib
+from typing import Literal
 
 from fastapi import APIRouter, Depends, Query, Request, Response
-from pydantic import BaseModel, Field, StrictInt
+from pydantic import BaseModel, ConfigDict, Field, StrictInt
 
 from .workpaper import TaxWorkpaperService
 
@@ -12,14 +13,22 @@ class TaxProfileWrite(BaseModel):
     vat_rate_bp: StrictInt = Field(ge=0, le=100_000)
     surtax_rate_bp: StrictInt = Field(default=0, ge=0, le=100_000)
     filing_cycle: str = Field(default="monthly", max_length=16)
-    effective_from: str = Field(min_length=7, max_length=7)
+    effective_from: str = Field(pattern=r"^20[0-9]{2}-(0[1-9]|1[0-2])$")
     reason: str = Field(min_length=3, max_length=1000)
+
+
+class TaxAccountRole(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    account_id: str = Field(min_length=1, max_length=100)
+    account_version: StrictInt = Field(ge=1)
+    role: Literal["vat_payable", "excluded"]
 
 
 class TaxWorkpaperCreate(BaseModel):
     book_id: str = Field(min_length=1, max_length=100)
-    period: str | None = Field(default=None, max_length=7)
+    period: str | None = Field(default=None, pattern=r"^20[0-9]{2}-(0[1-9]|1[0-2])$")
     reason: str = Field(default="", max_length=1000)
+    vat_accounts: list[TaxAccountRole] = Field(default_factory=list, max_length=1000)
 
 
 class TaxWorkpaperReview(BaseModel):
@@ -57,7 +66,13 @@ def build_tax_router(actor_dependency):
         current=Depends(actor_dependency),
         tax=Depends(service),
     ):
-        return tax.generate(current, payload.book_id, payload.period, payload.reason)
+        return tax.generate(
+            current,
+            payload.book_id,
+            payload.period,
+            payload.reason,
+            [item.model_dump() for item in payload.vat_accounts],
+        )
 
     @router.get("/workpapers")
     def list_workpapers(
@@ -92,10 +107,12 @@ def build_tax_router(actor_dependency):
     def export_workpaper(
         workpaper_id: str,
         book_id: str = Query(min_length=1, max_length=100),
+        expected_version: int = Query(ge=1),
+        source_digest: str = Query(pattern=r"^[0-9a-f]{64}$"),
         current=Depends(actor_dependency),
         tax=Depends(service),
     ):
-        body = tax.csv(current, book_id, workpaper_id)
+        body = tax.csv(current, book_id, workpaper_id, expected_version, source_digest)
         digest = hashlib.sha256(body.encode("utf-8")).hexdigest()
         return Response(
             content=body,
@@ -103,6 +120,9 @@ def build_tax_router(actor_dependency):
             headers={
                 "Content-Disposition": f'attachment; filename="tax-{workpaper_id}.csv"',
                 "X-Content-Sha256": digest,
+                "X-Workpaper-Version": str(expected_version),
+                "X-Source-Sha256": source_digest,
+                "Cache-Control": "no-store",
             },
         )
 
