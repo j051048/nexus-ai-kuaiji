@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
   ArrowDownToLine,
@@ -27,8 +28,72 @@ import type {
 } from './delivery-types';
 import './delivery.css';
 import { MonthlyPackagePanel } from './MonthlyPackagePanel';
+import './tax-workpapers.css';
 
-export function DeliveryWorkbench({
+const TaxWorkpaperPanel = lazy(() =>
+  import('./TaxWorkpaperPanel').then((m) => ({ default: m.TaxWorkpaperPanel })),
+);
+export function DeliveryWorkbench(props: DeliveryWorkbenchProps) {
+  const location = useLocation(),
+    navigate = useNavigate();
+  const tax = new URLSearchParams(location.search).get('section') === 'tax';
+  const [busy, setBusy] = useState(false);
+  const onBusyChange = useCallback(
+    (value: boolean) => {
+      setBusy(value);
+      props.onBusyChange?.(value);
+    },
+    [props.onBusyChange],
+  );
+  function chooseTax(value: boolean) {
+    if (busy) return;
+    const query = new URLSearchParams(location.search);
+    if (value) query.set('section', 'tax');
+    else query.delete('section');
+    void navigate({ pathname: location.pathname, search: query.toString() }, { replace: true });
+  }
+  return (
+    <>
+      <div className="delivery-sections" role="group" aria-label="本月交付作业">
+        <button
+          className="button secondary"
+          aria-pressed={!tax}
+          disabled={busy}
+          onClick={() => chooseTax(false)}
+        >
+          交付与签收
+        </button>
+        <button
+          className="button secondary"
+          aria-pressed={tax}
+          disabled={busy}
+          onClick={() => chooseTax(true)}
+        >
+          税务底稿
+        </button>
+      </div>
+      {tax ? (
+        <Suspense fallback={<p role="status">正在打开税务底稿…</p>}>
+          {props.companyId && props.period ? (
+            <TaxWorkpaperPanel
+              session={props.session}
+              bookId={props.bookId}
+              companyId={props.companyId}
+              period={props.period}
+              onBusyChange={onBusyChange}
+            />
+          ) : (
+            <p role="status">正在确认账套授权范围…</p>
+          )}
+        </Suspense>
+      ) : (
+        <DeliveryReceipts {...props} onBusyChange={onBusyChange} />
+      )}
+    </>
+  );
+}
+
+function DeliveryReceipts({
   session,
   bookId,
   initialExportId,

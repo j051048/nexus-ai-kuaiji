@@ -19,6 +19,19 @@ afterEach(() => {
 });
 
 describe('local E2E runtime contract', { timeout: 15_000 }, () => {
+  it('builds the signing component harness only for isolated local acceptance', async () => {
+    vi.stubEnv('E2E_LOCAL_ISOLATION', '1');
+    vi.resetModules();
+    const isolated = (await import('../vite.config')).default;
+    expect(isolated.build?.rollupOptions?.input).toMatchObject({
+      main: 'index.html',
+      n04Signing: 'e2e/fixtures/n04-package-harness.html',
+    });
+    vi.stubEnv('E2E_LOCAL_ISOLATION', undefined);
+    vi.resetModules();
+    const production = (await import('../vite.config')).default;
+    expect(production.build?.rollupOptions?.input).toBeUndefined();
+  });
   it('configures identical loopback ports, strict ports and API proxies for dev and preview', async () => {
     const config = (await import('../vite.config')).default;
     expect(config.server).toMatchObject({ host: '127.0.0.1', port: 8080, strictPort: true });

@@ -38,6 +38,7 @@ function pack(over: Partial<MonthlyPackage> = {}): MonthlyPackage {
 
 const expected = {
   id: 'pkg-1',
+  version: 1,
   bookId: 'book-1',
   companyId: 'company-1',
   period: '2026-10',
@@ -48,6 +49,17 @@ describe('monthly package acceptance', () => {
   it('accepts only the package that was requested', () => {
     expect(acceptPackage(pack(), expected)?.id).toBe('pkg-1');
     expect(acceptPackage(pack({ id: 'pkg-2' }), expected)).toBeNull();
+  });
+
+  it('rejects a different version even when the response reuses the same id and manifest', () => {
+    expect(acceptPackage(pack({ version: 2 }), expected)).toBeNull();
+  });
+
+  it('distinguishes login expiry, insufficient permission and MFA without offering blind retries', () => {
+    expect(readRecovery(401).message).toContain('登录');
+    expect(readRecovery(403).message).toContain('授权');
+    expect(readRecovery(403, 'admin_mfa_required').message).toContain('二次验证');
+    expect(readRecovery(409).message).toContain('版本');
   });
 
   it('rejects a response from another company or period', () => {
@@ -93,5 +105,9 @@ describe('monthly package acceptance', () => {
       '6ace1d4e-f815-6d03-1963-b75911112222',
     );
     expect(packageFromSearch('')).toBe('');
+  });
+  it('rejects ambiguous repeated package targets instead of accepting the first', () => {
+    expect(packageFromSearch('?package=aaaaaaaa&package=bbbbbbbb')).toBe('');
+    expect(packageFromSearch('?package=aaaaaaaa&package=aaaaaaaa')).toBe('');
   });
 });

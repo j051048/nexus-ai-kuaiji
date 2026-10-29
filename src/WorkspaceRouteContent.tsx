@@ -714,6 +714,8 @@ export function WorkspaceRouteContent({
                 key={session.scope_key + ':' + bookId + ':' + deliveryTarget}
                 session={session}
                 bookId={bookId}
+                companyId={detail?.book.id === bookId ? detail.book.company_id : undefined}
+                period={detail?.book.id === bookId ? detail.book.period : undefined}
                 initialExportId={deliveryTarget}
                 embedded
                 onBack={() => (progress.origin ? returnToWork() : setRouteView('accounting'))}

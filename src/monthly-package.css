@@ -1,6 +1,7 @@
 .monthly-package-panel {
   margin-bottom: var(--space-5, 20px);
   min-width: 0;
+  padding: var(--space-4);
 }
 .monthly-package-panel h2 {
   display: flex;
@@ -10,6 +11,10 @@
 .monthly-package-panel .panel-heading {
   align-items: flex-start;
   flex-wrap: wrap;
+  padding: 0 0 var(--space-4);
+}
+.monthly-package-panel .panel-heading p {
+  font-size: var(--font-size-sm);
 }
 .monthly-package-panel p {
   color: var(--text-secondary);

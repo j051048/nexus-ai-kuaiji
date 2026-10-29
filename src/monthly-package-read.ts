@@ -12,6 +12,7 @@ import { validatePackage } from './monthly-package-types';
 
 export interface PackageIdentity {
   id: string;
+  version: number;
   bookId: string;
   companyId?: string;
   period: string;
@@ -34,7 +35,7 @@ export function acceptPackage(updated: unknown, expected: PackageIdentity): Mont
   )
     return null;
   const item = updated as MonthlyPackage;
-  if (item.id !== expected.id) return null;
+  if (item.id !== expected.id || item.version !== expected.version) return null;
   if (expected.manifestSha256 && item.manifest_sha256 !== expected.manifestSha256) return null;
   return item;
 }
@@ -57,7 +58,8 @@ export function selectPackage(packages: MonthlyPackage[], wantedId: string): Pac
 }
 
 export function packageFromSearch(search: string): string {
-  const wanted = new URLSearchParams(search).get('package') ?? '';
+  const targets = new URLSearchParams(search).getAll('package');
+  const wanted = targets.length === 1 ? targets[0] : '';
   return /^[0-9a-fA-F-]{8,64}$/.test(wanted) ? wanted : '';
 }
 
@@ -66,14 +68,23 @@ export interface ReadRecovery {
   message: string;
 }
 
-export function readRecovery(status?: number): ReadRecovery {
+export function readRecovery(status?: number, code?: string): ReadRecovery {
   if (status === 503)
     return {
       retryable: true,
       message: '交付包暂时读取失败，签收状态没有改变；请稍后重试，或刷新后确认版本。',
     };
-  if (status === 403 || status === 401)
+  if (status === 401)
+    return { retryable: false, message: '登录已失效，请重新登录后回到这个资料包。' };
+  if (status === 403 && code === 'admin_mfa_required')
+    return { retryable: false, message: '这一步需要二次验证，请完成验证后重新读取这个资料包。' };
+  if (status === 403)
     return { retryable: false, message: '当前账号不能再查看这个资料包，请联系事务所重新授权。' };
+  if (status === 409)
+    return {
+      retryable: false,
+      message: '资料包版本或签收条件已变化，请重新读取并核对版本后再确认。',
+    };
   if (status === 404)
     return {
       retryable: false,

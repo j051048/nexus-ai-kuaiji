@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Download, FileArchive, RefreshCw } from 'lucide-react';
-import { api, apiBlob, ApiError, errorMessage } from './api';
+import { useInRouterContext, useLocation } from 'react-router-dom';
+import { api, apiBlob, ApiError } from './api';
 import type { Session } from './types';
 import {
   canAcknowledgePackage,
@@ -18,6 +19,7 @@ import {
   packageFromSearch,
   readRecovery,
   selectPackage,
+  type ReadRecovery,
 } from './monthly-package-read';
 import './monthly-package.css';
 
@@ -28,7 +30,31 @@ type MonthlyPackagePanelProps = {
   clientOnly?: boolean;
   focusPackageId?: string;
 };
+class PackageResponseError extends Error {}
+function packageError(failure: unknown, command = false): string {
+  if (failure instanceof PackageResponseError) return failure.message;
+  if (failure instanceof ApiError && failure.status < 500)
+    return readRecovery(failure.status, failure.code).message;
+  return command
+    ? '操作结果尚未确认，请重新读取签收状态；不会自动再次提交签收。持续失败请联系本企业获授权会计。'
+    : readRecovery(failure instanceof ApiError ? failure.status : undefined).message;
+}
 export function MonthlyPackagePanel(props: MonthlyPackagePanelProps) {
+  const routed = useInRouterContext();
+  return routed ? (
+    <RoutedPackagePanel {...props} />
+  ) : (
+    <ScopedPackagePanel
+      {...props}
+      search={typeof window === 'undefined' ? '' : window.location.search}
+    />
+  );
+}
+function RoutedPackagePanel(props: MonthlyPackagePanelProps) {
+  const location = useLocation();
+  return <ScopedPackagePanel {...props} search={location.search} />;
+}
+function ScopedPackagePanel(props: MonthlyPackagePanelProps & { search: string }) {
   return (
     <MonthlyPackageContent
       key={JSON.stringify([
@@ -36,6 +62,8 @@ export function MonthlyPackagePanel(props: MonthlyPackagePanelProps) {
         props.session.user_id,
         props.session.firm_id,
         props.bookId,
+        props.focusPackageId,
+        new URLSearchParams(props.search).getAll('package'),
       ])}
       {...props}
     />
@@ -47,11 +75,12 @@ function MonthlyPackageContent({
   onBusyChange,
   clientOnly = false,
   focusPackageId = '',
-}: MonthlyPackagePanelProps) {
+  search,
+}: MonthlyPackagePanelProps & { search: string }) {
   const scope = `${session.scope_key}:${bookId}`;
   const [state, setState] = useState<{ scope: string; value: MonthlyPackageOverview } | null>(null);
   const [error, setError] = useState('');
-  const [trackError, setTrackError] = useState('');
+  const [trackError, setTrackError] = useState<ReadRecovery | null>(null);
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState('');
@@ -69,10 +98,23 @@ function MonthlyPackageContent({
   const requestKey = useRef({ fingerprint: '', key: '' });
   const value = state?.scope === scope ? state.value : null;
   const base = `/books/${encodeURIComponent(bookId)}/delivery/monthly-package`;
+  const wanted = focusPackageId || packageFromSearch(search);
+  const explicitPackage = !!focusPackageId || new URLSearchParams(search).has('package');
+  const shownPackages =
+    value?.packages.filter((item) => !clientOnly || !explicitPackage || item.id === wanted) ?? [];
+  const clearSensitive = useCallback(() => {
+    setState(null);
+    setContents(null);
+    opened.current = '';
+    setConfirmed(false);
+    setReason('');
+    setMessage('');
+    setTrackError(null);
+  }, []);
   const track = useCallback(
     async (item: MonthlyPackage, generation: number) => {
-      // Seeing the package is what the firm needs to learn; neither the read receipt nor
-      // the file list may block viewing or signing.
+      // A view receipt is separate from signing. Validate the exact frozen version
+      // before exposing its contents or enabling an explicit customer confirmation.
       try {
         const updated =
           item.can_open && item.customer_opening_status === 'not_opened'
@@ -90,12 +132,16 @@ function MonthlyPackageContent({
         // leave both the file list and the package state exactly as they were.
         const accepted = acceptPackage(updated, {
           id: item.id,
+          version: item.version,
+          manifestSha256: item.manifest_sha256,
           bookId,
           companyId: item.company_id,
           period: item.period,
         });
         if (!accepted)
-          throw new Error('交付包响应与请求的版本不一致，已停止使用；请重新读取当前账套。');
+          throw new PackageResponseError(
+            '交付包响应与请求的版本不一致，已停止使用；请重新读取当前账套。',
+          );
         opened.current = accepted.id;
         setContents(accepted.files?.length ? { id: accepted.id, files: accepted.files } : null);
         setState((prior) =>
@@ -111,12 +157,16 @@ function MonthlyPackageContent({
               }
             : prior,
         );
-        setTrackError('');
+        setTrackError(null);
       } catch (failure) {
         if (current.current !== scope || generation !== epoch.current) return;
-        setTrackError(
-          readRecovery(failure instanceof ApiError ? failure.status : undefined).message,
-        );
+        setTrackError({
+          ...readRecovery(
+            failure instanceof ApiError ? failure.status : undefined,
+            failure instanceof ApiError ? failure.code : undefined,
+          ),
+          message: packageError(failure),
+        });
       }
     },
     [base, bookId, scope, session],
@@ -125,15 +175,15 @@ function MonthlyPackageContent({
     async (signal?: AbortSignal) => {
       const generation = ++epoch.current;
       setLoading(true);
+      clearSensitive();
       try {
         const result = await api<MonthlyPackageOverview>(base, session, { signal });
         if (signal?.aborted || current.current !== scope || generation !== epoch.current) return;
         if (!validateMonthlyOverview(result, bookId))
-          throw new Error('交付包范围或版本无效，请重新读取当前账套。');
+          throw new PackageResponseError('交付包范围或版本无效，请重新读取当前账套。');
         setState({ scope, value: result });
         setError('');
         if (clientOnly) {
-          const wanted = focusPackageId || packageFromSearch(window.location.search);
           if (wanted) {
             const selection = selectPackage(result.packages, wanted);
             if (selection.kind === 'missing') setError(selection.message);
@@ -142,6 +192,8 @@ function MonthlyPackageContent({
               if (selection.item && opened.current !== selection.item.id)
                 void track(selection.item, generation);
             }
+          } else if (explicitPackage) {
+            setError('资料包链接无效，请联系服务会计取得准确版本链接。');
           } else {
             const newest = result.packages.find((item) => !item.superseded);
             if (newest && opened.current !== newest.id) void track(newest, generation);
@@ -157,14 +209,14 @@ function MonthlyPackageContent({
         return true;
       } catch (failure) {
         if (!signal?.aborted && current.current === scope && generation === epoch.current) {
-          setState(null);
-          setError(errorMessage(failure));
+          clearSensitive();
+          setError(packageError(failure));
         }
       } finally {
         if (current.current === scope && generation === epoch.current) setLoading(false);
       }
     },
-    [base, bookId, clientOnly, focusPackageId, scope, session, track],
+    [base, bookId, clientOnly, wanted, explicitPackage, scope, session, track, clearSensitive],
   );
   useEffect(() => {
     current.current = scope;
@@ -175,7 +227,7 @@ function MonthlyPackageContent({
     setReportId('');
     setMessage('');
     setError('');
-    setTrackError('');
+    setTrackError(null);
     requestKey.current = { fingerprint: '', key: '' };
     opened.current = '';
     setContents(null);
@@ -194,15 +246,13 @@ function MonthlyPackageContent({
     function revoked(event: Event) {
       if ((event as CustomEvent<string>).detail !== session.scope_key) return;
       epoch.current++;
-      setState(null);
-      setReason('');
-      setConfirmed(false);
+      clearSensitive();
       setLoading(false);
       setError('当前授权已变更，请重新检查交付条件。');
     }
     window.addEventListener('accounting:forbidden', revoked);
     return () => window.removeEventListener('accounting:forbidden', revoked);
-  }, [session.scope_key]);
+  }, [session.scope_key, clearSensitive]);
   async function run(name: string, action: () => Promise<void>) {
     if (locked.current) return;
     locked.current = true;
@@ -213,8 +263,8 @@ function MonthlyPackageContent({
       await action();
     } catch (failure) {
       if (current.current === scope) {
-        setError(errorMessage(failure));
-        setState(null);
+        clearSensitive();
+        setError(packageError(failure, true));
       }
     } finally {
       locked.current = false;
@@ -247,7 +297,7 @@ function MonthlyPackageContent({
       });
       if (current.current !== scope || generation !== epoch.current) return;
       if (!validatePackage(item, { bookId, companyId: value.company_id, period: value.period }))
-        throw new Error('生成结果与当前企业月份不一致，请重新读取。');
+        throw new PackageResponseError('生成结果与当前企业月份不一致，请重新读取。');
       requestKey.current = { fingerprint: '', key: '' };
       setConfirmed(false);
       setReason('');
@@ -270,7 +320,12 @@ function MonthlyPackageContent({
     });
   }
   async function acknowledge(item: MonthlyPackage) {
-    if (!canAcknowledgePackage(item, session.user_id) || reason.trim().length < 3 || !confirmed)
+    if (
+      !canAcknowledgePackage(item, session.user_id) ||
+      reason.trim().length < 3 ||
+      !confirmed ||
+      (clientOnly && opened.current !== item.id)
+    )
       return;
     await run(item.id, async () => {
       const generation = epoch.current;
@@ -280,8 +335,21 @@ function MonthlyPackageContent({
         { method: 'POST', body: { manifest_sha256: item.manifest_sha256, reason: reason.trim() } },
       );
       if (current.current !== scope || generation !== epoch.current) return;
-      if (!validatePackage(result, { bookId, companyId: item.company_id, period: item.period }))
-        throw new Error('签收结果范围不一致，请重新读取。');
+      if (
+        !acceptPackage(result, {
+          id: item.id,
+          version: item.version,
+          manifestSha256: item.manifest_sha256,
+          bookId,
+          companyId: item.company_id,
+          period: item.period,
+        }) ||
+        result.customer_receipt_status !== 'acknowledged' ||
+        result.acknowledgement?.acknowledged_by !== session.user_id
+      )
+        throw new PackageResponseError(
+          '签收结果与请求的包版本不一致，请重新读取核对；不会自动再次签收。',
+        );
       setReason('');
       setConfirmed(false);
       const refreshed = await load();
@@ -316,19 +384,21 @@ function MonthlyPackageContent({
       )}
       {trackError && (
         <div role="alert" className="inline-error">
-          {trackError}{' '}
-          <button
-            type="button"
-            className="button secondary small"
-            disabled={!!busy}
-            onClick={() => {
-              const wanted = focusPackageId || packageFromSearch(window.location.search);
-              const selection = value ? selectPackage(value.packages, wanted) : null;
-              if (selection?.item) void track(selection.item, epoch.current);
-            }}
-          >
-            重试读取
-          </button>
+          {trackError.message}{' '}
+          {trackError.retryable && (
+            <button
+              type="button"
+              className="button secondary small"
+              disabled={!!busy}
+              onClick={() => {
+                const target = wanted || value?.packages.find((item) => !item.superseded)?.id || '';
+                const selection = value ? selectPackage(value.packages, target) : null;
+                if (selection?.item) void track(selection.item, epoch.current);
+              }}
+            >
+              重试读取
+            </button>
+          )}
         </div>
       )}
       {message && (
@@ -406,7 +476,7 @@ function MonthlyPackageContent({
             </form>
           )}
           {((!clientOnly && value.permissions.generate) ||
-            value.packages.some((item) => canAcknowledgePackage(item, session.user_id))) && (
+            shownPackages.some((item) => canAcknowledgePackage(item, session.user_id))) && (
             <div className="monthly-package-confirm">
               <label>
                 {clientOnly ? '签收说明' : '交付或签收说明'}
@@ -446,7 +516,7 @@ function MonthlyPackageContent({
             </p>
           )}
           <ul className="monthly-package-list">
-            {value.packages.map((item) => (
+            {shownPackages.map((item) => (
               <li key={item.id}>
                 <div>
                   <strong>
@@ -489,6 +559,22 @@ function MonthlyPackageContent({
                   )}
                 </div>
                 <div className="monthly-package-actions">
+                  {clientOnly && opened.current !== item.id && (
+                    <button
+                      type="button"
+                      className="button secondary small"
+                      disabled={!!busy || loading}
+                      onClick={() => {
+                        setConfirmed(false);
+                        setReason('');
+                        setContents(null);
+                        opened.current = '';
+                        void track(item, ++epoch.current);
+                      }}
+                    >
+                      查看第 {item.version} 版内容
+                    </button>
+                  )}
                   <button
                     type="button"
                     className={clientOnly ? 'button' : 'button secondary small'}
@@ -502,7 +588,12 @@ function MonthlyPackageContent({
                     <button
                       type="button"
                       className={clientOnly ? 'button' : 'button secondary small'}
-                      disabled={!!busy || reason.trim().length < 3 || !confirmed}
+                      disabled={
+                        !!busy ||
+                        reason.trim().length < 3 ||
+                        !confirmed ||
+                        (clientOnly && opened.current !== item.id)
+                      }
                       onClick={() => void acknowledge(item)}
                     >
                       {clientOnly ? `确认收到第 ${item.version} 版` : `确认收到 V${item.version}`}

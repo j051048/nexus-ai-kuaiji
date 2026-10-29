@@ -50,8 +50,8 @@ for (const viewport of viewports) {
     expect(clientView.package.file_count).toBe(11);
     expect(clientView.package.files[0].sha256).toMatch(/^[a-f0-9]{64}$/);
 
-    // The firm feed must describe this month before it is signed: a frozen package
-    // with no signature and no configured recipient, owned by the firm.
+    // The frozen package has the service plan's eligible contact. N03 binds this
+    // pending signature to that customer, even without a separate notification grant.
     const pending = await checked(
       await request.get('/api/delivery/followups?limit=50', { headers: f.headers }),
       200,
@@ -63,17 +63,28 @@ for (const viewport of viewports) {
     expect(before).toBeTruthy();
     expect(before.package_id).toBe(frozen.id);
     expect(before.reasons).toContain('signature_missing');
-    expect(before.owner).toBe('firm_manager');
+    expect(before.owner).toBe('customer');
 
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
     const errors: string[] = [];
     page.on('pageerror', (error) => errors.push(error.message));
     await clientSession(page);
-    await page.goto(`/workspace/briefing?book=${f.book.id}&company=${f.company.id}&period=2026-10`);
+    await page.goto(
+      `/workspace/briefing?book=${f.book.id}&company=${f.company.id}&period=2026-10&package=${frozen.id}`,
+    );
+    await expect(page).toHaveURL(new RegExp(`package=${frozen.id}`));
+    await page.reload();
+    await expect(page).toHaveURL(new RegExp(`package=${frozen.id}`));
     const panel = page.getByRole('region', { name: '月度交付包', exact: true });
     await expect(panel.getByRole('heading', { name: '月度交付包', exact: true })).toBeVisible({
       timeout: 30_000,
     });
+    const panelStyle = await panel.evaluate((el) => ({
+      padding: parseFloat(getComputedStyle(el).paddingLeft),
+      description: parseFloat(getComputedStyle(el.querySelector('.panel-heading p')!).fontSize),
+    }));
+    expect(panelStyle.padding).toBeGreaterThanOrEqual(16);
+    expect(panelStyle.description).toBeGreaterThanOrEqual(12);
     // The client never sees the firm's generation form or internal blockers.
     await expect(panel.getByRole('button', { name: '生成本月交付包', exact: true })).toHaveCount(0);
     await expect(panel.getByText('交付前还需处理', { exact: true })).toHaveCount(0);

@@ -92,6 +92,8 @@ export type DeliveryDetail = {
 export type DeliveryWorkbenchProps = {
   session: Session;
   bookId: string;
+  companyId?: string;
+  period?: string;
   initialExportId?: string;
   onBack: () => void;
   onBusyChange?: (value: boolean) => void;

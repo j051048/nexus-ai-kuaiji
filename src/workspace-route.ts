@@ -153,10 +153,20 @@ export function workspaceRouteUrl(
   metadata?: { companyId?: string; period?: string },
   existingSearch = '',
 ): string {
-  // Preserve only the review workbench's non-sensitive filters. Never retain
+  // Preserve only known page selectors and non-sensitive filters. Never retain
   // arbitrary query strings, tokens, uploaded content or accounting facts.
   const previous = new URLSearchParams(existingSearch);
   const query = new URLSearchParams();
+  // Exact package links and the tax subview belong to one selected book only.
+  // Never carry them when a user switches clients or leaves delivery work.
+  if (route.bookId && previous.get('book') === route.bookId) {
+    if (route.view === 'briefing' || route.view === 'delivery') {
+      // Keep malformed/duplicate explicit targets for the panel to reject.
+      // Dropping them would silently turn a bad link into "open latest".
+      for (const target of previous.getAll('package')) query.append('package', target);
+    }
+    if (route.view === 'delivery' && previous.get('section') === 'tax') query.set('section', 'tax');
+  }
   for (const name of [
     'review_company',
     'review_period',

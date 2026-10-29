@@ -1,4 +1,3 @@
-import { openAccounting } from './ui-navigation';
 import { expect, test } from '@playwright/test';
 
 test('人工客户回执与逐行差异：原审核版本留存，差异说明不修改已导出分录', async ({
@@ -6,13 +5,42 @@ test('人工客户回执与逐行差异：原审核版本留存，差异说明�
   request,
 }) => {
   const session = await (await request.get('/api/session?persona=accountant')).json();
+  const finance = await (await request.get('/api/session?persona=finance')).json();
   const headers = { Authorization: `Bearer ${session.token}` };
+  const reviewerHeaders = { Authorization: `Bearer ${finance.token}` };
+  const makerResponse = await request.get('/api/me', { headers });
+  const reviewerResponse = await request.get('/api/me', { headers: reviewerHeaders });
+  expect(makerResponse.status()).toBe(200);
+  expect(reviewerResponse.status()).toBe(200);
+  const maker = (await makerResponse.json()).user;
+  const reviewer = (await reviewerResponse.json()).user;
+  expect(typeof maker.id).toBe('string');
+  expect(typeof reviewer.id).toBe('string');
+  expect(reviewer.id).not.toBe(maker.id);
   const created = await request.post('/api/books', {
     headers,
     data: { name: '第九阶段交付回执验证（虚构企业）', period: '2026-10' },
   });
   expect(created.status()).toBe(201);
   const book = await created.json();
+  // Independent review uses a separately authenticated local identity and real
+  // book/company grants. Never disable the policy to preserve an old fixture.
+  expect(
+    (
+      await request.put(`/api/companies/${book.company_id}/members`, {
+        headers,
+        data: { email: reviewer.email, role: 'finance', department_id: null },
+      })
+    ).status(),
+  ).toBe(200);
+  expect(
+    (
+      await request.put(`/api/books/${book.id}/members/${reviewer.id}`, {
+        headers,
+        data: { role: 'reviewer' },
+      })
+    ).status(),
+  ).toBe(200);
   const rows = [0, 1].map((i) => ({
     external_id: `stage9-receipt:${i}`,
     date: '2026-10-03',
@@ -32,15 +60,28 @@ test('人工客户回执与逐行差异：原审核版本留存，差异说明�
   ).toBe(200);
   expect((await request.post(`/api/books/${book.id}/suggestions`, { headers })).status()).toBe(200);
   const drafts = (await (await request.get(`/api/books/${book.id}`, { headers })).json()).drafts;
-  for (const draft of drafts)
-    expect(
-      (
-        await request.post(`/api/books/${book.id}/drafts/${draft.id}/approve`, {
-          headers,
-          data: { expected_version: draft.version },
-        })
-      ).status(),
-    ).toBe(200);
+  for (const draft of drafts) {
+    const data = {
+      expected_version: draft.version,
+      expected_policy_version: draft.review_responsibility.policy_version,
+      review_reason: '独立身份核对合成交付凭证及原件证据',
+    };
+    const ownReview = await request.post(`/api/books/${book.id}/drafts/${draft.id}/approve`, {
+      headers,
+      data,
+    });
+    expect(ownReview.status()).toBe(403);
+    expect(await ownReview.text()).toContain('独立复核');
+    const reviewed = await request.post(`/api/books/${book.id}/drafts/${draft.id}/approve`, {
+      headers: reviewerHeaders,
+      data,
+    });
+    expect(reviewed.status(), await reviewed.text()).toBe(200);
+    const receipt = (await reviewed.json()).review_responsibility;
+    expect(receipt.independent).toBe(true);
+    expect(receipt.maker_user_id).toBe(maker.id);
+    expect(receipt.reviewer_user_id).toBe(reviewer.id);
+  }
   const exported = await request.post(`/api/books/${book.id}/exports`, {
     headers,
     data: {
@@ -62,7 +103,13 @@ test('人工客户回执与逐行差异：原审核版本留存，差异说明�
   });
   facts.items[1].lines[0].debit = '113.02';
   await page.goto('/');
-  await openAccounting(page);
+  // The owner profile arrives asynchronously. Wait for its current primary
+  // action instead of selecting a retired fallback from an initial count().
+  const clients = page
+    .getByRole('navigation', { name: '主导航', exact: true })
+    .getByRole('button', { name: '客户企业', exact: true });
+  await expect(clients).toBeVisible();
+  await clients.click();
   await page.getByLabel('搜索企业名称').fill('第九阶段交付回执验证');
   await page.getByRole('listitem').filter({ hasText: book.name }).click();
   await page.getByRole('button', { name: '导入回执核验', exact: true }).click();

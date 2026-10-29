@@ -19,5 +19,17 @@ export default defineConfig({
   plugins: [react()],
   server: localServer,
   preview: localServer,
-  build: { target: 'es2020', sourcemap: false },
+  build: {
+    target: 'es2020',
+    sourcemap: false,
+    // The real component harness is built only by the isolated local E2E runner.
+    // Ordinary production builds must never contain synthetic identities or pages.
+    ...(process.env.E2E_LOCAL_ISOLATION === '1'
+      ? {
+          rollupOptions: {
+            input: { main: 'index.html', n04Signing: 'e2e/fixtures/n04-package-harness.html' },
+          },
+        }
+      : {}),
+  },
 });

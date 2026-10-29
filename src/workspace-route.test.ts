@@ -3,6 +3,36 @@ import { emptyWorkspaceRoute, readWorkspaceRoute, workspaceRouteUrl } from './wo
 import { readReviewFilters } from './useReviewFilters';
 
 describe('URL 工作位置只保存标识和筛选，不承担授权', () => {
+  it('同账套保留准确包链接和税务页签，跨账套不挪用', () => {
+    const route = { ...emptyWorkspaceRoute, view: 'briefing' as const, bookId: 'b1' };
+    expect(workspaceRouteUrl(route, undefined, '?book=b1&package=p-v1')).toContain('package=p-v1');
+    expect(
+      workspaceRouteUrl({ ...route, bookId: 'b2' }, undefined, '?book=b1&package=p-v1'),
+    ).not.toContain('package=');
+    expect(
+      workspaceRouteUrl({ ...route, view: 'accounting' }, undefined, '?book=b1&package=p-v1'),
+    ).not.toContain('package=');
+    expect(
+      workspaceRouteUrl({ ...route, view: 'delivery' }, undefined, '?book=b1&section=tax'),
+    ).toContain('section=tax');
+    expect(
+      workspaceRouteUrl(
+        { ...route, view: 'delivery', bookId: 'b2' },
+        undefined,
+        '?book=b1&section=tax',
+      ),
+    ).not.toContain('section=');
+    for (const raw of [
+      '?book=b1&package=%00bad',
+      '?book=b1&package=',
+      '?book=b1&package=a&package=b',
+    ]) {
+      const canonical = new URL(workspaceRouteUrl(route, undefined, raw), 'https://example.test');
+      expect(canonical.searchParams.getAll('package')).toEqual(
+        new URLSearchParams(raw).getAll('package'),
+      );
+    }
+  });
   it('保留企业账套、凭证与授权读取后的期间提示', () => {
     const route = {
       ...emptyWorkspaceRoute,

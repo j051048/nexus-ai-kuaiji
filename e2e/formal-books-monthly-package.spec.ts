@@ -57,6 +57,15 @@ async function expandBookSwitcher(page: Page) {
   }
 }
 
+async function openManualVoucher(page: Page, bookName: string) {
+  // The authorization/detail read replaces an initially unbound workspace.
+  // Act only after the requested book identity is actually displayed; clicking
+  // the provisional details node loses the toggle when that node is replaced.
+  await expect(page.locator('.formal-books-heading')).toContainText(bookName);
+  await page.getByText('手工凭证办理（按制单、复核、记账三步办理）', { exact: true }).click();
+  await expect(page.getByRole('region', { name: '手工凭证办理', exact: true })).toBeVisible();
+}
+
 test('正式账簿 A 迟到响应经 B 返回 A 后不能覆盖新事实', async ({ page, request }, testInfo) => {
   const group = `迟到虚构账簿-${crypto.randomUUID().slice(0, 8)}`;
   const first = await formalFixture(request, false, group);
@@ -409,7 +418,7 @@ for (const viewport of [
     await page.goto(
       `/workspace/formal-books?book=${f.book.id}&company=${f.company.id}&period=2026-10`,
     );
-    await page.getByText('手工凭证办理（按制单、复核、记账三步办理）', { exact: true }).click();
+    await openManualVoucher(page, f.book.name);
     const panel = page.getByRole('region', { name: '手工凭证办理', exact: true });
     await panel.getByText('录错或政策变更？撤回此待审凭证', { exact: true }).click();
     await expect(
@@ -461,7 +470,7 @@ for (const viewport of [
     await page.setViewportSize(viewport);
     const path = `/workspace/formal-books?book=${f.book.id}&company=${f.company.id}&period=2026-10`;
     await page.goto(path);
-    await page.getByText('手工凭证办理（按制单、复核、记账三步办理）', { exact: true }).click();
+    await openManualVoucher(page, f.book.name);
     const panel = page.getByRole('region', { name: '手工凭证办理', exact: true });
     await panel.getByLabel('凭证摘要', { exact: true }).fill(`${f.tag}-界面责任闭环`);
     await panel.getByLabel('制单说明', { exact: true }).fill('虚构原件已核对，本人承担制单责任');
@@ -500,7 +509,7 @@ for (const viewport of [
       await route.fulfill({ response: await route.fetch({ url: url.toString() }) });
     });
     await page.goto(path);
-    await page.getByText('手工凭证办理（按制单、复核、记账三步办理）', { exact: true }).click();
+    await openManualVoucher(page, f.book.name);
     await panel.getByRole('button', { name: '确认手工凭证审核', exact: true }).click();
     await expect(panel.getByRole('button', { name: '确认正式记账', exact: true })).toBeVisible();
     await panel.getByRole('button', { name: '确认正式记账', exact: true }).click();
