@@ -40,6 +40,12 @@ INVENTORY_TABLES = (
     "bridge_outbox",
     "delivery_receipt_items",
     "delivery_notifications",
+    "tax_profiles",
+    "tax_workpapers",
+    "monthly_delivery_packages",
+    "monthly_delivery_grants",
+    "monthly_delivery_acknowledgements",
+    "monthly_delivery_opens",
 )
 
 # Notification rows are not original-file references. Their exact recipient,
@@ -75,6 +81,109 @@ DELIVERY_INVENTORY_FIELDS = (
     "dispatched_at",
     "last_error",
 )
+
+# Tax and delivery rows are business evidence, not queue state. After a restore
+# the operator must prove the same tax version was filed, the same manifest was
+# frozen and the same customer signed the same version. A pre-N04 schema cannot
+# silently supply a partial inventory, so these columns are required verbatim.
+BUSINESS_EVIDENCE_FIELDS = {
+    "tax_profiles": (
+        "id",
+        "firm_id",
+        "company_id",
+        "effective_from",
+        "taxpayer_type",
+        "vat_rate_bp",
+        "surtax_rate_bp",
+        "filing_cycle",
+        "reason",
+        "created_by",
+        "created_at",
+    ),
+    "tax_workpapers": (
+        "id",
+        "firm_id",
+        "company_id",
+        "book_id",
+        "period",
+        "version",
+        "status",
+        "profile_id",
+        "output_net_cents",
+        "output_tax_cents",
+        "input_net_cents",
+        "input_tax_cents",
+        "tax_cents",
+        "surtax_cents",
+        "credit_carry_cents",
+        "ledger_cents",
+        "variance_cents",
+        "variance_reason",
+        "lines_json",
+        "source_digest",
+        "created_by",
+        "created_at",
+        "reviewed_by",
+        "reviewed_at",
+        "review_reason",
+    ),
+    "monthly_delivery_packages": (
+        "id",
+        "book_id",
+        "firm_id",
+        "company_id",
+        "period",
+        "version",
+        "report_id",
+        "report_version",
+        "contact_user_id",
+        "service_plan_version",
+        "manifest_sha256",
+        "snapshot_json",
+        "idempotency_key",
+        "request_fingerprint",
+        "reason",
+        "created_by",
+        "created_at",
+    ),
+    "monthly_delivery_grants": (
+        "id",
+        "firm_id",
+        "company_id",
+        "book_id",
+        "period",
+        "recipient_user_id",
+        "version",
+        "state",
+        "granted_by",
+        "granted_at",
+        "revoked_by",
+        "revoked_at",
+        "reason",
+    ),
+    "monthly_delivery_acknowledgements": (
+        "package_id",
+        "book_id",
+        "firm_id",
+        "company_id",
+        "manifest_sha256",
+        "reason",
+        "created_by",
+        "created_at",
+    ),
+    "monthly_delivery_opens": (
+        "package_id",
+        "book_id",
+        "firm_id",
+        "company_id",
+        "opened_by",
+        "opened_at",
+    ),
+}
+REQUIRED_COLUMNS = {
+    "delivery_notifications": DELIVERY_INVENTORY_FIELDS,
+    **BUSINESS_EVIDENCE_FIELDS,
+}
 
 
 def pending_inventory(conn):
@@ -121,10 +230,16 @@ def pending_inventory(conn):
             )
             if field in columns
         ]
-        if table == "delivery_notifications":
-            if not set(DELIVERY_INVENTORY_FIELDS).issubset(columns):
-                raise ValueError("恢复通知清单缺少绑定、发送或恢复版本字段，必须先完成核验")
-            fields = list(DELIVERY_INVENTORY_FIELDS)
+        if table in REQUIRED_COLUMNS:
+            required = REQUIRED_COLUMNS[table]
+            missing = sorted(set(required) - columns)
+            if missing:
+                if table == "delivery_notifications":
+                    raise ValueError("恢复通知清单缺少绑定、发送或恢复版本字段，必须先完成核验")
+                raise ValueError(
+                    f"恢复清单缺少 {table} 的绑定、版本或证据字段（{','.join(missing)}），必须先完成核验"
+                )
+            fields = list(required)
         if not fields:
             raise ValueError("恢复在途清单缺少必要运行表")
         rows = conn.execute(
@@ -145,6 +260,8 @@ def pending_inventory(conn):
                 "payload_json",
                 "sink_ref",
                 "last_error",
+                "snapshot_json",
+                "lines_json",
             ):
                 if name in item and item[name] is not None:
                     item[name] = hashlib.sha256(str(item[name]).encode()).hexdigest()

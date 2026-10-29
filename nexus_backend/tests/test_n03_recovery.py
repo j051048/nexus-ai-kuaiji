@@ -75,7 +75,15 @@ class InventoryConnection:
         if isinstance(statement, str):
             assert "information_schema.columns" in statement
             table = arguments[0]
-            columns = list(self.tables[table][0]) if self.tables[table] else ["id", "state"]
+            # A post-N04 restore target carries the tax and delivery evidence
+            # columns; the release proof must fail closed when they are absent.
+            rows = self.tables[table]
+            if table in release.REQUIRED_COLUMNS:
+                columns = list(release.REQUIRED_COLUMNS[table])
+                if rows and set(columns) - set(rows[0]):
+                    columns = list(rows[0])  # Simulate a pre-N03/N04 schema.
+            else:
+                columns = list(rows[0]) if rows else ["id", "state"]
             self.rows = [(name,) for name in columns]
         else:
             query = statement.as_string()
