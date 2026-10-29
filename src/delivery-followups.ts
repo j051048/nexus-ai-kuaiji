@@ -26,6 +26,7 @@ export type FollowupRow = {
 };
 
 const reasonText: Record<string, string> = {
+  notification_unknown: '通知发送结果未知',
   period_not_closed: '期间未关账',
   package_missing: '未生成月度交付包',
   signature_missing: '客户未签收',
@@ -33,6 +34,7 @@ const reasonText: Record<string, string> = {
   recipient_invalid: '签收人已失效',
 };
 const stepText: Record<string, string> = {
+  reconcile_notification: '人工核对发送结果，勿重复发送',
   close_period: '先完成关账',
   publish_package: '生成并交付月度包',
   configure_recipient: '配置签收人',

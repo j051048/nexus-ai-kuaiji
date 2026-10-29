@@ -82,7 +82,7 @@ def test_locked_history_package_is_listed_and_sendable(case):
     assert "signature_missing" in state["followup"]["reasons"]
 
 
-def test_missing_contact_is_a_controlled_error_then_grant_unblocks(case):
+def test_new_grant_cannot_override_the_frozen_package_contact(case):
     freeze(case)
     # The plan contact is deactivated in the client company: no eligible recipient.
     with case.db.transaction(write=True) as conn:
@@ -100,8 +100,13 @@ def test_missing_contact_is_a_controlled_error_then_grant_unblocks(case):
     assert created["version"] == 1
     assert created["previous_recipient_user_id"] is None
     state = case.followups.status(case.reviewer, case.book["id"], "2026-10")["recipient"]
-    assert state["state"] == "valid" and state["source"] == "grant"
-    assert queue(case)["state"] == "pending"
+    assert state["state"] == "invalid" and state["source"] == "grant"
+    # N03：提醒属于某个已冻结的包版本，包的签收人不会因为换了授权而改变。
+    # 冻结联系人仍写在包上，因此提醒必须阻断，并指明下一步是重新生成交付版本。
+    with pytest.raises(AccountingError) as mismatch:
+        queue(case)
+    assert mismatch.value.status == 409
+    assert "重新生成交付版本" in mismatch.value.detail
 
 
 def test_grant_requires_current_company_member(case):
@@ -143,6 +148,14 @@ def test_disabled_channel_keeps_tasks_pending(case):
     state = case.followups.status(case.reviewer, case.book["id"], "2026-10")
     assert state["notification"]["pending"] == 1
     assert state["notification"]["sink_written"] == 0
+    # 通道没启用不算一次真实发送尝试，不能烧掉重试额度把任务拖成失败。
+    for _ in range(6):
+        case.followups.dispatch(DisabledChannel())
+    with case.db.transaction() as conn:
+        attempts, state_name = conn.execute(
+            "SELECT attempts,state FROM delivery_notifications"
+        ).fetchone()
+    assert attempts == 0 and state_name == "pending"
 
 
 def test_local_sink_writes_once_and_keeps_signature_awaiting(case):
@@ -162,7 +175,7 @@ def test_local_sink_writes_once_and_keeps_signature_awaiting(case):
     assert row["dispatched_at"]
 
 
-def test_transient_failure_is_recoverable(case):
+def test_response_timeout_is_unknown_and_not_automatically_retried(case):
     class Flaky(LocalSinkChannel):
         def deliver(self, payload):
             raise TimeoutError("网络暂时不可用")
@@ -171,17 +184,19 @@ def test_transient_failure_is_recoverable(case):
     grant(case)
     queue(case)
     failed = case.followups.dispatch(Flaky())
-    assert failed["failed"] == 1
+    # A timeout after transport entry does not prove non-delivery. The old
+    # assertion retried an ambiguous send and could duplicate the notification.
+    assert failed["unknown"] == 1 and failed["failed"] == 0
     state = case.followups.status(case.reviewer, case.book["id"], "2026-10")
-    assert state["notification"]["failed"] == 1
+    assert state["notification"]["unknown"] == 1
 
     recovered = case.followups.dispatch(LocalSinkChannel())
-    assert recovered["sent"] == 1
+    assert recovered["sent"] == 0
     assert (
         case.followups.status(case.reviewer, case.book["id"], "2026-10")["notification"][
             "sink_written"
         ]
-        == 1
+        == 0
     )
 
 
@@ -237,13 +252,27 @@ def test_contact_change_cannot_sign_an_old_package(case):
     assert signed["acknowledgement"]["acknowledged_by"] == "finance"
 
 
+def test_reminder_cannot_target_a_recipient_outside_the_frozen_package(case):
+    freeze(case)  # 包冻结时的联系人
+    grant(case, recipient="company_admin")  # 换了人，但旧包没有重新生成
+    with pytest.raises(AccountingError) as error:
+        queue(case)
+    assert error.value.status == 409
+    assert "重新生成交付版本" in error.value.detail
+
+
 def test_feed_lists_only_periods_that_need_a_step(case):
     freeze(case)
     feed = case.followups.followups(case.reviewer)
     items = [item for item in feed["items"] if item["book_id"] == case.book["id"]]
     assert len(items) == 1
-    assert set(items[0]["reasons"]) == {"recipient_missing", "signature_missing"}
-    assert items[0]["next_step"] == "configure_recipient"
+    # The current service-plan contact is already eligible for this frozen
+    # package. An additional notification grant is not required in the g0 path.
+    assert set(items[0]["reasons"]) == {"signature_missing"}
+    assert items[0]["next_step"] == "await_customer_signature"
+    assert items[0]["owner"] == "customer"
+    assert items[0]["recipient_user_id"] == "finance"
+    assert queue(case)["state"] == "pending"
 
 
 def test_audit_trail_records_configuration(case):

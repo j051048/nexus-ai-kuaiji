@@ -43,6 +43,24 @@ const feed: DeliveryFollowupFeed = {
 };
 
 describe('delivery followups', () => {
+  it('routes unknown sends to a human instead of asking the customer to wait', () => {
+    const rows = followupRows({
+      count: 1,
+      items: [
+        {
+          ...feed.items[0],
+          reasons: ['notification_unknown'],
+          next_step: 'reconcile_notification',
+          owner: 'firm_manager',
+        },
+      ],
+    });
+    expect(rows[0]).toMatchObject({
+      reasonText: '通知发送结果未知',
+      nextStepText: '人工核对发送结果，勿重复发送',
+      tone: 'action',
+    });
+  });
   it('turns server codes into operator language', () => {
     const rows = followupRows(feed);
     expect(rows[0]).toMatchObject({

@@ -22,17 +22,25 @@ from ..accounting.access import AccessControl
 from ..accounting.domain import AccountingError, Actor
 from ..accounting.invariants import validate_period
 from ..accounting.service import now
-from ..jobs.restore_hold import restore_hold_active
 from .followup_models import DeliveryGrantRequest, DeliveryRevokeRequest, DeliveryTaskRequest
+from .notification_dispatch import NotificationDispatcher, assert_not_held, restore_epoch
 
 KINDS = ("signature_reminder", "missing_contact_followup", "signature_overdue")
 PENDING = ("pending", "failed")
-TERMINAL = ("sink_written", "cancelled")
+TERMINAL = ("sink_written", "cancelled", "unknown")
 MAX_ATTEMPTS = 5
 
 
 class ChannelDisabled(RuntimeError):
     """The outbound channel is intentionally off in this environment."""
+
+
+class DeliveryNotSent(RuntimeError):
+    """Adapter certifies no request was sent; retry remains bounded and delayed.
+
+    Do not use for read timeouts, connection loss after writes, or an ambiguous
+    supplier response. Those outcomes must remain unknown.
+    """
 
 
 class DeliveryChannel(Protocol):
@@ -64,7 +72,7 @@ def channel_from_env(value: str | None) -> DeliveryChannel:
     return LocalSinkChannel() if (value or "").strip() == "local_sink" else DisabledChannel()
 
 
-class DeliveryFollowupService:
+class DeliveryFollowupService(NotificationDispatcher):
     def __init__(self, db, packages=None, plans=None):
         self.db, self.access = db, AccessControl()
         self.packages, self.plans = packages, plans
@@ -101,7 +109,7 @@ class DeliveryFollowupService:
     @staticmethod
     def _package(conn, book_id: str, period: str):
         return conn.execute(
-            "SELECT id,version,period,contact_user_id,manifest_sha256,created_at "
+            "SELECT id,version,period,contact_user_id,manifest_sha256,created_at,created_by "
             "FROM monthly_delivery_packages WHERE book_id=? AND period=? "
             "ORDER BY version DESC LIMIT 1",
             (book_id, period),
@@ -126,6 +134,37 @@ class DeliveryFollowupService:
 
     def _book(self, conn, actor, book_id: str):
         return self.access.book(conn, actor, book_id, capability="review")
+
+    def _recipient_eligible(self, conn, firm_id, company_id, book_id, package, recipient):
+        """Notify only the person who can currently open and sign this exact package.
+
+        A grant cannot repair an obsolete frozen contact or replace book access.
+        Worker-side PG checks use the same contract in their controlled functions.
+        """
+        if (
+            not recipient
+            or package["contact_user_id"] != recipient
+            or package["created_by"] == recipient
+            or not self._company_member(conn, company_id, recipient)
+        ):
+            return False
+        if self.db.is_postgres:
+            return bool(
+                conn.execute(
+                    "SELECT accounting.monthly_delivery_contact_eligible(?,?)", (book_id, recipient)
+                ).fetchone()[0]
+            )
+        plan = conn.execute(
+            "SELECT contact_user_id FROM service_plan_versions WHERE book_id=? ORDER BY version DESC LIMIT 1",
+            (book_id,),
+        ).fetchone()
+        if not plan or plan["contact_user_id"] != recipient:
+            return False
+        try:
+            self.access.book(conn, Actor(recipient, firm_id), book_id)
+            return True
+        except AccountingError:
+            return False
 
     def _plan_contact(self, conn, book_id: str):
         """Current service-plan contact, which is what a *new* package would freeze."""
@@ -154,9 +193,30 @@ class DeliveryFollowupService:
                 "WHERE book_id=? AND period=? GROUP BY state,kind",
                 (book_id, period),
             ).fetchall()
-            counts = {"pending": 0, "sink_written": 0, "failed": 0, "cancelled": 0}
+            counts = {
+                key: 0
+                for key in (
+                    "pending",
+                    "claimed",
+                    "sending",
+                    "unknown",
+                    "sink_written",
+                    "failed",
+                    "cancelled",
+                )
+            }
             for item in tasks:
                 counts[item["state"]] = counts.get(item["state"], 0) + int(item["total"])
+            manual_review = [
+                dict(item)
+                for item in conn.execute(
+                    "SELECT id AS notification_id,package_id,package_version,manifest_sha256,"
+                    "recipient_user_id,state,attempts,last_error,send_started_at,updated_at "
+                    "FROM delivery_notifications WHERE book_id=? AND period=? AND state='unknown' "
+                    "ORDER BY created_at,id LIMIT 100",
+                    (book_id, period),
+                ).fetchall()
+            ]
             reasons = []
             locked = self._locked(row)
             if not locked:
@@ -165,10 +225,22 @@ class DeliveryFollowupService:
                 reasons.append("package_missing")
             elif not ack:
                 reasons.append("signature_missing")
+            if counts["unknown"]:
+                reasons.append("notification_unknown")
             target = grant["recipient_user_id"] if grant else planned
+            recipient_valid = bool(target) and (
+                self._recipient_eligible(
+                    conn, actor.firm_id, book["company_id"], book_id, package, target
+                )
+                if package
+                else self._company_member(conn, book["company_id"], target)
+            )
+            latest_grant = self._latest_grant(conn, book_id, period)
+            if latest_grant and not grant:
+                recipient_valid = False
             if not target:
                 reasons.append("recipient_missing")
-            elif not self._company_member(conn, book["company_id"], target):
+            elif not recipient_valid:
                 reasons.append("recipient_invalid")
             return {
                 "book_id": book_id,
@@ -181,19 +253,13 @@ class DeliveryFollowupService:
                     "package_contact_user_id": package["contact_user_id"] if package else None,
                 },
                 "recipient": {
-                    "state": (
-                        "valid"
-                        if target and self._company_member(conn, book["company_id"], target)
-                        else "invalid"
-                        if target
-                        else "missing"
-                    ),
+                    "state": ("valid" if recipient_valid else "invalid" if target else "missing"),
                     "user_id": target,
                     "source": "grant" if grant else "service_plan" if target else None,
                     "grant_id": grant["id"] if grant else None,
                     "grant_version": grant["version"] if grant else None,
                 },
-                "notification": {**counts, "channel": "disabled"},
+                "notification": {**counts, "channel": "disabled", "manual_review": manual_review},
                 "signature": {
                     "state": "signed" if ack else "awaiting",
                     "signed_by": ack["created_by"] if ack else None,
@@ -206,6 +272,7 @@ class DeliveryFollowupService:
     def _next_step(reasons: list) -> tuple:
         """Who has to move next, derived from the first blocking reason."""
         for reason, step, owner in (
+            ("notification_unknown", "reconcile_notification", "firm_manager"),
             ("period_not_closed", "close_period", "accountant"),
             ("package_missing", "publish_package", "accountant"),
             ("recipient_invalid", "fix_recipient", "firm_manager"),
@@ -231,10 +298,20 @@ class DeliveryFollowupService:
             ).fetchall()
             items = []
             for row in rows:
+                try:
+                    self._book(conn, actor, row["book_id"])
+                except AccountingError:
+                    continue
                 package = self._package(conn, row["book_id"], row["period"])
                 grant = self._grant(conn, row["book_id"], row["period"])
                 ack = self._ack(conn, package["id"]) if package else None
                 reasons = []
+                if conn.execute(
+                    "SELECT 1 FROM delivery_notifications WHERE book_id=? AND period=? "
+                    "AND state='unknown' LIMIT 1",
+                    (row["book_id"], row["period"]),
+                ).fetchone():
+                    reasons.append("notification_unknown")
                 if not self._locked(row):
                     reasons.append("period_not_closed")
                 if not package:
@@ -243,11 +320,18 @@ class DeliveryFollowupService:
                     reasons.append("signature_missing")
                 # Who signs only matters while a signature is still owed; once the
                 # customer has signed, an unconfigured recipient is not an open item.
+                target = (
+                    grant["recipient_user_id"]
+                    if grant
+                    else self._plan_contact(conn, row["book_id"])
+                )
                 if package and not ack:
-                    if not grant:
+                    if not target:
                         reasons.append("recipient_missing")
-                    elif not self._company_member(
-                        conn, row["company_id"], grant["recipient_user_id"]
+                    elif (
+                        not grant and self._latest_grant(conn, row["book_id"], row["period"])
+                    ) or not self._recipient_eligible(
+                        conn, actor.firm_id, row["company_id"], row["book_id"], package, target
                     ):
                         reasons.append("recipient_invalid")
                 if reasons:
@@ -261,7 +345,7 @@ class DeliveryFollowupService:
                             "next_step": next_step,
                             "owner": owner,
                             "package_id": package["id"] if package else None,
-                            "recipient_user_id": grant["recipient_user_id"] if grant else None,
+                            "recipient_user_id": target,
                         }
                     )
                 if len(items) >= limit:
@@ -315,8 +399,8 @@ class DeliveryFollowupService:
             # The previous recipient's queued tasks are not re-addressed silently.
             conn.execute(
                 "UPDATE delivery_notifications SET state='cancelled',updated_at=?,"
-                "last_error='收件人已变更' WHERE book_id=? AND period=? AND state IN('pending','failed') "
-                "AND grant_id<>?",
+                "last_error='收件人已变更' WHERE book_id=? AND period=? AND state IN('pending','failed','claimed') "
+                "AND (grant_id IS NULL OR grant_id<>?)",
                 (stamp, book_id, request.period, grant["id"]),
             )
             self._audit(
@@ -354,8 +438,9 @@ class DeliveryFollowupService:
             )
             cancelled = conn.execute(
                 "UPDATE delivery_notifications SET state='cancelled',updated_at=?,"
-                "last_error='交付收件人已撤回' WHERE grant_id=? AND state IN('pending','failed')",
-                (stamp, grant["id"]),
+                "last_error='交付收件人已撤回' WHERE book_id=? AND period=? "
+                "AND state IN('pending','failed','claimed')",
+                (stamp, book_id, period),
             ).rowcount
             self._audit(
                 conn,
@@ -377,65 +462,100 @@ class DeliveryFollowupService:
             raise AccountingError("不支持的交付任务类型", 422)
         stamp = now()
         with self.db.transaction(write=True, actor=actor) as conn:
+            assert_not_held(conn, self.db)
             book = self._book(conn, actor, book_id)
             if not self._period_row(conn, book_id, request.period):
                 raise AccountingError("该账套没有这个会计期间", 404)
             package = self._package(conn, book_id, request.period)
             grant = self._grant(conn, book_id, request.period)
             latest = self._latest_grant(conn, book_id, request.period)
-            ack = self._ack(conn, package["id"]) if package else None
-            if request.kind in ("signature_reminder", "signature_overdue") and latest and not grant:
-                raise AccountingError("交付授权已撤回，请重新配置收件人后再安排提醒", 409)
-            if request.kind == "signature_reminder":
+            epoch = restore_epoch(conn)
+            recipient = None
+            if request.kind in ("signature_reminder", "signature_overdue"):
+                if latest and not grant:
+                    raise AccountingError("交付授权已撤回，请重新配置收件人后再安排提醒", 409)
                 if not package:
                     raise AccountingError("该期间还没有已冻结的交付包", 409)
-                if ack:
+                if self._ack(conn, package["id"]):
                     raise AccountingError("客户已签收，不再安排提醒", 409)
-                recipient = grant["recipient_user_id"] if grant else package["contact_user_id"]
-                if not recipient or not self._company_member(conn, book["company_id"], recipient):
-                    raise AccountingError("缺少有效收件人，请先配置交付收件人", 409)
-                dedupe = (
-                    f"signature:{package['id']}:v{package['version']}"
-                    f":g{grant['version'] if grant else 0}"
-                )
+                recipient = package["contact_user_id"]
+                if grant and grant["recipient_user_id"] != recipient:
+                    raise AccountingError(
+                        "当前交付收件人与该包版本冻结的联系人不一致；请重新生成交付版本，"
+                        "或按冻结联系人重新配置交付收件人",
+                        409,
+                    )
+                if not self._recipient_eligible(
+                    conn, actor.firm_id, book["company_id"], book_id, package, recipient
+                ):
+                    raise AccountingError(
+                        "收件人当前不能查看并签收该冻结包；请核对账套权限和服务单联系人，必要时重新生成交付版本",
+                        409,
+                    )
+                # Retry never creates a second identity for an unknown/cancelled send.
+                dedupe = f"{request.kind}:{package['id']}:v{package['version']}:g{grant['version'] if grant else 0}:r{epoch}"
             else:
-                dedupe = f"{request.kind}:{book_id}:{request.period}:{date.today().isoformat()}"
-                recipient = grant["recipient_user_id"] if grant else None
+                # This is an internal human task, not a message to an absent customer.
+                package, grant = None, None
+                dedupe = (
+                    f"{request.kind}:{book_id}:{request.period}:{date.today().isoformat()}:r{epoch}"
+                )
             existing = conn.execute(
                 "SELECT id,state FROM delivery_notifications WHERE dedupe_key=?", (dedupe,)
             ).fetchone()
-            if existing and existing["state"] != "cancelled":
+            if existing:
                 return {
                     "notification_id": existing["id"],
                     "deduplicated": True,
                     "state": existing["state"],
                 }
+            if (
+                package
+                and conn.execute(
+                    "SELECT 1 FROM delivery_notifications WHERE package_id=? AND recipient_user_id=? "
+                    "AND state IN('unknown','claimed','sending') LIMIT 1",
+                    (package["id"], recipient),
+                ).fetchone()
+            ):
+                raise AccountingError(
+                    "该交付包存在发送中或结果未知的提醒，请先人工核对；不得换类型或授权重发", 409
+                )
+            notification_id = uuid4().hex
             payload = {
-                "book_id": book_id,
+                "notification_id": notification_id,
+                "firm_id": actor.firm_id,
                 "company_id": book["company_id"],
+                "book_id": book_id,
                 "period": request.period,
                 "package_id": package["id"] if package else None,
                 "package_version": package["version"] if package else None,
-                "kind": request.kind,
+                "manifest_sha256": package["manifest_sha256"] if package else None,
                 "recipient_user_id": recipient,
+                "grant_id": grant["id"] if grant else None,
+                "grant_version": grant["version"] if grant else 0,
+                "restore_epoch": epoch,
+                "kind": request.kind,
                 "reason": request.reason,
             }
-            notification_id = uuid4().hex
-            payload["notification_id"] = notification_id
             conn.execute(
                 "INSERT INTO delivery_notifications(id,firm_id,company_id,book_id,period,package_id,"
-                "kind,recipient_user_id,grant_id,dedupe_key,state,payload_json,created_by,"
-                "created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,'pending',?,?,?,?)",
+                "package_version,manifest_sha256,kind,recipient_user_id,grant_id,grant_version,restore_epoch,"
+                "dedupe_key,state,payload_json,created_by,created_at,updated_at) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,'pending',?,?,?,?)",
                 (
                     notification_id,
                     actor.firm_id,
                     book["company_id"],
                     book_id,
                     request.period,
-                    package["id"] if package else None,
+                    payload["package_id"],
+                    payload["package_version"],
+                    payload["manifest_sha256"],
                     request.kind,
                     recipient,
-                    grant["id"] if grant else None,
+                    payload["grant_id"],
+                    payload["grant_version"],
+                    epoch,
                     dedupe,
                     json.dumps(payload, ensure_ascii=False),
                     actor.user_id,
@@ -446,89 +566,60 @@ class DeliveryFollowupService:
             self._audit(conn, actor, "delivery.notification.queue", payload, stamp)
             return {"notification_id": notification_id, "deduplicated": False, "state": "pending"}
 
-    # ------------------------------------------------------------- dispatch
     def dispatch(self, channel: DeliveryChannel | None = None, limit: int = 20) -> dict:
-        """Worker-side. Leaves rows pending while the channel is disabled."""
+        """Claim, authorize send, call outside transactions, then fenced settlement.
+
+        A crash after begin() is deliberately conservative: the expired sending
+        row is unknown, even if the process died before the adapter wrote bytes.
+        """
+        if type(limit) is not int or not 1 <= limit <= 100:
+            raise AccountingError("派发数量须为 1–100 的整数", 422)
         channel = channel or DisabledChannel()
-        if restore_hold_active():
-            raise AccountingError("恢复隔离期间禁止外发交付通知", 409)
-        stamp = now()
-        sent, failed, cancelled, skipped = 0, 0, 0, 0
-        with self.db.transaction(write=True) as conn:
-            rows = conn.execute(
-                "SELECT * FROM delivery_notifications WHERE state IN('pending','failed') "
-                "AND attempts<? ORDER BY created_at LIMIT ?",
-                (MAX_ATTEMPTS, max(1, min(int(limit), 100))),
-            ).fetchall()
-            for row in rows:
-                grant = (
-                    conn.execute(
-                        "SELECT * FROM monthly_delivery_grants WHERE id=?", (row["grant_id"],)
-                    ).fetchone()
-                    if row["grant_id"]
-                    else None
-                )
-                package = conn.execute(
-                    "SELECT id,contact_user_id FROM monthly_delivery_packages WHERE id=?",
-                    (row["package_id"],),
-                ).fetchone()
-                stale = (
-                    (row["grant_id"] and (not grant or grant["state"] != "active"))
-                    or (
-                        row["recipient_user_id"]
-                        and not self._company_member(
-                            conn, row["company_id"], row["recipient_user_id"]
-                        )
-                    )
-                    or (
-                        package
-                        and conn.execute(
-                            "SELECT 1 FROM monthly_delivery_acknowledgements WHERE package_id=?",
-                            (package["id"],),
-                        ).fetchone()
-                    )
-                )
-                if stale:
-                    conn.execute(
-                        "UPDATE delivery_notifications SET state='cancelled',updated_at=?,"
-                        "last_error='授权或状态已变化' WHERE id=?",
-                        (stamp, row["id"]),
-                    )
-                    cancelled += 1
-                    continue
-                payload = json.loads(row["payload_json"])
-                try:
-                    reference = channel.deliver(payload)
-                except ChannelDisabled as error:
-                    conn.execute(
-                        "UPDATE delivery_notifications SET attempts=attempts+1,updated_at=?,"
-                        "last_error=? WHERE id=?",
-                        (stamp, str(error), row["id"]),
-                    )
-                    skipped += 1
-                    continue
-                except Exception as error:  # bounded: one bad task must not stop the batch
-                    conn.execute(
-                        "UPDATE delivery_notifications SET state='failed',attempts=attempts+1,"
-                        "updated_at=?,last_error=? WHERE id=?",
-                        (stamp, type(error).__name__, row["id"]),
-                    )
-                    failed += 1
-                    continue
-                conn.execute(
-                    "UPDATE delivery_notifications SET state='sink_written',attempts=attempts+1,"
-                    "updated_at=?,dispatched_at=?,sink_ref=?,last_error='' WHERE id=?",
-                    (stamp, stamp, reference, row["id"]),
-                )
-                sent += 1
-        return {
-            "sent": sent,
-            "failed": failed,
-            "cancelled": cancelled,
-            "blocked": skipped,
+        result = {
+            "sent": 0,
+            "failed": 0,
+            "cancelled": 0,
+            "blocked": 0,
+            "unknown": 0,
             "channel": channel.name,
-            "at": stamp,
+            "at": now(),
         }
+        if isinstance(channel, DisabledChannel):
+            result["blocked"] = min(limit, self.pending_count())
+            return result
+        worker_id = "delivery-" + uuid4().hex
+        for _ in range(limit):
+            claimed = self.claim(worker_id)
+            if not claimed:
+                break
+            if claimed["state"] == "cancelled":
+                result["cancelled"] += 1
+                continue
+            sending = self.begin(claimed["id"], claimed["lease_token"])
+            if not sending:
+                result["cancelled"] += 1
+                continue
+            outcome, reference, error = "unknown", "", ""
+            try:
+                reference = channel.deliver(json.loads(sending["payload_json"]))
+                if not isinstance(reference, str) or not reference.strip() or len(reference) > 500:
+                    reference, error = "", "invalid_receipt"
+                else:
+                    outcome = "sink_written"
+            except (DeliveryNotSent, ChannelDisabled) as failure:
+                outcome, error = "failed", type(failure).__name__
+            except Exception as failure:
+                # An arbitrary transport exception says nothing about delivery.
+                outcome, error = "unknown", type(failure).__name__
+            accepted = self.finish(sending["id"], sending["lease_token"], outcome, reference, error)
+            if not accepted:
+                self.recover()
+                result["unknown"] += 1
+            else:
+                result[
+                    {"sink_written": "sent", "failed": "failed", "unknown": "unknown"}[outcome]
+                ] += 1
+        return result
 
     # ---------------------------------------------------------------- audit
     @staticmethod
@@ -541,7 +632,10 @@ class DeliveryFollowupService:
                 details.get("book_id"),
                 actor.user_id,
                 action,
-                details.get("package_id") or details.get("grant_id") or "",
+                details.get("notification_id")
+                or details.get("package_id")
+                or details.get("grant_id")
+                or "",
                 json.dumps(details, ensure_ascii=False),
                 stamp,
             ),

@@ -39,6 +39,41 @@ INVENTORY_TABLES = (
     "model_costs",
     "bridge_outbox",
     "delivery_receipt_items",
+    "delivery_notifications",
+)
+
+# Notification rows are not original-file references. Their exact recipient,
+# frozen package and sending generation belong in the operational release proof.
+# A pre-N03 schema cannot silently supply a partial release inventory.
+DELIVERY_INVENTORY_FIELDS = (
+    "id",
+    "firm_id",
+    "company_id",
+    "book_id",
+    "period",
+    "package_id",
+    "package_version",
+    "manifest_sha256",
+    "recipient_user_id",
+    "grant_id",
+    "grant_version",
+    "kind",
+    "dedupe_key",
+    "state",
+    "attempts",
+    "worker_id",
+    "lease_token",
+    "lease_until",
+    "send_started_at",
+    "available_at",
+    "restore_epoch",
+    "payload_json",
+    "sink_ref",
+    "created_by",
+    "created_at",
+    "updated_at",
+    "dispatched_at",
+    "last_error",
 )
 
 
@@ -86,6 +121,10 @@ def pending_inventory(conn):
             )
             if field in columns
         ]
+        if table == "delivery_notifications":
+            if not set(DELIVERY_INVENTORY_FIELDS).issubset(columns):
+                raise ValueError("恢复通知清单缺少绑定、发送或恢复版本字段，必须先完成核验")
+            fields = list(DELIVERY_INVENTORY_FIELDS)
         if not fields:
             raise ValueError("恢复在途清单缺少必要运行表")
         rows = conn.execute(
@@ -98,7 +137,15 @@ def pending_inventory(conn):
         normalized = []
         for row in rows:
             item = dict(zip(fields, row))
-            for name in ("raw_json", "lease_token", "charge_token", "pricing_json"):
+            for name in (
+                "raw_json",
+                "lease_token",
+                "charge_token",
+                "pricing_json",
+                "payload_json",
+                "sink_ref",
+                "last_error",
+            ):
                 if name in item and item[name] is not None:
                     item[name] = hashlib.sha256(str(item[name]).encode()).hexdigest()
             normalized.append(item)
