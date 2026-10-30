@@ -1,0 +1,160 @@
+{
+  "schema": "p01-recovery-v2",
+  "status": "passed",
+  "candidate": {
+    "schema": "release-candidate-v1",
+    "head": "91d3bc77c94e91a43cdda78d25df747657270923",
+    "source_files": 1576,
+    "source_sha256": "2ebddfcd3abc596c69ebd216a75cf1b33acced825a6e4647ef4946b9e06554b2",
+    "migration_files": 282,
+    "migration_sha256": "26e9be85529136507e36a2fe5b25e7a740274d8679cc635302601d596457275a"
+  },
+  "scope": "local-only",
+  "phases": {
+    "regression": {
+      "passed": 143,
+      "skipped": 0,
+      "junit_sha256": "231371e67a038feb58f565f04730a2f229a6fd74a08b28c6af41c44dc8babe67",
+      "execution_sha256": "ceaad89dc93489203f3f66d45488e2726b78053f7a3a96094f2f3da62df13f3a",
+      "collection_sha256": "9188ac5f18e8628bd2fb03a0d0640391ef451bd475b8fd0242ce9755b8ea44f4",
+      "seconds": 128.979,
+      "candidate": {
+        "schema": "release-candidate-v1",
+        "head": "91d3bc77c94e91a43cdda78d25df747657270923",
+        "source_files": 1576,
+        "source_sha256": "2ebddfcd3abc596c69ebd216a75cf1b33acced825a6e4647ef4946b9e06554b2",
+        "migration_files": 282,
+        "migration_sha256": "26e9be85529136507e36a2fe5b25e7a740274d8679cc635302601d596457275a"
+      },
+      "configuration_sha256": {
+        "pg16-recovery_source.json": "8671cdded8ea52077337828462ea766c2790b4e7a0661938a8c40609fe0b9c1e",
+        "pg16-recovery-fresh-target.json": "790ec0d4dd7449dde4e6b49e8278a1d9024527a8617330f5da8b4dcf86819530",
+        "pg17-recovery_source.json": "2cdec0e667ee4daea341dd1fe6ba6549e4641217b3bca2d25b092a17927c35ed",
+        "pg17-recovery-fresh-target.json": "6ee5740c312564bffde31f0adebb84d4511159aaafe1cee76f9400db8b8d6492",
+        "wsl-bridge-private.json": "971f528885d7147a0caae664836bfa1f1f326cc14fc8f849f26b5a11e56e2c71",
+        "gotrue-migrations-manifest.json": "bdb9c5905bb49fcd9fc14b2d2e232c39c9ebc01f4ab140654a0fd192a96e8e60"
+      }
+    },
+    "joint": {
+      "passed": 2,
+      "skipped": 0,
+      "junit_sha256": "0d0b8d2da5b06df01b74b4389e0270fb8b97d70d2e9c0f3c6c1fd1257020ae3c",
+      "execution_sha256": "7fa4f85875d20120de8274e6eebea643807c908e3c312e335957e6bcbf6e0a93",
+      "collection_sha256": "4318ec1cd4f034e8aad44f433d3e7069951870bd6a1ec385cea5114629e7f4ab",
+      "seconds": 67.266,
+      "candidate": {
+        "schema": "release-candidate-v1",
+        "head": "91d3bc77c94e91a43cdda78d25df747657270923",
+        "source_files": 1576,
+        "source_sha256": "2ebddfcd3abc596c69ebd216a75cf1b33acced825a6e4647ef4946b9e06554b2",
+        "migration_files": 282,
+        "migration_sha256": "26e9be85529136507e36a2fe5b25e7a740274d8679cc635302601d596457275a"
+      },
+      "configuration_sha256": {
+        "pg16-recovery_source.json": "8671cdded8ea52077337828462ea766c2790b4e7a0661938a8c40609fe0b9c1e",
+        "pg16-recovery-fresh-target.json": "790ec0d4dd7449dde4e6b49e8278a1d9024527a8617330f5da8b4dcf86819530",
+        "pg17-recovery_source.json": "2cdec0e667ee4daea341dd1fe6ba6549e4641217b3bca2d25b092a17927c35ed",
+        "pg17-recovery-fresh-target.json": "6ee5740c312564bffde31f0adebb84d4511159aaafe1cee76f9400db8b8d6492",
+        "wsl-bridge-private.json": "971f528885d7147a0caae664836bfa1f1f326cc14fc8f849f26b5a11e56e2c71",
+        "gotrue-migrations-manifest.json": "bdb9c5905bb49fcd9fc14b2d2e232c39c9ebc01f4ab140654a0fd192a96e8e60"
+      }
+    },
+    "identity": {
+      "passed": 4,
+      "skipped": 0,
+      "junit_sha256": "42d44d939e901bc04a36664cdd365964bdd727a6b8e605b6e3f9103008a4b26c",
+      "execution_sha256": "2f7f4aee348b9baa6e84f4cababf268c7ec28fa99d09d087b3d61bb066de9119",
+      "collection_sha256": "ccc20fd16b7db2ff1702f205c3675fa1645c95cc728e049f035a9dee4c176c20",
+      "seconds": 54.222,
+      "candidate": {
+        "schema": "release-candidate-v1",
+        "head": "91d3bc77c94e91a43cdda78d25df747657270923",
+        "source_files": 1576,
+        "source_sha256": "2ebddfcd3abc596c69ebd216a75cf1b33acced825a6e4647ef4946b9e06554b2",
+        "migration_files": 282,
+        "migration_sha256": "26e9be85529136507e36a2fe5b25e7a740274d8679cc635302601d596457275a"
+      },
+      "configuration_sha256": {
+        "pg16-recovery_source.json": "8671cdded8ea52077337828462ea766c2790b4e7a0661938a8c40609fe0b9c1e",
+        "pg16-recovery-fresh-target.json": "790ec0d4dd7449dde4e6b49e8278a1d9024527a8617330f5da8b4dcf86819530",
+        "pg17-recovery_source.json": "2cdec0e667ee4daea341dd1fe6ba6549e4641217b3bca2d25b092a17927c35ed",
+        "pg17-recovery-fresh-target.json": "6ee5740c312564bffde31f0adebb84d4511159aaafe1cee76f9400db8b8d6492",
+        "wsl-bridge-private.json": "971f528885d7147a0caae664836bfa1f1f326cc14fc8f849f26b5a11e56e2c71",
+        "gotrue-migrations-manifest.json": "bdb9c5905bb49fcd9fc14b2d2e232c39c9ebc01f4ab140654a0fd192a96e8e60"
+      }
+    }
+  },
+  "minimum_migration": 173,
+  "configuration_sha256": {
+    "pg16-recovery_source.json": "8671cdded8ea52077337828462ea766c2790b4e7a0661938a8c40609fe0b9c1e",
+    "pg16-recovery-fresh-target.json": "790ec0d4dd7449dde4e6b49e8278a1d9024527a8617330f5da8b4dcf86819530",
+    "pg17-recovery_source.json": "2cdec0e667ee4daea341dd1fe6ba6549e4641217b3bca2d25b092a17927c35ed",
+    "pg17-recovery-fresh-target.json": "6ee5740c312564bffde31f0adebb84d4511159aaafe1cee76f9400db8b8d6492",
+    "wsl-bridge-private.json": "971f528885d7147a0caae664836bfa1f1f326cc14fc8f849f26b5a11e56e2c71",
+    "gotrue-migrations-manifest.json": "bdb9c5905bb49fcd9fc14b2d2e232c39c9ebc01f4ab140654a0fd192a96e8e60"
+  },
+  "databases": {
+    "16": {
+      "source_version": "16.15 (Ubuntu 16.15-1.pgdg22.04+2)",
+      "target_version": "16.15 (Ubuntu 16.15-1.pgdg22.04+2)",
+      "migrations": 168,
+      "originals": 3,
+      "source_users": 6,
+      "restored_capability_grants": 886,
+      "restored_column_grants": 49,
+      "p01_checks": {
+        "database": true,
+        "originals": true,
+        "identity": true,
+        "permissions": true,
+        "hold": true,
+        "review_export": true,
+        "tax_delivery": true,
+        "no_replay": true
+      }
+    },
+    "17": {
+      "source_version": "17.11 (Ubuntu 17.11-1.pgdg22.04+2)",
+      "target_version": "17.11 (Ubuntu 17.11-1.pgdg22.04+2)",
+      "migrations": 168,
+      "originals": 3,
+      "source_users": 6,
+      "restored_capability_grants": 886,
+      "restored_column_grants": 49,
+      "p01_checks": {
+        "database": true,
+        "originals": true,
+        "identity": true,
+        "permissions": true,
+        "hold": true,
+        "review_export": true,
+        "tax_delivery": true,
+        "no_replay": true
+      }
+    }
+  },
+  "local_regression": {
+    "passed": 143,
+    "skipped": 0,
+    "junit_sha256": "231371e67a038feb58f565f04730a2f229a6fd74a08b28c6af41c44dc8babe67",
+    "execution_sha256": "ceaad89dc93489203f3f66d45488e2726b78053f7a3a96094f2f3da62df13f3a",
+    "collection_sha256": "9188ac5f18e8628bd2fb03a0d0640391ef451bd475b8fd0242ce9755b8ea44f4",
+    "seconds": 128.979,
+    "candidate": {
+      "schema": "release-candidate-v1",
+      "head": "91d3bc77c94e91a43cdda78d25df747657270923",
+      "source_files": 1576,
+      "source_sha256": "2ebddfcd3abc596c69ebd216a75cf1b33acced825a6e4647ef4946b9e06554b2",
+      "migration_files": 282,
+      "migration_sha256": "26e9be85529136507e36a2fe5b25e7a740274d8679cc635302601d596457275a"
+    },
+    "configuration_sha256": {
+      "pg16-recovery_source.json": "8671cdded8ea52077337828462ea766c2790b4e7a0661938a8c40609fe0b9c1e",
+      "pg16-recovery-fresh-target.json": "790ec0d4dd7449dde4e6b49e8278a1d9024527a8617330f5da8b4dcf86819530",
+      "pg17-recovery_source.json": "2cdec0e667ee4daea341dd1fe6ba6549e4641217b3bca2d25b092a17927c35ed",
+      "pg17-recovery-fresh-target.json": "6ee5740c312564bffde31f0adebb84d4511159aaafe1cee76f9400db8b8d6492",
+      "wsl-bridge-private.json": "971f528885d7147a0caae664836bfa1f1f326cc14fc8f849f26b5a11e56e2c71",
+      "gotrue-migrations-manifest.json": "bdb9c5905bb49fcd9fc14b2d2e232c39c9ebc01f4ab140654a0fd192a96e8e60"
+    }
+  }
+}

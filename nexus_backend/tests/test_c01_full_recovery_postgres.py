@@ -59,9 +59,16 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+def recovery_config_directory():
+    directory = Path(os.getenv("P01_CONFIG_DIR", str(ROOT / ".codex/c01-final-pg"))).resolve()
+    if not any(directory.is_relative_to(ROOT / name) for name in ("tmp_test", ".codex")):
+        raise ValueError("Recovery configuration must be private local workspace artifacts")
+    return directory
+
+
 def _read_config(major, target=False):
     name = f"pg{major}-recovery-fresh-target.json" if target else f"pg{major}-recovery_source.json"
-    config = json.loads((ROOT / ".codex/c01-final-pg" / name).read_text(encoding="utf-8-sig"))
+    config = json.loads((recovery_config_directory() / name).read_text(encoding="utf-8-sig"))
     endpoints = []
     for key in ("admin", "app", "worker", "projection"):
         value = urlsplit(config[key])
@@ -105,7 +112,7 @@ def _pg_bridge(major):
             assert len(arguments) == 8 and arguments[6] == urlsplit(database).path[1:]
             payload = {"input": arguments[7]}
         result = bridge_call(
-            ROOT / ".codex/c01-final-pg/wsl-bridge-private.json", name, target=key, **payload
+            recovery_config_directory() / "wsl-bridge-private.json", name, target=key, **payload
         )
         assert result["completed"] is True
 

@@ -24,12 +24,11 @@ from psycopg import sql
 
 from app.auth import AuthSettings, SupabaseAuthenticator
 from c01_identity_fixture import _private_write, _secure, LocalIdentityFixture
-from test_c01_full_recovery_postgres import ROOT, _read_config
+from test_c01_full_recovery_postgres import ROOT, _read_config, recovery_config_directory
 from c01_wsl_bridge import call
 
 ARTIFACT_SHA256 = "f2aa147268461f74784ddc8b2240aa446ee71ceb9633bac41c30e7b852a860aa"
-WSL_ROOT = "/home/flydao/.local/share/nexus-local-tests/gotrue-v2.197.0"
-BRIDGE = ROOT / ".codex/c01-final-pg/wsl-bridge-private.json"
+BRIDGE = recovery_config_directory() / "wsl-bridge-private.json"
 
 
 def create_auth_database(major, *, target):

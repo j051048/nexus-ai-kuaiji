@@ -78,6 +78,7 @@ def validate_snapshot(value):
 class Bridge:
     def __init__(self, config_path):
         self.path = Path(config_path)
+        self.configuration_sha256 = hashlib.sha256(self.path.read_bytes()).hexdigest()
         self.token = self.config()["token"]
         if not isinstance(self.token, str) or len(self.token) < 40:
             raise BridgeError("Private random authentication token required")
@@ -85,6 +86,13 @@ class Bridge:
         self.lock = threading.Lock()
 
     def config(self):
+        if (
+            hasattr(self, "configuration_sha256")
+            and hashlib.sha256(self.path.read_bytes()).hexdigest() != self.configuration_sha256
+        ):
+            raise BridgeError(
+                "Immutable bridge configuration changed; restart explicitly for a new run"
+            )
         return json.loads(self.path.read_text(encoding="utf-8-sig"))
 
     def execute(self, data):
@@ -121,8 +129,10 @@ class Bridge:
         if set(data) - allowed:
             raise BridgeError("Unexpected operation parameter")
         if op == "status":
+            self.config()
             return {
                 "ready": True,
+                "configuration_sha256": self.configuration_sha256,
                 "auth_ports": [port for port, p in self.processes.items() if p.poll() is None],
             }
         if op == "shutdown":

@@ -1,0 +1,87 @@
+name: P01 joint recovery (PostgreSQL 16 and 17)
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  joint-recovery:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install test dependencies and both native PostgreSQL versions
+        run: |
+          python -m pip install -r nexus_backend/requirements.lock
+          sudo apt-get update
+          sudo apt-get install -y postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get update
+          sudo apt-get install -y postgresql-16 postgresql-17
+      - name: Fetch pinned official test identity assets (no model or notification provider)
+        run: |
+          set -euo pipefail
+          auth_root="$RUNNER_TEMP/p01-gotrue"
+          mkdir -p "$auth_root"
+          curl --fail --location --retry 3 https://github.com/supabase/auth/releases/download/v2.197.0/auth-v2.197.0-x86.tar.gz -o "$auth_root/auth.tar.gz"
+          echo "9daff5d1939c3142a1586e435e6e2a7a2f71534ec40ff1b196b59b83ad5678f3  $auth_root/auth.tar.gz" | sha256sum --check
+          AUTH_ROOT="$auth_root" python - <<'PY'
+          import hashlib, os, tarfile
+          from pathlib import Path
+          root = Path(os.environ['AUTH_ROOT'])
+          with tarfile.open(root / 'auth.tar.gz') as archive:
+              members = [m for m in archive.getmembers() if m.isfile() and Path(m.name).name == 'auth']
+              if len(members) != 1:
+                  raise SystemExit('Pinned auth binary missing or ambiguous')
+              payload = archive.extractfile(members[0]).read()
+          if hashlib.sha256(payload).hexdigest() != 'f2aa147268461f74784ddc8b2240aa446ee71ceb9633bac41c30e7b852a860aa':
+              raise SystemExit('Pinned auth binary hash mismatch')
+          (root / 'auth').write_bytes(payload)
+          (root / 'auth').chmod(0o700)
+          PY
+          git init "$auth_root/source"
+          git -C "$auth_root/source" remote add origin https://github.com/supabase/auth.git
+          git -C "$auth_root/source" fetch --depth=1 origin 4eee58f296d9698a1c2c0ae14d7a0b379c7622d3
+          git -C "$auth_root/source" checkout --detach FETCH_HEAD
+          cp -R "$auth_root/source/migrations" "$auth_root/migrations"
+      - name: Prepare owned isolated clusters and an immutable fresh run
+        run: |
+          set -euo pipefail
+          python scripts/p01_local_recovery_env.py prepare --directory tmp_test/p01-ci-environment --runtime-base "$RUNNER_TEMP/p01-pg" --gotrue-root "$RUNNER_TEMP/p01-gotrue"
+          python scripts/p01_local_recovery_env.py bootstrap --directory tmp_test/p01-ci-environment
+          python scripts/p01_local_recovery_env.py new-pair --directory tmp_test/p01-ci-environment > tmp_test/p01-run-location.json
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          location = json.loads(Path('tmp_test/p01-run-location.json').read_text())['run_directory']
+          with open(os.environ['GITHUB_ENV'], 'a') as output:
+              output.write('P01_RUN_DIRECTORY=' + location + '\n')
+          PY
+      - name: Start the authenticated local recovery bridge
+        run: python scripts/p01_local_recovery_env.py bridge-start --directory "$P01_RUN_DIRECTORY"
+      - name: One candidate, all regressions and actual PG16/17 recovery, zero skips
+        run: >-
+          python scripts/p01_recovery_gate.py --all
+          --config-dir "$P01_RUN_DIRECTORY"
+          --out tmp_test/p01-ci-acceptance
+          --phase-timeout 3600
+      - name: Stop only this run's bridge and owned clusters, retain data
+        if: always()
+        run: |
+          result=0
+          if [ -n "${P01_RUN_DIRECTORY:-}" ]; then
+            python scripts/p01_local_recovery_env.py bridge-stop --directory "$P01_RUN_DIRECTORY" || result=1
+          fi
+          if [ -f tmp_test/p01-ci-environment/environment-private.json ]; then
+            python scripts/p01_local_recovery_env.py stop --directory tmp_test/p01-ci-environment || result=1
+            python scripts/p01_local_recovery_env.py status --directory tmp_test/p01-ci-environment || result=1
+          fi
+          exit "$result"
+      - name: Upload only sanitized machine-produced acceptance reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p01-joint-recovery-evidence
+          path: tmp_test/p01-ci-acceptance/reports/*.json
+          if-no-files-found: error

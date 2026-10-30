@@ -1,0 +1,320 @@
+{
+  "schema": "p02-local-acceptance-v1",
+  "status": "passed_local_requested_scope",
+  "recorded_at": "2026-10-30T10:51:04.606759+00:00",
+  "candidate_inventory_at_report": {
+    "schema": "release-candidate-v1",
+    "head": "91d3bc77c94e91a43cdda78d25df747657270923",
+    "source_files": 1573,
+    "source_sha256": "e40b7b8aadc66d1c24a57479d3c5786c04f6cf4d9b9b8dc6203a1bc906c7a593",
+    "migration_files": 282,
+    "migration_sha256": "26e9be85529136507e36a2fe5b25e7a740274d8679cc635302601d596457275a"
+  },
+  "evidence_binding": "Explicit local runs and post-run file inventory; manually collated acceptance, not an automated CI before/after candidate gate.",
+  "p02_owned_files": [
+    {
+      "path": "nexus_backend/app/b04_close/service.py",
+      "sha256": "241d909a3353415dc98f122212daff0e89e1c4248d4a10dcc7fc3879f3b86f3b",
+      "bytes": 17704
+    },
+    {
+      "path": "nexus_backend/app/delivery/followups.py",
+      "sha256": "b9d2bdb8e7676c5c0856eeb670de46f5a37eccf784ab004d514f237d6e74aae5",
+      "bytes": 29347
+    },
+    {
+      "path": "nexus_backend/app/reports/service.py",
+      "sha256": "88ef3750877523cdb78e960a4ed811378fed45936cb23494a9bd466fac70162e",
+      "bytes": 21279
+    },
+    {
+      "path": "nexus_backend/migrations/postgres/179_p02_delivery_recipient_projection.sql",
+      "sha256": "fdedfea264b761fb823e50dfda70a486de09a2e345c04a94d756b3ef7665e436",
+      "bytes": 1297
+    },
+    {
+      "path": "nexus_backend/migrations/postgres/180_p02_bound_formal_read.sql",
+      "sha256": "e41c7032876ef2f6fb32bf4f078133ba11d01908090c3780c66b0b7dfdccc12d",
+      "bytes": 5401
+    },
+    {
+      "path": "nexus_backend/tests/p02_browser_server.py",
+      "sha256": "d86ee474ac77b1848111f627e5dae7a2c16ec83e62d7807111604d5504a3e043",
+      "bytes": 5876
+    },
+    {
+      "path": "nexus_backend/tests/p02_business_fixture.py",
+      "sha256": "e404843581abfb762856d2ac3034d5e69bacdfd9c9a120b137c1a95d9b9bd0cd",
+      "bytes": 28436
+    },
+    {
+      "path": "nexus_backend/tests/p02_session_fixture.py",
+      "sha256": "e1fbb5763bd2dfa4066dff2db49d3a07076054aaa66b383226bdbc7c2dd8ca04",
+      "bytes": 7238
+    },
+    {
+      "path": "nexus_backend/tests/test_p02_close_diagnostics.py",
+      "sha256": "96cd31f4dfd01f9e83dbdf4185450db9da7836fea5f249485f4811a54b280e5d",
+      "bytes": 1847
+    },
+    {
+      "path": "nexus_backend/tests/test_p02_formal_read_postgres.py",
+      "sha256": "14158235e45abada36b1928fa3b991c867d8ab87fd9fefef1f087b3beef16a72",
+      "bytes": 12258
+    },
+    {
+      "path": "nexus_backend/tests/test_p02_r1_business_flow_postgres.py",
+      "sha256": "a6043677d17740979fd248ab81a13712662164081333679ba3d51534f63056f0",
+      "bytes": 1888
+    },
+    {
+      "path": "nexus_backend/tests/test_p02_review_gate_postgres.py",
+      "sha256": "6b5d027ee77e7d1786af1d09d9b82df5006253d901085034e26e40a8b284fcaf",
+      "bytes": 4227
+    },
+    {
+      "path": "nexus_backend/tests/test_p02_reviewer_notifications_postgres.py",
+      "sha256": "c3509c7cd8e6fc9e95326fe96f6d1e9c5e2bde1f0ab5f6c8b48499343ba487f0",
+      "bytes": 9324
+    },
+    {
+      "path": "src/FormalClosePanel.tsx",
+      "sha256": "7cdf989d4416560f55d1742e5d127b8f7ea30852f8c7aec9082a375f95034555",
+      "bytes": 26905
+    },
+    {
+      "path": "src/formal-close-types.ts",
+      "sha256": "ae3f66ba36dae93030cfd58e406746ec8ec6352e5b14bf149e15864e04b7535e",
+      "bytes": 9081
+    },
+    {
+      "path": "src/formal-close-types.test.ts",
+      "sha256": "ae9bae711ccf921132942ddd2288e9af9923a14814d2059941265efbe4f0fcd2",
+      "bytes": 6395
+    },
+    {
+      "path": "src/formal-close-render.test.ts",
+      "sha256": "26ba7c46a15d2ffb2a10a026a5048f18cb2ee70f87d9eb4ff7fa4bc22ed3f699",
+      "bytes": 2798
+    },
+    {
+      "path": "src/formal-close.css",
+      "sha256": "db920326dd3577bff7278f110025f27e248ce8a0c6c87aa3a39ba73c8dd0e76b",
+      "bytes": 1709
+    },
+    {
+      "path": "src/FormalBooksWorkbench.tsx",
+      "sha256": "74087cf56332f5f957eefdf97c6e75be47b9f9a85208c26ce6e9df5705df6d58",
+      "bytes": 27004
+    },
+    {
+      "path": "src/WorkspaceRouteContent.tsx",
+      "sha256": "500fd6c004f8c066d2f8c067a4c62e7c81c9dac87da3488c276d761ac924f549",
+      "bytes": 31696
+    },
+    {
+      "path": "playwright.config.ts",
+      "sha256": "94946a0a9831b917ce57c16778881b29cdf597d70d8aeb99b11998867901451d",
+      "bytes": 2214
+    },
+    {
+      "path": "playwright.p02.config.ts",
+      "sha256": "7e62b955c45e0d975e33cde9dd4082e0d9fc638c1d2ef0ef86b6d714e8bca7ed",
+      "bytes": 637
+    },
+    {
+      "path": "e2e/p02-r1-business-flow.spec.ts",
+      "sha256": "f5c19f65633b009723d2238bd82e4644362358759fdb35accf2e6c07f1d57f51",
+      "bytes": 15933
+    },
+    {
+      "path": "e2e/p02-close-boundary.spec.ts",
+      "sha256": "817417e63b7839a641316ec3770aa62e16809ecdf39adc53005d4f59ff26c4b9",
+      "bytes": 3098
+    },
+    {
+      "path": "e2e/fixtures/p02-close-harness.html",
+      "sha256": "5e33ccb0344316f960a997eaab852926ad72d52ee2b31a3678610ab8ef460b39",
+      "bytes": 325
+    },
+    {
+      "path": "e2e/fixtures/p02-close-harness.tsx",
+      "sha256": "a8d640e97f64d5ac014d75d63c9cb064d34d4179c9a2a01d012463ea795b8be1",
+      "bytes": 705
+    }
+  ],
+  "postgres": {
+    "p02-final-c01-review-pg16-green.xml": {
+      "path": "tmp_test/p02-final-c01-review-pg16-green.xml",
+      "sha256": "e6b384c2ed4971b87e730a96766cc0f116bb656207e57529272e418a84219980",
+      "bytes": 11391,
+      "tests": 72,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 200.767
+    },
+    "p02-final-c01-review-pg17-green.xml": {
+      "path": "tmp_test/p02-final-c01-review-pg17-green.xml",
+      "sha256": "91fe8d2bd1c7e654f3600d49824fa02176189311987fbec10db4965aa137e7c4",
+      "bytes": 11391,
+      "tests": 72,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 194.404
+    },
+    "p02-final-flow-notifications-pg16.xml": {
+      "path": "tmp_test/p02-final-flow-notifications-pg16.xml",
+      "sha256": "1ec6dc56d8c56ff1fda40fb1389a7cffd74b9404a86341c30dd9d5ce08735985",
+      "bytes": 7788,
+      "tests": 46,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 178.757
+    },
+    "p02-final-flow-notifications-pg17.xml": {
+      "path": "tmp_test/p02-final-flow-notifications-pg17.xml",
+      "sha256": "ad033e939aae84973173aaccf34e5821033985eea01bf7d3b1e75990a8e5b725",
+      "bytes": 7788,
+      "tests": 46,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 172.781
+    }
+  },
+  "frontend": {
+    "test_files": 104,
+    "tests_passed": 1076,
+    "lint": "passed",
+    "typecheck_and_build": "passed",
+    "production_code_unchanged_after_these_checks": true
+  },
+  "browser": {
+    "fixture_run": "p02-browser-20261030-5",
+    "passed": 6,
+    "skipped": 0,
+    "retries": 0,
+    "seconds": 26.2,
+    "real_business_cases": 4,
+    "mounted_failure_boundary_cases": 2,
+    "viewports": [
+      [
+        1440,
+        1000
+      ],
+      [
+        390,
+        844
+      ]
+    ],
+    "auth": "actual local GoTrue password sign-in",
+    "business_backend": "local PostgreSQL17 real API",
+    "command": "P02_BROWSER_FIXTURE=<private-local-fixture> node node_modules/@playwright/test/cli.js test --config playwright.p02.config.ts --max-failures=1",
+    "artifacts": [
+      {
+        "path": "tmp_test/p02-browser-final-verified/results/p02-r1-business-flow-P02-r-0e8e0-dentity-month-close-desktop/bank-original-desktop.csv",
+        "sha256": "7efcdcedd8e9f8341db8d2e5460ff06f6e231aa11d27f5236f6f9fdb74a1c395",
+        "bytes": 160
+      },
+      {
+        "path": "tmp_test/p02-browser-final-verified/results/p02-r1-business-flow-P02-r-0e8e0-dentity-month-close-desktop/p02-blocked-desktop.png",
+        "sha256": "9a35a169773d691f4d7ba9a4b9d1e9a46bb791323fa24caf55e6dc06504258b9",
+        "bytes": 334819
+      },
+      {
+        "path": "tmp_test/p02-browser-final-verified/results/p02-r1-business-flow-P02-r-0e8e0-dentity-month-close-desktop/p02-published-desktop.png",
+        "sha256": "abb795dcd17ae1f393d357ce9e705066b9062e734350b0ba4a7009ebefc4793c",
+        "bytes": 304417
+      },
+      {
+        "path": "tmp_test/p02-browser-final-verified/results/p02-r1-business-flow-P02-r-5d9e9--and-acknowledgement-mobile/monthly-package-mobile.zip",
+        "sha256": "036482697bdb32d62eff29e718568f4e8e166e744b9e5cb4da0067405a5f7ab0",
+        "bytes": 17470
+      },
+      {
+        "path": "tmp_test/p02-browser-final-verified/results/p02-r1-business-flow-P02-r-5d9e9--and-acknowledgement-mobile/p02-client-mobile.png",
+        "sha256": "d79445a254f297eb67819419e7eb7eb5ec6cae81efdf5c4193758f11c7ea27d4",
+        "bytes": 53329
+      },
+      {
+        "path": "tmp_test/p02-browser-final-verified/results/p02-r1-business-flow-P02-r-5d9e9--and-acknowledgement-mobile/p02-package-mobile.png",
+        "sha256": "b4d77fb048442480ab252108a330c38eda57983d0603c54bba6d772acd93c4b9",
+        "bytes": 108258
+      },
+      {
+        "path": "tmp_test/p02-browser-final-verified/results/p02-r1-business-flow-P02-r-6839a-and-acknowledgement-desktop/monthly-package-desktop.zip",
+        "sha256": "7ff547b27a9c909a43a5c9f9688d8108ba1f5b113840984aac030dd0b3c48605",
+        "bytes": 17470
+      },
+      {
+        "path": "tmp_test/p02-browser-final-verified/results/p02-r1-business-flow-P02-r-6839a-and-acknowledgement-desktop/p02-client-desktop.png",
+        "sha256": "07590b154c4517909fcc1b15e7b758a4fd814e7957b481eda0e33e36aff1a4ff",
+        "bytes": 61654
+      },
+      {
+        "path": "tmp_test/p02-browser-final-verified/results/p02-r1-business-flow-P02-r-6839a-and-acknowledgement-desktop/p02-package-desktop.png",
+        "sha256": "613aef7ff03cf783c76a5ff7bd0fc73881f82600faf532fd83d208ba383630d0",
+        "bytes": 193793
+      },
+      {
+        "path": "tmp_test/p02-browser-final-verified/results/p02-r1-business-flow-P02-r-6c36a-identity-month-close-mobile/bank-original-mobile.csv",
+        "sha256": "7efcdcedd8e9f8341db8d2e5460ff06f6e231aa11d27f5236f6f9fdb74a1c395",
+        "bytes": 160
+      },
+      {
+        "path": "tmp_test/p02-browser-final-verified/results/p02-r1-business-flow-P02-r-6c36a-identity-month-close-mobile/p02-blocked-mobile.png",
+        "sha256": "0eefd4290eb73f08fe89dd5649197b8c6116a528c6b61cac9439e2ab6c8cee2b",
+        "bytes": 239306
+      },
+      {
+        "path": "tmp_test/p02-browser-final-verified/results/p02-r1-business-flow-P02-r-6c36a-identity-month-close-mobile/p02-published-mobile.png",
+        "sha256": "735193ffabfa63a3fff4dcd7dc8520ed2773a2e4dc2f115979677c0f74c02ba0",
+        "bytes": 212542
+      }
+    ],
+    "archives": [
+      {
+        "path": "tmp_test/p02-browser-final-verified/results/p02-r1-business-flow-P02-r-5d9e9--and-acknowledgement-mobile/monthly-package-mobile.zip",
+        "manifest_files_verified": 11,
+        "archive_members": 12,
+        "hashes_and_sizes_verified": true
+      },
+      {
+        "path": "tmp_test/p02-browser-final-verified/results/p02-r1-business-flow-P02-r-6839a-and-acknowledgement-desktop/monthly-package-desktop.zip",
+        "manifest_files_verified": 11,
+        "archive_members": 12,
+        "hashes_and_sizes_verified": true
+      }
+    ]
+  },
+  "environment_stop": {
+    "verified_at": "2026-10-30T10:51:05.355515+00:00",
+    "closed_loopback_ports": [
+      18100,
+      18180,
+      25510,
+      25511,
+      25512,
+      25496,
+      25497,
+      25498,
+      25499
+    ],
+    "owned_pg_root": "/home/flydao/.local/share/nexus-local-tests/p01-recovery-a5c267fefb96",
+    "other_clients_before_stop": 0,
+    "stop_mode": "fast, waited",
+    "data_deleted": false,
+    "api_bridge_auth_vite": "already stopped after desktop turn interruption; ports verified closed"
+  },
+  "boundaries": [
+    "No commit/push/deployment/production migration/model/notification",
+    "P03-P05 not included",
+    "Old monthly briefing is a separate legacy axis and remains unavailable on B04-only locked book",
+    "Prior full restore results are not a full restore of migrations179-180",
+    "Mobile viewport browser, not Safari/WeChat physical device",
+    "P01 CI/config archival/lifecycle portability remain follow-ups"
+  ]
+}
