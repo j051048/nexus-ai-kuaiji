@@ -1,0 +1,80 @@
+{
+  "schema": "p01-recovery-v1",
+  "status": "passed",
+  "candidate": {
+    "schema": "release-candidate-v1",
+    "head": "8a21224d0eb69a613702bb8bdd4ea1b67f70c2db",
+    "source_files": 1553,
+    "source_sha256": "76564da53c2463f9d86fb640b42d0a1841d4bb5dacd58739ea2ca702cd3d6597",
+    "migration_files": 280,
+    "migration_sha256": "465f702a16d3710bd551bb6988f369257752d0206d6996817c72cd8c0c065993"
+  },
+  "scope": "local-only",
+  "phases": {
+    "joint": {
+      "passed": 2,
+      "junit_sha256": "4b61a3a6ec5be7f918cf5e8599b8eb45d101f6aef285d98e5ccd7300ac6ea557"
+    },
+    "identity": {
+      "passed": 4,
+      "junit_sha256": "96126898a288bb30b41c1a53f69c461190ee30e0140bba17e27b3fcd7a4d5aa0"
+    }
+  },
+  "configuration_sha256": {
+    "pg16-recovery_source.json": "3fe3e9e91fafc59a737d010a56e2bf3a45a5423d7a5ec1fdf1c8e994b28fa851",
+    "pg16-recovery-fresh-target.json": "5919a5df11f8aed536cf982264fe3b0b62e9349391edf9565deb5fcdee35ff32",
+    "pg17-recovery_source.json": "020a4af32b2f32126c39dc6a74733c7e66642f11855207c8aba291dda0b23904",
+    "pg17-recovery-fresh-target.json": "0c2935c8d0ae089cf0e61b5532c3d2ae1626df42d495415d7b99cbf387488edf",
+    "wsl-bridge-private.json": "219e6d0844f2d532bb3928fc84f4f4077f36f73cbf70c3d239dd0e75fc461cab"
+  },
+  "databases": {
+    "16": {
+      "source_version": "16.15 (Ubuntu 16.15-1.pgdg22.04+2)",
+      "target_version": "16.15 (Ubuntu 16.15-1.pgdg22.04+2)",
+      "migrations": 166,
+      "originals": 3,
+      "source_users": 6,
+      "restored_capability_grants": 883,
+      "restored_column_grants": 49,
+      "p01_checks": {
+        "database": true,
+        "originals": true,
+        "identity": true,
+        "permissions": true,
+        "hold": true,
+        "review_export": true,
+        "tax_delivery": true,
+        "no_replay": true
+      }
+    },
+    "17": {
+      "source_version": "17.11 (Ubuntu 17.11-1.pgdg22.04+2)",
+      "target_version": "17.11 (Ubuntu 17.11-1.pgdg22.04+2)",
+      "migrations": 166,
+      "originals": 3,
+      "source_users": 6,
+      "restored_capability_grants": 883,
+      "restored_column_grants": 49,
+      "p01_checks": {
+        "database": true,
+        "originals": true,
+        "identity": true,
+        "permissions": true,
+        "hold": true,
+        "review_export": true,
+        "tax_delivery": true,
+        "no_replay": true
+      }
+    }
+  },
+  "local_regression": {
+    "passed": 120,
+    "failed": 0,
+    "skipped": 0,
+    "junit_sha256": "e8899836d7d64bbcfa7a68f88274ae87ad04771c81b2cc8550c892f11f120c93"
+  },
+  "release_authorized": false,
+  "production_accessed": false,
+  "identity_scope": "local signed substitute plus fixed real GoTrue v2.197.0; not cloud recovery",
+  "remaining_issue": "Plain firm reviewer cannot read another company member for notification configuration; admin role workflow verified; see acceptance report."
+}

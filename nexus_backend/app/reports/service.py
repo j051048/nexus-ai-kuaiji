@@ -92,7 +92,7 @@ class ReportService:
             for row in conn.execute(sql, params)
         }, closing_vouchers
 
-    def _cash_flow(self, conn, book, cash_account_ids):
+    def _cash_flow(self, conn, book, cash_account_ids, accounts):
         closing_vouchers = [
             row[0]
             for row in conn.execute(
@@ -131,8 +131,10 @@ class ReportService:
                 unclassified_count += 1
                 unclassified_absolute += abs(amount)
                 continue
-            categories = {self._category(conn, line["account_id"]) for line in noncash}
-            codes = {self._code(conn, line["account_id"]) for line in noncash}
+            categories = {
+                accounts.get(line["account_id"], {}).get("category", "other") for line in noncash
+            }
+            codes = {accounts.get(line["account_id"], {}).get("code", "") for line in noncash}
             amount = int(cash[0]["debit_cents"]) - int(cash[0]["credit_cents"])
             if any(
                 code.startswith(("1122", "2202", "2203", "2204")) for code in codes
@@ -155,24 +157,6 @@ class ReportService:
             "unclassified_absolute_cents": unclassified_absolute,
         }
 
-    @staticmethod
-    def _category(conn, account_id):
-        row = conn.execute(
-            "SELECT v.category FROM ledger_accounts a JOIN ledger_account_versions v "
-            "ON v.account_id=a.id AND v.version=a.current_version WHERE a.id=?",
-            (account_id,),
-        ).fetchone()
-        return row[0] if row else "other"
-
-    @staticmethod
-    def _code(conn, account_id):
-        row = conn.execute(
-            "SELECT v.code FROM ledger_accounts a JOIN ledger_account_versions v "
-            "ON v.account_id=a.id AND v.version=a.current_version WHERE a.id=?",
-            (account_id,),
-        ).fetchone()
-        return row[0] if row else ""
-
     def _build(self, actor, book):
         with self.db.transaction(actor=actor) as conn:
             return self._build_in_transaction(conn, actor, book)
@@ -193,16 +177,16 @@ class ReportService:
                 (binding["package_version_id"],),
             )
         }
+        # Use the same period-resolved identities as the formal trial balance.
+        # A future version must neither rewrite history for managers nor vanish
+        # behind a book reader's narrower current-period RLS projection.
+        accounts = self.posting._accounts(conn, binding["ledger_id"], book["period"])
         cash_ids = {
-            row[0]
-            for row in conn.execute(
-                "SELECT a.id FROM ledger_accounts a JOIN ledger_account_versions v "
-                "ON v.account_id=a.id AND v.version=a.current_version WHERE a.ledger_id=? "
-                "AND (v.code LIKE ? OR v.code LIKE ?)",
-                (binding["ledger_id"], "1001%", "1002%"),
-            )
+            account_id
+            for account_id, account in accounts.items()
+            if account["code"].startswith(("1001", "1002"))
         }
-        cash_flow = self._cash_flow(conn, book, cash_ids)
+        cash_flow = self._cash_flow(conn, book, cash_ids, accounts)
         rows = trial["rows"]
         leaves = [row for row in rows if row["is_leaf"]]
         assets = [row for row in leaves if row["category"] == "asset"]

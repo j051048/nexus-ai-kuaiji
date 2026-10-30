@@ -26,6 +26,7 @@ import jwt
 
 from app.auth import AuthSettings, SupabaseAuthenticator
 from app.storage.factory import create_attachment_store
+from app.storage.local import KEY_PATTERN
 from app.storage.settings import StorageSettings
 
 
@@ -586,6 +587,7 @@ class LocalPrivateObjectFixture:
         self.origin = origin
         self.server_key = "sb_secret_" + secrets.token_hex(24)
         self.app = FastAPI()
+        signed_uploads = {}
 
         def authorize(request):
             if not hmac.compare_digest(request.headers.get("apikey", ""), self.server_key):
@@ -599,6 +601,61 @@ class LocalPrivateObjectFixture:
             if self.directory.resolve() not in target.parents:
                 raise HTTPException(422, "invalid private object scope")
             return target
+
+        # Keep the specific signing route before the generic object path. The
+        # tokens are opaque server-issued capabilities in this offline fixture;
+        # they authorize one exact new object, never private reads or upserts.
+        @self.app.post("/storage/v1/object/upload/sign/{bucket}/{key:path}")
+        async def sign_upload(bucket: str, key: str, request: Request):
+            authorize(request)
+            if bucket != self.bucket:
+                raise HTTPException(404, "bucket not found")
+            if not KEY_PATTERN.fullmatch(key):
+                raise HTTPException(422, "invalid private object key")
+            if request.headers.get("x-upsert", "false") != "false":
+                raise HTTPException(409, "immutable objects only")
+            body = await request.json()
+            expiry = body.get("expiresIn") if isinstance(body, dict) else None
+            if type(expiry) is not int or not 1 <= expiry <= 7200:
+                raise HTTPException(422, "invalid signed upload duration")
+            if object_path(key).exists():
+                raise HTTPException(409, "immutable object already exists")
+            token = secrets.token_urlsafe(32)
+            signed_uploads[token] = {
+                "bucket": bucket,
+                "key": key,
+                "expires_at": time.time() + expiry,
+                "used": False,
+            }
+            return {"url": f"/object/upload/sign/{bucket}/{key}?token={token}"}
+
+        @self.app.put("/storage/v1/object/upload/sign/{bucket}/{key:path}")
+        async def signed_upload(bucket: str, key: str, request: Request):
+            if bucket != self.bucket:
+                raise HTTPException(404, "bucket not found")
+            grant = signed_uploads.get(request.query_params.get("token", ""))
+            if (
+                not grant
+                or grant["bucket"] != bucket
+                or grant["key"] != key
+                or grant["expires_at"] <= time.time()
+            ):
+                raise HTTPException(403, "invalid or expired upload capability")
+            if request.headers.get("x-upsert", "false") != "false":
+                raise HTTPException(409, "immutable objects only")
+            if grant["used"]:
+                raise HTTPException(409, "upload capability already used")
+            raw = await request.body()
+            if len(raw) > 10 * 1024 * 1024:
+                raise HTTPException(413, "private object too large")
+            target = object_path(key)
+            target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+            try:
+                _private_write(target, raw)
+            except FileExistsError:
+                raise HTTPException(409, "immutable object already exists") from None
+            grant["used"] = True
+            return {"Key": self.bucket + "/" + key}
 
         @self.app.get("/storage/v1/bucket/{bucket}")
         def bucket_metadata(bucket: str, request: Request):

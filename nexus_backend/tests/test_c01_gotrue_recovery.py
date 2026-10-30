@@ -74,7 +74,14 @@ def test_real_restored_gotrue_drives_restored_accounting_api(tmp_path, monkeypat
     from test_c01_full_recovery_postgres import _read_config, _app, _http, PASSWORD
     from test_intelligence_workflow import FakeProvider
 
-    pointers = json.loads((ROOT / ".codex/c01-final-pg/combined-artifacts.json").read_text())
+    pointers_path = Path(
+        os.getenv(
+            "C01_ARTIFACT_POINTERS_PATH", str(ROOT / ".codex/c01-final-pg/combined-artifacts.json")
+        )
+    ).resolve()
+    if not any(pointers_path.is_relative_to(ROOT / name) for name in ("tmp_test", ".codex")):
+        raise ValueError("Identity recovery pointers must be local private artifacts")
+    pointers = json.loads(pointers_path.read_text(encoding="utf-8"))
     artifact = Path(pointers[str(major)])
     fixture = json.loads((artifact / "source_fixture.json").read_text(encoding="utf-8"))
     evidence = json.loads(

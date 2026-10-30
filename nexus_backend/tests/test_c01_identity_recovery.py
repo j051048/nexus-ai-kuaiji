@@ -206,3 +206,111 @@ def test_joint_manifest_rejects_missing_identity_and_tampered_accounting_before_
         manifest.write_bytes(manifest.read_bytes() + b" ")
         with pytest.raises(ValueError, match="accounting"):
             verify_joint_bundle(joint, bundle, manifest, {user["id"]})
+
+
+def test_private_signed_upload_uses_real_adapter_and_is_single_object_immutable(tmp_path):
+    objects = LocalPrivateObjectFixture(tmp_path / "signed-objects")
+    key = "ab/" + "a" * 32
+    try:
+        signed = objects.store().backend.sign_upload(key, 900)
+        assert signed["expires_in"] == 900
+        assert objects.server_key not in signed["url"]
+        uploaded = objects.client.put(
+            signed["url"], content=b"synthetic original", headers={"x-upsert": "false"}
+        )
+        assert uploaded.status_code == 200
+        assert objects.store().backend.read(key, 100) == b"synthetic original"
+        repeated = objects.client.put(
+            signed["url"], content=b"tampered", headers={"x-upsert": "false"}
+        )
+        assert repeated.status_code == 409
+        assert objects.store().backend.read(key, 100) == b"synthetic original"
+    finally:
+        objects.close()
+
+
+def test_private_signed_upload_signing_requires_server_key_and_valid_scope(tmp_path):
+    objects = LocalPrivateObjectFixture(tmp_path / "signed-objects")
+    base = objects.origin + "/storage/v1/object/upload/sign/"
+    key = "ab/" + "a" * 32
+    try:
+        assert (
+            objects.client.post(
+                base + objects.bucket + "/" + key, json={"expiresIn": 900}
+            ).status_code
+            == 403
+        )
+        headers = {"apikey": objects.server_key}
+        assert (
+            objects.client.post(
+                base + "other-bucket/" + key, headers=headers, json={"expiresIn": 900}
+            ).status_code
+            == 404
+        )
+        assert (
+            objects.client.post(
+                base + objects.bucket + "/bad-key", headers=headers, json={"expiresIn": 900}
+            ).status_code
+            == 422
+        )
+        for expiry in (True, -1, 0, 7201, "900"):
+            assert (
+                objects.client.post(
+                    base + objects.bucket + "/" + key, headers=headers, json={"expiresIn": expiry}
+                ).status_code
+                == 422
+            )
+        assert (
+            objects.client.post(
+                base + objects.bucket + "/" + key,
+                headers={**headers, "x-upsert": "true"},
+                json={"expiresIn": 900},
+            ).status_code
+            == 409
+        )
+    finally:
+        objects.close()
+
+
+def test_private_signed_upload_token_cannot_change_bucket_key_or_allow_overwrite(tmp_path):
+    objects = LocalPrivateObjectFixture(tmp_path / "signed-objects")
+    key = "ab/" + "a" * 32
+    try:
+        signed = objects.store().backend.sign_upload(key, 900)
+        for changed in (
+            signed["url"].replace(objects.bucket, "other-bucket"),
+            signed["url"].replace(key, "ab/" + "b" * 32),
+            signed["url"].split("?token=")[0] + "?token=forged",
+        ):
+            assert objects.client.put(
+                changed, content=b"bad", headers={"x-upsert": "false"}
+            ).status_code in {403, 404}
+        assert (
+            objects.client.put(
+                signed["url"], content=b"bad", headers={"x-upsert": "true"}
+            ).status_code
+            == 409
+        )
+        assert not (objects.directory / key).exists()
+    finally:
+        objects.close()
+
+
+def test_private_signed_upload_expiration_is_checked_before_storage(tmp_path, monkeypatch):
+    import c01_identity_fixture
+
+    objects = LocalPrivateObjectFixture(tmp_path / "signed-objects")
+    key = "ab/" + "a" * 32
+    try:
+        monkeypatch.setattr(c01_identity_fixture.time, "time", lambda: 1000)
+        signed = objects.store().backend.sign_upload(key, 1)
+        monkeypatch.setattr(c01_identity_fixture.time, "time", lambda: 1002)
+        assert (
+            objects.client.put(
+                signed["url"], content=b"late", headers={"x-upsert": "false"}
+            ).status_code
+            == 403
+        )
+        assert not (objects.directory / key).exists()
+    finally:
+        objects.close()

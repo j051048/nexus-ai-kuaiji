@@ -83,8 +83,9 @@ DELIVERY_INVENTORY_FIELDS = (
 )
 
 # Tax and delivery rows are business evidence, not queue state. After a restore
-# the operator must prove the same tax version was filed, the same manifest was
-# frozen and the same customer signed the same version. A pre-N04 schema cannot
+# the operator must prove the same tax workpaper was prepared/reviewed (never
+# infer tax filing), the same manifest was frozen and the same customer signed
+# the same version. A pre-N04 schema cannot
 # silently supply a partial inventory, so these columns are required verbatim.
 BUSINESS_EVIDENCE_FIELDS = {
     "tax_profiles": (
@@ -121,6 +122,7 @@ BUSINESS_EVIDENCE_FIELDS = {
         "variance_reason",
         "lines_json",
         "source_digest",
+        "source_snapshot_json",
         "created_by",
         "created_at",
         "reviewed_by",
@@ -262,6 +264,7 @@ def pending_inventory(conn):
                 "last_error",
                 "snapshot_json",
                 "lines_json",
+                "source_snapshot_json",
             ):
                 if name in item and item[name] is not None:
                     item[name] = hashlib.sha256(str(item[name]).encode()).hexdigest()

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, apiBlob, ApiError, errorMessage } from './api';
 import type { Session } from './types';
 import { ManualVoucherReviewPanel } from './ManualVoucherReviewPanel';
+import { FormalClosePanel } from './FormalClosePanel';
 import {
   FormalBooksRequestGuard,
   formalBooksPath,
@@ -27,6 +28,7 @@ export interface FormalBooksWorkbenchProps {
   companyId?: string;
   period?: string;
   canDownload?: boolean;
+  canReview?: boolean;
   onBack: () => void;
 }
 const bookLabels: Record<FormalBookKind, string> = {
@@ -71,10 +73,12 @@ function FormalBooksContent({
   companyId,
   period,
   canDownload = false,
+  canReview = false,
   onBack,
 }: FormalBooksWorkbenchProps) {
   const [kind, setKind] = useState<FormalBookKind>('trial_balance');
   const [manualOpen, setManualOpen] = useState(false);
+  const [closeOpen, setCloseOpen] = useState(false);
   const [accountId, setAccountId] = useState('');
   const [asOf, setAsOf] = useState('');
   const [auxKey, setAuxKey] = useState('');
@@ -332,6 +336,25 @@ function FormalBooksContent({
           <ManualVoucherReviewPanel session={session} bookId={bookId} companyId={companyId} />
         )}
       </details>
+      {period && (
+        <details
+          className="review-section"
+          onToggle={(event) => setCloseOpen(event.currentTarget.open)}
+        >
+          <summary>正式月结与报表发布（对账、独立复核、锁期）</summary>
+          {closeOpen && (
+            <FormalClosePanel
+              session={session}
+              bookId={bookId}
+              period={period}
+              canReview={canReview}
+              accountLabels={Object.fromEntries(
+                catalog.map((row) => [row.account_id, `${row.code} ${row.name}`]),
+              )}
+            />
+          )}
+        </details>
+      )}
       <nav className="formal-books-tabs" aria-label="账簿类型">
         {(Object.entries(bookLabels) as [FormalBookKind, string][]).map(([key, label]) => (
           <button

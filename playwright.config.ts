@@ -14,7 +14,9 @@ const manifest: { cases: { file: string; title: string }[] } = JSON.parse(
 const literal = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 export const config = defineConfig({
   testDir: './e2e',
-  testIgnore: '**/stage15-assistant-model.spec.ts',
+  // P02 runs against explicit PostgreSQL + real isolated GoTrue fixtures through
+  // playwright.p02.config.ts; the standard harness owns a fresh SQLite database.
+  testIgnore: '**/{stage15-assistant-model,p02-r1-business-flow,p02-close-boundary}.spec.ts',
   ...(core
     ? {
         testMatch: [...new Set(manifest.cases.map(({ file }) => `**/${file.slice(4)}`))],

@@ -796,6 +796,7 @@ export function WorkspaceRouteContent({
                 companyId={detail?.book.company_id}
                 period={detail?.book.period}
                 canDownload={detail?.book.permissions.export ?? false}
+                canReview={detail?.book.permissions.review ?? false}
                 onBack={() => setRouteView('accounting')}
               />
             ) : routeView === 'ledger' && bookId ? (

@@ -42,6 +42,13 @@ from c01_identity_fixture import (
 )
 from test_intelligence_workflow import FakeProvider
 from c01_wsl_bridge import call as bridge_call
+from scripts.p01_recovery_gate import REQUIRED_CHECKS as P01_CHECKS
+from p01_recovery_business import (
+    seed_latest_recovery_business,
+    require_latest_business_inventory,
+    verify_latest_business_http,
+    assert_notifications_fenced,
+)
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -195,6 +202,7 @@ def test_fresh_cluster_database_objects_signed_identity_and_http_recovery(
     major, tmp_path, monkeypatch
 ):
     started = time.monotonic()
+    p01_checks = dict.fromkeys(P01_CHECKS, False)
     _secure(tmp_path)
     source, target = _read_config(major), _read_config(major, True)
     if urlsplit(source["admin"]).port == urlsplit(target["admin"]).port:
@@ -241,7 +249,7 @@ def test_fresh_cluster_database_objects_signed_identity_and_http_recovery(
             totp=name == "owner",
             name="虚构" + name,
         )
-        for name in ("owner", "editor", "reviewer", "employee", "outsider")
+        for name in ("owner", "editor", "reviewer", "employee", "outsider", "customer")
     }
     source_headers = {
         name: _headers(source_identity, user["email"], admin=name == "owner")
@@ -380,6 +388,22 @@ def test_fresh_cluster_database_objects_signed_identity_and_http_recovery(
                 {"draft_ids": [approved["id"]], "idempotency_key": "c01-before-backup-export"},
             )
             assert exported["count"] == 1
+            _http(
+                client,
+                "POST",
+                f"/api/books/{book}/delivery/exports/{exported['id']}/receipts",
+                source_headers["reviewer"],
+                {
+                    "book_id": book,
+                    "company_id": company,
+                    "period": "2026-10",
+                    "currency": "CNY",
+                    "idempotency_key": "p01-unknown-external-receipt",
+                    "reason": "虚构人工交付结果未知，恢复不得冒充厂商已过账",
+                    "items": [{"draft_id": approved["id"], "status": "unknown"}],
+                },
+                201,
+            )
             for _ in (1,):
                 _http(
                     client,
@@ -463,6 +487,19 @@ def test_fresh_cluster_database_objects_signed_identity_and_http_recovery(
                 },
                 202,
             )
+            latest_worker = Database(source["worker"])
+            try:
+                latest_business = seed_latest_recovery_business(
+                    source_app.state.service.db,
+                    latest_worker,
+                    objects.store(),
+                    owner=Actor(users["owner"]["id"], firm),
+                    reviewer=Actor(users["reviewer"]["id"], firm),
+                    customer=Actor(users["customer"]["id"], firm),
+                    customer_email=users["customer"]["email"],
+                )
+            finally:
+                latest_worker.close()
         # All business writers are now closed: this is a quiesced drill, not a distributed live snapshot.
         bundle = tmp_path / "private-identity-bundle" / "identity.bundle"
         identity_receipt = source_identity.backup(bundle)
@@ -500,6 +537,8 @@ def test_fresh_cluster_database_objects_signed_identity_and_http_recovery(
                 == source_uuids
             )
             source_inventory = pending_inventory(conn)
+            require_latest_business_inventory(source_inventory)
+            assert source_inventory["tables"]["delivery_receipt_items"]
             snapshot_version = conn.execute("SHOW server_version").fetchone()[0]
             assert (
                 conn.execute(
@@ -538,6 +577,7 @@ def test_fresh_cluster_database_objects_signed_identity_and_http_recovery(
             backup_directory, restored_directory, target["admin"], restore_permissions=True
         )
         assert receipt["security_verified"] is True
+        p01_checks["database"] = True
         assert combined["identity_sha256"] == hashlib.sha256(bundle.read_bytes()).hexdigest()
         assert combined["accounting_manifest_sha256"] == hashlib.sha256(manifest_bytes).hexdigest()
         restored_identity = LocalIdentityFixture.restore(
@@ -551,8 +591,11 @@ def test_fresh_cluster_database_objects_signed_identity_and_http_recovery(
                 raw = (restored_directory / row["path"]).read_bytes()
                 assert hashlib.sha256(raw).hexdigest() == row["sha256"]
                 replacement.restore_original(row["path"].removeprefix("originals/"), raw)
+            p01_checks["originals"] = True
             with psycopg.connect(target["admin"]) as conn:
-                assert pending_inventory(conn)["sha256"] == source_inventory["sha256"]
+                restored_inventory = pending_inventory(conn)
+                require_latest_business_inventory(restored_inventory)
+                assert restored_inventory["sha256"] == source_inventory["sha256"]
                 assert conn.execute(
                     "SELECT hold FROM accounting.restore_state WHERE instance_id='restored'"
                 ).fetchone() == (True,)
@@ -567,14 +610,17 @@ def test_fresh_cluster_database_objects_signed_identity_and_http_recovery(
                 )
                 with TestClient(held, base_url="http://127.0.0.1"):
                     pytest.fail("正常API不应在恢复hold期间启动")
+            p01_checks["hold"] = True
             verified = restored_identity.authenticator()
             for name, row in users.items():
                 fresh = restored_identity.login(row["email"], PASSWORD)
                 assert verified.authenticate(fresh["access_token"]).user_id == row["id"]
                 with pytest.raises(AuthError):
                     verified.authenticate(source_headers[name]["Authorization"][7:])
+            p01_checks["identity"] = True
             owner_actor = Actor(users["owner"]["id"], firm)
             _native_security(target, owner_actor, Actor(users["editor"]["id"], firm), other)
+            p01_checks["permissions"] = True
             database = Database(target["app"])
             try:
                 accounting = AccountingService(database)
@@ -611,6 +657,11 @@ def test_fresh_cluster_database_objects_signed_identity_and_http_recovery(
                 checks=proof,
                 inventory_sha256=inventory_before_release["sha256"],
             )
+            restored_worker = Database(target["worker"])
+            try:
+                notification_proof = assert_notifications_fenced(restored_worker, latest_business)
+            finally:
+                restored_worker.close()
             target_app = _app(
                 target,
                 restored_identity,
@@ -624,11 +675,21 @@ def test_fresh_cluster_database_objects_signed_identity_and_http_recovery(
                 for name, row in users.items()
             }
             with TestClient(target_app, base_url="http://127.0.0.1") as client:
+                business_proof = verify_latest_business_http(
+                    client,
+                    new_headers,
+                    latest_business,
+                    wrong_book_id=other_book,
+                )
+                p01_checks["tax_delivery"] = all(business_proof.values())
                 for name, headers in new_headers.items():
                     if name == "outsider":
                         assert client.get("/api/me", headers=headers).status_code == 403
                         own_headers = {"Authorization": headers["Authorization"]}
-                        assert _http(client, "GET", "/api/me", own_headers)["user"]["id"] == users[name]["id"]
+                        assert (
+                            _http(client, "GET", "/api/me", own_headers)["user"]["id"]
+                            == users[name]["id"]
+                        )
                         continue
                     assert (
                         _http(client, "GET", "/api/me", headers)["user"]["id"] == users[name]["id"]
@@ -704,6 +765,7 @@ def test_fresh_cluster_database_objects_signed_identity_and_http_recovery(
                     )["count"]
                     == 1
                 )
+                p01_checks["review_export"] = True
                 _http(
                     client,
                     "DELETE",
@@ -760,6 +822,11 @@ def test_fresh_cluster_database_objects_signed_identity_and_http_recovery(
                     "delivery_receipt_items",
                 ):
                     assert final_inventory["tables"][table] == source_inventory["tables"][table]
+                assert provider.extract_calls == 1
+                p01_checks["no_replay"] = notification_proof == {
+                    "channel_calls": 0,
+                    "old_lease_settlement": False,
+                }
                 assert (
                     conn.execute(
                         "SELECT count(*) FROM accounting.recovery_release_audit"
@@ -797,6 +864,7 @@ def test_fresh_cluster_database_objects_signed_identity_and_http_recovery(
                 ),
                 "restore_sequences": receipt["sequences"],
                 "scope": "local_signed_identity_and_private_object_protocol_substitutes",
+                "p01_checks": p01_checks,
                 "combined": combined,
             }
             (tmp_path / f"pg{major}-full-recovery-evidence.json").write_text(

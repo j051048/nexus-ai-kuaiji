@@ -122,8 +122,16 @@ class DeliveryFollowupService(NotificationDispatcher):
             (package_id,),
         ).fetchone()
 
-    @staticmethod
-    def _company_member(conn, company_id: str, user_id: str) -> bool:
+    def _company_member(self, conn, company_id: str, book_id: str, user_id: str) -> bool:
+        # A reviewer may manage this book without permission to list the
+        # client's staff. Keep membership RLS private and ask only the bounded
+        # current-actor boolean instead of treating a hidden row as a non-member.
+        if self.db.is_postgres:
+            return bool(
+                conn.execute(
+                    "SELECT accounting.delivery_recipient_member(?,?)", (book_id, user_id)
+                ).fetchone()[0]
+            )
         return bool(
             conn.execute(
                 "SELECT 1 FROM company_memberships cm JOIN users u ON u.id=cm.user_id "
@@ -145,7 +153,7 @@ class DeliveryFollowupService(NotificationDispatcher):
             not recipient
             or package["contact_user_id"] != recipient
             or package["created_by"] == recipient
-            or not self._company_member(conn, company_id, recipient)
+            or not self._company_member(conn, company_id, book_id, recipient)
         ):
             return False
         if self.db.is_postgres:
@@ -233,7 +241,7 @@ class DeliveryFollowupService(NotificationDispatcher):
                     conn, actor.firm_id, book["company_id"], book_id, package, target
                 )
                 if package
-                else self._company_member(conn, book["company_id"], target)
+                else self._company_member(conn, book["company_id"], book_id, target)
             )
             latest_grant = self._latest_grant(conn, book_id, period)
             if latest_grant and not grant:
@@ -362,7 +370,9 @@ class DeliveryFollowupService(NotificationDispatcher):
                 raise AccountingError("只有复核或管理角色可以配置交付收件人", 403)
             if not self._period_row(conn, book_id, request.period):
                 raise AccountingError("该账套没有这个会计期间", 404)
-            if not self._company_member(conn, book["company_id"], request.recipient_user_id):
+            if not self._company_member(
+                conn, book["company_id"], book_id, request.recipient_user_id
+            ):
                 raise AccountingError("收件人不是该客户企业的当前成员", 422)
             current = self._grant(conn, book_id, request.period)
             version = int(

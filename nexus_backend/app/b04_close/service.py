@@ -87,7 +87,7 @@ class CloseService:
             {
                 "code": "unapproved_drafts",
                 "status": "blocked" if unapproved else "pass",
-                "detail": f"{unapproved} 张草稿未审核/导出",
+                "detail": f"{unapproved} 张草稿尚未完成会计复核；正式月结与外部导入回执分别核验",
             },
             {
                 "code": "unposted_manual",
@@ -97,7 +97,7 @@ class CloseService:
             {
                 "code": "subledger_control",
                 "status": "pass" if control["passed"] else "blocked",
-                "detail": control["rows"],
+                "detail": control,
             },
             {
                 "code": "bank_reconciliation",
@@ -125,6 +125,48 @@ class CloseService:
                 "detail": report_content["checks"],
             },
         ]
+        guidance = {
+            "unposted_periodic": ("复核会计", "复核期末草稿并完成记账，再重新预检。", "periodic"),
+            "unapproved_drafts": (
+                "复核会计",
+                "逐项复核待审凭证，处理退回事项后重新预检。",
+                "review",
+            ),
+            "unposted_manual": (
+                "制单会计与复核会计",
+                "核对待审手工凭证，独立复核并记账；录错的版本由制单人说明理由后撤回。",
+                "manual_vouchers",
+            ),
+            "subledger_control": (
+                "账套会计",
+                "确认本月控制科目配置，补齐往来事项及辅助维度，按科目核销并对平差额后重新预检。",
+                "subledger",
+            ),
+            "bank_reconciliation": (
+                "账套会计与独立核验人",
+                "逐银行账户核对本月原件、期初期末和流水匹配，由另一位有复核权限的人员核验覆盖证据。",
+                "bank_reconciliation",
+            ),
+            "trial_balance": (
+                "账套会计",
+                "核对正式期初和凭证借贷金额，处理余额差额后重新预检。",
+                "formal_books",
+            ),
+            "report_checks": (
+                "报表编制人与复核人",
+                "核对报表勾稽和未分类现金流，重新生成、校验并独立复核报表。",
+                "reports",
+            ),
+        }
+        for check in checks:
+            owner, next_action, target = guidance[check["code"]]
+            # Guidance describes a responsible role, never confers authorization
+            # or guesses an assigned person. Preserve the exact book/period.
+            check.update(
+                owner_role=owner,
+                next_action=next_action,
+                action_target={"kind": target, "book_id": book["id"], "period": period},
+            )
         dependencies = close_dependencies(conn, book["id"], report["template_id"])
         fingerprint = _fingerprint(
             {
