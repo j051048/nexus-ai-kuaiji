@@ -173,6 +173,8 @@ def project_delivery(db, conn, actor, snapshot, *, budget=None, clock=None):
     packages = MonthlyPackageService(db)
 
     def month_close():
+        from .delivery_details import collect_details, detail_issues
+
         evidence = packages._inspect(conn, actor, book)
         plan = evidence["plan"]
         if plan:
@@ -206,6 +208,7 @@ def project_delivery(db, conn, actor, snapshot, *, budget=None, clock=None):
             "SELECT * FROM internal_close_runs WHERE book_id=? AND period=? ORDER BY version DESC,id DESC LIMIT 1",
             (book["id"], book["period"]),
         ).fetchone()
+        current_checks = None
         if close:
             current, checks = None, []
             if book["period_status"] == "open":
@@ -242,14 +245,21 @@ def project_delivery(db, conn, actor, snapshot, *, budget=None, clock=None):
                     "重新预检并核对当前版本",
                 )
             elif current:
+                current_checks = checks
                 for check in checks:
-                    if check["status"] == "blocked":
+                    if check["status"] == "blocked" and check["code"] not in {
+                        "subledger_control",
+                        "bank_reconciliation",
+                    }:
                         issue(
                             "close_" + check["code"],
                             "月结预检未通过：" + check["code"],
                             check["owner_role"],
                             check["next_action"],
                         )
+        details = collect_details(db, conn, actor, book, current_checks)
+        result["sources"].append(details)
+        result["issues"].extend(detail_issues(details))
 
     reads.read("month_close", month_close)
 
@@ -317,6 +327,18 @@ def validate_projection(value, company_id, books, citation_ids):
             raise ValueError("delivery guidance invalid")
     if value["schema"] == "assistant-delivery-v2":
         validate_trace(value)
+        from .delivery_details import validate_details, detail_issues
+
+        detailed = [s for s in value["sources"] if s["kind"] == "reconciliation"]
+        if len(detailed) > 1 or (detailed and value["coverage"] != "selected_book"):
+            raise ValueError("unexpected reconciliation scope")
+        for source in detailed:
+            validate_details(source, company_id, value["book_id"], value["period"])
+            expected = detail_issues(source)
+            # Detail guidance is deterministically derived, never model prose.
+            for issue in expected:
+                if issue not in value["issues"]:
+                    raise ValueError("reconciliation guidance missing or changed")
     return value
 
 

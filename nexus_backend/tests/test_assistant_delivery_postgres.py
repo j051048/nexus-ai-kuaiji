@@ -41,6 +41,73 @@ from test_monthly_delivery_postgres import p0_pg, p0_case, package_case
 
 WORKER_URL = os.getenv("ACCOUNTING_TEST_WORKER_DATABASE_URL")
 QUESTION = "为什么这家企业本月还不能交付？"
+
+
+@pytest.mark.parametrize("outcome", ["success", "changed", "revoked", "unknown"])
+def test_pg_account_detail_binding_preserves_single_send(pg_delivery, monkeypatch, outcome):
+    from test_assistant_delivery_details import configured
+    from app.subledger.models import BankAdjustment
+    import test_posting_service
+
+    c = pg_delivery
+
+    def authorized_ledger(case):
+        with case.db.transaction(actor=case.manager) as conn:
+            return conn.execute(
+                "SELECT ledger_id FROM ledger_periods WHERE book_id=?", (case.book["id"],)
+            ).fetchone()[0]
+
+    # Reuse the business fixture through the restricted API role, never a schema
+    # owner. The old SQLite fixture omits actor only in its ledger lookup.
+    with monkeypatch.context() as patch:
+        patch.setattr(test_posting_service, "ledger_of", authorized_ledger)
+        sub, bank = configured(c)
+    actor, conv, turn = enqueue(c)
+    frozen = json.loads(raw(c, turn["id"])["snapshot_json"])
+    detail = next(s for s in frozen["delivery_task"]["sources"] if s["kind"] == "reconciliation")
+    assert detail["id"] == c.book["id"] and detail["company_id"] == c.company["id"]
+    assert detail["control"]["rows"][0]["difference_cents"] == -1000000
+    assert detail["bank"]["rows"][0]["closing_cents"] is None
+    if outcome == "changed":
+        c.hook = lambda: sub.add_bank_adjustment(
+            c.manager,
+            BankAdjustment(
+                book_id=c.book["id"],
+                bank_account_id=bank["id"],
+                period="2026-10",
+                kind="error",
+                amount="0.30",
+                explanation="PG发送后变更",
+            ),
+        )
+    elif outcome == "revoked":
+
+        def revoke():
+            with c.psycopg.connect(ADMIN_URL) as conn:
+                conn.execute(
+                    "DELETE FROM accounting.book_access WHERE book_id=%s AND user_id=%s",
+                    (c.book["id"], actor.user_id),
+                )
+
+        c.hook = revoke
+    elif outcome == "unknown":
+        c.mode = "timeout"
+    c.chat_worker.run_once()
+    c.chat_worker.run_once()
+    current = raw(c, turn["id"])
+    assert len(c.calls) == 1 and current["attempt_count"] == 1
+    assert c.other_book["id"] not in json.dumps(c.calls)
+    if outcome == "success":
+        assert current["status"] == "succeeded"
+        answer = json.loads(current["reply_json"])["answer"]
+        assert "2202" in answer and "-10000.00" in answer and "虚构待补单银行" in answer
+    else:
+        assert current["reply_json"] is None
+        assert current["status"] == ("interrupted" if outcome == "unknown" else "stale")
+    cost = costs(c, turn["id"])[0]
+    assert cost["state"] == ("uncertain" if outcome == "unknown" else "estimated")
+
+
 pytestmark = pytest.mark.skipif(
     os.getenv("ACCOUNTING_AK05_ISOLATED_TARGET") != "1",
     reason="Use the explicit isolated assistant PG gate; ordinary unit runs do not initialize PostgreSQL",

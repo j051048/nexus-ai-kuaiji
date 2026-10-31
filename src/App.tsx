@@ -1,5 +1,6 @@
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { assistantDeliveryTarget, type AssistantDeliveryTarget } from './assistant-delivery-target';
 import {
   ArrowUpRight,
   CheckCircle2,
@@ -88,6 +89,9 @@ type Notice = BookNotice;
 
 export default function App() {
   const location = useLocation();
+  const assistantNavigationLocation = useRef(location.key);
+  const assistantNavigationRequest = useRef(0);
+  assistantNavigationLocation.current = location.key;
   const routerNavigate = useNavigate();
   const adminMode = /^\/admin(?:\/|$)/.test(location.pathname);
   const activationMode = location.pathname === '/account-activation';
@@ -1053,6 +1057,7 @@ export default function App() {
         busy ||
         businessBusy ||
         reviewDirty ||
+        monthlyDirty ||
         inlineTarget ||
         proposalTarget ||
         modal)
@@ -1097,19 +1102,66 @@ export default function App() {
     setAssistantMode('context');
     setGlobalAssistant(null);
   }
-  async function openAssistantBook(targetBookId: string) {
+  async function openAssistantBook(targetBookId: string, deliveryTarget?: AssistantDeliveryTarget) {
     if (!session) return;
     const scope = session.scope_key;
+    const startedLocation = assistantNavigationLocation.current;
+    const request = ++assistantNavigationRequest.current;
     try {
       const value = await api<BookDetail>('/books/' + encodeURIComponent(targetBookId), session);
-      if (sessionScope.current !== scope || value.book.id !== targetBookId) return;
+      if (
+        sessionScope.current !== scope ||
+        value.book.id !== targetBookId ||
+        assistantNavigationLocation.current !== startedLocation ||
+        assistantNavigationRequest.current !== request
+      )
+        return;
+      if (
+        deliveryTarget &&
+        (value.book.company_id !== deliveryTarget.company_id ||
+          value.book.period !== deliveryTarget.period ||
+          !(value.book.permissions.edit || value.book.permissions.review))
+      ) {
+        setNotice({ kind: 'error', text: '月结查看范围或权限已变化，请重新选择获授权账套。' });
+        return;
+      }
       openCommandBook(value.book, true);
+      if (
+        deliveryTarget &&
+        !busy &&
+        !businessBusy &&
+        !reviewDirty &&
+        !monthlyDirty &&
+        !inlineTarget &&
+        !proposalTarget &&
+        !modal
+      ) {
+        setRouteView('formal-books');
+        setNotice({
+          kind: 'success',
+          text: '已打开本月当前账簿，请展开“正式月结与报表发布”。历史诊断需按最新资料重新核对。',
+        });
+      }
     } catch (failure) {
-      if (sessionScope.current === scope) setNotice({ kind: 'error', text: errorMessage(failure) });
+      if (
+        sessionScope.current === scope &&
+        assistantNavigationLocation.current === startedLocation &&
+        assistantNavigationRequest.current === request
+      )
+        setNotice({ kind: 'error', text: errorMessage(failure) });
     }
   }
   function openAssistantEvidence(evidence: AssistantEvidence) {
     closeAssistantDrawer();
+    if ('delivery_target' in evidence) {
+      const target = assistantDeliveryTarget(evidence);
+      if (!target) {
+        setNotice({ kind: 'error', text: '诊断目标不完整，请重新发起本月交付核对。' });
+        return;
+      }
+      void openAssistantBook(target.book_id, target);
+      return;
+    }
     if (evidence.book_id && evidence.draft_id) {
       setInlineTarget({ bookId: evidence.book_id, draftId: evidence.draft_id });
       return;

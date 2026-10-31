@@ -503,6 +503,17 @@ class AssistantService:
 
             context["delivery_task"] = project_delivery(self.db, conn, actor, context)
             basis["delivery_task"] = context["delivery_task"]
+            from .delivery_details import delivery_target
+
+            target = delivery_target(context["delivery_task"])
+            if target:
+                for evidence in context["evidence"]:
+                    if evidence["id"] == "book:" + target["book_id"]:
+                        evidence["delivery_target"] = target
+                        evidence["label"] = "查看本月对账与月结"
+                        evidence["detail"] = (
+                            "打开本月当前资料；历史诊断需重新核对，不执行复核、记账或导出"
+                        )
         context["input_fingerprint"] = (
             conn.execute(
                 "SELECT accounting.assistant_input_basis(?)", (conversation["id"],)

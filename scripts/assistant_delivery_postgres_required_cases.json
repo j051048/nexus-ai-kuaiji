@@ -1,5 +1,5 @@
 {
-  "version": 4,
+  "version": 5,
   "selectors": [
     "nexus_backend/tests/test_assistant_delivery_postgres.py",
     "nexus_backend/tests/test_stage15_conversations_postgres.py",
@@ -49,6 +49,10 @@
     "nexus_backend.tests.test_stage15_assistant_meter_postgres::test_api_cannot_reserve_chat_using_forged_worker_token",
     "nexus_backend.tests.test_stage15_assistant_meter_postgres::test_native_unknown_network_cost_is_held_without_replay",
     "nexus_backend.tests.test_stage15_assistant_meter_postgres::test_native_late_usage_survives_revocation_without_publishing",
-    "nexus_backend.tests.test_intelligence_workflow_postgres::test_pg_ai_full_pipeline_masks_proposals_and_requires_independent_accounting_review"
+    "nexus_backend.tests.test_intelligence_workflow_postgres::test_pg_ai_full_pipeline_masks_proposals_and_requires_independent_accounting_review",
+    "nexus_backend.tests.test_assistant_delivery_postgres::test_pg_account_detail_binding_preserves_single_send[success]",
+    "nexus_backend.tests.test_assistant_delivery_postgres::test_pg_account_detail_binding_preserves_single_send[changed]",
+    "nexus_backend.tests.test_assistant_delivery_postgres::test_pg_account_detail_binding_preserves_single_send[revoked]",
+    "nexus_backend.tests.test_assistant_delivery_postgres::test_pg_account_detail_binding_preserves_single_send[unknown]"
   ]
 }

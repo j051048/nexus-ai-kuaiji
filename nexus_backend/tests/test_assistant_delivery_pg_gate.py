@@ -24,7 +24,7 @@ def xml(tmp_path):
 def test_complete_dynamic_collection(tmp_path):
     root, suite, path = xml(tmp_path)
     ET.ElementTree(root).write(path)
-    assert validate_junit(path)["passed"] == 43
+    assert validate_junit(path)["passed"] == 47
 
 
 @pytest.mark.parametrize(

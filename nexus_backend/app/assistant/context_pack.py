@@ -130,6 +130,11 @@ def build_assistant_context_pack(
                 raise ContextError("context_scope_mismatch", "证据企业不匹配")
             if kind == "book":
                 valid = row.get("book_id") in book_ids and row["id"] == "book:" + row["book_id"]
+                if "delivery_target" in row:
+                    from .delivery_details import delivery_target
+
+                    expected = delivery_target(snapshot.get("delivery_task", {}))
+                    valid = valid and expected is not None and row["delivery_target"] == expected
             elif kind == "event":
                 current = next(
                     (event for event in events if event["id"] == row.get("event_id")), None

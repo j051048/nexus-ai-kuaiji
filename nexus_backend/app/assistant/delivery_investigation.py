@@ -19,7 +19,7 @@ STEPS = {
     "selected_items": ("selected_materials",),
     "selected_book": ("selected_materials", "month_close", "package_receipt"),
 }
-SOURCE_KINDS = (set(), {"plan", "delivery_readiness", "close"}, {"package"})
+SOURCE_KINDS = (set(), {"plan", "delivery_readiness", "close", "reconciliation"}, {"package"})
 MATERIAL_ISSUES = {
     "event_outside_period",
     "missing_original",

@@ -22,7 +22,7 @@ IDS = {"normal", "missing", "conflict", "revoked", "quota", "unknown"}
 SCHEMA = "assistant-task-baseline-v1"
 PROMPT_VERSION = "accounting-assistant-facts-v3"
 CONFIG = CandidateConfig(
-    "assistant-bounded-delivery-reads-v5",
+    "assistant-reconciliation-details-v6",
     "delivery-task-v1",
     "为什么这家企业本月还不能交付？",
     "ak02-runtime",
@@ -71,6 +71,7 @@ def candidate_identity():
         "test_assistant_context_budget",
         "test_assistant_events",
         "test_assistant_investigation",
+        "test_assistant_delivery_details",
         "test_ak04_assistant_execution",
         "test_ak03_assistant_facts",
         "test_ak02_assistant_context",

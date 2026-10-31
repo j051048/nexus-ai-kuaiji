@@ -18,6 +18,7 @@ TESTS = [
     "nexus_backend/tests/test_assistant_context_budget.py",
     "nexus_backend/tests/test_assistant_events.py",
     "nexus_backend/tests/test_assistant_investigation.py",
+    "nexus_backend/tests/test_assistant_delivery_details.py",
     "nexus_backend/tests/test_ocr_replay_engine.py",
     "nexus_backend/tests/test_ag05_examples.py",
     "nexus_backend/tests/test_ak02_assistant_context.py",
