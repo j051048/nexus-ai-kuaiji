@@ -123,12 +123,27 @@ export function parseReportRows(value: unknown, scope: CloseScope): ReportRow[] 
     };
   });
 }
+/** A destination is optional evidence: older runs predate it, and a malformed
+ * one is dropped so the panel explains the gap instead of routing blindly. */
+function parseActionTarget(
+  value: unknown,
+): { kind: string; book_id: string; period: string } | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const row = value as Record<string, unknown>;
+  if (typeof row.kind !== 'string' || !row.kind || row.kind.length > 40) return undefined;
+  if (typeof row.book_id !== 'string' || !row.book_id || row.book_id.length > 100)
+    return undefined;
+  if (typeof row.period !== 'string' || !/^20\d{2}-(0[1-9]|1[0-2])$/.test(row.period))
+    return undefined;
+  return { kind: row.kind, book_id: row.book_id, period: row.period };
+}
 export interface CloseCheck {
   code: string;
   status: 'pass' | 'blocked';
   detail: ObjectValue;
   owner_role?: string;
   next_action?: string;
+  action_target?: { kind: string; book_id: string; period: string };
 }
 export interface CloseRow {
   id: string;
@@ -175,6 +190,7 @@ export function parseCloseRows(value: unknown, scope: CloseScope): CloseRow[] {
           detail,
           owner_role: typeof check.owner_role === 'string' ? check.owner_role : undefined,
           next_action: typeof check.next_action === 'string' ? check.next_action : undefined,
+          action_target: parseActionTarget(check.action_target),
         };
       }),
     };

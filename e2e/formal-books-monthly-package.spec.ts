@@ -170,6 +170,16 @@ async function formalFixture(
     }),
     200,
   );
+  // Book review responsibility is reserved to firm reviewers. The local seed
+  // has only one firm owner, so the demo finance identity is promoted at firm
+  // level here: a harness limitation, not a product policy.
+  await checked(
+    await request.put('/api/firm/members', {
+      headers,
+      data: { email: 'finance@demo.example.invalid', role: 'reviewer' },
+    }),
+    200,
+  );
   await checked(
     await request.put(`/api/books/${book.id}/members/local-business-finance`, {
       headers,
@@ -679,6 +689,19 @@ for (const viewport of [
       ).status(),
     ).toBe(403);
     expect((await request.get(`${endpoint}/download`, { headers: f.employee })).status()).toBe(404);
+    // The client segment must run as a client-only identity. The harness had
+    // promoted this demo identity to firm reviewer so the books could be
+    // staffed at all, so the firm grant is dropped before switching, leaving
+    // only company (client) membership.
+    expect(
+      (await request.delete('/api/firm/members/local-business-finance', { headers: f.headers })).ok(),
+    ).toBe(true);
+    // Dropping the firm grant also drops the staffing it justified, so the
+    // client keeps only a read grant on its own book.
+    expect((await request.put(`/api/books/${f.book.id}/members/local-business-finance`, {
+      headers: f.headers,
+      data: { role: 'viewer' },
+    })).ok()).toBe(true);
     await choosePersona(page, 'finance');
     // Local demonstration sessions intentionally reset to accountant on reload.
     // Reconnect to the real finance session endpoint instead of faking claims.

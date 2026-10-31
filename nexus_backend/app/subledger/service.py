@@ -802,6 +802,34 @@ class SubledgerService:
                 )
             ]
 
+    def list_bank_batches(self, actor, book_id):
+        """Confirmed bank import batches that a coverage declaration may cite.
+
+        Only batches already confirmed for this book are returned: a coverage
+        has to point at a frozen original, so an unconfirmed upload is never a
+        valid destination for the accountant.
+        """
+        with self.db.transaction(actor=actor) as conn:
+            book, _ = self._book(conn, actor, book_id)
+            return [
+                {
+                    "preview_id": row["preview_id"],
+                    "file_id": row["file_id"],
+                    "sha256": row["sha256"],
+                    "filename": row["filename"],
+                    "confirmed_at": row["confirmed_at"],
+                }
+                for row in conn.execute(
+                    "SELECT c.preview_id AS preview_id, f.id AS file_id, f.sha256 AS sha256, "
+                    "f.filename AS filename, c.created_at AS confirmed_at "
+                    "FROM bank_import_confirmations c "
+                    "JOIN bank_import_previews p ON p.id=c.preview_id AND p.book_id=c.book_id "
+                    "JOIN bank_import_files f ON f.id=p.file_id AND f.book_id=p.book_id "
+                    "WHERE c.book_id=? ORDER BY c.created_at DESC, c.preview_id LIMIT 50",
+                    (book["id"],),
+                ).fetchall()
+            ]
+
     def add_bank_line(self, actor, request: BankLineCreate):
         with self.db.transaction(write=True, actor=actor) as conn:
             book, _ = self._book(conn, actor, request.book_id, write=True)

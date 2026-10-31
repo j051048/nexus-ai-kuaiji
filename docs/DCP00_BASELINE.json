@@ -1,0 +1,110 @@
+{
+  "package": "DCP00",
+  "executed_at": "2026-10-31",
+  "nature": "read-only baseline; no product code changed; no commit; no push; no production access",
+  "candidate": {
+    "head": "2e811d9ebd8020980c0d6475782790fc10440ad6",
+    "origin_main": "2e811d9ebd8020980c0d6475782790fc10440ad6",
+    "branch": "main",
+    "dirty_entries": 8,
+    "attribution": "unknown — protected 191 historical-compatibility work of a parallel execution AI; matches the handbook baseline list item by item"
+  },
+  "protected_files_sha256": {
+    ".github/workflows/accounting.yml": "db3d2fbcd411af9ccbf79ac84bf9e4477c452b5bbd3f536a70d0b6c4706adb98",
+    "scripts/migrate_accounting.py": "813d47340319814347c9e791dc2182c290d9d6c741c5bff70df9790caa699ea6",
+    "nexus_backend/migrations/postgres/191_historical_compatibility_labels.sql": "3f96bb697b7deb886e486451b8f013430c9a372c48897d58c45301d3c695b1af",
+    "nexus_backend/tests/test_historical_compatibility_postgres.py": "b75a23bb0d359cbc74901d14b611b4723c062bec222686ba14ec74bf859936a6",
+    "nexus_backend/tests/test_historical_compatibility_repair.py": "0032553f2b8ab433f5e2e05a7d1a4f161e94e6a22d5eedc99227466fb9b79f01",
+    "docs/HISTORICAL_COMPATIBILITY_REPAIR_20261031.md": "826aca103e27cdf418a51a2628b9bb23b16a4d7c88e0d410a5a8c7885563e891",
+    "docs/HISTORICAL_COMPATIBILITY_REPAIR_20261031.json": "a029618ca28be4f08fd399a89d6b7df0cb48a929e35f5961c0642f0c3171ec2b"
+  },
+  "capabilities": [
+    {"name": "银行对账 API", "status": "wired", "evidence": "app/subledger/router.py:177, app/subledger/service.py:987-991"},
+    {"name": "控制科目适用性/配置", "status": "wired", "evidence": "app/subledger/service.py:121-129, :228"},
+    {"name": "银行/子账前端办理页", "status": "partial_unwired", "evidence": "src/BankDuplicatePanel.tsx exists; no route from close blockers"},
+    {"name": "正式月结引擎", "status": "wired", "evidence": "app/b04_close/service.py:81-127 checks; :128-169 owner_role/next_action/action_target"},
+    {"name": "月结阻断页", "status": "unwired", "evidence": "src/FormalClosePanel.tsx:607-608 renders text only; action_target has zero consumers in src/**/*.tsx"},
+    {"name": "账簿/试算平衡", "status": "wired", "evidence": "b04_close trial_balance check; app/ledgers, app/accounting"},
+    {"name": "客户简报", "status": "wrong_source", "evidence": "app/monthly/briefing.py:47,79 JOIN draft_lines/drafts instead of published formal reports"},
+    {"name": "月度包", "status": "wired", "evidence": "app/delivery/router.py:57-108; app/delivery/monthly_package.py"},
+    {"name": "客户签收", "status": "wired", "evidence": "app/delivery/router.py:98 acknowledge; monthly_delivery_opens"},
+    {"name": "通知通道", "status": "stub_only", "evidence": "app/delivery/followups.py:53 DisabledChannel, :62 LocalSinkChannel"},
+    {"name": "批量开期", "status": "wired", "evidence": "app/batch_ops/router.py:12,20,28,37,45 (5 endpoints)"},
+    {"name": "批量导出/交付/取消/跳过", "status": "missing", "evidence": "no endpoints beyond the 5 above"},
+    {"name": "人工接手", "status": "wired", "evidence": "app/execution/handoff.py:153 preview, :193 create (kind whitelist)"},
+    {"name": "税务/交付/批量的接手入口", "status": "unverified", "evidence": "to be proven in DCP05"},
+    {"name": "权限（范围/部门/复核/期限）", "status": "wired", "evidence": "app/auth/access_policy.py + migrations 181-190"},
+    {"name": "助手", "status": "single_turn_no_tools", "evidence": "app/assistant/provider.py has no tools field (grep 0 hits)"}
+  ],
+  "migrations": {
+    "postgres_files": 179,
+    "postgres_max_version": 191,
+    "sqlite_files": 120,
+    "sqlite_max_version": 120,
+    "note": "counted by files, not by max version; 191 is breaking and uncommitted protected work"
+  },
+  "environment": {
+    "wsl_distro": "Ubuntu-22.04",
+    "pg16": {"cluster": "p02pg16", "port": 25531, "status": "online"},
+    "pg17": {"cluster": "p02pg17", "port": 25532, "status": "online"},
+    "listen_addresses": "*",
+    "windows_probe_25531": true,
+    "runner": "tmp_test/run_p02_pg16.sh (reads tmp_test/p02-pg.local.json)",
+    "known_issue": "first connection after WSL cold start can raise psycopg.errors.ConnectionTimeout; rerun after forwarding is ready"
+  },
+  "evidence": {
+    "pg16_chain": {
+      "command": "bash tmp_test/run_p02_pg16.sh nexus_backend/tests/test_p02_business_flow_postgres.py --junitxml=tmp_test/dcp00/run-1/p02-chain.xml",
+      "result": "1 passed",
+      "duration_s": 9.56,
+      "exit_code": 0,
+      "junit": "tmp_test/dcp00/run-1/p02-chain.xml"
+    },
+    "sqlite_subset": {
+      "command": "pytest test_p0_close_dependencies.py test_p02_close_diagnostics.py test_legacy_review_recheck.py",
+      "result": "54 passed",
+      "duration_s": 145.08,
+      "exit_code": 0,
+      "junit": "tmp_test/dcp00/run-1/sqlite-subset.xml"
+    },
+    "environment_failure_not_product_red": {
+      "command": "same pg16 chain, first attempt",
+      "error": "psycopg.errors.ConnectionTimeout: connection timeout expired",
+      "duration_s": 131.82,
+      "classification": "environment not ready (WSL cold start), not a product defect"
+    }
+  },
+  "confirmed_gaps": [
+    {"id": "G1", "desc": "action_target 无前端消费，月结阻断不能直达办理页", "evidence": "app/b04_close/service.py:168 产出 action_target；src/FormalClosePanel.tsx:607-608 只渲染文本", "package": "DCP01"},
+    {"id": "G2", "desc": "客户简报从草稿取数，与已发布正式报表脱节", "evidence": "app/monthly/briefing.py:47,79", "package": "DCP03"}
+  ],
+  "entrypoints": {
+    "DCP01": ["src/FormalClosePanel.tsx", "app/b04_close/", "app/subledger/"],
+    "DCP02": ["src/AdminOnboarding.tsx", "src/FirmOnboarding*", "app/onboarding/"],
+    "DCP03": ["app/monthly/briefing.py", "src/MonthlyBriefing*"],
+    "DCP04": ["app/batch_ops/"],
+    "DCP05": ["app/execution/", "app/cases/", "app/workspace/"],
+    "DCP06": ["app/batch_ops/", "app/delivery/router.py"],
+    "DCP07": ["app/delivery/followups.py", "app/delivery/notification_dispatch.py"],
+    "DCP08": ["app/tax/", "src/TaxWorkpaperPanel.tsx"],
+    "DCP09": ["app/workspace/", "app/assistant/"],
+    "DCP11": ["app/assistant/", "app/tools/"]
+  },
+  "overlap_rules": [
+    "DCP01/03/04 不得同时修改 app/delivery/router.py",
+    "DCP04 与 DCP06 对 app/batch_ops/ 的修改需串行",
+    "app/b04_close/service.py 由 DCP01 与 DCP05 共用，先 01 后 05"
+  ],
+  "unverified_boundaries": [
+    "未运行浏览器门槛（DCP00 不要求）",
+    "未运行完整恢复（DCP12-A）",
+    "未接触真实通知、真实模型、真实客户数据",
+    "未验证 191 迁移在 PG17 上的行为（属受保护工作的验收范围，不在本包）"
+  ],
+  "conclusion": {
+    "baseline_reproducible": true,
+    "candidate_fingerprint_recorded": true,
+    "protected_work_untouched": true,
+    "allow_next_package": "DCP01（DCP04/DCP09 亦可提前独立开工）"
+  }
+}

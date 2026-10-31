@@ -357,6 +357,7 @@ function FormalBooksContent({
               bookId={bookId}
               period={period}
               canReview={canReview}
+              companyId={companyId}
               accountLabels={Object.fromEntries(
                 catalog.map((row) => [row.account_id, `${row.code} ${row.name}`]),
               )}

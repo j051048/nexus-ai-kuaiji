@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, apiBlob, errorMessage, ApiError } from './api';
 import type { Session } from './types';
+import { CloseCheckAction } from './CloseCheckAction';
+import { SubledgerSetupPanel } from './SubledgerSetupPanel';
 import { formatFormalCents } from './formal-books-types';
 import {
   canIndependentlyReview,
@@ -19,6 +21,7 @@ interface Props {
   bookId: string;
   period: string;
   canReview: boolean;
+  companyId?: string;
   accountLabels?: Record<string, string>;
 }
 interface Data {
@@ -213,8 +216,9 @@ export function FormalClosePanel(props: Props) {
     />
   );
 }
-function CloseContent({ session, bookId, period, canReview, accountLabels }: Props) {
+function CloseContent({ session, bookId, period, canReview, companyId, accountLabels }: Props) {
   const [data, setData] = useState<Data | null>(null);
+  const [setupPanel, setSetupPanel] = useState<'subledger' | 'bank' | null>(null);
   const [selectedReport, setSelectedReport] = useState('');
   const [reason, setReason] = useState('');
   const [loading, setLoading] = useState(true),
@@ -283,6 +287,7 @@ function CloseContent({ session, bookId, period, canReview, accountLabels }: Pro
       setSelectedReport('');
       setReason('');
       setNotice('');
+      setSetupPanel(null);
       setError('授权已变化，请联系本账套管理员确认后重新读取。');
     };
     window.addEventListener('accounting:forbidden', revoke);
@@ -379,7 +384,7 @@ function CloseContent({ session, bookId, period, canReview, accountLabels }: Pro
   }
   const command = (version: number) => ({ expected_version: version, reason: reason.trim() });
   return (
-    <section className="formal-close-panel" aria-label="正式月结与报表发布">
+    <section id="formal-close" className="formal-close-panel" aria-label="正式月结与报表发布">
       <header>
         <div>
           <h2>正式月结与报表发布</h2>
@@ -474,6 +479,17 @@ function CloseContent({ session, bookId, period, canReview, accountLabels }: Pro
               )}
             </article>
           </div>
+          {setupPanel && (
+            <SubledgerSetupPanel
+              session={session}
+              bookId={bookId}
+              period={period}
+              panel={setupPanel}
+              accountLabels={accountLabels}
+              onClose={() => setSetupPanel(null)}
+              onChanged={() => void load()}
+            />
+          )}
           <label className="formal-close-reason">
             办理说明（至少 3 字）
             <input
@@ -484,7 +500,7 @@ function CloseContent({ session, bookId, period, canReview, accountLabels }: Pro
               placeholder="说明已核对的原件、金额与本次处理依据"
             />
           </label>
-          <article>
+          <article id="formal-close-report">
             <h3>3. 报表独立复核</h3>
             <label>
               本次报表版本
@@ -607,6 +623,12 @@ function CloseContent({ session, bookId, period, canReview, accountLabels }: Pro
                             处理岗位：{check.owner_role ?? '获授权会计'} · 下一步：
                             {check.next_action ?? '核对对应原件及账务记录，完成后重新预检。'}
                           </p>
+                          <CloseCheckAction
+                            target={check.action_target}
+                            context={{ bookId, period, companyId, canReview }}
+                            ownerRole={check.owner_role}
+                            onOpenPanel={setSetupPanel}
+                          />
                           <EvidenceRows value={check.detail} accountLabels={accountLabels} />
                         </>
                       )}

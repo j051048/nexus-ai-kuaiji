@@ -198,4 +198,36 @@ describe('formal close response boundary', () => {
     );
     expect(value.checks[0].detail.reason).toContain('历史预检');
   });
+  it('keeps a server-declared destination but drops a malformed one', () => {
+    const target = (action_target: unknown) =>
+      parseCloseRows(
+        {
+          runs: [
+            {
+              ...close,
+              checks_json: JSON.stringify([
+                { code: 'subledger_control', status: 'blocked', detail: {}, action_target },
+              ]),
+            },
+          ],
+        },
+        scope,
+      )[0].checks[0].action_target;
+    expect(target({ kind: 'subledger', book_id: 'book-a', period: '2026-09' })).toEqual({
+      kind: 'subledger',
+      book_id: 'book-a',
+      period: '2026-09',
+    });
+    for (const bad of [
+      null,
+      'subledger',
+      ['subledger'],
+      { kind: 'subledger' },
+      { kind: '', book_id: 'book-a', period: '2026-09' },
+      { kind: 'subledger', book_id: 'book-a', period: '2026-9' },
+      { kind: 'x'.repeat(41), book_id: 'book-a', period: '2026-09' },
+      { kind: 'subledger', book_id: 'book-a'.repeat(20), period: '2026-09' },
+    ])
+      expect(target(bad)).toBeUndefined();
+  });
 });

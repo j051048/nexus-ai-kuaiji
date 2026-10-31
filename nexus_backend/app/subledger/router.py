@@ -83,6 +83,14 @@ def build_subledger_router(actor_dependency):
     ):
         return {"coverages": subledger.list_bank_coverages(current, book_id)}
 
+    @router.get("/bank-batches")
+    def bank_batches(
+        book_id: str = Query(min_length=1, max_length=100),
+        current=Depends(actor_dependency),
+        subledger=Depends(service),
+    ):
+        return {"batches": subledger.list_bank_batches(current, book_id)}
+
     @router.post("/bank-coverages/{coverage_id}/review")
     def review_bank_coverage(
         coverage_id: str,
