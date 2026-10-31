@@ -1,5 +1,5 @@
 {
-  "version": 5,
+  "version": 6,
   "selectors": [
     "nexus_backend/tests/test_assistant_delivery_postgres.py",
     "nexus_backend/tests/test_stage15_conversations_postgres.py",
@@ -53,6 +53,11 @@
     "nexus_backend.tests.test_assistant_delivery_postgres::test_pg_account_detail_binding_preserves_single_send[success]",
     "nexus_backend.tests.test_assistant_delivery_postgres::test_pg_account_detail_binding_preserves_single_send[changed]",
     "nexus_backend.tests.test_assistant_delivery_postgres::test_pg_account_detail_binding_preserves_single_send[revoked]",
-    "nexus_backend.tests.test_assistant_delivery_postgres::test_pg_account_detail_binding_preserves_single_send[unknown]"
+    "nexus_backend.tests.test_assistant_delivery_postgres::test_pg_account_detail_binding_preserves_single_send[unknown]",
+    "nexus_backend.tests.test_assistant_delivery_postgres::test_pg_detail_pages_are_private_read_only_and_version_bound[success]",
+    "nexus_backend.tests.test_assistant_delivery_postgres::test_pg_detail_pages_are_private_read_only_and_version_bound[changed]",
+    "nexus_backend.tests.test_assistant_delivery_postgres::test_pg_detail_pages_are_private_read_only_and_version_bound[revoked]",
+    "nexus_backend.tests.test_assistant_delivery_postgres::test_pg_detail_pages_are_private_read_only_and_version_bound[foreign]",
+    "nexus_backend.tests.test_assistant_delivery_postgres::test_pg_detail_pages_are_private_read_only_and_version_bound[unknown]"
   ]
 }

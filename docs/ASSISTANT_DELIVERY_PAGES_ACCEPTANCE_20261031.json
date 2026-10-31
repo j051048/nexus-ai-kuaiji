@@ -1,0 +1,172 @@
+{
+  "schema": "assistant-delivery-pages-acceptance-v1",
+  "date": "2026-10-31",
+  "status": "local_passed",
+  "candidate": {
+    "schema": "release-candidate-v1",
+    "head": "2e222c9a5ee923bb308f0edc8810d1bd6ab30eda",
+    "source_files": 1613,
+    "source_sha256": "a4cea5a0e334c942acb006bf45ccf91cbc08b18a91aee72dc01b1435939df47a",
+    "migration_files": 282,
+    "migration_sha256": "26e9be85529136507e36a2fe5b25e7a740274d8679cc635302601d596457275a"
+  },
+  "changed_source_paths": [
+    "e2e/assistant-delivery-pages.spec.ts",
+    "nexus_backend/app/assistant/delivery_details.py",
+    "nexus_backend/app/assistant/delivery_pages.py",
+    "nexus_backend/app/assistant/router.py",
+    "nexus_backend/app/assistant/service.py",
+    "nexus_backend/tests/test_assistant_delivery_pages.py",
+    "nexus_backend/tests/test_assistant_delivery_pg_gate.py",
+    "nexus_backend/tests/test_assistant_delivery_postgres.py",
+    "scripts/assistant_delivery_postgres_gate.py",
+    "scripts/assistant_delivery_postgres_required_cases.json",
+    "src/AssistantDeliveryDetails.tsx",
+    "src/GlobalAccountingAssistant.tsx",
+    "src/assistant-delivery-details.css",
+    "src/assistant-delivery-page.test.ts",
+    "src/assistant-delivery-page.ts",
+    "tools/assistant_replay/__main__.py",
+    "tools/assistant_replay/baseline.py"
+  ],
+  "offline": {
+    "passed": 353,
+    "skipped": 0,
+    "candidate_fingerprint": "e849510732a09d73d739ac96a70b87108be19f5a55b5a8700ffe81e2cf6d75e6",
+    "answer_eligible_count": 3,
+    "answer_complete_count": 3
+  },
+  "postgres": {
+    "16": {
+      "status": "passed",
+      "server_version_num": 160015,
+      "configuration_sha256": "a78706173ca8b0cc574fad418e6676352593a430e686553156300bdcc891ff41",
+      "roles_verified": true,
+      "force_rls": [
+        "assistant_conversations",
+        "assistant_messages",
+        "assistant_turns",
+        "books",
+        "internal_close_runs",
+        "model_costs",
+        "monthly_delivery_acknowledgements",
+        "monthly_delivery_packages",
+        "service_plan_versions"
+      ],
+      "durability": {
+        "fsync": "on",
+        "synchronous_commit": "on",
+        "full_page_writes": "on"
+      },
+      "migrations": {
+        "count": 168,
+        "all_checksums_match": true
+      },
+      "passed": 52,
+      "skipped": 0,
+      "junit_sha256": "82cd4474ca7d7f88019e71d4ede042d767366a4d93f4dc3c8c441c7aa8457804",
+      "log_sha256": "ebea782d710ab4059c1738511c26b9c3f57d6072d243f0d67d8b8e6600f4201d"
+    },
+    "17": {
+      "status": "passed",
+      "server_version_num": 170011,
+      "configuration_sha256": "ef3c003bf5fbb81d93679ac0984a6c38b5beb30c496507c601f614d2e20e0630",
+      "roles_verified": true,
+      "force_rls": [
+        "assistant_conversations",
+        "assistant_messages",
+        "assistant_turns",
+        "books",
+        "internal_close_runs",
+        "model_costs",
+        "monthly_delivery_acknowledgements",
+        "monthly_delivery_packages",
+        "service_plan_versions"
+      ],
+      "durability": {
+        "fsync": "on",
+        "synchronous_commit": "on",
+        "full_page_writes": "on"
+      },
+      "migrations": {
+        "count": 168,
+        "all_checksums_match": true
+      },
+      "passed": 52,
+      "skipped": 0,
+      "junit_sha256": "a88ac70a2e5929e8bcb0a3619cca29cf8059196fb8dc6068a910b120d978a0d2",
+      "log_sha256": "42eafe7eddcc318ef885d4d8816dff7754bf20fc4d4e0e8e615e118ef6e5b4cd"
+    }
+  },
+  "frontend": {
+    "files": 107,
+    "passed": 1122,
+    "browser_passed": 31,
+    "new_browser_cases": 14,
+    "viewports": [
+      1440,
+      390
+    ],
+    "typecheck": true,
+    "build": true,
+    "eslint": true
+  },
+  "other_checks": {
+    "gate_validator_passed": 16,
+    "ruff_runtime": true,
+    "format": true,
+    "prettier": true,
+    "diff_check": true
+  },
+  "side_effects": {
+    "committed": false,
+    "pushed": false,
+    "deployed": false,
+    "new_migration": false,
+    "real_model": false,
+    "production_access": false
+  },
+  "environment": [
+    {
+      "major": 16,
+      "port": 25616,
+      "state": "stopped",
+      "data_retained": true
+    },
+    {
+      "major": 17,
+      "port": 25617,
+      "state": "stopped",
+      "data_retained": true
+    }
+  ],
+  "artifacts_sha256": {
+    "tmp_test/assistant-pages-red-confirmed.log": "1f0381c55a9ed50557d499d7ffba57eca252eaed33041f714033088b8f65e0d0",
+    "tmp_test/assistant-pages-ui-red.log": "6e62da194c3ab0fde29c45bb023cee6ccb674d54bdbfdc370272ff3ffcec24d2",
+    "tmp_test/assistant-pages-pg16-focused.log": "0e79f9ef292b1cc01f71d1b3d113cf271e39c97ad4be06896610caef45ab5282",
+    "tmp_test/assistant-pages-pg16-fixed.log": "c19359d61907e2666460695a86460aad0168fe3a64fb9c5ceb4f4d879f341295",
+    "tmp_test/assistant-pages-pg-accepted/summary.json": "12c8f3393acdee126d0f0d55d69d7fd3398bd65a7d7c8180093b14369b9e3103",
+    "tmp_test/assistant-pages-pg-accepted/pg16.xml": "82cd4474ca7d7f88019e71d4ede042d767366a4d93f4dc3c8c441c7aa8457804",
+    "tmp_test/assistant-pages-pg-accepted/pg17.xml": "a88ac70a2e5929e8bcb0a3619cca29cf8059196fb8dc6068a910b120d978a0d2",
+    "tmp_test/assistant-pages-pg-accepted/pg16.log": "ebea782d710ab4059c1738511c26b9c3f57d6072d243f0d67d8b8e6600f4201d",
+    "tmp_test/assistant-pages-pg-accepted/pg17.log": "42eafe7eddcc318ef885d4d8816dff7754bf20fc4d4e0e8e615e118ef6e5b4cd",
+    "tmp_test/assistant-pages-offline-final/summary.json": "5e4d80c1a23a439d45a9cba686a88d2288ae1e08a51804dcf713851fd09cf21f",
+    "tmp_test/assistant-pages-offline-final/junit.xml": "a11990acefd899eb94d03b4db05414f4fb32168f139870f115842d66c040b97b",
+    "tmp_test/assistant-pages-offline-final/report.json": "82071729ffee745d73d537ccff375be5f21af071e80634e216663a0c6fadb8e3",
+    "tmp_test/assistant-pages-offline-final/observations.json": "730adf5f75e7655c9a5ee41ac1052efd1f24811f370587318a53d9d3876034bd",
+    "tmp_test/assistant-pages-browser-accepted.log": "6f3ea965fbf2b27b469c81ae537e8a85694c0cb3a09b41a8cf1edc722d9c9983",
+    "tmp_test/assistant-pages-vitest.log": "385715e8711c7db1acccaf0f47ac0fc1bad32ca7e96233ba50e9f0778ea63529",
+    "tmp_test/assistant-pages-build.log": "bd8373bae49cf13e8269e705b74526346ab8e6b32939128ad26b550ff9b2401f",
+    "tmp_test/assistant-pages-lint.log": "40ab6beca86553a912feee15d9332f1217a3d627b3120b1406f4a494af0d2444",
+    "tmp_test/assistant-pages-environment-start.json": "c28a38c5142bc1ee18535f4b01b3b69e297764024ba7e69318e5aad985cf16a3",
+    "tmp_test/assistant-pages-environment-stop.json": "f0ad2cccbc2b06a310da563524117e7d1e0fe01774211865e4152d0f9ffccf87",
+    "artifacts/assistant-pages-1440.png": "38aad9affcc2c299870f726b55d3a0bd26089c83c0aa692da7761eb53b16d154",
+    "artifacts/assistant-pages-390.png": "e1c3fb92c5dca54b7eed1fc992f69c5f40976d1af5cdbac7f3bfbd6dc880e537"
+  },
+  "limits": [
+    "Transport/UI pagination; full authorized reconciliation is recomputed per page.",
+    "Cursors and fingerprints are binding checks, not authorization or signatures.",
+    "Browser uses synthetic completed replies and page responses over real local UI and book/conversation APIs. Actual workflow uses restricted PG/SQLite plus MockTransport.",
+    "No production capacity, real model quality, mobile device or remote CI claim."
+  ]
+}

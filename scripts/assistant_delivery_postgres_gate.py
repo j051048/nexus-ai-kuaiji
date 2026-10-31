@@ -55,15 +55,15 @@ def load_contract(path=CONTRACT):
     try:
         value = json.loads(Path(path).read_text(encoding="utf-8"))
         if (
-            value["version"] != 5
+            value["version"] != 6
             or type(value["version"]) is not int
             or value["selectors"] != SELECTORS
         ):
             raise ValueError
         cases = value["cases"]
         if (
-            len(cases) != 47
-            or len(set(cases)) != 47
+            len(cases) != 52
+            or len(set(cases)) != 52
             or any(not isinstance(row, str) or "::test_" not in row for row in cases)
         ):
             raise ValueError

@@ -43,6 +43,84 @@ WORKER_URL = os.getenv("ACCOUNTING_TEST_WORKER_DATABASE_URL")
 QUESTION = "为什么这家企业本月还不能交付？"
 
 
+@pytest.mark.parametrize("outcome", ["success", "changed", "revoked", "foreign", "unknown"])
+def test_pg_detail_pages_are_private_read_only_and_version_bound(pg_delivery, monkeypatch, outcome):
+    from test_assistant_delivery_pages import bank_rows
+    from app.subledger.models import BankAdjustment
+    import test_posting_service
+
+    c = pg_delivery
+
+    def authorized_ledger(case):
+        with case.db.transaction(actor=case.manager) as conn:
+            return conn.execute(
+                "SELECT ledger_id FROM ledger_periods WHERE book_id=?", (case.book["id"],)
+            ).fetchone()[0]
+
+    with monkeypatch.context() as patch:
+        patch.setattr(test_posting_service, "ledger_of", authorized_ledger)
+        sub, bank = bank_rows(c, 22 if outcome == "success" else 2)
+    actor, conv, turn = enqueue(c)
+    if outcome == "unknown":
+        c.mode = "timeout"
+    c.chat_worker.run_once()
+    original_turn = raw(c, turn["id"])
+    original_costs = costs(c, turn["id"])
+    assert original_costs
+    read = lambda **kw: c.chat_service.delivery_details(
+        actor, conv["id"], turn["id"], kind="bank", limit=10, **kw
+    )
+    if outcome == "unknown":
+        with pytest.raises(AccountingError) as error:
+            read()
+        assert error.value.status == 409
+    else:
+        first = read()
+        if outcome == "success":
+            second = read(after=first["cursor"])
+            third = read(after=second["cursor"])
+            assert [len(p["rows"]) for p in (first, second, third)] == [10, 10, 2]
+            assert len({r["key"] for p in (first, second, third) for r in p["rows"]}) == 22
+            assert all(p["accounting_approved"] is False for p in (first, second, third))
+            assert second == read(after=first["cursor"])
+        else:
+            if outcome == "changed":
+                sub.add_bank_adjustment(
+                    c.manager,
+                    BankAdjustment(
+                        book_id=c.book["id"],
+                        bank_account_id=bank["id"],
+                        period="2026-10",
+                        kind="error",
+                        amount="0.30",
+                        explanation="读取两页之间变化",
+                    ),
+                )
+            elif outcome == "revoked":
+                with c.psycopg.connect(ADMIN_URL) as conn:
+                    conn.execute(
+                        "DELETE FROM accounting.book_access WHERE book_id=%s AND user_id=%s",
+                        (c.book["id"], actor.user_id),
+                    )
+            else:
+                # Same firm owner and foreign enterprise staff cannot read the
+                # accountant's private conversation even with a valid cursor.
+                for other in (c.manager, c.actors["outsider"]):
+                    with pytest.raises(AccountingError) as error:
+                        c.chat_service.delivery_details(
+                            other, conv["id"], turn["id"], after=first["cursor"]
+                        )
+                    assert error.value.status == 404
+            if outcome != "foreign":
+                with pytest.raises(AccountingError) as error:
+                    read(after=first["cursor"])
+                assert error.value.status == (409 if outcome == "changed" else 404)
+    c.chat_worker.run_once()
+    assert len(c.calls) == 1
+    assert costs(c, turn["id"]) == original_costs
+    assert raw(c, turn["id"]) == original_turn
+
+
 @pytest.mark.parametrize("outcome", ["success", "changed", "revoked", "unknown"])
 def test_pg_account_detail_binding_preserves_single_send(pg_delivery, monkeypatch, outcome):
     from test_assistant_delivery_details import configured

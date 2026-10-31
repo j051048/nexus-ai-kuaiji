@@ -40,17 +40,25 @@ def _text(value):
     return value
 
 
-def _bounded(raw):
+def _bounded(raw, offset=0, limit=None):
     result = {k: deepcopy(v) for k, v in raw.items() if k not in {"rows", "adjustments"}}
     # Prioritize blocked rows; preserve domain ordering within each group.
     rows = list(raw.get("rows", []))
     rows.sort(key=lambda r: r["passed"])
-    result["rows"] = deepcopy(rows[:LIMIT])
-    result["omitted_rows"] = max(0, len(rows) - LIMIT)
+    result["rows"] = deepcopy(rows[offset : offset + (LIMIT if limit is None else limit)])
+    result["omitted_rows"] = len(rows) - len(result["rows"])
     return result
 
 
-def collect_details(db, conn, actor, book, checks=None):
+def collect_details(db, conn, actor, book, checks=None, *, page_kind=None, offset=0, limit=None):
+    if page_kind is not None and (
+        page_kind not in {"control", "bank"}
+        or type(offset) is not int
+        or offset < 0
+        or type(limit) is not int
+        or not 1 <= limit <= LIMIT
+    ):
+        raise AccountingError("明细分页参数无效", 422)
     source = {
         "kind": "reconciliation",
         "version": 1,
@@ -90,7 +98,8 @@ def collect_details(db, conn, actor, book, checks=None):
             "dependencies": dependencies,
         }
     )
-    source["control"], source["bank"] = _bounded(control), _bounded(bank)
+    for kind, raw in (("control", control), ("bank", bank)):
+        source[kind] = _bounded(raw, offset, limit) if kind == page_kind else _bounded(raw)
     # Aggregate bank amounts can net opposing accounts or contain placeholder
     # coverage zeros. Only independently qualified per-account values are sent.
     for key in list(source["bank"]):

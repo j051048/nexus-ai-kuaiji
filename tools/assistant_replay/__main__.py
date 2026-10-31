@@ -19,6 +19,7 @@ TESTS = [
     "nexus_backend/tests/test_assistant_events.py",
     "nexus_backend/tests/test_assistant_investigation.py",
     "nexus_backend/tests/test_assistant_delivery_details.py",
+    "nexus_backend/tests/test_assistant_delivery_pages.py",
     "nexus_backend/tests/test_ocr_replay_engine.py",
     "nexus_backend/tests/test_ag05_examples.py",
     "nexus_backend/tests/test_ak02_assistant_context.py",
@@ -44,6 +45,13 @@ def validate_junit(path):
             raise BaselineError("required task missing or repeated")
     for name in (
         "test_fixed_steps_and_handoff_cover_every_blocker_once",
+        "test_all_pages_replay_after_restart_without_writes_calls_or_costs",
+        "test_pending_or_customer_turn_cannot_read_internal_pages",
+        "test_http_pages_no_store_and_parameters",
+        *[
+            f"test_stale_or_foreign_cursor_never_reuses_evidence[{change}]"
+            for change in ("fact", "revoked", "owner", "kind", "size", "malformed")
+        ],
         "test_worker_uses_three_readers_but_sends_once_and_preserves_review",
         "test_customer_has_no_internal_read_steps",
         "test_budget_failure_before_enqueue_has_no_fee_or_send",

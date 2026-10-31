@@ -853,6 +853,13 @@ class AssistantService:
             execution = self._execution_in_transaction(conn, actor, row)
             return {"turn": self._turn_json(row, execution)}
 
+    def delivery_details(
+        self, actor, conversation_id, turn_id, *, kind="bank", after=None, limit=10
+    ):
+        from .delivery_pages import read_page
+
+        return read_page(self, actor, conversation_id, turn_id, kind=kind, after=after, limit=limit)
+
     def events(self, actor, conversation_id, turn_id, *, after=None, limit=3):
         from .events import turn_events
 

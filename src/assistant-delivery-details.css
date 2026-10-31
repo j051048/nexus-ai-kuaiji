@@ -1,0 +1,55 @@
+.ga-delivery-details {
+  margin-block: var(--space-3, 12px);
+  padding: var(--space-3, 12px);
+  border: 1px solid var(--border-color, #dce3df);
+  border-radius: var(--radius-md, 8px);
+  min-width: 0;
+}
+.ga-delivery-details p,
+.ga-detail-rows {
+  overflow-wrap: anywhere;
+}
+.ga-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2, 8px);
+  margin-block: var(--space-2, 8px);
+}
+.ga-detail-actions button[aria-pressed='true'] {
+  font-weight: 700;
+  border-color: currentColor;
+}
+.ga-detail-rows {
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: var(--space-3, 12px);
+}
+.ga-detail-rows li {
+  border-block-start: 1px solid var(--border-color, #dce3df);
+  padding-block-start: var(--space-3, 12px);
+}
+.ga-detail-rows li > span {
+  display: block;
+  margin-block: var(--space-1, 4px);
+}
+.ga-delivery-details button {
+  min-height: var(--control-height-touch);
+  max-width: 100%;
+  white-space: normal;
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  color: var(--text-primary);
+  background: var(--surface);
+  font: inherit;
+  cursor: pointer;
+}
+.ga-delivery-details button:hover,
+.ga-delivery-details button[aria-pressed='true'] {
+  background: var(--brand-soft);
+}
+.ga-delivery-details button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}

@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, Query, Request
+from typing import Literal
 from fastapi.responses import JSONResponse
 from .models import ConversationCreate, TurnCreate, TurnCancel
 from .actions import ActionPrepare, ActionConfirm
@@ -110,6 +111,23 @@ def build_assistant_router(actor_dependency):
         assistant=Depends(service),
     ):
         return assistant.execution(current, conversation_id, turn_id)
+
+    @router.get("/conversations/{conversation_id}/turns/{turn_id}/delivery-details")
+    def delivery_details(
+        conversation_id: str,
+        turn_id: str,
+        kind: Literal["control", "bank"] = Query("bank"),
+        after: str | None = Query(None, min_length=1, max_length=2048),
+        limit: int = Query(10, ge=1, le=20),
+        current=Depends(actor_dependency),
+        assistant=Depends(service),
+    ):
+        return JSONResponse(
+            assistant.delivery_details(
+                current, conversation_id, turn_id, kind=kind, after=after, limit=limit
+            ),
+            headers={"Cache-Control": "no-store"},
+        )
 
     @router.get("/conversations/{conversation_id}/turns/{turn_id}/events")
     def events(

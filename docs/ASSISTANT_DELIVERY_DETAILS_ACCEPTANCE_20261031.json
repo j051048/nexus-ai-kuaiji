@@ -1,0 +1,198 @@
+{
+  "schema": "assistant-delivery-details-acceptance-v1",
+  "date": "2026-10-31",
+  "status": "local_passed",
+  "candidate": {
+    "schema": "release-candidate-v1",
+    "head": "2e222c9a5ee923bb308f0edc8810d1bd6ab30eda",
+    "source_files": 1606,
+    "source_sha256": "baeb06fa6eee4d70a683f61d29bd260b9fba3d710b966413900dafc026da793f",
+    "migration_files": 282,
+    "migration_sha256": "26e9be85529136507e36a2fe5b25e7a740274d8679cc635302601d596457275a"
+  },
+  "offline": {
+    "candidate_fingerprint": "2fd21974ce743650b018157e353e05cd69fa9dd4587bad6c98f2a60aae5accec",
+    "status": "passed",
+    "command": [
+      "C:\\Users\\Fei\\Desktop\\AI应用\\nexus-ai-kuaiji\\.venv\\Scripts\\python.exe",
+      "-m",
+      "pytest",
+      "nexus_backend/tests/test_assistant_task_baseline.py",
+      "nexus_backend/tests/test_assistant_task_workflow.py",
+      "nexus_backend/tests/test_assistant_delivery_context.py",
+      "nexus_backend/tests/test_assistant_context_budget.py",
+      "nexus_backend/tests/test_assistant_events.py",
+      "nexus_backend/tests/test_assistant_investigation.py",
+      "nexus_backend/tests/test_assistant_delivery_details.py",
+      "nexus_backend/tests/test_ocr_replay_engine.py",
+      "nexus_backend/tests/test_ag05_examples.py",
+      "nexus_backend/tests/test_ak02_assistant_context.py",
+      "nexus_backend/tests/test_ak03_assistant_facts.py",
+      "nexus_backend/tests/test_ak04_assistant_execution.py",
+      "nexus_backend/tests/test_intelligence_workflow.py::test_positive_ocr_proposal_apply_independent_review_and_export_is_exact_and_idempotent",
+      "-q",
+      "-p",
+      "no:cacheprovider",
+      "--junitxml=C:\\Users\\Fei\\Desktop\\AI应用\\nexus-ai-kuaiji\\tmp_test\\assistant-details-offline-final\\junit.xml"
+    ],
+    "tests_passed": 344,
+    "real_model_evaluated": false,
+    "answer_complete_count": 3,
+    "answer_eligible_count": 3,
+    "artifacts": {
+      "candidate.json": "2adb75d812bb2d75e10ad9348ebfbb597f89827e1d155487d28cfad85e44b95c",
+      "junit.xml": "ec7b4d555f55df1b9dfa3f05a29c2086b335d21b8fad8d23af38f107d9351293",
+      "pytest.log": "086a0e23d2f602ffc8c727cce19e702df391c20ffe9bc9c99b70bd24ac0a52ce",
+      "observations.json": "1158ae63bdfa9ff3c6c0dbcce4b93fc5fb5fcd79be5397e2facc3e26c05d2aca",
+      "report.json": "7ef49e0aa1db1020ff028d3f33bdf900ce9ac6a67233457cfb326e70eba4ef01",
+      "report.md": "ad816d45d115db81f3e7f029708fc1ef5ac15930a153934e976cb1e13e043d33"
+    }
+  },
+  "postgres": {
+    "schema": "assistant-delivery-pg-v1",
+    "status": "passed",
+    "candidate": {
+      "schema": "release-candidate-v1",
+      "head": "2e222c9a5ee923bb308f0edc8810d1bd6ab30eda",
+      "source_files": 1606,
+      "source_sha256": "baeb06fa6eee4d70a683f61d29bd260b9fba3d710b966413900dafc026da793f",
+      "migration_files": 282,
+      "migration_sha256": "26e9be85529136507e36a2fe5b25e7a740274d8679cc635302601d596457275a"
+    },
+    "required_cases_sha256": "7eb8532d32859151d9b6cb83235e427479b0e02a3a8eef7856473833caef5b3e",
+    "versions": {
+      "16": {
+        "status": "passed",
+        "server_version_num": 160015,
+        "configuration_sha256": "a78706173ca8b0cc574fad418e6676352593a430e686553156300bdcc891ff41",
+        "roles_verified": true,
+        "force_rls": [
+          "assistant_conversations",
+          "assistant_messages",
+          "assistant_turns",
+          "books",
+          "internal_close_runs",
+          "model_costs",
+          "monthly_delivery_acknowledgements",
+          "monthly_delivery_packages",
+          "service_plan_versions"
+        ],
+        "durability": {
+          "fsync": "on",
+          "synchronous_commit": "on",
+          "full_page_writes": "on"
+        },
+        "migrations": {
+          "count": 168,
+          "all_checksums_match": true
+        },
+        "passed": 47,
+        "skipped": 0,
+        "junit_sha256": "1f929db8961aab1bd3787f26e349deb76dc4b22667ffe9b53d41e14bc7579233",
+        "log_sha256": "2c3798513ab797a91cfd0a8428bd115c0087b7751b56002baee91b73d0179d86"
+      },
+      "17": {
+        "status": "passed",
+        "server_version_num": 170011,
+        "configuration_sha256": "ef3c003bf5fbb81d93679ac0984a6c38b5beb30c496507c601f614d2e20e0630",
+        "roles_verified": true,
+        "force_rls": [
+          "assistant_conversations",
+          "assistant_messages",
+          "assistant_turns",
+          "books",
+          "internal_close_runs",
+          "model_costs",
+          "monthly_delivery_acknowledgements",
+          "monthly_delivery_packages",
+          "service_plan_versions"
+        ],
+        "durability": {
+          "fsync": "on",
+          "synchronous_commit": "on",
+          "full_page_writes": "on"
+        },
+        "migrations": {
+          "count": 168,
+          "all_checksums_match": true
+        },
+        "passed": 47,
+        "skipped": 0,
+        "junit_sha256": "21132bf35388bbfff39fdf608ddcc5f12fab6bbf655c25bd8af05d808609c960",
+        "log_sha256": "5b251b7f3df41d7edbe2904e296f1ad08c492c4699263a8337d99ae548d9089d"
+      }
+    },
+    "real_model_evaluated": false
+  },
+  "frontend": {
+    "files": 106,
+    "tests": 1100,
+    "typecheck": "passed",
+    "lint": "passed",
+    "build": "passed"
+  },
+  "browser": {
+    "passed": 17,
+    "retries": 0,
+    "viewports": [
+      1440,
+      390
+    ],
+    "synthetic_reply": true,
+    "real_device": false
+  },
+  "changed_source_paths": [
+    "e2e/assistant-delivery-details.spec.ts",
+    "nexus_backend/app/assistant/context_pack.py",
+    "nexus_backend/app/assistant/delivery_context.py",
+    "nexus_backend/app/assistant/delivery_details.py",
+    "nexus_backend/app/assistant/delivery_investigation.py",
+    "nexus_backend/app/assistant/service.py",
+    "nexus_backend/tests/test_assistant_delivery_details.py",
+    "nexus_backend/tests/test_assistant_delivery_pg_gate.py",
+    "nexus_backend/tests/test_assistant_delivery_postgres.py",
+    "scripts/assistant_delivery_postgres_gate.py",
+    "scripts/assistant_delivery_postgres_required_cases.json",
+    "src/App.tsx",
+    "src/assistant-delivery-target.test.ts",
+    "src/assistant-delivery-target.ts",
+    "tools/assistant_replay/__main__.py",
+    "tools/assistant_replay/baseline.py"
+  ],
+  "collaboration": {
+    "start_head": "7cbf0b441488fa89fac5ccb479313067781fca92",
+    "external_commit": "2e222c9a5ee923bb308f0edc8810d1bd6ab30eda",
+    "this_task_committed": false,
+    "this_task_pushed": false
+  },
+  "real_model_evaluated": false,
+  "production_accessed": false,
+  "database_migrations_changed": false,
+  "artifacts": {
+    "artifacts/assistant-details-1440.png": "8a5b05780bcdadda19c90198a18b1945c697641bb77f696e7372ecda3f7d944e",
+    "artifacts/assistant-details-390.png": "bb8834b846ce1c841c92f331b3feb10cbbc46e6e12754de3bfebb1916bd6abb1",
+    "artifacts/assistant-details-target-1440.png": "c16104a2da2d53fdd0416b2b0966a5ad6db276f4df5d90d779dc1af31174e052",
+    "artifacts/assistant-details-target-390.png": "a72718ce12a4e14d2af475d0c181c63d7ab50f844d05e813d0f371989873f997",
+    "tmp_test/assistant-details-browser2.log": "923c83beba65028f50c222d367cf993813699ae61eff47601c41b75daabf0e92",
+    "tmp_test/assistant-details-build2.log": "74185185e3ad2fe6bdf4ed0a1382e895e2c41174a1e18c767fc9ee8db41a6cb6",
+    "tmp_test/assistant-details-environment-stop.json": "f0ad2cccbc2b06a310da563524117e7d1e0fe01774211865e4152d0f9ffccf87",
+    "tmp_test/assistant-details-frontend-unit.log": "41854b354e6a20877c32d21640f9599dce15da81bdea018c9ac1906e8dece3be",
+    "tmp_test/assistant-details-green1.log": "e983650d790a236dd29e539dbadb85e427ffe2144e9b920f9dca2418f6264482",
+    "tmp_test/assistant-details-green3.log": "a9741362e562d71fd4bb04034b734c54e90152c1f9cf82af469aa8481246c84c",
+    "tmp_test/assistant-details-lint.log": "40ab6beca86553a912feee15d9332f1217a3d627b3120b1406f4a494af0d2444",
+    "tmp_test/assistant-details-offline-final/candidate.json": "2adb75d812bb2d75e10ad9348ebfbb597f89827e1d155487d28cfad85e44b95c",
+    "tmp_test/assistant-details-offline-final/junit.xml": "ec7b4d555f55df1b9dfa3f05a29c2086b335d21b8fad8d23af38f107d9351293",
+    "tmp_test/assistant-details-offline-final/observations.json": "1158ae63bdfa9ff3c6c0dbcce4b93fc5fb5fcd79be5397e2facc3e26c05d2aca",
+    "tmp_test/assistant-details-offline-final/pytest.log": "086a0e23d2f602ffc8c727cce19e702df391c20ffe9bc9c99b70bd24ac0a52ce",
+    "tmp_test/assistant-details-offline-final/report.json": "7ef49e0aa1db1020ff028d3f33bdf900ce9ac6a67233457cfb326e70eba4ef01",
+    "tmp_test/assistant-details-offline-final/report.md": "ad816d45d115db81f3e7f029708fc1ef5ac15930a153934e976cb1e13e043d33",
+    "tmp_test/assistant-details-offline-final/summary.json": "943a4b60a2add8f731ca1063d3aea325c6f222306d686a091801bbb376672474",
+    "tmp_test/assistant-details-pg-final/pg16.log": "2c3798513ab797a91cfd0a8428bd115c0087b7751b56002baee91b73d0179d86",
+    "tmp_test/assistant-details-pg-final/pg16.xml": "1f929db8961aab1bd3787f26e349deb76dc4b22667ffe9b53d41e14bc7579233",
+    "tmp_test/assistant-details-pg-final/pg17.log": "5b251b7f3df41d7edbe2904e296f1ad08c492c4699263a8337d99ae548d9089d",
+    "tmp_test/assistant-details-pg-final/pg17.xml": "21132bf35388bbfff39fdf608ddcc5f12fab6bbf655c25bd8af05d808609c960",
+    "tmp_test/assistant-details-pg-final/summary.json": "20deb9919c643b3ea0854453acfeff5da512f1beb0825aff8e3a692c1604f3d8",
+    "tmp_test/assistant-details-red.log": "93daed6eeb0cac3f1602a719c2ec5d5b6c0c0277d516b331f461e490a683e3ee",
+    "tmp_test/assistant-details-ui-red.log": "8a173f7d42224e57c41057c06d32bb15692cbd264277eace36adc334698ca3a6"
+  }
+}

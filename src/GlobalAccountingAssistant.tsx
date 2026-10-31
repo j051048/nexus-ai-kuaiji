@@ -27,6 +27,8 @@ import {
 import { api, ApiError, errorMessage } from './api';
 import { ExecutionRecordPanel } from './ExecutionRecordPanel';
 import { AssistantTurnProgress } from './AssistantTurnProgress';
+import { AssistantDeliveryDetails } from './AssistantDeliveryDetails';
+import { assistantDeliveryTarget } from './assistant-delivery-target';
 import { useAssistantTurnEvents } from './useAssistantTurnEvents';
 import {
   assistantAllowedProposals,
@@ -1378,6 +1380,12 @@ export function GlobalAccountingAssistant({
                       ? message.content
                       : null;
                   const citedEvidence = message.citations ?? current.context.evidence;
+                  const detailTargets =
+                    reply && message.turn_id
+                      ? assistantCitations(reply, citedEvidence)
+                          .map(assistantDeliveryTarget)
+                          .filter((target) => target !== null)
+                      : [];
                   const historical =
                     !!message.input_fingerprint &&
                     message.input_fingerprint !== current.context.input_fingerprint;
@@ -1422,6 +1430,21 @@ export function GlobalAccountingAssistant({
                               ))}
                             </div>
                           )}
+                          {detailTargets.length === 1 &&
+                            detailTargets[0].company_id === current.conversation.company_id && (
+                              <AssistantDeliveryDetails
+                                key={JSON.stringify([
+                                  session.scope_key,
+                                  current.conversation.id,
+                                  message.turn_id,
+                                  detailTargets[0],
+                                ])}
+                                session={session}
+                                conversationId={current.conversation.id}
+                                turnId={message.turn_id}
+                                target={detailTargets[0]}
+                              />
+                            )}
                           {assistantAllowedProposals(reply).map((proposal, index) => (
                             <button
                               className="ga-task-proposal"
