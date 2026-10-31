@@ -594,6 +594,15 @@ def test_fresh_cluster_database_objects_signed_identity_and_http_recovery(
                     "book_id": book,
                     "other_book_id": other_book,
                     "attachment_id": attachment_id,
+                    "current_review": {
+                        "book_id": latest_business["access_review"]["book_id"],
+                        "subject_id": latest_business["access_review"]["requests"][0]["source"][
+                            "subject_id"
+                        ],
+                        "delivery_book_id": latest_business["delivery_book"]["id"],
+                        "package_id": latest_business["packages"][-1]["id"],
+                        "manifest_sha256": latest_business["packages"][-1]["manifest_sha256"],
+                    },
                     "users": {
                         name: {"id": user["id"], "email": user["email"]}
                         for name, user in users.items()

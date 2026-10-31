@@ -141,6 +141,36 @@ def test_real_restored_gotrue_drives_restored_accounting_api(tmp_path, monkeypat
                     )
                 assert client.get("/api/me", headers=headers["outsider"]).status_code == 403
                 assert client.get("/api/session").status_code == 404
+                # Actual restored GoTrue identities also exercise the newly
+                # recovered review proof, expired/revoked scopes and contact-only access.
+                current = fixture["current_review"]
+                evidence = _http(
+                    client,
+                    "GET",
+                    f"/api/books/{current['book_id']}/legacy-reviews/draft/{current['subject_id']}",
+                    headers["reviewer"],
+                )
+                assert evidence["proof"]["proof_kind"] == "current_recheck"
+                for name in ("editor", "customer"):
+                    assert (
+                        client.get(
+                            f"/api/books/{current['book_id']}", headers=headers[name]
+                        ).status_code
+                        == 404
+                    )
+                assert (
+                    client.get(
+                        f"/api/books/{current['delivery_book_id']}", headers=headers["customer"]
+                    ).status_code
+                    == 404
+                )
+                package = _http(
+                    client,
+                    "GET",
+                    f"/api/books/{current['delivery_book_id']}/delivery/monthly-package/{current['package_id']}",
+                    headers["customer"],
+                )["package"]
+                assert package["manifest_sha256"] == current["manifest_sha256"]
                 data = client.get(
                     f"/api/business/attachments/{fixture['attachment_id']}/content",
                     headers=headers["employee"],
