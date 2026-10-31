@@ -505,6 +505,32 @@ def test_fresh_cluster_database_objects_signed_identity_and_http_recovery(
                     customer=Actor(users["customer"]["id"], firm),
                     customer_email=users["customer"]["email"],
                 )
+                from permission_recovery_business import seed_permission_recovery
+
+                def strip_fixture(kind, identifier):
+                    # Only reconstruct unknown historical authority in the isolated source.
+                    with psycopg.connect(source["admin"]) as restore:
+                        restore.execute(
+                            "ALTER TABLE accounting.review_authority_snapshots DISABLE TRIGGER authority_immutable"
+                        )
+                        restore.execute(
+                            "DELETE FROM accounting.review_authority_snapshots WHERE subject_kind=%s AND subject_id=%s",
+                            (kind, identifier),
+                        )
+                        restore.execute(
+                            "ALTER TABLE accounting.review_authority_snapshots ENABLE TRIGGER authority_immutable"
+                        )
+
+                latest_business["access_review"] = seed_permission_recovery(
+                    source_app.state.service.db,
+                    owner=Actor(users["owner"]["id"], firm),
+                    reviewer=Actor(users["reviewer"]["id"], firm),
+                    observer=Actor(users["editor"]["id"], firm),
+                    customer=Actor(users["customer"]["id"], firm),
+                    company_id=latest_business["company_id"],
+                    delivery_book=latest_business["delivery_book"],
+                    strip_fixture=strip_fixture,
+                )
             finally:
                 latest_worker.close()
         # All business writers are now closed: this is a quiesced drill, not a distributed live snapshot.
@@ -687,6 +713,11 @@ def test_fresh_cluster_database_objects_signed_identity_and_http_recovery(
                     new_headers,
                     latest_business,
                     wrong_book_id=other_book,
+                )
+                from permission_recovery_business import verify_permission_recovery_http
+
+                assert verify_permission_recovery_http(
+                    client, new_headers, latest_business["access_review"]
                 )
                 p01_checks["tax_delivery"] = all(business_proof.values())
                 for name, headers in new_headers.items():

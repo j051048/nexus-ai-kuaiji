@@ -24,6 +24,7 @@ SELECTORS = [
     "nexus_backend/tests/test_review_policy_postgres.py",
     "nexus_backend/tests/test_monthly_delivery_postgres.py",
     "nexus_backend/tests/test_business_postgres.py",
+    "nexus_backend/tests/test_legacy_review_postgres.py",
 ]
 MANIFEST = Path(__file__).with_name("access_policy_postgres_required_cases.json")
 
@@ -33,8 +34,8 @@ def validate_junit(path):
     if (
         manifest.get("version") != 1
         or manifest["selectors"] != SELECTORS
-        or len(manifest["cases"]) != 81
-        or len(set(manifest["cases"])) != 81
+        or len(manifest["cases"]) != 90
+        or len(set(manifest["cases"])) != 90
     ):
         raise GateError("权限验收范围不一致")
     root = ET.parse(path).getroot()

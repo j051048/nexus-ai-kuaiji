@@ -4,7 +4,8 @@
     "nexus_backend/tests/test_access_scope_postgres.py",
     "nexus_backend/tests/test_review_policy_postgres.py",
     "nexus_backend/tests/test_monthly_delivery_postgres.py",
-    "nexus_backend/tests/test_business_postgres.py"
+    "nexus_backend/tests/test_business_postgres.py",
+    "nexus_backend/tests/test_legacy_review_postgres.py"
   ],
   "cases": [
     "nexus_backend.tests.test_access_scope_postgres::test_pg_concurrent_same_grant_has_one_revocable_identity",
@@ -56,6 +57,15 @@
     "nexus_backend.tests.test_business_postgres::test_business_postgres_wrong_firm_and_suspended_client_hide_every_layer[business_events]",
     "nexus_backend.tests.test_business_postgres::test_business_postgres_wrong_firm_and_suspended_client_hide_every_layer[business_mappings]",
     "nexus_backend.tests.test_business_postgres::test_business_postgres_wrong_firm_and_suspended_client_hide_every_layer[business_versions]",
+    "nexus_backend.tests.test_legacy_review_postgres::test_pg_completed_current_proof_survives_reviewer_departure",
+    "nexus_backend.tests.test_legacy_review_postgres::test_pg_concurrent_recheck_has_one_confirmation_and_one_export",
+    "nexus_backend.tests.test_legacy_review_postgres::test_pg_current_recheck_preserves_historical_proof[draft]",
+    "nexus_backend.tests.test_legacy_review_postgres::test_pg_current_recheck_preserves_historical_proof[manual]",
+    "nexus_backend.tests.test_legacy_review_postgres::test_pg_current_recheck_preserves_historical_proof[periodic]",
+    "nexus_backend.tests.test_legacy_review_postgres::test_pg_native_recheck_cannot_forge_scope_identity_or_timestamp",
+    "nexus_backend.tests.test_legacy_review_postgres::test_pg_recheck_rechecks_current_revocation_and_native_self_review",
+    "nexus_backend.tests.test_legacy_review_postgres::test_pg_recheck_without_original_receipt_does_not_fabricate_one",
+    "nexus_backend.tests.test_legacy_review_postgres::test_pg_waiting_recheck_cannot_outlive_revocation",
     "nexus_backend.tests.test_monthly_delivery_postgres::test_pg_customer_cannot_self_ack_or_forge_hash_and_revocation_is_current",
     "nexus_backend.tests.test_monthly_delivery_postgres::test_pg_freeze_download_and_independent_exact_hash_acknowledgement",
     "nexus_backend.tests.test_monthly_delivery_postgres::test_pg_package_roles_are_append_only_and_hash_guarded",

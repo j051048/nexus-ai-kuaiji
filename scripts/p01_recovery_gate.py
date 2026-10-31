@@ -140,8 +140,9 @@ REGRESSION_FILES = (
     "test_restore_hold.py",
     "test_stage10_backup_recovery.py",
     "test_p01_r2_gate.py",
+    "test_legacy_review_recheck.py",
 )
-MINIMUM_MIGRATION = 173  # 171 adds the source snapshot; 173 enforces its contract.
+MINIMUM_MIGRATION = 190  # permission grants and current human review evidence are mandatory.
 
 
 def configuration_names():
@@ -217,7 +218,7 @@ def require_migration_floor(rows):
     versions = [int(str(version).split("_")[0]) for version, _ in rows]
     if not versions or max(versions) < MINIMUM_MIGRATION:
         raise GateError(
-            "P01 recovery requires migration 173 or newer (source_snapshot_json starts at 171); apply all candidate migrations first"
+            "P01 recovery requires migration 190 or newer (permission and current review evidence); apply all candidate migrations first"
         )
 
 

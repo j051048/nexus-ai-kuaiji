@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, apiBlob, ApiError, errorMessage } from './api';
 import type { Session } from './types';
 import { ManualVoucherReviewPanel } from './ManualVoucherReviewPanel';
+import { LegacyReviewPanel } from './LegacyReviewPanel';
 import { FormalClosePanel } from './FormalClosePanel';
 import {
   FormalBooksRequestGuard,
@@ -77,6 +78,7 @@ function FormalBooksContent({
   onBack,
 }: FormalBooksWorkbenchProps) {
   const [kind, setKind] = useState<FormalBookKind>('trial_balance');
+  const [legacyOpen, setLegacyOpen] = useState(false);
   const [manualOpen, setManualOpen] = useState(false);
   const [closeOpen, setCloseOpen] = useState(false);
   const [accountId, setAccountId] = useState('');
@@ -327,6 +329,13 @@ function FormalBooksContent({
       <p className="formal-books-boundary">
         余额来自已绑定的正式期初与正式凭证；未审核、未记账草稿不计入余额。查看与下载不会审核或记账。
       </p>
+      <details
+        className="review-section"
+        onToggle={(event) => setLegacyOpen(event.currentTarget.open)}
+      >
+        <summary>旧稿补核（保留原历史，重新人工核对当前版本）</summary>
+        {legacyOpen && <LegacyReviewPanel session={session} bookId={bookId} />}
+      </details>
       <details
         className="review-section"
         onToggle={(event) => setManualOpen(event.currentTarget.open)}

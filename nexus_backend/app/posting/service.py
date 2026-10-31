@@ -548,18 +548,14 @@ class PostingService:
         draft = conn.execute(
             "SELECT * FROM periodic_drafts WHERE id=? AND book_id=?", (identifier, request.book_id)
         ).fetchone()
-        if (
-            not draft
-            or draft["status"] != "approved"
-            or not draft["approved_by"]
-            or draft["approved_by"] == draft["created_by"]
-        ):
+        if not draft or draft["status"] != "approved" or not draft["approved_by"]:
             raise AccountingError("期末凭证缺少独立复核凭据", 409)
-        if not conn.execute(
-            "SELECT 1 FROM review_authority_snapshots WHERE subject_kind='periodic' AND subject_id=? AND reviewed_version=? AND book_id=? AND proof_kind='review_time'",
+        evidence = conn.execute(
+            "SELECT * FROM firm_review_evidence WHERE kind='periodic' AND subject_id=? AND reviewed_version=? AND book_id=?",
             (identifier, draft["version"], request.book_id),
-        ).fetchone():
-            raise AccountingError("历史期末凭证缺少事务所复核依据，请重新准备与复核", 409)
+        ).fetchone()
+        if not evidence:
+            raise AccountingError("历史期末凭证缺少事务所复核依据，请完成旧稿补核", 409)
         rows = conn.execute(
             "SELECT * FROM periodic_draft_lines WHERE draft_id=? ORDER BY line_no", (identifier,)
         ).fetchall()
@@ -593,10 +589,10 @@ class PostingService:
         ):
             raise AccountingError("期末复核内容与记账请求不一致", 409)
         return {
-            "mode": "independent",
-            "maker_user_id": draft["created_by"],
-            "reviewer_user_id": draft["approved_by"],
-            "policy_version": 0,
+            "mode": evidence["mode"],
+            "maker_user_id": evidence["maker_user_id"],
+            "reviewer_user_id": evidence["reviewer_user_id"],
+            "policy_version": evidence["policy_version"],
         }
 
     def reverse_voucher(self, actor, voucher_id, request: ReverseVoucher):

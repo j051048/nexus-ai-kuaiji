@@ -45,6 +45,8 @@ from app.tax.workpaper import TaxWorkpaperService
 from app.uploads import UploadCreate, UploadIntentService
 
 
+from permission_recovery_business import TABLE_FIELDS
+
 PERIOD = "2026-10"
 BUSINESS_TABLES = (
     "tax_profiles",
@@ -54,6 +56,7 @@ BUSINESS_TABLES = (
     "monthly_delivery_acknowledgements",
     "monthly_delivery_opens",
     "delivery_notifications",
+    *TABLE_FIELDS,
 )
 
 

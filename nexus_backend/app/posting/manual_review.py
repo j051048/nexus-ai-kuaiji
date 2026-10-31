@@ -57,6 +57,18 @@ class ManualReviewService:
                 blocked = "复核政策已变化，请按当前政策重新提交手工凭证"
             elif mode == "independent" and row["prepared_by"] == actor.user_id:
                 blocked = "请另一位有权限的会计独立复核"
+        evidence = (
+            conn.execute(
+                "SELECT * FROM firm_review_evidence WHERE kind='manual' AND subject_id=? AND book_id=? AND reviewed_version=?",
+                (row["id"], row["book_id"], row["version"]),
+            ).fetchone()
+            if row["status"] == "approved"
+            else None
+        )
+        if row["status"] == "approved" and not evidence and not voucher:
+            blocked = "历史审核依据未核定，请在旧稿补核中重新人工核对当前版本"
+        if evidence:
+            mode = evidence["mode"]
         if withdrawal:
             blocked = "该待审版本已由制单人撤回；原始内容和理由保留，不能审核或记账"
         return {
@@ -68,8 +80,11 @@ class ManualReviewService:
             "prepared_name": self.policy._name(conn, row["prepared_by"]),
             "policy_version": row["policy_version"],
             "mode": mode,
-            "label": mode_label(mode),
-            "independent": bool(row["independent"]) if row["status"] == "approved" else None,
+            "label": "历史审核（事务所依据未核定）"
+            if row["status"] == "approved" and not evidence and not voucher
+            else mode_label(mode),
+            "current_review": dict(evidence) if evidence else None,
+            "independent": bool(evidence["independent"]) if evidence else None,
             "content": json.loads(row["content_json"]),
             "reviewed_by": row["reviewed_by"],
             "reviewed_name": self.policy._name(conn, row["reviewed_by"]),
@@ -319,11 +334,12 @@ class ManualReviewService:
             raise AccountingError("手工凭证须先提交待审版本并完成复核，不能直接记账", 409)
         row = self._request(conn, actor, request.review_request_id, "review")
         payload = canonical_manual(request)
-        if not conn.execute(
-            "SELECT 1 FROM review_authority_snapshots WHERE subject_kind='manual' AND subject_id=? AND reviewed_version=? AND book_id=? AND proof_kind='review_time'",
+        evidence = conn.execute(
+            "SELECT * FROM firm_review_evidence WHERE kind='manual' AND subject_id=? AND reviewed_version=? AND book_id=?",
             (row["id"], row["version"], row["book_id"]),
-        ).fetchone():
-            raise AccountingError("历史手工凭证缺少事务所复核依据，请提交新版本重新复核", 409)
+        ).fetchone()
+        if not evidence:
+            raise AccountingError("历史手工凭证缺少事务所复核依据，请完成旧稿补核", 409)
         if (
             row["book_id"] != request.book_id
             or row["status"] != "approved"
@@ -331,12 +347,11 @@ class ManualReviewService:
             or row["content_fingerprint"] != hashlib.sha256(payload.encode()).hexdigest()
         ):
             raise AccountingError("手工复核凭据与本次完整记账内容不一致", 409)
-        view = self._view(conn, actor, row)
         return {
-            "mode": view["mode"],
-            "maker_user_id": row["prepared_by"],
-            "reviewer_user_id": row["reviewed_by"],
-            "policy_version": row["policy_version"],
+            "mode": evidence["mode"],
+            "maker_user_id": evidence["maker_user_id"],
+            "reviewer_user_id": evidence["reviewer_user_id"],
+            "policy_version": evidence["policy_version"],
         }
 
     def post(self, actor, identifier, request):

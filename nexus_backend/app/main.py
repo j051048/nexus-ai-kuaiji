@@ -1088,6 +1088,9 @@ def create_app(
     app.include_router(build_catalog_router(actor))
     app.include_router(build_review_router(actor))
     app.include_router(build_review_policy_router(actor))
+    from .accounting.legacy_review_router import build_legacy_review_router
+
+    app.include_router(build_legacy_review_router(actor))
     app.include_router(build_cases_router(actor))
     app.include_router(build_learning_router(actor))
     app.include_router(build_quality_router(actor))

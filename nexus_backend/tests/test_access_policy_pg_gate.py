@@ -34,4 +34,4 @@ def test_gate_rejects_unexecuted_required_cases(tmp_path, kind):
 def test_gate_accepts_only_complete_frozen_manifest(tmp_path):
     path = tmp_path / "report.xml"
     xml_report(path)
-    assert validate_junit(path)["passed"] == 81
+    assert validate_junit(path)["passed"] == 90

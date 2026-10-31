@@ -29,6 +29,11 @@ REQUIRED_CHECKS = {
     "workflow",
     "outbound_reconciled",
 }
+try:
+    from scripts.recovery_review_contract import TABLE_FIELDS as REVIEW_FIELDS
+except ModuleNotFoundError:
+    from recovery_review_contract import TABLE_FIELDS as REVIEW_FIELDS
+
 INVENTORY_TABLES = (
     "ocr_jobs",
     "ocr_attempts",
@@ -46,6 +51,7 @@ INVENTORY_TABLES = (
     "monthly_delivery_grants",
     "monthly_delivery_acknowledgements",
     "monthly_delivery_opens",
+    *REVIEW_FIELDS,
 )
 
 # Notification rows are not original-file references. Their exact recipient,
@@ -185,6 +191,7 @@ BUSINESS_EVIDENCE_FIELDS = {
 REQUIRED_COLUMNS = {
     "delivery_notifications": DELIVERY_INVENTORY_FIELDS,
     **BUSINESS_EVIDENCE_FIELDS,
+    **{table: tuple(fields.split()) for table, fields in REVIEW_FIELDS.items()},
 }
 
 
