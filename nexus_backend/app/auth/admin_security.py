@@ -20,6 +20,8 @@ def requires_admin_mfa(path: str, method: str) -> bool:
         path in {"/api/firms", "/api/companies", "/api/books"}
         or re.fullmatch(r"/api/firm/members(?:/[^/]+)?", path)
         or re.fullmatch(r"/api/firm/members/[^/]+/handover", path)
+        or re.fullmatch(r"/api/firm/access-assignments(?:/[^/]+/revoke)?", path)
+        or re.fullmatch(r"/api/books/[^/]+/contact-access(?:/revoke)?", path)
         or re.fullmatch(r"/api/books/[^/]+/members(?:/[^/]+)?", path)
         or re.fullmatch(r"/api/books/[^/]+/ledger/managers", path)
         or re.fullmatch(r"/api/books/[^/]+/review-policy", path)

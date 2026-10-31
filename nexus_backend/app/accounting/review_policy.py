@@ -136,6 +136,17 @@ class ReviewPolicyService:
             (draft["id"], draft["book_id"]),
         ).fetchone()
         complete = draft["status"] in {"approved", "exported"}
+        authority = (
+            bool(
+                receipt
+                and conn.execute(
+                    "SELECT 1 FROM review_authority_snapshots WHERE subject_kind='draft' AND subject_id=? AND reviewed_version=? AND book_id=? AND proof_kind='review_time'",
+                    (draft["id"], receipt["reviewed_version"], draft["book_id"]),
+                ).fetchone()
+            )
+            if complete
+            else False
+        )
         policy = self.policy_in_transaction(conn, draft["book_id"])
         maker = preparation["maker_user_id"] if preparation else None
         mode = receipt["mode"] if complete and receipt else policy["mode"]
@@ -143,8 +154,8 @@ class ReviewPolicyService:
         if complete:
             reason = (
                 "该版本已完成审核"
-                if receipt
-                else "历史审核缺少版本责任凭据，请走事实修订后重新复核"
+                if receipt and authority
+                else "历史审核缺少事务所版本责任依据，请走事实修订后重新复核"
             )
         elif not maker or not preparation or preparation["version"] != draft["version"]:
             reason = "当前待审版本尚未确认制单责任人"
@@ -170,7 +181,7 @@ class ReviewPolicyService:
         frozen_maker = receipt["maker_user_id"] if complete and receipt else maker
         reviewer = receipt["reviewer_user_id"] if complete and receipt else None
         return {
-            "state": ("reviewed" if receipt else "legacy_unverified")
+            "state": ("reviewed" if receipt and authority else "legacy_unverified")
             if complete
             else ("awaiting_review" if maker else "unattributed"),
             "draft_version": draft["version"],
@@ -185,7 +196,9 @@ class ReviewPolicyService:
             if complete and receipt
             else policy["version"],
             "mode": mode,
-            "label": "历史审核（独立性未核定）" if complete and not receipt else mode_label(mode),
+            "label": "历史审核（事务所依据未核定）"
+            if complete and not authority
+            else mode_label(mode),
             "independent": bool(receipt["independent"]) if complete and receipt else None,
             "can_review": reason is None,
             "blocked_reason": reason,
@@ -212,7 +225,7 @@ class ReviewPolicyService:
     def approved_receipt(conn, draft):
         reviewed_version = draft["version"] - (2 if draft["status"] == "exported" else 1)
         row = conn.execute(
-            "SELECT * FROM draft_review_receipts WHERE draft_id=? AND book_id=? AND reviewed_version=?",
+            "SELECT r.* FROM draft_review_receipts r JOIN review_authority_snapshots a ON a.proof_kind='review_time' AND a.subject_kind='draft' AND a.subject_id=r.draft_id AND a.reviewed_version=r.reviewed_version AND a.book_id=r.book_id WHERE r.draft_id=? AND r.book_id=? AND r.reviewed_version=?",
             (draft["id"], draft["book_id"], reviewed_version),
         ).fetchone()
         if not row or draft["status"] not in {"approved", "exported"}:

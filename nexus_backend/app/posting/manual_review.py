@@ -319,6 +319,11 @@ class ManualReviewService:
             raise AccountingError("手工凭证须先提交待审版本并完成复核，不能直接记账", 409)
         row = self._request(conn, actor, request.review_request_id, "review")
         payload = canonical_manual(request)
+        if not conn.execute(
+            "SELECT 1 FROM review_authority_snapshots WHERE subject_kind='manual' AND subject_id=? AND reviewed_version=? AND book_id=? AND proof_kind='review_time'",
+            (row["id"], row["version"], row["book_id"]),
+        ).fetchone():
+            raise AccountingError("历史手工凭证缺少事务所复核依据，请提交新版本重新复核", 409)
         if (
             row["book_id"] != request.book_id
             or row["status"] != "approved"

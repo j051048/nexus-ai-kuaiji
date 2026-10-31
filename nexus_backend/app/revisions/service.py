@@ -81,7 +81,7 @@ class FactRevisionService:
             role = self.access.firm_role(conn, actor)
             sql = """SELECT b.id,b.name,b.period FROM books b JOIN periods p ON p.book_id=b.id AND p.period=b.period
                 JOIN firm_clients fc ON fc.firm_id=b.firm_id AND fc.company_id=b.company_id AND fc.status='active'
-                LEFT JOIN book_access a ON a.book_id=b.id AND a.user_id=? AND a.firm_id=b.firm_id
+                LEFT JOIN effective_book_access a ON a.book_id=b.id AND a.user_id=? AND a.firm_id=b.firm_id
                 LEFT JOIN company_memberships cm ON cm.company_id=b.company_id AND cm.user_id=?
                 WHERE b.firm_id=? AND b.company_id=? AND p.status='open'"""
             params = [actor.user_id, actor.user_id, actor.firm_id, event["company_id"]]
@@ -130,8 +130,8 @@ class FactRevisionService:
                 """ FROM fact_revisions r JOIN books bo ON bo.id=r.old_book_id JOIN books bt ON bt.id=r.target_book_id
               JOIN firm_clients fo ON fo.firm_id=bo.firm_id AND fo.company_id=bo.company_id
               JOIN firm_clients ft ON ft.firm_id=bt.firm_id AND ft.company_id=bt.company_id
-              LEFT JOIN book_access ao ON ao.book_id=bo.id AND ao.user_id=? AND ao.firm_id=r.firm_id
-              LEFT JOIN book_access atg ON atg.book_id=bt.id AND atg.user_id=? AND atg.firm_id=r.firm_id
+              LEFT JOIN effective_book_access ao ON ao.book_id=bo.id AND ao.user_id=? AND ao.firm_id=r.firm_id
+              LEFT JOIN effective_book_access atg ON atg.book_id=bt.id AND atg.user_id=? AND atg.firm_id=r.firm_id
               LEFT JOIN company_memberships cm ON cm.company_id=r.company_id AND cm.user_id=? WHERE """
                 + where
             )

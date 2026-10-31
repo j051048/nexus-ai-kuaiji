@@ -202,7 +202,7 @@ class EfficiencyService:
             # Authorization precedes both count and pagination. PostgreSQL RLS
             # independently enforces the same scope; SQLite checks it here.
             where = """FROM human_work_sessions s JOIN firm_clients fc ON fc.firm_id=s.firm_id AND fc.company_id=s.company_id AND fc.status='active'
-                LEFT JOIN books b ON b.id=s.book_id LEFT JOIN book_access a ON a.book_id=s.book_id AND a.firm_id=s.firm_id AND a.user_id=s.user_id
+                LEFT JOIN books b ON b.id=s.book_id LEFT JOIN effective_book_access a ON a.book_id=s.book_id AND a.firm_id=s.firm_id AND a.user_id=s.user_id
                 LEFT JOIN company_memberships cm ON cm.company_id=s.company_id AND cm.user_id=s.user_id
                 LEFT JOIN business_events e ON e.id=s.event_id
                 WHERE s.firm_id=? AND s.user_id=? AND ((s.book_id IS NOT NULL AND (?=1 OR (a.role='reviewer' AND (?=1 OR (?=1 AND cm.role='finance')))))
@@ -325,7 +325,7 @@ class EfficiencyService:
                   AND fc.company_id=b.company_id AND fc.status='active')
                 AND (EXISTS(SELECT 1 FROM memberships fm WHERE fm.firm_id=b.firm_id
                   AND fm.user_id=? AND fm.role IN ('owner','admin'))
-                OR EXISTS(SELECT 1 FROM book_access ba WHERE ba.book_id=b.id AND ba.firm_id=b.firm_id
+                OR EXISTS(SELECT 1 FROM effective_book_access ba WHERE ba.book_id=b.id AND ba.firm_id=b.firm_id
                   AND ba.user_id=? AND ba.role='reviewer'
                   AND (EXISTS(SELECT 1 FROM memberships fm WHERE fm.firm_id=b.firm_id
                     AND fm.user_id=? AND fm.role='reviewer')

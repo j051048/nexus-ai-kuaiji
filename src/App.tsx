@@ -53,6 +53,7 @@ import type { Book, BookDetail, Draft, Session, Workbench } from './types';
 import { EmptyState, Modal, Spinner } from './AppPrimitives';
 import { NewBookModal } from './AppDialogs';
 import { AssistantDrawer, type AssistantDrawerMode } from './AssistantDrawer';
+import { ClientAccessTools } from './ClientAccessTools';
 import { ClientPortalShell, type ClientPortalTab } from './ClientPortalShell';
 import { useBookWorkspace, type BookFilter, type BookNotice } from './useBookWorkspace';
 import { WorkspaceRouteContent } from './WorkspaceRouteContent';
@@ -1492,6 +1493,13 @@ export default function App() {
             onLogout={auth.logout}
           />
           {routeContent}
+          {routeView === 'home' && (
+            <ClientAccessTools
+              key={session.scope_key}
+              session={session}
+              canApprove={profile.can_approve}
+            />
+          )}
           {taskDialogs}
           {briefingPicker && (
             <Modal

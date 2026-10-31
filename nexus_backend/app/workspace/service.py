@@ -96,7 +96,7 @@ class WorkspaceService:
                 SELECT b.company_id,COUNT(*) AS book_count,
                   MAX(CASE WHEN aa.firm_role IN ('owner','admin') OR
                     (b.book_role='reviewer' AND (aa.firm_role='reviewer'
-                      OR (aa.firm_role IS NULL AND b.company_role='finance')))
+                      OR (aa.firm_role IS NULL AND b.company_role='finance' AND 1=0)))
                     THEN 1 ELSE 0 END) AS can_review
                 FROM visible_books b CROSS JOIN active_actor aa GROUP BY b.company_id
               ), closed_briefings AS (
@@ -212,8 +212,8 @@ class WorkspaceService:
               EXISTS(SELECT 1 FROM company_memberships cm WHERE cm.user_id=? AND cm.role IN ('owner','admin')) AS company_manager,
               EXISTS(SELECT 1 FROM company_memberships cm WHERE cm.user_id=? AND cm.role='finance') AS finance,
               EXISTS(SELECT 1 FROM department_approvers da WHERE da.firm_id=? AND da.user_id=?) AS approver,
-              EXISTS(SELECT 1 FROM book_access ba WHERE ba.firm_id=? AND ba.user_id=?) AS book_access,
-              EXISTS(SELECT 1 FROM book_access ba WHERE ba.firm_id=? AND ba.user_id=? AND ba.role='reviewer') AS book_reviewer,
+              EXISTS(SELECT 1 FROM effective_book_access ba WHERE ba.firm_id=? AND ba.user_id=?) AS book_access,
+              EXISTS(SELECT 1 FROM effective_book_access ba WHERE ba.firm_id=? AND ba.user_id=? AND ba.role='reviewer') AS book_reviewer,
               NOT EXISTS(SELECT 1 FROM ("""
             + reachable_companies_sql()
             + """) c WHERE NOT EXISTS(

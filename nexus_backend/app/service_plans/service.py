@@ -65,7 +65,7 @@ class ServicePlansService:
         rows = conn.execute(
             "SELECT DISTINCT u.id,u.name FROM users u LEFT JOIN memberships m ON m.user_id=u.id AND m.firm_id=? "
             "LEFT JOIN company_memberships cm ON cm.user_id=u.id AND cm.company_id=? "
-            "LEFT JOIN book_access ba ON ba.user_id=u.id AND ba.book_id=? "
+            "LEFT JOIN effective_book_access ba ON ba.user_id=u.id AND ba.book_id=? "
             "WHERE u.active=1 AND (m.user_id IS NOT NULL OR cm.user_id IS NOT NULL OR ba.user_id IS NOT NULL) ORDER BY u.name,u.id",
             (actor.firm_id, book["company_id"], book["id"]),
         ).fetchall()
@@ -75,7 +75,7 @@ class ServicePlansService:
             fm = self.access.firm_role(conn, target)
             cm = self.access.company_role(conn, target, book["company_id"])
             ba = conn.execute(
-                "SELECT role FROM book_access WHERE book_id=? AND user_id=?",
+                "SELECT role FROM effective_book_access WHERE book_id=? AND user_id=?",
                 (book["id"], row["id"]),
             ).fetchone()
             p = self.access.permissions(fm, ba["role"] if ba else None, cm)

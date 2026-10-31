@@ -555,6 +555,11 @@ class PostingService:
             or draft["approved_by"] == draft["created_by"]
         ):
             raise AccountingError("期末凭证缺少独立复核凭据", 409)
+        if not conn.execute(
+            "SELECT 1 FROM review_authority_snapshots WHERE subject_kind='periodic' AND subject_id=? AND reviewed_version=? AND book_id=? AND proof_kind='review_time'",
+            (identifier, draft["version"], request.book_id),
+        ).fetchone():
+            raise AccountingError("历史期末凭证缺少事务所复核依据，请重新准备与复核", 409)
         rows = conn.execute(
             "SELECT * FROM periodic_draft_lines WHERE draft_id=? ORDER BY line_no", (identifier,)
         ).fetchall()

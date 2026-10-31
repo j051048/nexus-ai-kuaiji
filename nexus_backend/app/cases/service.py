@@ -335,7 +335,7 @@ class CaseService:
         sql = """((t.kind='supplement' AND t.recipient_id=? AND EXISTS(SELECT 1 FROM company_memberships cm WHERE cm.company_id=t.company_id AND cm.user_id=?))
           OR (t.event_id IS NOT NULL AND EXISTS(SELECT 1 FROM company_memberships cm JOIN business_events e ON e.id=t.event_id WHERE cm.company_id=t.company_id AND cm.user_id=? AND cm.role='finance' AND e.applicant_id<>?))
           OR (t.book_id IS NOT NULL AND (EXISTS(SELECT 1 FROM memberships m WHERE m.firm_id=t.firm_id AND m.user_id=? AND m.role IN ('owner','admin'))
-           OR EXISTS(SELECT 1 FROM book_access ba WHERE ba.book_id=t.book_id AND ba.firm_id=t.firm_id AND ba.user_id=? AND ba.role='reviewer' AND
+           OR EXISTS(SELECT 1 FROM effective_book_access ba WHERE ba.book_id=t.book_id AND ba.firm_id=t.firm_id AND ba.user_id=? AND ba.role='reviewer' AND
             (EXISTS(SELECT 1 FROM memberships m WHERE m.firm_id=t.firm_id AND m.user_id=? AND m.role='reviewer') OR
              (NOT EXISTS(SELECT 1 FROM memberships m WHERE m.firm_id=t.firm_id AND m.user_id=?) AND EXISTS(SELECT 1 FROM company_memberships cm WHERE cm.company_id=t.company_id AND cm.user_id=? AND cm.role='finance')))))))"""
         sql = sql.replace(
@@ -343,7 +343,7 @@ class CaseService:
             "COALESCE(t.book_id,(SELECT bm.book_id FROM business_mappings bm WHERE bm.event_id=t.event_id))",
         )
         collector = """(t.kind='exception' AND t.event_id IS NULL AND t.assignee_id=? AND EXISTS(SELECT 1 FROM company_memberships cm WHERE cm.company_id=t.company_id AND cm.user_id=? AND cm.role='finance') AND
-         EXISTS(SELECT 1 FROM book_access ba WHERE ba.book_id=t.book_id AND ba.firm_id=t.firm_id AND ba.user_id=? AND ba.role IN ('editor','reviewer') AND
+         EXISTS(SELECT 1 FROM effective_book_access ba WHERE ba.book_id=t.book_id AND ba.firm_id=t.firm_id AND ba.user_id=? AND ba.role IN ('editor','reviewer') AND
           (NOT EXISTS(SELECT 1 FROM memberships m WHERE m.firm_id=t.firm_id AND m.user_id=?) OR EXISTS(SELECT 1 FROM memberships m WHERE m.firm_id=t.firm_id AND m.user_id=? AND m.role IN ('owner','admin','operator','reviewer')))))"""
         return "(" + sql + " OR " + collector + ")", [actor.user_id] * 14
 

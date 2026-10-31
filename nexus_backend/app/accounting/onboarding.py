@@ -24,11 +24,11 @@ WITH args AS (SELECT ? AS company_id,? AS firm_id,? AS period),
     CASE WHEN fm.role IN ('owner','admin') OR (ba.role IN ('editor','reviewer')
       AND (fm.role IN ('operator','reviewer') OR (fm.role IS NULL AND cm.role IN ('owner','admin','finance')))) THEN 1 ELSE 0 END AS can_edit,
     CASE WHEN fm.role IN ('owner','admin') OR (ba.role='reviewer'
-      AND (fm.role='reviewer' OR (fm.role IS NULL AND cm.role='finance'))) THEN 1 ELSE 0 END AS can_review
+      AND (fm.role='reviewer')) THEN 1 ELSE 0 END AS can_review
    FROM month_books b JOIN users u ON u.active=1
    LEFT JOIN memberships fm ON fm.firm_id=b.firm_id AND fm.user_id=u.id
    LEFT JOIN company_memberships cm ON cm.company_id=b.company_id AND cm.user_id=u.id
-   LEFT JOIN book_access ba ON ba.book_id=b.id AND ba.firm_id=b.firm_id AND ba.user_id=u.id
+   LEFT JOIN effective_book_access ba ON ba.book_id=b.id AND ba.firm_id=b.firm_id AND ba.user_id=u.id
  ), submitters AS (
    SELECT p.* FROM people p CROSS JOIN client c
    WHERE c.mode='department' OR p.role IN ('owner','admin','finance')

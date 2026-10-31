@@ -2,7 +2,7 @@
 
 from uuid import uuid4
 
-from .access import AccessControl, FIRM_MANAGERS, COMPANY_LEDGER_ROLES
+from .access import FIRM_REVIEWERS, AccessControl, FIRM_MANAGERS, COMPANY_LEDGER_ROLES
 from .domain import Actor, AccountingError
 from .models import (
     CompanyCreate,
@@ -377,6 +377,8 @@ class DirectoryService:
                 raise AccountingError("企业管理员只能分配本企业成员，事务所人员由事务所管理", 403)
             if self.access.firm_role(conn, actor) not in FIRM_MANAGERS and user_id == actor.user_id:
                 raise AccountingError("企业管理员不能变更自己的账套权限，请联系事务所管理员", 403)
+            if request.role == "reviewer" and (not member or member["role"] not in FIRM_REVIEWERS):
+                raise AccountingError("正式复核仅可授予事务所复核人员；客户财务请使用经办或只读", 403)
             existing = conn.execute(
                 "SELECT role FROM book_access WHERE book_id=? AND user_id=?", (book_id, user_id)
             ).fetchone()

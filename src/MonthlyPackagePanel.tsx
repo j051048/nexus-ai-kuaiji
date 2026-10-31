@@ -1,3 +1,5 @@
+import { ContactAccessPanel } from './AccessPolicyPanel';
+import './access-policy.css';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Download, FileArchive, RefreshCw } from 'lucide-react';
 import { useInRouterContext, useLocation } from 'react-router-dom';
@@ -409,6 +411,28 @@ function MonthlyPackageContent({
       {value && (
         <>
           <p className="monthly-package-scope">月份 {value.period} · 当前获授权企业</p>
+          {!clientOnly &&
+            value.permissions.generate &&
+            value.contact.user_id &&
+            !value.contact.eligible && (
+              <ContactAccessPanel
+                key={`${scope}:${value.contact.user_id}`}
+                session={session}
+                bookId={bookId}
+                members={[
+                  {
+                    user_id: value.contact.user_id,
+                    name: '当前服务单联系人',
+                    email: '',
+                    role: 'contact',
+                  },
+                ]}
+                onChanged={async () => {
+                  await load();
+                }}
+              />
+            )}
+
           {!clientOnly && value.blockers.length > 0 && (
             <div className="monthly-package-blockers">
               <strong>交付前还需处理</strong>

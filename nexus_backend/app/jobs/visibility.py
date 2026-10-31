@@ -8,7 +8,7 @@ def book_edit_scope(actor, alias="b"):
       SELECT 1 FROM firm_clients fc WHERE fc.firm_id={alias}.firm_id
       AND fc.company_id={alias}.company_id AND fc.status='active') AND (
       EXISTS(SELECT 1 FROM memberships fm WHERE fm.firm_id={alias}.firm_id AND fm.user_id=? AND fm.role IN ('owner','admin'))
-      OR EXISTS(SELECT 1 FROM book_access ba WHERE ba.book_id={alias}.id AND ba.firm_id={alias}.firm_id AND ba.user_id=? AND ba.role IN ('editor','reviewer') AND (
+      OR EXISTS(SELECT 1 FROM effective_book_access ba WHERE ba.book_id={alias}.id AND ba.firm_id={alias}.firm_id AND ba.user_id=? AND ba.role IN ('editor','reviewer') AND (
         EXISTS(SELECT 1 FROM memberships fm WHERE fm.firm_id={alias}.firm_id AND fm.user_id=? AND fm.role IN ('owner','admin','operator','reviewer'))
         OR (NOT EXISTS(SELECT 1 FROM memberships fm WHERE fm.firm_id={alias}.firm_id AND fm.user_id=?)
           AND EXISTS(SELECT 1 FROM company_memberships cm WHERE cm.company_id={alias}.company_id AND cm.user_id=? AND cm.role IN ('owner','admin','finance')))
@@ -26,7 +26,7 @@ def event_scope(actor, alias="e"):
         SELECT 1 FROM business_mappings bm JOIN books b ON b.id=bm.book_id AND b.firm_id=bm.firm_id
         WHERE bm.event_id={alias}.id AND (
           EXISTS(SELECT 1 FROM memberships fm WHERE fm.firm_id=b.firm_id AND fm.user_id=? AND fm.role IN ('owner','admin'))
-          OR EXISTS(SELECT 1 FROM book_access ba WHERE ba.book_id=b.id AND ba.firm_id=b.firm_id AND ba.user_id=? AND (
+          OR EXISTS(SELECT 1 FROM effective_book_access ba WHERE ba.book_id=b.id AND ba.firm_id=b.firm_id AND ba.user_id=? AND (
             EXISTS(SELECT 1 FROM memberships fm WHERE fm.firm_id=b.firm_id AND fm.user_id=?)
             OR EXISTS(SELECT 1 FROM company_memberships cm WHERE cm.company_id=b.company_id AND cm.user_id=? AND cm.role IN ('owner','admin','finance'))
           ))

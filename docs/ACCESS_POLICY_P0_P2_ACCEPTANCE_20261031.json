@@ -1,0 +1,127 @@
+{
+  "status": "local_mvp_passed",
+  "candidate": {
+    "schema": "release-candidate-v1",
+    "head": "7983c0fa67cac0840e07882976af270b5e54a2aa",
+    "source_files": 1639,
+    "source_sha256": "722d85704d4039187a7329477249c4f8896a89c66f29b5b5b1317c3cc4b93686",
+    "migration_files": 294,
+    "migration_sha256": "3015eab3b11f440e83c8fc2391923936e4d6d4cb9ca596f657f982bdeae293d7"
+  },
+  "baseline_head": "7983c0fa67cac0840e07882976af270b5e54a2aa",
+  "postgres": {
+    "16": {
+      "passed": 81,
+      "skipped": 0,
+      "junit_sha256": "faff3b5f55bd17fc428fb8f1a77211831814f30f2e5c661b90e794df0f2bfaef",
+      "configuration_sha256": "a78706173ca8b0cc574fad418e6676352593a430e686553156300bdcc891ff41"
+    },
+    "17": {
+      "passed": 81,
+      "skipped": 0,
+      "junit_sha256": "0a58639fde6d9a23c9c55a077b216a9f55d775e6cf98512d2c17c524fc06a75e",
+      "configuration_sha256": "ef3c003bf5fbb81d93679ac0984a6c38b5beb30c496507c601f614d2e20e0630"
+    }
+  },
+  "fixed_candidate_local_core": {
+    "passed": 46,
+    "skipped": 0
+  },
+  "c01_fresh_database_regression": {
+    "16": {
+      "passed": 34,
+      "skipped": 0,
+      "junit_sha256": "e600b2b793b4f6bd488933802665154b4a922c4bd088cec0a7d5019291825a16"
+    },
+    "17": {
+      "passed": 34,
+      "skipped": 0,
+      "junit_sha256": "87ab2f8be2a167bddb6d5a5b8da12180dc169a1f2df840dbd20652c11846c8c6"
+    }
+  },
+  "broader_local_regression": {
+    "passed": 213,
+    "skipped": 11,
+    "same_full_candidate": false,
+    "note": "该宽回归运行中仅前端回调类型修正；后端源未变化。最终同候选门槛采用46项核心离线和PG双版本各81项，未将213项冒充同候选自动门槛。"
+  },
+  "frontend": {
+    "unit_tests_passed": 1124,
+    "typecheck": "passed",
+    "lint": "passed",
+    "preview_build": "passed",
+    "browser_tests_passed": 13,
+    "viewports": [
+      1440,
+      390
+    ]
+  },
+  "screenshots": [
+    {
+      "path": "tmp_test/access-policy-admin-1440.png",
+      "sha256": "2c812dc60edc94c435f0cdcc9d6a2220dc1ba46f627465ee73be935ba97de230"
+    },
+    {
+      "path": "tmp_test/access-policy-admin-390.png",
+      "sha256": "bf34b10568cee1c4f90c35ce780e2134c741450c2398412f2db6ffbd5d58e2b2"
+    },
+    {
+      "path": "tmp_test/access-policy-department-1440.png",
+      "sha256": "516e8565c093e318769d7b332062af98614382331d60ca92397de26057daf204"
+    },
+    {
+      "path": "tmp_test/access-policy-department-390.png",
+      "sha256": "7c8a18ab7c9643cc3956665eb3df55aa548238a5d9b6b75d4257e1697a047663"
+    },
+    {
+      "path": "tmp_test/access-policy-recipient-1440.png",
+      "sha256": "070e766cb637b91ceb87ad0bcbd0b58a2e34411d1eaf9957571587c4a3582fdd"
+    },
+    {
+      "path": "tmp_test/access-policy-recipient-390.png",
+      "sha256": "e14d351d4572a3807bde7b58dfb04ab49bea6c964866868cbe9a3fec4c9a14f8"
+    }
+  ],
+  "migrations": {
+    "postgres_new": [
+      181,
+      182,
+      183,
+      184,
+      185,
+      186,
+      187
+    ],
+    "sqlite_new": [
+      115,
+      116,
+      117,
+      118,
+      119
+    ],
+    "historical_migrations_modified": false,
+    "production_applied": false
+  },
+  "production_changed": false,
+  "real_models_used": false,
+  "pushed": false,
+  "release_preconditions": [
+    "盘点并受控处理缺少事务所复核证明的存量已审未入账或未导出记录，特别是旧手工及期末记录。",
+    "带新增授权与复核依据表重新执行完整身份、原件和数据库联合恢复门槛。"
+  ],
+  "earlier_runs": {
+    "tmp_test/access-policy-final-pg": "候选变化被拒绝，保留证据。",
+    "tmp_test/access-policy-c01-pg16": "重复使用8706个虚构账号的库，300秒超时，未修改门槛。",
+    "tmp_test/access-policy-c01-pg17": "重复使用6816个虚构账号的库，300秒超时，未修改门槛。"
+  },
+  "local_environment_after_acceptance": [
+    {
+      "major": 16,
+      "state": "stopped_verified"
+    },
+    {
+      "major": 17,
+      "state": "stopped_verified"
+    }
+  ]
+}

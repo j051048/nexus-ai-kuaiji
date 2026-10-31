@@ -44,7 +44,7 @@ class AccessControl:
         # RLS snapshot. There is no process/request authorization cache.
         row = conn.execute(
             "SELECT c.*,m.role AS _access_firm_role,cm.role AS _access_company_role,"
-            "EXISTS(SELECT 1 FROM book_access a JOIN books b ON b.id=a.book_id AND b.firm_id=a.firm_id "
+            "EXISTS(SELECT 1 FROM effective_book_access a JOIN books b ON b.id=a.book_id AND b.firm_id=a.firm_id "
             "WHERE b.firm_id=? AND b.company_id=c.id AND a.user_id=u.id) AS _access_assigned "
             "FROM users u LEFT JOIN memberships m ON m.user_id=u.id AND m.firm_id=? "
             "LEFT JOIN firm_clients fc ON fc.company_id=? AND fc.firm_id=? AND fc.status='active' "
@@ -76,7 +76,7 @@ class AccessControl:
             "JOIN companies c ON c.id=b.company_id JOIN firm_clients fc ON fc.company_id=b.company_id AND fc.firm_id=b.firm_id "
             "JOIN periods p ON p.book_id=b.id AND p.period=b.period "
             "WHERE b.id=? AND b.firm_id=? AND fc.status='active' AND c.status='active') b ON 1=1 "
-            "LEFT JOIN book_access a ON a.book_id=b.id AND a.firm_id=b.firm_id AND a.user_id=u.id "
+            "LEFT JOIN effective_book_access a ON a.book_id=b.id AND a.firm_id=b.firm_id AND a.user_id=u.id "
             "LEFT JOIN company_memberships cm ON cm.company_id=b.company_id AND cm.user_id=u.id "
             "WHERE u.id=? AND u.active=1",
             (actor.firm_id, book_id, actor.firm_id, actor.user_id),
@@ -114,7 +114,7 @@ class AccessControl:
         review = manager or (
             read
             and book_role == "reviewer"
-            and (firm_role in FIRM_REVIEWERS or (not firm_role and company_role == "finance"))
+            and firm_role in FIRM_REVIEWERS
         )
         return {
             "read": read,

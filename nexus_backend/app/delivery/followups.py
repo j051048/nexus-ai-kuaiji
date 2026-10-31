@@ -168,11 +168,7 @@ class DeliveryFollowupService(NotificationDispatcher):
         ).fetchone()
         if not plan or plan["contact_user_id"] != recipient:
             return False
-        try:
-            self.access.book(conn, Actor(recipient, firm_id), book_id)
-            return True
-        except AccountingError:
-            return False
+        return bool(conn.execute("SELECT 1 FROM monthly_delivery_eligible_contacts WHERE book_id=? AND user_id=?", (book_id, recipient)).fetchone())
 
     def _plan_contact(self, conn, book_id: str):
         """Current service-plan contact, which is what a *new* package would freeze."""

@@ -1056,6 +1056,9 @@ def create_app(
 
     from .execution.router import build_execution_router
 
+    from .accounting.access_policy_router import build_access_policy_router
+
+    app.include_router(build_access_policy_router(actor))
     app.include_router(build_execution_router(actor))
     app.include_router(build_admin_router(actor))
     app.include_router(build_admin_identity_router(actor, identity))

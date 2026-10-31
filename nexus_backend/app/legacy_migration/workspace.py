@@ -48,7 +48,7 @@ def workspace_branch(db, actor):
         book_read = (
             "("
             + firm_manager
-            + " OR EXISTS(SELECT 1 FROM book_access ba WHERE ba.book_id=p.book_id AND ba.firm_id=p.firm_id AND ba.user_id=? AND (EXISTS(SELECT 1 FROM memberships fm WHERE fm.firm_id=p.firm_id AND fm.user_id=?) OR EXISTS(SELECT 1 FROM company_memberships cm WHERE cm.company_id=p.company_id AND cm.user_id=? AND cm.role IN ('owner','admin','finance')))))"
+            + " OR EXISTS(SELECT 1 FROM effective_book_access ba WHERE ba.book_id=p.book_id AND ba.firm_id=p.firm_id AND ba.user_id=? AND (EXISTS(SELECT 1 FROM memberships fm WHERE fm.firm_id=p.firm_id AND fm.user_id=?) OR EXISTS(SELECT 1 FROM company_memberships cm WHERE cm.company_id=p.company_id AND cm.user_id=? AND cm.role IN ('owner','admin','finance')))))"
         )
         read = (
             "("

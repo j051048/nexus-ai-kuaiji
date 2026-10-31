@@ -215,6 +215,8 @@ def test_snapshot_and_ack_are_append_only(ready_case):
 
 def test_reviewer_who_is_also_contact_cannot_self_acknowledge(ready_case):
     c = ready_case
+    from app.accounting.models import FirmMemberGrant
+    c.directory.grant_firm_member(c.manager, FirmMemberGrant(email="finance@example.test", role="reviewer"))
     c.directory.grant_book_member(
         c.manager, c.book["id"], "finance", BookMemberGrant(role="reviewer")
     )

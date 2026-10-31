@@ -433,6 +433,8 @@ def test_single_operator_does_not_waive_business_applicant_conflict(business):
             email="accountant@example.test", role="finance", department_id=case.department["id"]
         ),
     )
+    from app.accounting.models import FirmMemberGrant
+    case.directory.grant_firm_member(case.manager, FirmMemberGrant(email="finance@example.test", role="reviewer"))
     case.directory.grant_book_member(
         case.manager, case.book["id"], "finance", BookMemberGrant(role="reviewer")
     )

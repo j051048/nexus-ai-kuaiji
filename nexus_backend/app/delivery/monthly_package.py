@@ -196,12 +196,7 @@ class MonthlyPackageService:
                     ).fetchone()[0]
                 )
             else:
-                target = Actor(user_id, actor.firm_id)
-                try:
-                    self.access.book(conn, target, book["id"])
-                    eligible = bool(self.access.company_role(conn, target, book["company_id"]))
-                except AccountingError:
-                    pass
+                eligible = bool(conn.execute("SELECT 1 FROM monthly_delivery_eligible_contacts WHERE book_id=? AND user_id=?", (book["id"], user_id)).fetchone())
         return {
             "user_id": user_id,
             "eligible": eligible,
@@ -455,7 +450,19 @@ class MonthlyPackageService:
         return view
 
     def _package(self, conn, actor, book_id, package_id):
-        book = self.access.book(conn, actor, book_id)
+        try:
+            book = self.access.book(conn, actor, book_id)
+        except AccountingError:
+            self.access.require_user(conn, actor.user_id)
+            if self.db.is_postgres:
+                raw = conn.execute("SELECT accounting.recipient_package_book(?,?)", (package_id, book_id)).fetchone()[0]
+                book = json.loads(raw) if raw else None
+            else:
+                found = conn.execute("SELECT b.* FROM books b JOIN monthly_delivery_packages p ON p.book_id=b.id JOIN monthly_delivery_eligible_contacts e ON e.book_id=b.id AND e.user_id=p.contact_user_id WHERE p.id=? AND b.id=? AND b.firm_id=? AND p.contact_user_id=? AND p.created_by<>?", (package_id, book_id, actor.firm_id, actor.user_id, actor.user_id)).fetchone()
+                book = dict(found) if found else None
+            if not book:
+                raise AccountingError("月度交付包不存在或无权访问", 404)
+            book["permissions"] = {key: False for key in ("edit", "review", "export", "manage")}
         row = conn.execute(
             "SELECT * FROM monthly_delivery_packages WHERE id=? AND book_id=?",
             (package_id, book_id),
@@ -705,7 +712,8 @@ class MonthlyPackageService:
 
     def open(self, actor, book_id, package_id):
         """Record that the contact reached this frozen version; never a receipt."""
-        company_id = self._company(actor, book_id)
+        with self.db.transaction(actor=actor) as conn:
+            company_id = self._package(conn, actor, book_id, package_id)[0]["company_id"]
         with self.db.transaction(
             write=True, actor=actor, company_id=company_id, write_scope="company"
         ) as conn:
@@ -717,7 +725,7 @@ class MonthlyPackageService:
                 or row["contact_user_id"] != actor.user_id
             ):
                 raise AccountingError(
-                    "只有仍有企业及账套查看权限的本版客户联系人可以打开交付包", 403
+                    "只有仍有本版资料包访问权限的本版客户联系人可以打开交付包", 403
                 )
             self._snapshot(row)
             if not conn.execute(
@@ -751,7 +759,8 @@ class MonthlyPackageService:
         return stream.getvalue()
 
     def acknowledge(self, actor, book_id, package_id, request):
-        company_id = self._company(actor, book_id)
+        with self.db.transaction(actor=actor) as conn:
+            company_id = self._package(conn, actor, book_id, package_id)[0]["company_id"]
         with self.db.transaction(
             write=True, actor=actor, company_id=company_id, write_scope="company"
         ) as conn:
@@ -763,7 +772,7 @@ class MonthlyPackageService:
                 or row["contact_user_id"] != actor.user_id
                 or row["created_by"] == actor.user_id
             ):
-                raise AccountingError("只有仍有企业及账套查看权限的本版客户联系人可以签收", 403)
+                raise AccountingError("只有仍有本版资料包访问权限的本版客户联系人可以签收", 403)
             self._snapshot(row)
             if request.manifest_sha256 != row["manifest_sha256"]:
                 raise AccountingError("签收哈希与本版冻结清单不一致", 409)

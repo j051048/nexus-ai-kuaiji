@@ -483,7 +483,7 @@ class AccountingService:
             FROM books b JOIN companies c ON c.id=b.company_id
             JOIN firm_clients fc ON fc.company_id=b.company_id AND fc.firm_id=b.firm_id AND fc.status='active'
             JOIN periods p ON p.book_id=b.id AND p.period=b.period
-            LEFT JOIN book_access a ON a.book_id=b.id AND a.firm_id=b.firm_id AND a.user_id=?
+            LEFT JOIN effective_book_access a ON a.book_id=b.id AND a.firm_id=b.firm_id AND a.user_id=?
             LEFT JOIN company_memberships cm ON cm.company_id=b.company_id AND cm.user_id=?
             WHERE b.firm_id=?"""
         values = [actor.user_id, actor.user_id, actor.firm_id]

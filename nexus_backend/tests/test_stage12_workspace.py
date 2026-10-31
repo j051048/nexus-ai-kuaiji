@@ -107,7 +107,6 @@ def test_workspace_private_supplement_recipient_never_gets_ledger_or_internal_ti
 def test_workspace_responder_cannot_be_assigned_own_response_review(business):
     c, service = business, workspace(business)
     draft = bank(c)
-    c.directory.grant_book_member(c.manager, c.book['id'], 'finance', BookMemberGrant(role='reviewer'))
     task = service.cases.create(c.actors['accountant'], CaseCreate(book_id=c.book['id'], draft_id=draft['id'], title='内部银行异常', reason='请财务补充支付用途', idempotency_key=uuid4().hex))
     task = service.cases.command(c.actors['accountant'], task['id'], 'assign', command(task, CaseAssign, assignee_id='finance'))
     task = service.cases.command(c.actors['finance'], task['id'], 'respond', command(task, CaseRespond))
@@ -137,7 +136,7 @@ def test_workspace_revocation_and_suspension_are_immediate(business, change):
 def test_workspace_review_does_not_export_and_delivery_requires_complete_receipt(business):
     c, service = business, workspace(business)
     actor, book = c.actors['accountant'], c.book['id']
-    draft = bank(c)
+    draft = bank(c, actor=c.manager)
     c.ledger.approve(actor, book, draft['id'], ApprovalRequest(expected_version=draft['version']))
     with pytest.raises(AccountingError) as completed:
         service.get(actor, 'review', draft['id'])
@@ -191,17 +190,18 @@ def test_workspace_ocr_follows_fact_version_across_approval_status_changes(queue
 def test_company_finance_keeps_primary_workflow_with_additional_book_review(business):
     c, service = business, workspace(business)
     actor = c.actors['finance']
-    c.directory.grant_book_member(c.manager, c.book['id'], actor.user_id, BookMemberGrant(role='reviewer'))
+    with pytest.raises(AccountingError):
+        c.directory.grant_book_member(c.manager, c.book['id'], actor.user_id, BookMemberGrant(role='reviewer'))
     profile = service.profile(actor)
     assert profile['role'] == 'finance'
-    assert profile['can_finance'] and profile['can_review'] and profile['can_accounting']
+    assert profile['can_finance'] and not profile['can_review'] and profile['can_accounting']
 
 
 def test_legacy_closed_approved_record_is_not_an_actionable_export(business):
     from period_fixtures import restore_period_state
     c, service = business, workspace(business)
     actor, book = c.actors['accountant'], c.book['id']
-    draft = bank(c)
+    draft = bank(c, actor=c.manager)
     c.ledger.approve(actor, book, draft['id'], ApprovalRequest(expected_version=draft['version']))
     assert service.get(actor, 'export', book)['bucket'] == 'action'
     # Explicit test-only historical restoration, not a production close bypass.

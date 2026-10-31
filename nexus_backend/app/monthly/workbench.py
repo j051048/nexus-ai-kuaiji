@@ -113,7 +113,7 @@ class MonthlyWorkbenchService:
         finance = """EXISTS(SELECT 1 FROM company_memberships cm
             WHERE cm.company_id=e.company_id AND cm.user_id=? AND cm.role='finance')"""
         direct = """(e.submission_mode='direct' AND e.status IN ('submitted','returned') AND e.applicant_id<>?
-            AND EXISTS(SELECT 1 FROM books b LEFT JOIN book_access ba ON ba.book_id=b.id AND ba.user_id=?
+            AND EXISTS(SELECT 1 FROM books b LEFT JOIN effective_book_access ba ON ba.book_id=b.id AND ba.user_id=?
                 LEFT JOIN company_memberships cm ON cm.company_id=b.company_id AND cm.user_id=?
                 WHERE b.firm_id=e.firm_id AND b.company_id=e.company_id AND b.period=? AND (
                     EXISTS(SELECT 1 FROM memberships fm WHERE fm.firm_id=b.firm_id AND fm.user_id=? AND fm.role IN ('owner','admin'))

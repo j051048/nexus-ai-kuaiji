@@ -192,10 +192,14 @@ def test_return_resubmit_keeps_history_and_scopes(plans):
 
 def test_native_history_cannot_be_rewritten_and_same_person_review_forbidden(plans):
     c = plans
-    # Finance can hold review rights, but submission and acceptance stay separate.
+    # A dual-role firm reviewer still cannot accept their own submission.
     from app.accounting.models import BookMemberGrant
     from app.accounting.directory import DirectoryService
 
+    # Explicitly hold a firm reviewer job as well, so this still tests the
+    # stronger "qualified reviewer cannot accept their own submission" rule.
+    with c.db.transaction(write=True, actor=c.owner) as conn:
+        conn.execute("INSERT INTO memberships(firm_id,user_id,role) VALUES(?,?,'reviewer')", (c.owner.firm_id,c.finance.user_id))
     DirectoryService(c.db).grant_book_member(
         c.owner, c.book, c.finance.user_id, BookMemberGrant(role="reviewer")
     )

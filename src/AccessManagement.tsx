@@ -10,6 +10,8 @@ import {
   X,
 } from 'lucide-react';
 import { api, errorMessage } from './api';
+import { AccessPolicyPanel, ContactAccessPanel } from './AccessPolicyPanel';
+import './access-policy.css';
 import { BusinessOrganization } from './BusinessOrganization';
 import type { Department } from './business-types';
 import type { Book, BookRole, Company, CompanyRole, FirmRole, Member, Session } from './types';
@@ -47,7 +49,9 @@ export function AccessManagement({
   onChanged: () => Promise<void>;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
-  const [tab, setTab] = useState<Tab>('firm');
+  const [tab, setTab] = useState<Tab>(
+    session.role === 'owner' || session.role === 'admin' ? 'firm' : 'company',
+  );
   const [firms, setFirms] = useState<Member<FirmRole>[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [companyId, setCompanyId] = useState('');
@@ -59,7 +63,9 @@ export function AccessManagement({
   const [loadedTarget, setLoadedTarget] = useState('');
   const [email, setEmail] = useState('');
   const [userId, setUserId] = useState('');
-  const [role, setRole] = useState<AccessRole>('operator');
+  const [role, setRole] = useState<AccessRole>(
+    session.role === 'owner' || session.role === 'admin' ? 'operator' : 'employee',
+  );
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -81,7 +87,11 @@ export function AccessManagement({
   useEffect(() => {
     const controller = new AbortController();
     void Promise.all([
-      api<{ members: Member<FirmRole>[] }>('/firm/members', session, { signal: controller.signal }),
+      session.role === 'owner' || session.role === 'admin'
+        ? api<{ members: Member<FirmRole>[] }>('/firm/members', session, {
+            signal: controller.signal,
+          })
+        : Promise.resolve({ members: [] as Member<FirmRole>[] }),
       api<{ companies: Company[] }>('/companies', session, { signal: controller.signal }),
     ])
       .then(([firmResult, companyResult]) => {
@@ -245,6 +255,22 @@ export function AccessManagement({
         ))}
       </div>
       <div className="access-content">
+        {tab === 'firm' && (session.role === 'owner' || session.role === 'admin') && (
+          <AccessPolicyPanel
+            session={session}
+            firms={firms}
+            companies={companies}
+            onChanged={onChanged}
+          />
+        )}
+        {tab === 'book' && bookId && activeBook?.permissions.review && (
+          <ContactAccessPanel
+            key={`${session.scope_key}:${bookId}`}
+            session={session}
+            bookId={bookId}
+            members={companyMembers}
+          />
+        )}
         {tab === 'departments' ? (
           <BusinessOrganization
             session={session}
@@ -365,11 +391,22 @@ export function AccessManagement({
                         }
                       >
                         {member.role === 'owner' && <option value="owner">负责人</option>}
-                        {assignable[tab].map((value) => (
-                          <option key={value} value={value}>
-                            {labels[value]}
-                          </option>
-                        ))}
+                        {assignable[tab]
+                          .filter(
+                            (value) =>
+                              value !== 'reviewer' ||
+                              tab !== 'book' ||
+                              firms.some(
+                                (member) =>
+                                  member.user_id === userId &&
+                                  ['owner', 'admin', 'reviewer'].includes(member.role),
+                              ),
+                          )
+                          .map((value) => (
+                            <option key={value} value={value}>
+                              {labels[value]}
+                            </option>
+                          ))}
                       </select>
                       {tab === 'company' && (
                         <select
@@ -471,7 +508,10 @@ export function AccessManagement({
                     <select
                       id="grant-user"
                       value={userId}
-                      onChange={(event) => setUserId(event.target.value)}
+                      onChange={(event) => {
+                        setUserId(event.target.value);
+                        if (role === 'reviewer') setRole('editor');
+                      }}
                       required
                       disabled={busy || loading}
                     >
@@ -530,11 +570,22 @@ export function AccessManagement({
                       onChange={(event) => setRole(event.target.value as AccessRole)}
                       disabled={busy || loading}
                     >
-                      {assignable[tab].map((value) => (
-                        <option key={value} value={value}>
-                          {labels[value]}
-                        </option>
-                      ))}
+                      {assignable[tab]
+                        .filter(
+                          (value) =>
+                            value !== 'reviewer' ||
+                            tab !== 'book' ||
+                            firms.some(
+                              (member) =>
+                                member.user_id === userId &&
+                                ['owner', 'admin', 'reviewer'].includes(member.role),
+                            ),
+                        )
+                        .map((value) => (
+                          <option key={value} value={value}>
+                            {labels[value]}
+                          </option>
+                        ))}
                     </select>
                   </label>
                   <button

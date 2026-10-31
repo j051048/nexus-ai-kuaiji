@@ -50,6 +50,10 @@ def test_company_management_stays_primary_with_submission_approval_and_book_acce
     c.service.grant_department_approver(
         c.manager, c.company["id"], c.department["id"], actor.user_id
     )
+    if book_role == "reviewer":
+        with pytest.raises(AccountingError):
+            c.directory.grant_book_member(c.manager, c.book["id"], actor.user_id, BookMemberGrant(role=book_role))
+        book_role = "editor"
     c.directory.grant_book_member(
         c.manager, c.book["id"], actor.user_id, BookMemberGrant(role=book_role)
     )
@@ -84,12 +88,11 @@ def test_finance_and_approver_stay_primary_when_extra_capabilities_are_granted(b
     c.service.grant_department_approver(
         c.manager, c.company["id"], c.department["id"], finance.user_id
     )
-    c.directory.grant_book_member(
-        c.manager, c.book["id"], finance.user_id, BookMemberGrant(role="reviewer")
-    )
+    with pytest.raises(AccountingError):
+        c.directory.grant_book_member(c.manager, c.book["id"], finance.user_id, BookMemberGrant(role="reviewer"))
     profile = service.profile(finance)
     assert profile["role"] == profile["display_role"] == "finance"
-    assert profile["can_approve"] and profile["can_review"] and profile["can_accounting"]
+    assert profile["can_approve"] and not profile["can_review"] and profile["can_accounting"]
     approver = service.profile(c.actors["approver"])
     assert approver["role"] == approver["display_role"] == "approver"
     assert approver["can_submit"] and not approver["can_accounting"]
@@ -130,7 +133,7 @@ def test_firm_job_remains_primary_over_company_management(business, firm_role, e
         )
         actor, email = Actor(identity.user_id, c.manager.firm_id), identity.email
         c.directory.grant_book_member(
-            c.manager, c.book["id"], actor.user_id, BookMemberGrant(role="reviewer")
+            c.manager, c.book["id"], actor.user_id, BookMemberGrant(role="editor" if firm_role == "operator" else "reviewer")
         )
     c.directory.grant_company_member(
         c.manager,

@@ -489,7 +489,7 @@ def reachable_companies_sql(alias="s"):
     """Superset of companies whose tasks could be visible to one actor."""
     return (
         f"SELECT cm.company_id FROM company_memberships cm WHERE cm.user_id=? "
-        f"UNION SELECT b.company_id FROM book_access ba JOIN books b ON b.id=ba.book_id "
+        f"UNION SELECT b.company_id FROM effective_book_access ba JOIN books b ON b.id=ba.book_id "
         f"AND b.firm_id=ba.firm_id WHERE ba.user_id=? "
         f"UNION SELECT fc.company_id FROM memberships m JOIN firm_clients fc ON fc.firm_id=m.firm_id "
         f"AND fc.status='active' WHERE m.user_id=?"
