@@ -87,6 +87,44 @@ def render_assistant_reply(reply, context_pack, *, with_validation=False):
     """
 
     def result(rendered, code):
+        # The model cannot select, replace or suppress domain blockers. Only a
+        # fresh, scope-bound task projection is rendered; prose stays untrusted.
+        from .delivery_context import render_delivery
+        from .request_budget import omission_notice
+
+        notice = ""
+        try:
+            pack = load_context_pack(
+                context_pack.as_dict() if hasattr(context_pack, "as_dict") else context_pack
+            )
+            summary, citations = render_delivery(pack)
+            notice = omission_notice(pack)
+        except (ContextError, KeyError, ValueError, TypeError, AttributeError):
+            summary, citations = "", []
+        if summary:
+            answer = summary + "\n" + rendered.answer
+            refs = list(dict.fromkeys([*citations, *rendered.citation_ids]))
+            if len(answer) > 12000 or len(refs) > 100:
+                answer = summary + "\n其他事实未展示，请缩小范围核对；仍须会计复核后导出。"
+                refs = citations
+            rendered = AssistantReply(
+                answer=answer,
+                citation_ids=refs,
+                proposals=[],
+            )
+        if notice:
+            answer = notice + "\n" + rendered.answer
+            if len(answer) > 12000:
+                # Never cut a financial fact halfway to make space for a notice.
+                rendered = AssistantReply(
+                    answer=notice
+                    + "\n核对结果超过展示范围，请减少所选事项后重试；仍须会计复核后导出。",
+                    citation_ids=[],
+                    proposals=[],
+                )
+                code = "ak04_fact_missing"
+            else:
+                rendered = rendered.model_copy(update={"answer": answer})
         return (rendered, code) if with_validation else rendered
 
     reply = (

@@ -1,0 +1,133 @@
+{
+  "normal": {
+    "status": "succeeded",
+    "code": "ak04_fact_verified",
+    "calls": 1,
+    "attempts": 1,
+    "costs": [
+      {
+        "state": "estimated",
+        "input_tokens": 3,
+        "output_tokens": 2,
+        "reserved_micro": 100000,
+        "estimated_micro": 14
+      }
+    ],
+    "denied": false,
+    "answer_eligible": true,
+    "answer_requirements": {
+      "monthly_scope": [
+        "2026-10"
+      ],
+      "owner": [
+        "会计复核员"
+      ],
+      "next_action": [
+        "复核凭证"
+      ],
+      "blocker": [
+        "待会计复核"
+      ]
+    }
+  },
+  "missing": {
+    "status": "succeeded",
+    "code": "ak04_fact_missing",
+    "calls": 1,
+    "attempts": 1,
+    "costs": [
+      {
+        "state": "estimated",
+        "input_tokens": 3,
+        "output_tokens": 2,
+        "reserved_micro": 100000,
+        "estimated_micro": 14
+      }
+    ],
+    "denied": false,
+    "answer_eligible": true,
+    "answer_requirements": {
+      "monthly_scope": [
+        "2026-10"
+      ],
+      "owner": [
+        "企业财务"
+      ],
+      "next_action": [
+        "上传原件"
+      ],
+      "blocker": [
+        "缺少原始单据"
+      ]
+    }
+  },
+  "conflict": {
+    "status": "succeeded",
+    "code": "ak04_fact_conflict",
+    "calls": 1,
+    "attempts": 1,
+    "costs": [
+      {
+        "state": "estimated",
+        "input_tokens": 3,
+        "output_tokens": 2,
+        "reserved_micro": 100000,
+        "estimated_micro": 14
+      }
+    ],
+    "denied": false,
+    "answer_eligible": true,
+    "answer_requirements": {
+      "monthly_scope": [
+        "2026-10"
+      ],
+      "owner": [
+        "企业财务"
+      ],
+      "next_action": [
+        "核对原件"
+      ],
+      "blocker": [
+        "0.10"
+      ]
+    }
+  },
+  "revoked": {
+    "status": "stale",
+    "code": "scope_changed",
+    "calls": 0,
+    "attempts": 0,
+    "costs": [],
+    "denied": true,
+    "answer_eligible": false,
+    "answer_requirements": {}
+  },
+  "quota": {
+    "status": "failed",
+    "code": "quota_exhausted",
+    "calls": 0,
+    "attempts": 1,
+    "costs": [],
+    "denied": false,
+    "answer_eligible": false,
+    "answer_requirements": {}
+  },
+  "unknown": {
+    "status": "interrupted",
+    "code": "timeout",
+    "calls": 1,
+    "attempts": 1,
+    "costs": [
+      {
+        "state": "uncertain",
+        "input_tokens": null,
+        "output_tokens": null,
+        "reserved_micro": 100000,
+        "estimated_micro": null
+      }
+    ],
+    "denied": false,
+    "answer_eligible": false,
+    "answer_requirements": {}
+  }
+}

@@ -1,0 +1,125 @@
+{
+  "schema": "assistant-delivery-pg-acceptance-v1",
+  "date": "2026-10-30",
+  "scope": "local synthetic PostgreSQL; no real model, production, push or deployment",
+  "dynamic_gate": {
+    "schema": "assistant-delivery-pg-v1",
+    "status": "passed",
+    "candidate": {
+      "schema": "release-candidate-v1",
+      "head": "9b4a05c3104ec42979a1d0792348db2643a797a9",
+      "source_files": 1590,
+      "source_sha256": "b519a6c9f18effe0a0a69cccfbc4783c8e74745a443bc2bf588abd4e350cc245",
+      "migration_files": 282,
+      "migration_sha256": "26e9be85529136507e36a2fe5b25e7a740274d8679cc635302601d596457275a"
+    },
+    "required_cases_sha256": "bab9c000b32377847a240b87e650ead36362ce3c527888d9d628b43b143be09d",
+    "versions": {
+      "16": {
+        "status": "passed",
+        "server_version_num": 160015,
+        "configuration_sha256": "a78706173ca8b0cc574fad418e6676352593a430e686553156300bdcc891ff41",
+        "roles_verified": true,
+        "force_rls": [
+          "assistant_conversations",
+          "assistant_messages",
+          "assistant_turns",
+          "books",
+          "internal_close_runs",
+          "model_costs",
+          "monthly_delivery_acknowledgements",
+          "monthly_delivery_packages",
+          "service_plan_versions"
+        ],
+        "durability": {
+          "fsync": "on",
+          "synchronous_commit": "on",
+          "full_page_writes": "on"
+        },
+        "migrations": {
+          "count": 168,
+          "all_checksums_match": true
+        },
+        "passed": 33,
+        "skipped": 0,
+        "junit_sha256": "8f93b7b63b7a8412992278677ebcad5a052df5114a8e1aa98e31217e4e4e98b1",
+        "log_sha256": "ad32fa7eed6c5bdc2d2aa5ccf42c78b687ef5ef07df74b445c56659814277a17"
+      },
+      "17": {
+        "status": "passed",
+        "server_version_num": 170011,
+        "configuration_sha256": "ef3c003bf5fbb81d93679ac0984a6c38b5beb30c496507c601f614d2e20e0630",
+        "roles_verified": true,
+        "force_rls": [
+          "assistant_conversations",
+          "assistant_messages",
+          "assistant_turns",
+          "books",
+          "internal_close_runs",
+          "model_costs",
+          "monthly_delivery_acknowledgements",
+          "monthly_delivery_packages",
+          "service_plan_versions"
+        ],
+        "durability": {
+          "fsync": "on",
+          "synchronous_commit": "on",
+          "full_page_writes": "on"
+        },
+        "migrations": {
+          "count": 168,
+          "all_checksums_match": true
+        },
+        "passed": 33,
+        "skipped": 0,
+        "junit_sha256": "66489258090ab9dbb324f260cfae9eba2156f432ee21b102193fef409a503aa2",
+        "log_sha256": "1a0833b5bab42a330496bec5a5bbe8ab57a8939425c76018bfed76d4acf68089"
+      }
+    },
+    "real_model_evaluated": false
+  },
+  "gate_unit_tests": {
+    "status": "passed",
+    "passed": 16,
+    "skipped": 0,
+    "candidate": {
+      "schema": "release-candidate-v1",
+      "head": "9b4a05c3104ec42979a1d0792348db2643a797a9",
+      "source_files": 1590,
+      "source_sha256": "b519a6c9f18effe0a0a69cccfbc4783c8e74745a443bc2bf588abd4e350cc245",
+      "migration_files": 282,
+      "migration_sha256": "26e9be85529136507e36a2fe5b25e7a740274d8679cc635302601d596457275a"
+    },
+    "unchanged_runtime_baseline": "dccade4d54539834b1f1ebf6534914f9983d6518245ad4b6e1c3b6ec974607ff",
+    "junit_sha256": "7ff1efbe8734f4473ced25672a95d291106d5e4bef16d69ff013542683c55bc1"
+  },
+  "environment_cleanup": [
+    {
+      "major": 16,
+      "port": 25616,
+      "state": "stopped",
+      "data_retained": true
+    },
+    {
+      "major": 17,
+      "port": 25617,
+      "state": "stopped",
+      "data_retained": true
+    }
+  ],
+  "artifact_directory": "tmp_test/assistant-delivery-pg-matrix-final",
+  "artifact_sha256": {
+    "summary.json": "b998e84d01f792700b1b7ae255704110908f16548a0976819d512ad941afb87f",
+    "pg16.log": "ad32fa7eed6c5bdc2d2aa5ccf42c78b687ef5ef07df74b445c56659814277a17",
+    "pg16.xml": "8f93b7b63b7a8412992278677ebcad5a052df5114a8e1aa98e31217e4e4e98b1",
+    "pg17.log": "1a0833b5bab42a330496bec5a5bbe8ab57a8939425c76018bfed76d4acf68089",
+    "pg17.xml": "66489258090ab9dbb324f260cfae9eba2156f432ee21b102193fef409a503aa2",
+    "gate-unit.log": "fc0ee52b819386042801bc489952d7062a4037d041797494ef393cc56567c166",
+    "gate-unit.xml": "7ff1efbe8734f4473ced25672a95d291106d5e4bef16d69ff013542683c55bc1",
+    "gate-unit-summary.json": "1d1fc9273f0a92d9c8ff20724b77cb36d13c0df9f626b91c23cd4e79b7b1e40c",
+    "environment-stop.json": "f0ad2cccbc2b06a310da563524117e7d1e0fe01774211865e4152d0f9ffccf87"
+  },
+  "remote_ci_executed": false,
+  "business_runtime_modified_this_round": false,
+  "new_migrations": false
+}

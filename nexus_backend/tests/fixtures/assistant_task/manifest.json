@@ -1,0 +1,27 @@
+{
+  "schema": "assistant-task-baseline-v1",
+  "synthetic_only": true,
+  "identity": {
+    "dataset_id": "assistant-monthly-delivery-v1",
+    "policy_version": "delivery-task-v1",
+    "prompt_version": "accounting-assistant-facts-v3",
+    "context_version": "ak02-runtime",
+    "split": "dev",
+    "sample_ids": [
+      "conflict",
+      "missing",
+      "normal",
+      "quota",
+      "revoked",
+      "unknown"
+    ]
+  },
+  "cases": {
+    "path": "cases.json",
+    "sha256": "2b6721ac98ff9cd6193e631014137f08131967bfe21c99881fbf4c0a838b76ea"
+  },
+  "gold": {
+    "path": "gold.json",
+    "sha256": "4ffdec4eade55a97294bb6bb34987aee671b932a40682e9a140fdd44b0d46f64"
+  }
+}

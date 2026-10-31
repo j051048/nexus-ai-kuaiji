@@ -273,7 +273,7 @@ class AssistantService:
                 **self._availability(conn, actor, company_id),
             }
 
-    def snapshot_in_transaction(self, conn, actor, conversation):
+    def snapshot_in_transaction(self, conn, actor, conversation, *, delivery_task=False):
         company, books, events, draft_row = self._check_refs(conn, actor, conversation)
         context = {
             "company_id": company["id"],
@@ -498,6 +498,11 @@ class AssistantService:
                 }
             )
             basis["draft"] = context["draft"]
+        if delivery_task:
+            from .delivery_context import project_delivery
+
+            context["delivery_task"] = project_delivery(self.db, conn, actor, context)
+            basis["delivery_task"] = context["delivery_task"]
         context["input_fingerprint"] = (
             conn.execute(
                 "SELECT accounting.assistant_input_basis(?)", (conversation["id"],)
@@ -563,6 +568,7 @@ class AssistantService:
         data["error_code"] = failure["code"] if failure else ""
         data["error_detail"] = failure["message"] if failure else ""
         data["execution"] = execution
+        data["events_available"] = True
         return data
 
     def _history(self, conn, conversation_id, exclude_turn_id=None):
@@ -773,7 +779,11 @@ class AssistantService:
                 (conversation_id,),
             ).fetchone():
                 raise AccountingError("当前对话仍在处理上一条消息", 409)
-            context = self.snapshot_in_transaction(conn, actor, conversation)
+            from .delivery_context import is_delivery_question
+
+            context = self.snapshot_in_transaction(
+                conn, actor, conversation, delivery_task=is_delivery_question(body.question)
+            )
             history = self._history(conn, conversation_id)
             info = self._availability(conn, actor, conversation["company_id"])
             if not info["model_available"]:
@@ -831,6 +841,22 @@ class AssistantService:
                 raise AccountingError("对话任务不存在", 404)
             execution = self._execution_in_transaction(conn, actor, row)
             return {"turn": self._turn_json(row, execution)}
+
+    def events(self, actor, conversation_id, turn_id, *, after=None, limit=3):
+        from .events import turn_events
+
+        with self.db.transaction(actor=actor) as conn:
+            conversation = self._conversation(conn, actor, conversation_id)
+            # No history, original document, reply or cost data on this hot path.
+            row = conn.execute(
+                "SELECT id,conversation_id,firm_id,company_id,created_by,status,"
+                "created_at,sent_at,finished_at,error_code FROM assistant_turns "
+                "WHERE id=? AND conversation_id=?",
+                (turn_id, conversation_id),
+            ).fetchone()
+            if not row:
+                raise AccountingError("对话任务不存在", 404)
+            return turn_events(row, conversation, after=after, limit=limit)
 
     @staticmethod
     def _execution_in_transaction(conn, actor, row):

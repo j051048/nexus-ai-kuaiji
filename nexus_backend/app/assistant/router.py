@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, Query, Request
+from fastapi.responses import JSONResponse
 from .models import ConversationCreate, TurnCreate, TurnCancel
 from .actions import ActionPrepare, ActionConfirm
 
@@ -109,6 +110,20 @@ def build_assistant_router(actor_dependency):
         assistant=Depends(service),
     ):
         return assistant.execution(current, conversation_id, turn_id)
+
+    @router.get("/conversations/{conversation_id}/turns/{turn_id}/events")
+    def events(
+        conversation_id: str,
+        turn_id: str,
+        after: str | None = Query(None, min_length=1, max_length=2048),
+        limit: int = Query(3, ge=1, le=3),
+        current=Depends(actor_dependency),
+        assistant=Depends(service),
+    ):
+        return JSONResponse(
+            assistant.events(current, conversation_id, turn_id, after=after, limit=limit),
+            headers={"Cache-Control": "no-store"},
+        )
 
     @router.post("/conversations/{conversation_id}/turns/{turn_id}/cancel")
     def cancel(

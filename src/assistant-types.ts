@@ -56,6 +56,7 @@ export interface AssistantReply {
 }
 export interface AssistantTurn {
   id: string;
+  events_available?: boolean;
   question: string;
   status: AssistantTurnStatus;
   mode: 'model' | null;

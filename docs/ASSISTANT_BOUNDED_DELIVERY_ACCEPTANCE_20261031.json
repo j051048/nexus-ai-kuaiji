@@ -1,0 +1,124 @@
+{
+  "schema": "assistant-bounded-delivery-acceptance-v1",
+  "date": "2026-10-31",
+  "status": "passed_local",
+  "candidate": {
+    "schema": "release-candidate-v1",
+    "head": "9b4a05c3104ec42979a1d0792348db2643a797a9",
+    "source_files": 1601,
+    "source_sha256": "ffeb365ad5a1053bd1a84378fe9d8bbe43364fee0d03afb63b696dadd65e0e42",
+    "migration_files": 282,
+    "migration_sha256": "26e9be85529136507e36a2fe5b25e7a740274d8679cc635302601d596457275a"
+  },
+  "runtime_candidate_fingerprint": "86b9bf8e3a0fd2523793dc84c418d133c295c38df07a70004b31348f76aaa482",
+  "changed_source_paths": [
+    "nexus_backend/app/assistant/delivery_context.py",
+    "nexus_backend/app/assistant/delivery_investigation.py",
+    "nexus_backend/tests/test_assistant_delivery_pg_gate.py",
+    "nexus_backend/tests/test_assistant_delivery_postgres.py",
+    "nexus_backend/tests/test_assistant_investigation.py",
+    "scripts/assistant_delivery_postgres_gate.py",
+    "scripts/assistant_delivery_postgres_required_cases.json",
+    "tools/assistant_replay/__main__.py",
+    "tools/assistant_replay/baseline.py"
+  ],
+  "local": {
+    "passed": 329,
+    "failed": 0,
+    "errors": 0,
+    "skipped": 0,
+    "seconds": 142.999
+  },
+  "compatibility": {
+    "passed": 160,
+    "failed": 0,
+    "errors": 0,
+    "skipped": 0,
+    "seconds": 54.287
+  },
+  "pg": {
+    "16": {
+      "passed": 43,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 56.064
+    },
+    "17": {
+      "passed": 43,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 56.972
+    }
+  },
+  "browser": {
+    "events": 7,
+    "legacy_progress": 4,
+    "sizes": [
+      1440,
+      390
+    ],
+    "type": "Chromium viewport regression; no new frontend component"
+  },
+  "red": {
+    "initial": {
+      "passed": 0,
+      "failed": 9,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 17.535
+    },
+    "deadline": {
+      "passed": 28,
+      "failed": 1,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 20.563
+    },
+    "pg_initial": {
+      "passed": 42,
+      "failed": 1,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 57.364
+    },
+    "pg_initial_explanation": "Test incorrectly assumed a repeatable-read transaction sees revocation committed by another session. Corrected to assert old private snapshot plus fresh-transaction denial; real worker final-transaction revocation cases remain unchanged."
+  },
+  "limits": {
+    "real_model": false,
+    "push": false,
+    "production": false,
+    "remote_ci": false,
+    "migrations_changed": false,
+    "autonomous_tool_loop": false,
+    "actual_handoff_assignment": false,
+    "read_timeout": "cooperative 10 seconds between fixed domain reads; cannot cancel an executing SQL query"
+  },
+  "artifacts": {
+    "artifacts/assistant-investigation-regression-1440.png": "58b1897859277522b452f9506640b272e990346eadfce0fdb2ca2d809a32fc44",
+    "artifacts/assistant-investigation-regression-390.png": "2c443336c70c2339ecae051b8280fcf803671201d4fb6b999dc08c384bc96d2c",
+    "tmp_test/assistant-investigation-baseline-final/candidate.json": "fe45e70218356913dd86a8ef862513b0c081fa1f5448d6991234495042307810",
+    "tmp_test/assistant-investigation-baseline-final/junit.xml": "432ff7ca0b37fd46e51ca134472d68f229d35178ff800944a0daa18734d9fd5f",
+    "tmp_test/assistant-investigation-baseline-final/observations.json": "17e5274c85421de85888210250798240905bef031891eb31f06a37f378bd0d2b",
+    "tmp_test/assistant-investigation-baseline-final/pytest.log": "9b6bf5efa38888c91eb5d7fc994bd5885d6b95d5fad2ca58b2c34bab7b0f88cf",
+    "tmp_test/assistant-investigation-baseline-final/report.json": "7fad81b28e7d32cf70da9648c2ab192cc52230f575adaef1f00a7c8ae4031e29",
+    "tmp_test/assistant-investigation-baseline-final/report.md": "1c2158aacf8dd38368453284536a15b70f9728bb15900f24badcc55637ff2642",
+    "tmp_test/assistant-investigation-baseline-final/summary.json": "d813bcf19fecd37ab9f21b4067a05f04eb46fa4de177ee3410bd516452285387",
+    "tmp_test/assistant-investigation-bounds-red.xml": "251155f6999edb1bfe5efdc9dbea9c4a6601dadff3d366bec9a4944bd4e0502b",
+    "tmp_test/assistant-investigation-browser-progress.log": "cff9c75cb71080fade53acb9c55dfd4994b945ec82acfd38468cd4d73be443a8",
+    "tmp_test/assistant-investigation-browser.log": "f6d960f019fb95466639d38899d7340ad2392b24ed916e6e732a509379a2f70d",
+    "tmp_test/assistant-investigation-compatibility-final.log": "544cd1b167181bc9b1eea4a4a8c23a2529bdeaed0ad22399479c5e49236e3390",
+    "tmp_test/assistant-investigation-compatibility-final.xml": "0f479dc5a6c23c8a627f97f8e6bc4354a7ec66380d08b0ce8e6c2f46919a3d39",
+    "tmp_test/assistant-investigation-environment-stop.json": "f0ad2cccbc2b06a310da563524117e7d1e0fe01774211865e4152d0f9ffccf87",
+    "tmp_test/assistant-investigation-final-candidate.json": "2a06ed401ee23acf6773b3d4d81c916523365fcdc18e998ded0a7726ccab3efe",
+    "tmp_test/assistant-investigation-pg-final/pg16.log": "69be7f6765298e57e59ab5aa96d00bbebcf2ffecde6661a1bfe8ebd6f135bb51",
+    "tmp_test/assistant-investigation-pg-final/pg16.xml": "8e05ed07f092b2383f8f5e3f0ca08aacfe7d46ded6ab7a7b2ac003c02cb00856",
+    "tmp_test/assistant-investigation-pg-final/pg17.log": "f85170d26107c1a1d82d01a40f4b36ddce57e16a74228ae08db413d74fa659f4",
+    "tmp_test/assistant-investigation-pg-final/pg17.xml": "0ff19909ce12122cfe310c537359de567325ed00b459ff819dd0e32aa03290c5",
+    "tmp_test/assistant-investigation-pg-final/summary.json": "a74ef2efba071809c4dc8d2f85b7ee882d8620a296b5818e882e6a34ef07e03a",
+    "tmp_test/assistant-investigation-pg-r1/pg16.xml": "6effe4fc5b7b40f3a2f460a2fb8714b70529cbd90e26dee4e7f4497e5bb0e189",
+    "tmp_test/assistant-investigation-pg-r1/summary.json": "d5203654f9466eece8f92922ed2d3609922e4b35f110b4f011d22f2242d72c6f",
+    "tmp_test/assistant-investigation-red.xml": "985dc76d1cc7bdad0e858fcf6686233127353a24f17f00078d12d25d1d3efc1c"
+  }
+}

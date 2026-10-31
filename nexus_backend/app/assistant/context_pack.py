@@ -18,6 +18,7 @@ from ..intelligence.context_pack import (
 )
 from ..intelligence.provider import ExecutionLimits, ProviderError
 from .models import AssistantModelReply
+from .request_budget import MAX_PACK_BYTES, measure_request
 
 
 SCHEMA_VERSION = "assistant-reply-facts-v2:" + fingerprint(AssistantModelReply.model_json_schema())
@@ -65,7 +66,7 @@ def _failure(error):
     code = "context_too_large" if isinstance(error, BudgetExceeded) else "context_invalid"
     result = ProviderError(
         code,
-        "会计助手上下文超出预算，请缩小资料范围"
+        "当前资料与必需规则超过本轮预算，请减少所选事项或账套后重试；未发送模型请求，仍须会计复核后导出"
         if code == "context_too_large"
         else "会计助手上下文与当前授权资料不匹配，未发送资料",
     )
@@ -83,6 +84,7 @@ def build_assistant_context_pack(
     limits,
     policy_version,
     prompt_version,
+    response_format="json_schema",
 ):
     """Compile without promoting saved/OCR values into approved accounting facts."""
     try:
@@ -214,6 +216,18 @@ def build_assistant_context_pack(
             if reference is None:
                 raise ContextError("context_reference_missing", "凭证证据缺失")
             add("draft:" + draft["id"], draft, version=version, reference=reference)
+        if "delivery_task" in snapshot:
+            from .delivery_context import is_delivery_question, validate_projection
+
+            if not is_delivery_question(question):
+                raise ContextError("context_binding_mismatch", "交付投影不属于当前任务")
+            projection = validate_projection(
+                snapshot["delivery_task"],
+                company_id,
+                [{"book_id": row["id"], "period": row["period"]} for row in books],
+                reference_ids,
+            )
+            add("delivery_task", projection, kind="delivery_readiness")
         facts.append(Fact("current_question", question, 1, "user_text"))
         # Saved history has no fact-version proof. Retain questions for discourse
         # only; never relabel an old answer with the current snapshot version.
@@ -230,7 +244,7 @@ def build_assistant_context_pack(
                 )
         trusted = limits or ExecutionLimits()
         output = min(trusted.output_tokens, 4096)
-        return compile_context_pack(
+        arguments = dict(
             task="assistant_reply",
             scope={
                 "kind": "company",
@@ -243,7 +257,9 @@ def build_assistant_context_pack(
             facts=facts,
             evidence=evidence,
             rules=RULES,
-            history=past,
+            # The shared compiler removes the tail. Saved dialogue is oldest
+            # first, so put the latest questions first before giving it priority.
+            history=list(reversed(past)),
             unresolved=unresolved,
             budget={"input_tokens": trusted.context_tokens + output, "output_reserve": output},
             prompt_version=prompt_version,
@@ -251,12 +267,46 @@ def build_assistant_context_pack(
             policy_version=str(policy_version),
             required_keys=[row.key for row in facts],
         )
+
+        # Retain all facts, evidence, blockers and mandatory rules. Only history
+        # is optional here. Reuse the compiler for trimming and coverage hashes.
+        def fits(pack):
+            tokens, size = measure_request(pack.as_dict(), response_format)
+            return tokens <= trusted.context_tokens and size <= MAX_PACK_BYTES
+
+        pack = compile_context_pack(**arguments)
+        if fits(pack):
+            return pack
+        # JSON escaping makes envelope overhead non-linear. Search for a
+        # feasible compiler cap instead of subtracting the wire overflow from
+        # the pack estimate (which can incorrectly undercut mandatory facts).
+        # At most 20 probes for the trusted maximum of 1,000,000 input tokens.
+        low, high, best = 1, trusted.context_tokens - 1, None
+        while low <= high:
+            available = (low + high) // 2
+            arguments["budget"] = {
+                "input_tokens": available + output,
+                "output_reserve": output,
+            }
+            try:
+                candidate = compile_context_pack(**arguments)
+            except BudgetExceeded:
+                low = available + 1  # Required facts do not fit at this cap.
+                continue
+            if fits(candidate):
+                best = candidate
+                low = available + 1  # Preserve as much recent history as fits.
+            else:
+                high = available - 1
+        if best is None:
+            raise BudgetExceeded("context_budget_exceeded", "完整请求超过可信预算")
+        return best
     except (ContextError, TypeError, ValueError, KeyError, AttributeError) as error:
         raise _failure(error) from None
 
 
 def validate_assistant_context_pack(
-    payload, snapshot, question, history, *, limits, prompt_version
+    payload, snapshot, question, history, *, limits, prompt_version, response_format="json_schema"
 ):
     """Reject even a rehashed pack if it no longer derives from this snapshot."""
     try:
@@ -270,6 +320,7 @@ def validate_assistant_context_pack(
             limits=limits,
             policy_version=pack.policy_version,
             prompt_version=prompt_version,
+            response_format=response_format,
         )
         if current.fingerprint != pack.fingerprint:
             raise ContextError("context_binding_mismatch", "上下文与当前范围不匹配")

@@ -1,0 +1,84 @@
+{
+  "schema": "assistant-durable-progress-acceptance-v1",
+  "date": "2026-10-31",
+  "status": "local_engineering_passed",
+  "candidate": {
+    "schema": "release-candidate-v1",
+    "head": "9b4a05c3104ec42979a1d0792348db2643a797a9",
+    "source_files": 1599,
+    "source_sha256": "e995fef4808339edf133a5cf8a81400b06851a63652bba657b4e1550c7004437",
+    "migration_files": 282,
+    "migration_sha256": "26e9be85529136507e36a2fe5b25e7a740274d8679cc635302601d596457275a"
+  },
+  "baseline": {
+    "passed": 300,
+    "skipped": 0,
+    "seconds": 143.223,
+    "sha256": "ebcb24e44d9685c5cf122bf7309b6e11fa28a67834a832646aa668eec197185b"
+  },
+  "compatibility": {
+    "passed": 160,
+    "skipped": 0,
+    "seconds": 53.296,
+    "sha256": "520dcca36b25d2e58d36d0a4497162dcc564122f3021aa5cb1dca120d1127b98"
+  },
+  "pg16": {
+    "passed": 38,
+    "skipped": 0,
+    "seconds": 49.832,
+    "sha256": "26d9c6dd62ddf5b3341ee0790d86314dcb09ab0afb0f3ab85cabf0bd80cc8372"
+  },
+  "pg17": {
+    "passed": 38,
+    "skipped": 0,
+    "seconds": 49.794,
+    "sha256": "27590b0964ee4e34bc0b8061530dcf48944f81a5b8a40cfd66b48c8b8785e3a1"
+  },
+  "frontend_unit": {
+    "passed": 1092,
+    "files": 105
+  },
+  "browser": {
+    "passed": 11,
+    "failed": 0,
+    "retries": 0,
+    "mode": "preview",
+    "seconds": 36.4,
+    "widths": [
+      1440,
+      390
+    ]
+  },
+  "offline_identity": "a0e5283ce857db94433c5295c9b981e3e9cf88460d3d86fa1b65064ebebc6e72",
+  "task_answer_complete": "3/3",
+  "real_model_evaluated": false,
+  "database_migrations_changed": false,
+  "pushed": false,
+  "deployed": false,
+  "artifacts": {
+    "tmp_test/assistant-events-baseline-final/summary.json": "0e0eaf90b232b2981f22beb2df3af29aebca7fb01300bb7badf603f32e365ef8",
+    "tmp_test/assistant-events-pg-final/summary.json": "580e7a7704813ca9df740f8935fba772b70a512310dade37717b5e11fcb3dd19",
+    "tmp_test/assistant-events-compatibility-final.log": "e91ec0dcbe7e4f16f4df727518299377841eaf972aec65e40f97c149f7a89acf",
+    "tmp_test/assistant-events-browser-red.log": "74d34ac7e574600ac9e8695a755b5f2caaafb16a62ae1adb4160e4a08fe32853",
+    "tmp_test/assistant-events-browser-r1.log": "5a1c0a2797b0f34e353737470e61cdc4cd65a9a8952321e9b48edd58246d6b8f",
+    "tmp_test/assistant-events-browser-r2.log": "3b96cd881bd2ef55d6434c4f70eae55c45f01e34995bfeb70e18d416e9d25318",
+    "tmp_test/assistant-events-vitest-final.log": "6edb5208f68d44423bdb3ba270c58eb65ecfcf2e13e5cc707a6960a5b15b0120",
+    "tmp_test/assistant-events-environment-stop.json": "f0ad2cccbc2b06a310da563524117e7d1e0fe01774211865e4152d0f9ffccf87",
+    "artifacts/assistant-events-1440.png": "82a2139d0a5018d1c96e4948d57ce45a9af6102e705232084c22ef40720596b2",
+    "artifacts/assistant-events-390.png": "73a58602016e3e9bd3fe1d2626da76e0e95552016da36b2f853315adb7b493d0"
+  },
+  "stopped_owned_clusters": [
+    {
+      "major": 16,
+      "port": 25616,
+      "state": "stopped",
+      "data_retained": true
+    },
+    {
+      "major": 17,
+      "port": 25617,
+      "state": "stopped",
+      "data_retained": true
+    }
+  ]
+}

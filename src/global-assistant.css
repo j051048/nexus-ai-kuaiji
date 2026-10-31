@@ -7,6 +7,34 @@
   background: rgba(19, 37, 28, 0.17);
   backdrop-filter: blur(1px);
 }
+.ga-turn-progress {
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-subtle);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  overflow-wrap: anywhere;
+}
+.ga-turn-progress p {
+  margin: 0 0 var(--space-2);
+}
+.ga-turn-progress summary {
+  cursor: pointer;
+  min-height: 28px;
+}
+.ga-turn-progress ol {
+  padding-left: var(--space-5);
+  margin-bottom: 0;
+}
+.ga-turn-progress li + li {
+  margin-top: var(--space-2);
+}
+.ga-turn-progress time {
+  display: block;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
 .global-assistant-drawer {
   --ga-ink: #1c3a2d;
   --ga-muted: #69786b;

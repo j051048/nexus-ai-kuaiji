@@ -26,6 +26,8 @@ import {
 } from 'lucide-react';
 import { api, ApiError, errorMessage } from './api';
 import { ExecutionRecordPanel } from './ExecutionRecordPanel';
+import { AssistantTurnProgress } from './AssistantTurnProgress';
+import { useAssistantTurnEvents } from './useAssistantTurnEvents';
 import {
   assistantAllowedProposals,
   assistantBusinessStatus,
@@ -186,6 +188,8 @@ export function GlobalAccountingAssistant({
   const options = scopeOptions?.key === scopeKey ? scopeOptions.value : null;
   const history = conversations?.key === scopeKey ? conversations.value : null;
   const activeTurn = current?.turns.find((turn) => assistantTurnActive(turn.status));
+  const progressTurn = messageOffset === 0 ? (activeTurn ?? current?.turns[0]) : undefined;
+  const eventTurnId = progressTurn?.events_available === true ? progressTurn.id : undefined;
   const activeTask = plans.some((plan) =>
     plan.receipt?.jobs.some((job) =>
       ['queued', 'running', 'retry_wait', 'waiting'].includes(job.status),
@@ -591,6 +595,17 @@ export function GlobalAccountingAssistant({
       clearSensitive,
     ],
   );
+  const turnEvents = useAssistantTurnEvents({
+    session,
+    companyId,
+    conversationId,
+    turnId: revoked ? undefined : eventTurnId,
+    active: !!activeTurn,
+    scopeKey: detailKey,
+    onRevoked: clearSensitive,
+    onFinished: loadConversation,
+  });
+  const readTurnEvents = turnEvents.read;
   useEffect(() => {
     setDetail(null);
     setMessages(null);
@@ -619,6 +634,11 @@ export function GlobalAccountingAssistant({
           await loadConversation();
           lastFull = Date.now();
           return;
+        }
+        // Active supported turns use a bounded milestone cursor, not repeated
+        // whole-workspace reads. Action receipts retain their own revision path.
+        if (await readTurnEvents()) {
+          if (!activeTask) return;
         }
         const progress = await api<AssistantConversationProgress>(
           `/assistant/conversations/${encode(conversationId)}/progress?action_offset=${planOffset}`,
@@ -683,6 +703,7 @@ export function GlobalAccountingAssistant({
     revoked,
     loadConversation,
     clearSensitive,
+    readTurnEvents,
   ]);
   useEffect(() => {
     if (messageOffset === 0)
@@ -1433,6 +1454,9 @@ export function GlobalAccountingAssistant({
                     </article>
                   );
                 })}
+                {messageOffset === 0 && (
+                  <AssistantTurnProgress feed={turnEvents.feed} notice={turnEvents.notice} />
+                )}
                 {visibleTurns
                   .filter((turn) => !referencedTurns.has(turn.id) && messageOffset === 0)
                   .slice()

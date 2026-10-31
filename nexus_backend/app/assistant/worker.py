@@ -88,7 +88,11 @@ class AssistantWorker:
             "company_enabled"
         ]:
             raise AccountingError("企业已关闭模型处理，资料不会继续发送", 403)
-        context = self.service.snapshot_in_transaction(conn, actor, conversation)
+        from .delivery_context import is_delivery_question
+
+        context = self.service.snapshot_in_transaction(
+            conn, actor, conversation, delivery_task=is_delivery_question(turn["question"])
+        )
         if (
             context["input_fingerprint"] != turn["input_fingerprint"]
             or encode(context) != turn["snapshot_json"]
@@ -350,6 +354,7 @@ class AssistantWorker:
                     limits=chat_limits,
                     policy_version=context_fingerprint(evidence),
                     prompt_version=PROMPT_VERSION,
+                    response_format=chat.response_format,
                 )
                 context.before_send(conn)
                 if self.db.is_postgres:
