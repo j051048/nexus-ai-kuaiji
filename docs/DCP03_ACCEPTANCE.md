@@ -61,7 +61,8 @@
 
 1. `nexus_backend/tests/test_monthly_briefing.py` 在 HEAD 上 **8/8 全红**：`app/accounting/review_policy.py:213` 抛「制单人不能独立复核自己创建的版本」，夹具里只有 `LOCAL_ACTOR` 一个复核人。根因与 DCP01 发现的访问策略回归同源——本地缺少第二个事务所复核人。
 2. `e2e/monthly-briefing.spec.ts` 原在 `e2e/ui-navigation.ts:90` 超时（`openAccounting` 找不到「会计工作台」）。本包已修：`openAccounting` 先等导航菜单项出现再判断主入口；spec 也同步到当前界面——导航名改为「月度交付」、账簿内简报是嵌入视图（没有「返回账套」）、锁期按钮因「复核人=当前人」的旧快照被禁用故改用同一份已复核快照调用真实 API 完成锁期。
-3. 三个符号用例（冲回 / 退款 / 缴税）原先直接插入 `status='exported'` 的草稿，新版 `rr_draft_insert_guard` 已禁止「新建草稿自带审批」，因此改为在已发布报表投影层验证符号原样传递；草稿层的符号计算由 `reports` 的既有测试覆盖。
+3. 已补：本地演示身份新增 `reviewer`（示例复核会计 小吴，firm 角色 reviewer + 账套 reviewer），`/api/config` 与右上角切换器可直接选；`nexus_backend/tests/test_demo_reviewer.py` 2 passed，`e2e/demo-reviewer.spec.ts` 1 passed。这样后续夹具不必再临时插复核人。
+4. 三个符号用例（冲回 / 退款 / 缴税）原先直接插入 `status='exported'` 的草稿，新版 `rr_draft_insert_guard` 已禁止「新建草稿自带审批」，因此改为在已发布报表投影层验证符号原样传递；草稿层的符号计算由 `reports` 的既有测试覆盖。
 
 ## 6. 判定
 

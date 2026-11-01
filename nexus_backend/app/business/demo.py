@@ -28,6 +28,12 @@ PERSONAS = {
         "user_id": "local-business-finance",
         "name": "示例企业财务 小周",
     },
+    "reviewer": {
+        "id": "reviewer",
+        "label": "独立复核",
+        "user_id": "local-reviewer",
+        "name": "示例复核会计 小吴",
+    },
 }
 
 
@@ -55,6 +61,14 @@ def bootstrap_business_demo(database, enabled=True):
                 "INSERT INTO users(id,name,email) VALUES(?,?,?) ON CONFLICT(id) DO NOTHING",
                 (persona["user_id"], persona["name"], persona["id"] + "@demo.example.invalid"),
             )
+            if persona["id"] == "reviewer":
+                # 独立复核人：事务所 reviewer + 每个示例账套的 reviewer，
+                # 与制单人分离，才能走正式的复核/锁期/发布。
+                conn.execute(
+                    "INSERT INTO memberships(firm_id,user_id,role) VALUES(?,?,'reviewer') "
+                    "ON CONFLICT(firm_id,user_id) DO UPDATE SET role='reviewer'",
+                    (LOCAL_ACTOR.firm_id, persona["user_id"]),
+                )
         for company in companies:
             department_id = "demo-department-" + company["id"]
             conn.execute(
@@ -86,4 +100,9 @@ def bootstrap_business_demo(database, enabled=True):
                 conn.execute(
                     "INSERT INTO book_access(book_id,firm_id,user_id,role) VALUES(?,?,?,'editor') ON CONFLICT(book_id,user_id) DO NOTHING",
                     (book["id"], LOCAL_ACTOR.firm_id, PERSONAS["finance"]["user_id"]),
+                )
+                conn.execute(
+                    "INSERT INTO book_access(book_id,firm_id,user_id,role) VALUES(?,?,?,'reviewer') "
+                    "ON CONFLICT(book_id,user_id) DO UPDATE SET role='reviewer'",
+                    (book["id"], LOCAL_ACTOR.firm_id, PERSONAS["reviewer"]["user_id"]),
                 )
