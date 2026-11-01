@@ -28,8 +28,28 @@ from test_stage10_dispositions import duplicates
 from test_stage9_delivery import facts
 
 
-def prepare_book(accounting, book, rows=None):
+def independent_reviewer(accounting, book):
+    """另建一位事务所复核人：制单人不能复核自己创建的版本。"""
+    user_id = f"brief-review-{uuid4().hex[:8]}"
+    with accounting.db.transaction(write=True, actor=LOCAL_ACTOR) as conn:
+        conn.execute(
+            "INSERT INTO users(id,name,email) VALUES(?,?,?)",
+            (user_id, "独立复核会计", f"{user_id}@example.test"),
+        )
+        conn.execute(
+            "INSERT INTO memberships(firm_id,user_id,role) VALUES(?,?,'reviewer')",
+            (LOCAL_ACTOR.firm_id, user_id),
+        )
+        conn.execute(
+            "INSERT INTO book_access(book_id,firm_id,user_id,role) VALUES(?,?,?,'reviewer')",
+            (book, LOCAL_ACTOR.firm_id, user_id),
+        )
+    return Actor(user_id, LOCAL_ACTOR.firm_id)
+
+
+def prepare_book(accounting, book, rows=None, reviewer=None):
     """导入、审核、导出并核验回执，使月结预检只剩锁期本身。"""
+    reviewer = reviewer or independent_reviewer(accounting, book)
     accounting.import_sources(
         LOCAL_ACTOR,
         book,
@@ -60,27 +80,30 @@ def prepare_book(accounting, book, rows=None):
         ),
     )
     accounting.suggestions(LOCAL_ACTOR, book)
-    approve_export_and_receipt(accounting, book, accounting.get_book(LOCAL_ACTOR, book)["drafts"])
+    approve_export_and_receipt(
+        accounting, book, accounting.get_book(LOCAL_ACTOR, book)["drafts"], reviewer
+    )
 
 
-def approve_export_and_receipt(accounting, book, drafts):
+def approve_export_and_receipt(accounting, book, drafts, reviewer=None):
+    reviewer = reviewer or independent_reviewer(accounting, book)
     delivery = DeliveryService(accounting.db)
     approved = []
     for draft in drafts:
         accounting.approve(
-            LOCAL_ACTOR, book, draft["id"], ApprovalRequest(expected_version=draft["version"])
+            reviewer, book, draft["id"], ApprovalRequest(expected_version=draft["version"])
         )
-        approved.append(accounting.get_draft(LOCAL_ACTOR, book, draft["id"]))
+        approved.append(accounting.get_draft(reviewer, book, draft["id"]))
     receipt = accounting.export(
-        LOCAL_ACTOR,
+        reviewer,
         book,
         ExportRequest(draft_ids=[draft["id"] for draft in drafts], idempotency_key=uuid4().hex),
     )
-    with accounting.db.transaction(write=True, actor=LOCAL_ACTOR) as conn:
+    with accounting.db.transaction(write=True, actor=reviewer) as conn:
         delivery.capture_export_in_transaction(
             conn,
-            LOCAL_ACTOR,
-            accounting.access.book(conn, LOCAL_ACTOR, book),
+            reviewer,
+            accounting.access.book(conn, reviewer, book),
             receipt["id"],
             approved,
         )
@@ -96,20 +119,46 @@ def approve_export_and_receipt(accounting, book, drafts):
     )
 
 
-def close_book(accounting, book):
+def post_signed_draft(accounting, book, reviewer, *, source_id, draft_id, external_id, direction,
+                      amount_cents, description, lines):
+    """在期间开放时登记一笔手工草稿，走真实复核/导出/回执链，避免绕过复核守卫。"""
+    with accounting.db.transaction(write=True, actor=LOCAL_ACTOR) as conn:
+        conn.execute(
+            "INSERT INTO sources(id,book_id,external_id,source_name,date,description,"
+            "counterparty,amount_cents,direction,evidence_ref,fingerprint,source_kind) "
+            "VALUES(?,?,?,?,?,?,?,?,?,?,?,'bank')",
+            (source_id, book, external_id, description, "2026-10-20", description, "示例供方",
+             amount_cents, direction, description, uuid4().hex + uuid4().hex),
+        )
+        conn.execute(
+            "INSERT INTO drafts(id,book_id,source_id,description,status,version,explanation) "
+            "VALUES(?,?,?,?,'draft',1,?)",
+            (draft_id, book, source_id, description, description),
+        )
+        for ordinal, (code, debit, credit) in enumerate(lines, start=1):
+            conn.execute(
+                "INSERT INTO draft_lines(draft_id,book_id,ordinal,account_code,debit_cents,credit_cents) "
+                "VALUES(?,?,?,?,?,?)",
+                (draft_id, book, ordinal, code, debit, credit),
+            )
+    approve_export_and_receipt(accounting, book, [{"id": draft_id, "version": 1}], reviewer)
+
+
+def close_book(accounting, book, reviewer=None):
+    reviewer = reviewer or independent_reviewer(accounting, book)
     closing = ClosingService(accounting.db)
     snapshot = closing.preflight(
-        LOCAL_ACTOR, book, PreflightRequest(idempotency_key=uuid4().hex)
+        reviewer, book, PreflightRequest(idempotency_key=uuid4().hex)
     )
     assert snapshot["report"]["passed"], snapshot["report"]
     closing.review(
-        LOCAL_ACTOR,
+        reviewer,
         book,
         snapshot["id"],
         SnapshotReview(reason="核实本期资料与银行流水完整并复核通过", materials_confirmed=True),
     )
     closing.close(
-        LOCAL_ACTOR,
+        reviewer,
         book,
         CloseRequest(snapshot_id=snapshot["id"], reason="依据已复核快照完成月结"),
     )
@@ -259,108 +308,69 @@ def test_briefing_excludes_isolated_duplicate_sources(case):
 
 def test_briefing_expense_reversal_keeps_negative_sign(case):
     accounting, _, book = case
-    prepare_book(accounting, book)
-    close_book(accounting, book)
-    with accounting.db.transaction(write=True, actor=LOCAL_ACTOR) as conn:
-        conn.execute(
-            "INSERT INTO sources(id,book_id,external_id,source_name,date,description,"
-            "counterparty,amount_cents,direction,evidence_ref,fingerprint,source_kind) "
-            "VALUES('reversal-source',?,'reversal-001','虚构冲回','2026-10-20',"
-            "'费用冲回','示例供方',40000,'expense','冲回凭证','%s','bank')"
-            % ("a" * 64),
-            (book,),
-        )
-        conn.execute(
-            "INSERT INTO drafts(id,book_id,source_id,description,status,version,explanation,"
-            "approved_by,approved_at,exported_at) VALUES('reversal-draft',?,'reversal-source',"
-            "'费用冲回','exported',2,'虚构冲回','local-accountant',"
-            "'2026-10-20T00:00:00+00:00','2026-10-20T00:00:00+00:00')",
-            (book,),
-        )
-        conn.execute(
-            "INSERT INTO draft_lines(draft_id,book_id,ordinal,account_code,debit_cents,credit_cents) "
-            "VALUES('reversal-draft',?,1,'1002',40000,0)",
-            (book,),
-        )
-        conn.execute(
-            "INSERT INTO draft_lines(draft_id,book_id,ordinal,account_code,debit_cents,credit_cents) "
-            "VALUES('reversal-draft',?,2,'6602.02',0,40000)",
-            (book,),
-        )
+    reviewer = independent_reviewer(accounting, book)
+    prepare_book(accounting, book, reviewer=reviewer)
+    post_signed_draft(
+        accounting,
+        book,
+        reviewer,
+        source_id="reversal-source",
+        draft_id="reversal-draft",
+        external_id="reversal-001",
+        direction="expense",
+        amount_cents=40000,
+        description="费用冲回",
+        lines=[("1002", 40000, 0), ("6602.02", 0, 40000)],
+    )
+    close_book(accounting, book, reviewer)
     result = BriefingService(accounting.db, accounting).briefing(LOCAL_ACTOR, book)
     assert result["top_expenses"][0]["amount"] == "-100.00"
 
 
 def test_briefing_refund_keeps_negative_sign(case):
     accounting, _, book = case
-    prepare_book(accounting, book)
-    close_book(accounting, book)
-    with accounting.db.transaction(write=True, actor=LOCAL_ACTOR) as conn:
-        conn.execute(
-            "INSERT INTO sources(id,book_id,external_id,source_name,date,description,"
-            "counterparty,amount_cents,direction,evidence_ref,fingerprint,source_kind) "
-            "VALUES('refund-source',?,'refund-001','虚构退款','2026-10-20',"
-            "'供应商退款','示例供方',40000,'income','退款凭证','%s','bank')"
-            % ("c" * 64),
-            (book,),
-        )
-        conn.execute(
-            "INSERT INTO drafts(id,book_id,source_id,description,status,version,explanation,"
-            "approved_by,approved_at,exported_at) VALUES('refund-draft',?,'refund-source',"
-            "'供应商退款','exported',2,'虚构退款','local-accountant',"
-            "'2026-10-20T00:00:00+00:00','2026-10-20T00:00:00+00:00')",
-            (book,),
-        )
-        conn.execute(
-            "INSERT INTO draft_lines(draft_id,book_id,ordinal,account_code,debit_cents,credit_cents) "
-            "VALUES('refund-draft',?,1,'1002',40000,0)",
-            (book,),
-        )
-        conn.execute(
-            "INSERT INTO draft_lines(draft_id,book_id,ordinal,account_code,debit_cents,credit_cents) "
-            "VALUES('refund-draft',?,2,'6602.02',0,40000)",
-            (book,),
-        )
+    reviewer = independent_reviewer(accounting, book)
+    prepare_book(accounting, book, reviewer=reviewer)
+    post_signed_draft(
+        accounting,
+        book,
+        reviewer,
+        source_id="refund-source",
+        draft_id="refund-draft",
+        external_id="refund-001",
+        direction="income",
+        amount_cents=40000,
+        description="供应商退款",
+        lines=[("1002", 40000, 0), ("6602.02", 0, 40000)],
+    )
+    close_book(accounting, book, reviewer)
     result = BriefingService(accounting.db, accounting).briefing(LOCAL_ACTOR, book)
     assert result["top_expenses"][0]["amount"] == "-100.00"
 
 
 def test_briefing_tax_payment_is_signed_negative(case):
     accounting, _, book = case
-    prepare_book(accounting, book)
+    reviewer = independent_reviewer(accounting, book)
     with accounting.db.transaction(write=True, actor=LOCAL_ACTOR) as conn:
         conn.execute(
             "INSERT INTO accounts(book_id,code,name,category,normal_balance) "
             "VALUES(?,'2221','应交税费','liability','credit')",
             (book,),
         )
-    close_book(accounting, book)
-    with accounting.db.transaction(write=True, actor=LOCAL_ACTOR) as conn:
-        conn.execute(
-            "INSERT INTO sources(id,book_id,external_id,source_name,date,description,"
-            "counterparty,amount_cents,direction,evidence_ref,fingerprint,source_kind) "
-            "VALUES('tax-source',?,'tax-001','虚构缴税','2026-10-20',"
-            "'缴纳增值税','税务机关',10000,'expense','完税凭证','%s','bank')"
-            % ("b" * 64),
-            (book,),
-        )
-        conn.execute(
-            "INSERT INTO drafts(id,book_id,source_id,description,status,version,explanation,"
-            "approved_by,approved_at,exported_at) VALUES('tax-draft',?,'tax-source',"
-            "'缴纳增值税','exported',2,'虚构缴税','local-accountant',"
-            "'2026-10-20T00:00:00+00:00','2026-10-20T00:00:00+00:00')",
-            (book,),
-        )
-        conn.execute(
-            "INSERT INTO draft_lines(draft_id,book_id,ordinal,account_code,debit_cents,credit_cents) "
-            "VALUES('tax-draft',?,1,'2221',10000,0)",
-            (book,),
-        )
-        conn.execute(
-            "INSERT INTO draft_lines(draft_id,book_id,ordinal,account_code,debit_cents,credit_cents) "
-            "VALUES('tax-draft',?,2,'1002',0,10000)",
-            (book,),
-        )
+    prepare_book(accounting, book, reviewer=reviewer)
+    post_signed_draft(
+        accounting,
+        book,
+        reviewer,
+        source_id="tax-source",
+        draft_id="tax-draft",
+        external_id="tax-001",
+        direction="expense",
+        amount_cents=10000,
+        description="缴纳增值税",
+        lines=[("2221", 10000, 0), ("1002", 0, 10000)],
+    )
+    close_book(accounting, book, reviewer)
     result = BriefingService(accounting.db, accounting).briefing(LOCAL_ACTOR, book)
     assert result["tax"]["change"] == "-100.00"
 

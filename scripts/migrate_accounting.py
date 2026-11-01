@@ -101,7 +101,9 @@ def migrate(url):
     return applied
 
 
-def classify_migrations(current, files):
+def classify_migrations(
+    current, files, *, recorded_compatibility=None, expected_compatibility=None
+):
     """Pure classification so status semantics can be tested without a DB."""
     result = []
     for version, checksum in files:
@@ -109,6 +111,11 @@ def classify_migrations(current, files):
             result.append((version, "缺失"))
         elif current[version] != checksum:
             result.append((version, "校验不符"))
+        elif expected_compatibility is not None and (
+            recorded_compatibility is None
+            or recorded_compatibility.get(version) != expected_compatibility[version]
+        ):
+            result.append((version, "兼容性标签不符"))
         else:
             result.append((version, "已应用"))
     return result
@@ -127,11 +134,27 @@ def status(url):
             if exists
             else {}
         )
-        files = [
-            (int(path.name.split("_", 1)[0]), migration_digest(path))
-            for path in migration_files("postgres")
-        ]
-        return classify_migrations(current, files)
+        paths = migration_files("postgres")
+        files = [(int(path.name.split("_", 1)[0]), migration_digest(path)) for path in paths]
+        compatibility = (
+            {
+                row["version"]: row["compatibility"]
+                for row in conn.execute(
+                    "SELECT version,compatibility FROM accounting.schema_migrations"
+                )
+            }
+            if exists and has_compatibility_column(conn)
+            else {}
+        )
+        expected = {
+            int(path.name.split("_", 1)[0]): migration_compatibility(path) for path in paths
+        }
+        return classify_migrations(
+            current,
+            files,
+            recorded_compatibility=compatibility,
+            expected_compatibility=expected,
+        )
 
 
 def provision_login(url, username, password, *, worker=False):

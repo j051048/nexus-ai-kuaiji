@@ -197,6 +197,30 @@ jobs:
           --suite logical
           --config tmp_test/ak05-ci-config/regression.json
           --out tmp_test/ak05-ci-reports/logical-version
+      - name: Historical compatibility forward repair, exact cases without skips
+        run: |
+          python scripts/test_accounting_postgres_isolated.py --config tmp_test/ak05-ci-config/regression.json nexus_backend/tests/test_historical_compatibility_postgres.py -q --junitxml=tmp_test/ak05-ci-reports/historical-compatibility.xml
+          python - <<'PY'
+          import xml.etree.ElementTree as ET
+          versions = (87, 138, 148, 149, 150)
+          expected = {
+              'test_pg_upgrade_repairs_once_preserving_history_under_two_migrators',
+              'test_pg_strict_status_rejects_label_drift_with_all_migrations_present',
+              'test_pg_reapplying_to_correct_metadata_is_a_true_noop',
+              'test_pg_old_image_cannot_ignore_the_breaking_repair',
+              *[f'test_pg_partial_metadata_drift_is_repaired_without_touching_other_rows[versions{i}]' for i in range(3)],
+              *[f'test_pg_wrong_historical_checksum_aborts_whole_repair[{v}-{c}]' for v in versions for c in ('incremental', 'breaking')],
+              *[f'test_pg_missing_historical_record_aborts_whole_repair[{v}]' for v in versions],
+              *[f'test_pg_repair_is_unavailable_to_runtime_roles[{p}]' for p in ('app', 'worker')],
+          }
+          root = ET.parse('tmp_test/ak05-ci-reports/historical-compatibility.xml').getroot()
+          cases = list(root.iter('testcase'))
+          assert len(cases) == len(expected) == 24
+          assert {c.get('name') for c in cases} == expected
+          assert {c.get('classname') for c in cases} == {'nexus_backend.tests.test_historical_compatibility_postgres'}
+          assert not any(list(root.iter(tag)) for tag in ('skipped', 'failure', 'error'))
+          assert all(not int(n.get(k, '0')) for n in [root, *root.iter('testsuite')] for k in ('skipped', 'failures', 'errors', 'disabled', 'deselected'))
+          PY
       - name: Retain only sanitized gate evidence
         if: always()
         uses: actions/upload-artifact@v4

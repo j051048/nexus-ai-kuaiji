@@ -131,6 +131,7 @@ artifacts/
 ag01-readonly-audit-*/
 ux-audit-venv-*/
 pytest-of-*/
+accounting-schema-*/
 tmp*
 .tmp_build/
 

@@ -1,0 +1,116 @@
+{
+  "status": "passed_local_only",
+  "date": "2026-10-31",
+  "candidate": {
+    "schema": "release-candidate-v1",
+    "head": "2e811d9ebd8020980c0d6475782790fc10440ad6",
+    "source_files": 1654,
+    "source_sha256": "6015b69238e1eedab6c05f976262f2929ef3614f75e92e891d02047101f13f06",
+    "migration_files": 299,
+    "migration_sha256": "24f5cbda5ff79b6c3c56e2f3c89d9997424a591809b23e0c8dadb42ad53413a7"
+  },
+  "repair_versions": [
+    87,
+    138,
+    148,
+    149,
+    150
+  ],
+  "new_forward_migration": 191,
+  "historical_file_count": 298,
+  "historical_files_changed": [],
+  "local_regression": {
+    "passed": 94,
+    "skipped": 0,
+    "junit_sha256": "a050aa68a0bf48e975303e9caa0f43a30b02963798256daf3a278318b7df8d32"
+  },
+  "postgres_access_gate": {
+    "status": "passed",
+    "candidate": {
+      "schema": "release-candidate-v1",
+      "head": "2e811d9ebd8020980c0d6475782790fc10440ad6",
+      "source_files": 1654,
+      "source_sha256": "6015b69238e1eedab6c05f976262f2929ef3614f75e92e891d02047101f13f06",
+      "migration_files": 299,
+      "migration_sha256": "24f5cbda5ff79b6c3c56e2f3c89d9997424a591809b23e0c8dadb42ad53413a7"
+    },
+    "versions": {
+      "16": {
+        "passed": 90,
+        "skipped": 0,
+        "junit_sha256": "d787d2bfe21ddb6ec52fe3323d2205004dd80cbb9e54be9a77c0835400240dd4",
+        "configuration_sha256": "69e0a1016b1cd7eff924cc36a749e41eb050d802dd92386143368ab27fbc1f50"
+      },
+      "17": {
+        "passed": 90,
+        "skipped": 0,
+        "junit_sha256": "00dd2f6b990d9dfbc9a92248ce5f7e3160196ab578888d69a619e72f4df5f576",
+        "configuration_sha256": "f5cc8680aedc7817887439f8c39d73de0d053bf618ba6f0557875a36e2dceeaf"
+      }
+    },
+    "real_model": false,
+    "production": false
+  },
+  "postgres_repair_gate": {
+    "candidate": {
+      "schema": "release-candidate-v1",
+      "head": "2e811d9ebd8020980c0d6475782790fc10440ad6",
+      "source_files": 1654,
+      "source_sha256": "6015b69238e1eedab6c05f976262f2929ef3614f75e92e891d02047101f13f06",
+      "migration_files": 299,
+      "migration_sha256": "24f5cbda5ff79b6c3c56e2f3c89d9997424a591809b23e0c8dadb42ad53413a7"
+    },
+    "status": "passed",
+    "versions": {
+      "16": {
+        "passed": 24,
+        "skipped": 0,
+        "seconds": 2.648,
+        "junit_sha256": "cbf1d6a2d27fad0881d377289cab020e9d93f66e42ccb0f80e9593c8d3eeeb22"
+      },
+      "17": {
+        "passed": 24,
+        "skipped": 0,
+        "seconds": 2.821,
+        "junit_sha256": "e97e822e371ceb146f7a10f1ab26071f469c7dca7262edd38a786dfa558b9fa6"
+      }
+    },
+    "historical_files_checked": 298,
+    "historical_files_changed": []
+  },
+  "local_databases": {
+    "16": {
+      "maximum": 191,
+      "applied_count": 179,
+      "strict_status": "all_applied",
+      "labels": {
+        "87": "breaking",
+        "138": "breaking",
+        "148": "breaking",
+        "149": "breaking",
+        "150": "breaking",
+        "191": "breaking"
+      }
+    },
+    "17": {
+      "maximum": 191,
+      "applied_count": 179,
+      "strict_status": "all_applied",
+      "labels": {
+        "87": "breaking",
+        "138": "breaking",
+        "148": "breaking",
+        "149": "breaking",
+        "150": "breaking",
+        "191": "breaking"
+      }
+    }
+  },
+  "boundaries": {
+    "production_touched": false,
+    "real_models": false,
+    "pushed": false,
+    "committed_by_this_task": false,
+    "remote_ci_executed": false
+  }
+}
