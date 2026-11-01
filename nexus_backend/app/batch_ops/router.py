@@ -1,6 +1,6 @@
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Query, Request, Response
 
-from .models import CreateMonthlyOpenBatch, RetryBatchRequest
+from .models import BatchItemReason, CreateMonthlyOpenBatch, RetryBatchRequest
 
 
 def build_batch_ops_router(actor_dependency):
@@ -41,6 +41,41 @@ def build_batch_ops_router(actor_dependency):
         batches=Depends(service),
     ):
         return batches.get(current, batch_id)
+
+    @router.post("/{batch_id}/items/{item_id}/cancel")
+    def cancel_item(
+        batch_id: str,
+        item_id: str,
+        payload: BatchItemReason,
+        current=Depends(actor_dependency),
+        batches=Depends(service),
+    ):
+        return batches.cancel_item(current, batch_id, item_id, payload.reason)
+
+    @router.post("/{batch_id}/items/{item_id}/skip")
+    def skip_item(
+        batch_id: str,
+        item_id: str,
+        payload: BatchItemReason,
+        current=Depends(actor_dependency),
+        batches=Depends(service),
+    ):
+        return batches.skip_item(current, batch_id, item_id, payload.reason)
+
+    @router.get("/{batch_id}/failures.csv")
+    def failure_csv(
+        batch_id: str,
+        current=Depends(actor_dependency),
+        batches=Depends(service),
+    ):
+        body = batches.failure_csv(current, batch_id)
+        return Response(
+            content=body,
+            media_type="text/csv; charset=utf-8",
+            headers={
+                "Content-Disposition": f'attachment; filename="batch-{batch_id}-failures.csv"'
+            },
+        )
 
     @router.post("/{batch_id}/retry")
     def retry_batch(

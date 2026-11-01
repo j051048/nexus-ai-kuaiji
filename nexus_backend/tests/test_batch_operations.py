@@ -1,3 +1,6 @@
+import pytest
+
+from app.accounting.domain import AccountingError
 from app.batch_ops.models import CreateMonthlyOpenBatch
 from app.batch_ops.service import BatchOperationsService
 from app.batch_ops.worker import BatchWorker
@@ -66,6 +69,9 @@ def test_monthly_open_batch_is_durable_idempotent_and_retryable(monthly_batch):
     assert all(item["status"] == "succeeded" for item in finished["items"])
     assert all(item["result"]["book_id"] for item in finished["items"])
 
-    retry = service.retry(c.manager, created["id"])
-    assert retry["status"] == "completed"
-    assert retry["succeeded"] == 2
+    # DCP04：没有失败项时重试必须是显式冲突，不能静默重排或复活已终态项。
+    with pytest.raises(AccountingError, match="没有可重试"):
+        service.retry(c.manager, created["id"])
+    finished = service.get(c.manager, created["id"])
+    assert finished["status"] == "completed"
+    assert finished["succeeded"] == 2

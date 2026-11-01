@@ -146,43 +146,232 @@ class BatchOperationsService:
                 raise AccountingError("批量任务不存在或无权访问", 404)
             return self._json(conn, row, True)
 
+    def _batch_row(self, conn, actor, batch_id):
+        row = conn.execute(
+            "SELECT * FROM batch_operations WHERE id=? AND firm_id=?",
+            (batch_id, actor.firm_id),
+        ).fetchone()
+        if not row:
+            raise AccountingError("批量任务不存在或无权访问", 404)
+        return row
+
+    def _item_row(self, conn, batch_id, item_id):
+        row = conn.execute(
+            "SELECT * FROM batch_operation_items WHERE id=? AND batch_id=?",
+            (item_id, batch_id),
+        ).fetchone()
+        if not row:
+            raise AccountingError("批量明细不存在或无权访问", 404)
+        return row
+
+    def _recount(self, conn, batch_id, stamp):
+        counts = conn.execute(
+            "SELECT COUNT(*) FILTER(WHERE status='succeeded') succeeded,"
+            "COUNT(*) FILTER(WHERE status='skipped') skipped,"
+            "COUNT(*) FILTER(WHERE status='failed') failed,"
+            "COUNT(*) FILTER(WHERE status='cancelled') cancelled,"
+            "COUNT(*) FILTER(WHERE status IN('queued','retry_wait')) pending,"
+            "COUNT(*) FILTER(WHERE status='running') running "
+            "FROM batch_operation_items WHERE batch_id=?",
+            (batch_id,),
+        ).fetchone()
+        state = (
+            "running"
+            if counts["running"]
+            else "queued"
+            if counts["pending"]
+            else "attention"
+            if counts["failed"]
+            else "completed"
+        )
+        conn.execute(
+            "UPDATE batch_operations SET succeeded=?,skipped=?,failed=?,cancelled=?,status=?,"
+            "updated_at=?,finished_at=CASE WHEN ? IN('completed','attention') THEN ? ELSE NULL END "
+            "WHERE id=?",
+            (
+                counts["succeeded"],
+                counts["skipped"],
+                counts["failed"],
+                counts["cancelled"],
+                state,
+                stamp,
+                state,
+                stamp,
+                batch_id,
+            ),
+        )
+        return state
+
     def retry(self, actor, batch_id, request=None):
+        reason = (getattr(request, "reason", "") or "").strip() or "重试失败的客户开期"
         with self.db.transaction(write=True, actor=actor) as conn:
             self.access.require_manager(conn, actor)
-            row = conn.execute(
-                "SELECT * FROM batch_operations WHERE id=? AND firm_id=?",
-                (batch_id, actor.firm_id),
-            ).fetchone()
-            if not row:
-                raise AccountingError("批量任务不存在或无权访问", 404)
+            self._batch_row(conn, actor, batch_id)
             stamp = timestamp()
+            # 只重排失败项；attempt 是已经消耗的尝试历史，不能被重试清零。
             changed = conn.execute(
-                "UPDATE batch_operation_items SET status='queued',attempt=0,available_at=?,"
+                "UPDATE batch_operation_items SET status='queued',available_at=?,"
                 "lease_token=NULL,lease_until=NULL,worker_id=NULL,error_code='',error_detail='',"
-                "finished_at=NULL,updated_at=? WHERE batch_id=? AND status IN('failed','cancelled')",
+                "finished_at=NULL,updated_at=?,retry_count=retry_count+1 "
+                "WHERE batch_id=? AND status='failed'",
                 (stamp, stamp, batch_id),
             ).rowcount
-            if changed:
-                conn.execute(
-                    "UPDATE batch_operations SET status='queued',finished_at=NULL,updated_at=? "
-                    "WHERE id=?",
-                    (stamp, batch_id),
-                )
-                conn.execute(
-                    "INSERT INTO audit_events(firm_id,user_id,action,object_id,details,created_at) "
-                    "VALUES(?,?,'batch.retry',?,?,?)",
-                    (
-                        actor.firm_id,
-                        actor.user_id,
-                        batch_id,
-                        json.dumps({"items": changed}, ensure_ascii=False),
-                        stamp,
-                    ),
-                )
+            if not changed:
+                raise AccountingError("没有可重试的失败项；取消或跳过项需要重新发起", 409)
+            conn.execute(
+                "UPDATE batch_operations SET status='queued',finished_at=NULL,updated_at=? WHERE id=?",
+                (stamp, batch_id),
+            )
+            conn.execute(
+                "INSERT INTO audit_events(firm_id,user_id,action,object_id,details,created_at) "
+                "VALUES(?,?,'batch.retry',?,?,?)",
+                (
+                    actor.firm_id,
+                    actor.user_id,
+                    batch_id,
+                    json.dumps({"items": changed, "reason": reason}, ensure_ascii=False),
+                    stamp,
+                ),
+            )
             fresh = conn.execute(
                 "SELECT * FROM batch_operations WHERE id=?", (batch_id,)
             ).fetchone()
             return self._json(conn, fresh, True)
+
+    def cancel_item(self, actor, batch_id, item_id, reason):
+        reason = (reason or "").strip()
+        if not 3 <= len(reason) <= 1000:
+            raise AccountingError("取消原因需 3-1000 字", 422)
+        with self.db.transaction(write=True, actor=actor) as conn:
+            self.access.require_manager(conn, actor)
+            self._batch_row(conn, actor, batch_id)
+            item = self._item_row(conn, batch_id, item_id)
+            stamp = timestamp()
+            if item["status"] == "cancelled":
+                return self._item_json(item)
+            if item["status"] in ("succeeded", "failed", "skipped"):
+                raise AccountingError("已完成的任务不能取消", 409)
+            if item["status"] == "running":
+                # 执行中的取消只记录意图；已提交的业务结果不会被改写成“未做”。
+                conn.execute(
+                    "UPDATE batch_operation_items SET cancel_requested_at=?,cancel_reason=?,"
+                    "updated_at=? WHERE id=? AND status='running' AND lease_token=?",
+                    (stamp, reason, stamp, item_id, item["lease_token"]),
+                )
+            else:
+                conn.execute(
+                    "UPDATE batch_operation_items SET status='cancelled',cancel_reason=?,"
+                    "finished_at=?,lease_token=NULL,lease_until=NULL,worker_id=NULL,updated_at=? "
+                    "WHERE id=? AND status IN('queued','retry_wait')",
+                    (reason, stamp, stamp, item_id),
+                )
+            fresh = self._item_row(conn, batch_id, item_id)
+            if fresh["status"] == "running" and not fresh["cancel_requested_at"]:
+                raise AccountingError("已完成的任务不能取消", 409)
+            self._recount(conn, batch_id, stamp)
+            conn.execute(
+                "INSERT INTO audit_events(firm_id,user_id,action,object_id,details,created_at) "
+                "VALUES(?,?,'batch.item.cancel',?,?,?)",
+                (
+                    actor.firm_id,
+                    actor.user_id,
+                    item_id,
+                    json.dumps(
+                        {"batch_id": batch_id, "reason": reason, "status": fresh["status"]},
+                        ensure_ascii=False,
+                    ),
+                    stamp,
+                ),
+            )
+            return self._item_json(fresh)
+
+    def skip_item(self, actor, batch_id, item_id, reason):
+        reason = (reason or "").strip()
+        if not 3 <= len(reason) <= 1000:
+            raise AccountingError("跳过原因需 3-1000 字", 422)
+        with self.db.transaction(write=True, actor=actor) as conn:
+            self.access.require_manager(conn, actor)
+            self._batch_row(conn, actor, batch_id)
+            item = self._item_row(conn, batch_id, item_id)
+            if item["status"] == "skipped":
+                return self._item_json(item)
+            if item["status"] not in ("queued", "retry_wait"):
+                raise AccountingError("只有排队中的明细可以跳过", 409)
+            stamp = timestamp()
+            conn.execute(
+                "UPDATE batch_operation_items SET status='skipped',skip_reason=?,finished_at=?,"
+                "lease_token=NULL,lease_until=NULL,worker_id=NULL,updated_at=? WHERE id=?",
+                (reason, stamp, stamp, item_id),
+            )
+            self._recount(conn, batch_id, stamp)
+            conn.execute(
+                "INSERT INTO audit_events(firm_id,user_id,action,object_id,details,created_at) "
+                "VALUES(?,?,'batch.item.skip',?,?,?)",
+                (
+                    actor.firm_id,
+                    actor.user_id,
+                    item_id,
+                    json.dumps({"batch_id": batch_id, "reason": reason}, ensure_ascii=False),
+                    stamp,
+                ),
+            )
+            return self._item_json(self._item_row(conn, batch_id, item_id))
+
+    def failure_csv(self, actor, batch_id):
+        with self.db.transaction(actor=actor) as conn:
+            self.access.require_manager(conn, actor)
+            self._batch_row(conn, actor, batch_id)
+            items = conn.execute(
+                "SELECT * FROM batch_operation_items WHERE batch_id=? "
+                "AND status IN('failed','cancelled') ORDER BY sequence_no,id",
+                (batch_id,),
+            ).fetchall()
+        lines = ["序号,企业,状态,尝试次数,重试次数,错误码,错误说明,取消/跳过原因,更新时间"]
+        for item in items:
+            lines.append(
+                ",".join(
+                    _csv_cell(value)
+                    for value in (
+                        item["sequence_no"],
+                        item["company_name"],
+                        item["status"],
+                        item["attempt"],
+                        item["retry_count"],
+                        item["error_code"],
+                        item["error_detail"],
+                        item["cancel_reason"] or item["skip_reason"],
+                        item["updated_at"],
+                    )
+                )
+            )
+        return "\n".join(lines) + "\n"
+
+    def _item_json(self, item):
+        return {
+            **{
+                key: item[key]
+                for key in (
+                    "id",
+                    "batch_id",
+                    "company_id",
+                    "company_name",
+                    "sequence_no",
+                    "status",
+                    "attempt",
+                    "max_attempts",
+                    "retry_count",
+                    "error_code",
+                    "error_detail",
+                    "cancel_requested_at",
+                    "cancel_reason",
+                    "skip_reason",
+                    "created_at",
+                    "updated_at",
+                    "finished_at",
+                )
+            },
+            "cancel_requested": bool(item["cancel_requested_at"]),
+        }
 
     def claim(self, worker_id, lease_seconds=120):
         with self.worker_transaction() as conn:
@@ -237,6 +426,14 @@ class BatchOperationsService:
             error_code = error_code or "max_attempts"
             error_detail = "达到重试上限，已转人工处理"
         with self.worker_transaction() as conn:
+            current = conn.execute(
+                "SELECT status,cancel_requested_at,cancel_reason FROM batch_operation_items "
+                "WHERE id=?",
+                (item["item_id"],),
+            ).fetchone()
+            if current and current["cancel_requested_at"] and status == "retry_wait":
+                status, error_code = "cancelled", "cancelled"
+                error_detail = current["cancel_reason"] or "执行中被取消"
             if self.db.is_postgres:
                 return conn.execute(
                     "SELECT accounting.worker_finish_batch_item(?,?,?,?,?,?,?)",
@@ -272,38 +469,7 @@ class BatchOperationsService:
                 ),
             ).rowcount
             if changed:
-                counts = conn.execute(
-                    "SELECT COUNT(*) FILTER(WHERE status='succeeded') succeeded,"
-                    "COUNT(*) FILTER(WHERE status='skipped') skipped,"
-                    "COUNT(*) FILTER(WHERE status='failed') failed,"
-                    "COUNT(*) FILTER(WHERE status IN('queued','retry_wait')) pending,"
-                    "COUNT(*) FILTER(WHERE status='running') running "
-                    "FROM batch_operation_items WHERE batch_id=?",
-                    (item["batch_id"],),
-                ).fetchone()
-                state = (
-                    "running"
-                    if counts["running"]
-                    else "queued"
-                    if counts["pending"]
-                    else "attention"
-                    if counts["failed"]
-                    else "completed"
-                )
-                conn.execute(
-                    "UPDATE batch_operations SET succeeded=?,skipped=?,failed=?,status=?,updated_at=?,"
-                    "finished_at=CASE WHEN ? IN('completed','attention') THEN ? ELSE NULL END WHERE id=?",
-                    (
-                        counts["succeeded"],
-                        counts["skipped"],
-                        counts["failed"],
-                        state,
-                        stamp,
-                        state,
-                        stamp,
-                        item["batch_id"],
-                    ),
-                )
+                self._recount(conn, item["batch_id"], stamp)
             return bool(changed)
 
     def recover(self):
@@ -356,6 +522,7 @@ class BatchOperationsService:
                 "succeeded",
                 "skipped",
                 "failed",
+                "cancelled",
                 "created_by",
                 "created_at",
                 "updated_at",
@@ -366,9 +533,19 @@ class BatchOperationsService:
         value["request"] = json.loads(row["request_json"])
         value["progress"] = {
             "total": value["total"],
-            "completed": value["succeeded"] + value["skipped"] + value["failed"],
+            "completed": value["succeeded"]
+            + value["skipped"]
+            + value["failed"]
+            + value["cancelled"],
             "percent": (
-                (value["succeeded"] + value["skipped"] + value["failed"]) * 100 // value["total"]
+                (
+                    value["succeeded"]
+                    + value["skipped"]
+                    + value["failed"]
+                    + value["cancelled"]
+                )
+                * 100
+                // value["total"]
                 if value["total"]
                 else 100
             ),
@@ -389,11 +566,16 @@ class BatchOperationsService:
                             "max_attempts",
                             "error_code",
                             "error_detail",
+                            "retry_count",
+                            "cancel_reason",
+                            "skip_reason",
+                            "cancel_requested_at",
                             "created_at",
                             "updated_at",
                             "finished_at",
                         )
                     },
+                    "cancel_requested": bool(item["cancel_requested_at"]),
                     "result": json.loads(item["result_json"] or "{}"),
                 }
                 for item in conn.execute(
@@ -402,3 +584,12 @@ class BatchOperationsService:
                 )
             ]
         return value
+
+
+def _csv_cell(value):
+    text = "" if value is None else str(value)
+    if text[:1] in ("=", "+", "-", "@", "\t", "\r"):
+        text = "'" + text
+    if any(ch in text for ch in (",", '"', "\n", "\r")):
+        return '"' + text.replace('"', '""') + '"'
+    return text

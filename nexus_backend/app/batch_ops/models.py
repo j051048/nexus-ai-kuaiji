@@ -18,3 +18,7 @@ class RetryBatchRequest(BaseModel):
     reason: Annotated[
         str, StringConstraints(strip_whitespace=True, min_length=3, max_length=1000)
     ] = Field(default="重试失败的客户开期")
+
+
+class BatchItemReason(BaseModel):
+    reason: Annotated[str, StringConstraints(strip_whitespace=True, min_length=3, max_length=1000)]

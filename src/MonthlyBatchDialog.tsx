@@ -25,7 +25,14 @@ type BatchItem = {
   id: string;
   company_id: string;
   company_name: string;
-  status: 'queued' | 'running' | 'succeeded' | 'skipped' | 'failed' | 'retry_wait';
+  status:
+    | 'queued'
+    | 'running'
+    | 'succeeded'
+    | 'skipped'
+    | 'failed'
+    | 'retry_wait'
+    | 'cancelled';
   error_detail: string;
   result: BatchRow | null;
 };
@@ -38,6 +45,7 @@ type BatchOperation = {
   succeeded: number;
   skipped: number;
   failed: number;
+  cancelled: number;
   progress: { total: number; completed: number; percent: number };
   items: BatchItem[];
 };
@@ -48,6 +56,7 @@ const itemStatusLabels: Record<BatchItem['status'], string> = {
   succeeded: '已开期',
   skipped: '已存在',
   failed: '待人工处理',
+  cancelled: '已取消',
   retry_wait: '等待重试',
 };
 
@@ -202,6 +211,7 @@ export function MonthlyBatchDialog({
         <div className="batch-result">
           <p role="status" className="batch-summary">
             已开期 {batch.succeeded} 家 · 已存在 {batch.skipped} 家 · 待人工处理 {batch.failed} 家
+            {batch.cancelled > 0 && ` · 已取消 ${batch.cancelled} 家`}
             {' · '}进度 {batch.progress.completed}/{batch.progress.total}
           </p>
           <div
