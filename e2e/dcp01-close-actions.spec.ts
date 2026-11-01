@@ -265,6 +265,14 @@ for (const viewport of [
     await expect(setup.getByRole('heading', { name: '建立银行账户映射', exact: true })).toBeVisible();
     // Configuration is never a substitute for evidence: the panel says so.
     await expect(setup).toContainText('配置本身不会通过检查');
+    // The opening wizard reuses the same close facts and shows who owns the rest.
+    await page
+      .getByText('开账准备（核对模板、科目、子账、银行、期初与岗位分工）', { exact: true })
+      .click();
+    const wizard = page.locator('.setup-wizard');
+    await expect(wizard).toContainText(/开账准备 \d+\/7 项已完成/, { timeout: 30_000 });
+    await expect(wizard.locator('li[data-state="todo"]').first()).toBeVisible();
+    await expect(wizard).toContainText('负责岗位：');
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(
       true,
     );

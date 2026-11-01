@@ -30,6 +30,12 @@ class OnboardingService:
             (actor.firm_id, company_id, period),
         ).fetchone()
 
+    def setup(self, actor, company_id, book_id, period):
+        """Accounting setup wizard; see setup.py for the fact sources."""
+        from .setup import setup_checklist
+
+        return setup_checklist(self, actor, company_id, book_id, period)
+
     def _readiness(self, actor, company_id, period, source_company_id=""):
         checklist = self.admin.onboarding(actor, company_id, period)
         with self.db.transaction(actor=actor) as conn:

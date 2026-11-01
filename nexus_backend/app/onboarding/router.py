@@ -19,6 +19,16 @@ def build_onboarding_router(actor_dependency):
     ):
         return onboarding.preview(current, company_id, period, source_company_id)
 
+    @router.get("/setup")
+    def setup(
+        company_id: str = Query(min_length=1, max_length=100),
+        book_id: str = Query(min_length=1, max_length=100),
+        period: str = Query(pattern=r"^20\d{2}-(0[1-9]|1[0-2])$"),
+        current=Depends(actor_dependency),
+        onboarding=Depends(service),
+    ):
+        return onboarding.setup(current, company_id, book_id, period)
+
     @router.post("/runs", status_code=201)
     def start(
         payload: StartOnboarding,

@@ -4,6 +4,7 @@ import type { Session } from './types';
 import { ManualVoucherReviewPanel } from './ManualVoucherReviewPanel';
 import { LegacyReviewPanel } from './LegacyReviewPanel';
 import { FormalClosePanel } from './FormalClosePanel';
+import { OnboardingSetupWizard } from './OnboardingSetupWizard';
 import {
   FormalBooksRequestGuard,
   formalBooksPath,
@@ -79,6 +80,7 @@ function FormalBooksContent({
 }: FormalBooksWorkbenchProps) {
   const [kind, setKind] = useState<FormalBookKind>('trial_balance');
   const [legacyOpen, setLegacyOpen] = useState(false);
+  const [setupOpen, setSetupOpen] = useState(false);
   const [manualOpen, setManualOpen] = useState(false);
   const [closeOpen, setCloseOpen] = useState(false);
   const [accountId, setAccountId] = useState('');
@@ -329,6 +331,22 @@ function FormalBooksContent({
       <p className="formal-books-boundary">
         余额来自已绑定的正式期初与正式凭证；未审核、未记账草稿不计入余额。查看与下载不会审核或记账。
       </p>
+      {period && companyId && (
+        <details
+          className="review-section"
+          onToggle={(event) => setSetupOpen(event.currentTarget.open)}
+        >
+          <summary>开账准备（核对模板、科目、子账、银行、期初与岗位分工）</summary>
+          {setupOpen && (
+            <OnboardingSetupWizard
+              session={session}
+              companyId={companyId}
+              bookId={bookId}
+              period={period}
+            />
+          )}
+        </details>
+      )}
       <details
         className="review-section"
         onToggle={(event) => setLegacyOpen(event.currentTarget.open)}
