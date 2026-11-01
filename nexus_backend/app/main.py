@@ -93,6 +93,8 @@ from .jobs.worker import QueueWorker
 from .jobs.router import build_queue_router
 from .batch_ops.router import build_batch_ops_router
 from .handoff.router import build_handoff_router
+from .review_packs.router import build_review_packs_router
+from .review_packs.service import ReviewPackService
 from .handoff.service import HandoffService
 from .batch_ops.service import BatchOperationsService
 from .batch_ops.worker import BatchWorker
@@ -450,6 +452,9 @@ def create_app(
                 database, application.state.monthly_batch
             )
             application.state.handoff = HandoffService(database)
+            application.state.review_packs = ReviewPackService(
+                database, application.state.review
+            )
             application.state.firm_cockpit = FirmCockpitService(database, application.state.service)
             application.state.firm_tasks = FirmTasksService(database, application.state.service)
             application.state.firm_observability = FirmObservabilityService(
@@ -1083,6 +1088,7 @@ def create_app(
     app.include_router(build_queue_router(actor))
     app.include_router(build_batch_ops_router(actor))
     app.include_router(build_handoff_router(actor))
+    app.include_router(build_review_packs_router(actor))
     app.include_router(build_cockpit_router(actor))
     app.include_router(build_firm_tasks_router(actor))
     app.include_router(build_observability_router(actor))
