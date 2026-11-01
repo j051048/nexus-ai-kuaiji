@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 from app.accounting.domain import AccountingError
+from app.accounting.invariants import cents_to_money, signed_cents_to_money
 from app.accounting.models import FirmMemberGrant
 from app.b04_close.models import CloseCommand, ClosePreflight
 from app.b04_close.service import CloseService
@@ -458,6 +459,35 @@ def test_periodic_accrual_asset_closing_reports_and_close(business):
         admin(case), run["close"]["id"], CloseCommand(expected_version=1, reason="发布月结")
     )
     assert run["close"]["status"] == "published"
+
+    # DCP03：客户简报只认已发布冻结报表，金额、版本与锁期必须同源。
+    from app.accounting.service import AccountingService
+    from app.monthly.briefing import BriefingService
+
+    briefing = BriefingService(case.db, AccountingService(case.db)).briefing(
+        admin(case), case.book["id"]
+    )
+    assert briefing["client_visible"] is True
+    assert briefing["source"]["state"] == "published"
+    assert briefing["source"]["reason"] == ""
+    assert briefing["source"]["report"]["version"] == report["report"]["version"]
+    assert briefing["source"]["close"]["status"] == "published"
+    content = report["content"]
+    assert briefing["flows"]["income"] == cents_to_money(
+        content["profit_statement"]["revenue_cents"]
+    )
+    assert briefing["flows"]["net"] == signed_cents_to_money(
+        content["profit_statement"]["profit_cents"]
+    )
+    assert briefing["balances"]["receivable"] == signed_cents_to_money(
+        sum(
+            item["amount_cents"]
+            for item in content["balance_sheet"]["items"]
+            if str(item["code"]).startswith(("1122", "1221"))
+        )
+    )
+    assert briefing["source"]["axes"]["internal_close"]["done"] is True
+    assert briefing["source"]["axes"]["tax_filing"]["done"] is False
     with pytest.raises(AccountingError, match="锁期"):
         post_reviewed_manual(
             posting,

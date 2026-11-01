@@ -51,6 +51,9 @@
 | 相邻前端 | `vitest run` 四个 monthly 测试 | 21 passed |
 | 浏览器 | `npx playwright test e2e/monthly-briefing.spec.ts` | 1 passed（2.4m） |
 | 回归 | `e2e/dcp01-close-actions.spec.ts` + 简报 spec | 3 passed（2.9m） |
+| 已发布态 | `pytest nexus_backend/tests/test_b04_pilot.py -k periodic` | 1 passed（含简报已发布断言） |
+
+已发布态的证据在 `test_b04_pilot.py::test_periodic_accrual_asset_closing_reports_and_close` 末尾：真实走完「报表复核 → 月结预检 → 月结复核 → 锁期 → 发布」后，简报返回 `client_visible=true`、`source.state=published`，收入/净利润/应收与冻结报表 `content_json` 逐项相等，`internal_close` 轴已完成、`tax_filing` 轴未完成。
 
 浏览器证据展示的是**未发布态**（该账套只有旧口径锁期、没有报表运行）：徽标与标题都写「历史账期口径：待正式报表发布」，五条轴线逐条列出，页面不出现任何金额控件。截图：
 
@@ -63,6 +66,11 @@
 2. `e2e/monthly-briefing.spec.ts` 原在 `e2e/ui-navigation.ts:90` 超时（`openAccounting` 找不到「会计工作台」）。本包已修：`openAccounting` 先等导航菜单项出现再判断主入口；spec 也同步到当前界面——导航名改为「月度交付」、账簿内简报是嵌入视图（没有「返回账套」）、锁期按钮因「复核人=当前人」的旧快照被禁用故改用同一份已复核快照调用真实 API 完成锁期。
 3. 已补：本地演示身份新增 `reviewer`（示例复核会计 小吴，firm 角色 reviewer + 账套 reviewer），`/api/config` 与右上角切换器可直接选；`nexus_backend/tests/test_demo_reviewer.py` 2 passed，`e2e/demo-reviewer.spec.ts` 1 passed。这样后续夹具不必再临时插复核人。
 4. 三个符号用例（冲回 / 退款 / 缴税）原先直接插入 `status='exported'` 的草稿，新版 `rr_draft_insert_guard` 已禁止「新建草稿自带审批」，因此改为在已发布报表投影层验证符号原样传递；草稿层的符号计算由 `reports` 的既有测试覆盖。
+
+## 5.1 本包顺带修正
+
+- 简报的锁期前置从「只看 `periods.status`」改为「月结运行已锁定/发布，或旧流程期间已关闭」：b04 正式月结不会写 `periods.status`，旧判据会让已锁期的账套看不了简报。
+- `e2e/dcp03-published-briefing.spec.ts` 曾尝试用 API 串完整链，但报表生成要求「已绑定冻结期初」，需要完整的开账链（属 DCP02 完整版范围），已删除避免留下红色用例；已发布态改由上面的 pilot 集成测试证明。
 
 ## 6. 判定
 

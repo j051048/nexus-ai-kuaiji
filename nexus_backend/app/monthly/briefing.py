@@ -115,15 +115,13 @@ class BriefingService:
             company_role = self.access.company_role(conn, actor, book["company_id"])
             if not firm_role and company_role not in {"owner", "admin", "finance"}:
                 raise AccountingError("月度财税简报只向事务所与企业管理者开放", 403)
-            status = conn.execute(
-                "SELECT status FROM periods WHERE book_id=?", (book_id,)
-            ).fetchone()
-            if not status or status["status"] != "closed":
-                raise AccountingError("月结锁期后才能查看月度财税简报", 409)
             company = conn.execute(
                 "SELECT name FROM companies WHERE id=?", (book["company_id"],)
             ).fetchone()
             source = resolve_source(conn, book, book["period"], self.db.dialect)
+            # 锁期证据来自已锁定/已发布的月结运行或旧流程的期间关闭，不再只看 periods。
+            if not source["axes"]["internal_close"]["done"]:
+                raise AccountingError("月结锁期后才能查看月度财税简报", 409)
             if source["state"] in {"pending_report", "inconsistent"}:
                 return self._pending(source, book, company)
             if source["state"] == "published":
