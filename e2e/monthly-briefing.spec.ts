@@ -47,19 +47,23 @@ test('月度财税简报：锁期前给出提示，锁期后交付一页纸概�
   });
   await matrix.getByRole('button', { name: '查看本月财税简报', exact: true }).click();
   await expect(page.getByRole('heading', { name: /财税简报$/ })).toBeVisible();
-  await expect(page.getByText('本期已锁期', { exact: true })).toBeVisible();
-  await expect(page.getByText('银行流入', { exact: true })).toBeVisible();
-  await expect(page.getByText('本期没有已审核的费用凭证。', { exact: true })).toBeVisible();
-  await expect(page.getByText('本期未提供人工确认的期末参考余额', { exact: false })).toBeVisible();
-  await expect(page.getByText('当前没有需要提示的风险项。', { exact: true })).toBeVisible();
+  // DCP03：只有已发布冻结报表才是客户可见成果；旧口径锁期不再展示金额。
+  await expect(page.getByText('历史账期口径：待正式报表发布', { exact: true })).toBeVisible();
+  await expect(
+    page.getByText('客户可见口径只认已发布且与锁期一致的冻结报表；未发布时这里没有金额。'),
+  ).toBeVisible();
+  await expect(page.getByText('内部记账与锁期', { exact: true })).toBeVisible();
+  await expect(page.getByText('外部软件回执', { exact: true })).toBeVisible();
+  await expect(page.getByText('银行流入', { exact: true })).toHaveCount(0);
   await page.screenshot({ path: 'artifacts/monthly-briefing.png', fullPage: true });
 
   const briefing = await (
     await request.get(`/api/monthly/books/${book.id}/briefing`, { headers })
   ).json();
   expect(briefing.book.period_status).toBe('closed');
-  expect(briefing.flows).toMatchObject({ income: '0.00', expense: '0.00', net: '0.00' });
-  expect(briefing.tax.change).toBe('0.00');
+  expect(briefing.client_visible).toBe(false);
+  expect(briefing.source.state).toBe('legacy_close');
+  expect(briefing.source.report).toBeNull();
 
   await page.goto('/');
   const direct = page.getByLabel('本月财税简报入口');

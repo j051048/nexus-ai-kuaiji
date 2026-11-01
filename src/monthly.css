@@ -862,3 +862,55 @@ button.monthly-progress-cell:hover {
 .batch-preview-row.blocked {
   background: #fbefea;
 }
+
+.briefing-pending {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface-muted);
+}
+
+.briefing-axes {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.briefing-axes > div {
+  display: grid;
+  grid-template-columns: minmax(120px, 180px) 1fr;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-top: 1px solid var(--line);
+}
+
+.briefing-axes > div:first-child {
+  border-top: 0;
+}
+
+.briefing-axes dt {
+  font-weight: 600;
+}
+
+.briefing-axes dd {
+  margin: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.briefing-axes dd small {
+  color: var(--text-muted);
+}
+
+.briefing-axes > div[data-done='false'] dd {
+  color: var(--warning-text, #8a5a00);
+}
+
+@media (max-width: 640px) {
+  .briefing-axes > div {
+    grid-template-columns: 1fr;
+    gap: var(--space-1);
+  }
+}

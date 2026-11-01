@@ -7,6 +7,18 @@ import type { Session } from './types';
 import './monthly.css';
 import { MonthlyPackagePanel } from './MonthlyPackagePanel';
 
+type BriefingAxis = { done: boolean; evidence: string };
+
+type BriefingSource = {
+  state: string;
+  reason: string;
+  report?: { version: number; content_hash: string; published_at: string } | null;
+  close?: { status: string } | null;
+  axes?: Record<string, BriefingAxis>;
+  axis_labels?: Record<string, string>;
+  axis_bases?: Record<string, string>;
+};
+
 type Briefing = {
   book: {
     id: string;
@@ -16,18 +28,48 @@ type Briefing = {
     company_name: string;
     period_status: string;
   };
-  flows: { income: string; expense: string; net: string; basis: string };
+  flows: { income: string; expense: string; net: string; basis: string } | null;
   top_expenses: { account_code: string; name: string; amount: string }[];
   balances: {
     receivable: string | null;
     payable: string | null;
     basis: string;
   };
-  tax: { change: string; note: string };
+  tax: { change: string | null; note: string };
+  client_visible?: boolean;
+  pending_label?: string;
+  source?: BriefingSource;
   risks: { kind: string; text: string }[];
   notes: string[];
   generated_at: string;
 };
+
+const AXIS_ORDER = ['internal_close', 'external_receipt', 'tax_filing', 'notification', 'client_sign'];
+
+/** 未发布时只说明状态与五条独立轴线，不展示任何金额。 */
+export function BriefingPending({ label, source }: { label: string; source?: BriefingSource }) {
+  return (
+    <section className="briefing-pending" aria-label="简报待发布">
+      <h2>{label || '待会计复核 / 发布'}</h2>
+      <p className="field-help">
+        客户可见口径只认已发布且与锁期一致的冻结报表；未发布时这里没有金额。
+      </p>
+      {source?.axes ? (
+        <dl className="briefing-axes">
+          {AXIS_ORDER.filter((key) => source.axes?.[key]).map((key) => (
+            <div key={key} data-done={source.axes?.[key]?.done ? 'true' : 'false'}>
+              <dt>{source.axis_labels?.[key] ?? key}</dt>
+              <dd>
+                {source.axes?.[key]?.done ? '已完成' : '未完成'}
+                <small>{source.axis_bases?.[key] ?? ''}</small>
+              </dd>
+            </div>
+          ))}
+        </dl>
+      ) : null}
+    </section>
+  );
+}
 
 /** 锁期后的一页纸财税简报：只读聚合，向企业管理者交付月度经营概览。 */
 export function MonthlyBriefing({
@@ -93,7 +135,31 @@ export function MonthlyBriefing({
           <span>{error}</span>
           <span className="field-help">上方月度交付包独立核验，以会计冻结的版本为准。</span>
         </EmptyState>
-      ) : data ? (
+      ) : data && data.client_visible === false ? (
+        <article className="briefing-card">
+          <header className="briefing-heading">
+            <div>
+              <p className="eyebrow">MONTHLY BRIEFING</p>
+              <h1>
+                {data.book.company_name || data.book.name} · {data.book.period} 财税简报
+              </h1>
+              <p className="page-description">
+                本月正式成果尚未发布；草稿、旧期间关闭与人工余额都不能替代正式报表金额。
+              </p>
+            </div>
+            <span className="briefing-badge">
+              <ShieldCheck size={14} />
+              {data.pending_label ?? '待会计复核 / 发布'}
+            </span>
+          </header>
+          <BriefingPending label={data.pending_label ?? '待会计复核 / 发布'} source={data.source} />
+          <footer className="briefing-notes">
+            {data.notes.map((note) => (
+              <p key={note}>{note}</p>
+            ))}
+          </footer>
+        </article>
+      ) : data && data.flows ? (
         <article className="briefing-card">
           <header className="briefing-heading">
             <div>
@@ -163,7 +229,7 @@ export function MonthlyBriefing({
             </div>
             <div>
               <span>应交税费类净变动</span>
-              <strong>{formatMoney(data.tax.change)}</strong>
+              <strong>{data.tax.change === null ? '待发布' : formatMoney(data.tax.change)}</strong>
               <small>{data.tax.note}</small>
             </div>
             <p className="briefing-basis">{data.balances.basis}</p>
