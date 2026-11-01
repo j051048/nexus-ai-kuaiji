@@ -64,13 +64,18 @@ class BriefingService:
                     "account_code": item.get("code", ""),
                     "name": item.get("name", ""),
                     "amount": signed_cents_to_money(int(item.get("amount_cents", 0))),
+                    "cents": int(item.get("amount_cents", 0)),
                 }
                 for item in amounts["expenses"]
-                if int(item.get("amount_cents", 0)) > 0
+                if int(item.get("amount_cents", 0)) != 0
             ),
-            key=lambda row: row["amount"],
+            key=lambda row: abs(row["cents"]),
             reverse=True,
         )[:5]
+        expenses = [
+            {"account_code": row["account_code"], "name": row["name"], "amount": row["amount"]}
+            for row in expenses
+        ]
         risks = []
         if net < 0:
             risks.append({"kind": "profit", "text": "本期利润表为亏损，请关注经营安排"})
@@ -79,8 +84,8 @@ class BriefingService:
             "source": source,
             "client_visible": True,
             "flows": {
-                "income": cents_to_money(flows["income"]),
-                "expense": cents_to_money(flows["expense"]),
+                "income": signed_cents_to_money(flows["income"]),
+                "expense": signed_cents_to_money(flows["expense"]),
                 "net": signed_cents_to_money(net),
                 "basis": "取自已发布冻结报表的本期利润表合计（营业收入 / 营业成本与费用 / 净利润）",
             },
@@ -235,8 +240,8 @@ class BriefingService:
                 },
                 "risks": risks,
                 "notes": [
+                    "历史账期口径：本账套没有已发布冻结报表，以下金额仅供内部核对，不对客户展示。",
                     "简报只聚合已锁期账套的银行流水、已审核凭证与人工确认的期末参考余额，不包含员工票据原件。",
-                    "金额以分为单位精确计算；净额为正表示银行净流入，负值表示净流出。",
                     "本简报不是财务报表，也不能替代法定申报与客户外部账套过账。",
                 ],
                 "generated_at": now(),

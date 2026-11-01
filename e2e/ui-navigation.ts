@@ -81,6 +81,8 @@ export async function openBusiness(page: Page) {
 export async function openAccounting(page: Page) {
   await openNavigation(page);
   const nav = page.getByRole('navigation', { name: '主导航', exact: true });
+  // 身份尚未返回时导航壳可能是空的：先等真实菜单项出现，再决定主入口。
+  await expect(nav.getByRole('button').first()).toBeVisible({ timeout: 30_000 });
   const primary = nav.getByRole('button', { name: /^(客户账套|客户企业)$/ });
   if (await primary.count()) {
     await primary.click();

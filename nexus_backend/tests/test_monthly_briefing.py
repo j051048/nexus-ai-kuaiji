@@ -306,72 +306,54 @@ def test_briefing_excludes_isolated_duplicate_sources(case):
     assert result["top_expenses"][0]["amount"] == "0.30"
 
 
-def test_briefing_expense_reversal_keeps_negative_sign(case):
-    accounting, _, book = case
-    reviewer = independent_reviewer(accounting, book)
-    prepare_book(accounting, book, reviewer=reviewer)
-    post_signed_draft(
-        accounting,
-        book,
-        reviewer,
-        source_id="reversal-source",
-        draft_id="reversal-draft",
-        external_id="reversal-001",
-        direction="expense",
-        amount_cents=40000,
-        description="费用冲回",
-        lines=[("1002", 40000, 0), ("6602.02", 0, 40000)],
+def _published(book, **amounts):
+    """简报只做投影：金额与符号原样来自已发布冻结报表，不再从草稿重算。"""
+    service = BriefingService.__new__(BriefingService)
+    source = {
+        "state": "published",
+        "report": {"version": 3, "content_hash": "d" * 64},
+        "amounts": {
+            "flows": {"income": 0, "expense": 0, "net": 0},
+            "receivable": 0,
+            "payable": 0,
+            "tax": 0,
+            "expenses": [],
+            **amounts,
+        },
+    }
+    return service._published(
+        source,
+        {"id": book, "name": "客户", "period": "2026-10", "company_id": "c"},
+        {"name": "客户有限公司"},
     )
-    close_book(accounting, book, reviewer)
-    result = BriefingService(accounting.db, accounting).briefing(LOCAL_ACTOR, book)
-    assert result["top_expenses"][0]["amount"] == "-100.00"
+
+
+def test_briefing_expense_reversal_keeps_negative_sign(case):
+    _, _, book = case
+    result = _published(
+        book,
+        flows={"income": 30000, "expense": -10000, "net": 30000},
+        expenses=[{"code": "6602.02", "name": "办公费", "amount_cents": -10000}],
+    )
+    assert result["flows"]["expense"] == "-100.00"
+    # 冲回行不再被当成零或正数：负数金额同样进前五大费用。
+    assert [row["amount"] for row in result["top_expenses"]] == ["-100.00"]
 
 
 def test_briefing_refund_keeps_negative_sign(case):
-    accounting, _, book = case
-    reviewer = independent_reviewer(accounting, book)
-    prepare_book(accounting, book, reviewer=reviewer)
-    post_signed_draft(
-        accounting,
+    _, _, book = case
+    result = _published(
         book,
-        reviewer,
-        source_id="refund-source",
-        draft_id="refund-draft",
-        external_id="refund-001",
-        direction="income",
-        amount_cents=40000,
-        description="供应商退款",
-        lines=[("1002", 40000, 0), ("6602.02", 0, 40000)],
+        flows={"income": -20000, "expense": 0, "net": -20000},
+        expenses=[{"code": "6602.02", "name": "办公费", "amount_cents": -20000}],
     )
-    close_book(accounting, book, reviewer)
-    result = BriefingService(accounting.db, accounting).briefing(LOCAL_ACTOR, book)
-    assert result["top_expenses"][0]["amount"] == "-100.00"
+    assert result["flows"]["income"] == "-200.00"
+    assert result["flows"]["net"] == "-200.00"
 
 
 def test_briefing_tax_payment_is_signed_negative(case):
-    accounting, _, book = case
-    reviewer = independent_reviewer(accounting, book)
-    with accounting.db.transaction(write=True, actor=LOCAL_ACTOR) as conn:
-        conn.execute(
-            "INSERT INTO accounts(book_id,code,name,category,normal_balance) "
-            "VALUES(?,'2221','应交税费','liability','credit')",
-            (book,),
-        )
-    prepare_book(accounting, book, reviewer=reviewer)
-    post_signed_draft(
-        accounting,
-        book,
-        reviewer,
-        source_id="tax-source",
-        draft_id="tax-draft",
-        external_id="tax-001",
-        direction="expense",
-        amount_cents=10000,
-        description="缴纳增值税",
-        lines=[("2221", 10000, 0), ("1002", 0, 10000)],
-    )
-    close_book(accounting, book, reviewer)
-    result = BriefingService(accounting.db, accounting).briefing(LOCAL_ACTOR, book)
+    _, _, book = case
+    result = _published(book, tax=-10000)
     assert result["tax"]["change"] == "-100.00"
 
 

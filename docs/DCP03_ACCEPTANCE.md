@@ -49,12 +49,20 @@
 | 类型 | `npx tsc --noEmit` | 无输出 |
 | 组件 | `vitest run src/monthly-briefing-pending.render.test.ts` | 2 passed |
 | 相邻前端 | `vitest run` 四个 monthly 测试 | 21 passed |
+| 浏览器 | `npx playwright test e2e/monthly-briefing.spec.ts` | 1 passed（2.4m） |
+| 回归 | `e2e/dcp01-close-actions.spec.ts` + 简报 spec | 3 passed（2.9m） |
+
+浏览器证据展示的是**未发布态**（该账套只有旧口径锁期、没有报表运行）：徽标与标题都写「历史账期口径：待正式报表发布」，五条轴线逐条列出，页面不出现任何金额控件。截图：
+
+- `artifacts/monthly-briefing.png`（1280×1908，桌面）
+- `artifacts/monthly-briefing-mobile.png`（390×2662，移动，单列无横向溢出）
 
 ## 5. 基线缺陷（既有，与本刀无关，已复现）
 
 1. `nexus_backend/tests/test_monthly_briefing.py` 在 HEAD 上 **8/8 全红**：`app/accounting/review_policy.py:213` 抛「制单人不能独立复核自己创建的版本」，夹具里只有 `LOCAL_ACTOR` 一个复核人。根因与 DCP01 发现的访问策略回归同源——本地缺少第二个事务所复核人。
-2. `e2e/monthly-briefing.spec.ts` 在 `e2e/ui-navigation.ts:90` 超时（`openAccounting` 找不到「会计工作台」），发生在打开简报之前的导航阶段，同样属于既有回归，需先补齐第二个复核人/修正导航夹具才能取得 DCP03 的浏览器证据。
+2. `e2e/monthly-briefing.spec.ts` 原在 `e2e/ui-navigation.ts:90` 超时（`openAccounting` 找不到「会计工作台」）。本包已修：`openAccounting` 先等导航菜单项出现再判断主入口；spec 也同步到当前界面——导航名改为「月度交付」、账簿内简报是嵌入视图（没有「返回账套」）、锁期按钮因「复核人=当前人」的旧快照被禁用故改用同一份已复核快照调用真实 API 完成锁期。
+3. 三个符号用例（冲回 / 退款 / 缴税）原先直接插入 `status='exported'` 的草稿，新版 `rr_draft_insert_guard` 已禁止「新建草稿自带审批」，因此改为在已发布报表投影层验证符号原样传递；草稿层的符号计算由 `reports` 的既有测试覆盖。
 
 ## 6. 判定
 
-契约与「未发布不展示金额」已落地并可测；**浏览器端未发布态已实现但未取得通过证据**（被第 5 节的既有回归挡住）。已发布态的桌面/手机证据、修订版本与旧链接行为留待下一刀（需要把正式报表发布链接进 e2e 夹具）。
+契约、「未发布不展示金额」与未发布态的桌面/手机浏览器证据均已落地；DCP01 回归集同时通过。仍缺**已发布态**的浏览器证据与修订版本/旧链接行为，留待下一刀（需要把正式报表发布与交付包链接进 e2e 夹具，且要先解决第 5 节第 1 条的第二个复核人夹具）。
