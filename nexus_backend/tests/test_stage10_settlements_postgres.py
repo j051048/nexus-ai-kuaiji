@@ -2,6 +2,7 @@ from uuid import uuid4
 import json
 import pytest
 from app.accounting.models import ApprovalRequest, DraftUpdate, ExportRequest
+from app.accounting.domain import AccountingError
 from app.ledgers.models import EntityCreate
 from app.ledgers.service import LedgersService
 from app.settlements.models import OpenItemCreate, AllocationPreview, AllocationConfirm, AllocationReverse
@@ -43,7 +44,9 @@ def test_pg_native_review_clearance_and_frozen_reversal(pg_ai):
         assert not conn.execute("SELECT accounting.settlement_bank_clearance_valid(?,?)",(c.book["id"],bank["id"])).fetchone()[0]
     clearance=service.clearance(c.actors["accountant"],c.book["id"],bank["id"])
     changed=c.ledger.update_draft(c.actors["accountant"],c.book["id"],bank["draft_id"],DraftUpdate(expected_version=clearance["draft_version"],description=clearance["description"],lines=clearance["lines"],correction_reason="核销应付，不再重复费用"))
-    c.ledger.approve(c.actors["accountant"],c.book["id"],bank["draft_id"],ApprovalRequest(expected_version=changed["version"]))
+    with pytest.raises(AccountingError):
+        c.ledger.approve(c.actors["accountant"],c.book["id"],bank["draft_id"],ApprovalRequest(expected_version=changed["version"]))
+    c.ledger.approve(c.manager,c.book["id"],bank["draft_id"],ApprovalRequest(expected_version=changed["version"]))
     export=c.ledger.export(c.actors["accountant"],c.book["id"],ExportRequest(draft_ids=[original["draft_id"],bank["draft_id"]],idempotency_key=uuid4().hex))
     assert export["count"]==2
     row=service.overview(c.manager,c.book["id"])["allocations"][0]

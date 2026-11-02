@@ -22,6 +22,7 @@ from test_intelligence_workflow import ai_case, handoff, invoice_document
 from test_queue_workflow import TestClock
 from test_stage8_learning import ready, evaluate_publish
 from test_stage7_proposal_queue import independent_original
+from review_policy_fixtures import independent_reviewer
 
 
 def event(case, ordinal, amount='0.30', counterparty='耗材商店'):
@@ -45,7 +46,8 @@ def seed_sample(case, learning, ordinal, counterparty='耗材商店', corrected=
         lines = [{'account_code':account,'debit':'0.30','credit':'0.00','auxiliary_values':{'counterparty':counterparty} if auxiliaries else {}},
                  {'account_code':'2241','debit':'0.00','credit':'0.30'}]
         draft = case.ledger.update_draft(case.actors['accountant'], case.book['id'], draft['id'], DraftUpdate(expected_version=draft['version'], description='会计依据合同修正分类', lines=lines, correction_reason='合同显示真实用途不同，使用客户科目'))
-    case.ledger.approve(case.actors['accountant'], case.book['id'], draft['id'], ApprovalRequest(expected_version=draft['version']))
+    reviewer = independent_reviewer(case.db, case.actors['accountant'], case.book['id'])
+    case.ledger.approve(reviewer, case.book['id'], draft['id'], ApprovalRequest(expected_version=draft['version']))
     with case.db.transaction(actor=case.actors['accountant']) as conn:
         return conn.execute('SELECT id FROM learning_samples WHERE draft_id=?', (draft['id'],)).fetchone()[0]
 

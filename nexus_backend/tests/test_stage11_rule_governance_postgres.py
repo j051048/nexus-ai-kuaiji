@@ -81,11 +81,11 @@ def test_sql_duplicate_semantics_and_foreign_id_cannot_bypass_python(business_ca
             with c.db.transaction(write=True, actor=c.owner) as conn:
                 if reason == 'Duplicate':
                     new_id = 'duplicate-' + rule['id']
-                    conn.execute("INSERT INTO learning_rules SELECT ?,firm_id,company_id,book_id,period,1,1,'draft',NULL,created_by,created_at,updated_at FROM learning_rules WHERE id=?", (new_id, rule['id']))
+                    conn.execute("INSERT INTO learning_rules SELECT ?,firm_id,company_id,book_id,period,1,1,'draft',NULL,?,created_at,updated_at FROM learning_rules WHERE id=?", (new_id, c.owner.user_id, rule['id']))
                 else:
                     new_id = rule['id']
                     conn.execute('UPDATE learning_rules SET current_version=2,state_version=2 WHERE id=?', (new_id,))
-                conn.execute('INSERT INTO learning_rule_versions(rule_id,book_id,version,definition_json,definition_fingerprint,sample_ids_json,reason,created_by,created_at) SELECT ?,book_id,?, ?,definition_fingerprint,sample_ids_json,reason,created_by,created_at FROM learning_rule_versions WHERE rule_id=? AND version=1', (new_id, 1 if reason == 'Duplicate' else 2, json.dumps(definition, ensure_ascii=False), rule['id']))
+                conn.execute('INSERT INTO learning_rule_versions(rule_id,book_id,version,definition_json,definition_fingerprint,sample_ids_json,reason,created_by,created_at) SELECT ?,book_id,?, ?,definition_fingerprint,sample_ids_json,reason,?,created_at FROM learning_rule_versions WHERE rule_id=? AND version=1', (new_id, 1 if reason == 'Duplicate' else 2, json.dumps(definition, ensure_ascii=False), c.owner.user_id, rule['id']))
     assert another['id'] != positive['id']
 
 
@@ -127,6 +127,8 @@ def test_actual_worker_uses_independently_approved_alias_company_rule_without_mo
     before_calls = c.provider.proposal_calls
     # A genuinely distinct synthetic file avoids reusing the first invoice's OCR.
     c.provider.document = invoice_document(seller_name='耗材供应商简称', invoice_number='RULE-' + uuid4().hex, buyer_tax_id=c.provider.document['buyer_tax_id'])
+    # Freeze this second fixture's independent original, not the first ticket.
+    c.original_text = c.provider.document['pages'][0]['raw_text']
     future = c.business.create(c.actors['employee'], BusinessEventCreate(company_id=c.company['id'], template_id='reimbursement', payload={**event['payload'], 'counterparty': '耗材供应商简称', 'description': '新事项沿用经审核身份规则'}))
     output = io.BytesIO()
     Image.new('RGB', (42, 21), 'blue').save(output, 'PNG')
@@ -135,7 +137,7 @@ def test_actual_worker_uses_independently_approved_alias_company_rule_without_mo
     mapping = handoff(c, future)
     assert c.worker.run_once()
     job = c.queue.proposals.get(c.actors['accountant'], mapping['automatic_job']['id'])
-    assert job['status'] == 'succeeded', job
+    assert job['status'] == 'succeeded', json.dumps(job, ensure_ascii=False)
     assert job['result_rule_id'] == rule['id'] and c.provider.proposal_calls == before_calls
     result = c.ledger.get_draft(c.actors['accountant'], book, mapping['draft_id'])
     assert result['status'] == 'draft' and result['lines'][0]['account_code'] == '6602.99'

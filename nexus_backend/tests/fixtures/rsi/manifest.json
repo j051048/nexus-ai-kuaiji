@@ -1,0 +1,84 @@
+{
+  "schema_version": "ocr-replay-v1",
+  "dataset_id": "rsi-h01-derived-synthetic-contract-demo",
+  "dataset_version": "2026-11-02.1",
+  "data_nature": "synthetic",
+  "firms": [
+    {
+      "firm_id": "firm-a",
+      "company_id": "company-a",
+      "ledger_id": "ledger-a",
+      "book_id": "book-a",
+      "period": "2026-10"
+    },
+    {
+      "firm_id": "firm-b",
+      "company_id": "company-b",
+      "ledger_id": "ledger-b",
+      "book_id": "book-b",
+      "period": "2026-10"
+    }
+  ],
+  "samples": [
+    {
+      "sample_id": "A1",
+      "firm_id": "firm-a",
+      "company_id": "company-a",
+      "ledger_id": "ledger-a",
+      "book_id": "book-a",
+      "period": "2026-10",
+      "category": "standard",
+      "split": "dev",
+      "source_hash": "ed009b7fcaba641c9c3387066a617b1901f09e46b681f9c370bbe06646ced8bf",
+      "ocr_path": "firm_a/a1.ocr.json",
+      "gold_path": "firm_a/a1.gold.json",
+      "ocr_sha256": "ed009b7fcaba641c9c3387066a617b1901f09e46b681f9c370bbe06646ced8bf",
+      "gold_sha256": "a2267dc01d65cb25eea9ff93ba6f4c8e31c6228c196412c8992667f984b0a852"
+    },
+    {
+      "sample_id": "A2",
+      "firm_id": "firm-a",
+      "company_id": "company-a",
+      "ledger_id": "ledger-a",
+      "book_id": "book-a",
+      "period": "2026-10",
+      "category": "multi_page",
+      "split": "validation",
+      "source_hash": "94cedb4d846334f0ea9fa3c2f70d26f878a2304e3c4d229463f7e1ba45ea0e26",
+      "ocr_path": "firm_a/a2.ocr.json",
+      "gold_path": "firm_a/a2.gold.json",
+      "ocr_sha256": "94cedb4d846334f0ea9fa3c2f70d26f878a2304e3c4d229463f7e1ba45ea0e26",
+      "gold_sha256": "8c7e60a5cc0e660d42dcbf4f4f5b828ab12a13c878a87ae5f0f19bb96b45a4d2"
+    },
+    {
+      "sample_id": "B1",
+      "firm_id": "firm-b",
+      "company_id": "company-b",
+      "ledger_id": "ledger-b",
+      "book_id": "book-b",
+      "period": "2026-10",
+      "category": "unsupported_multi_invoice",
+      "split": "validation",
+      "source_hash": "c9a7d0a6306820dcc52a3c05116d10c310ea0e5a7a1dbb614ace788a576cbc82",
+      "ocr_path": "firm_b/b1.ocr.json",
+      "gold_path": "firm_b/b1.gold.json",
+      "ocr_sha256": "c9a7d0a6306820dcc52a3c05116d10c310ea0e5a7a1dbb614ace788a576cbc82",
+      "gold_sha256": "2c35c7040d90923f6d731614ed32ea5b6e8b97ba3a49037829672f0944974e96"
+    },
+    {
+      "sample_id": "A3",
+      "firm_id": "firm-a",
+      "company_id": "company-a",
+      "ledger_id": "ledger-a",
+      "book_id": "book-a",
+      "period": "2026-10",
+      "category": "standard_no_leading_zero",
+      "split": "dev",
+      "source_hash": "6ec128d7bd5a1cc14fbb3baee7858330d9ecc8592698277ffde5ef9529848140",
+      "ocr_path": "firm_a/a3.ocr.json",
+      "gold_path": "firm_a/a3.gold.json",
+      "ocr_sha256": "6ec128d7bd5a1cc14fbb3baee7858330d9ecc8592698277ffde5ef9529848140",
+      "gold_sha256": "5d74e0b844017f0e5bcdb3489dbaea6d42b7bb0ee5c3d07e1f832a07bafb5b4a"
+    }
+  ]
+}

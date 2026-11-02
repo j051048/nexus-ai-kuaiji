@@ -68,7 +68,9 @@ def test_full_allocated_bank_clears_reviewed_payable_then_exports_without_repeat
         c.ledger.approve(c.actors["accountant"],c.book["id"],bank["draft_id"],ApprovalRequest(expected_version=bank_draft["version"]))
     changed=c.ledger.update_draft(c.actors["accountant"],c.book["id"],bank["draft_id"],DraftUpdate(expected_version=bank_draft["version"],description=clearance["description"],lines=clearance["lines"],correction_reason="按核销结果清偿应付款"))
     assert not changed["issues"]
-    c.ledger.approve(c.actors["accountant"],c.book["id"],bank["draft_id"],ApprovalRequest(expected_version=changed["version"]))
+    with pytest.raises(AccountingError):
+        c.ledger.approve(c.actors["accountant"],c.book["id"],bank["draft_id"],ApprovalRequest(expected_version=changed["version"]))
+    c.ledger.approve(c.manager,c.book["id"],bank["draft_id"],ApprovalRequest(expected_version=changed["version"]))
     result=c.ledger.export(c.actors["accountant"],c.book["id"],ExportRequest(draft_ids=[original["draft_id"],bank["draft_id"]],idempotency_key=uuid4().hex))
     assert result["count"]==2
 

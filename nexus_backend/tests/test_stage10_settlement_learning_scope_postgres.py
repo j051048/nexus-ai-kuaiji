@@ -18,7 +18,10 @@ def cleared(c):
     c.ledger.approve(c.actors["accountant"],c.book["id"],d["id"],ApprovalRequest(expected_version=d["version"]))
     value=service.clearance(c.actors["accountant"],c.book["id"],bank["id"])
     d=c.ledger.update_draft(c.actors["accountant"],c.book["id"],bank["draft_id"],DraftUpdate(expected_version=value["draft_version"],description=value["description"],lines=value["lines"],correction_reason="核销的清偿不推广到普通分类"))
-    c.ledger.approve(c.actors["accountant"],c.book["id"],d["id"],ApprovalRequest(expected_version=d["version"]))
+    # Known independent fixture actor; reviewer RLS must not enumerate all users.
+    reviewer=c.manager
+    assert reviewer.user_id != c.actors["accountant"].user_id
+    c.ledger.approve(reviewer,c.book["id"],d["id"],ApprovalRequest(expected_version=d["version"]))
     learning=LearningService(c.db)
     with c.db.transaction(actor=c.actors["accountant"]) as conn:
         sample=dict(conn.execute("SELECT * FROM learning_samples WHERE draft_id=?",(d["id"],)).fetchone())

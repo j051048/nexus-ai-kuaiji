@@ -14,6 +14,7 @@ from app.learning.service import LearningService
 from test_business import business, approved, handoff
 from test_catalog import case
 from app.accounting.seed import LOCAL_ACTOR
+from review_policy_fixtures import independent_reviewer
 
 
 def bank_sample(ledger, learning, book, actor, external="bank-one", counterparty="供应商甲", amount="113.00", corrected=True, code="6602.99"):
@@ -26,7 +27,8 @@ def bank_sample(ledger, learning, book, actor, external="bank-one", counterparty
     if corrected:
         lines = [{**line, "account_code": code if line["account_code"] != "1002" else "1002"} for line in draft["lines"]]
         draft = ledger.update_draft(actor, book, draft_id, DraftUpdate(expected_version=draft["version"], description="会计核实为其他管理费用", lines=lines, correction_reason="合同用途与原办公分类不同"))
-    ledger.approve(actor, book, draft_id, ApprovalRequest(expected_version=draft["version"]))
+    reviewer = independent_reviewer(ledger.db, actor, book)
+    ledger.approve(reviewer, book, draft_id, ApprovalRequest(expected_version=draft["version"]))
     with ledger.db.transaction(actor=actor) as conn:
         return dict(conn.execute("SELECT * FROM learning_samples WHERE draft_id=?", (draft_id,)).fetchone())
 

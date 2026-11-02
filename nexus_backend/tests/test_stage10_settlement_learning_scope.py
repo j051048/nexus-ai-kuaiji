@@ -10,6 +10,7 @@ from app.learning.service import LearningService,encode
 from test_business import business
 from test_stage10_settlements import setup,allocate
 from test_stage8_learning import bank_sample
+from review_policy_fixtures import independent_reviewer
 
 
 def reviewed_clearance(c):
@@ -21,7 +22,8 @@ def reviewed_clearance(c):
     c.ledger.approve(c.actors["accountant"],c.book["id"],d["id"],ApprovalRequest(expected_version=d["version"]))
     clearance=service.clearance(c.actors["accountant"],c.book["id"],bank["id"])
     d=c.ledger.update_draft(c.actors["accountant"],c.book["id"],bank["draft_id"],DraftUpdate(expected_version=clearance["draft_version"],description=clearance["description"],lines=clearance["lines"],correction_reason="应付清偿必须绑定本业务与分配"))
-    c.ledger.approve(c.actors["accountant"],c.book["id"],d["id"],ApprovalRequest(expected_version=d["version"]))
+    reviewer=independent_reviewer(c.db,c.actors["accountant"],c.book["id"])
+    c.ledger.approve(reviewer,c.book["id"],d["id"],ApprovalRequest(expected_version=d["version"]))
     with c.db.transaction(actor=c.actors["accountant"]) as conn:
         sample=dict(conn.execute("SELECT * FROM learning_samples WHERE draft_id=?",(d["id"],)).fetchone())
     definition=RuleDefinition(name="禁止推广的应付清偿",source_kind="bank",conditions={"business_type":"daily_cashflow","direction":"expense","payment_status":"paid","category":None,"counterparty":"耗材商店"},lines=[{"account_code":item["clearing_account"],"side":"debit","amount_field":"gross"},{"account_code":"1002","side":"credit","amount_field":"gross"}])

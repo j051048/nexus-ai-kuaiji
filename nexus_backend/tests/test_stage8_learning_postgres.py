@@ -50,6 +50,11 @@ def test_sql_examples_cannot_be_enumerated_by_employee_or_unassigned(learned):
 
 def test_sql_other_company_samples_and_rule_metadata_are_hidden(learned):
     case, learning, _, _, _ = learned
+    # The foreign-company sample also needs its own real independent reviewer.
+    # Do not expand case.reviewer, whose isolation this test is asserting.
+    with case.db.transaction(write=True, actor=case.owner) as conn:
+        conn.execute("INSERT INTO book_access(book_id,firm_id,user_id,role) VALUES(?,?,?,'reviewer')",
+                     (case.other_book, case.owner.firm_id, case.unassigned.user_id))
     other = bank_sample(case.service, learning, case.other_book, case.owner, external="foreign-company", counterparty="秘密客户供应商")
     with case.db.transaction(actor=case.reviewer) as conn:
         assert not conn.execute("SELECT * FROM learning_samples WHERE id=?", (other['id'],)).fetchall()
@@ -156,7 +161,7 @@ def test_sql_sample_insert_rejects_manufactured_negative_snapshot(learned, field
     item['snapshot_json'], item['final_json'] = json.dumps(snapshot), json.dumps(final)
     message = 'Learning identity projection must match current scoped master data' if field == 'counterparty' else 'does not match frozen journal'
     with pytest.raises(case.psycopg.Error, match=message):
-        with case.db.transaction(write=True, actor=case.owner) as conn:
+        with case.db.transaction(write=True, actor=case.reviewer) as conn:
             conn.execute('INSERT INTO learning_samples('+','.join(item)+') VALUES('+','.join('?' for _ in item)+')', list(item.values()))
 
 

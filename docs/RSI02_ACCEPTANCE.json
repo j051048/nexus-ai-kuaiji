@@ -1,0 +1,58 @@
+{
+  "package": "RSI02",
+  "candidate_sha256": "0c9231056d5a3ac82fdf9991498d261ce72469a07484f8cc727bbe9cf9298d3c",
+  "candidate_head": "2c189d37df04e1fbff5024f4aa1f8cd601740801",
+  "rsi_contracts_passed": true,
+  "aggregate_passed": false,
+  "status": "offline_contracts_passed",
+  "phases": {
+    "offline": {
+      "error": 0,
+      "exit_code": 0,
+      "failure": 0,
+      "passed": true,
+      "rsi_contracts": {
+        "error": 0,
+        "failure": 0,
+        "passed": true,
+        "skipped": 0,
+        "tests": 69
+      },
+      "skipped": 0,
+      "tests": 310
+    },
+    "pg16": {
+      "error": 0,
+      "exit_code": 1,
+      "failure": 2,
+      "passed": false,
+      "rsi_contracts": {
+        "error": 0,
+        "failure": 0,
+        "passed": true,
+        "skipped": 0,
+        "tests": 5
+      },
+      "skipped": 0,
+      "tests": 35
+    },
+    "pg17": {
+      "error": 0,
+      "exit_code": 1,
+      "failure": 2,
+      "passed": false,
+      "rsi_contracts": {
+        "error": 0,
+        "failure": 0,
+        "passed": true,
+        "skipped": 0,
+        "tests": 5
+      },
+      "skipped": 0,
+      "tests": 35
+    }
+  },
+  "model_verified": false,
+  "publication_authorized": false,
+  "full_report": "RSI_FINAL_ACCEPTANCE.json"
+}

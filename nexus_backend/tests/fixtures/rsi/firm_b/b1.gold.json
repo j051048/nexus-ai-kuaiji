@@ -1,0 +1,10 @@
+{
+  "sample_id": "B1",
+  "fields": {
+    "invoice_number": "0010"
+  },
+  "evaluation": {
+    "risk_required": true,
+    "abstention_expected": true
+  }
+}
