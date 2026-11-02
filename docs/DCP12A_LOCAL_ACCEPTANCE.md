@@ -87,4 +87,23 @@ Windows 172.24.221.111:25531/25532  connect 成功
 - **196 及其测试不得进入本候选**，也不得由我提交；
 - 推送前比对必须把 196 当成「代码领先于生产」的反例：若它被对方提交，生产台账（当前 195）会落后一版，必须先迁移再上线。
 
+## 八、PG17 实跑：卡在账号供给，不是迁移失败（2026-11-02 09:3x）
+
+本轮按计划在 PG17 上新建 `dcp17_test` 并尝试迁移到 head，结果与证据如下（全部可复现）：
+
+```
+连接（WSL IP）     postgresql://postgres:***@172.24.221.111:25532/dcp17_test  → PostgreSQL 17.11，成功
+运行时守卫          Database._validate_postgres → RuntimeError「生产禁止使用超级用户或 BYPASSRLS 数据库账号」（database.py:519）
+角色状态           accounting_app: rolcanlogin=f ；accounting_system: rolcanlogin=f
+库内对象           dcp17_test 业务表 0 张（迁移从未执行）
+provision-login    migrate_accounting.py provision-login --username accounting_app 5 分钟无输出、挂起（已终止）
+```
+
+结论：PG17 的空库、网络、集群都正常，**唯一缺口是「非超级用户的可登录应用账号」**——运行时会拒绝超级用户（这是正确的安全设计），而 `provision-login` 在当前环境下无法非交互完成。因此 PG17 门禁**仍未跑通**，不能记为通过。
+
+可执行的两条解法（任选其一，需用户确认后执行）：
+
+1. 用 WSL 内 `psql` 以 postgres 手工建 `accounting_app` 登录角色并设密码，再重跑 `migrate`；
+2. 用管理接口在受控窗口内给 `accounting_app` 临时 `LOGIN`，跑完后立即收回。
+
 **本报告不宣布 DCP12-A 通过。**
