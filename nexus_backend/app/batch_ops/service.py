@@ -778,6 +778,18 @@ class BatchOperationsService:
                 "lease_token": token,
             }
 
+    def _cancel_intent(self, item):
+        """Return the cancel reason written by cancel_item, if any."""
+        actor = Actor(item["created_by"], item["firm_id"])
+        with self.db.transaction(actor=actor) as conn:
+            row = conn.execute(
+                "SELECT cancel_requested_at,cancel_reason FROM batch_operation_items WHERE id=?",
+                (item["item_id"],),
+            ).fetchone()
+        if not row or not row["cancel_requested_at"]:
+            return ""
+        return row["cancel_reason"] or "执行中被取消"
+
     def finish(self, item, status, result=None, error_code="", error_detail="", retry_seconds=30):
         if status == "retry_wait" and int(item.get("attempt", 0)) >= int(
             item.get("max_attempts", 0)
@@ -785,12 +797,22 @@ class BatchOperationsService:
             status = "failed"
             error_code = error_code or "max_attempts"
             error_detail = "达到重试上限，已转人工处理"
+        if self.db.is_postgres:
+            # The worker role deliberately has no table grants; read the cancel
+            # intent through the caller's own company scope instead of widening
+            # the worker role.
+            cancel = self._cancel_intent(item)
+            if cancel and status == "retry_wait":
+                status, error_code = "cancelled", "cancelled"
+                error_detail = cancel or "执行中被取消"
         with self.worker_transaction() as conn:
-            current = conn.execute(
-                "SELECT status,cancel_requested_at,cancel_reason FROM batch_operation_items "
-                "WHERE id=?",
-                (item["item_id"],),
-            ).fetchone()
+            current = None
+            if not self.db.is_postgres:
+                current = conn.execute(
+                    "SELECT status,cancel_requested_at,cancel_reason FROM batch_operation_items "
+                    "WHERE id=?",
+                    (item["item_id"],),
+                ).fetchone()
             if current and current["cancel_requested_at"] and status == "retry_wait":
                 status, error_code = "cancelled", "cancelled"
                 error_detail = current["cancel_reason"] or "执行中被取消"
