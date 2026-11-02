@@ -187,9 +187,7 @@ class BatchOperationsService:
     def preview_review_export(self, actor, company_ids, period):
         return self._export_plan(actor, company_ids, period)
 
-    def create_review_export(
-        self, actor, company_ids, period, confirmed_manifest, idempotency_key
-    ):
+    def create_review_export(self, actor, company_ids, period, confirmed_manifest, idempotency_key):
         plan = self._export_plan(actor, company_ids, period)
         if plan["manifest"] != confirmed_manifest:
             raise AccountingError("清单已变化，请重新预览后再确认", 409)
@@ -924,12 +922,7 @@ class BatchOperationsService:
             + value["failed"]
             + value["cancelled"],
             "percent": (
-                (
-                    value["succeeded"]
-                    + value["skipped"]
-                    + value["failed"]
-                    + value["cancelled"]
-                )
+                (value["succeeded"] + value["skipped"] + value["failed"] + value["cancelled"])
                 * 100
                 // value["total"]
                 if value["total"]

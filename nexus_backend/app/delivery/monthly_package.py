@@ -196,7 +196,12 @@ class MonthlyPackageService:
                     ).fetchone()[0]
                 )
             else:
-                eligible = bool(conn.execute("SELECT 1 FROM monthly_delivery_eligible_contacts WHERE book_id=? AND user_id=?", (book["id"], user_id)).fetchone())
+                eligible = bool(
+                    conn.execute(
+                        "SELECT 1 FROM monthly_delivery_eligible_contacts WHERE book_id=? AND user_id=?",
+                        (book["id"], user_id),
+                    ).fetchone()
+                )
         return {
             "user_id": user_id,
             "eligible": eligible,
@@ -455,10 +460,15 @@ class MonthlyPackageService:
         except AccountingError:
             self.access.require_user(conn, actor.user_id)
             if self.db.is_postgres:
-                raw = conn.execute("SELECT accounting.recipient_package_book(?,?)", (package_id, book_id)).fetchone()[0]
+                raw = conn.execute(
+                    "SELECT accounting.recipient_package_book(?,?)", (package_id, book_id)
+                ).fetchone()[0]
                 book = json.loads(raw) if raw else None
             else:
-                found = conn.execute("SELECT b.* FROM books b JOIN monthly_delivery_packages p ON p.book_id=b.id JOIN monthly_delivery_eligible_contacts e ON e.book_id=b.id AND e.user_id=p.contact_user_id WHERE p.id=? AND b.id=? AND b.firm_id=? AND p.contact_user_id=? AND p.created_by<>?", (package_id, book_id, actor.firm_id, actor.user_id, actor.user_id)).fetchone()
+                found = conn.execute(
+                    "SELECT b.* FROM books b JOIN monthly_delivery_packages p ON p.book_id=b.id JOIN monthly_delivery_eligible_contacts e ON e.book_id=b.id AND e.user_id=p.contact_user_id WHERE p.id=? AND b.id=? AND b.firm_id=? AND p.contact_user_id=? AND p.created_by<>?",
+                    (package_id, book_id, actor.firm_id, actor.user_id, actor.user_id),
+                ).fetchone()
                 book = dict(found) if found else None
             if not book:
                 raise AccountingError("月度交付包不存在或无权访问", 404)

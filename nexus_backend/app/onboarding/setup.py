@@ -14,7 +14,9 @@ PERIOD_PATTERN = r"20\d{2}-(?:0[1-9]|1[0-2])"
 
 
 def _ledger_id(conn, book_id):
-    row = conn.execute("SELECT ledger_id FROM ledger_periods WHERE book_id=?", (book_id,)).fetchone()
+    row = conn.execute(
+        "SELECT ledger_id FROM ledger_periods WHERE book_id=?", (book_id,)
+    ).fetchone()
     return row["ledger_id"] if row else None
 
 
@@ -112,7 +114,9 @@ def setup_checklist(service, actor, company_id, book_id, period):
                 "template",
                 "核算模板与适用范围",
                 policy is not None,
-                "已启用准则与纳税人身份，政策覆盖本月。" if policy else "尚未启用覆盖本月的会计政策。",
+                "已启用准则与纳税人身份，政策覆盖本月。"
+                if policy
+                else "尚未启用覆盖本月的会计政策。",
                 "账套会计",
                 "在期初与政策中确认适用准则、纳税人身份与生效期间",
                 "opening",
