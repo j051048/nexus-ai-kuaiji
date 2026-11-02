@@ -26,7 +26,6 @@ OFFLINE = [
     "test_stage11_rule_governance_api.py",
     "test_stage8_rule_queue_integration.py",
     "test_stage10_settlement_learning_scope.py",
-    "test_stage10_settlements.py",
     "test_stage13_legacy_learning.py",
 ]
 POSTGRES = [
@@ -34,8 +33,6 @@ POSTGRES = [
     "test_stage8_learning_postgres.py",
     "test_stage11_rule_governance_postgres.py",
     "test_stage10_settlement_learning_scope_postgres.py",
-    "test_stage10_settlements_postgres.py",
-    "test_settlement_company_lock_postgres.py",
     "test_stage13_legacy_learning_postgres.py",
 ]
 

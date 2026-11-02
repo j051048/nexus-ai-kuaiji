@@ -7,6 +7,7 @@ from app.learning.service import LearningService,encode
 from test_business_postgres import ADMIN_URL,APP_URL,business_case,business_postgres
 from test_intelligence_workflow_postgres import pg_ai
 from test_stage10_settlements_postgres import prepare,preview,confirm
+from review_policy_fixtures import independent_reviewer
 
 pytestmark=pytest.mark.skipif(not ADMIN_URL or not APP_URL,reason="需要专用 PG 管理员及受限 API 测试连接")
 
@@ -18,9 +19,7 @@ def cleared(c):
     c.ledger.approve(c.actors["accountant"],c.book["id"],d["id"],ApprovalRequest(expected_version=d["version"]))
     value=service.clearance(c.actors["accountant"],c.book["id"],bank["id"])
     d=c.ledger.update_draft(c.actors["accountant"],c.book["id"],bank["draft_id"],DraftUpdate(expected_version=value["draft_version"],description=value["description"],lines=value["lines"],correction_reason="核销的清偿不推广到普通分类"))
-    # Known independent fixture actor; reviewer RLS must not enumerate all users.
-    reviewer=c.manager
-    assert reviewer.user_id != c.actors["accountant"].user_id
+    reviewer=independent_reviewer(c.db,c.actors["accountant"],c.book["id"])
     c.ledger.approve(reviewer,c.book["id"],d["id"],ApprovalRequest(expected_version=d["version"]))
     learning=LearningService(c.db)
     with c.db.transaction(actor=c.actors["accountant"]) as conn:
