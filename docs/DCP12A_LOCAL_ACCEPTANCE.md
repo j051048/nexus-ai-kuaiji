@@ -108,4 +108,8 @@ provision-login    migrate_accounting.py provision-login --username accounting_a
 
 追加证据（09:3x）：WSL 内 `ALTER ROLE accounting_app LOGIN PASSWORD …` 成功（`rolcanlogin=t`），但 `migrate_accounting.py migrate --username accounting_app`（app+admin 双 DSN，`PYTHONIOENCODING=utf-8`）仍失败，且只回显「数据库操作失败；请检查管理员连接、账号权限和迁移。连接信息及驱动异常已隐藏。」——错误被刻意脱敏，无法据此定位。故 PG17 迁移仍未成功，下一步需要读 `migrate_accounting.py` 的失败分支（约 30 行）或在受控环境开一次详细日志。
 
+定位结果（11 轮）：`scripts/migrate_accounting.py:301-309` 的失败分支结构是——`ValueError/RuntimeError` 打原始消息，**其余所有异常**统一吞成「数据库操作失败…已隐藏」，退出码 1。我们看到的正是后者，因此真实原因一定是 psycopg 层异常（连接/认证/权限/SQLSTATE），而不是运行时守卫（守卫抛 RuntimeError，会显示原文）。另外此前命令显示 `exit code: 0` 是管道 `| tail` 造成的假象，工具本身返回 1。
+
+结论：要解锁 PG17，需要把这个 `except Exception` 至少保留异常类名与 SQLSTATE（脱敏不等于失明）；这是运维可定位性的真实缺陷，已记入缺口。
+
 **本报告不宣布 DCP12-A 通过。**
