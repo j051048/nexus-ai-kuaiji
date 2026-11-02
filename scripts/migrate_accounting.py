@@ -8,6 +8,7 @@ interactive password prompt) for provision-login. DSNs/passwords are not logged.
 import argparse
 import getpass
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -18,6 +19,23 @@ from app.accounting.database import (  # noqa: E402
     migration_digest,
     migration_files,
 )
+
+
+class MigrationExecutionError(Exception):
+    def __init__(self, version, error):
+        self.version = version
+        self.driver = error
+        super().__init__("migration_execution_failed")
+
+
+def safe_diagnostic(error, phase):
+    """Never stringify a driver exception: DETAIL can contain private row values."""
+    version = error.version if isinstance(error, MigrationExecutionError) else None
+    cause = error.driver if isinstance(error, MigrationExecutionError) else error
+    name = re.sub(r"[^a-zA-Z0-9_]", "", type(cause).__name__)[:80] or "UnknownError"
+    state = getattr(cause, "sqlstate", None)
+    state = state if isinstance(state, str) and re.fullmatch(r"[0-9A-Z]{5}", state) else "unknown"
+    return f"数据库操作失败 phase={phase} migration={version or 'none'} error={name} sqlstate={state}；连接、SQL参数及驱动详情已隐藏"
 
 
 def has_compatibility_column(conn):
@@ -74,7 +92,10 @@ def migrate(url):
                     if current[version] != checksum:
                         raise ValueError(f"迁移 {version} 校验不符，禁止修改已应用的迁移文件")
                     continue
-                conn.execute(path.read_text(encoding="utf-8"), prepare=False)
+                try:
+                    conn.execute(path.read_text(encoding="utf-8"), prepare=False)
+                except Exception as error:
+                    raise MigrationExecutionError(version, error) from None
                 if has_compatibility_column(conn):
                     conn.execute(
                         "INSERT INTO accounting.schema_migrations(version,checksum,compatibility) "
@@ -301,11 +322,8 @@ def main():
     except (ValueError, RuntimeError) as error:
         print(str(error), file=sys.stderr)
         return 1
-    except Exception:
-        print(
-            "数据库操作失败；请检查管理员连接、账号权限和迁移。连接信息及驱动异常已隐藏。",
-            file=sys.stderr,
-        )
+    except Exception as error:
+        print(safe_diagnostic(error, args.command), file=sys.stderr)
         return 1
     return 0
 

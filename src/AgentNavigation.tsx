@@ -85,7 +85,9 @@ export function AgentNavigation({
     if (!mobileOpen) return;
     const previous = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    const focusBefore = document.activeElement as HTMLElement | null;
+    // Touch activation in WebKit need not focus the clicked opener. Return to
+    // the actual trigger, not the body or an unrelated previously focused link.
+    const focusBefore = opener.current ?? (document.activeElement as HTMLElement | null);
     panel.current?.querySelector<HTMLButtonElement>('button')?.focus();
     const keyboard = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {

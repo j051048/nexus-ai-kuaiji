@@ -1,0 +1,63 @@
+{
+  "version": 1,
+  "suites": {
+    "settlement": {
+      "files": [
+        "test_stage10_settlements_postgres.py",
+        "test_settlement_company_lock_postgres.py"
+      ],
+      "cases": [
+        "nexus_backend.tests.test_stage10_settlements_postgres::test_pg_native_review_clearance_and_frozen_reversal",
+        "nexus_backend.tests.test_stage10_settlements_postgres::test_pg_previews_replay_and_remaining_cannot_overallocate",
+        "nexus_backend.tests.test_stage10_settlements_postgres::test_pg_force_rls_no_raw_insert_or_unknown_party_plan",
+        "nexus_backend.tests.test_stage10_settlements_postgres::test_pg_independent_reversal_restores_balance_and_keeps_allocation",
+        "nexus_backend.tests.test_settlement_company_lock_postgres::test_native_mutations_share_company_contract_and_preserve_acl[settlement_open_item]",
+        "nexus_backend.tests.test_settlement_company_lock_postgres::test_native_mutations_share_company_contract_and_preserve_acl[settlement_make_preview]",
+        "nexus_backend.tests.test_settlement_company_lock_postgres::test_native_mutations_share_company_contract_and_preserve_acl[settlement_confirm]",
+        "nexus_backend.tests.test_settlement_company_lock_postgres::test_native_mutations_share_company_contract_and_preserve_acl[settlement_reverse]",
+        "nexus_backend.tests.test_settlement_company_lock_postgres::test_all_four_operations_do_not_wait_for_another_company_and_replay",
+        "nexus_backend.tests.test_settlement_company_lock_postgres::test_two_native_sessions_replay_or_reject_stale_never_overallocate[True]",
+        "nexus_backend.tests.test_settlement_company_lock_postgres::test_two_native_sessions_replay_or_reject_stale_never_overallocate[False]",
+        "nexus_backend.tests.test_settlement_company_lock_postgres::test_scope_permission_revocation_and_locked_period_are_not_bypassed",
+        "nexus_backend.tests.test_settlement_company_lock_postgres::test_native_rollback_and_lock_modes_keep_legacy_compatibility",
+        "nexus_backend.tests.test_settlement_company_lock_postgres::test_two_native_sessions_reverse_once_then_reallocate",
+        "nexus_backend.tests.test_settlement_company_lock_postgres::test_access_is_rechecked_after_lock_wait_and_revoke_commit",
+        "nexus_backend.tests.test_settlement_company_lock_postgres::test_accounting_review_still_required_before_clearance_export",
+        "nexus_backend.tests.test_settlement_company_lock_postgres::test_forward_migration_repeat_preserves_function_identity_and_acl"
+      ]
+    },
+    "dcp": {
+      "files": [
+        "test_dcp_r123_postgres.py"
+      ],
+      "cases": [
+        "nexus_backend.tests.test_dcp_r123_postgres::test_restricted_filings_and_handoff_success",
+        "nexus_backend.tests.test_dcp_r123_postgres::test_new_tables_force_rls_without_worker_write[tax_filings]",
+        "nexus_backend.tests.test_dcp_r123_postgres::test_new_tables_force_rls_without_worker_write[handoff_tasks]",
+        "nexus_backend.tests.test_dcp_r123_postgres::test_native_filing_scope_identity_and_date[company_id]",
+        "nexus_backend.tests.test_dcp_r123_postgres::test_native_filing_scope_identity_and_date[created_by]",
+        "nexus_backend.tests.test_dcp_r123_postgres::test_native_filing_scope_identity_and_date[book_id]",
+        "nexus_backend.tests.test_dcp_r123_postgres::test_native_filing_scope_identity_and_date[occurred_at]",
+        "nexus_backend.tests.test_dcp_r123_postgres::test_investigation_uses_read_transactions_and_separate_audit",
+        "nexus_backend.tests.test_dcp_r123_postgres::test_native_handoff_source_and_reviewer_binding[book]",
+        "nexus_backend.tests.test_dcp_r123_postgres::test_native_handoff_source_and_reviewer_binding[version]",
+        "nexus_backend.tests.test_dcp_r123_postgres::test_native_handoff_source_and_reviewer_binding[fingerprint]",
+        "nexus_backend.tests.test_dcp_r123_postgres::test_native_handoff_source_and_reviewer_binding[actor]",
+        "nexus_backend.tests.test_dcp_r123_postgres::test_native_handoff_source_and_reviewer_binding[assignee]",
+        "nexus_backend.tests.test_dcp_r123_postgres::test_handoff_concurrent_idempotency_and_reader_isolation",
+        "nexus_backend.tests.test_dcp_r123_postgres::test_locked_mapping_native_and_future_configuration",
+        "nexus_backend.tests.test_dcp_r123_postgres::test_batch_two_claimers_cancel_recovery_and_stale_finish",
+        "nexus_backend.tests.test_dcp_r123_postgres::test_batch_retry_exhaustion_and_real_monthly_success",
+        "nexus_backend.tests.test_dcp_r123_postgres::test_package_commit_loss_recovered_without_new_package",
+        "nexus_backend.tests.test_dcp_r123_postgres::test_export_commit_fences_and_recovery[replay]",
+        "nexus_backend.tests.test_dcp_r123_postgres::test_export_commit_fences_and_recovery[recover]",
+        "nexus_backend.tests.test_dcp_r123_postgres::test_export_commit_fences_and_recovery[cancel]",
+        "nexus_backend.tests.test_dcp_r123_postgres::test_export_commit_fences_and_recovery[changed_set]",
+        "nexus_backend.tests.test_dcp_r123_postgres::test_export_commit_fences_and_recovery[foreign_claim]",
+        "nexus_backend.tests.test_dcp_r123_postgres::test_export_commit_fences_and_recovery[revoked]",
+        "nexus_backend.tests.test_dcp_r123_postgres::test_native_handoff_rechecks_authority_after_lock_wait",
+        "nexus_backend.tests.test_dcp_r123_postgres::test_export_commit_fences_and_recovery[key_collision]"
+      ]
+    }
+  }
+}

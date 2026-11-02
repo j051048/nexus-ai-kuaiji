@@ -24,6 +24,8 @@ import type {
   MonthlyDestination,
 } from './monthly-workbench-types';
 import { MonthlyBatchDialog } from './MonthlyBatchDialog';
+import { BatchOperationsDialog } from './BatchOperationsDialog';
+import { HandoffDialog } from './HandoffDialog';
 import { useMonthlyData } from './useMonthlyData';
 import type { MonthlyProgress } from './workspace-progress';
 import './monthly.css';
@@ -96,6 +98,9 @@ export function MonthlyClientWorkbench({
     [offset, setOffset] = useState(initial.current?.offset ?? 0);
   const restoredScroll = useRef(false);
   const [batchOpen, setBatchOpen] = useState(false);
+  const [operationsOpen, setOperationsOpen] = useState(false);
+  const [initialBatchId, setInitialBatchId] = useState<string | undefined>();
+  const [handoffOpen, setHandoffOpen] = useState(false);
   const selectedPeriod = validMonthlyPeriod(period) ? period : new Date().toISOString().slice(0, 7);
   const path =
     '/monthly/workbench?' +
@@ -135,6 +140,29 @@ export function MonthlyClientWorkbench({
           </p>
         </div>
         <div className="monthly-heading-actions">
+          {canBatchOpen && (
+            <>
+              <button
+                className="button secondary"
+                disabled={loading || revoked}
+                onClick={() => {
+                  setInitialBatchId(undefined);
+                  setOperationsOpen(true);
+                }}
+              >
+                批量办理
+              </button>
+            </>
+          )}
+          {['owner', 'admin', 'operator', 'reviewer', 'viewer'].includes(session.role ?? '') && (
+            <button
+              className="button secondary"
+              disabled={loading || revoked}
+              onClick={() => setHandoffOpen(true)}
+            >
+              人工接手
+            </button>
+          )}
           {canBatchOpen && (
             <button
               className="button primary"
@@ -402,6 +430,33 @@ export function MonthlyClientWorkbench({
           initialSearch={search}
           onClose={() => setBatchOpen(false)}
           onOpened={() => void load()}
+          onManageBatch={(id) => {
+            setBatchOpen(false);
+            setInitialBatchId(id);
+            setOperationsOpen(true);
+          }}
+        />
+      )}
+      {operationsOpen && canBatchOpen && !revoked && (
+        <BatchOperationsDialog
+          key={`${session.scope_key}:${selectedPeriod}`}
+          session={session}
+          period={selectedPeriod}
+          rows={data?.rows ?? []}
+          initialBatchId={initialBatchId}
+          onClose={() => {
+            setOperationsOpen(false);
+            void load();
+          }}
+        />
+      )}
+      {handoffOpen && !revoked && (
+        <HandoffDialog
+          key={`${session.scope_key}:${selectedPeriod}`}
+          session={session}
+          period={selectedPeriod}
+          canAssign={canBatchOpen}
+          onClose={() => setHandoffOpen(false)}
         />
       )}
     </main>

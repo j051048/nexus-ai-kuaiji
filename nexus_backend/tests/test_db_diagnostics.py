@@ -152,7 +152,8 @@ def test_main_operational_handler_keeps_generic_503(tmp_path, caplog):
         response = asyncio.run(handler(request(), sqlite3.OperationalError(SECRET)))
     assert response.status_code == 503
     assert json.loads(response.body) == {
-        "detail": "账务数据服务暂时不可用，请稍后重试；未完成的操作会整体回滚"
+        "detail": "暂时无法确认本次操作结果，请先核对处理记录，勿重复提交",
+        "code": "result_unknown",
     }
     assert SECRET not in response.body.decode()
     assert len(caplog.records) == 1 and SECRET not in repr(caplog.records[0].__dict__)

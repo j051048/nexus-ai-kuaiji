@@ -2,6 +2,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import Response
 from .models import ReceiptCreate, ReceiptImport, DeliveryNote
+from .notification_investigations import InvestigationCreate, NotificationInvestigations
 from .monthly_models import MonthlyPackageCreate, MonthlyPackageAcknowledge
 from .followup_models import DeliveryGrantRequest, DeliveryRevokeRequest, DeliveryTaskRequest
 
@@ -104,6 +105,27 @@ def build_delivery_router(actor_dependency):
         monthly=Depends(packages),
     ):
         return monthly.acknowledge(actor, book_id, package_id, payload)
+
+    @router.get("/notifications/{notification_id}/investigations")
+    def notification_history(
+        book_id: str,
+        notification_id: str,
+        actor=Depends(actor_dependency),
+        follow=Depends(followups),
+    ):
+        return NotificationInvestigations(follow.db).history(actor, book_id, notification_id)
+
+    @router.post("/notifications/{notification_id}/investigations", status_code=201)
+    def notification_investigate(
+        book_id: str,
+        notification_id: str,
+        payload: InvestigationCreate,
+        actor=Depends(actor_dependency),
+        follow=Depends(followups),
+    ):
+        return NotificationInvestigations(follow.db).create(
+            actor, book_id, notification_id, payload
+        )
 
     @router.get("/notifications")
     def notification_states(

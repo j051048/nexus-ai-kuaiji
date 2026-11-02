@@ -1,0 +1,28 @@
+.dcp-investigation {
+  margin-block: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.dcp-investigation details {
+  margin-block: 0.7rem;
+}
+.dcp-fingerprint {
+  overflow-wrap: anywhere;
+  font-size: 0.8rem;
+}
+.dcp-evidence-form {
+  display: grid;
+  gap: 0.75rem;
+  margin-block: 0.75rem;
+}
+.dcp-evidence-form label {
+  display: grid;
+  gap: 0.35rem;
+}
+.dcp-evidence-form input,
+.dcp-evidence-form select,
+.dcp-evidence-form textarea {
+  width: 100%;
+  min-width: 0;
+}

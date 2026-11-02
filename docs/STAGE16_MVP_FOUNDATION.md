@@ -35,10 +35,14 @@ python scripts/migrate_accounting.py status
 ACCOUNTING_DB_POOL_MIN=0
 ACCOUNTING_DB_POOL_MAX=4
 ACCOUNTING_DB_POOL_TIMEOUT_SECONDS=5
-ACCOUNTING_DB_POOL_MAX_WAITING=32
+ACCOUNTING_DB_POOL_MAX_WAITING=64
 ```
 
 连接池保留 `prepare_threshold=None`，适配 Supabase 事务连接池；身份、企业和角色使用事务内 `SET LOCAL`，归还前回滚。程序退出及 API 初始化失败释放连接与监测线程。全局写锁及现有总并发上限本批保持，后续依据压测调整。
+
+QA05 收口后，每进程仍默认最多 4 条数据库连接；等待名额从 32 调整到 64，以容纳 50 个同时借用连接的请求及少量后台统计请求。复用连接池 FIFO 排队，单次获取连接仍最多等待 5 秒，不增加第二层排队、不自动重放业务请求；队列满会立即拒绝，超时会释放等待者。显式配置值仍优先，旧部署若设置了 `MAX_WAITING=32` 不会被代码覆盖。该预算是获取连接的等待时间，不是 SQL 执行时间或整个 HTTP 请求期限。修改前应核对所有 API/worker 副本的连接数总和与网关期限，不能只增加连接数或无限延长等待。
+
+读取遇到准入不足返回 `database_busy` 和 `Retry-After`；写操作可能已在前一事务提交，返回 `result_unknown`，要求核对记录，不提示自动重试。容量脚本默认要求全部请求成功；`--allow-shed` 仅用于明确的过载摸底，不能用于成功容量验收。
 
 Vercel `app` 已加 `/workspace/:path* → /index.html` 服务内回退，支持工作区链接刷新。`/api` 仍优先进入网关。服务内路由按 [Vercel 官方 Services 路由说明](https://vercel.com/docs/services/routing) 配置，并通过官方 JSON Schema 校验。其他静态服务器需提供同样的 SPA 回退，并保留 API 与静态资源路径。
 

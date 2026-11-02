@@ -7,6 +7,7 @@ refusal instead of retrying or widening the scope.
 """
 
 import json
+import hashlib
 import os
 from datetime import datetime, timezone
 
@@ -15,6 +16,18 @@ from ..accounting.domain import AccountingError
 TOOLS = ("voucher_status", "close_blockers", "delivery_status")
 MAX_READS = 3
 ENV_FLAG = "ACCOUNTING_ASSISTANT_INVESTIGATION"
+
+
+def evidence_fingerprint(result):
+    """Bind displayed scope, coverage and observed facts; exclude wall-clock time."""
+    payload = {
+        key: result[key]
+        for key in ("book_id", "period", "status", "findings", "missing", "coverage")
+    }
+    payload["scope"] = {key: result["evidence"][key] for key in ("firm_id", "company_id")}
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode()
+    ).hexdigest()
 
 
 def enabled():
@@ -125,15 +138,10 @@ def investigate(service, actor, book_id, period, *, on_step=None):
         try:
             with service.db.transaction(actor=actor) as conn:
                 # Re-authorize at read time: revocation mid-loop stops here.
-                service.access.book(conn, actor, book_id, "read")
+                book = service.access.book(conn, actor, book_id, "read")
+                if book["period"] != period:
+                    raise AccountingError("调查月份与账套不一致", 422)
                 facts = READERS[name](conn, book_id, period)
-                _audit(
-                    conn,
-                    actor,
-                    book_id,
-                    "assistant.investigation.step",
-                    {"tool": name, "period": period, "index": index},
-                )
             findings[name] = facts
             steps.append({"tool": name, "ok": True})
         except AccountingError as error:
@@ -147,6 +155,37 @@ def investigate(service, actor, book_id, period, *, on_step=None):
             steps.append({"tool": name, "ok": False, "code": "failed"})
             break
 
+    # A new transaction observes revocation committed during earlier reads.
+    # Audit writes never turn the evidence readers into writable transactions.
+    try:
+        with service.db.transaction(actor=actor) as conn:
+            scope = service.access.book(conn, actor, book_id, "read")
+        with service.db.transaction(
+            write=True, actor=actor, company_id=scope["company_id"], write_scope="company"
+        ) as conn:
+            book = service.access.book(conn, actor, book_id, "read")
+            if book["period"] != period:
+                raise AccountingError("调查月份与账套不一致", 422)
+            for index, (name, facts) in enumerate(findings.items()):
+                if READERS[name](conn, book_id, period) != facts:
+                    raise AccountingError("调查依据已变化，请重新核对", 409)
+                _audit(
+                    conn,
+                    actor,
+                    book_id,
+                    "assistant.investigation.step",
+                    {"tool": name, "period": period, "index": index},
+                )
+            _audit(
+                conn,
+                actor,
+                book_id,
+                "assistant.investigation.finish",
+                {"period": period, "status": status, "reads": len(findings)},
+            )
+    except Exception:
+        # A final read/audit failure cannot publish the earlier, now unverified facts.
+        status, findings, missing = "blocked", {}, list(TOOLS)
     if status != "complete":
         handoff = {
             "role": "reviewer",
@@ -154,15 +193,7 @@ def investigate(service, actor, book_id, period, *, on_step=None):
         }
     else:
         handoff = None
-    with service.db.transaction(actor=actor) as conn:
-        _audit(
-            conn,
-            actor,
-            book_id,
-            "assistant.investigation.finish",
-            {"period": period, "status": status, "reads": len(findings)},
-        )
-    return {
+    result = {
         "book_id": book_id,
         "period": period,
         "status": status,
@@ -172,5 +203,11 @@ def investigate(service, actor, book_id, period, *, on_step=None):
         "missing": missing,
         "steps": steps,
         "handoff": handoff,
-        "limits": {"max_reads": MAX_READS, "reads_used": len(findings)},
+        "limits": {"max_reads": MAX_READS, "reads_used": len(steps)},
+        "model_calls": 0,
+        "evidence": None,
     }
+    if findings:
+        result["evidence"] = {"firm_id": actor.firm_id, "company_id": book["company_id"]}
+        result["evidence"]["fingerprint"] = evidence_fingerprint(result)
+    return result

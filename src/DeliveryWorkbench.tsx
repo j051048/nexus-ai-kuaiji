@@ -27,6 +27,7 @@ import type {
   DeliveryWorkbenchProps,
 } from './delivery-types';
 import './delivery.css';
+import { InvestigationEvidencePanel } from './InvestigationEvidencePanel';
 import { DeliveryNotifications } from './DeliveryNotifications';
 import { MonthlyPackagePanel } from './MonthlyPackagePanel';
 import './tax-workpapers.css';
@@ -97,6 +98,7 @@ export function DeliveryWorkbench(props: DeliveryWorkbenchProps) {
 function DeliveryReceipts({
   session,
   bookId,
+  companyId,
   period,
   initialExportId,
   onBack,
@@ -392,6 +394,14 @@ function DeliveryReceipts({
         bookId={bookId}
         onBusyChange={onBusyChange}
       />
+      {period && companyId && (
+        <InvestigationEvidencePanel
+          session={session}
+          bookId={bookId}
+          period={period}
+          companyId={companyId}
+        />
+      )}
       <DeliveryNotifications
         key={'notify:' + scope}
         session={session}

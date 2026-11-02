@@ -1,0 +1,54 @@
+.batch-operations {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+  padding: 1.25rem;
+}
+.batch-operations fieldset {
+  min-width: 0;
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem;
+  border: 1px solid var(--border, #d9e2dc);
+  border-radius: 0.75rem;
+}
+.batch-operations label:not(.batch-checkbox) {
+  display: grid;
+  gap: 0.375rem;
+}
+.batch-operations select,
+.batch-operations input:not([type='checkbox']),
+.batch-operations textarea {
+  width: 100%;
+  min-width: 0;
+  font: inherit;
+  padding: 0.625rem;
+}
+.batch-operations textarea {
+  min-height: 5rem;
+  resize: vertical;
+}
+.batch-operations p {
+  overflow-wrap: anywhere;
+  line-height: 1.6;
+}
+.batch-operations .batch-actions {
+  flex-wrap: wrap;
+}
+.batch-operations section {
+  display: grid;
+  gap: 0.5rem;
+}
+.batch-operations .batch-row header {
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+@media (max-width: 600px) {
+  .batch-operations .button {
+    min-height: 44px;
+    white-space: normal;
+  }
+  .batch-operations .batch-actions > .button {
+    flex: 1 1 42%;
+  }
+}

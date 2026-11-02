@@ -78,6 +78,19 @@ class SubledgerService:
             }
         return None
 
+    @staticmethod
+    def _configuration_open(conn, ledger_id, start, end=None):
+        locked = conn.execute(
+            "SELECT 1 FROM ledger_periods lp JOIN books b ON b.id=lp.book_id "
+            "JOIN periods p ON p.book_id=b.id AND p.period=b.period "
+            "WHERE lp.ledger_id=? AND b.period>=? AND b.period<=? "
+            "AND (p.status<>'open' OR EXISTS(SELECT 1 FROM internal_period_locks l "
+            "WHERE l.book_id=b.id AND l.period=b.period)) LIMIT 1",
+            (ledger_id, start, end or "9999-12"),
+        ).fetchone()
+        if locked:
+            raise AccountingError("配置生效范围包含已锁期间，请选择后续开放月份", 409)
+
     def _has_any_control_config(self, conn, ledger_id):
         return bool(
             conn.execute(
@@ -95,6 +108,7 @@ class SubledgerService:
             raise AccountingError("确认身份必须来自当前登录主体", 403)
         with self.db.transaction(write=True, actor=actor) as conn:
             book, ledger_id = self._book(conn, actor, request.book_id, write=True)
+            self._configuration_open(conn, ledger_id, request.effective_from, request.effective_to)
             if request.effective_to and request.effective_to < request.effective_from:
                 raise AccountingError("适用性期间起止倒置", 422)
             from ..posting.service import PostingService
@@ -182,6 +196,7 @@ class SubledgerService:
             raise AccountingError("控制科目配置无效", 422)
         with self.db.transaction(write=True, actor=actor) as conn:
             book, ledger_id = self._book(conn, actor, request.book_id, write=True)
+            self._configuration_open(conn, ledger_id, request.effective_from, request.effective_to)
             if request.effective_from and len(request.effective_from) not in {7, 10}:
                 raise AccountingError("控制科目生效期间格式必须为 YYYY-MM", 422)
             if request.effective_to and request.effective_to < request.effective_from:
@@ -704,6 +719,7 @@ class SubledgerService:
             raise AccountingError("银行账户配置无效", 422)
         with self.db.transaction(write=True, actor=actor) as conn:
             book, ledger_id = self._book(conn, actor, request.book_id, write=True)
+            self._configuration_open(conn, ledger_id, book["period"], book["period"])
             mapped = conn.execute(
                 "SELECT a.current_version,v.is_leaf,v.category,v.auxiliary_requirements FROM ledger_accounts a "
                 "JOIN ledger_account_versions v ON v.account_id=a.id AND v.version=? "

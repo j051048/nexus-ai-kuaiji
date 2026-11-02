@@ -7,7 +7,7 @@ from uuid import uuid4
 
 from ..accounting.domain import Actor, AccountingError
 from ..accounting.models import ExportRequest
-from ..accounting.service import AccountingService, fingerprint
+from ..accounting.service import AccountingService, fingerprint, export_matches_versions
 from ..delivery.monthly_models import MonthlyPackageCreate
 from ..delivery.monthly_package import MonthlyPackageService
 from ..monthly.batch import BatchOpen
@@ -276,14 +276,6 @@ class BatchOperationsService:
             raise AccountingError("批量任务缺少该企业的清单", 409)
         if entry.get("blocked"):
             return {"status": "skipped", "message": entry["blocked"]}
-        with self.db.transaction(actor=actor) as conn:
-            rows = conn.execute(
-                "SELECT id,version FROM drafts WHERE book_id=? AND status='approved' ORDER BY id",
-                (entry["book_id"],),
-            ).fetchall()
-        current = [{"draft_id": row["id"], "version": row["version"]} for row in rows]
-        if current != entry["drafts"]:
-            raise AccountingError("预览后凭证集合或版本已变化，请重新预览", 409)
         exported = AccountingService(self.db).export(
             actor,
             entry["book_id"],
@@ -291,6 +283,8 @@ class BatchOperationsService:
                 draft_ids=[value["draft_id"] for value in entry["drafts"]],
                 idempotency_key=f"batch:{item['batch_id']}:{entry['company_id']}",
             ),
+            expected_drafts=entry["drafts"],
+            before_export=lambda conn: self._execution_fence(conn, item),
         )
         return {
             "status": "created",
@@ -328,12 +322,24 @@ class BatchOperationsService:
                     continue
                 report = conn.execute(
                     "SELECT id,version,status FROM report_runs WHERE book_id=? AND period=? "
-                    "AND status IN ('reviewed','published') ORDER BY version DESC LIMIT 1",
+                    "AND status='published' ORDER BY created_at DESC,id LIMIT 1",
                     (book["id"], period),
                 ).fetchone()
             if not report:
                 companies.append({"company_id": company_id, "blocked": "no_report"})
                 continue
+            readiness = MonthlyPackageService(self.db).readiness(actor, book["id"])
+            if not readiness["ready"]:
+                companies.append(
+                    {
+                        "company_id": company_id,
+                        "book_id": book["id"],
+                        "blocked": "package_not_ready",
+                        "blockers": readiness["blockers"],
+                    }
+                )
+                continue
+            report = next(row for row in readiness["reports"] if row["current"])
             companies.append(
                 {
                     "company_id": company_id,
@@ -453,13 +459,6 @@ class BatchOperationsService:
             raise AccountingError("批量任务缺少该企业的清单", 409)
         if entry.get("blocked"):
             return {"status": "skipped", "message": entry["blocked"]}
-        with self.db.transaction(actor=actor) as conn:
-            report = conn.execute(
-                "SELECT id,version,status FROM report_runs WHERE id=? AND book_id=?",
-                (entry["report_id"], entry["book_id"]),
-            ).fetchone()
-        if not report or int(report["version"]) != int(entry["report_version"]):
-            raise AccountingError("预览后报表版本已变化，请重新预览", 409)
         package = MonthlyPackageService(self.db, self.monthly.plans).create(
             actor,
             entry["book_id"],
@@ -469,6 +468,7 @@ class BatchOperationsService:
                 expected_report_version=entry["report_version"],
                 reason=f"批量准备月度包草稿 {item['batch_id']}",
             ),
+            before_create=lambda conn: self._execution_fence(conn, item),
         )
         return {
             "status": "created",
@@ -571,11 +571,13 @@ class BatchOperationsService:
                 "UPDATE batch_operation_items SET status='queued',available_at=?,"
                 "lease_token=NULL,lease_until=NULL,worker_id=NULL,error_code='',error_detail='',"
                 "finished_at=NULL,updated_at=?,retry_count=retry_count+1 "
-                "WHERE batch_id=? AND status='failed'",
+                "WHERE batch_id=? AND status='failed' AND attempt<max_attempts AND cancel_requested_at IS NULL",
                 (stamp, stamp, batch_id),
             ).rowcount
             if not changed:
-                raise AccountingError("没有可重试的失败项；取消或跳过项需要重新发起", 409)
+                raise AccountingError(
+                    "没有可重试的失败项；达到上限、取消或跳过项须人工核对后重新发起", 409
+                )
             conn.execute(
                 "UPDATE batch_operations SET status='queued',finished_at=NULL,updated_at=? WHERE id=?",
                 (stamp, batch_id),
@@ -745,7 +747,7 @@ class BatchOperationsService:
                 "FROM batch_operation_items i "
                 "JOIN batch_operations b ON b.id=i.batch_id "
                 "WHERE i.status IN('queued','retry_wait') AND i.available_at<=? "
-                "AND i.attempt<i.max_attempts "
+                "AND i.attempt<i.max_attempts AND i.cancel_requested_at IS NULL "
                 "ORDER BY i.created_at,i.id LIMIT 1",
                 (stamp,),
             ).fetchone()
@@ -788,6 +790,61 @@ class BatchOperationsService:
             return ""
         return row["cancel_reason"] or "执行中被取消"
 
+    def _committed_result(self, conn, item):
+        parent = conn.execute(
+            "SELECT * FROM batch_operations WHERE id=?", (item["batch_id"],)
+        ).fetchone()
+        if parent["kind"] not in {"review_export", "package_draft"}:
+            return None
+        entry = next(
+            (
+                x
+                for x in json.loads(parent["request_json"])["companies"]
+                if x["company_id"] == item["company_id"]
+            ),
+            None,
+        )
+        if not entry or not entry.get("book_id"):
+            return None
+        key = f"batch:{item['batch_id']}:{item['company_id']}"
+        if parent["kind"] == "review_export":
+            row = conn.execute(
+                "SELECT * FROM exports WHERE book_id=? AND created_by=? AND idempotency_key=?",
+                (entry["book_id"], parent["created_by"], key),
+            ).fetchone()
+            if row and not export_matches_versions(conn, row["id"], entry["drafts"]):
+                return None
+            return (
+                {
+                    "status": "created",
+                    "book_id": entry["book_id"],
+                    "export_id": row["id"],
+                    "filename": row["filename"],
+                    "count": row["count"],
+                }
+                if row
+                else None
+            )
+        row = conn.execute(
+            "SELECT * FROM monthly_delivery_packages WHERE book_id=? AND created_by=? AND idempotency_key=?",
+            (entry["book_id"], parent["created_by"], key),
+        ).fetchone()
+        if row and (
+            row["report_id"] != entry["report_id"]
+            or row["report_version"] != entry["report_version"]
+        ):
+            return None
+        return (
+            {
+                "status": "created",
+                "book_id": entry["book_id"],
+                "package_id": row["id"],
+                "package_version": row["version"],
+            }
+            if row
+            else None
+        )
+
     def finish(self, item, status, result=None, error_code="", error_detail="", retry_seconds=30):
         if status == "retry_wait" and int(item.get("attempt", 0)) >= int(
             item.get("max_attempts", 0)
@@ -807,11 +864,18 @@ class BatchOperationsService:
             current = None
             if not self.db.is_postgres:
                 current = conn.execute(
-                    "SELECT status,cancel_requested_at,cancel_reason FROM batch_operation_items "
-                    "WHERE id=?",
+                    "SELECT * FROM batch_operation_items WHERE id=?",
                     (item["item_id"],),
                 ).fetchone()
-            if current and current["cancel_requested_at"] and status == "retry_wait":
+            if current:
+                committed = self._committed_result(conn, current)
+                if committed:
+                    status, result, error_code, error_detail = "succeeded", committed, "", ""
+            if (
+                current
+                and current["cancel_requested_at"]
+                and status not in {"succeeded", "skipped"}
+            ):
                 status, error_code = "cancelled", "cancelled"
                 error_detail = current["cancel_reason"] or "执行中被取消"
             if self.db.is_postgres:
@@ -832,8 +896,8 @@ class BatchOperationsService:
                 "UPDATE batch_operation_items SET status=?,result_json=?,error_code=?,error_detail=?,"
                 "available_at=CASE WHEN ?='retry_wait' THEN ? ELSE available_at END,"
                 "lease_token=NULL,lease_until=NULL,worker_id=NULL,updated_at=?,"
-                "finished_at=CASE WHEN ? IN('succeeded','skipped','failed') THEN ? ELSE NULL END "
-                "WHERE id=? AND lease_token=? AND status='running'",
+                "finished_at=CASE WHEN ? IN('succeeded','skipped','failed','cancelled') THEN ? ELSE NULL END "
+                "WHERE id=? AND lease_token=? AND status='running' AND lease_until>?",
                 (
                     status,
                     json.dumps(result or {}, ensure_ascii=False),
@@ -846,6 +910,7 @@ class BatchOperationsService:
                     stamp,
                     item["item_id"],
                     item["lease_token"],
+                    stamp,
                 ),
             ).rowcount
             if changed:
@@ -862,14 +927,35 @@ class BatchOperationsService:
                 (stamp,),
             ).fetchall()
             for item in rows:
-                status = "retry_wait" if item["attempt"] < item["max_attempts"] else "failed"
+                committed = self._committed_result(conn, item)
+                status = (
+                    "succeeded"
+                    if committed
+                    else "cancelled"
+                    if item["cancel_requested_at"]
+                    else "retry_wait"
+                    if item["attempt"] < item["max_attempts"]
+                    else "failed"
+                )
                 conn.execute(
-                    "UPDATE batch_operation_items SET status=?,error_code='worker_restarted',"
+                    "UPDATE batch_operation_items SET status=?,result_json=?,error_code=?,"
                     "error_detail=?,available_at=?,lease_token=NULL,lease_until=NULL,worker_id=NULL,"
-                    "updated_at=?,finished_at=CASE WHEN ?='failed' THEN ? ELSE NULL END WHERE id=?",
+                    "updated_at=?,finished_at=CASE WHEN ?<>'retry_wait' THEN ? ELSE NULL END WHERE id=?",
                     (
                         status,
-                        "后台执行中断，已进入重试队列"
+                        json.dumps(committed, ensure_ascii=False)
+                        if committed
+                        else item["result_json"],
+                        ""
+                        if committed
+                        else "cancelled"
+                        if status == "cancelled"
+                        else "worker_restarted",
+                        ""
+                        if committed
+                        else item["cancel_reason"]
+                        if status == "cancelled"
+                        else "后台执行中断，已进入重试队列"
                         if status == "retry_wait"
                         else "后台执行中断且达到重试上限，请人工处理",
                         stamp,
@@ -879,12 +965,15 @@ class BatchOperationsService:
                         item["id"],
                     ),
                 )
+                self._recount(conn, item["batch_id"], stamp)
             return len(rows)
 
     def execute(self, item):
         # The worker executes as the operator who created the parent task; all
         # company and role checks run again in the per-company transaction.
         actor = Actor(item["created_by"], item["firm_id"])
+        with self.db.transaction(actor=actor) as conn:
+            self._execution_fence(conn, item, lock=False)
         if item["kind"] == "review_export":
             return self._execute_review_export(item)
         if item["kind"] == "package_draft":
@@ -892,7 +981,47 @@ class BatchOperationsService:
         if item["kind"] != "monthly_open":
             raise AccountingError("批量任务类型不受支持", 422)
         request = BatchOpen.model_validate_json(item["request_json"])
-        return self.monthly.open_company(actor, item["company_id"], item["company_name"], request)
+        return self.monthly.open_company(
+            actor,
+            item["company_id"],
+            item["company_name"],
+            request,
+            before_create=lambda conn: self._execution_fence(conn, item),
+        )
+
+    def _execution_fence(self, conn, item, *, lock=True):
+        """Check trusted claim against the stored command inside the business commit."""
+        actor = Actor(item["created_by"], item["firm_id"])
+        self.access.require_manager(conn, actor)
+        suffix = " FOR UPDATE OF i" if lock and self.db.is_postgres else ""
+        row = conn.execute(
+            "SELECT i.*,b.created_by AS parent_actor,b.kind AS parent_kind,b.request_json "
+            "FROM batch_operation_items i JOIN batch_operations b ON b.id=i.batch_id "
+            "WHERE i.id=?" + suffix,
+            (item["item_id"],),
+        ).fetchone()
+        if (
+            not row
+            or any(
+                row[key] != item[value]
+                for key, value in (
+                    ("batch_id", "batch_id"),
+                    ("firm_id", "firm_id"),
+                    ("company_id", "company_id"),
+                    ("parent_actor", "created_by"),
+                    ("parent_kind", "kind"),
+                    ("request_json", "request_json"),
+                    ("lease_token", "lease_token"),
+                    ("attempt", "attempt"),
+                )
+            )
+            or row["status"] != "running"
+            or not row["lease_until"]
+            or row["lease_until"] <= timestamp()
+        ):
+            raise AccountingError("批量任务租约或执行身份已变化，禁止旧执行器继续办理", 409)
+        if row["cancel_requested_at"]:
+            raise AccountingError("该项已请求取消，未执行新的业务写入", 409)
 
     def _json(self, conn, row, with_items):
         value = {

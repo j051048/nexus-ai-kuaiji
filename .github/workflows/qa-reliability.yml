@@ -1,0 +1,68 @@
+name: QA fault security and cross-browser gates
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  fault-security:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -r nexus_backend/requirements.lock
+      - name: Isolated synthetic HTTP and dependency faults
+        run: >-
+          python scripts/test_accounting_offline.py
+          nexus_backend/tests/test_qa01_identity_assets.py
+          nexus_backend/tests/test_qa_http_failures.py
+          nexus_backend/tests/test_qa_dependency_faults.py
+          nexus_backend/tests/test_qa_attachment_probes.py
+          nexus_backend/tests/test_qa_capacity_contract.py
+          nexus_backend/tests/test_qa05_capacity_gate.py
+          nexus_backend/tests/test_qa05_capacity_http.py
+          nexus_backend/tests/test_qa_no_skip.py
+          nexus_backend/tests/test_auth_supabase.py
+          nexus_backend/tests/test_attachment_storage.py
+          nexus_backend/tests/test_upload_binding_http.py
+          nexus_backend/tests/test_shared_storage_transactions.py
+          nexus_backend/tests/test_stage13_migration_api.py
+          nexus_backend/tests/test_paddle_execution_boundaries.py
+          nexus_backend/tests/test_ak01_retry_cost.py
+          -p scripts.qa_no_skip -q --junitxml=tmp_test/qa-ci/offline.xml
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-offline-results
+          path: tmp_test/qa-ci/offline.xml
+          if-no-files-found: error
+  browsers:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox, webkit, mobile-webkit]
+    env:
+      E2E_FRONTEND_MODE: preview
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: python -m pip install -r nexus_backend/requirements.lock
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium firefox webkit
+      - run: npm run build
+      - run: npx playwright test --config=playwright.qa.config.ts --project=${{ matrix.browser }}
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-browser-${{ matrix.browser }}
+          path: tmp_test/qa-browser/
+          if-no-files-found: error

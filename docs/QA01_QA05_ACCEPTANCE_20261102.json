@@ -1,0 +1,1348 @@
+{
+  "schema": "qa01-05-acceptance-v1",
+  "status": "local_acceptance_passed",
+  "candidate": {
+    "schema": "release-candidate-v1",
+    "head": "2247af5184ee872f04c0acf15bf29d81c33a9246",
+    "source_files": 1787,
+    "source_sha256": "91e5177b25f88c68a22a733ec8ce5a9f5c75d3a139140dfb1f382b300b4cb197",
+    "migration_files": 316,
+    "migration_sha256": "f07ba1cdba14400bfff08d8f01df8217c917304da93be1da858814e39e3f8dc8"
+  },
+  "ownership": {
+    "modified": [
+      ".github/workflows/p01-recovery.yml",
+      "e2e/v03-entry-review.spec.ts",
+      "nexus_backend/app/main.py",
+      "nexus_backend/tests/test_db_diagnostics.py",
+      "nexus_backend/tests/test_stage13_migration_api.py",
+      "package-lock.json",
+      "package.json",
+      "scripts/c01_local_wsl_bridge.py",
+      "src/AgentNavigation.tsx",
+      "src/api.ts",
+      "src/journal-grid.css",
+      "src/styles.css",
+      "src/workspace.css",
+      "tools/capacity/dcp10_capacity.py"
+    ],
+    "added": [
+      ".github/workflows/qa-reliability.yml",
+      "config/test_identity_assets.json",
+      "docs/QA01_QA05_ACCEPTANCE_20261102.json",
+      "docs/QA01_QA05_ACCEPTANCE_20261102.md",
+      "docs/QA01_QA05_WORK_LOG.md",
+      "e2e/qa-accessibility.spec.ts",
+      "nexus_backend/tests/test_qa01_identity_assets.py",
+      "nexus_backend/tests/test_qa_attachment_probes.py",
+      "nexus_backend/tests/test_qa_capacity_contract.py",
+      "nexus_backend/tests/test_qa_dependency_faults.py",
+      "nexus_backend/tests/test_qa_http_failures.py",
+      "nexus_backend/tests/test_qa_no_skip.py",
+      "playwright.qa.config.ts",
+      "scripts/identity_test_assets.py",
+      "scripts/qa_diagnostics.py",
+      "scripts/qa_no_skip.py",
+      "src/qa-api-faults.test.ts",
+      "tools/capacity/process_usage.py",
+      "tools/capacity/qa_mixed.py"
+    ]
+  },
+  "checks": {
+    "offline": 299,
+    "frontend_unit": 1174,
+    "browser": {
+      "startTime": "2026-11-02T07:22:43.283Z",
+      "duration": 262121.81,
+      "expected": 96,
+      "skipped": 0,
+      "unexpected": 0,
+      "flaky": 0
+    },
+    "pg16_dynamic": 10,
+    "pg17_dynamic": 10,
+    "recovery_phases": {
+      "regression": 151,
+      "joint": 2,
+      "identity": 4
+    },
+    "migration_bytes_unchanged": true,
+    "owned_environment_stopped": true,
+    "qa05_measurement": "passed",
+    "qa05_50_thread_all_requests_completed": false
+  },
+  "capacity": {
+    "16": {
+      "companies": 200,
+      "rounds": 2,
+      "phases": [
+        {
+          "hotspot": false,
+          "clients": 5,
+          "requests": 400,
+          "seconds": 6.284,
+          "errors": 0,
+          "admission_rejections": 0,
+          "slo_all_requests_completed": true,
+          "error_classes": [],
+          "latency": {
+            "read": {
+              "n": 300,
+              "p50_ms": 70.12,
+              "p95_ms": 91.77,
+              "max_ms": 110.3
+            },
+            "import": {
+              "n": 100,
+              "p50_ms": 95.29,
+              "p95_ms": 147.18,
+              "max_ms": 172.89
+            }
+          },
+          "pool": {
+            "enabled": true,
+            "scope": "current_process",
+            "pool_min": 0,
+            "pool_max": 4,
+            "pool_size": 4,
+            "pool_available": 4
+          },
+          "transactions": {
+            "scope": "current_process",
+            "window_seconds": 900,
+            "sample_limit": 4096,
+            "count": 500,
+            "writes": 100,
+            "rollbacks": 0,
+            "connection_failures": 0,
+            "connection": {
+              "mean_ms": 13.271,
+              "p95_ms": 34.011,
+              "max_ms": 49.002
+            },
+            "lock_wait": {
+              "mean_ms": 0.6,
+              "p95_ms": 3.178,
+              "max_ms": 5.313
+            },
+            "transaction": {
+              "mean_ms": 49.12,
+              "p95_ms": 70.094,
+              "max_ms": 75.142
+            }
+          }
+        },
+        {
+          "hotspot": false,
+          "clients": 20,
+          "requests": 400,
+          "seconds": 6.094,
+          "errors": 0,
+          "admission_rejections": 0,
+          "slo_all_requests_completed": true,
+          "error_classes": [],
+          "latency": {
+            "read": {
+              "n": 300,
+              "p50_ms": 250.27,
+              "p95_ms": 310.42,
+              "max_ms": 330.59
+            },
+            "import": {
+              "n": 100,
+              "p50_ms": 464.86,
+              "p95_ms": 567.09,
+              "max_ms": 602.18
+            }
+          },
+          "pool": {
+            "enabled": true,
+            "scope": "current_process",
+            "pool_min": 0,
+            "pool_max": 4,
+            "pool_size": 4,
+            "pool_available": 4
+          },
+          "transactions": {
+            "scope": "current_process",
+            "window_seconds": 900,
+            "sample_limit": 4096,
+            "count": 1000,
+            "writes": 200,
+            "rollbacks": 0,
+            "connection_failures": 0,
+            "connection": {
+              "mean_ms": 102.852,
+              "p95_ms": 235.67,
+              "max_ms": 275.419
+            },
+            "lock_wait": {
+              "mean_ms": 0.596,
+              "p95_ms": 3.186,
+              "max_ms": 5.313
+            },
+            "transaction": {
+              "mean_ms": 48.496,
+              "p95_ms": 70.619,
+              "max_ms": 79.841
+            }
+          }
+        },
+        {
+          "hotspot": false,
+          "clients": 50,
+          "requests": 400,
+          "seconds": 0.914,
+          "errors": 364,
+          "admission_rejections": 364,
+          "slo_all_requests_completed": false,
+          "error_classes": [
+            "DatabaseCapacityError"
+          ],
+          "latency": {
+            "read": {
+              "n": 27,
+              "p50_ms": 206.57,
+              "p95_ms": 348.93,
+              "max_ms": 352.94
+            },
+            "import": {
+              "n": 9,
+              "p50_ms": 378.88,
+              "p95_ms": 393.93,
+              "max_ms": 393.93
+            }
+          },
+          "pool": {
+            "enabled": true,
+            "scope": "current_process",
+            "pool_min": 0,
+            "pool_max": 4,
+            "pool_size": 4,
+            "pool_available": 4
+          },
+          "transactions": {
+            "scope": "current_process",
+            "window_seconds": 900,
+            "sample_limit": 4096,
+            "count": 1773,
+            "writes": 209,
+            "rollbacks": 0,
+            "connection_failures": 364,
+            "connection": {
+              "mean_ms": 62.187,
+              "p95_ms": 230.575,
+              "max_ms": 312.711
+            },
+            "lock_wait": {
+              "mean_ms": 0.351,
+              "p95_ms": 2.862,
+              "max_ms": 5.313
+            },
+            "transaction": {
+              "mean_ms": 28.441,
+              "p95_ms": 69.173,
+              "max_ms": 79.841
+            }
+          }
+        },
+        {
+          "hotspot": true,
+          "clients": 5,
+          "requests": 400,
+          "seconds": 6.807,
+          "errors": 0,
+          "admission_rejections": 0,
+          "slo_all_requests_completed": true,
+          "error_classes": [],
+          "latency": {
+            "read": {
+              "n": 300,
+              "p50_ms": 88.62,
+              "p95_ms": 123.57,
+              "max_ms": 132.12
+            },
+            "import": {
+              "n": 100,
+              "p50_ms": 60.25,
+              "p95_ms": 89.73,
+              "max_ms": 108.97
+            }
+          },
+          "pool": {
+            "enabled": true,
+            "scope": "current_process",
+            "pool_min": 0,
+            "pool_max": 4,
+            "pool_size": 4,
+            "pool_available": 4
+          },
+          "transactions": {
+            "scope": "current_process",
+            "window_seconds": 900,
+            "sample_limit": 4096,
+            "count": 2273,
+            "writes": 309,
+            "rollbacks": 0,
+            "connection_failures": 364,
+            "connection": {
+              "mean_ms": 51.607,
+              "p95_ms": 226.307,
+              "max_ms": 312.711
+            },
+            "lock_wait": {
+              "mean_ms": 0.408,
+              "p95_ms": 2.989,
+              "max_ms": 5.313
+            },
+            "transaction": {
+              "mean_ms": 33.928,
+              "p95_ms": 84.772,
+              "max_ms": 109.961
+            }
+          }
+        },
+        {
+          "hotspot": true,
+          "clients": 20,
+          "requests": 400,
+          "seconds": 10.569,
+          "errors": 0,
+          "admission_rejections": 0,
+          "slo_all_requests_completed": true,
+          "error_classes": [],
+          "latency": {
+            "read": {
+              "n": 300,
+              "p50_ms": 454.67,
+              "p95_ms": 570.82,
+              "max_ms": 615.29
+            },
+            "import": {
+              "n": 100,
+              "p50_ms": 716.82,
+              "p95_ms": 879.43,
+              "max_ms": 936.42
+            }
+          },
+          "pool": {
+            "enabled": true,
+            "scope": "current_process",
+            "pool_min": 0,
+            "pool_max": 4,
+            "pool_size": 4,
+            "pool_available": 4
+          },
+          "transactions": {
+            "scope": "current_process",
+            "window_seconds": 900,
+            "sample_limit": 4096,
+            "count": 2773,
+            "writes": 409,
+            "rollbacks": 0,
+            "connection_failures": 364,
+            "connection": {
+              "mean_ms": 101.856,
+              "p95_ms": 361.655,
+              "max_ms": 465.744
+            },
+            "lock_wait": {
+              "mean_ms": 0.448,
+              "p95_ms": 3.046,
+              "max_ms": 19.068
+            },
+            "transaction": {
+              "mean_ms": 42.892,
+              "p95_ms": 131.822,
+              "max_ms": 158.742
+            }
+          }
+        },
+        {
+          "hotspot": true,
+          "clients": 50,
+          "requests": 400,
+          "seconds": 1.694,
+          "errors": 364,
+          "admission_rejections": 364,
+          "slo_all_requests_completed": false,
+          "error_classes": [
+            "DatabaseCapacityError"
+          ],
+          "latency": {
+            "read": {
+              "n": 27,
+              "p50_ms": 643.02,
+              "p95_ms": 1118.32,
+              "max_ms": 1128.82
+            },
+            "import": {
+              "n": 9,
+              "p50_ms": 1081.09,
+              "p95_ms": 1151.74,
+              "max_ms": 1151.74
+            }
+          },
+          "pool": {
+            "enabled": true,
+            "scope": "current_process",
+            "pool_min": 0,
+            "pool_max": 4,
+            "pool_size": 4,
+            "pool_available": 4
+          },
+          "transactions": {
+            "scope": "current_process",
+            "window_seconds": 900,
+            "sample_limit": 4096,
+            "count": 3546,
+            "writes": 418,
+            "rollbacks": 0,
+            "connection_failures": 728,
+            "connection": {
+              "mean_ms": 85.935,
+              "p95_ms": 353.96,
+              "max_ms": 976.552
+            },
+            "lock_wait": {
+              "mean_ms": 0.364,
+              "p95_ms": 2.941,
+              "max_ms": 19.068
+            },
+            "transaction": {
+              "mean_ms": 34.938,
+              "p95_ms": 129.891,
+              "max_ms": 167.649
+            }
+          }
+        }
+      ],
+      "pg_samples": {
+        "count": 826,
+        "max_connections": 12,
+        "max_active": 4,
+        "max_lock_waiters": 1
+      },
+      "resources_at_end": {
+        "scope": "current_process",
+        "cpu_seconds": 16.141,
+        "peak_rss_bytes": 79355904
+      },
+      "database_cpu_measured": false,
+      "workers": {
+        "seconds": 33.399,
+        "processes": [
+          {
+            "ok": true,
+            "pid": 27536,
+            "tasks": 100,
+            "durations_ms": [
+              352.305799984606,
+              315.48690001363866,
+              321.23780000256374,
+              319.82060000882484,
+              320.30290001421236,
+              310.46710000373423,
+              322.11670000106096,
+              323.31509998766705,
+              308.40849998639897,
+              312.9031000135001,
+              314.49889999930747,
+              321.95869999122806,
+              323.7939999962691,
+              323.1952000060119,
+              322.87360000191256,
+              340.4269999882672,
+              351.85519998776726,
+              333.49759998964146,
+              311.6005999909248,
+              314.8815999738872,
+              320.1044000161346,
+              318.45060002524406,
+              326.0928000090644,
+              327.2577000025194,
+              319.98859997838736,
+              329.3777999933809,
+              320.043000014266,
+              318.17060001776554,
+              309.7358999948483,
+              321.44130000961013,
+              322.11540002026595,
+              326.6363999864552,
+              324.46950001758523,
+              318.75039997976273,
+              321.20360000408255,
+              322.63910002075136,
+              314.981200004695,
+              325.9295000170823,
+              319.94369998574257,
+              319.33359999675304,
+              319.53040001099,
+              317.36539999837987,
+              311.53820001054555,
+              313.517700007651,
+              315.37710002157837,
+              315.17869999515824,
+              312.90260000969283,
+              316.7324000096414,
+              327.56919998792,
+              316.71539999661036,
+              329.95680000749417,
+              320.6964999844786,
+              327.1029000170529,
+              315.1298000011593,
+              326.08869997784495,
+              312.4707999813836,
+              319.5051000220701,
+              315.2215000009164,
+              317.0183000038378,
+              319.6458000165876,
+              323.16880000871606,
+              315.1371999992989,
+              322.8945000155363,
+              327.34659998095594,
+              318.79659998230636,
+              316.1488999903668,
+              324.8027999943588,
+              316.4697000174783,
+              322.7059999771882,
+              315.67169999470934,
+              319.34990000445396,
+              311.7725999909453,
+              324.59919998655096,
+              321.25989999622107,
+              324.0289999812376,
+              318.2801000075415,
+              326.15310000255704,
+              317.72130000172183,
+              324.73389999358915,
+              328.12759999069385,
+              321.57649999135174,
+              320.1081000152044,
+              319.36719999066554,
+              316.64720000117086,
+              312.4825000122655,
+              324.5832000102382,
+              320.0172999931965,
+              319.583699980285,
+              323.97329999366775,
+              328.7146000075154,
+              317.9202000028454,
+              318.05280002299696,
+              316.9460000062827,
+              326.5576000267174,
+              323.82760001928546,
+              323.9373000105843,
+              316.17579999146983,
+              321.26729999436066,
+              322.59850000264123,
+              324.6156999957748
+            ],
+            "pool": {
+              "enabled": true,
+              "scope": "current_process",
+              "pool_min": 0,
+              "pool_max": 4,
+              "pool_size": 1,
+              "pool_available": 1
+            },
+            "resources": {
+              "scope": "current_process",
+              "cpu_seconds": 2.234,
+              "peak_rss_bytes": 67219456
+            }
+          },
+          {
+            "ok": true,
+            "pid": 42760,
+            "tasks": 100,
+            "durations_ms": [
+              366.6687000077218,
+              317.166199994972,
+              319.94819999090396,
+              320.17709998763166,
+              320.05489998846315,
+              310.4773000231944,
+              322.0533000130672,
+              322.2142000158783,
+              309.20119999791496,
+              312.76230001822114,
+              313.83550001191907,
+              322.76990002719685,
+              323.38799998979084,
+              323.3986000122968,
+              322.3128999816254,
+              340.9869000024628,
+              351.3923999853432,
+              334.79399999487214,
+              312.0059999928344,
+              314.5912000036333,
+              319.66099998680875,
+              318.46219999715686,
+              327.55050002015196,
+              326.6711999895051,
+              320.43620001059026,
+              329.2896000202745,
+              319.78709998656996,
+              318.80089998594485,
+              309.87960001220927,
+              320.713400025852,
+              323.33509999443777,
+              326.45429999683984,
+              324.9352000129875,
+              318.43749998370185,
+              321.127900009742,
+              322.55300000542775,
+              315.37239998579025,
+              325.9507000038866,
+              319.98310002381913,
+              318.89569998020306,
+              320.0864999962505,
+              316.77840001066215,
+              311.33240001508966,
+              313.3040000102483,
+              315.66140000359155,
+              315.1591999921948,
+              313.1668999849353,
+              315.98090002080426,
+              327.5275999912992,
+              317.37609999254346,
+              329.9537999846507,
+              320.76010000309907,
+              327.10719999158755,
+              315.1413000014145,
+              325.9091000072658,
+              312.21370000275783,
+              319.4688000075985,
+              314.92160001653247,
+              317.3358000058215,
+              319.2152999981772,
+              322.94759998330846,
+              314.94489999022335,
+              323.31050001084805,
+              327.0308000210207,
+              317.83159999758936,
+              316.1488999903668,
+              324.8422000033315,
+              316.37359998421744,
+              322.8178999852389,
+              315.7205999887083,
+              319.47409998974763,
+              311.584800016135,
+              323.8017999974545,
+              321.5102999820374,
+              324.61810001404956,
+              318.3248999994248,
+              325.7846999913454,
+              318.0417999974452,
+              324.56499998806976,
+              328.01280001876876,
+              321.8815000145696,
+              320.3360000043176,
+              319.08809999004006,
+              316.3097999931779,
+              312.8724999842234,
+              324.2032999987714,
+              319.39600000623614,
+              319.8011000058614,
+              323.9729999913834,
+              328.4791999903973,
+              317.8161999967415,
+              318.34140000864863,
+              316.6960999951698,
+              326.60800000303425,
+              323.53409999632277,
+              323.7074000062421,
+              316.2480999890249,
+              320.99020000896417,
+              322.3230000003241,
+              324.89350001560524
+            ],
+            "pool": {
+              "enabled": true,
+              "scope": "current_process",
+              "pool_min": 0,
+              "pool_max": 4,
+              "pool_size": 1,
+              "pool_available": 1
+            },
+            "resources": {
+              "scope": "current_process",
+              "cpu_seconds": 2.188,
+              "peak_rss_bytes": 67084288
+            }
+          }
+        ],
+        "conservation": {
+          "items_by_status": {
+            "succeeded": 200
+          },
+          "new_books": 200,
+          "duplicate_books": 0,
+          "open_periods": 200
+        }
+      }
+    },
+    "17": {
+      "companies": 200,
+      "rounds": 2,
+      "phases": [
+        {
+          "hotspot": false,
+          "clients": 5,
+          "requests": 400,
+          "seconds": 4.869,
+          "errors": 0,
+          "admission_rejections": 0,
+          "slo_all_requests_completed": true,
+          "error_classes": [],
+          "latency": {
+            "read": {
+              "n": 300,
+              "p50_ms": 55.39,
+              "p95_ms": 77.2,
+              "max_ms": 100.4
+            },
+            "import": {
+              "n": 100,
+              "p50_ms": 62.91,
+              "p95_ms": 123.92,
+              "max_ms": 134.07
+            }
+          },
+          "pool": {
+            "enabled": true,
+            "scope": "current_process",
+            "pool_min": 0,
+            "pool_max": 4,
+            "pool_size": 4,
+            "pool_available": 4
+          },
+          "transactions": {
+            "scope": "current_process",
+            "window_seconds": 900,
+            "sample_limit": 4096,
+            "count": 500,
+            "writes": 100,
+            "rollbacks": 0,
+            "connection_failures": 0,
+            "connection": {
+              "mean_ms": 10.47,
+              "p95_ms": 27.905,
+              "max_ms": 44.493
+            },
+            "lock_wait": {
+              "mean_ms": 0.608,
+              "p95_ms": 3.33,
+              "max_ms": 5.218
+            },
+            "transaction": {
+              "mean_ms": 37.898,
+              "p95_ms": 62.333,
+              "max_ms": 71.372
+            }
+          }
+        },
+        {
+          "hotspot": false,
+          "clients": 20,
+          "requests": 400,
+          "seconds": 4.203,
+          "errors": 0,
+          "admission_rejections": 0,
+          "slo_all_requests_completed": true,
+          "error_classes": [],
+          "latency": {
+            "read": {
+              "n": 300,
+              "p50_ms": 177.52,
+              "p95_ms": 194.81,
+              "max_ms": 208.44
+            },
+            "import": {
+              "n": 100,
+              "p50_ms": 299.35,
+              "p95_ms": 331.75,
+              "max_ms": 348.8
+            }
+          },
+          "pool": {
+            "enabled": true,
+            "scope": "current_process",
+            "pool_min": 0,
+            "pool_max": 4,
+            "pool_size": 4,
+            "pool_available": 3
+          },
+          "transactions": {
+            "scope": "current_process",
+            "window_seconds": 900,
+            "sample_limit": 4096,
+            "count": 1000,
+            "writes": 200,
+            "rollbacks": 0,
+            "connection_failures": 0,
+            "connection": {
+              "mean_ms": 71.148,
+              "p95_ms": 145.056,
+              "max_ms": 167.892
+            },
+            "lock_wait": {
+              "mean_ms": 0.608,
+              "p95_ms": 3.328,
+              "max_ms": 5.218
+            },
+            "transaction": {
+              "mean_ms": 35.358,
+              "p95_ms": 58.139,
+              "max_ms": 71.372
+            }
+          }
+        },
+        {
+          "hotspot": false,
+          "clients": 50,
+          "requests": 400,
+          "seconds": 0.909,
+          "errors": 365,
+          "admission_rejections": 365,
+          "slo_all_requests_completed": false,
+          "error_classes": [
+            "DatabaseCapacityError"
+          ],
+          "latency": {
+            "read": {
+              "n": 26,
+              "p50_ms": 199.88,
+              "p95_ms": 327.87,
+              "max_ms": 344.91
+            },
+            "import": {
+              "n": 9,
+              "p50_ms": 367.78,
+              "p95_ms": 384.86,
+              "max_ms": 384.86
+            }
+          },
+          "pool": {
+            "enabled": true,
+            "scope": "current_process",
+            "pool_min": 0,
+            "pool_max": 4,
+            "pool_size": 4,
+            "pool_available": 4
+          },
+          "transactions": {
+            "scope": "current_process",
+            "window_seconds": 900,
+            "sample_limit": 4096,
+            "count": 1774,
+            "writes": 209,
+            "rollbacks": 0,
+            "connection_failures": 365,
+            "connection": {
+              "mean_ms": 44.096,
+              "p95_ms": 143.957,
+              "max_ms": 305.504
+            },
+            "lock_wait": {
+              "mean_ms": 0.359,
+              "p95_ms": 2.999,
+              "max_ms": 5.218
+            },
+            "transaction": {
+              "mean_ms": 20.987,
+              "p95_ms": 51.5,
+              "max_ms": 71.372
+            }
+          }
+        },
+        {
+          "hotspot": true,
+          "clients": 5,
+          "requests": 400,
+          "seconds": 14.866,
+          "errors": 0,
+          "admission_rejections": 0,
+          "slo_all_requests_completed": true,
+          "error_classes": [],
+          "latency": {
+            "read": {
+              "n": 300,
+              "p50_ms": 206.47,
+              "p95_ms": 328.45,
+              "max_ms": 414.69
+            },
+            "import": {
+              "n": 100,
+              "p50_ms": 97.5,
+              "p95_ms": 178.13,
+              "max_ms": 189.91
+            }
+          },
+          "pool": {
+            "enabled": true,
+            "scope": "current_process",
+            "pool_min": 0,
+            "pool_max": 4,
+            "pool_size": 4,
+            "pool_available": 4
+          },
+          "transactions": {
+            "scope": "current_process",
+            "window_seconds": 900,
+            "sample_limit": 4096,
+            "count": 2274,
+            "writes": 309,
+            "rollbacks": 0,
+            "connection_failures": 365,
+            "connection": {
+              "mean_ms": 40.976,
+              "p95_ms": 142.355,
+              "max_ms": 305.504
+            },
+            "lock_wait": {
+              "mean_ms": 0.403,
+              "p95_ms": 3.0,
+              "max_ms": 5.218
+            },
+            "transaction": {
+              "mean_ms": 42.165,
+              "p95_ms": 216.72,
+              "max_ms": 310.989
+            }
+          }
+        },
+        {
+          "hotspot": true,
+          "clients": 20,
+          "requests": 400,
+          "seconds": 15.891,
+          "errors": 0,
+          "admission_rejections": 0,
+          "slo_all_requests_completed": true,
+          "error_classes": [],
+          "latency": {
+            "read": {
+              "n": 300,
+              "p50_ms": 350.23,
+              "p95_ms": 1353.57,
+              "max_ms": 1553.19
+            },
+            "import": {
+              "n": 100,
+              "p50_ms": 529.45,
+              "p95_ms": 1994.07,
+              "max_ms": 2323.04
+            }
+          },
+          "pool": {
+            "enabled": true,
+            "scope": "current_process",
+            "pool_min": 0,
+            "pool_max": 4,
+            "pool_size": 4,
+            "pool_available": 4
+          },
+          "transactions": {
+            "scope": "current_process",
+            "window_seconds": 900,
+            "sample_limit": 4096,
+            "count": 2774,
+            "writes": 409,
+            "rollbacks": 0,
+            "connection_failures": 365,
+            "connection": {
+              "mean_ms": 124.286,
+              "p95_ms": 804.658,
+              "max_ms": 1170.619
+            },
+            "lock_wait": {
+              "mean_ms": 0.439,
+              "p95_ms": 2.999,
+              "max_ms": 15.163
+            },
+            "transaction": {
+              "mean_ms": 57.308,
+              "p95_ms": 298.392,
+              "max_ms": 408.828
+            }
+          }
+        },
+        {
+          "hotspot": true,
+          "clients": 50,
+          "requests": 400,
+          "seconds": 1.31,
+          "errors": 364,
+          "admission_rejections": 364,
+          "slo_all_requests_completed": false,
+          "error_classes": [
+            "DatabaseCapacityError"
+          ],
+          "latency": {
+            "read": {
+              "n": 27,
+              "p50_ms": 412.66,
+              "p95_ms": 705.22,
+              "max_ms": 708.57
+            },
+            "import": {
+              "n": 9,
+              "p50_ms": 718.47,
+              "p95_ms": 777.5,
+              "max_ms": 777.5
+            }
+          },
+          "pool": {
+            "enabled": true,
+            "scope": "current_process",
+            "pool_min": 0,
+            "pool_max": 4,
+            "pool_size": 4,
+            "pool_available": 4
+          },
+          "transactions": {
+            "scope": "current_process",
+            "window_seconds": 900,
+            "sample_limit": 4096,
+            "count": 3547,
+            "writes": 418,
+            "rollbacks": 0,
+            "connection_failures": 729,
+            "connection": {
+              "mean_ms": 101.243,
+              "p95_ms": 740.129,
+              "max_ms": 1170.619
+            },
+            "lock_wait": {
+              "mean_ms": 0.381,
+              "p95_ms": 2.899,
+              "max_ms": 45.547
+            },
+            "transaction": {
+              "mean_ms": 45.783,
+              "p95_ms": 269.227,
+              "max_ms": 408.828
+            }
+          }
+        }
+      ],
+      "pg_samples": {
+        "count": 913,
+        "max_connections": 12,
+        "max_active": 5,
+        "max_lock_waiters": 1
+      },
+      "resources_at_end": {
+        "scope": "current_process",
+        "cpu_seconds": 15.953,
+        "peak_rss_bytes": 79233024
+      },
+      "database_cpu_measured": false,
+      "workers": {
+        "seconds": 32.012,
+        "processes": [
+          {
+            "ok": true,
+            "pid": 28408,
+            "tasks": 100,
+            "durations_ms": [
+              349.0448000084143,
+              301.2425000197254,
+              313.28299999586307,
+              303.04669999168254,
+              304.4907999865245,
+              305.14709997805767,
+              304.0802000032272,
+              303.1712000083644,
+              307.8023999987636,
+              297.08380001829937,
+              302.91850000503473,
+              301.66800000006333,
+              317.4425000033807,
+              303.9950999955181,
+              300.2567999938037,
+              306.80829999619164,
+              361.56319998553954,
+              306.1851999955252,
+              313.5511999716982,
+              313.6326000094414,
+              302.6374999899417,
+              303.36339998757467,
+              309.920300001977,
+              310.65219998708926,
+              320.9037999913562,
+              302.73029999807477,
+              308.87819998315535,
+              301.67819999041967,
+              297.5377999828197,
+              298.88709998340346,
+              302.3137999989558,
+              297.7041000267491,
+              307.80710000544786,
+              303.7453999859281,
+              303.1844000215642,
+              308.7070999899879,
+              307.3061000031885,
+              313.14820001716726,
+              303.8894000055734,
+              301.51189997559413,
+              303.7657999957446,
+              299.3631999997888,
+              305.346399982227,
+              299.69009998603724,
+              313.0644999910146,
+              297.76549999951385,
+              298.09719999320805,
+              305.83349999506027,
+              302.6289999834262,
+              310.1507999817841,
+              305.57659998885356,
+              305.0853000022471,
+              302.3869000026025,
+              307.04050001804717,
+              303.3307000005152,
+              299.7825000202283,
+              303.4073000017088,
+              317.24970001960173,
+              310.3434999939054,
+              316.0323000047356,
+              304.36890001874417,
+              302.91009999928065,
+              310.0722999952268,
+              324.42030002130195,
+              304.30669998168014,
+              313.19769998663105,
+              304.3119999929331,
+              304.25210000248626,
+              306.4203000103589,
+              306.9874999928288,
+              302.83539998345077,
+              301.8512999988161,
+              297.4289999983739,
+              302.8084000106901,
+              308.986600022763,
+              309.6148000040557,
+              311.2346999987494,
+              304.0813999832608,
+              304.42200001562014,
+              311.72800000058487,
+              311.94650000543334,
+              316.7486999882385,
+              322.19840001198463,
+              309.22120000468567,
+              315.32170000718907,
+              309.16140001500025,
+              309.0597999980673,
+              302.94779999530874,
+              307.5574999966193,
+              304.26159998751245,
+              313.0550000059884,
+              304.6877999731805,
+              316.21450002421625,
+              303.4521999943536,
+              317.61939998250455,
+              305.4433999932371,
+              307.653299998492,
+              302.66580000170507,
+              306.77719999221154,
+              305.58580000069924
+            ],
+            "pool": {
+              "enabled": true,
+              "scope": "current_process",
+              "pool_min": 0,
+              "pool_max": 4,
+              "pool_size": 1,
+              "pool_available": 1
+            },
+            "resources": {
+              "scope": "current_process",
+              "cpu_seconds": 1.922,
+              "peak_rss_bytes": 67149824
+            }
+          },
+          {
+            "ok": true,
+            "pid": 40424,
+            "tasks": 100,
+            "durations_ms": [
+              345.6027000211179,
+              301.9810999976471,
+              313.5306999902241,
+              302.6982999872416,
+              304.43709998507984,
+              304.87810002523474,
+              304.2501999880187,
+              303.2314000010956,
+              308.05099999997765,
+              297.16149999876507,
+              302.9583999887109,
+              300.59710002387874,
+              317.81030001002364,
+              304.4155999959912,
+              299.8076000076253,
+              307.0100999902934,
+              361.0284999886062,
+              306.29829998360947,
+              313.57549998210743,
+              313.7369000178296,
+              302.698200015584,
+              303.1784000049811,
+              309.7416000091471,
+              310.35139999585226,
+              320.72669998160563,
+              303.1259000126738,
+              309.73800001083873,
+              301.99639999773353,
+              297.0603999856394,
+              298.6936999950558,
+              302.4472999968566,
+              297.661100019468,
+              308.0560000089463,
+              303.3186999964528,
+              303.74360000132583,
+              308.69380000513047,
+              306.8090000015218,
+              313.38519998826087,
+              303.8352000003215,
+              301.97170001338236,
+              303.5239999881014,
+              299.2990000057034,
+              304.9411000101827,
+              299.31410000426695,
+              312.97870000707917,
+              298.13030001241714,
+              298.3058000099845,
+              305.16389998956583,
+              303.3566999947652,
+              310.08959998143837,
+              305.0826000107918,
+              304.5488999923691,
+              302.14909999631345,
+              307.1756999997888,
+              302.94140000478365,
+              299.6047999768052,
+              303.2564999884926,
+              316.8854000105057,
+              310.788800008595,
+              315.4002999945078,
+              306.0181000037119,
+              302.8296999982558,
+              309.7745999984909,
+              324.8017999867443,
+              303.50489998818375,
+              313.28380000195466,
+              304.4079999963287,
+              304.3073999870103,
+              306.2839000194799,
+              307.06589997862466,
+              302.73830000078306,
+              301.9456999900285,
+              297.3329999949783,
+              302.55349999060854,
+              309.0338999754749,
+              309.746399987489,
+              311.2130000081379,
+              304.15139999240637,
+              304.1885000129696,
+              311.8084000016097,
+              312.2832000080962,
+              316.5177000046242,
+              322.3911999957636,
+              309.42880001384765,
+              315.12929999735206,
+              309.45970001630485,
+              308.94389998866245,
+              302.81539997668006,
+              307.8365999972448,
+              303.07619998347946,
+              314.19309999910183,
+              304.8795000067912,
+              315.1658999850042,
+              303.5309000115376,
+              317.093699995894,
+              306.7518000025302,
+              307.3995000158902,
+              302.89160000393167,
+              306.96469999384135,
+              304.6977999911178
+            ],
+            "pool": {
+              "enabled": true,
+              "scope": "current_process",
+              "pool_min": 0,
+              "pool_max": 4,
+              "pool_size": 1,
+              "pool_available": 1
+            },
+            "resources": {
+              "scope": "current_process",
+              "cpu_seconds": 1.922,
+              "peak_rss_bytes": 67170304
+            }
+          }
+        ],
+        "conservation": {
+          "items_by_status": {
+            "succeeded": 200
+          },
+          "new_books": 200,
+          "duplicate_books": 0,
+          "open_periods": 200
+        }
+      }
+    }
+  },
+  "evidence": {
+    "recovery": {
+      "path": "tmp_test/qa01-05/accepted-recovery-final/reports/summary.json",
+      "sha256": "13007c5f94b4c18242d15623b4039d6b779e1f95c04ed42029c6e5142a93b9bd"
+    },
+    "browsers": {
+      "path": "tmp_test/qa01-05/browser-accepted.json",
+      "sha256": "b2591d0f0ddd58ac099cadbd3bd5cd579ca2e42e557d985fed06bf8a96c47ef6"
+    },
+    "capacity16": {
+      "path": "tmp_test/qa01-05/accepted-capacity16/report.json",
+      "sha256": "7347624b6598b5bdf0352ff5c229fb7aa310244ef0c936dad02d39da9dce08dc"
+    },
+    "capacity17": {
+      "path": "tmp_test/qa01-05/accepted-capacity17/report.json",
+      "sha256": "01f6a436f57b070f684dcb9fd6d556b77f6985a38a47528764dedf0b7061de05"
+    },
+    "ownership": {
+      "path": "tmp_test/qa01-05/ownership.json",
+      "sha256": "12d3cd1ac60a01adef9523250a035ae0e22587229659a966f608cefd4ff71692"
+    },
+    "environment_final_status": {
+      "path": "tmp_test/qa01-05/environment-final-status.json",
+      "sha256": "c905a81072ddc2ff013828b5b888c9bd4ff4e475df1210bf4a144bf6f4422f86"
+    },
+    "bridge_stop": {
+      "path": "tmp_test/qa01-05/bridge-stop-retry.json",
+      "sha256": "64617f0abdc76a765384a3887884efbc93fd20c1a3c07018e177fbbbea6f3042"
+    },
+    "tmp_test/qa01-05/offline-final-r2.xml": {
+      "path": "tmp_test/qa01-05/offline-final-r2.xml",
+      "sha256": "d61faf67ade42a0c582b2e662098dcd74f5a44bc3a78e9453d09f0b4979822aa"
+    },
+    "tmp_test/qa01-05/qa-pg16.xml": {
+      "path": "tmp_test/qa01-05/qa-pg16.xml",
+      "sha256": "49549c172c801216d2912321aa561e777a2ffe86ce335a54fbec952da3ee43b6"
+    },
+    "tmp_test/qa01-05/qa-pg17.xml": {
+      "path": "tmp_test/qa01-05/qa-pg17.xml",
+      "sha256": "9a89271f5c4f3b94b75bb70fb66e9816b5c45296e8a4c74c0c65ab9a258b28c0"
+    }
+  },
+  "limitations": [
+    "No commit, push, deployment, production modification or real model/notification call.",
+    "Local CI-equivalent evidence; remote Actions not run.",
+    "Mobile WebKit emulation is not an iOS or WeChat physical-device result.",
+    "Targeted application security probes, not a full independent DAST audit.",
+    "Application CPU/RSS and PG activity/locks measured; database CPU and long soak not measured.",
+    "Overload admission rejections are reported separately and do not establish 50-client successful-request SLO."
+  ]
+}

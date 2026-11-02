@@ -172,8 +172,12 @@ class MonthlyBatchService:
             )
         return notes
 
-    def open_company(self, actor, company_id, company_name, request: BatchOpen):
-        return self._open_company(actor, company_id, company_name, request)
+    def open_company(
+        self, actor, company_id, company_name, request: BatchOpen, *, before_create=None
+    ):
+        return self._open_company(
+            actor, company_id, company_name, request, before_create=before_create
+        )
 
     @staticmethod
     def _result(period, results):
@@ -238,7 +242,7 @@ class MonthlyBatchService:
         }
         return row
 
-    def _open_company(self, actor, company_id, company_name, request):
+    def _open_company(self, actor, company_id, company_name, request, *, before_create=None):
         period = request.period
         try:
             with self.db.transaction(actor=actor) as conn:
@@ -293,6 +297,7 @@ class MonthlyBatchService:
                         inherit_rule_ids=[],
                         idempotency_key=f"monthly-batch:{period}:{company_id}",
                     ),
+                    **({"before_create": before_create} if before_create is not None else {}),
                 )
                 if created.get("replayed"):
                     # Another operator committed the same key between our
@@ -319,7 +324,9 @@ class MonthlyBatchService:
                     warnings.extend(notes)
             else:
                 book = self.accounting.create_book(
-                    actor, BookCreate(name=name, period=period, company_id=company_id)
+                    actor,
+                    BookCreate(name=name, period=period, company_id=company_id),
+                    **({"before_create": before_create} if before_create is not None else {}),
                 )
                 book_id = book["id"]
                 self._copy_access(actor, prior["id"], book_id)

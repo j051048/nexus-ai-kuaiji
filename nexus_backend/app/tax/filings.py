@@ -6,6 +6,7 @@ vouchers: those still need their own independent review.
 """
 
 import re
+from datetime import date
 from uuid import uuid4
 
 from ..accounting.domain import AccountingError
@@ -37,6 +38,8 @@ def record(service, actor, payload):
     """Record one external filing/payment row. Reviewers only, append-only."""
     scope = service._scope(actor, payload.get("book_id"), "review")
     period = _period(payload.get("period") or scope["period"])
+    if period != scope["period"]:
+        raise AccountingError("办理期间必须与账套期间一致", 422)
     kind = payload.get("kind")
     if kind not in KINDS:
         raise AccountingError("税种只能是 vat 或 surtax", 422)
@@ -49,6 +52,10 @@ def record(service, actor, payload):
     occurred_at = str(payload.get("occurred_at") or "").strip()
     if not DATE.match(occurred_at):
         raise AccountingError("办理日期需为 YYYY-MM-DD", 422)
+    try:
+        date.fromisoformat(occurred_at)
+    except ValueError:
+        raise AccountingError("办理日期不是有效日历日期", 422) from None
     amount = payload.get("amount_cents", 0)
     if type(amount) is not int or amount < 0:
         raise AccountingError("金额必须是非负整数分", 422)

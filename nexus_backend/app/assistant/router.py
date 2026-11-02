@@ -22,6 +22,17 @@ def build_assistant_router(actor_dependency):
     def actions(request: Request):
         return request.app.state.assistant_actions
 
+    @router.get("/investigations/capability")
+    def investigation_capability(
+        request: Request,
+        book_id: str = Query(min_length=1, max_length=100),
+        current=Depends(actor_dependency),
+    ):
+        service = request.app.state.service
+        with service.db.transaction(actor=current) as conn:
+            service.access.book(conn, current, book_id, "read")
+        return {"book_id": book_id, "enabled": investigation.enabled()}
+
     @router.post("/investigations")
     def investigate(
         body: InvestigationRequest,

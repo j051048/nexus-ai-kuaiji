@@ -1,0 +1,11 @@
+{
+  "schema": "identity-test-assets-v1",
+  "release": "v2.197.0",
+  "system": "Linux",
+  "architecture": "amd64",
+  "archive_url": "https://github.com/supabase/auth/releases/download/v2.197.0/auth-v2.197.0-amd64.tar.xz",
+  "archive_sha256": "b5c2991d1df760c9b099c1c2395a94bd1c2f83ed58901934921997179dc9f7ea",
+  "binary_sha256": "c66b5efc816ccf3e13c24022bdefd5c6a9bea1fd1a1aeb9c586e1279c75a6306",
+  "source_url": "https://github.com/supabase/auth.git",
+  "source_commit": "4eee58f296d9698a1c2c0ae14d7a0b379c7622d3"
+}

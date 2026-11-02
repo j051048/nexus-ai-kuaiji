@@ -1,0 +1,137 @@
+{
+  "scope": "local only; no models, no notifications, no production, no commit/push",
+  "candidate": {
+    "head": "ab83f49f91859ff799577cb43f5dd0ebad75a6cd",
+    "source_files": 1132,
+    "source_sha256": "5daa0b393af64159def8a2f06f2f881cce8309473b0439b16eac68d5ffcc30df",
+    "migration_files": 314,
+    "migration_sha256": "8b65c62a57461c865c95ad07400b0f5bde40f9fcff4561393d77a219e52968fc"
+  },
+  "local_regression": {
+    "passed": 190,
+    "skipped": 0,
+    "junit_sha256": "fe92db6c6c98c30794587af68ae41826d42d8e4b4bb53d574268679f7f9d5c25",
+    "evidence": "tmp_test/dcp-r123/local-final.xml"
+  },
+  "postgres": {
+    "pg16_settlement": {
+      "status": "passed",
+      "suite": "settlement",
+      "major": 16,
+      "candidate": {
+        "head": "ab83f49f91859ff799577cb43f5dd0ebad75a6cd",
+        "source_files": 1132,
+        "source_sha256": "5daa0b393af64159def8a2f06f2f881cce8309473b0439b16eac68d5ffcc30df",
+        "migration_files": 314,
+        "migration_sha256": "8b65c62a57461c865c95ad07400b0f5bde40f9fcff4561393d77a219e52968fc"
+      },
+      "manifest_sha256": "8b05f9d4203bb2938e8334ce45b5d56f0adc7f914e1a2fd3c74cff90ef43c55a",
+      "passed": 17,
+      "junit_sha256": "91213a18a1fa5991551587311fd02ca6f3d305cf4b8ec60c2791c4d6a2f6d907",
+      "evidence": "tmp_test/dcp-r123/gate-pg16-settlement-v1/summary.json"
+    },
+    "pg16_dcp": {
+      "status": "passed",
+      "suite": "dcp",
+      "major": 16,
+      "candidate": {
+        "head": "ab83f49f91859ff799577cb43f5dd0ebad75a6cd",
+        "source_files": 1132,
+        "source_sha256": "5daa0b393af64159def8a2f06f2f881cce8309473b0439b16eac68d5ffcc30df",
+        "migration_files": 314,
+        "migration_sha256": "8b65c62a57461c865c95ad07400b0f5bde40f9fcff4561393d77a219e52968fc"
+      },
+      "manifest_sha256": "8b05f9d4203bb2938e8334ce45b5d56f0adc7f914e1a2fd3c74cff90ef43c55a",
+      "passed": 26,
+      "junit_sha256": "0b516c7aa33067954087aa6f29555e35a07186f0c7ef5e4c2690b376ac9d7354",
+      "evidence": "tmp_test/dcp-r123/gate-pg16-dcp-v1/summary.json"
+    },
+    "pg16_c01": {
+      "major": 16,
+      "status": "passed",
+      "candidate": {
+        "head": "ab83f49f91859ff799577cb43f5dd0ebad75a6cd",
+        "source_files": 1132,
+        "source_sha256": "5daa0b393af64159def8a2f06f2f881cce8309473b0439b16eac68d5ffcc30df",
+        "migration_files": 314,
+        "migration_sha256": "8b65c62a57461c865c95ad07400b0f5bde40f9fcff4561393d77a219e52968fc"
+      },
+      "required_cases_sha256": "c21369c3a5bebaae78a7a4df0a21b61f8a3a57de29782b470dd7d78d99d80e47",
+      "passed": 34,
+      "junit_sha256": "3679c9c9178f32d6e191312eefac9894cf28f52422da47b140c0921a28ee35a5",
+      "evidence": "tmp_test/dcp-r123/gate-pg16-c01-fresh/summary.json"
+    },
+    "pg17_settlement": {
+      "status": "passed",
+      "suite": "settlement",
+      "major": 17,
+      "candidate": {
+        "head": "ab83f49f91859ff799577cb43f5dd0ebad75a6cd",
+        "source_files": 1132,
+        "source_sha256": "5daa0b393af64159def8a2f06f2f881cce8309473b0439b16eac68d5ffcc30df",
+        "migration_files": 314,
+        "migration_sha256": "8b65c62a57461c865c95ad07400b0f5bde40f9fcff4561393d77a219e52968fc"
+      },
+      "manifest_sha256": "8b05f9d4203bb2938e8334ce45b5d56f0adc7f914e1a2fd3c74cff90ef43c55a",
+      "passed": 17,
+      "junit_sha256": "9dc5e5f384d5819ab33c286f9c0da362f14831507c95d16a446bdde1f976f958",
+      "evidence": "tmp_test/dcp-r123/gate-pg17-settlement-v1/summary.json"
+    },
+    "pg17_dcp": {
+      "status": "passed",
+      "suite": "dcp",
+      "major": 17,
+      "candidate": {
+        "head": "ab83f49f91859ff799577cb43f5dd0ebad75a6cd",
+        "source_files": 1132,
+        "source_sha256": "5daa0b393af64159def8a2f06f2f881cce8309473b0439b16eac68d5ffcc30df",
+        "migration_files": 314,
+        "migration_sha256": "8b65c62a57461c865c95ad07400b0f5bde40f9fcff4561393d77a219e52968fc"
+      },
+      "manifest_sha256": "8b05f9d4203bb2938e8334ce45b5d56f0adc7f914e1a2fd3c74cff90ef43c55a",
+      "passed": 26,
+      "junit_sha256": "be2907bb671894de538a1c10f9c638b0b04af1c8b689a23425fb1237ec3e17cb",
+      "evidence": "tmp_test/dcp-r123/gate-pg17-dcp-v1/summary.json"
+    },
+    "pg17_c01": {
+      "major": 17,
+      "status": "passed",
+      "candidate": {
+        "head": "ab83f49f91859ff799577cb43f5dd0ebad75a6cd",
+        "source_files": 1132,
+        "source_sha256": "5daa0b393af64159def8a2f06f2f881cce8309473b0439b16eac68d5ffcc30df",
+        "migration_files": 314,
+        "migration_sha256": "8b65c62a57461c865c95ad07400b0f5bde40f9fcff4561393d77a219e52968fc"
+      },
+      "required_cases_sha256": "c21369c3a5bebaae78a7a4df0a21b61f8a3a57de29782b470dd7d78d99d80e47",
+      "passed": 34,
+      "junit_sha256": "804075591bce0e95e326b86514ac11edbb95f198ddb79f10e314d8c14dfd2642",
+      "evidence": "tmp_test/dcp-r123/gate-pg17-c01-fresh/summary.json"
+    }
+  },
+  "migration_status": {
+    "16": {
+      "latest": 201,
+      "all_applied": true
+    },
+    "17": {
+      "latest": 201,
+      "all_applied": true
+    }
+  },
+  "earlier_nonpassing_runs": {
+    "pg16_c01_reused_database": "300 second timeout; preserved in tmp_test/dcp-r123/gate-pg16-c01/summary.json",
+    "pg17_c01_reused_database": "300 second timeout; preserved in tmp_test/dcp-r123/gate-pg17-c01/summary.json"
+  },
+  "checks": {
+    "ruff_check": "passed",
+    "ruff_format_check": "347 files unchanged",
+    "git_diff_check": "passed"
+  },
+  "remote_ci": "not run by this task",
+  "environment_cleanup": {
+    "pg16": "stopped after confirming zero client connections",
+    "pg17": "stopped after confirming zero client connections",
+    "synthetic_databases_and_evidence": "retained locally for replay"
+  }
+}

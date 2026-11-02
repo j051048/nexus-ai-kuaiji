@@ -76,10 +76,9 @@ def setup_checklist(service, actor, company_id, book_id, period):
                 "SELECT COUNT(1) FROM ledger_accounts WHERE ledger_id=? AND status='active'",
                 (ledger_id,),
             ).fetchone()[0]
-            settings = conn.execute(
-                "SELECT status,reason FROM subledger_control_settings WHERE ledger_id=?",
-                (ledger_id,),
-            ).fetchone()
+            from ..subledger.service import SubledgerService
+
+            settings = SubledgerService(service.db)._control_state(conn, ledger_id, period)
             bound_versions = conn.execute(
                 "SELECT COUNT(1) FROM opening_package_versions v "
                 "JOIN opening_packages p ON p.id=v.package_id "

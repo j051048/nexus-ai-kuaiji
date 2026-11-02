@@ -227,9 +227,11 @@ class LedgersService:
             )["read"]
         )
 
-    def create_period(self, actor, book_id, request):
+    def create_period(self, actor, book_id, request, *, before_create=None):
         with self.db.transaction(write=True, actor=actor) as conn:
             book, ledger = self._ledger(conn, actor, book_id, True)
+            if before_create is not None:
+                before_create(conn)
             source = self.access.book(conn, actor, request.source_book_id, "review")
             mapping = conn.execute(
                 "SELECT ledger_id FROM ledger_periods WHERE book_id=?", (source["id"],)

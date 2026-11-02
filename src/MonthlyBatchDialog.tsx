@@ -60,12 +60,14 @@ export function MonthlyBatchDialog({
   initialSearch,
   onClose,
   onOpened,
+  onManageBatch,
 }: {
   session: Session;
   period: string;
   initialSearch?: string;
   onClose: () => void;
   onOpened: () => void;
+  onManageBatch?: (batchId: string) => void;
 }) {
   const [search, setSearch] = useState(initialSearch ?? '');
   const [generateMaterials, setGenerateMaterials] = useState(true);
@@ -79,21 +81,34 @@ export function MonthlyBatchDialog({
   const requestKey = useRef('');
   const openedRef = useRef(onOpened);
   openedRef.current = onOpened;
+  const pollController = useRef(new AbortController());
+  const pollTimer = useRef<number>();
+  useEffect(() => {
+    pollController.current = new AbortController();
+    return () => {
+      pollController.current.abort();
+      window.clearTimeout(pollTimer.current);
+    };
+  }, []);
 
   async function poll(id: string) {
+    const signal = pollController.current.signal;
+    if (signal.aborted) return;
     try {
       const value = await api<BatchOperation>(
         `/firm/batch-operations/${encodeURIComponent(id)}`,
         session,
+        { signal },
       );
+      if (signal.aborted) return;
       setBatch(value);
       if (['queued', 'running'].includes(value.status)) {
-        window.setTimeout(() => void poll(id), 800);
+        pollTimer.current = window.setTimeout(() => void poll(id), 800);
       } else {
         openedRef.current();
       }
     } catch (failure) {
-      setError(errorMessage(failure));
+      if (!signal.aborted) setError(errorMessage(failure));
     }
   }
 
@@ -275,6 +290,16 @@ export function MonthlyBatchDialog({
             </p>
           )}
           <div className="batch-actions">
+            {onManageBatch && (
+              <button
+                className="button secondary"
+                type="button"
+                disabled={busy}
+                onClick={() => onManageBatch(batch.id)}
+              >
+                管理逐户任务
+              </button>
+            )}
             {batch.failed > 0 && (
               <button
                 className="button secondary"

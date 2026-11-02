@@ -3,6 +3,7 @@
 import ipaddress
 import logging
 import os
+import re
 import secrets
 import sqlite3
 import time
@@ -661,23 +662,42 @@ def create_app(
                         status_code=403,
                         headers={"Cache-Control": "no-store"},
                     )
-        response = await call_next(request)
+        return await call_next(request)
+
+    @app.middleware("http")
+    async def trace_request(request: Request, call_next):
+        trace_id = request.headers.get("x-request-id", "").strip()
+        if not re.fullmatch(r"[A-Za-z0-9_.:-]{1,120}", trace_id):
+            trace_id = uuid4().hex
+        request.state.trace_id = trace_id
+        try:
+            response = await call_next(request)
+        except Exception as error:
+            # Never echo raw driver/provider errors or claim an unknown write
+            # rolled back. The correlation ID is restricted to safe characters.
+            logging.getLogger(__name__).error(
+                "Unhandled request failure request_id=%s class=%s",
+                trace_id,
+                type(error).__name__,
+            )
+            read_only = request.method in {"GET", "HEAD", "OPTIONS"}
+            response = JSONResponse(
+                {
+                    "detail": "服务暂时不可用，请联系管理员核对请求编号"
+                    if read_only
+                    else "暂时无法确认本次操作结果，请先核对处理记录，勿重复提交",
+                    "code": "internal_error" if read_only else "result_unknown",
+                },
+                status_code=500,
+            )
+        response.headers["X-Request-Id"] = trace_id
+        # Outermost middleware also covers authentication/origin early returns.
         private = "private" in {
             part.strip().lower() for part in response.headers.get("Cache-Control", "").split(",")
         }
         response.headers["Cache-Control"] = "private, no-store" if private else "no-store"
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
-        return response
-
-    @app.middleware("http")
-    async def trace_request(request: Request, call_next):
-        trace_id = request.headers.get("x-request-id", "").strip()
-        if not trace_id or len(trace_id) > 120:
-            trace_id = uuid4().hex
-        request.state.trace_id = trace_id
-        response = await call_next(request)
-        response.headers["X-Request-Id"] = trace_id
         return response
 
     @app.exception_handler(AccountingError)
@@ -734,18 +754,37 @@ def create_app(
 
     @app.exception_handler(DatabaseCapacityError)
     async def handle_database_capacity(request, error):
+        # This borrow did not start, but earlier transactions in a mutating
+        # workflow may already have committed. Never invite an automatic replay
+        # of the entire write (or its supplier attempt) based on pool pressure.
+        read_only = request.method in {"GET", "HEAD", "OPTIONS"}
         return JSONResponse(
-            {"detail": "账务数据服务繁忙，请稍后重试", "code": "database_busy"},
+            {
+                "detail": (
+                    "账务数据服务繁忙，请稍后重新读取"
+                    if read_only
+                    else "暂时无法确认本次操作结果，请先核对处理记录，勿重复提交"
+                ),
+                "code": "database_busy" if read_only else "result_unknown",
+            },
             status_code=503,
-            headers={"Retry-After": "2"},
+            headers={"Retry-After": "2"} if read_only else {},
         )
 
     @app.exception_handler(psycopg.OperationalError)
     @app.exception_handler(sqlite3.OperationalError)
     async def handle_database_unavailable(request, error):
         log_database_unavailable(request, error)
+        read_only = request.method in {"GET", "HEAD", "OPTIONS"}
         return JSONResponse(
-            {"detail": "账务数据服务暂时不可用，请稍后重试；未完成的操作会整体回滚"},
+            {
+                "detail": (
+                    "账务数据服务暂时不可用，请稍后重新读取"
+                    if read_only
+                    else "暂时无法确认本次操作结果，请先核对处理记录，勿重复提交"
+                ),
+                "code": "database_unavailable" if read_only else "result_unknown",
+            },
             status_code=503,
         )
 

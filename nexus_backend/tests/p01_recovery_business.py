@@ -56,6 +56,7 @@ BUSINESS_TABLES = (
     "monthly_delivery_acknowledgements",
     "monthly_delivery_opens",
     "delivery_notifications",
+    "notification_investigations",
     *TABLE_FIELDS,
 )
 
@@ -336,7 +337,33 @@ def seed_latest_recovery_business(
             sending = {"id": started["id"], "lease_token": started["lease_token"]}
             notifications["sending"] = started["id"]
     assert sending
+    from app.delivery.notification_investigations import (
+        NotificationInvestigations,
+        InvestigationCreate,
+    )
+
+    with db.transaction(actor=owner) as conn:
+        source = conn.execute(
+            "SELECT * FROM delivery_notifications WHERE id=?", (notifications["unknown"],)
+        ).fetchone()
+    investigation = NotificationInvestigations(db).create(
+        owner,
+        delivery_book["id"],
+        source["id"],
+        InvestigationCreate(
+            expected_revision=0,
+            expected_attempts=source["attempts"],
+            expected_package_version=source["package_version"],
+            expected_manifest_sha256=source["manifest_sha256"],
+            expected_recipient_user_id=source["recipient_user_id"],
+            conclusion="unresolved",
+            evidence_ref="synthetic recovery ticket 202",
+            reason="恢复前未知外发保留人工核查",
+            idempotency_key="recovery-investigation-" + uuid4().hex,
+        ),
+    )
     return {
+        "notification_investigation": investigation,
         "company_id": company["id"],
         "tax_book": tax_book,
         "delivery_book": delivery_book,
@@ -391,6 +418,14 @@ def _response(client, method, path, headers, body=None, expected=200):
 def verify_latest_business_http(client, headers, evidence, *, wrong_book_id):
     """Fresh signed sessions exercise original IO, independent review and exact acknowledgement."""
     tax_book, delivery_book = evidence["tax_book"]["id"], evidence["delivery_book"]["id"]
+    investigation = evidence["notification_investigation"]
+    history_path = f"/api/books/{delivery_book}/delivery/notifications/{investigation['notification_id']}/investigations"
+    history = _response(client, "GET", history_path, headers["owner"]).json()
+    assert history["items"] == [investigation]
+    assert client.get(history_path, headers=headers["outsider"]).status_code in (403, 404)
+    # A customer cannot read internal investigation evidence or turn it into a signature.
+    assert client.get(history_path, headers=headers["customer"]).status_code in (403, 404)
+
     paper = evidence["tax_paper"]
     path = f"/api/tax/workpapers/{paper['id']}"
     returned = _response(client, "GET", path + f"?book_id={tax_book}", headers["reviewer"]).json()

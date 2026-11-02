@@ -83,6 +83,9 @@ def test_latest_business_http_shapes_and_guard_assertions(latest_case):
 
     app.state.tax = TaxWorkpaperService(c.db)
     app.state.monthly_packages = MonthlyPackageService(c.db)
+    from app.delivery.followups import DeliveryFollowupService
+
+    app.state.delivery_followups = DeliveryFollowupService(c.db)
     app.state.invoice_imports = InvoiceImportService(
         c.db, latest_case.store, UploadIntentService(c.db, latest_case.store)
     )

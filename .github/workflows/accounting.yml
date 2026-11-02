@@ -221,6 +221,16 @@ jobs:
           assert not any(list(root.iter(tag)) for tag in ('skipped', 'failure', 'error'))
           assert all(not int(n.get(k, '0')) for n in [root, *root.iter('testsuite')] for k in ('skipped', 'failures', 'errors', 'disabled', 'deselected'))
           PY
+      - name: Independent settlement company-lock gate, no skips
+        run: >-
+          python scripts/dcp_reliability_gate.py --suite settlement
+          --config tmp_test/ak05-ci-config/regression.json
+          --out tmp_test/ak05-ci-reports/settlement-lock
+      - name: DCP permissions, frozen configuration and batch recovery gate, no skips
+        run: >-
+          python scripts/dcp_reliability_gate.py --suite dcp
+          --config tmp_test/ak05-ci-config/regression.json
+          --out tmp_test/ak05-ci-reports/dcp-reliability
       - name: Retain only sanitized gate evidence
         if: always()
         uses: actions/upload-artifact@v4

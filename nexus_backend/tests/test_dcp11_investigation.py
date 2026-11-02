@@ -78,9 +78,9 @@ def test_revocation_mid_loop_stops_and_hands_off(business, enabled):
         business.service, actor, business.book["id"], "2026-10", on_step=revoke
     )
     assert result["status"] == "blocked"
-    assert result["coverage"]["read"] == 1
-    assert set(result["findings"]) == {"voucher_status"}
-    assert result["missing"] == ["close_blockers", "delivery_status"]
+    assert result["coverage"]["read"] == 0
+    assert result["findings"] == {}
+    assert result["missing"] == list(investigation.TOOLS)
     assert result["handoff"]["role"] == "reviewer"
     assert result["steps"][-1]["code"] == "refused"
 

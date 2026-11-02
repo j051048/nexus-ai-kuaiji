@@ -1,3 +1,5 @@
+import type { InvestigationConclusion } from './dcp-evidence';
+
 export type NotificationSemantic =
   | 'queued'
   | 'sending'
@@ -15,7 +17,16 @@ export interface NotificationItem {
   semantic: NotificationSemantic;
   attempts: number;
   recipient: { user_id: string; name: string | null };
-  package: { id: string; version: number };
+  package: { id: string; version: number; manifest_sha256?: string };
+  can_investigate?: boolean;
+  investigation?: {
+    id: string;
+    revision: number;
+    conclusion: InvestigationConclusion;
+    reason: string;
+    evidence_ref: string;
+    created_at: string;
+  } | null;
   channel: string;
   last_error: string;
   created_at: string;

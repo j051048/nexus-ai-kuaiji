@@ -398,7 +398,7 @@ nav {
   align-items: center;
   gap: 7px;
   font-size: var(--font-size-xs);
-  color: #778779;
+  color: var(--text-muted);
   white-space: nowrap;
 }
 .status-dot,

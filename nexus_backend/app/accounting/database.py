@@ -31,7 +31,11 @@ logger = logging.getLogger(__name__)
 
 
 class DatabaseCapacityError(RuntimeError):
-    """A bounded pool is busy; callers can retry without exposing its DSN."""
+    """No connection was borrowed; do not infer the outcome of a whole workflow."""
+
+    def __init__(self, message, *, reason="unavailable"):
+        super().__init__(message)
+        self.reason = reason
 
 
 def migration_files(dialect):
@@ -271,9 +275,15 @@ class Database:
             pool = self._postgres_pool()
             try:
                 return PostgresConnection(pool.getconn(), pool)
-            except (PoolTimeout, TooManyRequests):
+            except TooManyRequests:
                 raise DatabaseCapacityError(
-                    "数据库连接池等待超时或等待队列已满，请稍后重试"
+                    "数据库连接池等待队列已满，请稍后核对任务状态",
+                    reason="queue_full",
+                ) from None
+            except PoolTimeout:
+                raise DatabaseCapacityError(
+                    "数据库连接池等待超时，请稍后核对任务状态",
+                    reason="wait_timeout",
                 ) from None
             except Exception:
                 # Pool errors may contain host/user data; API/log callers only
@@ -391,7 +401,12 @@ class Database:
                 timeout = self._bounded_setting(
                     "ACCOUNTING_DB_POOL_TIMEOUT_SECONDS", 5, 0.1, 30, float
                 )
-                waiting = self._bounded_setting("ACCOUNTING_DB_POOL_MAX_WAITING", 32, 1, 256)
+                # Backpressure, not more DB connections: a 50-request burst
+                # needs 46 wait slots with four connections (50 during cold
+                # start). Reserve a small margin for diagnostic/worker reads.
+                # Reuse psycopg's FIFO queue and ONE getconn deadline, including
+                # connection checks; no outer retry, sleep loop or second queue.
+                waiting = self._bounded_setting("ACCOUNTING_DB_POOL_MAX_WAITING", 64, 1, 256)
                 self._pool = ConnectionPool(
                     self.path,
                     min_size=minimum,
@@ -426,7 +441,13 @@ class Database:
             for key in ("pool_min", "pool_max", "pool_size", "pool_available")
             if key in values
         }
-        return {"enabled": True, "scope": "current_process", **capacity}
+        return {
+            "enabled": True,
+            "scope": "current_process",
+            **capacity,
+            "pool_max_waiting": self._pool.max_waiting,
+            "pool_timeout_seconds": self._pool.timeout,
+        }
 
     def assert_restore_hold(self):
         """Fail closed when the target database carries an unreleased hold.

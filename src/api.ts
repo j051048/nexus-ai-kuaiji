@@ -33,6 +33,7 @@ export class ApiError extends Error {
     message: string,
     public status: number,
     public code?: string,
+    public requestId?: string,
   ) {
     super(message);
   }
@@ -96,7 +97,12 @@ async function request(
       throw new DOMException('授权范围已切换', 'AbortError');
     if (response.status === 401 && session) invalidSession(session);
     const payload = data as { detail?: unknown; message?: string; code?: unknown } | null;
-    const code = typeof payload?.code === 'string' ? payload.code : undefined;
+    const code =
+      typeof payload?.code === 'string' && /^[a-z0-9_]{1,80}$/.test(payload.code)
+        ? payload.code
+        : undefined;
+    const rawRequestId = response.headers.get('X-Request-Id') ?? '';
+    const requestId = /^[A-Za-z0-9_.:-]{1,120}$/.test(rawRequestId) ? rawRequestId : undefined;
     if (
       response.status === 403 &&
       session &&
@@ -120,10 +126,21 @@ async function request(
           : detail && typeof detail === 'object' && 'message' in detail
             ? String(detail.message)
             : (payload?.message ?? `请求失败（${response.status}），请稍后重试。`);
+    const failureMessage =
+      response.status >= 500
+        ? code === 'result_unknown' ||
+          (options.method !== undefined &&
+            !['GET', 'HEAD', 'OPTIONS'].includes(options.method.toUpperCase()))
+          ? '暂时无法确认本次操作结果，请先核对处理记录，勿重复提交。'
+          : '服务暂时不可用，请稍后重新读取；若持续失败，请联系管理员。'
+        : response.status === 413
+          ? transportTooLargeMessage()
+          : message;
     throw new ApiError(
-      response.status === 413 ? transportTooLargeMessage() : message,
+      failureMessage + (response.status >= 500 && requestId ? ` 请求编号：${requestId}` : ''),
       response.status,
       code,
+      requestId,
     );
   }
   return response;

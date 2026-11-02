@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "dataset_id": "dcp-domain-investigation-v1",
+  "policy_version": "fixed-three-read-v1",
+  "prompt_version": "no-model",
+  "context_version": "domain-evidence-v1",
+  "samples": [
+    {
+      "id": "dev_complete",
+      "split": "dev",
+      "expected_status": "complete",
+      "expected_read": 3,
+      "notification_state": null
+    },
+    {
+      "id": "dev_foreign",
+      "split": "dev",
+      "expected_status": "blocked",
+      "expected_read": 0,
+      "notification_state": null
+    },
+    {
+      "id": "dev_failed",
+      "split": "dev",
+      "expected_status": "blocked",
+      "expected_read": 0,
+      "notification_state": null
+    },
+    {
+      "id": "holdout_changed",
+      "split": "holdout",
+      "expected_status": "blocked",
+      "expected_read": 0,
+      "notification_state": null
+    },
+    {
+      "id": "holdout_revoked",
+      "split": "holdout",
+      "expected_status": "blocked",
+      "expected_read": 0,
+      "notification_state": null
+    },
+    {
+      "id": "holdout_unknown",
+      "split": "holdout",
+      "expected_status": "complete",
+      "expected_read": 3,
+      "notification_state": "unknown"
+    }
+  ]
+}

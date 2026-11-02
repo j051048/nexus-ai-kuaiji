@@ -14,10 +14,14 @@ from pathlib import Path
 import re
 import subprocess
 import threading
+import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import unquote, urlsplit
 
-AUTH_SHA = "f2aa147268461f74784ddc8b2240aa446ee71ceb9633bac41c30e7b852a860aa"
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from scripts.identity_test_assets import asset_contract  # noqa: E402
+
+AUTH_SHA = asset_contract()["binary_sha256"]
 
 
 class BridgeError(ValueError):

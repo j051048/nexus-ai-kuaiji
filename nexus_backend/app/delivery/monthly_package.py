@@ -583,7 +583,7 @@ class MonthlyPackageService:
         with self.db.transaction(actor=actor) as conn:
             return self.access.book(conn, actor, book_id, capability)["company_id"]
 
-    def create(self, actor, book_id, request):
+    def create(self, actor, book_id, request, *, before_create=None):
         fingerprint = digest(encoded(request.model_dump()))
         company_id = self._company(actor, book_id, "review")
         with self.db.transaction(
@@ -599,6 +599,8 @@ class MonthlyPackageService:
                     deterministic=True,
                 )
             book = self.access.book(conn, actor, book_id, "review")
+            if before_create is not None:
+                before_create(conn)
             existing = conn.execute(
                 "SELECT * FROM monthly_delivery_packages WHERE book_id=? AND created_by=? AND idempotency_key=?",
                 (book_id, actor.user_id, request.idempotency_key),

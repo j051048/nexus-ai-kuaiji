@@ -1,6 +1,8 @@
 """Real HTTP migration flow with private synthetic originals and explicit roles."""
 import copy
 import json
+import secrets
+import time
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -9,6 +11,8 @@ from fastapi.testclient import TestClient
 
 from app.accounting.seed import LOCAL_ACTOR
 from app.main import create_app
+from app.auth import Identity
+from app.accounting.models import FirmMemberGrant, BookMemberGrant
 from app.legacy_migration.worker import MigrationWorker
 from test_business_api import auth
 from test_stage13_legacy_settlements import drain_project_phase
@@ -34,7 +38,18 @@ def prepare_http(client, package=None, source_product='generic'):
         client.app.state.directory.register_identity(identity)
     book = assert_response(client.post('/api/books', headers=owner, json={'name': 'SYNTHETIC-旧账接管企业', 'period': '2026-10'}), 201)
     assert_response(client.put('/api/companies/' + book['company_id'] + '/members', headers=owner, json={'email': 'finance@demo.example.invalid', 'role': 'finance'}))
-    assert_response(client.put('/api/books/' + book['id'] + '/members/local-business-finance', headers=owner, json={'role': 'reviewer'}))
+    # Customer finance may review the source migration project, but must not
+    # receive the firm's formal-voucher review capability.
+    assert_response(client.put('/api/books/' + book['id'] + '/members/local-business-finance', headers=owner, json={'role': 'editor'}))
+    reviewer_id = 'legacy-http-reviewer-' + uuid4().hex
+    reviewer_identity = Identity(reviewer_id, reviewer_id + '@example.invalid', '虚构独立复核员')
+    client.app.state.directory.register_identity(reviewer_identity)
+    client.app.state.directory.grant_firm_member(LOCAL_ACTOR, FirmMemberGrant(email=reviewer_identity.email, role='reviewer'))
+    client.app.state.directory.grant_book_member(LOCAL_ACTOR, book['id'], reviewer_id, BookMemberGrant(role='reviewer'))
+    token = secrets.token_urlsafe(32)
+    client.app.state.tokens[token] = time.monotonic() + 7200
+    client.app.state.token_users[token] = reviewer_identity
+    reviewer = {'Authorization': 'Bearer ' + token}
     base = '/api/books/' + book['id'] + '/legacy-migrations'
     template_response = client.get(base + '/template', headers=owner, params={'external_book_id': 'SYNTHETIC-HTTP-BOOK', 'history_start': '2026-09-01', 'history_end': '2026-09-30', 'cutover_date': '2026-10-01'})
     template = assert_response(template_response)
@@ -46,8 +61,9 @@ def prepare_http(client, package=None, source_product='generic'):
     project = assert_response(client.post(base, headers=owner, json={'target_book_id': book['id'], 'source_product': source_product, 'product_version': 'SYNTHETIC-中性 v1', 'external_book_id': context['external_book_id'], 'source_system_key': 'SYNTHETIC-'+uuid4().hex, 'history_start': context['history_start'], 'history_end': context['history_end'], 'cutover_date': context['cutover_date'], 'reason': '隔离环境合成旧账验收', 'idempotency_key': uuid4().hex}), 201)
     project_id = project['project']['id']
     path = base + '/' + project_id
-    assert_response(client.post(path + '/access', headers=owner, json={'user_id': 'local-business-finance', 'role': 'reviewer', 'reason': '独立审核合成旧账范围及金额'}))
-    c = SimpleNamespace(client=client, owner=owner, finance=finance, employee=employee, book=book, base=base, path=path, project=project_id, package=content, db=client.app.state.service.db, manager=LOCAL_ACTOR, worker=MigrationWorker(client.app.state.legacy_migration))
+    assert_response(client.post(path + '/access', headers=owner, json={'user_id': 'local-business-finance', 'role': 'viewer', 'reason': '客户核对旧账范围'}))
+    assert_response(client.post(path + '/access', headers=owner, json={'user_id': reviewer_id, 'role': 'reviewer', 'reason': '事务所独立审核合成旧账'}))
+    c = SimpleNamespace(client=client, owner=owner, finance=finance, reviewer=reviewer, reviewer_id=reviewer_id, employee=employee, book=book, base=base, path=path, project=project_id, package=content, db=client.app.state.service.db, manager=LOCAL_ACTOR, worker=MigrationWorker(client.app.state.legacy_migration))
     return c
 
 
@@ -95,7 +111,8 @@ def test_http_create_template_multipart_parse_mapping_independent_accept_activat
     assert report['report']['source']['source_controls_are_user_supplied'] is True
     body = confirmation(c, report)
     assert client.post(c.path + '/accept', headers=c.owner, json=body).status_code == 403
-    assert_response(client.post(c.path + '/accept', headers=c.finance, json=body), 201)
+    assert client.post(c.path + '/accept', headers=c.finance, json=body).status_code == 403
+    assert_response(client.post(c.path + '/accept', headers=c.reviewer, json=body), 201)
     active = assert_response(client.post(c.path + '/activate', headers=c.owner, json=confirmation(c, report)), 201)
     assert active['project']['status'] == 'active' and active['cutover']['snapshot']['opening_is_reference']
     assert active['cutover']['snapshot']['automatic_export'] is False
@@ -145,7 +162,8 @@ def test_http_revocation_prevents_accept_and_original_download(client):
     original, report = ready(c)
     body = confirmation(c, report)
     assert_response(client.delete('/api/books/' + c.book['id'] + '/members/local-business-finance', headers=c.owner))
-    assert client.post(c.path + '/accept', headers=c.finance, json=body).status_code in {403, 404}
+    assert_response(client.delete('/api/books/' + c.book['id'] + '/members/' + c.reviewer_id, headers=c.owner))
+    assert client.post(c.path + '/accept', headers=c.reviewer, json=body).status_code in {403, 404}
     assert client.get(c.path + '/files/' + original['file']['id'], headers=c.finance).status_code in {403, 404}
     assert detail(c)['project']['status'] == 'ready'
 
@@ -156,7 +174,7 @@ def test_http_source_controls_difference_is_blocking_and_no_activation(client):
     _, report = ready(c)
     assert report['report']['blocking_count'] > 0
     assert 'SOURCE_CONTROL_MISMATCH' in {item['code'] for item in report['report']['issues']}
-    assert client.post(c.path + '/accept', headers=c.finance, json=confirmation(c, report)).status_code == 409
+    assert client.post(c.path + '/accept', headers=c.reviewer, json=confirmation(c, report)).status_code == 409
     assert not detail(c)['can_activate']
 
 
@@ -180,7 +198,7 @@ def test_http_json_record_scope_conflicts_block_acceptance_without_discarding_ge
     issue_codes={item['code'] for item in report['report']['issues']}
     assert {'ROW_SCOPE_MISMATCH','ORGANIZATION_SCOPE_UNVERIFIED'} <= issue_codes
     assert report['report']['blocking_count']>0 and not report['report']['coverage']['complete']
-    assert client.post(c.path+'/accept',headers=c.finance,json=confirmation(c,report)).status_code==409
+    assert client.post(c.path+'/accept',headers=c.reviewer,json=confirmation(c,report)).status_code==409
     records=assert_response(client.get(c.path+'/records?kind=account',headers=c.owner))['records']
     assert any(row['payload']['code']=='6602.02' for row in records)
     assert not any(row['payload']['code']=='1002' for row in records)

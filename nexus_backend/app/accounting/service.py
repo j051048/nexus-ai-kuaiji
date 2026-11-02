@@ -71,6 +71,21 @@ def safe_csv_text(value: str) -> str:
     return value
 
 
+def export_matches_versions(conn, export_id, expected):
+    """A replay must match frozen versions, not merely the idempotency key."""
+    row = conn.execute(
+        "SELECT payload_json FROM delivery_manifests WHERE export_id=?", (export_id,)
+    ).fetchone()
+    if not row:
+        return False
+    items = json.loads(row["payload_json"]).get("items", [])
+    actual = sorted(
+        [{"draft_id": item["draft_id"], "version": item["approved_version"]} for item in items],
+        key=lambda item: item["draft_id"],
+    )
+    return actual == expected
+
+
 class AccountingService:
     def __init__(self, db: Database):
         self.db = db
@@ -125,11 +140,13 @@ class AccountingService:
             ),
         )
 
-    def create_book(self, actor: Actor, request: BookCreate):
+    def create_book(self, actor: Actor, request: BookCreate, *, before_create=None):
         # 全局写锁：同一事务里创建企业、账套、科目与长期账套映射（跨多个域），
         # 企业范围迁移留给第三批写锁工作处理。
         with self.db.transaction(write=True, actor=actor) as conn:
             self.access.require_manager(conn, actor)
+            if before_create is not None:
+                before_create(conn)
             company_id = request.company_id
             if company_id:
                 self.access.company(conn, actor, company_id, manage=True)
@@ -1282,12 +1299,22 @@ class AccountingService:
             actor,
         )
 
-    def export(self, actor: Actor, book_id: str, request: ExportRequest):
+    def export(
+        self,
+        actor: Actor,
+        book_id: str,
+        request: ExportRequest,
+        *,
+        expected_drafts=None,
+        before_export=None,
+    ):
         company_id = self._company_of_book(actor, book_id)
         with self.db.transaction(
             write=True, actor=actor, company_id=company_id, write_scope="company"
         ) as conn:
             book = self._book(conn, actor, book_id, reviewer=True)
+            if before_export is not None:
+                before_export(conn)
             digest = fingerprint(sorted(request.draft_ids))
             existing = conn.execute(
                 "SELECT * FROM exports WHERE book_id=? AND idempotency_key=?",
@@ -1296,7 +1323,21 @@ class AccountingService:
             if existing:
                 if existing["request_fingerprint"] != digest:
                     raise AccountingError("导出幂等键已用于不同凭证集合", 409)
+                if expected_drafts is not None and not export_matches_versions(
+                    conn, existing["id"], expected_drafts
+                ):
+                    raise AccountingError("已存在导出的冻结版本与批量预览不一致", 409)
                 return {k: existing[k] for k in ("id", "csv", "count", "filename")}
+            if expected_drafts is not None:
+                current = [
+                    {"draft_id": row["id"], "version": row["version"]}
+                    for row in conn.execute(
+                        "SELECT id,version FROM drafts WHERE book_id=? AND status='approved' ORDER BY id",
+                        (book_id,),
+                    ).fetchall()
+                ]
+                if current != expected_drafts:
+                    raise AccountingError("预览后凭证集合或版本已变化，请重新预览", 409)
             self._open(book)
             selected = []
             for draft_id in request.draft_ids:

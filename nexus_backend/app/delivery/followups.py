@@ -403,7 +403,7 @@ class DeliveryFollowupService(NotificationDispatcher):
             self.access.book(conn, actor, book_id, "read")
             rows = conn.execute(
                 "SELECT n.id,n.kind,n.state,n.attempts,n.package_id,n.package_version,n.sink_ref,"
-                "n.last_error,n.created_at,n.updated_at,n.dispatched_at,n.recipient_user_id,"
+                "n.last_error,n.created_at,n.updated_at,n.dispatched_at,n.recipient_user_id,n.manifest_sha256,"
                 "u.name AS recipient_name,a.created_at AS acknowledged_at,"
                 "(SELECT MAX(o.opened_at) FROM monthly_delivery_opens o WHERE o.package_id=n.package_id) AS opened_at "
                 "FROM delivery_notifications n LEFT JOIN users u ON u.id=n.recipient_user_id "
@@ -411,6 +411,12 @@ class DeliveryFollowupService(NotificationDispatcher):
                 "WHERE n.book_id=? AND n.period=? ORDER BY n.created_at DESC, n.id LIMIT 50",
                 (book_id, period),
             ).fetchall()
+            can_investigate = self.access.firm_role(conn, actor) in {"owner", "admin"}
+            history = conn.execute(
+                "SELECT * FROM notification_investigations WHERE book_id=? AND period=? ORDER BY revision",
+                (book_id, period),
+            ).fetchall()
+            latest = {r["notification_id"]: dict(r) for r in history}
         items = []
         for row in rows:
             items.append(
@@ -426,7 +432,13 @@ class DeliveryFollowupService(NotificationDispatcher):
                         "user_id": row["recipient_user_id"],
                         "name": row["recipient_name"],
                     },
-                    "package": {"id": row["package_id"], "version": row["package_version"]},
+                    "package": {
+                        "id": row["package_id"],
+                        "version": row["package_version"],
+                        "manifest_sha256": row["manifest_sha256"],
+                    },
+                    "investigation": latest.get(row["id"]),
+                    "can_investigate": can_investigate and row["state"] == "unknown",
                     "channel": "smtp"
                     if (row["sink_ref"] or "").startswith("smtp:")
                     else "local_sink",

@@ -263,6 +263,7 @@ test('原件 503 明确提示失败，不自动重发审核或导出，也不闪
     await route.fulfill({
       status: 503,
       contentType: 'application/json',
+      headers: { 'x-request-id': 'qa-original-unavailable' },
       json: { detail: 'V03 本地原件服务暂不可用' },
     });
   });
@@ -272,8 +273,10 @@ test('原件 503 明确提示失败，不自动重发审核或导出，也不闪
   });
   const drawer = await openReview(page, fixture.book.id);
   await expect(
-    drawer.getByRole('alert').filter({ hasText: 'V03 本地原件服务暂不可用' }),
+    drawer.getByRole('alert').filter({ hasText: '服务暂时不可用，请稍后重新读取' }),
   ).toBeVisible();
+  await expect(drawer.getByRole('alert')).toContainText('qa-original-unavailable');
+  await expect(drawer).not.toContainText('V03 本地原件服务暂不可用');
   await expect(drawer.getByRole('img', { name: /^原始票据 / })).toHaveCount(0);
   await expect(drawer.getByRole('button', { name: '确认审核', exact: true })).toBeDisabled();
   await expect(page).toHaveURL(/\/workspace\/review/);

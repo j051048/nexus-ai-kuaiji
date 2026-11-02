@@ -184,6 +184,17 @@
     display: block;
   }
 }
+/* A narrow phone pane cannot fit two full monetary values side by side. */
+@container journal (max-width: 360px) {
+  .journal-entry-grid .journal-grid-amount {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+  .journal-entry-grid .journal-grid-amount + .journal-grid-amount {
+    grid-column: 1 / -1;
+    grid-row: 3;
+  }
+}
 @media (max-width: 700px) {
   .journal-entry-grid input,
   .journal-entry-grid select {

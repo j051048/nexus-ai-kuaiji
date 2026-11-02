@@ -1,0 +1,44 @@
+{
+  "head": "03b7d45b85068b71fb6ec0d973cce9c851cd3ae7",
+  "existing_paths": 28,
+  "existing_changed": [],
+  "files": {
+    "src/BatchOperationsDialog.tsx": "331b03b9d36923a7f280ca79397d8d349467f2d00b7f6bfadb5c2be0907b9693",
+    "src/HandoffDialog.tsx": "1762bcfc64a064bf0e9044c97cdf81574732bf266cbbae1f123dd0f8391edda8",
+    "src/MonthlyBatchDialog.tsx": "f21d39144a2a96a481ae1a64dc89201983817d5abbbcfe084e3f8d494e582237",
+    "src/MonthlyClientWorkbench.tsx": "7e761620d556e101dabe1ebfccf31f018d0b2f9db191bceb13be328ab66e14fd",
+    "src/batch-operations.ts": "0b6d4ef00be7c795b1b0c823a42045481ef89a63d5936d73dd779b540c9ac589",
+    "src/batch-operations.test.ts": "60b10335a5df5f66ba055e203418fd73b14571b659e11f0cefa9d8777e4ad6f0",
+    "src/useOperationRequests.ts": "7904ddcafee863bdaff771cdb76cff97e5f17ae4a6fe7e8f939c48fc90b2c5c5",
+    "src/batch-operations.css": "b5ef8d0b70c8217f5f34c7a5530e869c5c5cc0a61f6a79486631e415c770cce9",
+    "e2e/dcp-r4-operations.spec.ts": "a9690a613a6bf5cd68938a9e124f5015426e6780c0d0b81538357ba5d982f909"
+  },
+  "validation": {
+    "vitest": {
+      "passed": 1165,
+      "files": 117
+    },
+    "playwright_preview": {
+      "passed": 6,
+      "elapsed_seconds": 48.4,
+      "desktop": [
+        1280,
+        844
+      ],
+      "mobile": [
+        390,
+        844
+      ]
+    },
+    "backend_offline": {
+      "passed": 32,
+      "elapsed_seconds": 76.56
+    },
+    "lint": "passed",
+    "typecheck_and_build": "passed via preview gate",
+    "prettier_changed_files": "passed"
+  },
+  "production_access": false,
+  "model_calls": false,
+  "pushed": false
+}

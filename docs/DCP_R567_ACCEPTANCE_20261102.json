@@ -1,0 +1,261 @@
+{
+  "schema": "dcp-r567-local-acceptance-v1",
+  "status": "passed_local",
+  "candidate": {
+    "schema": "release-candidate-v1",
+    "head": "fe456f5bda53f29691b0e36501697e0a437fa3fc",
+    "source_files": 1771,
+    "source_sha256": "50e2e440dc0d8dc03ce52bef2e7272a22f557fd7b171d461a5d99e25607d3da1",
+    "migration_files": 316,
+    "migration_sha256": "f07ba1cdba14400bfff08d8f01df8217c917304da93be1da858814e39e3f8dc8"
+  },
+  "scope": "local synthetic data only",
+  "postgres_latest_migration": 202,
+  "sqlite_latest_migration": 126,
+  "tests": {
+    "offline": {
+      "passed": 106,
+      "failed": 0,
+      "skipped": 0,
+      "path": "tmp_test/dcp-r567/frozen-candidate/tmp_test/offline-pytest/cdd30a8c4f3e46129d899df0b4196aaa/results.xml",
+      "sha256": "6b5bc55b06c80c4a9e44cb826af702937441f289e46a74c5d5f1fee5f9f272d3"
+    },
+    "pg16": {
+      "passed": 57,
+      "failed": 0,
+      "skipped": 0,
+      "path": "tmp_test/dcp-r567/frozen-candidate/tmp_test/ak05-pg-runs/5d0ddabe92384455a27dfa3fb2c9b208/results.xml",
+      "sha256": "089244baa936be5b2b0938be204a40b991e346e5fdf107e3d3e02610de26e473"
+    },
+    "pg17": {
+      "passed": 57,
+      "failed": 0,
+      "skipped": 0,
+      "path": "tmp_test/dcp-r567/frozen-candidate/tmp_test/ak05-pg-runs/3b3de1addd724a28b658dd177500570d/results.xml",
+      "sha256": "61ff6a794be13e9b694c2063ec9876c9142f707975269e2a486b2f07e16f45ed"
+    },
+    "recovery": {
+      "artifact": {
+        "path": "tmp_test/dcp-r567/final-evidence/recovery-summary.json",
+        "sha256": "7d323f9acf9835a4138d8341575866674b3adc142499eb4651b044ae9bc381f9"
+      },
+      "phases": {
+        "regression": {
+          "passed": 151,
+          "skipped": 0,
+          "junit_sha256": "1f539c2e5a86daa19caf4f2a53ec50b60b2e7f885f0bff5deeb2f262d403c04d",
+          "execution_sha256": "9c127722fc23280aaff4cbec8a9f116dea2f17e861c698adbf7a89830cf7882d",
+          "collection_sha256": "6d8999677c0afe9a3eb28178812b5dddcedc49ad54d3452e838c8f6aba955cf5",
+          "seconds": 159.827,
+          "candidate": {
+            "schema": "release-candidate-v1",
+            "head": "fe456f5bda53f29691b0e36501697e0a437fa3fc",
+            "source_files": 1771,
+            "source_sha256": "50e2e440dc0d8dc03ce52bef2e7272a22f557fd7b171d461a5d99e25607d3da1",
+            "migration_files": 316,
+            "migration_sha256": "f07ba1cdba14400bfff08d8f01df8217c917304da93be1da858814e39e3f8dc8"
+          },
+          "configuration_sha256": {
+            "pg16-recovery_source.json": "9d63348e429a42dc609f101a39b1687a0a9de17d45cd5756ef40fcb5c3240fac",
+            "pg16-recovery-fresh-target.json": "9e47279e5363ea681a8951224b8a05f2c24788ef9d61c47db71562c5451be994",
+            "pg17-recovery_source.json": "9c4576fa00d5cd366b7b6d44c5d033794b63ad4125b801f08c02902ab4dc915c",
+            "pg17-recovery-fresh-target.json": "88ad51e220c33bc71ed360de8d9ebf6ed3d2f883f18c3f35b3012374af9c7c7a",
+            "wsl-bridge-private.json": "67121c981dba286fa5ef5d0266e4adb85231d1e6b2763a4858196639d279736b",
+            "gotrue-migrations-manifest.json": "bdb9c5905bb49fcd9fc14b2d2e232c39c9ebc01f4ab140654a0fd192a96e8e60"
+          }
+        },
+        "joint": {
+          "passed": 2,
+          "skipped": 0,
+          "junit_sha256": "e19136245fa454f05f555ac59736039f9ec53a513e9a8db94a70d9488b829075",
+          "execution_sha256": "7fa4f85875d20120de8274e6eebea643807c908e3c312e335957e6bcbf6e0a93",
+          "collection_sha256": "4318ec1cd4f034e8aad44f433d3e7069951870bd6a1ec385cea5114629e7f4ab",
+          "seconds": 87.589,
+          "candidate": {
+            "schema": "release-candidate-v1",
+            "head": "fe456f5bda53f29691b0e36501697e0a437fa3fc",
+            "source_files": 1771,
+            "source_sha256": "50e2e440dc0d8dc03ce52bef2e7272a22f557fd7b171d461a5d99e25607d3da1",
+            "migration_files": 316,
+            "migration_sha256": "f07ba1cdba14400bfff08d8f01df8217c917304da93be1da858814e39e3f8dc8"
+          },
+          "configuration_sha256": {
+            "pg16-recovery_source.json": "9d63348e429a42dc609f101a39b1687a0a9de17d45cd5756ef40fcb5c3240fac",
+            "pg16-recovery-fresh-target.json": "9e47279e5363ea681a8951224b8a05f2c24788ef9d61c47db71562c5451be994",
+            "pg17-recovery_source.json": "9c4576fa00d5cd366b7b6d44c5d033794b63ad4125b801f08c02902ab4dc915c",
+            "pg17-recovery-fresh-target.json": "88ad51e220c33bc71ed360de8d9ebf6ed3d2f883f18c3f35b3012374af9c7c7a",
+            "wsl-bridge-private.json": "67121c981dba286fa5ef5d0266e4adb85231d1e6b2763a4858196639d279736b",
+            "gotrue-migrations-manifest.json": "bdb9c5905bb49fcd9fc14b2d2e232c39c9ebc01f4ab140654a0fd192a96e8e60"
+          }
+        },
+        "identity": {
+          "passed": 4,
+          "skipped": 0,
+          "junit_sha256": "0a3d4462fc8feab2865ef624364e6483b56c2308bfb8c208017f00cf7d5b6907",
+          "execution_sha256": "2f7f4aee348b9baa6e84f4cababf268c7ec28fa99d09d087b3d61bb066de9119",
+          "collection_sha256": "ccc20fd16b7db2ff1702f205c3675fa1645c95cc728e049f035a9dee4c176c20",
+          "seconds": 55.822,
+          "candidate": {
+            "schema": "release-candidate-v1",
+            "head": "fe456f5bda53f29691b0e36501697e0a437fa3fc",
+            "source_files": 1771,
+            "source_sha256": "50e2e440dc0d8dc03ce52bef2e7272a22f557fd7b171d461a5d99e25607d3da1",
+            "migration_files": 316,
+            "migration_sha256": "f07ba1cdba14400bfff08d8f01df8217c917304da93be1da858814e39e3f8dc8"
+          },
+          "configuration_sha256": {
+            "pg16-recovery_source.json": "9d63348e429a42dc609f101a39b1687a0a9de17d45cd5756ef40fcb5c3240fac",
+            "pg16-recovery-fresh-target.json": "9e47279e5363ea681a8951224b8a05f2c24788ef9d61c47db71562c5451be994",
+            "pg17-recovery_source.json": "9c4576fa00d5cd366b7b6d44c5d033794b63ad4125b801f08c02902ab4dc915c",
+            "pg17-recovery-fresh-target.json": "88ad51e220c33bc71ed360de8d9ebf6ed3d2f883f18c3f35b3012374af9c7c7a",
+            "wsl-bridge-private.json": "67121c981dba286fa5ef5d0266e4adb85231d1e6b2763a4858196639d279736b",
+            "gotrue-migrations-manifest.json": "bdb9c5905bb49fcd9fc14b2d2e232c39c9ebc01f4ab140654a0fd192a96e8e60"
+          }
+        }
+      },
+      "databases": {
+        "16": {
+          "source_version": "16.15 (Ubuntu 16.15-1.pgdg22.04+2)",
+          "target_version": "16.15 (Ubuntu 16.15-1.pgdg22.04+2)",
+          "migrations": 190,
+          "originals": 3,
+          "source_users": 6,
+          "restored_capability_grants": 913,
+          "restored_column_grants": 51,
+          "p01_checks": {
+            "database": true,
+            "originals": true,
+            "identity": true,
+            "permissions": true,
+            "hold": true,
+            "review_export": true,
+            "tax_delivery": true,
+            "no_replay": true
+          }
+        },
+        "17": {
+          "source_version": "17.11 (Ubuntu 17.11-1.pgdg22.04+2)",
+          "target_version": "17.11 (Ubuntu 17.11-1.pgdg22.04+2)",
+          "migrations": 190,
+          "originals": 3,
+          "source_users": 6,
+          "restored_capability_grants": 913,
+          "restored_column_grants": 51,
+          "p01_checks": {
+            "database": true,
+            "originals": true,
+            "identity": true,
+            "permissions": true,
+            "hold": true,
+            "review_export": true,
+            "tax_delivery": true,
+            "no_replay": true
+          }
+        }
+      }
+    },
+    "frontend": {
+      "files": 118,
+      "passed": 1168,
+      "evidence": "vitest execution console; frozen candidate",
+      "lint": "passed",
+      "typecheck_build": "passed through preview web server build"
+    },
+    "browser": {
+      "passed": 6,
+      "mode": "production build preview; Chromium",
+      "viewports": [
+        "1280x844",
+        "390x844"
+      ],
+      "screenshots": [
+        {
+          "path": "tmp_test/dcp-r567/final-evidence/evidence-1280.png",
+          "sha256": "9e63902b06dbb41711769591cbdaa66cd37b766fc456f207de9bafc017a668ab"
+        },
+        {
+          "path": "tmp_test/dcp-r567/final-evidence/evidence-390.png",
+          "sha256": "341d96c947b52eb88cb3bc6ab4b81166403c1915924071f7dcc6b5642add9865"
+        }
+      ]
+    },
+    "replay": {
+      "artifact": {
+        "path": "tmp_test/dcp-r567/final-evidence/replay-report.json",
+        "sha256": "c4804915ae85522500a1100a6da28b1b992bbee8ad52ef57bdde557bb40c8838"
+      },
+      "passed": 6,
+      "denominator": 6,
+      "splits": {
+        "dev": {
+          "passed": 3,
+          "denominator": 3
+        },
+        "holdout": {
+          "passed": 3,
+          "denominator": 3
+        }
+      },
+      "real_model_calls": 0
+    }
+  },
+  "ownership": {
+    "protected_baseline_files_unchanged": true,
+    "intentional_dirty_file_overlap": [
+      "nexus_backend/app/assistant/investigation.py"
+    ],
+    "parallel_commit_preserved": "fe456f5b",
+    "historical_migrations_changed": false
+  },
+  "limits": [
+    "No real model or external notification delivery",
+    "Readonly investigation remains disabled by default",
+    "Manual unknown investigation never automatically resends or acknowledges",
+    "Synthetic fixed holdout; not real-client model quality evidence",
+    "Local private protocol object-store fixture; not external cloud certification",
+    "Desktop and mobile Chromium viewports; not physical iOS/Safari"
+  ],
+  "operations": {
+    "committed_by_this_task": false,
+    "pushed": false,
+    "production_touched": false,
+    "owned_environment": {
+      "environment_id": "b71a017ca1e9418cbbacc65861cd69a6",
+      "pg_clusters_stopped": true,
+      "bridge_stopped": true,
+      "listeners_on_test_ports": false,
+      "data_deleted": false,
+      "stop_note": "Initial bridge stop probe timed out; subsequent listener inspection and bridge-stop confirmed stopped"
+    }
+  },
+  "changes": [
+    "e2e/dcp-r567-evidence.spec.ts",
+    "nexus_backend/app/delivery/notification_investigations.py",
+    "nexus_backend/migrations/postgres/202_notification_investigations.sql",
+    "nexus_backend/migrations/sqlite/126_notification_investigations.sql",
+    "nexus_backend/tests/fixtures/assistant_task/dcp_investigation.json",
+    "nexus_backend/tests/test_dcp_investigation_evidence.py",
+    "nexus_backend/tests/test_dcp_investigation_replay.py",
+    "nexus_backend/tests/test_dcp_notification_investigation.py",
+    "nexus_backend/tests/test_dcp_r567_postgres.py",
+    "nexus_backend/tests/test_dcp_recovery_inventory.py",
+    "src/InvestigationEvidencePanel.tsx",
+    "src/NotificationInvestigation.tsx",
+    "src/dcp-evidence.css",
+    "src/dcp-evidence.test.ts",
+    "src/dcp-evidence.ts",
+    "tools/assistant_replay/investigation.py",
+    "nexus_backend/app/assistant/router.py",
+    "nexus_backend/app/delivery/followups.py",
+    "nexus_backend/app/delivery/router.py",
+    "nexus_backend/tests/p01_recovery_business.py",
+    "nexus_backend/tests/test_p01_recovery_business_contract.py",
+    "scripts/release_recovery_hold.py",
+    "src/DeliveryNotifications.tsx",
+    "src/DeliveryWorkbench.tsx",
+    "src/delivery-notification-state.ts",
+    "nexus_backend/app/assistant/investigation.py",
+    "docs/DCP_R567_ACCEPTANCE_20261102.md",
+    "docs/DCP_R567_ACCEPTANCE_20261102.json"
+  ]
+}

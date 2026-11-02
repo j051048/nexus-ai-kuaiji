@@ -20,32 +20,10 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y postgresql-16 postgresql-17
       - name: Fetch pinned official test identity assets (no model or notification provider)
-        run: |
-          set -euo pipefail
-          auth_root="$RUNNER_TEMP/p01-gotrue"
-          mkdir -p "$auth_root"
-          curl --fail --location --retry 3 https://github.com/supabase/auth/releases/download/v2.197.0/auth-v2.197.0-amd64.tar.xz -o "$auth_root/auth.tar.xz"
-          echo "b5c2991d1df760c9b099c1c2395a94bd1c2f83ed58901934921997179dc9f7ea  $auth_root/auth.tar.xz" | sha256sum --check
-          AUTH_ROOT="$auth_root" python - <<'PY'
-          import hashlib, os, tarfile
-          from pathlib import Path
-          root = Path(os.environ['AUTH_ROOT'])
-          with tarfile.open(root / 'auth.tar.xz') as archive:
-              members = [m for m in archive.getmembers() if m.isfile() and Path(m.name).name == 'auth']
-              if len(members) != 1:
-                  raise SystemExit('Pinned auth binary missing or ambiguous')
-              payload = archive.extractfile(members[0]).read()
-          if hashlib.sha256(payload).hexdigest() != 'c66b5efc816ccf3e13c24022bdefd5c6a9bea1fd1a1aeb9c586e1279c75a6306':
-              raise SystemExit('Pinned auth binary hash mismatch')
-          (root / 'auth').write_bytes(payload)
-          (root / 'auth').chmod(0o700)
-          PY
-          git init "$auth_root/source"
-          git -C "$auth_root/source" remote add origin https://github.com/supabase/auth.git
-          git -C "$auth_root/source" fetch --depth=1 origin 4eee58f296d9698a1c2c0ae14d7a0b379c7622d3
-          git -C "$auth_root/source" checkout --detach FETCH_HEAD
-          cp -R "$auth_root/source/migrations" "$auth_root/migrations"
+        id: assets
+        run: python scripts/identity_test_assets.py fetch --directory "$RUNNER_TEMP/p01-gotrue"
       - name: Prepare owned isolated clusters and an immutable fresh run
+        id: environment
         run: |
           set -euo pipefail
           python scripts/p01_local_recovery_env.py prepare --directory tmp_test/p01-ci-environment --runtime-base "$RUNNER_TEMP/p01-pg" --gotrue-root "$RUNNER_TEMP/p01-gotrue"
@@ -59,14 +37,25 @@ jobs:
               output.write('P01_RUN_DIRECTORY=' + location + '\n')
           PY
       - name: Start the authenticated local recovery bridge
+        id: bridge
         run: python scripts/p01_local_recovery_env.py bridge-start --directory "$P01_RUN_DIRECTORY"
       - name: One candidate, all regressions and actual PG16/17 recovery, zero skips
+        id: recovery
         run: >-
           python scripts/p01_recovery_gate.py --all
           --config-dir "$P01_RUN_DIRECTORY"
           --out tmp_test/p01-ci-acceptance
           --phase-timeout 3600
+      - name: PG16 and PG17 measured mixed workload and two-process batch workers
+        id: qa_validation
+        run: |
+          set -euo pipefail
+          for major in 16 17; do
+            python tools/capacity/qa_mixed.py --config "$P01_RUN_DIRECTORY/pg$major-recovery_source.json" --major "$major" --out "tmp_test/p01-ci-acceptance/reports/capacity-$major" --companies 200 --rounds 2
+            python scripts/test_accounting_postgres_isolated.py --config "$P01_RUN_DIRECTORY/pg$major-recovery_source.json" nexus_backend/tests/test_qa05_admission_postgres.py nexus_backend/tests/test_batch1_database_pool_postgres.py nexus_backend/tests/test_ak05_unified_postgres.py nexus_backend/tests/test_queue_fairness_postgres.py nexus_backend/tests/test_model_cost_postgres_workflow.py nexus_backend/tests/test_ak01_postgres.py -p scripts.qa_no_skip -q --junitxml="tmp_test/p01-ci-acceptance/reports/qa-pg$major.xml"
+          done
       - name: Stop only this run's bridge and owned clusters, retain data
+        id: cleanup
         if: always()
         run: |
           result=0
@@ -78,10 +67,28 @@ jobs:
             python scripts/p01_local_recovery_env.py status --directory tmp_test/p01-ci-environment || result=1
           fi
           exit "$result"
+      - name: Preserve a public diagnostic when setup or cleanup prevents acceptance
+        if: failure()
+        env:
+          ASSETS_OUTCOME: ${{ steps.assets.outcome }}
+          ENVIRONMENT_OUTCOME: ${{ steps.environment.outcome }}
+          BRIDGE_OUTCOME: ${{ steps.bridge.outcome }}
+          RECOVERY_OUTCOME: ${{ steps.recovery.outcome }}
+          QA_VALIDATION_OUTCOME: ${{ steps.qa_validation.outcome }}
+          CLEANUP_OUTCOME: ${{ steps.cleanup.outcome }}
+        run: |
+          phase=dependencies
+          for item in assets environment bridge recovery qa_validation cleanup; do
+            variable="${item^^}_OUTCOME"
+            if [ "${!variable}" = failure ]; then phase="$item"; break; fi
+          done
+          python scripts/qa_diagnostics.py --phase "$phase" --out tmp_test/p01-ci-acceptance/reports/ci-failure.json
       - name: Upload only sanitized machine-produced acceptance reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: p01-joint-recovery-evidence
-          path: tmp_test/p01-ci-acceptance/reports/*.json
+          path: |
+            tmp_test/p01-ci-acceptance/reports/**/*.json
+            tmp_test/p01-ci-acceptance/reports/qa-pg*.xml
           if-no-files-found: error

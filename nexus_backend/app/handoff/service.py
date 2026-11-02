@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from uuid import uuid4
 
 from ..accounting.domain import AccountingError, Actor
@@ -161,6 +161,12 @@ class HandoffService:
         reason = (reason or "").strip()
         if not 3 <= len(reason) <= 1000:
             raise AccountingError("指派原因需 3-1000 字", 422)
+        if due_on is not None:
+            try:
+                if date.fromisoformat(due_on).isoformat() != due_on:
+                    raise ValueError()
+            except (TypeError, ValueError):
+                raise AccountingError("期限须为有效的 YYYY-MM-DD 日期", 422) from None
         with self.db.transaction(write=True, actor=actor) as conn:
             workpaper = conn.execute(
                 "SELECT * FROM tax_workpapers WHERE id=?", (source_id,)
@@ -190,12 +196,12 @@ class HandoffService:
             firm_role = self.access.firm_role(conn, target)
             if firm_role not in FIRM_REVIEWERS:
                 raise AccountingError("被指派人不是事务所复核人员，指派不会授予权限", 403)
-            grant = conn.execute(
-                "SELECT role FROM book_access WHERE book_id=? AND user_id=? AND firm_id=?",
-                (workpaper["book_id"], assignee_id, actor.firm_id),
-            ).fetchone()
-            if not grant or grant["role"] != "reviewer":
-                raise AccountingError("被指派人没有该账套的复核权限，指派不会授予权限", 403)
+            try:
+                self.access.book(conn, target, workpaper["book_id"], "review")
+            except AccountingError:
+                raise AccountingError(
+                    "被指派人没有当前账套复核权限，指派不会授予权限", 403
+                ) from None
 
             current = self._assignment(
                 conn, "tax_workpaper", source_id, workpaper["version"], "reviewer"

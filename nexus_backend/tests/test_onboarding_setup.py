@@ -119,11 +119,10 @@ def test_setup_steps_flip_only_when_the_underlying_record_exists(tmp_path):
                 "'2026-10-01T00:00:00+08:00','2026-10-01T00:00:00+08:00')",
                 (book["ledger_id"], book["firm_id"], book["company_id"]),
             )
-        partial = client.get(
-            "/api/firm/onboarding/setup", headers=headers, params=params
-        ).json()
+        partial = client.get("/api/firm/onboarding/setup", headers=headers, params=params).json()
         done = {step["id"] for step in partial["steps"] if step["complete"]}
-        assert done == {"template", "accounts", "control", "staffing"}
+        # Legacy ledger-wide settings are not a current-period declaration.
+        assert done == {"template", "accounts", "staffing"}
 
         # A bank mapping is only accepted when the account resolves to a leaf
         # asset auxiliary mapping; that full fixture lives in the DCP01 browser

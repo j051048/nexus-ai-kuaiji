@@ -15,6 +15,7 @@ Usage (from the repository root, with the project venv):
 """
 
 import argparse
+from contextlib import closing
 import json
 from datetime import datetime
 import statistics
@@ -67,23 +68,23 @@ def seed(admin_dsn, companies):
         conn.execute("INSERT INTO accounting.memberships VALUES(%s,%s,'owner')", (firm, owner))
 
     manager = Actor(owner, firm)
-    db = Database(APP_URL)
-    accounting = AccountingService(db)
-    ledger = DirectoryService(db)
-    accounting.directory = ledger
     companies_created = []
     started = time.perf_counter()
-    for index in range(companies):
-        company = ledger.create_company(
-            manager, CompanyCreate(name=f"DCP10客户{index:03d}-{suffix}")
-        )
-        book = accounting.create_book(
-            manager,
-            BookCreate(
-                name=f"DCP10客户{index:03d} 2026-10", period="2026-10", company_id=company["id"]
-            ),
-        )
-        companies_created.append({"company_id": company["id"], "book_id": book["id"]})
+    with closing(Database(APP_URL)) as db:
+        accounting = AccountingService(db)
+        ledger = DirectoryService(db)
+        accounting.directory = ledger
+        for index in range(companies):
+            company = ledger.create_company(
+                manager, CompanyCreate(name=f"DCP10客户{index:03d}-{suffix}")
+            )
+            book = accounting.create_book(
+                manager,
+                BookCreate(
+                    name=f"DCP10客户{index:03d} 2026-10", period="2026-10", company_id=company["id"]
+                ),
+            )
+            companies_created.append({"company_id": company["id"], "book_id": book["id"]})
     elapsed = (time.perf_counter() - started) * 1000
     return SimpleNamespace(
         firm=firm,

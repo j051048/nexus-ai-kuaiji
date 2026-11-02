@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { RefreshCw, Send } from 'lucide-react';
+import { NotificationInvestigation } from './NotificationInvestigation';
+import './dcp-evidence.css';
 import { api, errorMessage } from './api';
 import type { Session } from './types';
 import {
@@ -15,7 +17,17 @@ interface Props {
   period?: string;
 }
 
-export function DeliveryNotificationList({ items }: { items: NotificationItem[] }) {
+export function DeliveryNotificationList({
+  items,
+  session,
+  bookId,
+  onSaved,
+}: {
+  items: NotificationItem[];
+  session?: Session;
+  bookId?: string;
+  onSaved?: () => void;
+}) {
   if (!items.length) return <p className="delivery-notification-empty">本月还没有外发提醒记录。</p>;
   return (
     <ul className="delivery-notification-list">
@@ -32,6 +44,15 @@ export function DeliveryNotificationList({ items }: { items: NotificationItem[] 
               {notificationTime(item)}
             </p>
             {view.hint && <p className="delivery-notification-hint">{view.hint}</p>}
+            {session && bookId && onSaved && (
+              <NotificationInvestigation
+                key={item.id + ':' + (item.investigation?.revision ?? 0)}
+                item={item}
+                session={session}
+                bookId={bookId}
+                onSaved={onSaved}
+              />
+            )}
           </li>
         );
       })}
@@ -39,23 +60,52 @@ export function DeliveryNotificationList({ items }: { items: NotificationItem[] 
   );
 }
 
-export function DeliveryNotifications({ session, bookId, period }: Props) {
+export function DeliveryNotifications(props: Props) {
+  return (
+    <NotificationScope
+      key={[props.session.scope_key, props.bookId, props.period].join(':')}
+      {...props}
+    />
+  );
+}
+function NotificationScope({ session, bookId, period }: Props) {
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const epoch = useRef(0);
+  const revoked = useRef(false);
+  useEffect(() => {
+    const revoke = (event: Event) => {
+      if ((event as CustomEvent<string>).detail !== session.scope_key) return;
+      revoked.current = true;
+      epoch.current++;
+      setItems([]);
+      setError('当前授权已失效，请重新确认权限。');
+    };
+    window.addEventListener('accounting:forbidden', revoke);
+    window.addEventListener('accounting:unauthorized', revoke);
+    return () => {
+      epoch.current++;
+      window.removeEventListener('accounting:forbidden', revoke);
+      window.removeEventListener('accounting:unauthorized', revoke);
+    };
+  }, [session.scope_key]);
 
   const load = useCallback(
     async (signal?: AbortSignal) => {
+      if (revoked.current) return;
+      setItems([]);
       const current = ++epoch.current;
       try {
-        const value = await api<{ items: NotificationItem[] }>(
+        const value = await api<{ book_id: string; period: string; items: NotificationItem[] }>(
           `/books/${encodeURIComponent(bookId)}/delivery/notifications?period=${encodeURIComponent(period ?? '')}`,
           session,
           { signal },
         );
         if (current === epoch.current && !signal?.aborted) {
-          setItems(value.items ?? []);
+          if (value.book_id !== bookId || value.period !== period || !Array.isArray(value.items))
+            throw new Error('通知范围变化，请刷新后核对');
+          setItems(value.items);
           setError('');
         }
       } catch (caught) {
@@ -104,7 +154,14 @@ export function DeliveryNotifications({ session, bookId, period }: Props) {
       ) : loading ? (
         <p role="status">正在读取发送记录…</p>
       ) : (
-        <DeliveryNotificationList items={items} />
+        <DeliveryNotificationList
+          items={items}
+          session={session}
+          bookId={bookId}
+          onSaved={() => {
+            void load();
+          }}
+        />
       )}
     </section>
   );

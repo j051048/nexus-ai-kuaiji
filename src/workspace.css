@@ -55,7 +55,7 @@
   margin: 0 0 20px;
 }
 .workspace-role-guide span {
-  color: #68756b;
+  color: var(--text-muted);
   font-size: var(--font-size-xs);
   font-weight: 600;
 }
