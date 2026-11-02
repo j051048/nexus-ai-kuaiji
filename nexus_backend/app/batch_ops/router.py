@@ -3,7 +3,9 @@ from fastapi import APIRouter, Depends, Query, Request, Response
 from .models import (
     BatchItemReason,
     CreateMonthlyOpenBatch,
+    CreatePackageDrafts,
     CreateReviewExport,
+    PackageDraftPreview,
     RetryBatchRequest,
     ReviewExportPreview,
 )
@@ -46,6 +48,28 @@ def build_batch_ops_router(actor_dependency):
         batches=Depends(service),
     ):
         return batches.create_review_export(
+            current,
+            payload.company_ids,
+            payload.period,
+            payload.confirmed_manifest,
+            payload.idempotency_key,
+        )
+
+    @router.post("/package-draft/preview")
+    def preview_package_drafts(
+        payload: PackageDraftPreview,
+        current=Depends(actor_dependency),
+        batches=Depends(service),
+    ):
+        return batches.preview_package_drafts(current, payload.company_ids, payload.period)
+
+    @router.post("/package-draft", status_code=202)
+    def create_package_drafts(
+        payload: CreatePackageDrafts,
+        current=Depends(actor_dependency),
+        batches=Depends(service),
+    ):
+        return batches.create_package_drafts(
             current,
             payload.company_ids,
             payload.period,

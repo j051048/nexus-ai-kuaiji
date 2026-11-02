@@ -1,6 +1,6 @@
 # DCP06 批量导出与交付准备（A 刀：批量准备复核资料）
 
-日期：2026-11-02　状态：A、B 完成，本地提交；C 未开始
+日期：2026-11-02　状态：A、B、C 编排完成，本地提交；C 的端到端执行未验证
 
 ## 结论
 
@@ -88,9 +88,34 @@
 覆盖：预览只收已审核、阻断码、确认清单不符 409、真实导出产出 `export_id/filename/count` 并落 `exports` 行、
 预览后再批准一张凭证 → 执行拒绝并要求重新预览。
 
-## 未完成（DCP06 C 与验收）
+## C：月度包草稿（编排）
 
-1. **C 月度包草稿**：满足月结/发布政策才准备草稿，发布仍由有权限的人确认；本包不发送。
+同一批量表再增 kind `package_draft`（迁移 123/194 一并放开）：
+
+- `POST /api/firm/batch-operations/package-draft/preview`：逐家找**已复核或已发布**报表
+  （`report_runs.status IN ('reviewed','published')`），绑定 `report_id + version`；没有报表 → `no_report`。
+- `POST .../package-draft`（202）：必须带确认过的 `manifest`；清单变化即 409。
+- 执行：重读报表版本，不一致 → 409「预览后报表版本已变化」；一致才调用既有
+  `MonthlyPackageService.create`（幂等键 `batch:{batch_id}:{company_id}`），结果记录
+  `package_id / package_version / report_id / report_version`。发布与发送都不在本包内。
+- 阻断企业执行时直接 `skipped`，不建包。
+
+### 证据
+
+| 项 | 结果 |
+| --- | --- |
+| `pytest tests/test_dcp06_package_drafts.py` | 3 passed |
+| 批量回归（operations + dcp04 + review_export + package_drafts） | 15 passed |
+| 迁移门禁 / `import app.main` | exit 0 / 通过 |
+
+覆盖：无已复核报表 → 阻断且 `ready=0`、确认清单不符 409、阻断项执行 `skipped` 而非 `failed`。
+
+**未验证**：`MonthlyPackageService.create` 的真实成功路径（需要已复核报表 + 月结锁期的完整夹具），
+以及浏览器端的勾选→预览→启动→查失败。
+
+## 未完成（DCP06 验收）
+
+1. **C 成功路径**：用 close_case 级别的夹具跑通「已复核报表 → 建包草稿 → 记录 package 引用」。
 2. **浏览器验收**：桌面/手机勾选、预览、启动、查失败、单项处理、返回。
 3. **暂停/续跑**：暂停只停未领取项；续跑不重复已完成项（DCP04 的取消语义可复用，但本包未接线 UI）。
 4. **PG16/17**：本地 WSL 集群在线但 Windows 侧连不上（`127.0.0.1:25531` 超时、无 portproxy）。

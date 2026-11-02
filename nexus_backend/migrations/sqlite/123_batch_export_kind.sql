@@ -5,7 +5,7 @@ PRAGMA defer_foreign_keys=ON;
 CREATE TABLE batch_operations_new(
  id TEXT PRIMARY KEY,
  firm_id TEXT NOT NULL,
- kind TEXT NOT NULL CHECK(kind IN('monthly_open','review_export')),
+ kind TEXT NOT NULL CHECK(kind IN('monthly_open','review_export','package_draft')),
  status TEXT NOT NULL CHECK(status IN('queued','running','completed','attention','cancelled')),
  idempotency_key TEXT NOT NULL,
  request_json TEXT NOT NULL,

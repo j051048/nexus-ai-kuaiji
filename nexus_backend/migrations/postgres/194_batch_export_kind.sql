@@ -16,4 +16,4 @@ BEGIN
 END $$;
 ALTER TABLE accounting.batch_operations
   ADD CONSTRAINT batch_operations_kind_check
-  CHECK (kind IN ('monthly_open','review_export'));
+  CHECK (kind IN ('monthly_open','review_export','package_draft'));

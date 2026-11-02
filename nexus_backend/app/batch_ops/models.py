@@ -32,3 +32,11 @@ class ReviewExportPreview(BaseModel):
 class CreateReviewExport(ReviewExportPreview):
     confirmed_manifest: StrictStr = Field(pattern=r"^[0-9a-f]{64}$")
     idempotency_key: StrictStr = Field(min_length=8, max_length=120)
+
+
+class PackageDraftPreview(ReviewExportPreview):
+    pass
+
+
+class CreatePackageDrafts(CreateReviewExport):
+    pass
