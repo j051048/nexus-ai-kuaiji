@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, apiBlob, ApiError } from './api';
 import { useScopedQuery } from './useScopedQuery';
+import { TaxReadinessList } from './TaxReadinessList';
+import { parseReadiness, type FilingReadiness } from './tax-readiness';
 import type { Session } from './types';
 import { taxEvidence } from './tax-evidence';
 import {
@@ -242,6 +244,27 @@ function TaxContent({ session, bookId, companyId, period, onBusyChange }: Props)
       target,
     );
   }
+  const [readiness, setReadiness] = useState<FilingReadiness | null>(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    let live = true;
+    api<unknown>(
+      `/tax/readiness?book_id=${encodeURIComponent(bookId)}&period=${encodeURIComponent(period)}`,
+      session,
+      { signal: controller.signal },
+    )
+      .then((raw) => {
+        if (live) setReadiness(parseReadiness(raw));
+      })
+      .catch(() => {
+        if (live) setReadiness(null);
+      });
+    return () => {
+      live = false;
+      controller.abort();
+    };
+  }, [session, bookId, period]);
+
   return (
     <section className="tax-workpaper" aria-label="税务底稿" aria-busy={!!busy || read.loading}>
       <header className="tax-heading">
@@ -258,6 +281,7 @@ function TaxContent({ session, bookId, companyId, period, onBusyChange }: Props)
       <p className="tax-boundary">
         用于会计核对与导出，尚未申报。来源会在复核和导出时重新校验；模型不会代替独立复核。
       </p>
+      <TaxReadinessList data={readiness} />
       {(failure || read.error) && (
         <div role="alert" className="tax-alert">
           {failure || read.error}

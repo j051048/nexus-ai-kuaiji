@@ -187,3 +187,18 @@
     min-height: 44px;
   }
 }
+
+.tax-readiness { border: 1px solid var(--line); border-radius: var(--radius-2); padding: var(--space-4); margin: var(--space-4) 0; background: var(--surface-2); }
+.tax-readiness header { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; justify-content: space-between; }
+.tax-readiness h4 { margin: 0; font-size: 1rem; }
+.tax-readiness-list { list-style: none; margin: var(--space-3) 0 0; padding: 0; display: grid; gap: var(--space-3); }
+.tax-readiness-list li { border-top: 1px solid var(--line); padding-top: var(--space-3); display: grid; gap: var(--space-1); }
+.tax-readiness-head { display: flex; gap: var(--space-2); align-items: center; justify-content: space-between; }
+.tax-readiness-meta { margin: 0; color: var(--ink-3); font-size: .875rem; }
+.tax-readiness-next { margin: 0; font-size: .875rem; }
+.tax-readiness-tone { font-size: .8125rem; padding: 2px 8px; border-radius: 999px; border: 1px solid currentColor; }
+.tax-readiness-tone.tone-ok { color: var(--ok, #146c43); }
+.tax-readiness-tone.tone-warn { color: var(--warn, #8a5a00); }
+.tax-readiness-tone.tone-danger { color: var(--danger, #9b1c1c); }
+.tax-readiness-blocked { margin: var(--space-2) 0 0; color: var(--danger, #9b1c1c); }
+.tax-readiness-note { margin: var(--space-3) 0 0; color: var(--ink-3); font-size: .8125rem; }

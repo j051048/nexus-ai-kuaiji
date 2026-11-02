@@ -134,3 +134,22 @@ def test_http_profile_workpaper_review_and_csv(tmp_path):
         )
         assert blocked.status_code == 403, "制单人不得复核自己的底稿"
         assert "本人" in blocked.json()["detail"] or "复核" in blocked.json()["detail"]
+
+
+def test_http_readiness_blocks_before_estimating(tmp_path):
+    app = create_app(tmp_path / "tax-ready.db", seed=True)
+    with TestClient(app, base_url="http://127.0.0.1", client=("127.0.0.1", 45691)) as client:
+        book = _book(app)
+        anonymous = client.get(f"/api/tax/readiness?book_id={book['id']}")
+        assert anonymous.status_code in (401, 403)
+        token = client.get("/api/session").json()["token"]
+        headers = {"Authorization": "Bearer " + token}
+        ready = client.get(
+            f"/api/tax/readiness?book_id={book['id']}&period={book['period']}", headers=headers
+        )
+        assert ready.status_code == 200
+        body = ready.json()
+        assert body["supported"] is False
+        assert "纳税人档案" in body["blocked_reason"]
+        assert body["external_result"] == "none"
+        assert body["kinds"][0]["readiness"] == "blocked"

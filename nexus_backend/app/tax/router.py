@@ -4,6 +4,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, Query, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, StrictInt
 
+from .readiness import filing_readiness
 from .workpaper import TaxWorkpaperService
 from .context import tax_context
 
@@ -60,6 +61,15 @@ def build_tax_router(actor_dependency):
         tax=Depends(service),
     ):
         return tax.set_profile(current, payload.book_id, payload.model_dump())
+
+    @router.get("/readiness")
+    def filing_setup(
+        book_id: str = Query(min_length=1, max_length=100),
+        period: str | None = Query(default=None, max_length=7),
+        current=Depends(actor_dependency),
+        tax=Depends(service),
+    ):
+        return filing_readiness(tax, current, book_id, period)
 
     @router.get("/profile")
     def read_profile(
