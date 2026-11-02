@@ -14,6 +14,7 @@ rewrites a package or moves an existing signature.
 from __future__ import annotations
 
 import json
+import os
 from datetime import date, datetime
 from typing import Any, Protocol
 from uuid import uuid4
@@ -69,7 +70,19 @@ class LocalSinkChannel:
 
 
 def channel_from_env(value: str | None) -> DeliveryChannel:
-    return LocalSinkChannel() if (value or "").strip() == "local_sink" else DisabledChannel()
+    choice = (value or "").strip()
+    if choice == "local_sink":
+        return LocalSinkChannel()
+    if choice == "smtp":
+        from .smtp_channel import SmtpChannel
+
+        return SmtpChannel(
+            os.environ.get("DELIVERY_SMTP_HOST", "127.0.0.1"),
+            int(os.environ.get("DELIVERY_SMTP_PORT", "1025")),
+            os.environ.get("DELIVERY_SMTP_SENDER", "noreply@example.invalid"),
+            os.environ.get("DELIVERY_SMTP_BASE_URL", "http://127.0.0.1:5173"),
+        )
+    return DisabledChannel()
 
 
 class DeliveryFollowupService(NotificationDispatcher):
@@ -606,8 +619,10 @@ class DeliveryFollowupService(NotificationDispatcher):
                 result["cancelled"] += 1
                 continue
             outcome, reference, error = "unknown", "", ""
+            envelope = json.loads(sending["payload_json"])
+            envelope["recipient_email"] = self.recipient_email(sending["recipient_user_id"])
             try:
-                reference = channel.deliver(json.loads(sending["payload_json"]))
+                reference = channel.deliver(envelope)
                 if not isinstance(reference, str) or not reference.strip() or len(reference) > 500:
                     reference, error = "", "invalid_receipt"
                 else:
@@ -626,6 +641,12 @@ class DeliveryFollowupService(NotificationDispatcher):
                     {"sink_written": "sent", "failed": "failed", "unknown": "unknown"}[outcome]
                 ] += 1
         return result
+
+    def recipient_email(self, user_id: str) -> str:
+        """Read the current address; a stale queue entry must not inherit an old one."""
+        with self.worker_transaction() as conn:
+            row = conn.execute("SELECT email FROM users WHERE id=?", (user_id,)).fetchone()
+        return (row["email"] or "").strip() if row else ""
 
     # ---------------------------------------------------------------- audit
     @staticmethod
