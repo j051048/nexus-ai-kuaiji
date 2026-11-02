@@ -27,6 +27,7 @@ import type {
   DeliveryWorkbenchProps,
 } from './delivery-types';
 import './delivery.css';
+import { DeliveryNotifications } from './DeliveryNotifications';
 import { MonthlyPackagePanel } from './MonthlyPackagePanel';
 import './tax-workpapers.css';
 
@@ -96,6 +97,7 @@ export function DeliveryWorkbench(props: DeliveryWorkbenchProps) {
 function DeliveryReceipts({
   session,
   bookId,
+  period,
   initialExportId,
   onBack,
   onBusyChange,
@@ -390,6 +392,7 @@ function DeliveryReceipts({
         bookId={bookId}
         onBusyChange={onBusyChange}
       />
+      <DeliveryNotifications key={'notify:' + scope} session={session} bookId={bookId} period={period} />
       <section className="delivery-notice">
         <FileCheck2 size={25} />
         <div>

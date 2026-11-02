@@ -226,3 +226,38 @@ def test_unknown_outcome_survives_redispatch(case, server):
             (queued["notification_id"],),
         ).fetchone()
     assert row["state"] == "unknown"
+
+
+# ------------------------------------------------------- state semantics
+
+
+def test_server_acceptance_reads_as_unconfirmed(case, server):
+    grant(case)
+    queue(case)
+    smtp = server()
+    case.followups.dispatch(channel(smtp.port), limit=5)
+    listed = case.followups.notifications(case.reviewer, case.book["id"], "2026-10")
+    item = listed["items"][0]
+    assert item["semantic"] == "accepted_unconfirmed" and item["channel"] == "smtp"
+    assert item["acknowledged_at"] == "" and item["opened_at"] == ""
+
+
+def test_unknown_stays_unknown_and_keeps_a_bounded_error(case, server):
+    grant(case)
+    queue(case)
+    smtp = server("drop_after_data")
+    case.followups.dispatch(channel(smtp.port), limit=5)
+    listed = case.followups.notifications(case.reviewer, case.book["id"], "2026-10")
+    item = listed["items"][0]
+    assert item["semantic"] == "unknown" and len(item["last_error"]) <= 200
+
+
+def test_customer_side_accounts_cannot_read_internal_states(case, server):
+    from app.accounting.domain import AccountingError, Actor
+
+    grant(case)
+    queue(case)
+    customer = Actor("finance", case.reviewer.firm_id)
+    with pytest.raises(AccountingError) as rejected:
+        case.followups.notifications(customer, case.book["id"], "2026-10")
+    assert rejected.value.status == 403

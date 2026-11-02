@@ -1,6 +1,6 @@
 # DCP07 验收：通知适配器与送达语义（离线联调）
 
-日期：2026-11-02　状态：SMTP 适配器与分类完成，本地提交；未推送、未上生产、未发送真实通知。
+日期：2026-11-02　状态：SMTP 适配器、状态语义与页面接线完成，本地提交；未推送、未上生产、未发送真实通知。
 
 ## 范围
 
@@ -14,7 +14,11 @@ unknown 不自动重发。本包只新增一个渠道适配器、把「收件人
 | --- | --- |
 | `nexus_backend/app/delivery/smtp_channel.py` | loopback-only SMTP 适配器；最小摘要 + 需登录链接；结果分类 |
 | `nexus_backend/app/delivery/followups.py` | `channel_from_env("smtp")`（延迟导入避免循环）；dispatch 发送前读当前 `users.email` 注入信封 |
-| `nexus_backend/tests/test_dcp07_smtp_channel.py` | 本文件内的真实 SMTP 服务器（socket 级协议），6 例 |
+| `nexus_backend/app/delivery/followups.py`（读侧） | `GET /api/books/{id}/delivery/notifications?period=`：只对事务所 owner/admin/reviewer 且需账套读权限；语义由服务端统一推导 |
+| `src/delivery-notification-state.ts` | 状态文案与提示（通道已接受≠已收到、unknown 不自动重发） |
+| `src/DeliveryNotifications.tsx` | 交付页「提醒发送状态」区块，显示收件人、冻结包版本、时间与提示 |
+| `nexus_backend/tests/test_dcp07_smtp_channel.py` | 本文件内的真实 SMTP 服务器（socket 级协议）+ 状态语义，9 例 |
+| `src/delivery-notifications.render.test.ts` | 文案与渲染 7 例 |
 
 ### 适配器规则
 
@@ -33,8 +37,9 @@ unknown 不自动重发。本包只新增一个渠道适配器、把「收件人
 
 | 项 | 结果 |
 | --- | --- |
-| `pytest tests/test_dcp07_smtp_channel.py` | 6 passed |
-| 交付回归（`test_delivery_followups.py` + 本包） | 19 passed |
+| `pytest tests/test_dcp07_smtp_channel.py` | 9 passed |
+| 交付回归（`test_delivery_followups.py` + 本包） | 22 passed |
+| `npx vitest run`（全量） | 114 files / 1153 tests passed |
 | 真实协议 | 本地 socket SMTP：成功 1 次接受、拒收 0 条、DATA 后断连 1 次会话且状态 unknown |
 
 覆盖的负向：拒收收件人（可证未发送）、DATA 后断连（不得当作未发送）、缺邮箱、非本机 host、
@@ -42,8 +47,9 @@ unknown 不自动重发。本包只新增一个渠道适配器、把「收件人
 
 ## 未完成 / 未验证
 
-1. **UI 语义**：页面尚未把 `sink_written` 标成「通道已接受，送达未确认」，也没有「未知→调查」入口；
-   后端状态与审计已就绪。
-2. **PG16/17**：围栏与恢复复用 N03 既有实现，本包未在 PG 上重跑（WSL 集群在跑，Windows 侧仍连不上）。
-3. **真实渠道**：SMTP 只对 loopback 测试服务器；送达率、反垃圾、真实客户体验标 X 未验证。
-4. 无回执通道的回调校验：本渠道不支持回执，未造回执。
+1. **unknown 调查动作**：页面已显示「结果未知，不会自动重发」，但「追加证据/确认已送达/确认未发送」
+   的调查写入接口未做（需新增台账，留待下一刀）。
+2. **浏览器证据**：本包只做到服务端真实协议 + 页面渲染测试，尚未在 1440×900 / 390×844 上点真实组件截图。
+3. **PG16/17**：围栏与恢复复用 N03 既有实现，本包未在 PG 上重跑（WSL 集群在跑，Windows 侧仍连不上）。
+4. **真实渠道**：SMTP 只对 loopback 测试服务器；送达率、反垃圾、真实客户体验标 X 未验证。
+5. 无回执通道的回调校验：本渠道不支持回执，未造回执。

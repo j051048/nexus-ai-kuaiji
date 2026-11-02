@@ -105,6 +105,15 @@ def build_delivery_router(actor_dependency):
     ):
         return monthly.acknowledge(actor, book_id, package_id, payload)
 
+    @router.get("/notifications")
+    def notification_states(
+        book_id: str,
+        period: str = Query(min_length=7, max_length=7),
+        actor=Depends(actor_dependency),
+        follow=Depends(followups),
+    ):
+        return follow.notifications(actor, book_id, period)
+
     @router.get("")
     def overview(
         book_id: str,

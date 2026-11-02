@@ -369,6 +369,65 @@ class DeliveryFollowupService(NotificationDispatcher):
                     break
             return {"items": items, "count": len(items)}
 
+    # --------------------------------------------------- notification states
+    SEMANTICS = {
+        "pending": "queued",
+        "claimed": "sending",
+        "sending": "sending",
+        "sink_written": "accepted_unconfirmed",
+        "failed": "failed",
+        "unknown": "unknown",
+        "cancelled": "cancelled",
+    }
+    NOTIFICATION_READERS = {"owner", "admin", "reviewer"}
+
+    @classmethod
+    def semantic(cls, state, opened, acknowledged):
+        """Accepted by a server is not receipt; only a customer action is."""
+        if acknowledged:
+            return "signed"
+        if opened:
+            return "viewed"
+        return cls.SEMANTICS.get(state, "unknown")
+
+    def notifications(self, actor, book_id: str, period: str) -> dict:
+        validate_period(period)
+        with self.db.transaction(actor=actor) as conn:
+            if self.access.firm_role(conn, actor) not in self.NOTIFICATION_READERS:
+                raise AccountingError("仅事务所人员可查看提醒发送状态", 403)
+            self.access.book(conn, actor, book_id, "read")
+            rows = conn.execute(
+                "SELECT n.id,n.kind,n.state,n.attempts,n.package_id,n.package_version,n.sink_ref,"
+                "n.last_error,n.created_at,n.updated_at,n.dispatched_at,n.recipient_user_id,"
+                "u.name AS recipient_name,a.created_at AS acknowledged_at,"
+                "(SELECT MAX(o.opened_at) FROM monthly_delivery_opens o WHERE o.package_id=n.package_id) AS opened_at "
+                "FROM delivery_notifications n LEFT JOIN users u ON u.id=n.recipient_user_id "
+                "LEFT JOIN monthly_delivery_acknowledgements a ON a.package_id=n.package_id "
+                "WHERE n.book_id=? AND n.period=? ORDER BY n.created_at DESC, n.id LIMIT 50",
+                (book_id, period),
+            ).fetchall()
+        items = []
+        for row in rows:
+            items.append(
+                {
+                    "id": row["id"],
+                    "kind": row["kind"],
+                    "state": row["state"],
+                    "semantic": self.semantic(row["state"], row["opened_at"], row["acknowledged_at"]),
+                    "attempts": row["attempts"],
+                    "recipient": {"user_id": row["recipient_user_id"], "name": row["recipient_name"]},
+                    "package": {"id": row["package_id"], "version": row["package_version"]},
+                    "channel": "smtp" if (row["sink_ref"] or "").startswith("smtp:") else "local_sink",
+                    "last_error": row["last_error"] or "",
+                    "created_at": row["created_at"],
+                    "updated_at": row["updated_at"],
+                    "dispatched_at": row["dispatched_at"] or "",
+                    "opened_at": row["opened_at"] or "",
+                    "acknowledged_at": row["acknowledged_at"] or "",
+                }
+            )
+        return {"book_id": book_id, "period": period, "items": items}
+
     # -------------------------------------------------------------- commands
     def configure(self, actor, book_id: str, request: DeliveryGrantRequest) -> dict:
         validate_period(request.period)
