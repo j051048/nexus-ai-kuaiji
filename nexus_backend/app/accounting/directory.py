@@ -378,7 +378,9 @@ class DirectoryService:
             if self.access.firm_role(conn, actor) not in FIRM_MANAGERS and user_id == actor.user_id:
                 raise AccountingError("企业管理员不能变更自己的账套权限，请联系事务所管理员", 403)
             if request.role == "reviewer" and (not member or member["role"] not in FIRM_REVIEWERS):
-                raise AccountingError("正式复核仅可授予事务所复核人员；客户财务请使用经办或只读", 403)
+                raise AccountingError(
+                    "正式复核仅可授予事务所复核人员；客户财务请使用经办或只读", 403
+                )
             existing = conn.execute(
                 "SELECT role FROM book_access WHERE book_id=? AND user_id=?", (book_id, user_id)
             ).fetchone()

@@ -91,8 +91,7 @@ class ReviewPackService:
             )
             items.extend(page["items"])
         pinned = [
-            {"draft_id": item["draft_id"], "version": item["expected_version"]}
-            for item in items
+            {"draft_id": item["draft_id"], "version": item["expected_version"]} for item in items
         ]
         entry = {
             "company_id": company_id,

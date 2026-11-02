@@ -111,11 +111,7 @@ class AccessControl:
                 or (not firm_role and company_role in COMPANY_LEDGER_ROLES)
             )
         )
-        review = manager or (
-            read
-            and book_role == "reviewer"
-            and firm_role in FIRM_REVIEWERS
-        )
+        review = manager or (read and book_role == "reviewer" and firm_role in FIRM_REVIEWERS)
         return {
             "read": read,
             "edit": edit,

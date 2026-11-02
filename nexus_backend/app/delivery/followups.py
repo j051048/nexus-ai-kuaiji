@@ -181,7 +181,12 @@ class DeliveryFollowupService(NotificationDispatcher):
         ).fetchone()
         if not plan or plan["contact_user_id"] != recipient:
             return False
-        return bool(conn.execute("SELECT 1 FROM monthly_delivery_eligible_contacts WHERE book_id=? AND user_id=?", (book_id, recipient)).fetchone())
+        return bool(
+            conn.execute(
+                "SELECT 1 FROM monthly_delivery_eligible_contacts WHERE book_id=? AND user_id=?",
+                (book_id, recipient),
+            ).fetchone()
+        )
 
     def _plan_contact(self, conn, book_id: str):
         """Current service-plan contact, which is what a *new* package would freeze."""
@@ -413,11 +418,18 @@ class DeliveryFollowupService(NotificationDispatcher):
                     "id": row["id"],
                     "kind": row["kind"],
                     "state": row["state"],
-                    "semantic": self.semantic(row["state"], row["opened_at"], row["acknowledged_at"]),
+                    "semantic": self.semantic(
+                        row["state"], row["opened_at"], row["acknowledged_at"]
+                    ),
                     "attempts": row["attempts"],
-                    "recipient": {"user_id": row["recipient_user_id"], "name": row["recipient_name"]},
+                    "recipient": {
+                        "user_id": row["recipient_user_id"],
+                        "name": row["recipient_name"],
+                    },
                     "package": {"id": row["package_id"], "version": row["package_version"]},
-                    "channel": "smtp" if (row["sink_ref"] or "").startswith("smtp:") else "local_sink",
+                    "channel": "smtp"
+                    if (row["sink_ref"] or "").startswith("smtp:")
+                    else "local_sink",
                     "last_error": row["last_error"] or "",
                     "created_at": row["created_at"],
                     "updated_at": row["updated_at"],

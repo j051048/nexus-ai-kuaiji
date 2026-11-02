@@ -110,7 +110,10 @@ def _parse_package(row, report):
         return None
     if report is None:
         return {"ok": False, "reason": "package_without_report"}
-    if _get(row, "report_id") != report["report_id"] or int(_get(row, "report_version") or 0) != report["version"]:
+    if (
+        _get(row, "report_id") != report["report_id"]
+        or int(_get(row, "report_version") or 0) != report["version"]
+    ):
         return {"ok": False, "reason": "package_report_mismatch"}
     if not _sha(_get(row, "manifest_sha256")):
         return {"ok": False, "reason": "bad_package_manifest"}
@@ -140,8 +143,7 @@ def _amounts(content):
         return sum(
             int(item.get("amount_cents", 0))
             for item in items
-            if isinstance(item, dict)
-            and str(item.get("code", "")).startswith(tuple(prefixes))
+            if isinstance(item, dict) and str(item.get("code", "")).startswith(tuple(prefixes))
         )
 
     def profit_items(prefixes):
@@ -229,9 +231,7 @@ def resolve_source(conn, book, period, dialect):
         "report": None
         if report is None
         else {key: value for key, value in report.items() if key != "content"},
-        "superseded_report_ids": [
-            item["value"]["report_id"] for item in parsed[1:] if item["ok"]
-        ],
+        "superseded_report_ids": [item["value"]["report_id"] for item in parsed[1:] if item["ok"]],
         "close": close["value"] if isinstance(close, dict) and close["ok"] else None,
         "package": package["value"] if isinstance(package, dict) and package["ok"] else None,
         "amounts": None if amounts is None else amounts["value"],
@@ -281,7 +281,10 @@ def _axes(conn, book, period, dialect, close, package, legacy_ok):
 
     internal_close = bool(legacy_ok or (isinstance(close, dict) and close["ok"]))
     return {
-        "internal_close": {"done": internal_close, "evidence": "period_closed" if legacy_ok else "close_locked"},
+        "internal_close": {
+            "done": internal_close,
+            "evidence": "period_closed" if legacy_ok else "close_locked",
+        },
         "external_receipt": {
             "done": bool(exports) and not unverified,
             "evidence": f"exports={exports},unverified={unverified}",
@@ -291,5 +294,8 @@ def _axes(conn, book, period, dialect, close, package, legacy_ok):
             "evidence": f"reviewed_workpapers={workpapers};no_filing_receipt",
         },
         "notification": {"done": bool(notifications), "evidence": f"sink_written={notifications}"},
-        "client_sign": {"done": bool(acknowledgements), "evidence": f"acknowledgements={acknowledgements}"},
+        "client_sign": {
+            "done": bool(acknowledgements),
+            "evidence": f"acknowledgements={acknowledgements}",
+        },
     }

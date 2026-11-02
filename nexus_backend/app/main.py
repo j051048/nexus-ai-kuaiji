@@ -452,9 +452,7 @@ def create_app(
                 database, application.state.monthly_batch
             )
             application.state.handoff = HandoffService(database)
-            application.state.review_packs = ReviewPackService(
-                database, application.state.review
-            )
+            application.state.review_packs = ReviewPackService(database, application.state.review)
             application.state.firm_cockpit = FirmCockpitService(database, application.state.service)
             application.state.firm_tasks = FirmTasksService(database, application.state.service)
             application.state.firm_observability = FirmObservabilityService(

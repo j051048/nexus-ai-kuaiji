@@ -47,7 +47,9 @@ class SmtpChannel:
         if not recipient:
             raise DeliveryNotSent("收件人未配置邮箱，消息未发送")
         period, version = payload.get("period", ""), payload.get("package_version")
-        link = f"{self.base_url}/workspace/monthly?book={payload.get('book_id','')}&period={period}"
+        link = (
+            f"{self.base_url}/workspace/monthly?book={payload.get('book_id', '')}&period={period}"
+        )
         number = make_msgid(domain="smtp.local")
         text = (
             f"贵司 {period} 月度财税简报第 {version} 版已准备好。\n\n"
@@ -56,8 +58,10 @@ class SmtpChannel:
             "登录后仍需通过账号权限查看与签收。\n"
         )
         message = EmailMessage()
-        message["From"], message["To"], message["Subject"] = self.sender, recipient, (
-            f"衡账 · {period} 月度财税简报已就绪"
+        message["From"], message["To"], message["Subject"] = (
+            self.sender,
+            recipient,
+            (f"衡账 · {period} 月度财税简报已就绪"),
         )
         message["Message-ID"] = number
         message.set_content(text)
