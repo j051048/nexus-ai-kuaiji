@@ -6,7 +6,8 @@ import json
 from uuid import uuid4
 
 from ..accounting.domain import Actor, AccountingError
-from ..accounting.service import fingerprint
+from ..accounting.models import ExportRequest
+from ..accounting.service import AccountingService, fingerprint
 from ..monthly.batch import BatchOpen
 
 ACTIVE = {"queued", "running"}
@@ -120,6 +121,185 @@ class BatchOperationsService:
             )
             row = conn.execute("SELECT * FROM batch_operations WHERE id=?", (batch_id,)).fetchone()
             return self._json(conn, row, with_items=True)
+
+    def _export_plan(self, actor, company_ids, period):
+        """DCP06-B 只读预检：逐家列出已审核且当前版本有效的凭证。"""
+        if not period or len(period) != 7 or period[4] != "-" or not 1 <= int(period[5:]) <= 12:
+            raise AccountingError("期间格式应为 YYYY-MM", 422)
+        unique = list(dict.fromkeys(company_ids))
+        if not unique:
+            raise AccountingError("请选择至少一家企业", 422)
+        if len(unique) > 200:
+            raise AccountingError("单次最多 200 家企业", 422)
+        companies = []
+        for company_id in unique:
+            with self.db.transaction(actor=actor) as conn:
+                self.access.require_manager(conn, actor)
+                book = conn.execute(
+                    "SELECT id,name FROM books WHERE company_id=? AND period=?",
+                    (company_id, period),
+                ).fetchone()
+                if not book:
+                    companies.append({"company_id": company_id, "blocked": "no_book"})
+                    continue
+                try:
+                    self.access.book(conn, actor, book["id"], "review")
+                except AccountingError:
+                    companies.append({"company_id": company_id, "blocked": "no_access"})
+                    continue
+                rows = conn.execute(
+                    "SELECT id,version FROM drafts WHERE book_id=? AND status='approved' "
+                    "ORDER BY id LIMIT 1001",
+                    (book["id"],),
+                ).fetchall()
+            drafts = [{"draft_id": row["id"], "version": row["version"]} for row in rows]
+            entry = {
+                "company_id": company_id,
+                "book_id": book["id"],
+                "book_name": book["name"],
+                "drafts": drafts,
+            }
+            if not drafts:
+                entry["blocked"] = "no_approved"
+            elif len(drafts) > 1000:
+                entry.update({"blocked": "draft_limit", "drafts": []})
+            else:
+                entry["manifest"] = fingerprint(
+                    [f"{value['draft_id']}:{value['version']}" for value in drafts]
+                )
+            companies.append(entry)
+        ready = [entry for entry in companies if not entry.get("blocked")]
+        return {
+            "period": period,
+            "ready": len(ready),
+            "blocked": len(companies) - len(ready),
+            "companies": companies,
+            "manifest": fingerprint(
+                [
+                    f"{entry['company_id']}:{entry.get('manifest', entry.get('blocked', ''))}"
+                    for entry in companies
+                ]
+            ),
+        }
+
+    def preview_review_export(self, actor, company_ids, period):
+        return self._export_plan(actor, company_ids, period)
+
+    def create_review_export(
+        self, actor, company_ids, period, confirmed_manifest, idempotency_key
+    ):
+        plan = self._export_plan(actor, company_ids, period)
+        if plan["manifest"] != confirmed_manifest:
+            raise AccountingError("清单已变化，请重新预览后再确认", 409)
+        request_json = json.dumps(
+            {"period": period, "companies": plan["companies"]}, ensure_ascii=False
+        )
+        with self.db.transaction(write=True, actor=actor) as conn:
+            self.access.require_manager(conn, actor)
+            existing = conn.execute(
+                "SELECT * FROM batch_operations WHERE firm_id=? AND created_by=? AND idempotency_key=?",
+                (actor.firm_id, actor.user_id, idempotency_key),
+            ).fetchone()
+            if existing:
+                if existing["request_json"] != request_json:
+                    raise AccountingError("批量任务幂等键已用于不同请求", 409)
+                return self._json(conn, existing, with_items=True)
+            batch_id, stamp = uuid4().hex, timestamp()
+            companies = plan["companies"]
+            status = "queued" if companies else "completed"
+            conn.execute(
+                "INSERT INTO batch_operations(id,firm_id,kind,status,idempotency_key,request_json,total,"
+                "succeeded,skipped,failed,created_by,created_at,updated_at,started_at,finished_at) "
+                "VALUES(?,?,'review_export',?,?,?,?,0,0,0,?,?,?,?,?)",
+                (
+                    batch_id,
+                    actor.firm_id,
+                    status,
+                    idempotency_key,
+                    request_json,
+                    len(companies),
+                    actor.user_id,
+                    stamp,
+                    stamp,
+                    None if companies else stamp,
+                    stamp if not companies else None,
+                ),
+            )
+            for sequence, entry in enumerate(companies, start=1):
+                conn.execute(
+                    "INSERT INTO batch_operation_items(id,batch_id,firm_id,company_id,company_name,"
+                    "sequence_no,status,attempt,max_attempts,available_at,result_json,error_code,"
+                    "error_detail,created_at,updated_at) "
+                    "VALUES(?,?,?,?,?,?,'queued',0,3,?,'{}','','',?,?)",
+                    (
+                        uuid4().hex,
+                        batch_id,
+                        actor.firm_id,
+                        entry["company_id"],
+                        entry.get("book_name", ""),
+                        sequence,
+                        stamp,
+                        stamp,
+                        stamp,
+                    ),
+                )
+            conn.execute(
+                "INSERT INTO audit_events(firm_id,user_id,action,object_id,details,created_at) "
+                "VALUES(?,?,'batch.review_export.enqueue',?,?,?)",
+                (
+                    actor.firm_id,
+                    actor.user_id,
+                    batch_id,
+                    json.dumps(
+                        {
+                            "kind": "review_export",
+                            "period": period,
+                            "total": len(companies),
+                            "manifest": confirmed_manifest,
+                        },
+                        ensure_ascii=False,
+                    ),
+                    stamp,
+                ),
+            )
+            row = conn.execute("SELECT * FROM batch_operations WHERE id=?", (batch_id,)).fetchone()
+            return self._json(conn, row, with_items=True)
+
+    def _execute_review_export(self, item):
+        actor = Actor(item["created_by"], item["firm_id"])
+        request = json.loads(item["request_json"])
+        entry = next(
+            (value for value in request["companies"] if value["company_id"] == item["company_id"]),
+            None,
+        )
+        if entry is None:
+            raise AccountingError("批量任务缺少该企业的清单", 409)
+        if entry.get("blocked"):
+            return {"status": "skipped", "message": entry["blocked"]}
+        with self.db.transaction(actor=actor) as conn:
+            rows = conn.execute(
+                "SELECT id,version FROM drafts WHERE book_id=? AND status='approved' ORDER BY id",
+                (entry["book_id"],),
+            ).fetchall()
+        current = [{"draft_id": row["id"], "version": row["version"]} for row in rows]
+        if current != entry["drafts"]:
+            raise AccountingError("预览后凭证集合或版本已变化，请重新预览", 409)
+        exported = AccountingService(self.db).export(
+            actor,
+            entry["book_id"],
+            ExportRequest(
+                draft_ids=[value["draft_id"] for value in entry["drafts"]],
+                idempotency_key=f"batch:{item['batch_id']}:{entry['company_id']}",
+            ),
+        )
+        return {
+            "status": "created",
+            "book_id": entry["book_id"],
+            "export_id": exported["id"],
+            "filename": exported.get("filename", ""),
+            "count": exported.get("count", 0),
+            "manifest": entry.get("manifest", ""),
+        }
 
     def list(self, actor, limit=20, offset=0):
         if not 1 <= limit <= 100 or not 0 <= offset <= 100_000:
@@ -505,6 +685,8 @@ class BatchOperationsService:
         # The worker executes as the operator who created the parent task; all
         # company and role checks run again in the per-company transaction.
         actor = Actor(item["created_by"], item["firm_id"])
+        if item["kind"] == "review_export":
+            return self._execute_review_export(item)
         if item["kind"] != "monthly_open":
             raise AccountingError("批量任务类型不受支持", 422)
         request = BatchOpen.model_validate_json(item["request_json"])

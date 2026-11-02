@@ -1,6 +1,6 @@
 # DCP06 批量导出与交付准备（A 刀：批量准备复核资料）
 
-日期：2026-11-02　状态：A 完成，本地提交；B/C 未开始
+日期：2026-11-02　状态：A、B 完成，本地提交；C 未开始
 
 ## 结论
 
@@ -60,12 +60,39 @@
 覆盖：ready/blocked 混合、无权账套不暴露、期间过滤、新增草稿改变指纹、客户财务 403、
 重复企业去重、期间格式校验。
 
-## 未完成（DCP06 B/C 与验收）
+## B：批量受控导出
 
-1. **B 受控导出**：对已复核且版本有效的对象调用既有导出冻结 manifest，逐项产出 export 引用；
-   需要迁移放宽 `batch_operations.kind`（当前 CHECK 只允许 `monthly_open`），按手册要求不建并行队列。
-2. **C 月度包草稿**：满足月结/发布政策才准备草稿，发布仍需有权限的人明确确认；本包不发送。
-3. **批量作业接线**：preview→确认清单→后台逐企业执行→逐项结果/失败/跳过；暂停只停未领取项。
-4. **浏览器验收**：桌面/手机勾选、预览、启动、查失败、返回。
-5. **PG16/17**：本地 WSL 集群在线但 Windows 侧连不上（`127.0.0.1:25531` 超时、无 portproxy）。
-6. `period_locked` 分支本地不可测：关闭期间需要「已复核的关账回执」，测试因此未覆盖该分支。
+复用同一张 `batch_operations`（新增 kind `review_export`，迁移 `sqlite/123`、`postgres/194`），
+不新建队列、不新写导出器：逐企业调用既有 `AccountingService.export`。
+
+- `POST /api/firm/batch-operations/review-export/preview` → 逐家列出 **已审核** 凭证的 `id+version`、
+  单企业 `manifest`、整包 `manifest` 与阻断码（`no_book` / `no_access` / `no_approved` / `draft_limit`）。
+- `POST /api/firm/batch-operations/review-export`（202）→ 必须带上预览时确认的 `confirmed_manifest`；
+  清单在确认后变化（多批了一张、少了一张、版本变了）返回 409「清单已变化，请重新预览后再确认」。
+- 后台逐项执行：
+  - 阻断企业直接 `skipped`，不进入导出；
+  - 执行前重新读该账套的已审核集合，与清单逐条比较，不一致 → 409，**不导出新集合**；
+  - 一致才调用既有导出，结果写回 `export_id / filename / count / manifest`。
+- 导出仍受既有守卫：只导出 `approved`、必须有过期复核凭据、账套只读期/锁定期内拒绝。
+- 幂等：同一 `idempotency_key` 重放返回同一批次；导出本身按 `batch:{batch_id}:{company}` 幂等。
+
+### 证据
+
+| 项 | 结果 |
+| --- | --- |
+| `pytest tests/test_dcp06_review_export.py` | 5 passed |
+| `pytest tests/test_batch_operations.py tests/test_dcp04_batch_control.py tests/test_dcp06_review_export.py` | 12 passed |
+| 迁移门禁 | exit 0 |
+| `ruff check`（批量模块 + 新测试 + 迁移） | 通过 |
+
+覆盖：预览只收已审核、阻断码、确认清单不符 409、真实导出产出 `export_id/filename/count` 并落 `exports` 行、
+预览后再批准一张凭证 → 执行拒绝并要求重新预览。
+
+## 未完成（DCP06 C 与验收）
+
+1. **C 月度包草稿**：满足月结/发布政策才准备草稿，发布仍由有权限的人确认；本包不发送。
+2. **浏览器验收**：桌面/手机勾选、预览、启动、查失败、单项处理、返回。
+3. **暂停/续跑**：暂停只停未领取项；续跑不重复已完成项（DCP04 的取消语义可复用，但本包未接线 UI）。
+4. **PG16/17**：本地 WSL 集群在线但 Windows 侧连不上（`127.0.0.1:25531` 超时、无 portproxy）。
+5. `period_locked` 分支本地不可测：关闭期间需要「已复核的关账回执」。
+6. 生产未应用 123/194，**未推送**。

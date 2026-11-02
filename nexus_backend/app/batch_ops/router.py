@@ -1,6 +1,12 @@
 from fastapi import APIRouter, Depends, Query, Request, Response
 
-from .models import BatchItemReason, CreateMonthlyOpenBatch, RetryBatchRequest
+from .models import (
+    BatchItemReason,
+    CreateMonthlyOpenBatch,
+    CreateReviewExport,
+    RetryBatchRequest,
+    ReviewExportPreview,
+)
 
 
 def build_batch_ops_router(actor_dependency):
@@ -24,6 +30,28 @@ def build_batch_ops_router(actor_dependency):
         batches=Depends(service),
     ):
         return batches.create_monthly_open(current, payload)
+
+    @router.post("/review-export/preview")
+    def preview_review_export(
+        payload: ReviewExportPreview,
+        current=Depends(actor_dependency),
+        batches=Depends(service),
+    ):
+        return batches.preview_review_export(current, payload.company_ids, payload.period)
+
+    @router.post("/review-export", status_code=202)
+    def create_review_export(
+        payload: CreateReviewExport,
+        current=Depends(actor_dependency),
+        batches=Depends(service),
+    ):
+        return batches.create_review_export(
+            current,
+            payload.company_ids,
+            payload.period,
+            payload.confirmed_manifest,
+            payload.idempotency_key,
+        )
 
     @router.get("")
     def list_batches(
