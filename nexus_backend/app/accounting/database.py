@@ -658,6 +658,7 @@ class Database:
         company_id=None,
         firm_id=None,
         write_scope="global",
+        jit=None,
     ):
         privileged = system or projection or self.default_role == "accounting_projection"
         if write_scope not in {"global", "company"}:
@@ -670,6 +671,8 @@ class Database:
             )
         if write_scope == "company" and privileged and not firm_id:
             raise ValueError("系统/投影身份的企业写事务必须显式提供 firm_id")
+        if jit is not None and write:
+            raise ValueError("JIT 计划设置只允许用于只读事务，避免写路径携带隐式计划假设")
         if self.is_postgres and actor is None and not privileged:
             raise ValueError("PostgreSQL 事务必须提供 actor 或显式使用 system/projection 身份事务")
         if actor is not None and privileged:
@@ -706,6 +709,10 @@ class Database:
                     user_id=getattr(actor, "user_id", ""),
                     firm_id=getattr(actor, "firm_id", ""),
                 )
+                if jit is False:
+                    # Transaction-local only: pooling must never inherit this,
+                    # and the database default stays untouched.
+                    conn.execute("SET LOCAL jit = off")
                 if write:
                     lock_started = perf_counter()
                     from .locking import write_lock

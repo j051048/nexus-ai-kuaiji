@@ -8,7 +8,7 @@ def home_bootstrap(directory, workspace, identity, firm_id=None, mode="supabase"
     # Both runtime roles and all settings remain transaction-local. No shared
     # permission or home-response cache exists; the next request sees revocation.
     for attempt in range(2):
-        with workspace.db.transaction(actor=Actor(identity.user_id, "")) as conn:
+        with workspace.db.transaction(actor=Actor(identity.user_id, ""), jit=False) as conn:
             me = directory.me_in_connection(
                 conn,
                 identity.user_id,
