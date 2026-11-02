@@ -24,18 +24,18 @@ jobs:
           set -euo pipefail
           auth_root="$RUNNER_TEMP/p01-gotrue"
           mkdir -p "$auth_root"
-          curl --fail --location --retry 3 https://github.com/supabase/auth/releases/download/v2.197.0/auth-v2.197.0-x86.tar.gz -o "$auth_root/auth.tar.gz"
-          echo "9daff5d1939c3142a1586e435e6e2a7a2f71534ec40ff1b196b59b83ad5678f3  $auth_root/auth.tar.gz" | sha256sum --check
+          curl --fail --location --retry 3 https://github.com/supabase/auth/releases/download/v2.197.0/auth-v2.197.0-amd64.tar.xz -o "$auth_root/auth.tar.xz"
+          echo "b5c2991d1df760c9b099c1c2395a94bd1c2f83ed58901934921997179dc9f7ea  $auth_root/auth.tar.xz" | sha256sum --check
           AUTH_ROOT="$auth_root" python - <<'PY'
           import hashlib, os, tarfile
           from pathlib import Path
           root = Path(os.environ['AUTH_ROOT'])
-          with tarfile.open(root / 'auth.tar.gz') as archive:
+          with tarfile.open(root / 'auth.tar.xz') as archive:
               members = [m for m in archive.getmembers() if m.isfile() and Path(m.name).name == 'auth']
               if len(members) != 1:
                   raise SystemExit('Pinned auth binary missing or ambiguous')
               payload = archive.extractfile(members[0]).read()
-          if hashlib.sha256(payload).hexdigest() != 'f2aa147268461f74784ddc8b2240aa446ee71ceb9633bac41c30e7b852a860aa':
+          if hashlib.sha256(payload).hexdigest() != 'c66b5efc816ccf3e13c24022bdefd5c6a9bea1fd1a1aeb9c586e1279c75a6306':
               raise SystemExit('Pinned auth binary hash mismatch')
           (root / 'auth').write_bytes(payload)
           (root / 'auth').chmod(0o700)
