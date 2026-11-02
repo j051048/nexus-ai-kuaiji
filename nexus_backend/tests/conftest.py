@@ -24,10 +24,15 @@ from app.accounting.database import Database
 
 _fixture_owner = ContextVar("database_fixture_owner", default=None)
 _template: Path | None = None
+_template_directory: Path | None = None
 
 
 def _build_template(original) -> Path:
+    global _template_directory
     directory = Path(tempfile.mkdtemp(prefix="accounting-schema-"))
+    # The session fixture owns this directory; leaking one per run used to leave
+    # hundreds of empty schema directories in the working tree.
+    _template_directory = directory
     path = directory / "template.db"
     database = Database.__new__(Database)
     original(database, path)
@@ -93,6 +98,8 @@ def database_resources():
         yield created
         for database in reversed(created):
             database.close()
+        if _template_directory is not None:
+            shutil.rmtree(_template_directory, ignore_errors=True)
 
 
 @pytest.fixture(autouse=True)

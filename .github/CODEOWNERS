@@ -1,0 +1,8 @@
+# Protected paths: changes here can silently weaken the acceptance gate or the
+# database contract, so they need the owner's review.
+/nexus_backend/migrations/ @j051048
+/scripts/check_release_candidate.py @j051048
+/scripts/n02_n03_postgres_gate.py @j051048
+/scripts/n02_n03_postgres_required_cases.json @j051048
+/tools/ai_inference_lab/rsi/acceptance.py @j051048
+/.github/workflows/ @j051048
