@@ -106,4 +106,6 @@ provision-login    migrate_accounting.py provision-login --username accounting_a
 1. 用 WSL 内 `psql` 以 postgres 手工建 `accounting_app` 登录角色并设密码，再重跑 `migrate`；
 2. 用管理接口在受控窗口内给 `accounting_app` 临时 `LOGIN`，跑完后立即收回。
 
+追加证据（09:3x）：WSL 内 `ALTER ROLE accounting_app LOGIN PASSWORD …` 成功（`rolcanlogin=t`），但 `migrate_accounting.py migrate --username accounting_app`（app+admin 双 DSN，`PYTHONIOENCODING=utf-8`）仍失败，且只回显「数据库操作失败；请检查管理员连接、账号权限和迁移。连接信息及驱动异常已隐藏。」——错误被刻意脱敏，无法据此定位。故 PG17 迁移仍未成功，下一步需要读 `migrate_accounting.py` 的失败分支（约 30 行）或在受控环境开一次详细日志。
+
 **本报告不宣布 DCP12-A 通过。**
