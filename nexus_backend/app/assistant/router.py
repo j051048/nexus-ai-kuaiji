@@ -1,8 +1,16 @@
 from fastapi import APIRouter, Depends, Query, Request
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Literal
 from fastapi.responses import JSONResponse
 from .models import ConversationCreate, TurnCreate, TurnCancel
 from .actions import ActionPrepare, ActionConfirm
+from . import investigation
+
+
+class InvestigationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    book_id: str = Field(min_length=1, max_length=100)
+    period: str = Field(pattern=r"^20[0-9]{2}-(0[1-9]|1[0-2])$")
 
 
 def build_assistant_router(actor_dependency):
@@ -13,6 +21,16 @@ def build_assistant_router(actor_dependency):
 
     def actions(request: Request):
         return request.app.state.assistant_actions
+
+    @router.post("/investigations")
+    def investigate(
+        body: InvestigationRequest,
+        request: Request,
+        current=Depends(actor_dependency),
+    ):
+        return investigation.investigate(
+            request.app.state.service, current, body.book_id, body.period
+        )
 
     @router.get("/scope")
     def choices(
