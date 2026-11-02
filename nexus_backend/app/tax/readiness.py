@@ -7,6 +7,8 @@ blocked with the reason the workpaper generator itself would raise.
 """
 
 from ..accounting.domain import AccountingError
+from .filings import list_for as filing_list
+from .filings import summary as filing_summary
 from .workpaper import _period, _snapshot
 
 LABELS = {"vat": "增值税", "surtax": "附加税费"}
@@ -41,7 +43,7 @@ def _kind(kind, readiness, *, next_action, owner_role="账套会计", workpaper=
     }
 
 
-def filing_readiness(service, actor, book_id, period=None):
+def _readiness(service, actor, book_id, period=None):
     scope = service._scope(actor, book_id, "read")
     period = _period(period or scope["period"])
     with service.db.transaction(actor=actor) as conn:
@@ -120,3 +122,18 @@ def filing_readiness(service, actor, book_id, period=None):
                 "period": period,
             }
         return payload
+
+
+def filing_readiness(service, actor, book_id, period=None):
+    """Workpaper state plus the externally registered result, kept separate."""
+    payload = _readiness(service, actor, book_id, period)
+    rows = filing_list(service, actor, book_id, payload["period"])
+    state = filing_summary(rows)
+    payload["external_result"] = state["external_result"]
+    payload["filing_state"] = state["filing_state"]
+    payload["filings"] = rows
+    for kind in payload["kinds"]:
+        latest = state["by_kind"].get(kind["kind"])
+        kind["filing"] = latest
+        kind["external_result"] = "registered" if latest else "none"
+    return payload

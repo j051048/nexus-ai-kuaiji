@@ -4,6 +4,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, Query, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, StrictInt
 
+from . import filings
 from .readiness import filing_readiness
 from .workpaper import TaxWorkpaperService
 from .context import tax_context
@@ -31,6 +32,18 @@ class TaxWorkpaperCreate(BaseModel):
     period: str | None = Field(default=None, pattern=r"^20[0-9]{2}-(0[1-9]|1[0-2])$")
     reason: str = Field(default="", max_length=1000)
     vat_accounts: list[TaxAccountRole] = Field(default_factory=list, max_length=1000)
+
+
+class TaxFilingWrite(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    book_id: str = Field(min_length=1, max_length=100)
+    period: str | None = Field(default=None, pattern=r"^20[0-9]{2}-(0[1-9]|1[0-2])$")
+    kind: Literal["vat", "surtax"]
+    status: Literal["filed", "paid"]
+    external_ref: str = Field(min_length=3, max_length=100)
+    occurred_at: str = Field(pattern=r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
+    amount_cents: StrictInt = Field(default=0, ge=0)
+    evidence_note: str = Field(default="", max_length=500)
 
 
 class TaxWorkpaperReview(BaseModel):
@@ -70,6 +83,23 @@ def build_tax_router(actor_dependency):
         tax=Depends(service),
     ):
         return filing_readiness(tax, current, book_id, period)
+
+    @router.post("/filings", status_code=201)
+    def record_filing(
+        payload: TaxFilingWrite,
+        current=Depends(actor_dependency),
+        tax=Depends(service),
+    ):
+        return filings.record(tax, current, payload.model_dump())
+
+    @router.get("/filings")
+    def list_filings(
+        book_id: str = Query(min_length=1, max_length=100),
+        period: str | None = Query(default=None, max_length=7),
+        current=Depends(actor_dependency),
+        tax=Depends(service),
+    ):
+        return {"filings": filings.list_for(tax, current, book_id, period)}
 
     @router.get("/profile")
     def read_profile(

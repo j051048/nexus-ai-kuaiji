@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, apiBlob, ApiError } from './api';
 import { useScopedQuery } from './useScopedQuery';
 import { TaxReadinessList } from './TaxReadinessList';
+import { TaxFilingRecords } from './TaxFilingRecords';
 import { parseReadiness, type FilingReadiness } from './tax-readiness';
 import type { Session } from './types';
 import { taxEvidence } from './tax-evidence';
@@ -282,6 +283,13 @@ function TaxContent({ session, bookId, companyId, period, onBusyChange }: Props)
         用于会计核对与导出，尚未申报。来源会在复核和导出时重新校验；模型不会代替独立复核。
       </p>
       <TaxReadinessList data={readiness} />
+      <TaxFilingRecords
+        session={session}
+        bookId={bookId}
+        period={period}
+        canRegister={['owner', 'admin', 'reviewer'].includes(session.role ?? '')}
+        onRecorded={() => read.reload()}
+      />
       {(failure || read.error) && (
         <div role="alert" className="tax-alert">
           {failure || read.error}
