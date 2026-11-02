@@ -131,8 +131,7 @@ function parseActionTarget(
   if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
   const row = value as Record<string, unknown>;
   if (typeof row.kind !== 'string' || !row.kind || row.kind.length > 40) return undefined;
-  if (typeof row.book_id !== 'string' || !row.book_id || row.book_id.length > 100)
-    return undefined;
+  if (typeof row.book_id !== 'string' || !row.book_id || row.book_id.length > 100) return undefined;
   if (typeof row.period !== 'string' || !/^20\d{2}-(0[1-9]|1[0-2])$/.test(row.period))
     return undefined;
   return { kind: row.kind, book_id: row.book_id, period: row.period };

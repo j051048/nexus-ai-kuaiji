@@ -44,7 +44,13 @@ type Briefing = {
   generated_at: string;
 };
 
-const AXIS_ORDER = ['internal_close', 'external_receipt', 'tax_filing', 'notification', 'client_sign'];
+const AXIS_ORDER = [
+  'internal_close',
+  'external_receipt',
+  'tax_filing',
+  'notification',
+  'client_sign',
+];
 
 /** 未发布时只说明状态与五条独立轴线，不展示任何金额。 */
 export function BriefingPending({ label, source }: { label: string; source?: BriefingSource }) {

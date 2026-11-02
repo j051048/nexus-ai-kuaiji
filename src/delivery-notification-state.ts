@@ -45,7 +45,11 @@ const COPY: Record<NotificationSemantic, Copy> = {
     tone: 'danger',
     hint: '可能已经发出。系统不会自动重发；请人工核对是否送达，再决定是否需要新的提醒。',
   },
-  cancelled: { label: '已取消', tone: 'muted', hint: '发送前复核未通过（授权、版本或收件人已变化）。' },
+  cancelled: {
+    label: '已取消',
+    tone: 'muted',
+    hint: '发送前复核未通过（授权、版本或收件人已变化）。',
+  },
   viewed: { label: '客户已查看', tone: 'ok', hint: '' },
   signed: { label: '客户已签收', tone: 'ok', hint: '' },
 };

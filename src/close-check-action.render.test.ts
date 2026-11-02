@@ -49,10 +49,13 @@ describe('blocked check action row', () => {
   });
 
   it('hides configuration writes from a reader and keeps role context visible', () => {
-    const html = render({ kind: 'subledger', book_id: 'book-a', period: '2026-10' }, {
-      ...context,
-      canReview: false,
-    });
+    const html = render(
+      { kind: 'subledger', book_id: 'book-a', period: '2026-10' },
+      {
+        ...context,
+        canReview: false,
+      },
+    );
     expect(html).toContain('复核权限');
     expect(html).not.toContain('<button');
     expect(html).not.toContain('去配置控制科目');

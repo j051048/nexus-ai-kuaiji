@@ -31,7 +31,9 @@ const source = {
 
 describe('BriefingPending', () => {
   it('shows the pending label and all five independent axes', () => {
-    const html = renderToStaticMarkup(createElement(BriefingPending, { label: "待会计复核 / 发布", source }));
+    const html = renderToStaticMarkup(
+      createElement(BriefingPending, { label: '待会计复核 / 发布', source }),
+    );
     expect(html).toContain('待会计复核 / 发布');
     expect(html).toContain('客户可见口径只认已发布且与锁期一致的冻结报表');
     for (const label of Object.values(source.axis_labels)) expect(html).toContain(label);
@@ -41,7 +43,7 @@ describe('BriefingPending', () => {
   });
 
   it('renders without axes instead of inventing amounts', () => {
-    const html = renderToStaticMarkup(createElement(BriefingPending, { label: "成果版本不一致" }));
+    const html = renderToStaticMarkup(createElement(BriefingPending, { label: '成果版本不一致' }));
     expect(html).toContain('成果版本不一致');
     expect(html).not.toContain('briefing-axes');
     expect(html).not.toContain('¥');

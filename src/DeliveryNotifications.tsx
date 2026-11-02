@@ -16,8 +16,7 @@ interface Props {
 }
 
 export function DeliveryNotificationList({ items }: { items: NotificationItem[] }) {
-  if (!items.length)
-    return <p className="delivery-notification-empty">本月还没有外发提醒记录。</p>;
+  if (!items.length) return <p className="delivery-notification-empty">本月还没有外发提醒记录。</p>;
   return (
     <ul className="delivery-notification-list">
       {items.map((item) => {

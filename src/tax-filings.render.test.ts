@@ -32,7 +32,9 @@ describe('filing records', () => {
   });
 
   it('renders the registered evidence and the not-filed boundary', () => {
-    expect(renderToStaticMarkup(createElement(FilingList, { rows: [] }))).toContain('登记前一律视为「未申报」');
+    expect(renderToStaticMarkup(createElement(FilingList, { rows: [] }))).toContain(
+      '登记前一律视为「未申报」',
+    );
     const html = renderToStaticMarkup(createElement(FilingList, { rows: [row] }));
     expect(html).toContain('增值税 · 已缴款');
     expect(html).toContain('SB2026100001');

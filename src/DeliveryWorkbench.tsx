@@ -392,7 +392,12 @@ function DeliveryReceipts({
         bookId={bookId}
         onBusyChange={onBusyChange}
       />
-      <DeliveryNotifications key={'notify:' + scope} session={session} bookId={bookId} period={period} />
+      <DeliveryNotifications
+        key={'notify:' + scope}
+        session={session}
+        bookId={bookId}
+        period={period}
+      />
       <section className="delivery-notice">
         <FileCheck2 size={25} />
         <div>

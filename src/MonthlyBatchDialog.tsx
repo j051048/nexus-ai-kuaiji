@@ -25,14 +25,7 @@ type BatchItem = {
   id: string;
   company_id: string;
   company_name: string;
-  status:
-    | 'queued'
-    | 'running'
-    | 'succeeded'
-    | 'skipped'
-    | 'failed'
-    | 'retry_wait'
-    | 'cancelled';
+  status: 'queued' | 'running' | 'succeeded' | 'skipped' | 'failed' | 'retry_wait' | 'cancelled';
   error_detail: string;
   result: BatchRow | null;
 };

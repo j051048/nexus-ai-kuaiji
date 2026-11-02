@@ -83,49 +83,56 @@ export function SubledgerSetupPanel({
       if (!quiet) setLoading(true);
       setError('');
       try {
-      const query = `?book_id=${encodeURIComponent(bookId)}`;
-      const [controlRaw, bankRaw, batchRaw] = await Promise.all([
-        api<unknown>(`/subledger/control-accounts${query}&as_of=${encodeURIComponent(period)}`, session),
-        api<unknown>(`/subledger/bank-accounts${query}`, session),
-        api<unknown>(`/subledger/bank-batches${query}`, session),
-      ]);
-      if (!live.current) return;
-      setControls(
-        objects(controlRaw, 'accounts').map((row) => ({
-          id: text(row.id),
-          kind: text(row.kind),
-          control_account_id: text(row.control_account_id),
-          control_account_version: Number(row.control_account_version ?? 0),
-          required_aux: Array.isArray(row.required_aux)
-            ? row.required_aux.filter((item): item is string => typeof item === 'string').join(' / ')
-            : '',
-          effective_from: text(row.effective_from),
-          effective_to: text(row.effective_to),
-        })),
-      );
-      setBanks(
-        objects(bankRaw, 'accounts').map((row) => ({
-          id: text(row.id),
-          name: text(row.name),
-          ledger_account_id: text(row.ledger_account_id),
-          ledger_account_version: Number(row.ledger_account_version ?? 0),
-        })),
-      );
-      setBatches(
-        objects(batchRaw, 'batches').map((row) => ({
-          preview_id: text(row.preview_id),
-          file_id: text(row.file_id),
-          sha256: text(row.sha256),
-          filename: text(row.filename),
-          confirmed_at: text(row.confirmed_at),
-        })),
-      );
-    } catch (failure) {
-      if (live.current) setError(`${errorMessage(failure)} 请重新读取后再配置。`);
-    } finally {
-      if (live.current && !quiet) setLoading(false);
-    }
-  }, [bookId, period, session]);
+        const query = `?book_id=${encodeURIComponent(bookId)}`;
+        const [controlRaw, bankRaw, batchRaw] = await Promise.all([
+          api<unknown>(
+            `/subledger/control-accounts${query}&as_of=${encodeURIComponent(period)}`,
+            session,
+          ),
+          api<unknown>(`/subledger/bank-accounts${query}`, session),
+          api<unknown>(`/subledger/bank-batches${query}`, session),
+        ]);
+        if (!live.current) return;
+        setControls(
+          objects(controlRaw, 'accounts').map((row) => ({
+            id: text(row.id),
+            kind: text(row.kind),
+            control_account_id: text(row.control_account_id),
+            control_account_version: Number(row.control_account_version ?? 0),
+            required_aux: Array.isArray(row.required_aux)
+              ? row.required_aux
+                  .filter((item): item is string => typeof item === 'string')
+                  .join(' / ')
+              : '',
+            effective_from: text(row.effective_from),
+            effective_to: text(row.effective_to),
+          })),
+        );
+        setBanks(
+          objects(bankRaw, 'accounts').map((row) => ({
+            id: text(row.id),
+            name: text(row.name),
+            ledger_account_id: text(row.ledger_account_id),
+            ledger_account_version: Number(row.ledger_account_version ?? 0),
+          })),
+        );
+        setBatches(
+          objects(batchRaw, 'batches').map((row) => ({
+            preview_id: text(row.preview_id),
+            file_id: text(row.file_id),
+            sha256: text(row.sha256),
+            filename: text(row.filename),
+            confirmed_at: text(row.confirmed_at),
+          })),
+        );
+      } catch (failure) {
+        if (live.current) setError(`${errorMessage(failure)} 请重新读取后再配置。`);
+      } finally {
+        if (live.current && !quiet) setLoading(false);
+      }
+    },
+    [bookId, period, session],
+  );
   useEffect(() => {
     void load();
   }, [load]);
@@ -141,8 +148,7 @@ export function SubledgerSetupPanel({
       await load(true);
       onChanged();
     } catch (failure) {
-      if (live.current)
-        setError(`${errorMessage(failure)} 未保存任何配置；请核对当前版本后重试。`);
+      if (live.current) setError(`${errorMessage(failure)} 未保存任何配置；请核对当前版本后重试。`);
     } finally {
       if (live.current) setBusy(false);
     }
@@ -171,9 +177,7 @@ export function SubledgerSetupPanel({
       <header>
         <div>
           <h3>{panel === 'subledger' ? '控制科目配置' : '银行账户与覆盖证据'}</h3>
-          <p>
-            {period} · 当前账套。保存后回到月结面板重新读取，再生成预检；配置本身不会通过检查。
-          </p>
+          <p>{period} · 当前账套。保存后回到月结面板重新读取，再生成预检；配置本身不会通过检查。</p>
         </div>
         <button type="button" className="button secondary" disabled={busy} onClick={onClose}>
           收起
@@ -183,7 +187,12 @@ export function SubledgerSetupPanel({
       {error && (
         <div role="alert" className="inline-error">
           <p>{error}</p>
-          <button type="button" className="button secondary" disabled={busy} onClick={() => void load()}>
+          <button
+            type="button"
+            className="button secondary"
+            disabled={busy}
+            onClick={() => void load()}
+          >
             重新读取配置
           </button>
         </div>
@@ -199,8 +208,8 @@ export function SubledgerSetupPanel({
               <ul>
                 {controls.map((row) => (
                   <li key={row.id}>
-                    {kindLabel(row.kind)} · {label(row.control_account_id)} {row.control_account_id} · V
-                    {row.control_account_version} · 生效 {row.effective_from}
+                    {kindLabel(row.kind)} · {label(row.control_account_id)} {row.control_account_id}{' '}
+                    · V{row.control_account_version} · 生效 {row.effective_from}
                     {row.effective_to ? ` 至 ${row.effective_to}` : ' 起'}
                     {row.required_aux ? ` · 必填辅助：${row.required_aux}` : ''}
                   </li>
@@ -224,7 +233,7 @@ export function SubledgerSetupPanel({
                     .filter(Boolean),
                   effective_from: period,
                   reason: String(data.get('reason') ?? '').trim(),
-                  }),
+                }),
                 '控制科目配置已保存；请重新读取月结证据。',
               )
             }
@@ -242,7 +251,12 @@ export function SubledgerSetupPanel({
             </label>
             <label>
               科目
-              <input name="control_account_id" required maxLength={100} list="formal-close-accounts" />
+              <input
+                name="control_account_id"
+                required
+                maxLength={100}
+                list="formal-close-accounts"
+              />
             </label>
             <datalist id="formal-close-accounts">
               {Object.entries(accountLabels).map(([id, name]) => (
@@ -349,7 +363,12 @@ export function SubledgerSetupPanel({
             </label>
             <label>
               对应科目
-              <input name="ledger_account_id" required maxLength={100} list="formal-close-accounts" />
+              <input
+                name="ledger_account_id"
+                required
+                maxLength={100}
+                list="formal-close-accounts"
+              />
             </label>
             <label>
               科目版本

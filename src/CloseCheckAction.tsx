@@ -28,7 +28,11 @@ export function CloseCheckAction({ target, context, ownerRole, onOpenPanel }: Pr
       </a>
     );
   return (
-    <button type="button" className="button secondary" onClick={() => onOpenPanel(destination.panel)}>
+    <button
+      type="button"
+      className="button secondary"
+      onClick={() => onOpenPanel(destination.panel)}
+    >
       {destination.label}
     </button>
   );

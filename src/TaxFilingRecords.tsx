@@ -131,7 +131,10 @@ export function TaxFilingRecords({
           </label>
           <label>
             办理结果
-            <select value={status} onChange={(event) => setStatus(event.target.value as 'filed' | 'paid')}>
+            <select
+              value={status}
+              onChange={(event) => setStatus(event.target.value as 'filed' | 'paid')}
+            >
               <option value="filed">已申报</option>
               <option value="paid">已缴款</option>
             </select>
@@ -147,11 +150,20 @@ export function TaxFilingRecords({
           </label>
           <label>
             办理日期
-            <input type="date" value={occurredAt} onChange={(event) => setOccurredAt(event.target.value)} required />
+            <input
+              type="date"
+              value={occurredAt}
+              onChange={(event) => setOccurredAt(event.target.value)}
+              required
+            />
           </label>
           <label>
             缴款金额（元）
-            <input value={amount} inputMode="decimal" onChange={(event) => setAmount(event.target.value)} />
+            <input
+              value={amount}
+              inputMode="decimal"
+              onChange={(event) => setAmount(event.target.value)}
+            />
           </label>
           <label>
             证据说明

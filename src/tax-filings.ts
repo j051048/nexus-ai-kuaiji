@@ -12,7 +12,9 @@ export interface TaxFiling {
 }
 
 export function parseFilings(raw: unknown): TaxFiling[] {
-  const list = Array.isArray((raw as { filings?: unknown })?.filings) ? (raw as { filings: unknown[] }).filings : [];
+  const list = Array.isArray((raw as { filings?: unknown })?.filings)
+    ? (raw as { filings: unknown[] }).filings
+    : [];
   const rows: TaxFiling[] = [];
   for (const item of list) {
     if (!item || typeof item !== 'object') continue;

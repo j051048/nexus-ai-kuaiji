@@ -75,9 +75,7 @@ export function resolveCloseAction(
   context: CloseActionContext,
 ): CloseDestination {
   if (!target)
-    return manual(
-      '该检查项由历史预检生成，未附带可直达的办理入口；请按“下一步”处理后重新预检。',
-    );
+    return manual('该检查项由历史预检生成，未附带可直达的办理入口；请按“下一步”处理后重新预检。');
   const kind = target.kind;
   if (!closeActionKinds.includes(kind as CloseActionKind))
     return manual(
@@ -86,16 +84,12 @@ export function resolveCloseAction(
   if (!target.book_id || !target.period)
     return manual('该检查项缺少账套或月份，不能直接跳转；请重新生成月结预检后再办理。');
   if (target.book_id !== context.bookId || target.period !== context.period)
-    return manual(
-      '该检查项属于其他账套或月份；请切换到对应账套与月份后办理，本页不会跨账套操作。',
-    );
+    return manual('该检查项属于其他账套或月份；请切换到对应账套与月份后办理，本页不会跨账套操作。');
   switch (kind as CloseActionKind) {
     case 'subledger':
     case 'bank_reconciliation':
       if (!context.canReview)
-        return manual(
-          '办理需要本账套复核权限；你当前只能查看，请联系有复核权限的同事办理。',
-        );
+        return manual('办理需要本账套复核权限；你当前只能查看，请联系有复核权限的同事办理。');
       return {
         mode: 'inline',
         panel: kind === 'subledger' ? 'subledger' : 'bank',

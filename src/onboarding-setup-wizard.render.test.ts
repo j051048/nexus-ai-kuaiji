@@ -38,7 +38,13 @@ describe('opening setup wizard list', () => {
   it('links only in-page kinds to the month-close panel', () => {
     const html = renderToStaticMarkup(
       createElement(SetupStepList, {
-        body: body([step({ id: 'bank', title: '银行账户与覆盖证据', action_target: { kind: 'bank', book_id: 'book-a', period: '2026-10' } })]),
+        body: body([
+          step({
+            id: 'bank',
+            title: '银行账户与覆盖证据',
+            action_target: { kind: 'bank', book_id: 'book-a', period: '2026-10' },
+          }),
+        ]),
       }),
     );
     expect(html).toContain('href="#formal-close"');
