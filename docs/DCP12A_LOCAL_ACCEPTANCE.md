@@ -67,4 +67,24 @@ worktree_clean  false
 - 助手无模型 attempt 链，多步循环默认关闭；
 - 本地演示缺少第二个复核人的问题已用 `reviewer` 身份缓解，但只覆盖示例账套。
 
+## 七、本轮增补（2026-11-02 09:2x）
+
+### 1. PG17 无法从 Windows 侧连通的真实原因（不是集群挂了）
+
+```
+pg_lsclusters:  16 p02pg16 25531 online / 17 p02pg17 25532 online
+ss -lntp:       0.0.0.0:25531  0.0.0.0:25532（双栈监听正常）
+Windows 127.0.0.1:25531/25532  connect 超时
+Windows 172.24.221.111:25531/25532  connect 成功
+```
+
+即 **WSL2 的 localhost 转发失效**，而集群本身健康。后续 PG16/17 门禁应改用 WSL IP（`172.24.221.111`）连接，并确认 `pg_hba.conf` 对 `172.24.0.0/16` 放开 scram；不要再把「连接超时」当成数据库故障。
+
+### 2. 迁移 196 的归属（并行工作，不进候选）
+
+`196_settlement_company_lock.sql` 头部是 `-- compatibility: incremental`，内容为 `CREATE OR REPLACE FUNCTION accounting.settlement_open_item(...)` 等四个锁函数，属结算作用域的并行改造；同一时间工作区里 `test_stage10_settlements*.py`、`test_stage8_learning*.py` 等 8 个文件仍在被修改。结论：
+
+- **196 及其测试不得进入本候选**，也不得由我提交；
+- 推送前比对必须把 196 当成「代码领先于生产」的反例：若它被对方提交，生产台账（当前 195）会落后一版，必须先迁移再上线。
+
 **本报告不宣布 DCP12-A 通过。**
