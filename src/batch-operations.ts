@@ -44,10 +44,17 @@ export type Plan = {
   }[];
 };
 export type Handoff = {
-  source: { kind: 'tax_workpaper'; id: string; version: number; fingerprint: string };
-  scope: { book_id: string; period: string; company_name: string; book_name: string };
-  maker_id: string;
-  role: string;
+  source: { kind: 'tax_workpaper' | 'batch_item' | 'notification_investigation' | 'delivery_package'; id: string; version: number; fingerprint: string };
+  scope: {
+    book_id: string;
+    period: string;
+    company_name: string;
+    book_name: string;
+    company_id?: string;
+    batch_id?: string;
+  };
+  maker_id?: string;
+  role: 'reviewer' | 'ops' | 'delivery';
   next_action: string;
   assignee_id: string | null;
   status: string;
@@ -190,9 +197,11 @@ export function acceptHandoffs(raw: unknown): Handoff[] {
     if (
       !object(row) ||
       !object(row.source) ||
-      row.source.kind !== 'tax_workpaper' ||
+      !['tax_workpaper', 'batch_item', 'notification_investigation', 'delivery_package'].includes(
+        row.source.kind as string,
+      ) ||
       !id(row.source.id) ||
-      seen.has(row.source.id) ||
+      seen.has(`${row.source.kind}:${row.source.id}`) ||
       !integer(row.source.version) ||
       row.source.version < 1 ||
       !hash(row.source.fingerprint) ||
@@ -201,12 +210,12 @@ export function acceptHandoffs(raw: unknown): Handoff[] {
       !id(row.scope.period) ||
       !id(row.scope.company_name) ||
       !id(row.scope.book_name) ||
-      !id(row.maker_id) ||
-      row.role !== 'reviewer' ||
+      (row.maker_id !== undefined && !id(row.maker_id)) ||
+      !['reviewer', 'ops', 'delivery'].includes(row.role as string) ||
       !id(row.next_action)
     )
       return invalid();
-    seen.add(row.source.id);
+    seen.add(`${row.source.kind}:${row.source.id}`);
   }
   return raw.items as Handoff[];
 }
@@ -257,4 +266,28 @@ export function batchResultUrl(kind: BatchKind, item: BatchItem, period: string)
     query.set('delivery', item.result.export_id);
   }
   return `/workspace/${kind === 'monthly_open' ? 'accounting' : 'delivery'}?${query}`;
+}
+
+/** Only navigate to the source domain that owns the item; never a lookalike list. */
+export function handoffOriginalHref(
+  item: Pick<Handoff, 'source' | 'scope'>,
+): string {
+  const query = new URLSearchParams({
+    book: item.scope.book_id,
+    period: item.scope.period,
+  });
+  if (item.scope.company_id) query.set('company', item.scope.company_id);
+  if (item.source.kind === 'batch_item') {
+    if (item.scope.batch_id) query.set('batch', item.scope.batch_id);
+    return `/workspace/accounting?${query}`;
+  }
+  query.set(
+    'section',
+    item.source.kind === 'tax_workpaper'
+      ? 'tax'
+      : item.source.kind === 'delivery_package'
+        ? 'delivery'
+        : 'notifications',
+  );
+  return `/workspace/delivery?${query}`;
 }

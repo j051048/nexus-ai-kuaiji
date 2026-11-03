@@ -1,5 +1,6 @@
 """大文件两段式上传：意图生命周期、内容校验与私有存储签名。"""
 
+import base64
 import hashlib
 import json
 import threading
@@ -149,6 +150,17 @@ def test_complete_verifies_signed_object_and_discards_mismatch(uploads):
         c.uploads.complete(actor, third["id"])
     assert invalid.value.status == 422
     assert not (c.store.root / key3).exists()
+
+    broken_png = base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lK3Q6wAAAABJRU5ErkJggg=="
+    )
+    _, fourth = intent(c, actor, data=broken_png, filename="损坏回执.png")
+    key4 = storage_key(c, actor, fourth["id"])
+    c.store.backend.put(key4, broken_png, "image/png")
+    with pytest.raises(AccountingError) as broken:
+        c.uploads.complete(actor, fourth["id"])
+    assert broken.value.status == 422
+    assert not (c.store.root / key4).exists()
 
 
 def test_intent_ownership_purpose_and_expiry(uploads):

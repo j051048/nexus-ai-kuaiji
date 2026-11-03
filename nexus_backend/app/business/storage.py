@@ -59,6 +59,7 @@ def validate_attachment(filename, claimed_type, data):
         except (
             UnidentifiedImageError,
             OSError,
+            SyntaxError,
             ValueError,
             Image.DecompressionBombWarning,
             Image.DecompressionBombError,

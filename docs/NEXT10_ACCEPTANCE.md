@@ -2,9 +2,9 @@
 
 - 工程状态：本地离线验收通过（MockTransport + 固定回放，SQLite）。
 - 外部验收：未授权／未验证（无真实模型、真实客户数据或线上助手调用）。
-- 候选：助手候选 `ca1c9e7c97e6b484e83e66303cda94dd985b0ef09a78affb75c90b112677e06c`；数据集清单 `443d5d78b534e7ec93862badcefa8758665540550731b4e17a7fde680b917a4d`；该指纹覆盖 `nexus_backend/app`、迁移、助手回放/OCR 工具、固定夹具与指定测试文件，不等同于仓库发布候选。
-- 运行目录：`tmp_test/next/next10-assistant-final3/`（最终候选重跑）；`summary.json` status=`passed`，退出码 0，353 passed，answer 3/3，`real_model_evaluated=false`。
-- 命令：`.venv/Scripts/python.exe -m tools.assistant_replay --out tmp_test/next/next10-assistant-final3 --timeout 900`
+- 候选：助手候选 `6ee338137d7f9b874276a6d9b6f57bceb9b17d04ea1c265c0d9a408afd51e91a`；数据集清单 `443d5d78b534e7ec93862badcefa8758665540550731b4e17a7fde680b917a4d`；该指纹覆盖 `nexus_backend/app`、迁移、助手回放/OCR 工具、固定夹具与指定测试文件，不等同于仓库发布候选。
+- 运行目录：`tmp_test/next/next10-assistant-57bb/`（57bb 最终候选重跑）；`summary.json` status=`passed`，退出码 0，353 passed，answer 3/3，`real_model_evaluated=false`。
+- 命令：`.venv/Scripts/python.exe -m tools.assistant_replay --out tmp_test/next/next10-assistant-57bb --timeout 900`
 
 ## 结果
 

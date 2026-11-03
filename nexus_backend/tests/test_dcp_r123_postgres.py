@@ -549,3 +549,68 @@ def test_native_handoff_rechecks_authority_after_lock_wait(case):
         with pytest.raises(c.psycopg.Error) as error:
             task.result(timeout=15)
     assert error.value.sqlstate == "42501"
+
+
+def test_handoff_batch_projection_binds_exact_failed_item(case, worker_db):
+    """NEXT04: a failed batch item is projected and assignable to a firm manager."""
+    c = case
+    s = batches(c, worker_db)
+    request = CreateMonthlyOpenBatch(
+        period="2026-11",
+        scope="companies",
+        companies=[c.book["company_id"]],
+        reason="NEXT04 批量失败接手",
+        idempotency_key=uuid4().hex,
+    )
+    batch = s.create_monthly_open(c.maker, request)
+    ready(c, batch)
+    item = s.claim("n04-batch")
+    assert s.finish(item, "failed", error_code="synthetic")
+    import json
+
+    with c.psycopg.connect(ADMIN_URL) as conn:
+        conn.execute(
+            "UPDATE accounting.batch_operation_items SET result_json=%s WHERE id=%s",
+            (json.dumps({"book_id": c.book["id"]}), item["item_id"]),
+        )
+    queued = HandoffService(c.db).queue(c.maker)["items"]
+    source = next(
+        row
+        for row in queued
+        if row["source"]["kind"] == "batch_item" and row["scope"]["batch_id"] == batch["id"]
+    )
+    assigned = HandoffService(c.db).assign(
+        c.maker,
+        source["source"]["id"],
+        source["source"]["version"],
+        c.maker.user_id,
+        None,
+        "NEXT04 批量失败指派",
+        kind="batch_item",
+    )
+    assert assigned["source"]["kind"] == "batch_item"
+    assert assigned["assignee_id"] == c.maker.user_id
+
+
+def test_handoff_delivery_package_projection_and_guard(package_case):
+    """NEXT04: an unacknowledged frozen package is a delivery handoff source."""
+    c = package_case
+    package = c.monthly.create(c.reviewer, c.book["id"], c.request)
+    queued = HandoffService(c.db).queue(c.manager)["items"]
+    source = next(
+        row
+        for row in queued
+        if row["source"]["kind"] == "delivery_package" and row["source"]["id"] == package["id"]
+    )
+    assert source["role"] == "delivery"
+    assigned = HandoffService(c.db).assign(
+        c.manager,
+        package["id"],
+        package["version"],
+        c.reviewer.user_id,
+        None,
+        "NEXT04 交付包指派",
+        kind="delivery_package",
+    )
+    assert assigned["assignee_id"] == c.reviewer.user_id
+    assert assigned["source"]["fingerprint"] == package["manifest_sha256"]

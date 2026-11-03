@@ -6,6 +6,7 @@ import {
   acceptBatch,
   acceptHandoffs,
   acceptAssignment,
+  handoffOriginalHref,
   batchResultUrl,
 } from './batch-operations';
 
@@ -29,7 +30,7 @@ describe('批量办理可信边界', () => {
       source: { kind: 'tax_workpaper' as const, id: 'w', version: 2, fingerprint: 'c'.repeat(64) },
       scope: { book_id: 'b', period: '2026-11', company_name: '甲', book_name: '甲账' },
       maker_id: 'maker',
-      role: 'reviewer',
+      role: 'reviewer' as const,
       next_action: '复核',
       assignee_id: null,
       status: 'pending',
@@ -117,4 +118,42 @@ describe('批量办理可信边界', () => {
       acceptHandoffs({ items: [{ source: { kind: 'tax_workpaper', id: 'w', version: true } }] }),
     ).toThrow();
   });
+});
+
+  it('统一接手队列接受批量、通知和交付来源，保留种类与版本', () => {
+    const base = {
+      scope: { book_id: 'b', period: '2026-11', company_name: '甲', book_name: '甲账' },
+      role: 'ops' as const,
+      next_action: '核对来源',
+      assignee_id: null,
+      status: 'pending',
+      due_on: null,
+    };
+    const items = [
+      { ...base, source: { kind: 'batch_item' as const, id: 'i', version: 2, fingerprint: 'a'.repeat(64) } },
+      { ...base, source: { kind: 'notification_investigation' as const, id: 'n', version: 4, fingerprint: 'b'.repeat(64) } },
+      { ...base, role: 'delivery' as const, source: { kind: 'delivery_package' as const, id: 'p', version: 1, fingerprint: 'c'.repeat(64) } },
+    ];
+    expect(acceptHandoffs({ items })).toHaveLength(3);
+    expect(() =>
+      acceptHandoffs({ items: [{ ...items[0], source: { ...items[0].source, kind: 'forged' } }] }),
+    ).toThrow();
+  });
+
+it('批量项回到会计批次，不落到通知页', () => {
+  const href = handoffOriginalHref({
+    source: { kind: 'batch_item', id: 'i', version: 2, fingerprint: 'a'.repeat(64) },
+    scope: {
+      book_id: 'b',
+      period: '2026-11',
+      company_id: 'c',
+      company_name: '甲',
+      book_name: '甲账',
+      batch_id: 'batch-1',
+    },
+  });
+  expect(href.startsWith('/workspace/accounting?')).toBe(true);
+  expect(href).toContain('batch=batch-1');
+  expect(href).toContain('company=c');
+  expect(href).not.toContain('section=notifications');
 });

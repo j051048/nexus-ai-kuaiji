@@ -84,6 +84,13 @@ def test_valid_user_identity_comes_from_online_user_and_never_contains_permissio
     assert len(requests) == (1 if algorithm == "HS256" else 2)
 
 
+def test_small_provider_clock_skew_on_issued_at_is_accepted(keys):
+    authenticator, _ = auth(keys)
+    now = int(time.time())
+    token = sign(keys, payload=claims(iat=now + 5, exp=now + 600))
+    assert authenticator.authenticate(token).user_id == USER_ID
+
+
 def test_jwks_is_cached_but_online_user_is_verified_for_each_request(keys):
     authenticator, requests = auth(keys)
     token = sign(keys)
@@ -274,6 +281,12 @@ def test_expired_ban_and_missing_display_name_do_not_block_valid_identity(keys):
 def test_unconfirmed_email_cannot_become_assignment_identity(keys, confirmation):
     authenticator, _ = auth(keys, user={"id": USER_ID, "email": "reviewer@example.test", "email_confirmed_at": confirmation})
     assert_denied(authenticator, sign(keys))
+
+
+def test_small_provider_clock_skew_on_confirmation_is_accepted(keys):
+    future = (datetime.now(timezone.utc) + timedelta(seconds=2)).isoformat().replace("+00:00", "Z")
+    authenticator, _ = auth(keys, user={"id": USER_ID, "email": "reviewer@example.test", "email_confirmed_at": future})
+    assert authenticator.authenticate(sign(keys)).user_id == USER_ID
 
 
 @pytest.mark.parametrize("confirmation", ["not-a-date", "2020-01-01", "2999-01-01T00:00:00Z"])

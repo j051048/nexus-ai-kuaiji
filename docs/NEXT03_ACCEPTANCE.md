@@ -1,12 +1,16 @@
 # NEXT03 关键安全边界验收
 
 - 状态：**进行中（本地动态探测通过；登录限流受身份服务边界限制，未完成）**
-- 候选：HEAD `df3fface95d1f69c28e859e89015465955c517b4`
-  - `source_files=1796`
-  - `source_sha256=2fb65bb665c088f8913a9d53df56b5b1e77d7c656fa0182fc0e256f8f03848f5`
-  - `migration_files=316`，`migration_sha256=f07ba1cd…`（未变化）
+- 候选：HEAD `0a0c6cab4ba18d2dfe5ce695b6844e01895c204b`
+  - `source_files=1821`
+  - `source_sha256=57bb7b7061c1b30d02ae4a825e411fc2fcf7e0c265e08a4337264b6be701c46a`
+  - `migration_files=328`，`migration_sha256=8bbd6f3f…`
 - 运行：`tmp_test/next/next03-acceptance-20261102-r2/`，`status=passed`，候选前后一致。
-- 最终候选补跑（2026-11-03）：同一 7 文件安全回归 **186 passed, 1 warning in 51.48s**，JUnit `tmp_test/next/next03-security-final.xml`；候选 source 1816/`dddef1a8…`、迁移 325/`48fc7b47…`。动态探测仍是 1796 旧候选证据，未在最终候选重接身份服务。
+- 57bb 最终候选补跑（2026-11-03）：同一 7 文件安全回归 **188 passed, 1 warning in 60.23s**，JUnit `tmp_test/next/next03-security-57bb.xml`；8475 的 `next03-security-final3.xml` 保留为历史。
+- 动态探测（2026-11-03，57bb）：复用 N02 fresh fixture `next02-browser-57bb` 的本地 GoTrue 25511 + PG17 + API 18100，**19/19 passed**，报告 `tmp_test/next/next03-security-probe-57bb.json`。
+- 认证时钟偏斜修复（真实恢复门禁发现）：GoTrue 写入的 `email_confirmed_at` 可能比应用时钟超前不到 1 秒，旧实现把所有未来时间判为服务不可用，导致 P01 身份阶段偶发 503／“登录已失效”。新增红测 `test_small_provider_clock_skew_on_confirmation_is_accepted` 先在 `test_auth_supabase.py` 失败；修复 `nexus_backend/app/auth/supabase.py` 允许 ≤5 分钟偏斜，仍拒绝 `2999-01-01` 等异常未来值（`test_invalid_provider_confirmation_fails_closed` 保持通过）。
+- 第二处时钟偏斜：GoTrue 签发的 `iat` 可比本机时间超前约 1 秒，PyJWT 的 `verify_iat` 抛 `ImmatureSignatureError`，表现为恢复后 PG16 偶发 401。新增红测 `test_small_provider_clock_skew_on_issued_at_is_accepted` 先失败；`_decode` 加 `leeway=30`，仍拒绝 `iat +3600`、`nbf +3600` 等明显未来值。`test_auth_supabase.py` **112 passed in 0.52s**。
+- 两处修复只放宽本地时钟偏差容差，不改变签名、受众、撤销、签发方或 MFA 校验。
 - 隔离环境：真实本地 GoTrue 25511、API 18100、PG17 源（WSL 25496–25499）；未连接生产或他人集群。
 
 ## 动态探测（`scripts/next03_security_probe.py`）

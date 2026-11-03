@@ -2,13 +2,14 @@
 
 ## 基线
 
-- 记录时间：2026-11-02 19:18（Asia/Shanghai），HEAD `df3fface…`，`git status --porcelain` 为空。
+- 记录时间：2026-11-02 19:18（Asia/Shanghai），基线 HEAD `df3fface…`，`git status --porcelain` 为空；并发任务后 HEAD 推进至 `0a0c6cab…`。
 - 基线候选：1790/`3fc6fc89…`，迁移 316/`f07ba1cd…`。
 
 ## 最终候选与工作区
 
-- 冻结：`tmp_test/next/next11-final/candidate.json`，source 1816/`dddef1a88eee0bfdc2c2db37d09560dc0290b434fe800993c05b52b7ba2a963e`，迁移 325/`48fc7b47…`。
-- `git status --porcelain` 共 134 项；包含本轮 NEXT 文件、并发任务文件、文档与私有运行材料。**不把所有未提交文件认作本轮成果**；本表只列可归属文件。
+- 冻结：`tmp_test/next/next11-final/candidate.json`，HEAD `0a0c6cab4ba18d2dfe5ce695b6844e01895c204b`，source 1817/`847518c97debcf6f7fab635e4114694f471e0b802532d5f7d8bbaa4c702e7a09`，迁移 325/`48fc7b47…`。
+- **并发任务在 09:53 提交 `0a0c6cab feat: deliver NEXT01-NEXT11 milestones and migrations 203-208`**，把工作区大量 NEXT/并发文件纳入提交；该提交非本会话执行（本会话未运行 `git commit`）。HEAD 从 `df3fface` 变为 `0a0c6cab`，P01 final4 因候选变化失效；8475 上 P01 r5 已重新通过。
+- 2026-11-03 13:55 复核：`git status --porcelain` 35 项，其余 NEXT 代码/测试/迁移已被并发提交纳入 HEAD；仍留在工作区的是本轮认证修复、坏 PNG 修复、N04 接手适配器/迁移、P01 WSL 认证端口适配与 NEXT 文档。**不把所有未提交文件认作本轮成果**；本表只列可归属文件。
 - `docs/*` 不在候选指纹前缀内；新增 `playwright.next07.config.ts` 等根配置会改变候选。
 
 ## 本轮可归属修改
@@ -23,6 +24,8 @@
 | `nexus_backend/app/tax/filings.py`、`app/tax/router.py`、`app/delivery/monthly_package.py`、`app/uploads.py`、`app/upload_bindings.py` | NEXT05 | 登记/原件/更正作废/包快照 |
 | `src/tax-filings.ts`、`src/TaxFilingRecords.tsx`、`src/upload-client.ts`、`src/tax-filings.render.test.ts` | NEXT05 | 前端展示/上传/下载/渲染测试 |
 | `nexus_backend/tests/test_next05_filing_evidence.py`、`test_upload_reference_binding.py`、`scripts/next_profiles/next05.json` | NEXT05 | 专项与升级回归 |
+| `e2e/next05-filing-evidence.spec.ts`、`nexus_backend/app/business/storage.py`、`nexus_backend/tests/test_uploads.py` | NEXT05 | 真实浏览器登记/上传/下载/更正；损坏 PNG 由 500 改 422 并丢弃对象 |
+| `nexus_backend/app/auth/supabase.py`、`nexus_backend/tests/test_auth_supabase.py` | NEXT03/P01 | GoTrue 确认时间 ≤5 分钟偏斜、JWT iat leeway=30；拒绝明显未来值 |
 | `nexus_backend/migrations/sqlite/129_delivery_provider_events.sql`、`postgres/205_delivery_provider_events.sql`、`206_delivery_worker_read.sql`、`207_delivery_worker_event_read.sql` | NEXT06 | 通知回执事件、worker 最小读授权 |
 | `nexus_backend/app/delivery/receipts.py`、`callback_router.py`、`router.py`、`worker.py`、`main.py` | NEXT06 | 回调验签/幂等/时间线、worker CLI、路由接线 |
 | `nexus_backend/tests/test_next06_provider_receipts.py`、`test_n03_notification_postgres.py`、`scripts/next_profiles/next06.json`、`docs/NEXT06_DEPLOYMENT.md` | NEXT06 | 9 项专项 + PG worker 读写测试、部署说明 |
@@ -40,16 +43,17 @@
 
 ## 私有运行材料
 
-- `tmp_test/next/next01-acceptance-20261103-final`
-- `tmp_test/next/next03-security-final.xml`
-- `tmp_test/next/next04-acceptance-20261103-final`
-- `tmp_test/next/next05-acceptance-20261103-final`
-- `tmp_test/next/next06-acceptance-20261103-final2`
+- `tmp_test/next/next01-acceptance-20261103-8475`
+- `tmp_test/next/next03-security-final3.xml`、`next03-security-probe-8475.json`
+- `tmp_test/next/next04-acceptance-20261103-8475`
+- `tmp_test/next/next05-acceptance-20261103-8475`
+- `tmp_test/next/next06-acceptance-20261103-8475`
 - `tmp_test/next/next07-browser`、`next07-browser-report-under-load.json`
-- `tmp_test/next/next08-sqlite-final2.xml`、`tmp_test/ak05-pg-runs/01c19e2a…`、`cd95176b…`
-- `tmp_test/next/next09-capacity-pg17-final`
-- `tmp_test/next/next10-assistant-final2`
+- `tmp_test/next/next08-sqlite-8475.xml`、`tmp_test/ak05-pg-runs/9333f0b3…`、`0eec84a4…`
+- `tmp_test/next/next09-capacity-8475`
+- `tmp_test/next/next10-assistant-final5`
 - `tmp_test/next/next11-final/candidate.json`
+- `tmp_test/next/next11-recovery-8475-r5`、`tmp_test/next/next11-recovery-n04e`、`tmp_test/next/next02-browser-8475-r3`
 
 ## 规则
 

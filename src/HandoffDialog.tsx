@@ -1,7 +1,12 @@
 import { useEffect, useState } from 'react';
 import { api } from './api';
 import { Modal } from './AppPrimitives';
-import { acceptAssignment, acceptHandoffs, type Handoff } from './batch-operations';
+import {
+  acceptAssignment,
+  acceptHandoffs,
+  handoffOriginalHref,
+  type Handoff,
+} from './batch-operations';
 import type { Session } from './types';
 import { useOperationRequests } from './useOperationRequests';
 import './batch-operations.css';
@@ -11,11 +16,13 @@ export function HandoffDialog({
   period,
   onClose,
   canAssign = false,
+  onOpenOriginal,
 }: {
   session: Session;
   period: string;
   onClose: () => void;
   canAssign?: boolean;
+  onOpenOriginal?: (item: Handoff) => void;
 }) {
   const { run, busy, error, denied } = useOperationRequests(session);
   const [items, setItems] = useState<Handoff[]>([]),
@@ -84,7 +91,7 @@ export function HandoffDialog({
     const ok = await run(
       (signal) =>
         api<unknown>(
-          `/handoff/tax-workpapers/${encodeURIComponent(source.source.id)}/assign`,
+          `/handoff/sources/${encodeURIComponent(source.source.kind)}/${encodeURIComponent(source.source.id)}/assign`,
           session,
           {
             signal,
@@ -110,7 +117,7 @@ export function HandoffDialog({
   return (
     <Modal
       title="人工接手"
-      subtitle={`${period} · 税务底稿待复核；其他领域仍在原工作台办理`}
+      subtitle={`${period} · 税务、批量失败、通知核查与交付签收的统一接手队列`}
       onClose={onClose}
       busy={busy}
     >
@@ -125,7 +132,7 @@ export function HandoffDialog({
           <button className="button secondary" disabled={busy} onClick={() => void load()}>
             刷新接手队列
           </button>
-          {!items.length && !busy && <p>本月没有待接手的税务底稿。</p>}
+          {!items.length && !busy && <p>本月没有待接手的异常事项。</p>}
           <div className="batch-rows">
             {items.map((item) => (
               <article key={item.source.id} className="batch-row">
@@ -134,18 +141,28 @@ export function HandoffDialog({
                   <span>{item.assignee_id ? '已指派' : '待指派'}</span>
                 </header>
                 <p>
-                  {item.scope.book_name} · 底稿版本 {item.source.version}
+                  {item.scope.book_name} · {item.source.kind === 'tax_workpaper' ? '底稿' : item.source.kind === 'batch_item' ? '批量项' : item.source.kind === 'notification_investigation' ? '通知' : '交付包'}版本 {item.source.version}
                 </p>
                 <p>
                   {item.next_action}
                   {item.due_on ? ` · 截止 ${item.due_on}` : ' · 尚未设期限'}
                 </p>
-                <a
-                  className="button secondary"
-                  href={`/workspace/delivery?${new URLSearchParams({ book: item.scope.book_id, period: item.scope.period, section: 'tax' })}`}
-                >
-                  打开税务底稿核对
-                </a>
+                {item.source.kind === 'delivery_package' && onOpenOriginal ? (
+                  <button
+                    className="button secondary"
+                    disabled={busy}
+                    onClick={() => onOpenOriginal(item)}
+                  >
+                    打开原记录核对
+                  </button>
+                ) : (
+                  <a
+                    className="button secondary"
+                    href={handoffOriginalHref(item)}
+                  >
+                    打开原记录核对
+                  </a>
+                )}
                 {canAssign && (
                   <button
                     className="button secondary"

@@ -456,6 +456,16 @@ export function MonthlyClientWorkbench({
           session={session}
           period={selectedPeriod}
           canAssign={canBatchOpen}
+          onOpenOriginal={(item) => {
+            setHandoffOpen(false);
+            if (!item.scope.company_id) return;
+            onOpen({
+              view: 'delivery',
+              companyId: item.scope.company_id,
+              period: item.scope.period,
+              bookId: item.scope.book_id,
+            });
+          }}
           onClose={() => setHandoffOpen(false)}
         />
       )}

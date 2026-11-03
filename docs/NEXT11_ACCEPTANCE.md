@@ -1,30 +1,30 @@
 # NEXT11 验收记录：最终同候选联合验收
 
 - 结论：**本地候选工程验收部分通过；不满足发布条件。** 不宣称已全面上线验收通过。
-- 候选：HEAD `df3fface95d1f69c28e859e89015465955c517b4`；source 1816/`dddef1a88eee0bfdc2c2db37d09560dc0290b434fe800993c05b52b7ba2a963e`；migration 325/`48fc7b47abd864e39ec6701939dd42f0bb65c1bc16732bcff2c6686350a0c8e1`。该候选含并发任务的 `TaxFilingRecords.tsx` 修改，归属见 `NEXT_OWNERSHIP.md`。
-- 冻结：`tmp_test/next/next11-final/candidate.json`（已复写为 ddb）；冻结后所有通过运行均核对该指纹，未再修改受覆盖文件。
-- 工作区：134 项未提交／未跟踪；未提交、未推送、未部署、未执行线上迁移。
+- 候选：HEAD `0a0c6cab4ba18d2dfe5ce695b6844e01895c204b`；source 1821/`d3f7a1fbd9163d2b4f78d2fe26a39e85aafc3e7a0671993267f7406f61fc2f07`；migration 328/`8bbd6f3fdb46addee9bb8737775ed7966f4a2938c8ea413d7c4d4952dd76444f`。该候选含并发任务的 `TaxFilingRecords.tsx` 修改及另一任务的提交，归属见 `NEXT_OWNERSHIP.md`。
+- 冻结：`tmp_test/next/next11-final/candidate.json`；下述最终运行均核对该指纹，运行期间未修改受候选覆盖文件。
+- 工作区：35 项未提交／未跟踪（认证修复、N04 适配器/迁移、坏 PNG 修复、NEXT 文档等）；未提交、未推送、未部署、未执行线上迁移。
 
 ## A. 本地候选工程与联合验收
 
 | 门槛 | 结果 | 证据／说明 |
 | --- | --- | --- |
-| 候选冻结与指纹一致 | 通过 | 1816/`ddb…`、325/`48fc…`；N04/N05/N06 harness 运行前后 stable |
-| 离线回归（N01/04/05/06/08） | 通过 | 14+4+3、31、70+tsc、66+42、69；见各包记录 |
-| NEXT08 PG16/17 | 通过 | 各 10 passed／11.94–12.38s |
-| 前端 typecheck/build | 通过 | `npm run typecheck`、`npm run build` exit 0 |
-| 浏览器 NEXT07 | 通过 | 25 passed／1.3m，3 引擎 + 手机 |
-| 浏览器 NEXT08 批量 | 通过 | 1 passed／26.6s |
-| NEXT09 小规模容量 | 通过（有限） | 50 clients/100 req 0 error；守恒；无 PG CPU 采样 |
-| NEXT10 离线助手 | 通过 | 353 passed；`real_model_evaluated=false` |
-| NEXT02 主链 | **未在最终候选重跑** | 历史 1794 候选 8 passed；连续两期/跨年/多银行仍缺 |
-| NEXT03 动态探测 | **未在最终候选重接身份服务** | 历史 1796 探测；最终候选仅重跑 186 项安全回归 |
-| 完整恢复（DB＋原件＋身份＋权限） | **未在最终候选执行** | P01 四集群与 GoTrue bridge 未启动；历史恢复证据不冒充最终候选 |
-| 恢复后登录/读/写/复核/导出 | **未验证** | 同上 |
-| 迁移前向升级 | 部分 | 325 个迁移在 SQLite/PG 隔离测试中应用；未对生产快照做升级演练；未改历史 checksum |
-| 恢复后不盲目重放 | 契约测试通过（N06/N03） | 未做完整环境恢复后的端到端观察 |
+| 候选冻结与指纹一致 | 通过 | 1821/`d3f7a1fb…`、328/`8bbd6f3f…`；P01 d3f7-r2 前后一致；N04 在 d3f7 复跑 |
+| 离线回归（N01/04/05/06/08） | 通过 | 14+4+3、15、70+tsc、66+42、69；见各包记录（N04 在 d3f7，其余为 57bb 同后端候选） |
+| NEXT08 PG16/17 | 通过 | 各 10 passed／13.07–13.14s（57bb） |
+| 前端 typecheck/build | 通过 | d3f7 typecheck exit 0、build exit 0（`TMP/TEMP=tmp_test/tmp`） |
+| 浏览器 NEXT07 | 通过 | d3f7 25 passed／1.4m，3 引擎 + 手机 |
+| 浏览器 NEXT08 批量 | 通过 | 57bb 1 passed／28.8s（`monthly-batch.spec.ts`） |
+| NEXT09 容量 | 50 clients 通过；**100 clients 诊断失败** | 50 clients/100 req 0 error；100 clients 132 次 queue_full 拒绝；单进程、4 连接池；诊断脚本不在候选内，不计验收 |
+| NEXT10 离线助手 | 通过 | 353 passed；`real_model_evaluated=false`（57bb） |
+| **P01 完整恢复（DB＋原件＋身份＋权限）** | **通过** | d3f7-r2：regression 155/153.216s、joint 2/82.368s、identity 4/58.671s；PG16/17 的 database/originals/identity/permissions/hold/review_export/tax_delivery/no_replay 全 true；candidate `d3f7a1fb…` |
+| 恢复后登录/读/写/复核/导出 | 通过（P01 内） | `p01_checks` 的 identity/permissions/hold/review_export/tax_delivery 为 true；未做浏览器端恢复后操作 |
+| NEXT02 主链 | **57bb 通过（8 passed/28.8s）；跨年 HTTP/PG 6+6 passed** | 真实 GoTrue＋PG17＋preview；连续两期、跨年浏览器、多银行仍缺 |
+| NEXT03 动态探测 | 57bb 通过 | 19/19 passed（57bb，`next03-security-probe-57bb.json`）；7 文件 **188 passed**（`next03-security-57bb.xml`） |
+| 迁移前向升级 | 部分 | 328 个迁移在 SQLite/PG 隔离测试中应用；P01 恢复库 migrations 198；未对生产快照做升级演练；未改历史 checksum |
+| 恢复后不盲目重放 | 契约测试通过（N06/N03/P01） | P01 `no_replay=true`；未做真实供应商回调重放 |
 
-因此 A **不能整体标记通过**；可在本地复现的组件门槛大多通过，但任务书要求的“同一候选联合验收”尚缺 NEXT02 最终重跑、真实身份/PG 浏览器链路与完整恢复。
+因此 A **仍不能整体标记通过**：NEXT02 单期主链在 57bb 通过、跨年 HTTP/PG 已补 6+6，但连续两期、跨年浏览器、多银行未验证；NEXT04 四类接手适配器已接，d3f7 SQLite **15**、PG16/17 各 **28**、税审与交付包来源真实浏览器通过，批量/通知来源浏览器未验；NEXT09 100 clients 边界失败；NEXT05、NEXT06、NEXT07、NEXT08 已在 57bb/d3f7 通过。
 
 ## B. 远端 CI
 
@@ -42,7 +42,7 @@
 
 1. 冻结候选与文件摘要；确认 `git status` 归属，排除并发任务未评审修改（尤其 208/OCR）。
 2. 备份数据库与对象存储；记录恢复点。
-3. 在隔离副本按 001→325 顺序执行迁移，核对 checksum；不得改写已应用迁移。
+3. 在隔离副本按 001→328 顺序执行迁移，核对 checksum；不得改写已应用迁移。
 4. 先部署 API/worker（关闭通知真实发送），再部署前端；配置 `DELIVERY_CALLBACK_SECRET` 等密钥由密钥管理注入，不写入仓库/日志。
 5. 健康检查：登录、租户读取、复核、导出、通知领取；确认 worker 不在数据库事务内做外部网络等待。
 6. 观察 attempt/unknown：结果未知的通知不得自动重发；人工核查不生成签收。

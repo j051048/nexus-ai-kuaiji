@@ -6,7 +6,7 @@ import re
 import threading
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Mapping, Protocol
 from urllib.parse import urlsplit
 from uuid import UUID
@@ -233,6 +233,7 @@ class SupabaseAuthenticator:
             algorithms=["ES256", "RS256"],
             issuer=self.settings.issuer,
             audience=self.settings.audience,
+            leeway=30,
             options={
                 "verify_signature": signature,
                 "verify_iss": True,
@@ -312,7 +313,7 @@ class SupabaseAuthenticator:
             raise _unauthorized()
         try:
             timestamp = datetime.fromisoformat(confirmed.replace("Z", "+00:00"))
-            if timestamp.tzinfo is None or timestamp > datetime.now(timezone.utc):
+            if timestamp.tzinfo is None or timestamp > datetime.now(timezone.utc) + timedelta(minutes=5):
                 raise _unavailable()
         except ValueError:
             raise _unavailable() from None

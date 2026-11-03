@@ -2,7 +2,7 @@
 
 - 工程状态：**本地验收通过**（后端 SQLite + PG16/17 + 真实浏览器批量开期）。
 - 外部验收：不适用（不接生产 worker/对象存储；本轮未触发真实通知、发布或签收）。
-- 候选：head `df3fface…`，source `1816`/`dddef1a88eee0bfdc2c2db37d09560dc0290b434fe800993c05b52b7ba2a963e`，migration `325`/`48fc7b47…`（ddb 最终候选；含并发任务的税务 UI 修改）。
+- 候选：head `0a0c6cab…`，source `1821`/`57bb7b7061c1b30d02ae4a825e411fc2fcf7e0c265e08a4337264b6be701c46a`，migration `328`/`8bbd6f3f…`（57bb 最终候选；含并发任务的税务 UI 修改）。
 - 环境：Windows 本地 `.venv`（Python 3.14.1）；WSL PG16/17 隔离集群 25496/25497，私有配置不公开；fresh SQLite 浏览器由 Playwright 自建；受限身份，不经临时 SQL 补业务状态。
 
 ## 实际缺陷与修复
@@ -15,10 +15,10 @@
 
 | 套件 | 命令要点 | 结果 | 证据 |
 | --- | --- | --- | --- |
-| SQLite 全量 | `pytest test_batch_operations test_batch_preview test_batch_review test_dcp04_batch_control test_dcp06_review_export test_q05_export_consistency test_p0_f10_manifest_routes` | **69 passed, 1 warning, 112.96s，exit 0（ddb 最终候选）** | `tmp_test/next/next08-final3.log` |
-| PG17 | `scripts/test_accounting_postgres_isolated.py --config …/pg17-recovery_source.json test_batch_review_postgres.py test_stage11_review_packages_postgres.py` | **10 passed, 11.94s，exit 0（ddb 最终候选）** | `tmp_test/ak05-pg-runs/03e38034f9b84ad0bdd02dc68c1b6e5c/results.xml` |
-| PG16 | 同上，`pg16-recovery_source.json` | **10 passed, 12.38s，exit 0（ddb 最终候选）** | `tmp_test/ak05-pg-runs/fcd4974f170a47bcb1fc877ef96b9e7f/results.xml` |
-| 浏览器 | `E2E_FRONTEND_MODE=preview npx playwright test e2e/monthly-batch.spec.ts` | **1 passed, 26.6s，exit 0（最终候选 54d9）** | Playwright 输出；截图/trace 在 `test-results/` |
+| SQLite 全量 | `pytest test_batch_operations test_batch_preview test_batch_review test_dcp04_batch_control test_dcp06_review_export test_q05_export_consistency test_p0_f10_manifest_routes` | **69 passed, 1 warning, 145.71s，exit 0（57bb 最终候选）** | `tmp_test/next/next08-sqlite-57bb.xml` |
+| PG17 | `scripts/test_accounting_postgres_isolated.py --config …/pg17-recovery_source.json test_batch_review_postgres.py test_stage11_review_packages_postgres.py` | **10 passed, 13.14s，exit 0（57bb 最终候选）** | `tmp_test/ak05-pg-runs/93a8cb31b9a544bca4b29ab45c806c20/results.xml` |
+| PG16 | 同上，`pg16-recovery_source.json` | **10 passed, 13.07s，exit 0（57bb 最终候选）** | `tmp_test/ak05-pg-runs/6ccdbdd2a093434f9670796e0e0f212e/results.xml` |
+| 浏览器 | `E2E_FRONTEND_MODE=preview npx playwright test e2e/monthly-batch.spec.ts --config=playwright.config.ts` | **1 passed, 28.8s，exit 0（57bb 最终候选）** | Playwright line 输出 |
 
 说明：SQLite 与 PG 的部分用例名重叠，69 与 10 不是相加的独立用例总量；PG 只重跑批量/复核包相关文件。浏览器 1 项是真实 UI 批量开期主链，业务成功响应未用 `route.fulfill`。
 

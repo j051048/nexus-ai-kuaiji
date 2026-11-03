@@ -101,6 +101,8 @@ def restore_auth_database(config, archive, proof):
 class _LocalAuthTransport(httpx.BaseTransport):
     def __init__(self, origin, port):
         self.origin, self.port = origin, port
+        self.reach_host = os.environ.get("C01_AUTH_PROXY_HOST", "127.0.0.1")
+        self.reach_port = port if self.reach_host == "127.0.0.1" else port + 1000
         self.client = httpx.Client(trust_env=False, timeout=10)
 
     def handle_request(self, request):
@@ -109,7 +111,7 @@ class _LocalAuthTransport(httpx.BaseTransport):
         path = request.url.raw_path.decode().removeprefix("/auth/v1")
         response = self.client.request(
             request.method,
-            f"http://127.0.0.1:{self.port}" + path,
+            f"http://{self.reach_host}:{self.reach_port}" + path,
             headers=dict(request.headers),
             content=request.read(),
         )
@@ -143,8 +145,9 @@ class RealGoTrue:
     def __enter__(self):
         self.directory.mkdir(parents=True, exist_ok=False)
         _secure(self.directory)
-        with socket.socket() as probe:
-            probe.bind(("127.0.0.1", self.port))
+        if os.environ.get("C01_AUTH_PORT_FORWARDED") != "1":
+            with socket.socket() as probe:
+                probe.bind(("127.0.0.1", self.port))
         call(
             BRIDGE,
             "start_gotrue",
@@ -159,7 +162,12 @@ class RealGoTrue:
         deadline = time.monotonic() + 30
         while time.monotonic() < deadline:
             try:
-                if self.client.get(f"http://127.0.0.1:{self.port}/health").status_code == 200:
+                reach_host = os.environ.get("C01_AUTH_PROXY_HOST", "127.0.0.1")
+                reach_port = self.port if reach_host == "127.0.0.1" else self.port + 1000
+                if (
+                    self.client.get(f"http://{reach_host}:{reach_port}/health").status_code
+                    == 200
+                ):
                     return self
             except httpx.TransportError:
                 pass
@@ -179,8 +187,10 @@ class RealGoTrue:
 
     def _request(self, method, path, *, token=None, body=None):
         headers = {"Authorization": "Bearer " + token} if token else {}
+        reach_host = os.environ.get("C01_AUTH_PROXY_HOST", "127.0.0.1")
+        reach_port = self.port if reach_host == "127.0.0.1" else self.port + 1000
         response = self.client.request(
-            method, f"http://127.0.0.1:{self.port}" + path, headers=headers, json=body
+            method, f"http://{reach_host}:{reach_port}" + path, headers=headers, json=body
         )
         if not response.is_success:
             raise ValueError(f"本机GoTrue受控请求失败，HTTP {response.status_code}")

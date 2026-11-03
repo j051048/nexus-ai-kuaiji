@@ -1,6 +1,6 @@
 # NEXT06 验收记录：通知通道上线准备
 
-- 工程状态：本地验收通过（最终候选 1816／`dddef1a8…`）。
+- 工程状态：本地验收通过（57bb 最终候选 1821／328）。
 - 外部验收：未授权／缺少供应商环境。未连接真实邮件、短信或推送供应商，未向真实客户发送任何消息。
 
 ## 范围与实现
@@ -16,17 +16,17 @@
 
 ## 本地命令与结果
 
-候选（运行前后一致）：HEAD `df3fface95d1f69c28e859e89015465955c517b4`；源文件 1816／`dddef1a88eee0bfdc2c2db37d09560dc0290b434fe800993c05b52b7ba2a963e`；迁移 325／`48fc7b47abd864e39ec6701939dd42f0bb65c1bc16732bcff2c6686350a0c8e1`。该候选含并发任务的 `TaxFilingRecords.tsx` 修改。
+候选（运行前后一致）：HEAD `0a0c6cab4ba18d2dfe5ce695b6844e01895c204b`；源文件 1821／`57bb7b7061c1b30d02ae4a825e411fc2fcf7e0c265e08a4337264b6be701c46a`；迁移 328／`8bbd6f3fdb46addee9bb8737775ed7966f4a2938c8ea413d7c4d4952dd76444f`。该候选含并发任务的 `TaxFilingRecords.tsx` 修改。
 
-`python scripts/next_harness.py run --task next06 --run-dir tmp_test/next/next06-acceptance-20261103-final3`
-→ manifest `status=passed`，`candidate.stable=true`，`cleanup.status=passed`，退出码 0。
+`python scripts/next_harness.py run --task next06 --run-dir tmp_test/next/next06-acceptance-20261103-57bb`
+→ manifest `status=passed`，`candidate.stable=true`，`cleanup.status=passed`，退出码 0；notification 阶段 280.42s、delivery 180.51s（日志分别 66/42 passed）。
 
 | 阶段 | 结果 | 证据 |
 | --- | --- | --- |
-| notification-regression（dcp07 + n03 + next06 回执） | `66 passed, 1 warning in 287.10s`，exit 0 | `tmp_test/next/next06-acceptance-20261103-final3/evidence/notification-regression.log` |
-| delivery-regression（followups + investigation + monthly package） | `42 passed in 189.17s`，exit 0 | `tmp_test/next/next06-acceptance-20261103-final3/evidence/delivery-regression.log` |
+| notification-regression（dcp07 + n03 + next06 回执） | `66 passed, 1 warning in 221.63s`，exit 0 | `tmp_test/next/next06-acceptance-20261103-8475/evidence/notification-regression.log` |
+| delivery-regression（followups + investigation + monthly package） | `42 passed in 171.9s`，exit 0 | `tmp_test/next/next06-acceptance-20261103-8475/evidence/delivery-regression.log` |
 
-`final2` 在 54d9 上通过，因并发税务 UI 修改使候选变为 ddb 后失效；`r5`/`final2` 仅保留为历史证据，不再作为最终验收。
+`final2` 在 54d9 上通过、`final3` 在 ddb 上通过，均因后续认证修复/并发修改使候选变化而失效；`r5`/`final2`/`final3` 仅保留为历史证据，不再作为最终验收。
 
 ## PostgreSQL 16/17
 

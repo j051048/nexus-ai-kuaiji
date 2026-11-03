@@ -22,6 +22,24 @@ def build_handoff_router(actor_dependency):
     ):
         return handoff.candidates(current, book_id, role)
 
+    @router.post("/sources/{kind}/{source_id}/assign")
+    def assign_source(
+        kind: str,
+        source_id: str,
+        payload: HandoffAssign,
+        current=Depends(actor_dependency),
+        handoff=Depends(service),
+    ):
+        return handoff.assign(
+            current,
+            source_id,
+            payload.expected_version,
+            payload.assignee_id,
+            payload.due_on,
+            payload.reason,
+            kind=kind,
+        )
+
     @router.post("/tax-workpapers/{workpaper_id}/assign")
     def assign_tax_workpaper(
         workpaper_id: str,

@@ -1,9 +1,9 @@
 # NEXT05 验收记录：税务办理证据闭环
 
-- 状态：后端与离线验收通过；浏览器提交/下载未验证（本地进行中）。
+- 状态：后端、离线与真实浏览器验收通过。
 - 外部验收：不适用（不连接真实电子税务局，不自动申报/缴款）。
-- 候选（ddb 最终重跑）：`source_files=1816`，`source_sha256=dddef1a88eee0bfdc2c2db37d09560dc0290b434fe800993c05b52b7ba2a963e`；迁移 325 个，`migration_sha256=48fc7b47abd864e39ec6701939dd42f0bb65c1bc16732bcff2c6686350a0c8e1`；HEAD `df3fface95d1f69c28e859e89015465955c517b4`。该候选含并发任务的 `TaxFilingRecords.tsx` 修改，本轮未改写其内容。
-- 受控运行：`tmp_test/next/next05-acceptance-20261103-final3`（`status=passed`，候选前后一致，cleanup passed）：`filing-regression` **70 passed／197.06s**，`frontend-typecheck` passed。历史 r3（1803/320）与 54d9 final 证据保留但不作为 ddb 最终候选依据。
+- 候选（认证修复后的最终重跑）：`source_files=1821`，`source_sha256=57bb7b7061c1b30d02ae4a825e411fc2fcf7e0c265e08a4337264b6be701c46a`；迁移 328 个，`migration_sha256=8bbd6f3fdb46addee9bb8737775ed7966f4a2938c8ea413d7c4d4952dd76444f`；HEAD `0a0c6cab4ba18d2dfe5ce695b6844e01895c204b`。该候选含并发任务的 `TaxFilingRecords.tsx` 修改，本轮未改写其内容。
+- 受控运行（57bb）：`tmp_test/next/next05-acceptance-20261103-57bb`（`status=passed`，候选前后一致，cleanup passed）：`filing-regression` **70 passed／203.82s**，`frontend-typecheck` passed（exit 0）。8475 运行 `next05-acceptance-20261103-8475` 保留为历史。
 
 ## 实现
 
@@ -22,6 +22,8 @@
 - PG17：`test_accounting_postgres_isolated.py --config …/pg17-recovery_source.json nexus_backend/tests/test_monthly_delivery_postgres.py` → `4 passed`，JUnit `tmp_test/next/next05-pg17.xml`。
 - PG16：同一命令换 `pg16-recovery_source.json` → `4 passed`，JUnit `tmp_test/next/next05-pg16.xml`。
 - PG 运行配置来自 `tmp_test/next02-env/runs/4fb7aceea75d4232a2aaeb99c00705c9`（本轮隔离端口 25496–25499）；`test_p0_close_upload_postgres.py` 需要独立 `test_p0_` 账号契约，本环境未配置，46 项按夹具要求跳过，未计入通过。
+- 真实浏览器（57bb 复跑 **1 passed／33.0s**；8475 历史证据保留）：`E2E_FRONTEND_MODE=preview npx playwright test e2e/next05-filing-evidence.spec.ts --config=playwright.config.ts` → **1 passed (33.0s)**。登记 N05-REF-0001 后上传 2×2 PNG（PUT/complete 均 200，附件 201），下载响应的 SHA-256 与 `x-content-sha256` 一致；再更正为 N05-REF-0002，旧行显示“历史”、新行“当前”。57bb 复跑未生成新截图；`tmp_test/next/next05-browser-final/` 的截图属于 8475 历史证据。
+- 浏览器测试暴露并修复损坏 PNG 的真实边界：`Image.verify()` 抛 `SyntaxError` 未捕获导致 500；`app/business/storage.py:59-65` 的异常元组增加 `SyntaxError`，`test_uploads.py` 回归 1 passed，坏文件现在 422 并丢弃对象。
 
 ## 失败与修复
 
@@ -34,6 +36,6 @@
 
 ## 剩余
 
-- 浏览器实际登记、上传原件、下载与月度包更新的端到端证据未采集；当前仅有组件级渲染与后端 API 测试。
+- 月度包页面更新未纳入同一浏览器用例；包内 `tax_filings.json` 由后端/离线用例覆盖。
 - 未验证真实电子税务局回执格式/签章；本轮只登记人工回执。
 - PG 负向（跨企业/错期间/越权下载）目前在 SQLite 测试覆盖，未新增 PG 专项用例。

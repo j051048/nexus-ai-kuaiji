@@ -388,6 +388,7 @@ def _run_gate(output, *, config_dir, timeout=3600):
         C01_FULL_RECOVERY_ACCEPT="1",
         C01_GOTRUE_ACCEPT="1",
         C01_GOTRUE_APP="1",
+        C01_AUTH_PORT_FORWARDED=os.environ.get("C01_AUTH_PORT_FORWARDED", "0"),
         P01_CONFIG_DIR=str(snapshot),
     )
     phase = "environment"

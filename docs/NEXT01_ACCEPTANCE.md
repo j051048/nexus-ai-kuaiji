@@ -1,11 +1,11 @@
 # NEXT01 验收记录：统一候选、验收入口与测试资源管理
 
 - 状态：**本地验收通过**（工程状态）；外部验收：不适用。
-- 有效证据：`tmp_test/next/next01-acceptance-20261103-final/manifest.json`（最终候选重跑）
-- 候选：HEAD `df3fface95d1f69c28e859e89015465955c517b4`；`source_files=1816`；`source_sha256=dddef1a88eee0bfdc2c2db37d09560dc0290b434fe800993c05b52b7ba2a963e`；`migration_files=325`；`migration_sha256=48fc7b47abd864e39ec6701939dd42f0bb65c1bc16732bcff2c6686350a0c8e1`。
+- 有效证据：`tmp_test/next/next01-acceptance-20261103-57bb/manifest.json`（最终候选重跑）
+- 候选：HEAD `0a0c6cab4ba18d2dfe5ce695b6844e01895c204b`；`source_files=1821`；`source_sha256=57bb7b7061c1b30d02ae4a825e411fc2fcf7e0c265e08a4337264b6be701c46a`；`migration_files=328`；`migration_sha256=8bbd6f3fdb46addee9bb8737775ed7966f4a2938c8ea413d7c4d4952dd76444f`。
 - 运行前后候选一致（`candidate.stable=true`），`verify` 返回 `valid=true`。
-- 命令：`.venv/Scripts/python.exe scripts/next_harness.py run --task next01 --run-dir tmp_test/next/next01-acceptance-20261103-final`，退出码 0。
-- 阶段结果：`harness-self-check` 14 passed／33.16s；`skip-guard` 4 passed／2.07s；`recovery-environment` 3 passed；全部 0 failure／0 skip，清理 `passed`。
+- 命令：`.venv/Scripts/python.exe scripts/next_harness.py run --task next01 --run-dir tmp_test/next/next01-acceptance-20261103-57bb`，退出码 0。
+- 阶段结果：`harness-self-check` 14 passed／32.84s；`recovery-environment` 4 passed／2.31s；`skip-guard` 3 passed／0.18s；全部 0 failure／0 skip，清理 `passed`。
 
 ## 红测与修复
 

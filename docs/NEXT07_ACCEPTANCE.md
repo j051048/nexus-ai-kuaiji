@@ -2,7 +2,7 @@
 
 - 工程状态：**本地验收通过（浏览器 25/25）**；真机、微信、屏幕阅读器人工验证未执行。
 - 外部验收：未验证（无真机/辅助技术环境）。
-- 候选：head `df3fface…`，source `1816`/`dddef1a88eee0bfdc2c2db37d09560dc0290b434fe800993c05b52b7ba2a963e`，migration `325`/`48fc7b47…`（ddb 最终候选；含并发任务的税务 UI 修改）。
+- 候选：head `0a0c6cab…`，source `1821`/`57bb7b7061c1b30d02ae4a825e411fc2fcf7e0c265e08a4337264b6be701c46a`，migration `328`/`8bbd6f3f…`（57bb 最终候选；含并发任务的税务 UI 修改）。
 - 环境：Playwright preview 构建，API 18000 + Vite 18080，fresh SQLite；Chromium/Firefox/WebKit + iPhone 13 视口；未调用真实模型/通知。
 
 ## 实际缺陷与修复
@@ -18,7 +18,7 @@
 
 | 套件 | 命令 | 结果 | 证据 |
 | --- | --- | --- | --- |
-| 跨引擎全套 | `E2E_FRONTEND_MODE=preview npx playwright test --config playwright.next07.config.ts` | **25 passed, 1.3m，exit 0** | `tmp_test/next/next07-browser/report.json`、`results/` |
+| 跨引擎全套（57bb） | `E2E_FRONTEND_MODE=preview npx playwright test --config playwright.next07.config.ts` | **25 passed, 1.4m，exit 0** | `tmp_test/next/next07-browser/report.json`、`results/`（8475 时为 1.3m，同 25 项） |
 | V07 恢复单跑 | 同上，`e2e/v07-context-recovery.spec.ts` | **6 passed, 32.3s** | 上述 report/results |
 | 修订 WebKit 单跑 | 同上，`--project=webkit e2e/stage10-revisions.spec.ts` | **1 passed, 29.1s** | 上述 results |
 
