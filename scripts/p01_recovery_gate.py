@@ -142,6 +142,8 @@ def validate_evidence(path, major):
 
 
 REGRESSION_FILES = (
+    "test_next_p0_boundaries.py",
+    "test_next_p0_release_contract.py",
     "test_c01_identity_recovery.py",
     "test_c01_recovery_security.py",
     "test_c01_restore_safety.py",
@@ -157,7 +159,7 @@ REGRESSION_FILES = (
     "test_p01_r2_gate.py",
     "test_legacy_review_recheck.py",
 )
-MINIMUM_MIGRATION = 190  # permission grants and current human review evidence are mandatory.
+MINIMUM_MIGRATION = 212  # Includes receipt scope binding and actual PG tax-original uploads.
 
 
 def configuration_names():
@@ -233,7 +235,7 @@ def require_migration_floor(rows):
     versions = [int(str(version).split("_")[0]) for version, _ in rows]
     if not versions or max(versions) < MINIMUM_MIGRATION:
         raise GateError(
-            "P01 recovery requires migration 190 or newer (permission and current review evidence); apply all candidate migrations first"
+            f"P01 recovery requires migration {MINIMUM_MIGRATION} or newer (NEXT evidence and receipt binding); apply all candidate migrations first"
         )
 
 

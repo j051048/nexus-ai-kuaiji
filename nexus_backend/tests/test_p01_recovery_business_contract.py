@@ -82,6 +82,14 @@ def test_latest_business_http_shapes_and_guard_assertions(latest_case):
         return JSONResponse({"detail": failure.detail}, status_code=failure.status)
 
     app.state.tax = TaxWorkpaperService(c.db)
+    from app.handoff.service import HandoffService
+    from app.handoff.router import build_handoff_router
+    from app.delivery.receipts import ProviderReceiptService
+
+    app.state.handoff = HandoffService(c.db)
+    app.state.delivery_receipts = ProviderReceiptService(c.db)
+    app.state.attachment_store = latest_case.store
+    app.include_router(build_handoff_router(actor))
     app.state.monthly_packages = MonthlyPackageService(c.db)
     from app.delivery.followups import DeliveryFollowupService
 

@@ -225,6 +225,29 @@ class PostgresConnection:
                 self.pool.putconn(self.raw)
 
 
+def validate_database_locator(value: str) -> None:
+    """Reject ambiguous configuration before creating files or opening a pool.
+
+    This adapter accepts PostgreSQL URIs or filesystem SQLite paths, not libpq
+    keyword conninfo. Never echo the supplied value: it may contain a password.
+    """
+    postgres = value.startswith(("postgres://", "postgresql://"))
+    if (
+        not value
+        or value != value.strip()
+        or any(ord(char) < 32 for char in value)
+        or (not postgres and "://" in value)
+        or (
+            not postgres
+            and re.search(
+                r"(?i)(?:^|[\s/\\])(?:host|hostaddr|user|password|dbname|service|port|sslmode|options)\s*=",
+                value,
+            )
+        )
+    ):
+        raise ValueError("数据库地址格式无效；请使用 PostgreSQL URI 或本地 SQLite 文件路径")
+
+
 class Database:
     def __init__(
         self,
@@ -250,6 +273,7 @@ class Database:
             if path is not None
             else os.getenv("ACCOUNTING_DATABASE_URL") or "data/accounting.db"
         )
+        validate_database_locator(self.path)
         self.is_postgres = self.path.startswith(("postgres://", "postgresql://"))
         self.dialect = "postgres" if self.is_postgres else "sqlite"
         if self.is_postgres:

@@ -19,7 +19,7 @@ from pathlib import Path
 
 import pytest
 
-from app.accounting.database import Database
+from app.accounting.database import Database, validate_database_locator
 
 
 _fixture_owner = ContextVar("database_fixture_owner", default=None)
@@ -81,6 +81,8 @@ def database_resources():
         def tracked(instance, *args, **kwargs):
             global _template
             target = args[0] if args else kwargs.get("path")
+            if target is not None:
+                validate_database_locator(str(target))
             if _wants_template(target):
                 if _template is None:
                     _template = _build_template(original)

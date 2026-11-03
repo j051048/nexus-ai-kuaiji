@@ -36,6 +36,30 @@
    "file": "150_projection_scope_guard.sql",
    "sha256": "f77ea8509a8246a624ae83ebc068a6b6977a64e35f1d225bd73a231b5906f8c0",
    "reason": "恢复已上线且登记于 Supabase 的原始字节（Q-R01 曾插入首行注释，Q-S01 恢复）；缺兼容头仅登记精确摘要，不允许改历史 checksum 或用于新迁移豁免"
+  },
+  {
+   "dialect": "postgres",
+   "file": "205_delivery_provider_events.sql",
+   "sha256": "565dbfdd848cc06a61c4a31dc896c2d57cb1b8559e968ed10d1780be6c6c3a24",
+   "reason": "Frozen NEXT06 migration: invalid compatibility header; runtime conservatively classifies breaking. Never rewrite bytes/checksum. Scope protection added by PG211/SQLite131; exception limited to this exact historical digest."
+  },
+  {
+   "dialect": "postgres",
+   "file": "206_delivery_worker_read.sql",
+   "sha256": "e9de030becb544bc033f66d9a9d59c338320c95759f798c1d9138f714b1f1e53",
+   "reason": "Frozen NEXT06 migration: invalid compatibility header; runtime conservatively classifies breaking. Never rewrite bytes/checksum. Scope protection added by PG211/SQLite131; exception limited to this exact historical digest."
+  },
+  {
+   "dialect": "postgres",
+   "file": "207_delivery_worker_event_read.sql",
+   "sha256": "c391697cce6d44c8c47e92a5e8ff9838be4fe3d8c5b200c384d814f137bc80c2",
+   "reason": "Frozen NEXT06 migration: invalid compatibility header; runtime conservatively classifies breaking. Never rewrite bytes/checksum. Scope protection added by PG211/SQLite131; exception limited to this exact historical digest."
+  },
+  {
+   "dialect": "sqlite",
+   "file": "129_delivery_provider_events.sql",
+   "sha256": "31c2d3b2548fa8f75e2a2bcf61b382df65f31c9d17860a5ae1e4498601360cb9",
+   "reason": "Frozen NEXT06 migration: invalid compatibility header; runtime conservatively classifies breaking. Never rewrite bytes/checksum. Scope protection added by PG211/SQLite131; exception limited to this exact historical digest."
   }
  ]
 }

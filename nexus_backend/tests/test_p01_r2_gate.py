@@ -66,9 +66,9 @@ def test_timeout_and_error_diagnostics_are_bounded_and_secret_free():
 
 
 def test_minimum_schema_is_explicit_not_a_missing_column_traceback():
-    with pytest.raises(gate.GateError, match="190"):
+    with pytest.raises(gate.GateError, match="212"):
         gate.require_migration_floor([("170_old.sql", "已应用")])
-    gate.require_migration_floor([("173_tax.sql", "已应用"), ("190_review.sql", "已应用")])
+    gate.require_migration_floor([("173_tax.sql", "已应用"), ("212_receipt.sql", "已应用")])
 
 
 def test_environment_paths_are_user_relative_and_plan_is_immutable(tmp_path):
@@ -260,7 +260,7 @@ def test_failed_regression_cannot_be_combined_with_prior_recovery(tmp_path, monk
     monkeypatch.setattr(gate, "candidate_fingerprint", lambda: {"source_sha256": "f" * 64})
     monkeypatch.setattr(gate, "validate_config", lambda _: {"admin": "synthetic-local-only"})
     monkeypatch.setattr(gate, "assert_server_and_roles", lambda *_: None)
-    monkeypatch.setattr(migrate_accounting, "status", lambda _: [(190, "已应用")])
+    monkeypatch.setattr(migrate_accounting, "status", lambda _: [(212, "已应用")])
     monkeypatch.setattr(
         c01_wsl_bridge,
         "call",

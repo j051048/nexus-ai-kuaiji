@@ -73,7 +73,9 @@ def _sha256_file(path: Path) -> str:
 
 
 def _canonical(value) -> bytes:
-    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode(
+        "utf-8"
+    )
 
 
 def candidate_fingerprint(root: Path | None = None) -> dict:
@@ -90,14 +92,22 @@ def _secure(path: Path) -> None:
         return
     user = os.environ.get("USERNAME") or os.environ.get("USER") or ""
     if not user:
-        raise HarnessError("acl_unavailable", "cannot determine the current Windows user", "run from an interactive user session")
+        raise HarnessError(
+            "acl_unavailable",
+            "cannot determine the current Windows user",
+            "run from an interactive user session",
+        )
     result = subprocess.run(
         ["icacls", str(path.resolve()), "/inheritance:r", "/grant:r", f"{user}:F"],
         capture_output=True,
         text=True,
     )
     if result.returncode != 0:
-        raise HarnessError("acl_unavailable", f"cannot protect {path.name}: {result.stderr.strip()[:200]}", "verify the filesystem supports NTFS ACLs")
+        raise HarnessError(
+            "acl_unavailable",
+            f"cannot protect {path.name}: {result.stderr.strip()[:200]}",
+            "verify the filesystem supports NTFS ACLs",
+        )
 
 
 def _private_write(path: Path, raw: bytes) -> None:
@@ -191,16 +201,30 @@ def _process_alive(pid: int, expected_token: str | None) -> bool:
     return True
 
 
-def _resolve_under_root(run_dir: Path, base: Path | None = None, *, must_exist: bool = False) -> Path:
+def _resolve_under_root(
+    run_dir: Path, base: Path | None = None, *, must_exist: bool = False
+) -> Path:
     root = Path(base or NEXT_ROOT).resolve()
     candidate = Path(run_dir)
     if ".." in candidate.parts:
-        raise HarnessError("invalid_run_dir", "run directories may not contain '..'", "pass a direct child of tmp_test/next")
+        raise HarnessError(
+            "invalid_run_dir",
+            "run directories may not contain '..'",
+            "pass a direct child of tmp_test/next",
+        )
     resolved = candidate.resolve()
     if resolved == root or root not in resolved.parents:
-        raise HarnessError("path_outside_root", f"{resolved} is outside {root}", "keep every NEXT run under tmp_test/next")
+        raise HarnessError(
+            "path_outside_root",
+            f"{resolved} is outside {root}",
+            "keep every NEXT run under tmp_test/next",
+        )
     if resolved.parent != root:
-        raise HarnessError("invalid_run_dir", "run directories must be direct children of tmp_test/next", "use tmp_test/next/<task>-<run-id>")
+        raise HarnessError(
+            "invalid_run_dir",
+            "run directories must be direct children of tmp_test/next",
+            "use tmp_test/next/<task>-<run-id>",
+        )
     if must_exist and not resolved.exists():
         raise HarnessError("run_missing", f"{resolved} does not exist", "check the run id")
     return resolved
@@ -209,17 +233,29 @@ def _resolve_under_root(run_dir: Path, base: Path | None = None, *, must_exist: 
 def _load_ownership(run_dir: Path) -> dict:
     path = Path(run_dir) / "ownership.json"
     if not path.is_file():
-        raise HarnessError("not_owned", f"{Path(run_dir).name} has no ownership marker", "leave foreign directories untouched")
+        raise HarnessError(
+            "not_owned",
+            f"{Path(run_dir).name} has no ownership marker",
+            "leave foreign directories untouched",
+        )
     try:
         payload = _read_json(path)
     except (OSError, ValueError) as error:
-        raise HarnessError("not_owned", f"ownership marker is unreadable: {error}", "leave the directory untouched") from error
+        raise HarnessError(
+            "not_owned", f"ownership marker is unreadable: {error}", "leave the directory untouched"
+        ) from error
     if payload.get("schema") != OWNERSHIP_SCHEMA:
-        raise HarnessError("not_owned", "ownership marker schema is not NEXT", "leave the directory untouched")
+        raise HarnessError(
+            "not_owned", "ownership marker schema is not NEXT", "leave the directory untouched"
+        )
     if not TASK_PATTERN.match(str(payload.get("task", ""))):
-        raise HarnessError("not_owned", "ownership marker names another task", "leave the directory untouched")
+        raise HarnessError(
+            "not_owned", "ownership marker names another task", "leave the directory untouched"
+        )
     if payload.get("run_id") != Path(run_dir).name:
-        raise HarnessError("not_owned", "ownership marker names another run", "leave the directory untouched")
+        raise HarnessError(
+            "not_owned", "ownership marker names another run", "leave the directory untouched"
+        )
     return payload
 
 
@@ -260,11 +296,19 @@ def _config_snapshot(run_dir: Path, config_paths) -> dict:
     for source in config_paths:
         source = Path(source).resolve()
         if not source.is_file():
-            raise HarnessError("config_missing", f"configuration {source.name} does not exist", "pass a readable configuration file")
+            raise HarnessError(
+                "config_missing",
+                f"configuration {source.name} does not exist",
+                "pass a readable configuration file",
+            )
         raw = source.read_bytes()
         target = private / source.name
         if target.exists():
-            raise HarnessError("config_duplicate", f"two configurations share the name {source.name}", "rename one configuration file")
+            raise HarnessError(
+                "config_duplicate",
+                f"two configurations share the name {source.name}",
+                "rename one configuration file",
+            )
         _private_write(target, raw)
         digest = _sha256_bytes(raw)
         digests[source.name] = digest
@@ -289,12 +333,18 @@ def _config_snapshot(run_dir: Path, config_paths) -> dict:
     }
 
 
-def create_run(task: str, run_dir: Path, *, config_paths=(), pid: int | None = None, base: Path | None = None) -> Path:
+def create_run(
+    task: str, run_dir: Path, *, config_paths=(), pid: int | None = None, base: Path | None = None
+) -> Path:
     if not TASK_PATTERN.match(task):
         raise HarnessError("invalid_task", f"{task!r} is not a NEXT task id", "use next01..next11")
     run_dir = _resolve_under_root(run_dir, base)
     if run_dir.exists():
-        raise HarnessError("run_exists", f"{run_dir} already exists", "choose a new run id; never reuse a run directory")
+        raise HarnessError(
+            "run_exists",
+            f"{run_dir} already exists",
+            "choose a new run id; never reuse a run directory",
+        )
     owner_pid = int(pid if pid is not None else os.getpid())
     try:
         run_dir.parent.mkdir(parents=True, exist_ok=True)
@@ -312,7 +362,9 @@ def create_run(task: str, run_dir: Path, *, config_paths=(), pid: int | None = N
             "candidate": candidate_fingerprint(),
         }
         _write_private_json(run_dir / "ownership.json", ownership)
-        _write_private_json(run_dir / "resources.json", {"schema": RESOURCE_SCHEMA, "resources": []})
+        _write_private_json(
+            run_dir / "resources.json", {"schema": RESOURCE_SCHEMA, "resources": []}
+        )
         config = _config_snapshot(run_dir, config_paths)
         (run_dir / "evidence").mkdir()
         ownership["state"] = "running"
@@ -328,31 +380,59 @@ def create_run(task: str, run_dir: Path, *, config_paths=(), pid: int | None = N
 def _load_resources(run_dir: Path) -> dict:
     payload = _read_json(Path(run_dir) / "resources.json")
     if payload.get("schema") != RESOURCE_SCHEMA:
-        raise HarnessError("not_owned", "resource ledger schema is not NEXT", "leave the directory untouched")
+        raise HarnessError(
+            "not_owned", "resource ledger schema is not NEXT", "leave the directory untouched"
+        )
     return payload
 
 
-def register_resource(run_dir: Path, kind: str, *, path: Path | None = None, identity: str | None = None) -> dict:
+def register_resource(
+    run_dir: Path, kind: str, *, path: Path | None = None, identity: str | None = None
+) -> dict:
     run_dir = Path(run_dir).resolve()
     _load_ownership(run_dir)
     if kind not in RESOURCE_KINDS:
-        raise HarnessError("invalid_resource", f"unknown resource kind {kind!r}", "use a declared NEXT resource kind")
-    entry: dict = {"id": "", "kind": kind, "state": "active", "created_at": _now(), "pid": os.getpid()}
+        raise HarnessError(
+            "invalid_resource",
+            f"unknown resource kind {kind!r}",
+            "use a declared NEXT resource kind",
+        )
+    entry: dict = {
+        "id": "",
+        "kind": kind,
+        "state": "active",
+        "created_at": _now(),
+        "pid": os.getpid(),
+    }
     if kind in CLEANABLE or kind == "evidence_dir":
         if path is None:
             raise HarnessError("invalid_resource", f"{kind} requires a path", "pass the owned path")
         resolved = Path(path).resolve()
         if resolved == run_dir or run_dir not in resolved.parents:
-            raise HarnessError("path_outside_run", f"{resolved} is outside the run directory", "only register paths this run created")
+            raise HarnessError(
+                "path_outside_run",
+                f"{resolved} is outside the run directory",
+                "only register paths this run created",
+            )
         entry["path"] = str(resolved.relative_to(run_dir))
         if kind == "temp_dir":
             resolved.mkdir(parents=True, exist_ok=True)
     else:
         if not identity:
-            raise HarnessError("invalid_resource", f"{kind} requires an identity", "record the port, database or process identity")
+            raise HarnessError(
+                "invalid_resource",
+                f"{kind} requires an identity",
+                "record the port, database or process identity",
+            )
         entry["identity"] = identity
     ledger = _load_resources(run_dir)
-    existing = [item for item in ledger["resources"] if item.get("identity") == entry.get("identity") and item.get("path") == entry.get("path") and item["kind"] == kind]
+    existing = [
+        item
+        for item in ledger["resources"]
+        if item.get("identity") == entry.get("identity")
+        and item.get("path") == entry.get("path")
+        and item["kind"] == kind
+    ]
     if existing:
         return existing[0]
     entry["id"] = f"r{len(ledger['resources']) + 1:03d}"
@@ -372,16 +452,26 @@ class Phase:
 
     def validate(self) -> None:
         if not PHASE_PATTERN.match(self.name):
-            raise HarnessError("invalid_phase", f"phase name {self.name!r} is not a safe file stem", "use lowercase letters, digits, '-' or '_'")
+            raise HarnessError(
+                "invalid_phase",
+                f"phase name {self.name!r} is not a safe file stem",
+                "use lowercase letters, digits, '-' or '_'",
+            )
         if self.kind not in {"pytest", "command"}:
-            raise HarnessError("invalid_phase", f"phase kind {self.kind!r} is unknown", "use pytest or command")
+            raise HarnessError(
+                "invalid_phase", f"phase kind {self.kind!r} is unknown", "use pytest or command"
+            )
         if not self.command:
-            raise HarnessError("invalid_phase", f"phase {self.name} has no command", "declare the command list")
+            raise HarnessError(
+                "invalid_phase", f"phase {self.name} has no command", "declare the command list"
+            )
 
 
 def _phase_env(run_dir: Path) -> dict:
     env = {key: value for key, value in os.environ.items() if key not in SENSITIVE_ENV}
-    env["PYTHONPATH"] = str(ROOT) + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+    env["PYTHONPATH"] = str(ROOT) + (
+        os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else ""
+    )
     env["PYTHONDONTWRITEBYTECODE"] = "1"
     env["NEXT_RUN_DIR"] = str(run_dir)
     env.pop("PYTEST_ADDOPTS", None)
@@ -394,7 +484,11 @@ def _junit_summary(path: Path) -> dict | None:
     try:
         root = ET.parse(path).getroot()
     except ET.ParseError as error:
-        raise HarnessError("invalid_junit", f"JUnit report is unreadable: {error}", "rerun the phase; a corrupt report is not evidence") from error
+        raise HarnessError(
+            "invalid_junit",
+            f"JUnit report is unreadable: {error}",
+            "rerun the phase; a corrupt report is not evidence",
+        ) from error
     suite = root if root.tag == "testsuite" else root.find("testsuite")
     if suite is None:
         suites = root.findall("testsuite")
@@ -460,10 +554,18 @@ def _run_one(run_dir: Path, phase: Phase, redactable: list[str]) -> dict:
         stdout = (error.stdout or "") if isinstance(error.stdout, str) else ""
         stderr = (error.stderr or "") if isinstance(error.stderr, str) else ""
         result["exit_code"] = None
-        diagnostic = {"code": "phase_timeout", "reason": f"phase exceeded {phase.timeout}s", "next_action": "inspect the log and rerun with a measured timeout; a timeout is not a pass"}
+        diagnostic = {
+            "code": "phase_timeout",
+            "reason": f"phase exceeded {phase.timeout}s",
+            "next_action": "inspect the log and rerun with a measured timeout; a timeout is not a pass",
+        }
     except OSError as error:
         result["exit_code"] = None
-        diagnostic = {"code": "phase_not_started", "reason": str(error)[:300], "next_action": "fix the command or environment, then rerun the phase"}
+        diagnostic = {
+            "code": "phase_not_started",
+            "reason": str(error)[:300],
+            "next_action": "fix the command or environment, then rerun the phase",
+        }
     result["seconds"] = round(time.monotonic() - started, 3)
 
     log = evidence / f"{phase.name}.log"
@@ -481,20 +583,44 @@ def _run_one(run_dir: Path, phase: Phase, redactable: list[str]) -> dict:
         try:
             summary = _junit_summary(junit_path)
         except HarnessError as error:
-            diagnostic = {"code": error.code, "reason": error.reason, "next_action": error.next_action}
+            diagnostic = {
+                "code": error.code,
+                "reason": error.reason,
+                "next_action": error.next_action,
+            }
         if summary is not None:
             result.update(summary)
     if diagnostic is None:
         if junit_path is not None and summary is None:
-            diagnostic = {"code": "no_junit", "reason": "pytest produced no JUnit report", "next_action": "check the pytest command; missing evidence is not a pass"}
+            diagnostic = {
+                "code": "no_junit",
+                "reason": "pytest produced no JUnit report",
+                "next_action": "check the pytest command; missing evidence is not a pass",
+            }
         elif summary is not None and summary["tests"] == 0:
-            diagnostic = {"code": "no_test_cases", "reason": "the phase collected zero test cases", "next_action": "fix the selection; zero cases never counts as a pass"}
+            diagnostic = {
+                "code": "no_test_cases",
+                "reason": "the phase collected zero test cases",
+                "next_action": "fix the selection; zero cases never counts as a pass",
+            }
         elif summary is not None and summary["skipped"]:
-            diagnostic = {"code": "skipped_cases", "reason": f"{summary['skipped']} test cases were skipped", "next_action": "remove the skip or provide the missing dependency; skips are not accepted"}
+            diagnostic = {
+                "code": "skipped_cases",
+                "reason": f"{summary['skipped']} test cases were skipped",
+                "next_action": "remove the skip or provide the missing dependency; skips are not accepted",
+            }
         elif summary is not None and (summary["failures"] or summary["errors"]):
-            diagnostic = {"code": "failing_cases", "reason": f"{summary['failures']} failures and {summary['errors']} errors", "next_action": "read the log, fix the defect, rerun the phase"}
+            diagnostic = {
+                "code": "failing_cases",
+                "reason": f"{summary['failures']} failures and {summary['errors']} errors",
+                "next_action": "read the log, fix the defect, rerun the phase",
+            }
         elif result["exit_code"] != 0:
-            diagnostic = {"code": "phase_failed", "reason": f"exit code {result['exit_code']}", "next_action": "read the log; the phase did not pass"}
+            diagnostic = {
+                "code": "phase_failed",
+                "reason": f"exit code {result['exit_code']}",
+                "next_action": "read the log; the phase did not pass",
+            }
     if diagnostic:
         diagnostic["reason"] = _redact(diagnostic["reason"], redactable)
         result["diagnostic"] = diagnostic
@@ -508,7 +634,9 @@ def _evidence_index(run_dir: Path) -> list[dict]:
     items = []
     for path in sorted((run_dir / "evidence").iterdir()):
         if path.is_file():
-            items.append({"file": path.name, "bytes": path.stat().st_size, "sha256": _sha256_file(path)})
+            items.append(
+                {"file": path.name, "bytes": path.stat().st_size, "sha256": _sha256_file(path)}
+            )
     return items
 
 
@@ -517,13 +645,23 @@ def _cleanup(run_dir: Path, redactable: list[str]) -> dict:
     removed, missing, failures, untouched = [], [], [], []
     for item in ledger["resources"]:
         if item["kind"] not in CLEANABLE:
-            untouched.append({"id": item["id"], "kind": item["kind"], "identity": item.get("identity")})
+            untouched.append(
+                {"id": item["id"], "kind": item["kind"], "identity": item.get("identity")}
+            )
             continue
         if item.get("state") in {"removed", "missing"}:
             continue
         target = (run_dir / item["path"]).resolve()
         if run_dir not in target.parents:
-            failures.append({"id": item["id"], "kind": item["kind"], "code": "path_outside_run", "reason": "refused to delete a path outside the run", "next_action": "inspect the ledger manually"})
+            failures.append(
+                {
+                    "id": item["id"],
+                    "kind": item["kind"],
+                    "code": "path_outside_run",
+                    "reason": "refused to delete a path outside the run",
+                    "next_action": "inspect the ledger manually",
+                }
+            )
             item["state"] = "blocked"
             continue
         if not target.exists():
@@ -537,7 +675,15 @@ def _cleanup(run_dir: Path, redactable: list[str]) -> dict:
         except OSError as error:
             item["state"] = "blocked"
             reason = _redact(str(error)[:300], redactable)
-            failures.append({"id": item["id"], "kind": item["kind"], "code": "cleanup_denied", "reason": reason, "next_action": "close the process holding the file, then rerun recovery"})
+            failures.append(
+                {
+                    "id": item["id"],
+                    "kind": item["kind"],
+                    "code": "cleanup_denied",
+                    "reason": reason,
+                    "next_action": "close the process holding the file, then rerun recovery",
+                }
+            )
     _replace_json(run_dir / "resources.json", ledger)
     return {
         "status": "failed" if failures else "passed",
@@ -553,21 +699,40 @@ def _config_from_ownership(run_dir: Path, ownership: dict) -> dict:
     sources = ownership.get("config_sources", {})
     for name, digest in sorted(ownership.get("config", {}).items()):
         frozen = run_dir / "config-private" / name
-        files.append({"name": name, "sha256": digest, "source": sources.get(name, str(frozen)), "frozen": str(frozen.relative_to(run_dir))})
+        files.append(
+            {
+                "name": name,
+                "sha256": digest,
+                "source": sources.get(name, str(frozen)),
+                "frozen": str(frozen.relative_to(run_dir)),
+            }
+        )
     redactable: list[str] = []
     for item in files:
         try:
-            redactable.extend(_redaction_values(json.loads((run_dir / "config-private" / item["name"]).read_bytes())))
+            redactable.extend(
+                _redaction_values(
+                    json.loads((run_dir / "config-private" / item["name"]).read_bytes())
+                )
+            )
         except (OSError, ValueError):
             pass
-    return {"files": files, "digest": _sha256_bytes(_canonical({item["name"]: item["sha256"] for item in files})), "redactable": redactable}
+    return {
+        "files": files,
+        "digest": _sha256_bytes(_canonical({item["name"]: item["sha256"] for item in files})),
+        "redactable": redactable,
+    }
 
 
 def run_phases(run_dir: Path, phases: list[Phase], *, base: Path | None = None) -> dict:
     run_dir = _resolve_under_root(run_dir, base, must_exist=True)
     ownership = _load_ownership(run_dir)
     if ownership.get("state") not in {"initializing", "running"}:
-        raise HarnessError("run_closed", f"run is already {ownership.get('state')}", "create a new run instead of rewriting evidence")
+        raise HarnessError(
+            "run_closed",
+            f"run is already {ownership.get('state')}",
+            "create a new run instead of rewriting evidence",
+        )
     config = _config_from_ownership(run_dir, ownership)
     redactable = config["redactable"]
     candidate_before = ownership["candidate"]
@@ -577,12 +742,27 @@ def run_phases(run_dir: Path, phases: list[Phase], *, base: Path | None = None) 
     results: dict[str, dict] = {}
 
     if current != candidate_before:
-        diagnostics.append({"code": "candidate_changed", "reason": "candidate changed before the first phase", "next_action": "start a new run on the current candidate"})
+        diagnostics.append(
+            {
+                "code": "candidate_changed",
+                "reason": "candidate changed before the first phase",
+                "next_action": "start a new run on the current candidate",
+            }
+        )
 
     stopped = bool(diagnostics)
     for phase in phases:
         if stopped:
-            results[phase.name] = {"name": phase.name, "kind": phase.kind, "status": "not_run", "diagnostic": {"code": "blocked_by_failure", "reason": "an earlier phase failed", "next_action": "fix the first failure and start a new run"}}
+            results[phase.name] = {
+                "name": phase.name,
+                "kind": phase.kind,
+                "status": "not_run",
+                "diagnostic": {
+                    "code": "blocked_by_failure",
+                    "reason": "an earlier phase failed",
+                    "next_action": "fix the first failure and start a new run",
+                },
+            }
             continue
         result = _run_one(run_dir, phase, redactable)
         results[phase.name] = result
@@ -592,7 +772,13 @@ def run_phases(run_dir: Path, phases: list[Phase], *, base: Path | None = None) 
     candidate_after = candidate_fingerprint()
     stable = candidate_after == candidate_before
     if not stable:
-        diagnostics.append({"code": "candidate_changed", "reason": "candidate changed while the run was executing", "next_action": "freeze the worktree and start a new run; this evidence is void"})
+        diagnostics.append(
+            {
+                "code": "candidate_changed",
+                "reason": "candidate changed while the run was executing",
+                "next_action": "freeze the worktree and start a new run; this evidence is void",
+            }
+        )
 
     cleanup = _cleanup(run_dir, redactable)
     failed = any(item["status"] == "failed" for item in results.values()) or bool(diagnostics)
@@ -620,7 +806,11 @@ def run_phases(run_dir: Path, phases: list[Phase], *, base: Path | None = None) 
         "ownership_token_sha256": _sha256_bytes(ownership["token"].encode("utf-8")),
     }
     _replace_json(run_dir / "manifest.json", manifest)
-    ownership["state"] = {"passed": "completed", "failed": "failed", "failed_cleanup": "failed_cleanup"}[status]
+    ownership["state"] = {
+        "passed": "completed",
+        "failed": "failed",
+        "failed_cleanup": "failed_cleanup",
+    }[status]
     ownership["finished_at"] = manifest["finished_at"]
     _replace_json(run_dir / "ownership.json", ownership)
     return manifest
@@ -658,7 +848,13 @@ def status(base: Path | None = None) -> list[dict]:
                 entry["cleanup_status"] = manifest.get("cleanup", {}).get("status")
             except ValueError:
                 entry["manifest_status"] = "unreadable"
-        if ownership.get("state") in {"completed", "failed", "failed_cleanup", "recovered", "recovery_failed"}:
+        if ownership.get("state") in {
+            "completed",
+            "failed",
+            "failed_cleanup",
+            "recovered",
+            "recovery_failed",
+        }:
             entry["state"] = ownership["state"]
         elif _process_alive(int(ownership.get("pid", 0)), ownership.get("pid_start")):
             entry["state"] = "running"
@@ -676,20 +872,38 @@ def recover(run_dir: Path, *, base: Path | None = None) -> dict:
     run_dir = _resolve_under_root(run_dir, base, must_exist=True)
     ownership = _load_ownership(run_dir)
     if ownership.get("state") == "recovered":
-        return {"status": "already_recovered", "run_id": run_dir.name, "removed": [], "untouched": []}
+        return {
+            "status": "already_recovered",
+            "run_id": run_dir.name,
+            "removed": [],
+            "untouched": [],
+        }
     if _process_alive(int(ownership.get("pid", 0)), ownership.get("pid_start")):
-        raise HarnessError("run_active", f"{run_dir.name} is still owned by a live process", "stop the runner through its own lifecycle; never delete a live run")
+        raise HarnessError(
+            "run_active",
+            f"{run_dir.name} is still owned by a live process",
+            "stop the runner through its own lifecycle; never delete a live run",
+        )
     config = _config_from_ownership(run_dir, ownership)
     redactable = config["redactable"]
     ledger = _load_resources(run_dir)
     removed, missing, failures, untouched = [], [], [], []
     for item in ledger["resources"]:
         if item["kind"] not in CLEANABLE:
-            untouched.append({"id": item["id"], "kind": item["kind"], "identity": item.get("identity")})
+            untouched.append(
+                {"id": item["id"], "kind": item["kind"], "identity": item.get("identity")}
+            )
             continue
         target = (run_dir / item["path"]).resolve()
         if run_dir not in target.parents:
-            failures.append({"id": item["id"], "code": "path_outside_run", "reason": "refused to delete a path outside the run", "next_action": "inspect the ledger manually"})
+            failures.append(
+                {
+                    "id": item["id"],
+                    "code": "path_outside_run",
+                    "reason": "refused to delete a path outside the run",
+                    "next_action": "inspect the ledger manually",
+                }
+            )
             continue
         if not target.exists():
             item["state"] = "missing"
@@ -701,7 +915,14 @@ def recover(run_dir: Path, *, base: Path | None = None) -> dict:
             removed.append(item["id"])
         except OSError as error:
             item["state"] = "blocked"
-            failures.append({"id": item["id"], "code": "cleanup_denied", "reason": _redact(str(error)[:300], redactable), "next_action": "close the process holding the file, then rerun recovery"})
+            failures.append(
+                {
+                    "id": item["id"],
+                    "code": "cleanup_denied",
+                    "reason": _redact(str(error)[:300], redactable),
+                    "next_action": "close the process holding the file, then rerun recovery",
+                }
+            )
     _replace_json(run_dir / "resources.json", ledger)
     result = {
         "schema": "next-recovery-v1",
@@ -725,39 +946,75 @@ def verify(run_dir: Path, *, base: Path | None = None) -> dict:
     ownership = _load_ownership(run_dir)
     manifest_path = run_dir / "manifest.json"
     if not manifest_path.is_file():
-        return {"valid": False, "run_id": run_dir.name, "reasons": [{"code": "manifest_missing", "reason": "the run has no manifest"}]}
+        return {
+            "valid": False,
+            "run_id": run_dir.name,
+            "reasons": [{"code": "manifest_missing", "reason": "the run has no manifest"}],
+        }
     manifest = _read_json(manifest_path)
     reasons = []
     if manifest.get("schema") != SCHEMA:
         reasons.append({"code": "schema_mismatch", "reason": "manifest schema is not NEXT"})
     if manifest.get("ownership_token_sha256") != _sha256_bytes(ownership["token"].encode("utf-8")):
-        reasons.append({"code": "ownership_mismatch", "reason": "manifest does not belong to this ownership marker"})
+        reasons.append(
+            {
+                "code": "ownership_mismatch",
+                "reason": "manifest does not belong to this ownership marker",
+            }
+        )
     current = candidate_fingerprint()
     if current != manifest.get("candidate", {}).get("after"):
-        reasons.append({"code": "candidate_changed", "reason": "the worktree no longer matches the recorded candidate"})
+        reasons.append(
+            {
+                "code": "candidate_changed",
+                "reason": "the worktree no longer matches the recorded candidate",
+            }
+        )
     for item in manifest.get("config", {}).get("files", []):
         frozen = run_dir / item.get("frozen", "")
         if not frozen.is_file() or _sha256_file(frozen) != item["sha256"]:
-            reasons.append({"code": "config_tampered", "reason": f"frozen configuration {item['name']} changed"})
+            reasons.append(
+                {
+                    "code": "config_tampered",
+                    "reason": f"frozen configuration {item['name']} changed",
+                }
+            )
     source = ownership.get("config", {})
     for name, digest in source.items():
-        recorded = next((item for item in manifest.get("config", {}).get("files", []) if item["name"] == name), None)
+        recorded = next(
+            (item for item in manifest.get("config", {}).get("files", []) if item["name"] == name),
+            None,
+        )
         if recorded is None:
             continue
         candidate_source = Path(recorded.get("source", ""))
         if candidate_source.is_file() and _sha256_file(candidate_source) != digest:
-            reasons.append({"code": "config_changed", "reason": f"configuration source {name} changed after the run"})
+            reasons.append(
+                {
+                    "code": "config_changed",
+                    "reason": f"configuration source {name} changed after the run",
+                }
+            )
     for item in manifest.get("evidence", []):
         path = run_dir / "evidence" / item["file"]
         if not path.is_file() or _sha256_file(path) != item["sha256"]:
-            reasons.append({"code": "evidence_changed", "reason": f"evidence {item['file']} changed"})
-    return {"valid": not reasons, "run_id": run_dir.name, "status": manifest.get("status"), "reasons": reasons}
+            reasons.append(
+                {"code": "evidence_changed", "reason": f"evidence {item['file']} changed"}
+            )
+    return {
+        "valid": not reasons,
+        "run_id": run_dir.name,
+        "status": manifest.get("status"),
+        "reasons": reasons,
+    }
 
 
 def load_profile(path: Path) -> list[Phase]:
     payload = _read_json(path)
     if not isinstance(payload.get("phases"), list) or not payload["phases"]:
-        raise HarnessError("invalid_profile", f"{Path(path).name} has no phases", "declare at least one phase")
+        raise HarnessError(
+            "invalid_profile", f"{Path(path).name} has no phases", "declare at least one phase"
+        )
     return [Phase(**item) for item in payload["phases"]]
 
 
@@ -783,7 +1040,9 @@ def main(argv: list[str] | None = None) -> int:
     status_parser = sub.add_parser("status", help="inspect known runs")
     status_parser.add_argument("--base")
 
-    recover_parser = sub.add_parser("recover", help="dispose a stale run's owned temporary resources")
+    recover_parser = sub.add_parser(
+        "recover", help="dispose a stale run's owned temporary resources"
+    )
     recover_parser.add_argument("--run-dir", required=True)
 
     verify_parser = sub.add_parser("verify", help="revalidate a finished run")
@@ -797,11 +1056,23 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "run":
             profile = Path(args.profile) if args.profile else _default_profile(args.task)
             if profile is None:
-                raise HarnessError("profile_missing", f"no profile for {args.task}", "pass --profile")
+                raise HarnessError(
+                    "profile_missing", f"no profile for {args.task}", "pass --profile"
+                )
             phases = load_profile(profile)
-            run_dir = create_run(args.task, Path(args.run_dir), config_paths=[Path(item) for item in args.config])
+            run_dir = create_run(
+                args.task, Path(args.run_dir), config_paths=[Path(item) for item in args.config]
+            )
             manifest = run_phases(run_dir, phases)
-            _print({"run_id": manifest["run_id"], "status": manifest["status"], "manifest": str(run_dir / "manifest.json"), "phases": {name: item["status"] for name, item in manifest["phases"].items()}, "cleanup": manifest["cleanup"]["status"]})
+            _print(
+                {
+                    "run_id": manifest["run_id"],
+                    "status": manifest["status"],
+                    "manifest": str(run_dir / "manifest.json"),
+                    "phases": {name: item["status"] for name, item in manifest["phases"].items()},
+                    "cleanup": manifest["cleanup"]["status"],
+                }
+            )
             return 0 if manifest["status"] == "passed" else 1
         if args.command == "status":
             _print(status(Path(args.base) if args.base else None))

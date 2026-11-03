@@ -11,7 +11,8 @@ import hashlib
 import hmac
 import json
 import os
-from datetime import datetime, timedelta, timezone
+import re
+from datetime import datetime, timezone
 from uuid import uuid4
 
 from ..accounting.access import AccessControl
@@ -50,6 +51,19 @@ def _stamp(value):
     return parsed.astimezone(timezone.utc).isoformat(timespec="seconds")
 
 
+def _unique_object(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate JSON key")
+        result[key] = value
+    return result
+
+
+def _invalid_constant(value):
+    raise ValueError("non-finite JSON number")
+
+
 class ProviderReceiptService(NotificationDispatcher):
     def __init__(self, db):
         self.db, self.access = db, AccessControl()
@@ -69,13 +83,19 @@ class ProviderReceiptService(NotificationDispatcher):
         supplied = str(signature or "").strip()
         if supplied.startswith("sha256="):
             supplied = supplied[7:]
+        if not re.fullmatch(r"[0-9a-f]{64}", supplied):
+            raise AccountingError("回调签名无效", 401)
         expected = sign(raw, str(stamp))
         if not hmac.compare_digest(supplied, expected):
             raise AccountingError("回调签名无效", 401)
         try:
-            payload = json.loads(raw.decode("utf-8"))
-        except (UnicodeDecodeError, json.JSONDecodeError) as error:
-            raise AccountingError("回调内容不是有效 JSON", 422) from error
+            payload = json.loads(
+                raw.decode("utf-8"),
+                object_pairs_hook=_unique_object,
+                parse_constant=_invalid_constant,
+            )
+        except (UnicodeDecodeError, ValueError, RecursionError):
+            raise AccountingError("回调内容不是有效 JSON", 422) from None
         if not isinstance(payload, dict):
             raise AccountingError("回调内容必须是对象", 422)
         notification_id = str(payload.get("notification_id", "")).strip()
@@ -121,18 +141,21 @@ class ProviderReceiptService(NotificationDispatcher):
                 "signature_timestamp": stamp,
                 "raw_size": len(raw),
             }
-            conn.execute(
+            inserted = conn.execute(
                 "INSERT INTO delivery_provider_events("
                 + ",".join(row)
                 + ") VALUES("
                 + ",".join("?" for _ in row)
-                + ")",
+                + ") ON CONFLICT(provider_event_id) DO NOTHING RETURNING id",
                 tuple(row.values()),
-            )
-            stored = conn.execute(
-                "SELECT * FROM delivery_provider_events WHERE id=?", (row["id"],)
             ).fetchone()
-        return {"duplicate": False, "event": dict(stored)}
+            stored = conn.execute(
+                "SELECT * FROM delivery_provider_events WHERE provider_event_id=?",
+                (provider_event_id,),
+            ).fetchone()
+            if stored is None or stored["payload_sha256"] != digest:
+                raise AccountingError("同一回调事件编号携带了不同内容", 409)
+        return {"duplicate": inserted is None, "event": dict(stored)}
 
     # ------------------------------------------------------------------- read
     def timeline(self, actor, book_id, notification_id):

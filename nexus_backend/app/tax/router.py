@@ -118,9 +118,7 @@ def build_tax_router(actor_dependency):
         current=Depends(actor_dependency),
         tax=Depends(service),
     ):
-        return filings.attach(
-            request.app.state.uploads, tax, current, filing_id, payload.upload_id
-        )
+        return filings.attach(request.app.state.uploads, tax, current, filing_id, payload.upload_id)
 
     @router.get("/filings/{filing_id}/attachments/{attachment_id}")
     def download_filing_original(

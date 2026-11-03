@@ -107,8 +107,12 @@ class HandoffService:
                         "id": row["id"],
                         "version": max(1, int(row["attempt"])),
                         "fingerprint": _digest(
-                            "batch_item", row["id"], row["batch_id"], row["attempt"],
-                            row["error_code"], row["updated_at"],
+                            "batch_item",
+                            row["id"],
+                            row["batch_id"],
+                            row["attempt"],
+                            row["error_code"],
+                            row["updated_at"],
                         ),
                     },
                     "scope": {
@@ -150,8 +154,12 @@ class HandoffService:
                         "id": row["id"],
                         "version": int(row["attempts"]) + 1,
                         "fingerprint": _digest(
-                            "notification_investigation", row["id"], row["package_id"],
-                            row["package_version"], row["manifest_sha256"], row["attempts"],
+                            "notification_investigation",
+                            row["id"],
+                            row["package_id"],
+                            row["package_version"],
+                            row["manifest_sha256"],
+                            row["attempts"],
                             row["updated_at"],
                         ),
                     },
@@ -331,7 +339,13 @@ class HandoffService:
             return {"items": result, "total": len(result)}
 
     def assign(
-        self, actor, source_id, expected_version, assignee_id, due_on, reason,
+        self,
+        actor,
+        source_id,
+        expected_version,
+        assignee_id,
+        due_on,
+        reason,
         kind="tax_workpaper",
     ):
         reason = (reason or "").strip()
@@ -436,9 +450,7 @@ class HandoffService:
             try:
                 self.access.book(conn, target, target_book, target_role)
             except AccountingError:
-                raise AccountingError(
-                    "被指派人没有当前账套权限，指派不会授予权限", 403
-                ) from None
+                raise AccountingError("被指派人没有当前账套权限，指派不会授予权限", 403) from None
 
             current = self._assignment(conn, kind, source_id, version, role)
             if current and current["assignee_id"] == assignee_id:

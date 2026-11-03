@@ -11,6 +11,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
       - name: Install test dependencies and both native PostgreSQL versions
         run: |
           python -m pip install -r nexus_backend/requirements.lock
@@ -54,6 +60,14 @@ jobs:
             python tools/capacity/qa_mixed.py --config "$P01_RUN_DIRECTORY/pg$major-recovery_source.json" --major "$major" --out "tmp_test/p01-ci-acceptance/reports/capacity-$major" --companies 200 --rounds 2
             python scripts/test_accounting_postgres_isolated.py --config "$P01_RUN_DIRECTORY/pg$major-recovery_source.json" nexus_backend/tests/test_qa05_admission_postgres.py nexus_backend/tests/test_batch1_database_pool_postgres.py nexus_backend/tests/test_ak05_unified_postgres.py nexus_backend/tests/test_queue_fairness_postgres.py nexus_backend/tests/test_model_cost_postgres_workflow.py nexus_backend/tests/test_ak01_postgres.py -p scripts.qa_no_skip -q --junitxml="tmp_test/p01-ci-acceptance/reports/qa-pg$major.xml"
           done
+      - name: NEXT signed callback PG16/17 scope and concurrent replay, zero skips
+        run: |
+          set -euo pipefail
+          for major in 16 17; do
+            python scripts/test_accounting_postgres_isolated.py --config "$P01_RUN_DIRECTORY/pg$major-recovery_source.json" nexus_backend/tests/test_next_p0_receipts_postgres.py -p scripts.qa_no_skip -q --junitxml="tmp_test/p01-ci-acceptance/reports/next-receipts-pg$major.xml"
+          done
+      - name: Real PG and signed-identity browser journey, exact eight cases
+        run: python scripts/p02_browser_gate.py --config-dir "$P01_RUN_DIRECTORY" --out tmp_test/p02-ci-browser
       - name: Stop only this run's bridge and owned clusters, retain data
         id: cleanup
         if: always()
@@ -91,4 +105,6 @@ jobs:
           path: |
             tmp_test/p01-ci-acceptance/reports/**/*.json
             tmp_test/p01-ci-acceptance/reports/qa-pg*.xml
+            tmp_test/p01-ci-acceptance/reports/next-receipts-pg*.xml
+            tmp_test/p02-ci-browser/summary.json
           if-no-files-found: error

@@ -13,6 +13,6 @@ export default defineConfig({
   timeout: 180_000,
   expect: { timeout: 20_000 },
   use: { baseURL: 'http://127.0.0.1:18180', trace: 'off', screenshot: 'only-on-failure' },
-  outputDir: '.codex/p02-r1-browser/results',
+  outputDir: process.env.P02_BROWSER_OUTPUT || '.codex/p02-r1-browser/results',
   reporter: 'line',
 });

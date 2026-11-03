@@ -1,6 +1,6 @@
 target-version = "py311"
 line-length = 100
-extend-exclude = [".codex", "node_modules", "nexus_backend/migrations", ".agents", "artifacts"]
+extend-exclude = [".codex", ".vercel", "node_modules", "nexus_backend/migrations", ".agents", "artifacts"]
 
 [lint]
 # Start with executable correctness checks; broader style rules can follow by domain.

@@ -8,6 +8,9 @@ The returned lease token is private test state and must not enter public reports
 import hashlib
 import io
 import json
+import os
+import time
+from unittest.mock import patch
 from uuid import uuid4
 from zipfile import ZipFile
 
@@ -57,6 +60,10 @@ BUSINESS_TABLES = (
     "monthly_delivery_opens",
     "delivery_notifications",
     "notification_investigations",
+    "tax_filings",
+    "tax_filing_attachments",
+    "delivery_provider_events",
+    "handoff_tasks",
     *TABLE_FIELDS,
 )
 
@@ -263,8 +270,46 @@ def seed_latest_recovery_business(
     prior_csv = tax.csv(
         reviewer, tax_book["id"], prior["id"], prior["version"], prior["source_digest"]
     )
+    from app.tax import filings
+    from app.handoff.service import HandoffService
+
+    filing = filings.record(
+        tax,
+        reviewer,
+        {
+            "book_id": tax_book["id"],
+            "period": PERIOD,
+            "kind": "vat",
+            "status": "filed",
+            "external_ref": "P01-SYNTHETIC-" + uuid4().hex,
+            "occurred_at": "2026-11-01",
+            "amount_cents": 3000,
+            "evidence_note": "虚构回执，只证明人工登记与原件恢复",
+        },
+    )
+    filing_original = b"%PDF-1.4\nP01 synthetic filing receipt\n%%EOF"
+    filing_upload = uploads.create(
+        reviewer,
+        UploadCreate(
+            purpose="tax_filing_attachment",
+            filename="P01-filing.pdf",
+            media_type="application/pdf",
+            size_bytes=len(filing_original),
+            sha256=hashlib.sha256(filing_original).hexdigest(),
+        ),
+    )
+    uploads.store_content(reviewer, filing_upload["id"], filing_original)
+    filing_attachment = filings.attach(uploads, tax, reviewer, filing["id"], filing_upload["id"])
     paper = tax.generate(owner, tax_book["id"], PERIOD)
     assert paper["tax"] == "30.00" and paper["status"] == "draft"
+    handoff = HandoffService(db).assign(
+        owner,
+        paper["id"],
+        paper["version"],
+        reviewer.user_id,
+        "2026-11-10",
+        "恢复后由原独立复核人继续办理，不额外授予权限",
+    )
 
     report_id = _zero_activity_close(db, owner, reviewer, delivery_book)
     ServicePlansService(db, accounting, BusinessService(db)).save_plan(
@@ -362,7 +407,33 @@ def seed_latest_recovery_business(
             idempotency_key="recovery-investigation-" + uuid4().hex,
         ),
     )
+    from app.delivery.receipts import ProviderReceiptService, sign
+
+    event_id = "p01-provider-" + uuid4().hex
+    receipt_raw = json.dumps(
+        {
+            "notification_id": notifications["unknown"],
+            "provider_event_id": event_id,
+            "event_type": "accepted",
+            "occurred_at": "2026-11-01T00:00:00+00:00",
+        }
+    ).encode()
+    timestamp = str(int(time.time()))
+    with patch.dict(
+        os.environ, DELIVERY_CALLBACK_SECRET="p01-synthetic-secret-not-production-012345"
+    ):
+        receipt = ProviderReceiptService(worker_db).receive(
+            receipt_raw,
+            timestamp,
+            sign(receipt_raw, timestamp),
+            event_id,
+        )
     return {
+        "tax_filing": filing,
+        "filing_attachment": filing_attachment,
+        "filing_original": filing_original,
+        "handoff": handoff,
+        "provider_receipt": receipt["event"],
         "notification_investigation": investigation,
         "company_id": company["id"],
         "tax_book": tax_book,
@@ -418,6 +489,35 @@ def _response(client, method, path, headers, body=None, expected=200):
 def verify_latest_business_http(client, headers, evidence, *, wrong_book_id):
     """Fresh signed sessions exercise original IO, independent review and exact acknowledgement."""
     tax_book, delivery_book = evidence["tax_book"]["id"], evidence["delivery_book"]["id"]
+    filing = evidence["tax_filing"]
+    rows = _response(
+        client, "GET", f"/api/tax/filings?book_id={tax_book}", headers["reviewer"]
+    ).json()["filings"]
+    restored = next(row for row in rows if row["id"] == filing["id"])
+    for key in ("workpaper_id", "workpaper_version", "amount_cents", "external_ref", "entry_kind"):
+        assert restored[key] == filing[key]
+    attachment = restored["attachment"]
+    original_path = f"/api/tax/filings/{filing['id']}/attachments/{attachment['id']}"
+    original = _response(client, "GET", original_path, headers["reviewer"]).content
+    assert original == evidence["filing_original"]
+    assert hashlib.sha256(original).hexdigest() == attachment["sha256"]
+    for role in ("outsider", "employee"):
+        assert client.get(original_path, headers=headers[role]).status_code in (403, 404)
+    queue = _response(client, "GET", "/api/handoff", headers["owner"]).json()
+    assigned = next(
+        item for item in queue["items"] if item["source"]["id"] == evidence["tax_paper"]["id"]
+    )
+    assert assigned["assignee_id"] == evidence["handoff"]["assignee_id"]
+    assert assigned["due_on"] == evidence["handoff"]["due_on"]
+    assert assigned["source"]["fingerprint"] == evidence["tax_paper"]["source_digest"]
+    receipt_path = f"/api/books/{delivery_book}/delivery/notifications/{evidence['provider_receipt']['notification_id']}/receipts"
+    timeline = _response(client, "GET", receipt_path, headers["owner"]).json()
+    assert any(
+        event["provider_event_id"] == evidence["provider_receipt"]["provider_event_id"]
+        for event in timeline["events"]
+    )
+    assert timeline["state"] == "unknown" and not timeline["signed"]
+    assert client.get(receipt_path, headers=headers["outsider"]).status_code in (403, 404)
     investigation = evidence["notification_investigation"]
     history_path = f"/api/books/{delivery_book}/delivery/notifications/{investigation['notification_id']}/investigations"
     history = _response(client, "GET", history_path, headers["owner"]).json()
@@ -540,6 +640,8 @@ def verify_latest_business_http(client, headers, evidence, *, wrong_book_id):
     assert signed == again and signed["customer_receipt_status"] == "acknowledged"
     assert signed["external_import_status"] == "separate_workflow"
     return {
+        "filing_original_and_version_restored": True,
+        "handoff_and_provider_receipt_restored": True,
         "tax_independent_review_export": True,
         "invoice_original_verified": True,
         "exact_customer_acknowledgement": True,

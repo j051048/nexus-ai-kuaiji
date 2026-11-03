@@ -75,7 +75,9 @@ def main() -> int:
         outsider = _login(client, auth_origin, desktop["accounts"]["foreign"])
 
         headers = lambda token: {"Authorization": f"Bearer {token}"}
-        _record(results, "api_requires_bearer", client.get(f"{api}/api/workspace/bootstrap"), expect=401)
+        _record(
+            results, "api_requires_bearer", client.get(f"{api}/api/workspace/bootstrap"), expect=401
+        )
         _record(
             results,
             "api_rejects_forged_bearer",
@@ -216,7 +218,9 @@ def main() -> int:
             f"{event_url}/attachments",
             params={"expected_version": version},
             headers=upload_headers,
-            files={"file": ("probe.png", b"\x89PNG\r\n\x1a\n" + b"0" * (10 * 1024 * 1024), "image/png")},
+            files={
+                "file": ("probe.png", b"\x89PNG\r\n\x1a\n" + b"0" * (10 * 1024 * 1024), "image/png")
+            },
         )
         _record(results, "oversized_upload", oversized, expect=413)
         huge_dimensions = _png(6000, 6000)

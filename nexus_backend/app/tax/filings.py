@@ -95,12 +95,16 @@ def _amount_check(paper, kind, amount):
 def _predecessor(conn, filing_id, book_id, period, kind):
     if not isinstance(filing_id, str) or not filing_id:
         raise AccountingError("更正或作废必须指明被替代的回执", 422)
-    old = conn.execute("SELECT * FROM tax_filings WHERE id=? AND book_id=?", (filing_id, book_id)).fetchone()
+    old = conn.execute(
+        "SELECT * FROM tax_filings WHERE id=? AND book_id=?", (filing_id, book_id)
+    ).fetchone()
     if not old or old["period"] != period or old["kind"] != kind:
         raise AccountingError("被替代的回执不属于当前账套、期间或税种", 409)
     if old["entry_kind"] == "void":
         raise AccountingError("已作废的回执不能再更正或作废", 409)
-    successor = conn.execute("SELECT 1 FROM tax_filings WHERE supersedes_id=?", (filing_id,)).fetchone()
+    successor = conn.execute(
+        "SELECT 1 FROM tax_filings WHERE supersedes_id=?", (filing_id,)
+    ).fetchone()
     if successor:
         raise AccountingError("该回执已有更新版本，请基于最新记录处理", 409)
     return old
@@ -233,9 +237,7 @@ def attach(uploads, service, actor, filing_id, upload_id):
         ).fetchone()
         if not current or current["entry_kind"] == "void":
             raise AccountingError("作废回执不能继续绑定原件", 409)
-        if conn.execute(
-            "SELECT 1 FROM tax_filings WHERE supersedes_id=?", (filing_id,)
-        ).fetchone():
+        if conn.execute("SELECT 1 FROM tax_filings WHERE supersedes_id=?", (filing_id,)).fetchone():
             raise AccountingError("该回执已有更正版本，请为最新记录补件", 409)
         book = service.access.book(conn, actor, current["book_id"], "review")
         if conn.execute(
@@ -263,9 +265,7 @@ def attach(uploads, service, actor, filing_id, upload_id):
         )
         return {"filing_id": filing_id, "attachment_id": stored["id"]}
 
-    return uploads.consume(
-        actor, upload_id, "tax_filing_attachment", filing_id, register
-    )
+    return uploads.consume(actor, upload_id, "tax_filing_attachment", filing_id, register)
 
 
 def attachment_for(service, actor, filing_id, attachment_id):
@@ -286,14 +286,16 @@ def list_for(service, actor, book_id, period=None):
     period = _period(period or scope["period"])
     with service.db.transaction(actor=actor) as conn:
         service.access.book(conn, actor, book_id, "read")
-        return _rows(
-            conn, "WHERE f.book_id=? AND f.period=?", (book_id, period)
-        )
+        return _rows(conn, "WHERE f.book_id=? AND f.period=?", (book_id, period))
 
 
 def current_for(conn, book_id, period):
     """Read-only projection used by monthly packages; caller already checked scope."""
-    return [row for row in _rows(conn, "WHERE f.book_id=? AND f.period=?", (book_id, period)) if row["current"]]
+    return [
+        row
+        for row in _rows(conn, "WHERE f.book_id=? AND f.period=?", (book_id, period))
+        if row["current"]
+    ]
 
 
 def evidence_for(conn, book_id, period):

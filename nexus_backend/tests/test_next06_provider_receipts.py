@@ -3,6 +3,8 @@
 import hashlib
 import hmac
 import json
+import sqlite3
+from uuid import uuid4
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -193,3 +195,17 @@ def test_oversized_callback_is_rejected_before_parsing(receipts):
     with pytest.raises(AccountingError) as too_large:
         service.receive(b"{" + b"x" * 70000, "1", "0" * 64, "evt-large")
     assert too_large.value.status == 413
+
+
+@pytest.mark.parametrize("field", ["firm_id", "company_id", "book_id"])
+def test_native_receipt_cannot_forge_notification_scope(receipts, field):
+    case, service, notification_id = receipts
+    row = send(receipts, envelope(notification_id, "source-event"))["event"]
+    row.update(id=uuid4().hex, provider_event_id=uuid4().hex)
+    row[field] = "foreign-scope"
+    with pytest.raises(sqlite3.IntegrityError):
+        with case.db.transaction(write=True, actor=case.reviewer) as conn:
+            conn.execute(
+                "INSERT INTO delivery_provider_events(" + ",".join(row) + ") VALUES("
+                + ",".join("?" for _ in row) + ")", tuple(row.values()),
+            )

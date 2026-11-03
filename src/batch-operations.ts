@@ -44,7 +44,12 @@ export type Plan = {
   }[];
 };
 export type Handoff = {
-  source: { kind: 'tax_workpaper' | 'batch_item' | 'notification_investigation' | 'delivery_package'; id: string; version: number; fingerprint: string };
+  source: {
+    kind: 'tax_workpaper' | 'batch_item' | 'notification_investigation' | 'delivery_package';
+    id: string;
+    version: number;
+    fingerprint: string;
+  };
   scope: {
     book_id: string;
     period: string;
@@ -269,9 +274,7 @@ export function batchResultUrl(kind: BatchKind, item: BatchItem, period: string)
 }
 
 /** Only navigate to the source domain that owns the item; never a lookalike list. */
-export function handoffOriginalHref(
-  item: Pick<Handoff, 'source' | 'scope'>,
-): string {
+export function handoffOriginalHref(item: Pick<Handoff, 'source' | 'scope'>): string {
   const query = new URLSearchParams({
     book: item.scope.book_id,
     period: item.scope.period,

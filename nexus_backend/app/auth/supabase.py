@@ -313,7 +313,9 @@ class SupabaseAuthenticator:
             raise _unauthorized()
         try:
             timestamp = datetime.fromisoformat(confirmed.replace("Z", "+00:00"))
-            if timestamp.tzinfo is None or timestamp > datetime.now(timezone.utc) + timedelta(minutes=5):
+            if timestamp.tzinfo is None or timestamp > datetime.now(timezone.utc) + timedelta(
+                minutes=5
+            ):
                 raise _unavailable()
         except ValueError:
             raise _unavailable() from None

@@ -46,6 +46,10 @@ INVENTORY_TABLES = (
     "delivery_receipt_items",
     "delivery_notifications",
     "notification_investigations",
+    "tax_filings",
+    "tax_filing_attachments",
+    "delivery_provider_events",
+    "handoff_tasks",
     "tax_profiles",
     "tax_workpapers",
     "monthly_delivery_packages",
@@ -95,6 +99,18 @@ DELIVERY_INVENTORY_FIELDS = (
 # the same version. A pre-N04 schema cannot
 # silently supply a partial inventory, so these columns are required verbatim.
 BUSINESS_EVIDENCE_FIELDS = {
+    "tax_filings": tuple(
+        "id firm_id company_id book_id period kind status external_ref occurred_at amount_cents evidence_note created_by created_at entry_kind supersedes_id workpaper_id workpaper_version workpaper_digest workpaper_status amount_check correction_reason".split()
+    ),
+    "tax_filing_attachments": tuple(
+        "id filing_id firm_id company_id book_id storage_key filename media_type sha256 size_bytes created_by created_at".split()
+    ),
+    "delivery_provider_events": tuple(
+        "id notification_id firm_id company_id book_id provider_event_id event_type occurred_at received_at payload_sha256 signature_timestamp raw_size".split()
+    ),
+    "handoff_tasks": tuple(
+        "id firm_id source_kind source_id source_version source_fingerprint book_id role assignee_id due_on next_action status reason created_by created_at updated_at superseded_at".split()
+    ),
     # Forward contract 202: manual assertions are evidence, never transport receipts.
     "notification_investigations": tuple(
         "id notification_id firm_id company_id book_id period package_id package_version manifest_sha256 recipient_user_id attempts revision conclusion evidence_ref reason idempotency_key created_by created_at".split()

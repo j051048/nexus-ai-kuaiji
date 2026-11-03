@@ -120,25 +120,45 @@ describe('批量办理可信边界', () => {
   });
 });
 
-  it('统一接手队列接受批量、通知和交付来源，保留种类与版本', () => {
-    const base = {
-      scope: { book_id: 'b', period: '2026-11', company_name: '甲', book_name: '甲账' },
-      role: 'ops' as const,
-      next_action: '核对来源',
-      assignee_id: null,
-      status: 'pending',
-      due_on: null,
-    };
-    const items = [
-      { ...base, source: { kind: 'batch_item' as const, id: 'i', version: 2, fingerprint: 'a'.repeat(64) } },
-      { ...base, source: { kind: 'notification_investigation' as const, id: 'n', version: 4, fingerprint: 'b'.repeat(64) } },
-      { ...base, role: 'delivery' as const, source: { kind: 'delivery_package' as const, id: 'p', version: 1, fingerprint: 'c'.repeat(64) } },
-    ];
-    expect(acceptHandoffs({ items })).toHaveLength(3);
-    expect(() =>
-      acceptHandoffs({ items: [{ ...items[0], source: { ...items[0].source, kind: 'forged' } }] }),
-    ).toThrow();
-  });
+it('统一接手队列接受批量、通知和交付来源，保留种类与版本', () => {
+  const base = {
+    scope: { book_id: 'b', period: '2026-11', company_name: '甲', book_name: '甲账' },
+    role: 'ops' as const,
+    next_action: '核对来源',
+    assignee_id: null,
+    status: 'pending',
+    due_on: null,
+  };
+  const items = [
+    {
+      ...base,
+      source: { kind: 'batch_item' as const, id: 'i', version: 2, fingerprint: 'a'.repeat(64) },
+    },
+    {
+      ...base,
+      source: {
+        kind: 'notification_investigation' as const,
+        id: 'n',
+        version: 4,
+        fingerprint: 'b'.repeat(64),
+      },
+    },
+    {
+      ...base,
+      role: 'delivery' as const,
+      source: {
+        kind: 'delivery_package' as const,
+        id: 'p',
+        version: 1,
+        fingerprint: 'c'.repeat(64),
+      },
+    },
+  ];
+  expect(acceptHandoffs({ items })).toHaveLength(3);
+  expect(() =>
+    acceptHandoffs({ items: [{ ...items[0], source: { ...items[0].source, kind: 'forged' } }] }),
+  ).toThrow();
+});
 
 it('批量项回到会计批次，不落到通知页', () => {
   const href = handoffOriginalHref({

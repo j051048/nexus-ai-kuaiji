@@ -61,6 +61,7 @@ CONSUMED_TARGETS = {
 }
 REFERENCE_COLUMNS = (
     "id",
+    "filing_id",
     "event_id",
     "intake_id",
     "case_id",

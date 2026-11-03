@@ -141,7 +141,15 @@ export function HandoffDialog({
                   <span>{item.assignee_id ? '已指派' : '待指派'}</span>
                 </header>
                 <p>
-                  {item.scope.book_name} · {item.source.kind === 'tax_workpaper' ? '底稿' : item.source.kind === 'batch_item' ? '批量项' : item.source.kind === 'notification_investigation' ? '通知' : '交付包'}版本 {item.source.version}
+                  {item.scope.book_name} ·{' '}
+                  {item.source.kind === 'tax_workpaper'
+                    ? '底稿'
+                    : item.source.kind === 'batch_item'
+                      ? '批量项'
+                      : item.source.kind === 'notification_investigation'
+                        ? '通知'
+                        : '交付包'}
+                  版本 {item.source.version}
                 </p>
                 <p>
                   {item.next_action}
@@ -156,10 +164,7 @@ export function HandoffDialog({
                     打开原记录核对
                   </button>
                 ) : (
-                  <a
-                    className="button secondary"
-                    href={handoffOriginalHref(item)}
-                  >
+                  <a className="button secondary" href={handoffOriginalHref(item)}>
                     打开原记录核对
                   </a>
                 )}
