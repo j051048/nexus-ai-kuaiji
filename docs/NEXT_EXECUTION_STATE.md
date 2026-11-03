@@ -4,7 +4,7 @@
 - 仓库：`C:\Users\Fei\Desktop\AI应用\nexus-ai-kuaiji`
 - 分支／HEAD：`main` / `0a0c6cab4ba18d2dfe5ce695b6844e01895c204b`
 - 最终候选（`tmp_test/next/next11-final/candidate.json`）：`source_files=1821`，`source_sha256=d3f7a1fbd9163d2b4f78d2fe26a39e85aafc3e7a0671993267f7406f61fc2f07`；`migration_files=328`，`migration_sha256=8bbd6f3fdb46addee9bb8737775ed7966f4a2938c8ea413d7c4d4952dd76444f`。该候选含并发任务的 `TaxFilingRecords.tsx` 修改与另一任务的提交 `0a0c6cab`，归属见 `NEXT_OWNERSHIP.md`。
-- 工作区：37 项未提交／未跟踪（认证修复、NEXT 文档、N05 e2e spec、N04 service/迁移/前端、P01 桥适配等；其余已由并发提交 `0a0c6cab` 纳入 HEAD）；未提交、未推送、未部署。
+- 工作区：已提交 `154537f7` 并推送 `origin/main`；并发任务仍有未提交修改（CI 文档、`NEXT_PHASE_DECISIONS.md`、`test_next_p0_boundaries.py` 等），不纳入本轮提交。未部署。
 - 基线候选（2026-11-02）：1790/`3fc6fc89…`、316/`f07ba1cd…`；历史 QA01–QA05 只对应旧 HEAD，不作为本轮通过依据。
 
 ## 状态表
@@ -53,4 +53,4 @@
 2. NEXT03 登录限流（429）属外部身份服务；最终候选动态探测已 19/19，不能把有限探测称为完整渗透。
 3. NEXT04 四类来源适配器已接，d3f7 SQLite 15、PG16/17 各 28、税审与交付包真实浏览器通过；批量失败/通知 unknown 两类来源仍无浏览器端到端证据。
 4. NEXT09 未达 100 并发、多实例、长时间稳定性和 PG 资源采样门槛。
-5. 未提交、未推送、未执行线上迁移、未调用真实模型或真实通知。
+5. 已提交 `154537f7` 并推送 `origin/main`；未部署、未执行线上迁移、未调用真实模型或真实通知。远端 CI：QA success、P01 failure、Accounting foundation 运行中。
