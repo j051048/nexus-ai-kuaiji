@@ -23,14 +23,21 @@ pytestmark = pytest.mark.skipif(not ADMIN_URL or not APP_URL or not WORKER_URL, 
 @pytest.fixture
 def pg_queue(pg_ai):
     case = pg_ai
+    _cancel_unfinished_queue_jobs(case)
     case.queue = QueueService(case.db, case.intelligence)
     worker_db = Database(WORKER_URL)
     worker_intelligence = IntelligenceService(worker_db, case.storage, case.provider)
     case.worker = QueueWorker(QueueService(worker_db, worker_intelligence), worker_id="domain-worker")
     yield case
+    _cancel_unfinished_queue_jobs(case)
+
+
+def _cancel_unfinished_queue_jobs(case):
+    """Keep shared-PostgreSQL tests from claiming one another's queued work."""
     with case.psycopg.connect(ADMIN_URL) as conn:
-        conn.execute("UPDATE accounting.ocr_attempts SET phase='finished',status='cancelled',finished_at=accounting.ocr_utc_now() WHERE firm_id=%s AND status='running'", (case.manager.firm_id,))
-        conn.execute("UPDATE accounting.ocr_jobs SET status='cancelled',lease_token=NULL,lease_until=NULL,worker_id=NULL,finished_at=accounting.ocr_utc_now() WHERE firm_id=%s AND status IN ('queued','running','retry_wait')", (case.manager.firm_id,))
+        conn.execute("UPDATE accounting.ocr_attempts SET phase='finished',status='cancelled',finished_at=accounting.ocr_utc_now() WHERE status='running'")
+        conn.execute("UPDATE accounting.ocr_jobs SET status='cancelled',lease_token=NULL,lease_until=NULL,worker_id=NULL,finished_at=accounting.ocr_utc_now() WHERE status IN ('queued','running','retry_wait')")
+        conn.execute("UPDATE accounting.proposal_jobs SET status='cancelled',lease_token=NULL,lease_until=NULL,worker_id=NULL,finished_at=accounting.ocr_utc_now() WHERE status IN ('waiting','queued','running','retry_wait')")
 
 
 def enqueue(case, event):

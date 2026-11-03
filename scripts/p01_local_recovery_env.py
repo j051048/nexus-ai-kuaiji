@@ -148,9 +148,7 @@ def port_is_occupied(port):
 
 def occupied_ports():
     return [
-        port
-        for port in (25496, 25497, 25498, 25499, 25510, 25511, 25512)
-        if port_is_occupied(port)
+        port for port in (25496, 25497, 25498, 25499, 25510, 25511, 25512) if port_is_occupied(port)
     ]
 
 
