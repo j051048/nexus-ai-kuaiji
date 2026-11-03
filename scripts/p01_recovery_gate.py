@@ -142,6 +142,7 @@ def validate_evidence(path, major):
 
 
 REGRESSION_FILES = (
+    "nexus_backend/tests/test_recovery_port_lifecycle.py",
     "test_next_p0_boundaries.py",
     "test_next_p0_release_contract.py",
     "test_c01_identity_recovery.py",
@@ -229,6 +230,23 @@ def error_diagnostic(error, phase):
         else "Inspect the private run environment; no raw connection error is published.",
         "next_action": "Preserve this run; correct the stated phase and prepare a new source/empty-target pair.",
     }
+
+
+def failed_case_names(path):
+    """Return only test identities, never assertion text that may embed data."""
+    try:
+        tree = ET.parse(path).getroot()
+    except (ET.ParseError, OSError):
+        return []
+    names = []
+    for case in tree.iter("testcase"):
+        if case.find("failure") is None and case.find("error") is None:
+            continue
+        name = case.get("name")
+        classname = case.get("classname")
+        if name:
+            names.append(f"{classname}::{name}" if classname else name)
+    return names[:20]
 
 
 def require_migration_floor(rows):
@@ -504,6 +522,9 @@ def _run_gate(output, *, config_dir, timeout=3600):
         report["status"] = "passed"
     except Exception as error:
         report["diagnostic"] = error_diagnostic(error, phase)
+        failed = failed_case_names(output / f"{phase}.xml") if phase else []
+        if failed:
+            report["diagnostic"]["failed_cases"] = failed
     # A public result is always an outcome of this invocation, never hand-merged.
     (public / "summary.json").write_text(
         json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
