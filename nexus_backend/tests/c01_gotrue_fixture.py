@@ -11,7 +11,6 @@ import json
 import os
 from pathlib import Path
 import secrets
-import socket
 import subprocess
 import time
 from urllib.parse import urlsplit, urlunsplit
@@ -26,6 +25,7 @@ from app.auth import AuthSettings, SupabaseAuthenticator
 from c01_identity_fixture import _private_write, _secure, LocalIdentityFixture
 from test_c01_full_recovery_postgres import ROOT, _read_config, recovery_config_directory
 from c01_wsl_bridge import call
+from scripts.p01_local_recovery_env import port_is_occupied
 
 ARTIFACT_SHA256 = "f2aa147268461f74784ddc8b2240aa446ee71ceb9633bac41c30e7b852a860aa"
 BRIDGE = recovery_config_directory() / "wsl-bridge-private.json"
@@ -146,8 +146,8 @@ class RealGoTrue:
         self.directory.mkdir(parents=True, exist_ok=False)
         _secure(self.directory)
         if os.environ.get("C01_AUTH_PORT_FORWARDED") != "1":
-            with socket.socket() as probe:
-                probe.bind(("127.0.0.1", self.port))
+            if port_is_occupied(self.port):
+                raise RuntimeError("本机身份测试端口已有监听，禁止接管")
         call(
             BRIDGE,
             "start_gotrue",

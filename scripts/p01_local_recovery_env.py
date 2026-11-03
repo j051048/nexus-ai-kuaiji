@@ -129,15 +129,29 @@ def read_plan(directory):
     return plan
 
 
+def port_is_occupied(port):
+    """Probe like our POSIX servers, without confusing TIME_WAIT with a listener.
+
+    Windows SO_REUSEADDR permits binding an active listener's address; never
+    enable it there. This check grants no ownership: actual startup and the
+    environment/bridge identity checks must still succeed after this probe.
+    """
+    with socket.socket() as probe:
+        if os.name != "nt":
+            probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            probe.bind(("127.0.0.1", port))
+        except OSError:
+            return True
+    return False
+
+
 def occupied_ports():
-    occupied = []
-    for port in (25496, 25497, 25498, 25499, 25510, 25511, 25512):
-        with socket.socket() as probe:
-            try:
-                probe.bind(("127.0.0.1", port))
-            except OSError:
-                occupied.append(port)
-    return occupied
+    return [
+        port
+        for port in (25496, 25497, 25498, 25499, 25510, 25511, 25512)
+        if port_is_occupied(port)
+    ]
 
 
 def validate_owned_cluster(plan, name):
