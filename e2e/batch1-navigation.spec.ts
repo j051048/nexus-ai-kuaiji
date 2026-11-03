@@ -54,10 +54,7 @@ test('账套与凭证链接可直达、刷新、后退；未保存修改明确�
   await expect(page.locator('#journal-description')).toHaveValue(draft.description, {
     timeout: 30_000,
   });
-  await page
-    .getByRole('navigation', { name: '主导航' })
-    .getByRole('button', { name: '我的待办', exact: true })
-    .click();
+  await page.getByRole('link', { name: '衡账，返回工作台', exact: true }).click();
   await expect(page).toHaveURL(/\/workspace\/home/);
   await page.goBack();
   await expect(page.locator('#journal-description')).toHaveValue(draft.description);

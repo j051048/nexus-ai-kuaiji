@@ -6,6 +6,7 @@ Attack statements deliberately bypass Python AccessControl, never database roles
 
 from contextlib import contextmanager
 import json
+import time
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -15,6 +16,7 @@ from app.accounting.database import Database, PostgresConnection
 from app.accounting.domain import Actor
 from app.delivery.followup_models import DeliveryGrantRequest, DeliveryTaskRequest
 from app.delivery.followups import DeliveryFollowupService
+from app.delivery.receipts import ProviderReceiptService, sign
 from scripts.pg_suite_target import load_suite_target, verify_suite_target
 from test_monthly_delivery_postgres import package_case  # noqa: F401
 from test_p0_close_upload_postgres import p0_case  # noqa: F401
@@ -373,3 +375,36 @@ def test_app_cancellation_cannot_forge_worker_evidence(notification_case, field)
                 f"UPDATE delivery_notifications SET state='cancelled',{field}='forged' WHERE id=?",
                 (c.notification["notification_id"],),
             )
+
+
+def test_provider_receipt_uses_worker_insert_and_app_tenant_read(notification_case, monkeypatch):
+    """205 must actually separate worker INSERT from app tenant SELECT on PG."""
+    c = notification_case
+    target = verify_suite_target(load_suite_target())
+    worker = Database(target["worker"])
+    monkeypatch.setenv("DELIVERY_CALLBACK_SECRET", "next06-postgres-callback-secret-0123456789")
+    event_id = "n03-callback-" + uuid4().hex
+    raw = json.dumps(
+        {
+            "notification_id": c.notification["notification_id"],
+            "provider_event_id": event_id,
+            "event_type": "delivered",
+            "occurred_at": "2026-10-30T09:00:00+00:00",
+        }
+    ).encode()
+    timestamp = str(int(time.time()))
+    try:
+        receipt = ProviderReceiptService(worker).receive(
+            raw, timestamp, sign(raw, timestamp), event_id
+        )
+        assert receipt["duplicate"] is False
+        assert ProviderReceiptService(worker).receive(
+            raw, timestamp, sign(raw, timestamp), event_id
+        )["duplicate"] is True
+        timeline = ProviderReceiptService(c.db).timeline(
+            c.reviewer, c.book["id"], c.notification["notification_id"]
+        )
+        assert timeline["delivered"] is True
+        assert timeline["signed"] is False
+    finally:
+        worker.close()

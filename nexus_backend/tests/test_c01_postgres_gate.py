@@ -61,3 +61,50 @@ def test_malformed_xml_never_becomes_an_empty_success(tmp_path):
     path.write_text("<broken")
     with pytest.raises(GateError):
         validate_junit(path)
+
+
+def test_timeout_retains_sanitized_partial_evidence(tmp_path, monkeypatch):
+    import json
+    import subprocess
+    from contextlib import contextmanager
+    from scripts import c01_postgres_gate as gate
+    from scripts import migrate_accounting
+
+    config = {"admin": "postgresql://test:private-ci-secret@127.0.0.1:25616/ak01_local_ak05_test"}
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps(config))
+
+    @contextmanager
+    def connection(*_):
+        class FakeConnection:
+            def execute(self, *_):
+                return self
+
+            def fetchone(self):
+                return (160000,)
+
+        yield FakeConnection()
+
+    monkeypatch.setattr(gate, "validate_config", lambda value: value)
+    monkeypatch.setattr(gate, "local_connection", connection)
+    monkeypatch.setattr(gate, "assert_server_and_roles", lambda *_: None)
+    monkeypatch.setattr(gate, "candidate_fingerprint", lambda: {"head": "frozen"})
+    monkeypatch.setattr(migrate_accounting, "status", lambda *_: [])
+
+    def timeout(command, **kwargs):
+        assert kwargs["timeout"] == 600
+        raise subprocess.TimeoutExpired(
+            command, 600, output=b"test_first PASSED private-ci-secret", stderr=b"waiting"
+        )
+
+    monkeypatch.setattr(gate.subprocess, "run", timeout)
+    out = tmp_path / "report"
+    assert gate.run_gate(path, out) is False
+    log = (out / "c01.log").read_text()
+    assert "test_first PASSED" in log and "waiting" in log
+    assert "private-ci-secret" not in log
+    report = json.loads((out / "summary.json").read_text())
+    assert report["status"] == "failed"
+    assert report["timeout_seconds"] == 600
+    assert report["elapsed_seconds"] >= 0
+    assert not report.get("passed")

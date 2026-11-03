@@ -4,6 +4,11 @@ import { presentationRole, workSurface } from '../src/workspace-presentation';
 export async function openNavigation(page: Page) {
   const opener = page.getByRole('button', { name: '打开工作空间导航', exact: true });
   if ((page.viewportSize()?.width ?? 1280) > 740) return;
+  await expect
+    .poll(
+      async () => (await page.locator('.client-portal').isVisible()) || (await opener.isVisible()),
+    )
+    .toBe(true);
   if (await page.locator('.client-portal').isVisible()) return;
   await expect(opener).toBeVisible();
   if ((await opener.getAttribute('aria-expanded')) !== 'true') await opener.click();
@@ -14,6 +19,14 @@ export async function openNavigation(page: Page) {
 
 export async function choosePersona(page: Page, persona: string) {
   await openNavigation(page);
+  const chooser = page.getByLabel('切换验证身份');
+  await expect(chooser).toBeVisible();
+  // A restored local persona does not trigger React onChange when reselected.
+  if ((await chooser.inputValue()) === persona) {
+    const close = page.getByRole('button', { name: '关闭导航', exact: true });
+    if (await close.isVisible()) await close.click();
+    return;
+  }
   // A direct-page reload can briefly render a generic firm shell before the
   // newly signed-in employee's profile arrives. Observe that identity's real
   // profile response; do not add a hidden extra API read or guess from its name.
@@ -63,16 +76,23 @@ export async function choosePersona(page: Page, persona: string) {
 }
 
 export async function openBusiness(page: Page) {
+  await openNavigation(page);
   const portal = page.getByRole('navigation', { name: '客户服务', exact: true });
+  const nav = page.getByRole('navigation', { name: '主导航', exact: true });
+  const labels = /^(业务事项|我的事项|部门事项|客户事项)$/;
+  const action = nav.getByRole('button', { name: labels });
+  const more = nav.locator('summary').filter({ hasText: /^日常业务$/ });
+  await expect
+    .poll(async () => (await portal.count()) + (await action.count()) + (await more.count()))
+    .toBeGreaterThan(0);
   if (await portal.count()) {
-    await portal.getByRole('button', { name: /^(我的事项|部门事项|业务事项)$/ }).click();
+    await portal.getByRole('button', { name: labels }).click();
     return;
   }
-  await openNavigation(page);
-  const nav = page.getByRole('navigation', { name: '主导航', exact: true });
-  const action = nav.getByRole('button', { name: /^(业务事项|我的事项|部门事项|客户事项)$/ });
-  if (!(await action.count())) {
-    const more = nav.locator('summary').filter({ hasText: /^日常业务$/ });
+  if (
+    !(await action.first().isVisible()) &&
+    (await more.locator('..').getAttribute('open')) === null
+  ) {
     await more.click();
   }
   await action.first().click();
@@ -82,12 +102,20 @@ export async function openAccounting(page: Page) {
   await openNavigation(page);
   const nav = page.getByRole('navigation', { name: '主导航', exact: true });
   // 身份尚未返回时导航壳可能是空的：先等真实菜单项出现，再决定主入口。
-  await expect(nav.getByRole('button').first()).toBeVisible({ timeout: 30_000 });
   const primary = nav.getByRole('button', { name: /^(客户账套|客户企业)$/ });
+  const professional = nav.getByRole('button', { name: '会计工作台', exact: true });
+  const summary = nav.locator('summary').filter({ hasText: /^会计工作区$/ });
+  await expect
+    .poll(
+      async () => (await primary.count()) + (await professional.count()) + (await summary.count()),
+      {
+        timeout: 30_000,
+      },
+    )
+    .toBeGreaterThan(0);
   if (await primary.count()) {
     await primary.click();
   } else {
-    const summary = page.locator('summary').filter({ hasText: /^会计工作区$/ });
     if ((await summary.locator('..').getAttribute('open')) === null) await summary.click();
     await nav.getByRole('button', { name: '会计工作台', exact: true }).click();
   }

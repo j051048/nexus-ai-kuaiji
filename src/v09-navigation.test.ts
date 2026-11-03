@@ -46,6 +46,16 @@ const roles: PresentationRole[] = [
 ];
 
 describe('V09 navigation regression', () => {
+  it('keeps company managers able to open their authorized submission workflow', () => {
+    const profile = { ...managerOnly, display_role: 'manager' as const, can_submit: true };
+    const caps = projectNavigationCapabilities(profile, context);
+    expect(primaryNav('manager', caps).map((item) => item.id)).toContain('business');
+    expect(primaryNav('manager', caps)).toHaveLength(5);
+    expect(
+      primaryNav('manager', { ...caps, business: false }).map((item) => item.id),
+    ).not.toContain('business');
+    expect(primaryNav('manager', caps).map((item) => item.id)).not.toContain('review');
+  });
   it('does not promote management capability into accounting navigation', () => {
     const caps = projectNavigationCapabilities(managerOnly, { ...context, operations: true });
     expect(primaryNav('firm_owner', caps).map((item) => item.id)).toEqual([

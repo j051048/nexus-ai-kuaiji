@@ -55,16 +55,25 @@ export function RevisionWorkbench({
   const [busy, setBusy] = useState(false),
     [loading, setLoading] = useState(false);
   const epoch = useRef(0),
+    openEpoch = useRef(0),
     active = useRef(true),
     lock = useRef(false),
     scope = useRef(session.scope_key);
   const commandKey = useRef<{ identity: string; key: string } | null>(null);
+  const openedEvent = useRef('');
+  const payloadRef = useRef(payload),
+    contextRef = useRef(context),
+    reasonRef = useRef(reason);
+  payloadRef.current = payload;
+  contextRef.current = context;
+  reasonRef.current = reason;
   scope.current = session.scope_key;
   useEffect(() => {
     active.current = true;
     return () => {
       active.current = false;
       epoch.current += 1;
+      openEpoch.current += 1;
     };
   }, []);
   useEffect(() => {
@@ -112,13 +121,36 @@ export function RevisionWorkbench({
     async (id: string, signal?: AbortSignal) => {
       if (!id.trim()) return;
       const started = session.scope_key;
+      const generation = ++openEpoch.current;
       try {
         const data = await api<RevisionContext>(
           `/fact-revisions/context/${encodeURIComponent(id.trim())}`,
           session,
           { signal },
         );
-        if (!active.current || signal?.aborted || scope.current !== started) return;
+        if (
+          !active.current ||
+          signal?.aborted ||
+          scope.current !== started ||
+          generation !== openEpoch.current
+        )
+          return;
+        // Mark only a successfully accepted read. StrictMode can cancel the
+        // first setup before it completes; that cancelled setup is not loaded.
+        openedEvent.current = `${started}:${id.trim()}`;
+        const current = contextRef.current;
+        const draft = payloadRef.current;
+        if (
+          current &&
+          draft &&
+          current.event_id === data.event_id &&
+          (revisionChanges(current.payload, draft).length > 0 || reasonRef.current.trim())
+        ) {
+          // A slower duplicate read of the same event must not replace a form
+          // the user has already edited.
+          setNotice('已保留当前修订内容，重复读取结果未覆盖表单。');
+          return;
+        }
         setContext(data);
         setPayload(data.payload);
         setTargetBook(data.mapping.book_id);
@@ -126,7 +158,12 @@ export function RevisionWorkbench({
         setError('');
         commandKey.current = null;
       } catch (failure) {
-        if (active.current && !signal?.aborted && scope.current === started) {
+        if (
+          active.current &&
+          !signal?.aborted &&
+          scope.current === started &&
+          generation === openEpoch.current
+        ) {
           setContext(null);
           setPayload(null);
           setError(errorMessage(failure));
@@ -138,10 +175,14 @@ export function RevisionWorkbench({
   useEffect(() => {
     setEventId(initialEventId);
     if (!initialEventId) return;
+    // A refreshed session object must not reload the same event and overwrite
+    // edits the user has already made in the form.
+    const opened = `${session.scope_key}:${initialEventId}`;
+    if (openedEvent.current === opened) return;
     const controller = new AbortController();
     void openEvent(initialEventId, controller.signal);
     return () => controller.abort();
-  }, [initialEventId, openEvent]);
+  }, [initialEventId, openEvent, session.scope_key]);
   async function run(identity: string, action: (key: string) => Promise<FactRevision>) {
     if (lock.current) return;
     const started = session.scope_key;

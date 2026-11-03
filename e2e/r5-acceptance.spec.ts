@@ -1,3 +1,4 @@
+import { independentReviewer, pinReviewer } from './independent-review';
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 import { openNavigation } from './ui-navigation';
 
@@ -31,7 +32,10 @@ for (const failure of ['503', 'offline'] as const) {
     const error = page.locator('.workspace-load-error');
     await expect(error).toBeVisible();
     await expect(error).not.toHaveText('');
-    if (failure === '503') await expect(error).toContainText('R5 合成待办服务暂不可用');
+    if (failure === '503') {
+      await expect(error).not.toContainText('R5 合成待办服务暂不可用');
+      await expect(error).toContainText('暂时');
+    }
     expect(failedRequests).toBe(1);
     await expect(page.locator('.auth-shell')).toHaveCount(0);
     await expect(page.getByText('当前筛选下没有待处理事项', { exact: true })).toHaveCount(0);
@@ -114,6 +118,7 @@ test('R5 真实本地批量复核部分成功，补件后仅重试失败凭证�
     });
     expect(response.status()).toBe(201);
     const book = await response.json();
+    await independentReviewer(request, headers, book.id);
     const description = `R5办公用品 ${tag}-${suffix}`;
     const imported = await request.post(`/api/books/${book.id}/imports`, {
       headers,
@@ -147,8 +152,9 @@ test('R5 真实本地批量复核部分成功，补件后仅重试失败凭证�
     data: { draft_ids: [items[0].draftId], idempotency_key: exportKey },
   });
   expect(beforeReview.status()).toBe(409);
+  await pinReviewer(page);
   await page.goto('/workspace/review');
-  await expect(page.getByLabel('切换验证身份')).toHaveValue('accountant');
+  await expect(page.getByRole('region', { name: '当前登录身份' })).toContainText('复核会计');
   const requests: Array<{ items: Array<{ draft_id: string }> }> = [];
   page.on('request', (requestValue) => {
     if (

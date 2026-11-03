@@ -3,6 +3,9 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { FilingList } from './TaxFilingRecords';
 import { formatYuan, parseFilings, type TaxFiling } from './tax-filings';
+import type { Session } from './types';
+
+const session = {} as Session;
 
 const row: TaxFiling = {
   id: 'fil_1',
@@ -15,6 +18,19 @@ const row: TaxFiling = {
   occurred_at: '2026-11-10',
   amount_cents: 3000,
   evidence_note: '电子税务局回执已归档',
+  entry_kind: 'registration',
+  supersedes_id: null,
+  correction_reason: '',
+  workpaper_version: 2,
+  workpaper_status: 'reviewed',
+  amount_check: 'match',
+  current: true,
+  attachment: {
+    id: 'att_1',
+    filename: '回执.pdf',
+    sha256: 'a'.repeat(64),
+    size_bytes: 1024,
+  },
 };
 
 describe('filing records', () => {
@@ -32,10 +48,10 @@ describe('filing records', () => {
   });
 
   it('renders the registered evidence and the not-filed boundary', () => {
-    expect(renderToStaticMarkup(createElement(FilingList, { rows: [] }))).toContain(
+    expect(renderToStaticMarkup(createElement(FilingList, { rows: [], session }))).toContain(
       '登记前一律视为「未申报」',
     );
-    const html = renderToStaticMarkup(createElement(FilingList, { rows: [row] }));
+    const html = renderToStaticMarkup(createElement(FilingList, { rows: [row], session }));
     expect(html).toContain('增值税 · 已缴款');
     expect(html).toContain('SB2026100001');
     expect(html).toContain('30.00 元');

@@ -65,8 +65,9 @@ test('真实本地 UI：任务中心可读，供应商未配置时单份与批�
     dialog.getByLabel(`识别附件 第五阶段虚构票据.png ${description}`, { exact: true }),
   ).toBeDisabled();
   await expect(dialog.getByLabel('批量识别企业')).toHaveValue(event.company_id);
-  await expect(dialog.getByLabel('批量识别企业').locator('option')).toHaveCount(1);
+  await expect(dialog.getByLabel('批量识别企业').locator('option:not([value=""])')).toHaveCount(1);
   await dialog.getByRole('button', { name: '取消', exact: true }).click();
+  await choosePersona(page, 'accountant');
   await openManagement(page);
   await page.getByRole('button', { name: '票据处理任务', exact: true }).click();
   await expect(
@@ -79,6 +80,7 @@ test('真实本地 UI：任务中心可读，供应商未配置时单份与批�
 test('显式合成队列响应仅验证展示：GET轮询、失败重试确认、取消依据和身份切换清空', async ({
   page,
 }) => {
+  test.setTimeout(60_000);
   await page.setViewportSize({ width: 1440, height: 1100 });
   await page.goto('/');
   const description = '第五阶段合成队列界面验证（非真实模型处理）';
@@ -183,6 +185,7 @@ test('显式合成队列响应仅验证展示：GET轮询、失败重试确认�
     };
     await route.fulfill({ status: 200, json: fixture });
   });
+  await choosePersona(page, 'accountant');
   await openManagement(page);
   await page.getByRole('button', { name: '票据处理任务', exact: true }).click();
   await page.getByRole('button', { name: /^查看识别批次 青屿设计（虚构示例）/ }).click();
@@ -210,8 +213,9 @@ test('显式合成队列响应仅验证展示：GET轮询、失败重试确认�
   await page.screenshot({ path: 'artifacts/queue-synthetic-task-ui.png', fullPage: true });
   await page.unroute('**/api/intelligence/batches?**');
   await page.unroute('**/api/intelligence/batches/synthetic-queue-rendering-only');
-  await page.getByLabel('切换验证身份').selectOption('accountant');
-  await expect(page.getByText(description, { exact: true })).toHaveCount(0);
+  await choosePersona(page, 'employee');
+  await expect(page.getByRole('complementary', { name: '票据处理任务详情' })).toHaveCount(0);
+  await choosePersona(page, 'accountant');
   await openManagement(page);
   await page.getByRole('button', { name: '票据处理任务', exact: true }).click();
   // Other tests may have retained authorized real XML jobs. Identity change
@@ -225,9 +229,11 @@ test('显式合成队列响应仅验证展示：GET轮询、失败重试确认�
 });
 
 test('显式合成入队回执：批量选择保留版本，响应丢失后复用编号并可离开页面', async ({ page }) => {
+  test.setTimeout(60_000);
   await page.goto('/');
   const description = '第五阶段合成入队回执验证（非真实模型处理）';
   const event = await createOriginal(page, description);
+  await expect(page.getByRole('button', { name: '批量识别本页票据', exact: true })).toBeVisible();
   const created = '2026-10-12T02:00:00Z';
   const fixture = {
     id: 'synthetic-enqueue-receipt-only',
@@ -321,6 +327,12 @@ test('显式合成入队回执：批量选择保留版本，响应丢失后复�
   await expect(dialog.getByRole('alert')).toContainText('保持当前选择再次提交将复用请求编号');
   await dialog.getByRole('button', { name: '提交 1 份识别任务', exact: true }).click();
   await expect(dialog).toHaveCount(0);
+  // The employee can submit their own originals; technical task inspection is
+  // a separate authorized accountant surface, not an employee navigation item.
+  await choosePersona(page, 'accountant');
+  await openManagement(page);
+  await page.getByRole('button', { name: '票据处理任务', exact: true }).click();
+  await page.getByRole('button', { name: /^查看识别批次 青屿设计（虚构示例）/ }).click();
   await expect(
     page
       .getByRole('complementary', { name: '票据处理任务详情', exact: true })
@@ -329,7 +341,7 @@ test('显式合成入队回执：批量选择保留版本，响应丢失后复�
   expect(keys).toHaveLength(2);
   expect(keys[1]).toBe(keys[0]);
   expect(synchronousOcrCalls).toBe(0);
-  await page.getByRole('button', { name: '业务事项', exact: true }).click();
+  await openBusiness(page);
   await expect(
     page.getByRole('heading', { name: '从业务发生，到有据可记。', exact: true }),
   ).toBeVisible();

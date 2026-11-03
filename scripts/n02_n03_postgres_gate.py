@@ -34,7 +34,7 @@ SUITES = {
     "n02": ("test_tax_workpaper_postgres.py", "test_n02_tax_concurrency_postgres.py"),
     "n03": ("test_n03_notification_postgres.py", "test_n03_worker_postgres.py"),
 }
-CASE_COUNTS = {"n02": 45, "n03": 55}
+CASE_COUNTS = {"n02": 45, "n03": 56}
 DURABILITY = ("fsync", "synchronous_commit", "full_page_writes")
 
 

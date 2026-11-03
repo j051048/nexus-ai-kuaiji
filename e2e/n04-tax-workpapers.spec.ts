@@ -125,7 +125,7 @@ for (const viewport of [
     });
 
     // Switch to a real, separately authorized local reviewer. No privilege claims are forged.
-    await pinPersona(page, 'finance');
+    await pinPersona(page, 'reviewer');
     panel = await openTax(page, f);
     await expect(panel.getByRole('button', { name: '保存税务档案', exact: true })).toHaveCount(0);
     await expect(
@@ -152,7 +152,7 @@ for (const viewport of [
       expected_version: paper.version,
     });
     const approved = await reviewResponse.json();
-    expect(approved.reviewed_by).toBe('local-business-finance');
+    expect(approved.reviewed_by).toBe('local-reviewer');
     expect(approved.created_by).not.toBe(approved.reviewed_by);
     await expect(panel.getByRole('combobox', { name: '底稿版本', exact: true })).toContainText(
       '已复核',
@@ -177,7 +177,7 @@ for (const viewport of [
       (await csvResponse.allHeaders())['x-content-sha256'],
     );
     expect(bytes.toString('utf8')).toContain('申报状态,not_filed');
-    expect(bytes.toString('utf8')).toContain('独立复核人,"local-business-finance"');
+    expect(bytes.toString('utf8')).toContain('独立复核人,"local-reviewer"');
     expect(download.suggestedFilename()).toBe(`税务底稿-2026-10-v${paper.version}.csv`);
     await expect(panel).toContainText('系统未提交申报');
     await expect
@@ -328,11 +328,11 @@ test('N04 撤销真实账套授权后重新读取清除金额和下载操作', a
   const f = await taxFullFixture(request),
     paper = await taxPaper(request, f);
   await reviewTaxPaper(request, f, paper);
-  await pinPersona(page, 'finance');
+  await pinPersona(page, 'reviewer');
   const panel = await openTax(page, f);
   await expectAmount(panel, '测算增值税', '30.00');
   await checked(
-    await request.delete(`/api/books/${f.book.id}/members/local-business-finance`, {
+    await request.delete(`/api/books/${f.book.id}/members/local-reviewer`, {
       headers: f.headers,
     }),
     200,

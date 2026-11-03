@@ -1,11 +1,13 @@
 import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
+import { independentReviewer, pinReviewer } from './independent-review';
 import { choosePersona, openBusiness } from './ui-navigation';
 
 test('无部门企业管理员上传 XML 核对直接提交，由授权会计接收、独立复核后导出', async ({
   page,
   request,
 }) => {
+  test.setTimeout(90_000);
   const accountant = await (await request.get('/api/session?persona=accountant')).json();
   const finance = await (await request.get('/api/session?persona=finance')).json();
   const headers = { Authorization: `Bearer ${accountant.token}` },
@@ -39,7 +41,7 @@ test('无部门企业管理员上传 XML 核对直接提交，由授权会计接
       (
         await request.put(`/api/books/${book.id}/members/local-business-finance`, {
           headers,
-          data: { role: 'reviewer' },
+          data: { role: 'editor' },
         })
       ).status(),
     ).toBe(200);
@@ -200,7 +202,7 @@ test('无部门企业管理员上传 XML 核对直接提交，由授权会计接
     ).toBe(200);
     const applicantBook = await request.get(`/api/books/${book.id}`, { headers: adminHeaders });
     expect(applicantBook.status()).toBe(200);
-    expect((await applicantBook.json()).book.permissions.review).toBe(true);
+    expect((await applicantBook.json()).book.permissions.review).toBe(false);
     expect(
       (
         await request.post(`/api/books/${book.id}/drafts/${draftId}/approve`, {
@@ -209,14 +211,19 @@ test('无部门企业管理员上传 XML 核对直接提交，由授权会计接
         })
       ).status(),
     ).toBe(403);
-    await page.getByRole('button', { name: '打开会计复核', exact: true }).click();
-    await expect(page.locator('#journal-description')).toHaveValue(
+    await independentReviewer(request, headers, book.id);
+    await pinReviewer(page);
+    await page.goto(`/workspace/review?review_book=${book.id}&review_draft=${draftId}`);
+    const drawer = page.getByRole('dialog', { name: '原件与凭证，一起核对', exact: true });
+    await expect(drawer.getByLabel('同屏凭证摘要', { exact: true })).toHaveValue(
       `XML 无部门直提办公用品 ${marker}`,
     );
-    await page.getByRole('button', { name: '确认审核', exact: true }).click();
-    await expect(
-      page.getByText('凭证已审核，可选中后导出。审核不会写入外部正式账本。', { exact: true }),
-    ).toBeVisible();
+    await expect(drawer.getByRole('button', { name: '确认审核', exact: true })).toBeDisabled();
+    await drawer.getByLabel('我已核对同屏原件与分录', { exact: true }).check();
+    await drawer.getByRole('button', { name: '确认审核', exact: true }).click();
+    await expect(drawer.getByText('已审核，待导出', { exact: true })).toBeVisible();
+    await drawer.getByRole('button', { name: '返回列表', exact: true }).click();
+    await page.goto(`/workspace/accounting?book=${book.id}`);
     await page.getByLabel(`选择凭证 XML 无部门直提办公用品 ${marker}`, { exact: true }).check();
     const downloadPromise = page.waitForEvent('download');
     await page.getByRole('button', { name: '导出凭证 CSV', exact: true }).click();

@@ -17,6 +17,10 @@ const HEADERS = [
   '发票状态',
 ].join(',');
 
+test.afterEach(async ({ page }) => {
+  await page.unrouteAll({ behavior: 'wait' });
+});
+
 function invoice(number: string, status = '正常') {
   return [
     '数电票（增值税普通发票）',
@@ -171,11 +175,35 @@ test('电子税务局发票导出表：导入批次留在对账页，只作勾�
   const precheck = panel.getByLabel('发票导入预检结果');
   await expect(precheck).toContainText('待确认');
   await expect(precheck).toContainText('有效总行数');
-  await precheck.getByRole('button', { name: '确认导入并勾稽', exact: true }).click();
-  await expect(precheck).toHaveCount(0);
-  await expect(panel).toContainText('已导入 1 行');
   const originalBatch = panel.getByRole('button').filter({ hasText: batch.filename }).first();
-  await expect(originalBatch).toBeVisible();
+  let releaseDetail!: () => void;
+  const detailGate = new Promise<void>((resolve) => {
+    releaseDetail = resolve;
+  });
+  let detailPending = false;
+  const detailPattern = `**/api/books/${book.id}/invoice-imports/*`;
+  await page.route(detailPattern, async (route) => {
+    if (route.request().method() !== 'GET' || route.request().url().endsWith(`/${batch.id}`)) {
+      await route.continue();
+      return;
+    }
+    const response = await route.fetch();
+    detailPending = true;
+    await detailGate;
+    await route.fulfill({ response });
+  });
+  try {
+    await precheck.getByRole('button', { name: '确认导入并勾稽', exact: true }).click();
+    await expect(precheck).toHaveCount(0);
+    await expect(panel).toContainText('已导入 1 行');
+    await expect.poll(() => detailPending).toBe(true);
+    // The automatic detail response must finish before another batch can be
+    // selected; otherwise it overwrites the user's more recent selection.
+    await expect(originalBatch).toBeDisabled();
+  } finally {
+    releaseDetail();
+  }
+  await expect(originalBatch).toBeEnabled();
   await originalBatch.click();
   await expect(panel.locator('table')).toContainText(`2499200${suffix}1`);
   await expect(panel).toContainText('重复');

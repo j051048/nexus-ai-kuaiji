@@ -294,11 +294,18 @@ class NotificationDispatcher:
             self._notification_audit(
                 conn, row, "delivery.notification.begin", {"attempt": row["attempts"] + 1}
             )
-            return dict(
+            sending = dict(
                 conn.execute(
                     "SELECT * FROM delivery_notifications WHERE id=?", (notification_id,)
                 ).fetchone()
             )
+            # Same authorization/lease transaction as the send marker. Never
+            # persist addresses in payloads or expose a free user lookup to workers.
+            recipient = conn.execute(
+                "SELECT email FROM users WHERE id=?", (sending["recipient_user_id"],)
+            ).fetchone()
+            sending["recipient_email"] = (recipient["email"] or "").strip() if recipient else ""
+            return sending
 
     def finish(self, notification_id, lease_token, outcome, sink_ref="", error=""):
         if outcome not in {"sink_written", "failed", "unknown"}:

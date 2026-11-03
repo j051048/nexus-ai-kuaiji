@@ -1,5 +1,6 @@
 import hashlib
 from typing import Literal
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Query, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, StrictInt
@@ -44,6 +45,14 @@ class TaxFilingWrite(BaseModel):
     occurred_at: str = Field(pattern=r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
     amount_cents: StrictInt = Field(default=0, ge=0)
     evidence_note: str = Field(default="", max_length=500)
+    entry_kind: Literal["registration", "correction", "void"] = "registration"
+    supersedes_id: str | None = Field(default=None, max_length=100)
+    correction_reason: str = Field(default="", max_length=1000)
+
+
+class TaxFilingAttach(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    upload_id: str = Field(min_length=1, max_length=100)
 
 
 class TaxWorkpaperReview(BaseModel):
@@ -100,6 +109,39 @@ def build_tax_router(actor_dependency):
         tax=Depends(service),
     ):
         return {"filings": filings.list_for(tax, current, book_id, period)}
+
+    @router.post("/filings/{filing_id}/attachments", status_code=201)
+    def attach_filing_original(
+        filing_id: str,
+        payload: TaxFilingAttach,
+        request: Request,
+        current=Depends(actor_dependency),
+        tax=Depends(service),
+    ):
+        return filings.attach(
+            request.app.state.uploads, tax, current, filing_id, payload.upload_id
+        )
+
+    @router.get("/filings/{filing_id}/attachments/{attachment_id}")
+    def download_filing_original(
+        filing_id: str,
+        attachment_id: str,
+        request: Request,
+        current=Depends(actor_dependency),
+        tax=Depends(service),
+    ):
+        metadata = filings.attachment_for(tax, current, filing_id, attachment_id)
+        data = request.app.state.attachment_store.read(metadata)
+        return Response(
+            data,
+            media_type=metadata["media_type"],
+            headers={
+                "Content-Disposition": f"attachment; filename*=UTF-8''{quote(metadata['filename'], safe='')}",
+                "Content-Security-Policy": "sandbox; default-src 'none'",
+                "Cache-Control": "private, no-store",
+                "X-Content-Sha256": metadata["sha256"],
+            },
+        )
 
     @router.get("/profile")
     def read_profile(

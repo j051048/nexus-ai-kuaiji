@@ -79,6 +79,7 @@
         "nexus_backend.tests.test_n03_notification_postgres::test_native_notification_scope_binding[package_id]",
         "nexus_backend.tests.test_n03_notification_postgres::test_native_notification_scope_binding[payload_json]",
         "nexus_backend.tests.test_n03_notification_postgres::test_native_notification_scope_binding[recipient_user_id]",
+        "nexus_backend.tests.test_n03_notification_postgres::test_provider_receipt_uses_worker_insert_and_app_tenant_read",
         "nexus_backend.tests.test_n03_notification_postgres::test_viewer_cannot_insert_notification",
         "nexus_backend.tests.test_n03_notification_postgres::test_viewer_cannot_mutate_pending_notification",
         "nexus_backend.tests.test_n03_notification_postgres::test_viewer_cannot_revoke_delivery_grant",

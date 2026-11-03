@@ -185,6 +185,7 @@ export function InvoiceImportsPanel({
   }, [accrualRow, accrualBusy]);
 
   async function openDetail(id: string) {
+    if (busy) return;
     if (detail?.id === id) {
       setDetail(null);
       return;
@@ -498,6 +499,7 @@ export function InvoiceImportsPanel({
             <li key={item.id}>
               <button
                 type="button"
+                disabled={busy}
                 className={'invoice-imports-batch' + (detail?.id === item.id ? ' selected' : '')}
                 onClick={() => void openDetail(item.id)}
               >

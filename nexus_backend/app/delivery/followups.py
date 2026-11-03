@@ -703,8 +703,8 @@ class DeliveryFollowupService(NotificationDispatcher):
                 continue
             outcome, reference, error = "unknown", "", ""
             envelope = json.loads(sending["payload_json"])
-            envelope["recipient_email"] = self.recipient_email(sending["recipient_user_id"])
             try:
+                envelope["recipient_email"] = sending["recipient_email"]
                 reference = channel.deliver(envelope)
                 if not isinstance(reference, str) or not reference.strip() or len(reference) > 500:
                     reference, error = "", "invalid_receipt"
@@ -724,12 +724,6 @@ class DeliveryFollowupService(NotificationDispatcher):
                     {"sink_written": "sent", "failed": "failed", "unknown": "unknown"}[outcome]
                 ] += 1
         return result
-
-    def recipient_email(self, user_id: str) -> str:
-        """Read the current address; a stale queue entry must not inherit an old one."""
-        with self.worker_transaction() as conn:
-            row = conn.execute("SELECT email FROM users WHERE id=?", (user_id,)).fetchone()
-        return (row["email"] or "").strip() if row else ""
 
     # ---------------------------------------------------------------- audit
     @staticmethod

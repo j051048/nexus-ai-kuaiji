@@ -31,6 +31,7 @@ ORIGINAL_TABLES = (
     ("migration_files", "1=1", ("firm_id", "company_id")),
     ("material_attachments", "1=1", ("firm_id", "company_id")),
     ("invoice_import_batches", "1=1", ("firm_id", "company_id")),
+    ("tax_filing_attachments", "1=1", ("firm_id", "company_id")),
     # Upload intents are never deleted. Stored/consuming rows may hold an
     # original that has not yet been attached to a business record.
     ("upload_intents", "state IN ('stored','consuming','consumed')", ("firm_id", "user_id")),
@@ -51,6 +52,12 @@ CONSUMED_TARGETS = {
     ),
     "bank_import": ("book", "books", "bank_import_files", "book_id"),
     "invoice_import": ("book", "books", "invoice_import_batches", "book_id"),
+    "tax_filing_attachment": (
+        "tax_filing",
+        "tax_filings",
+        "tax_filing_attachments",
+        "filing_id",
+    ),
 }
 REFERENCE_COLUMNS = (
     "id",

@@ -27,10 +27,12 @@ describe('local E2E runtime contract', { timeout: 15_000 }, () => {
       main: 'index.html',
       n04Signing: 'e2e/fixtures/n04-package-harness.html',
     });
+    expect(isolated.server?.watch).toBeNull();
     vi.stubEnv('E2E_LOCAL_ISOLATION', undefined);
     vi.resetModules();
     const production = (await import('../vite.config')).default;
     expect(production.build?.rollupOptions?.input).toBeUndefined();
+    expect(production.server?.watch).toBeUndefined();
   });
   it('configures identical loopback ports, strict ports and API proxies for dev and preview', async () => {
     const config = (await import('../vite.config')).default;
@@ -57,6 +59,38 @@ describe('local E2E runtime contract', { timeout: 15_000 }, () => {
     expect(preview.testDir).toBe(development.testDir);
     expect(preview.testIgnore).toBe(development.testIgnore);
     expect(preview.use?.baseURL).toBe(development.use?.baseURL);
+  });
+
+  it.each(['dev', 'preview'])(
+    'isolates parallel %s runs on explicit loopback ports',
+    async (mode) => {
+      vi.stubEnv('E2E_API_PORT', '18006');
+      vi.stubEnv('E2E_WEB_PORT', '18086');
+      const config = await readPlaywrightConfig(mode);
+      const [backend, frontend] = servers(config);
+      expect(config.use?.baseURL).toBe('http://127.0.0.1:18086');
+      expect(backend.command).toContain('--host 127.0.0.1 --port 18006');
+      expect(backend.url).toBe('http://127.0.0.1:18006/api/session');
+      expect(frontend.command).toContain('--port 18086');
+      expect(frontend.env?.ACCOUNTING_API_PROXY).toBe('http://127.0.0.1:18006');
+      expect(backend.env?.ACCOUNTING_ALLOWED_ORIGINS).toBe('http://127.0.0.1:18086');
+      expect(backend.reuseExistingServer).toBe(false);
+      expect(frontend.reuseExistingServer).toBe(false);
+    },
+  );
+
+  it.each(['0', '1023', '65536', '1.5', '18000;echo unsafe', 'https://example.invalid'])(
+    'rejects invalid test port %s',
+    async (port) => {
+      const { resolveE2ERuntime } = await import('../scripts/e2e_runtime');
+      expect(() => resolveE2ERuntime({ E2E_API_PORT: port })).toThrow('E2E_API_PORT');
+      expect(() => resolveE2ERuntime({ E2E_WEB_PORT: port })).toThrow('E2E_WEB_PORT');
+    },
+  );
+
+  it('rejects colliding backend and frontend ports', async () => {
+    const { resolveE2ERuntime } = await import('../scripts/e2e_runtime');
+    expect(() => resolveE2ERuntime({ E2E_API_PORT: '18080' })).toThrow('distinct');
   });
 
   it.each(['dev', 'preview'])('overrides inherited external services in %s mode', async (mode) => {

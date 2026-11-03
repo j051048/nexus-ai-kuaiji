@@ -1,0 +1,12 @@
+{
+  "schema": "next-profile-v1",
+  "task": "next04",
+  "phases": [
+    {
+      "name": "handoff-regression",
+      "command": [".venv/Scripts/python.exe", "-m", "pytest", "nexus_backend/tests/test_dcp05_handoff.py", "nexus_backend/tests/test_tax_workpaper.py", "nexus_backend/tests/test_ak04_handoff.py"],
+      "kind": "pytest",
+      "timeout": 900
+    }
+  ]
+}

@@ -106,13 +106,25 @@ function isolatedEnvironment(environ: RuntimeEnvironment): Record<string, string
   };
 }
 
+function localPort(environ: RuntimeEnvironment, key: string, fallback: number): number {
+  const raw = environ[key];
+  if (raw === undefined || raw === '') return fallback;
+  if (!/^\d{4,5}$/.test(raw) || Number(raw) < 1024 || Number(raw) > 65535) {
+    throw new Error(`${key} must be an integer port from 1024 to 65535`);
+  }
+  return Number(raw);
+}
+
 export function resolveE2ERuntime(environ: RuntimeEnvironment = process.env): E2ERuntime {
   const mode = environ.E2E_FRONTEND_MODE || 'dev';
   if (mode !== 'dev' && mode !== 'preview') {
     throw new Error('E2E_FRONTEND_MODE must be dev or preview');
   }
-  const baseURL = 'http://127.0.0.1:18080';
-  const backendURL = 'http://127.0.0.1:18000';
+  const webPort = localPort(environ, 'E2E_WEB_PORT', 18080);
+  const apiPort = localPort(environ, 'E2E_API_PORT', 18000);
+  if (webPort === apiPort) throw new Error('E2E backend and frontend ports must be distinct');
+  const baseURL = `http://127.0.0.1:${webPort}`;
+  const backendURL = `http://127.0.0.1:${apiPort}`;
   const database = `.codex/e2e/accounting-${mode}-${randomUUID()}.db`;
   const attachmentRoot = `${database}.attachments`;
   const environment = {
@@ -136,7 +148,7 @@ export function resolveE2ERuntime(environ: RuntimeEnvironment = process.env): E2
     },
     frontendCommand:
       mode === 'preview'
-        ? 'npm run build && npm run preview -- --port 18080'
-        : 'npm run dev -- --port 18080',
+        ? `npm run build && npm run preview -- --port ${webPort}`
+        : `npm run dev -- --port ${webPort}`,
   };
 }

@@ -18,7 +18,9 @@ async function prepare(request: APIRequestContext) {
   const context = await (
     await request.get('/api/business/context', { headers: headers.employee })
   ).json();
-  const company = context.companies[0];
+  const company = context.companies.find(
+    (item: { name: string }) => item.name === '青屿设计（虚构示例）',
+  );
   let response = await request.post('/api/business/events', {
     headers: headers.employee,
     data: {

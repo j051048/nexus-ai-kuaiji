@@ -5,7 +5,7 @@ test('人工客户回执与逐行差异：原审核版本留存，差异说明�
   request,
 }) => {
   const session = await (await request.get('/api/session?persona=accountant')).json();
-  const finance = await (await request.get('/api/session?persona=finance')).json();
+  const finance = await (await request.get('/api/session?persona=reviewer')).json();
   const headers = { Authorization: `Bearer ${session.token}` };
   const reviewerHeaders = { Authorization: `Bearer ${finance.token}` };
   const makerResponse = await request.get('/api/me', { headers });

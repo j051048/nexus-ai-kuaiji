@@ -17,7 +17,7 @@ test('P0 首页 bootstrap 单次、客户账套按需读取', async ({ page }) =
   expect(reads.some((path) => /^\/api\/books\/[^/]+/.test(path))).toBe(false);
 
   const nav = page.getByRole('navigation', { name: '主导航' });
-  const accounting = nav.getByRole('button', { name: '客户账套', exact: true });
+  const accounting = nav.getByRole('button', { name: '客户企业', exact: true });
   await expect(accounting).toBeVisible();
   await accounting.click();
   await expect.poll(() => reads.filter((path) => path === '/api/workbench').length).toBe(1);

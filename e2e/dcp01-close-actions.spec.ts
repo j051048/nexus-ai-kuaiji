@@ -47,7 +47,7 @@ async function reviewedManual(
  * checks must block with server-declared destinations. */
 async function blockedCloseFixture(request: APIRequestContext) {
   const headers = await identity(request, 'accountant');
-  const finance = await identity(request, 'finance');
+  const reviewer = await identity(request, 'reviewer');
   const tag = `阻断直达虚构-${crypto.randomUUID().slice(0, 8)}`;
   const company = await checked(
     await request.post('/api/companies', { headers, data: { name: tag, tax_id: '' } }),
@@ -65,17 +65,8 @@ async function blockedCloseFixture(request: APIRequestContext) {
     }),
     200,
   );
-  // The local harness seeds one firm owner only; DCP01 needs an independent
-  // reviewer identity that is allowed to hold book review responsibility.
   await checked(
-    await request.put('/api/firm/members', {
-      headers,
-      data: { email: 'finance@demo.example.invalid', role: 'reviewer' },
-    }),
-    200,
-  );
-  await checked(
-    await request.put(`/api/books/${book.id}/members/local-business-finance`, {
+    await request.put(`/api/books/${book.id}/members/local-reviewer`, {
       headers,
       data: { role: 'reviewer' },
     }),
@@ -84,7 +75,7 @@ async function blockedCloseFixture(request: APIRequestContext) {
   await checked(
     await request.post(`/api/books/${book.id}/ledger/managers`, {
       headers,
-      data: { user_id: 'local-business-finance', reason: '虚构场景独立核准正式期初' },
+      data: { user_id: 'local-reviewer', reason: '虚构场景独立核准正式期初' },
     }),
   );
   const ledger = await checked(await request.get(`/api/books/${book.id}/ledger`, { headers }), 200);
@@ -155,14 +146,14 @@ async function blockedCloseFixture(request: APIRequestContext) {
   );
   await checked(
     await request.post(`/api/opening/versions/${versionId}/approve`, {
-      headers: finance,
+      headers: reviewer,
       data: command,
     }),
     200,
   );
   await checked(
     await request.post(`/api/opening/versions/${versionId}/freeze`, {
-      headers: finance,
+      headers: reviewer,
       data: command,
     }),
     200,
@@ -176,7 +167,7 @@ async function blockedCloseFixture(request: APIRequestContext) {
   // One posted voucher gives both subledger checks real amounts to inspect:
   // a bank balance without coverage and a payable balance without control
   // configuration. Zero-activity months pass these checks vacuously.
-  await reviewedManual(request, finance, headers, {
+  await reviewedManual(request, reviewer, headers, {
     book_id: book.id,
     command_key: `dcp01-${crypto.randomUUID()}`,
     voucher_date: '2026-10-08',
@@ -189,11 +180,14 @@ async function blockedCloseFixture(request: APIRequestContext) {
   });
   const report = await checked(
     await request.post('/api/reports', {
-      headers: finance,
+      headers: reviewer,
       data: { book_id: book.id, period: '2026-10' },
     }),
   );
-  await checked(await request.post(`/api/reports/${report.report.id}/validate`, { headers: finance }), 200);
+  await checked(
+    await request.post(`/api/reports/${report.report.id}/validate`, { headers: reviewer }),
+    200,
+  );
   await checked(
     await request.post(`/api/reports/${report.report.id}/review`, {
       headers,
@@ -258,11 +252,15 @@ for (const viewport of [
     await expect(setup).toBeVisible();
     await expect(setup.getByRole('heading', { name: '控制科目配置', exact: true })).toBeVisible();
     await action.click();
-    await expect(setup.getByRole('heading', { name: '银行账户与覆盖证据', exact: true })).toBeVisible();
+    await expect(
+      setup.getByRole('heading', { name: '银行账户与覆盖证据', exact: true }),
+    ).toBeVisible();
     await expect(setup.getByText('正在读取当前配置…', { exact: false })).toHaveCount(0, {
       timeout: 30_000,
     });
-    await expect(setup.getByRole('heading', { name: '建立银行账户映射', exact: true })).toBeVisible();
+    await expect(
+      setup.getByRole('heading', { name: '建立银行账户映射', exact: true }),
+    ).toBeVisible();
     // Configuration is never a substitute for evidence: the panel says so.
     await expect(setup).toContainText('配置本身不会通过检查');
     // The opening wizard reuses the same close facts and shows who owns the rest.

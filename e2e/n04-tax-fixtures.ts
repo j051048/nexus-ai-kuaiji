@@ -55,7 +55,7 @@ export async function taxFullFixture(request: APIRequestContext) {
       },
     }),
   );
-  await reviewedManual(request, f.headers, f.finance, {
+  await reviewedManual(request, f.headers, f.reviewer, {
     book_id: f.book.id,
     command_key: `n04-tax-sales-${crypto.randomUUID()}`,
     voucher_date: '2026-10-16',
@@ -175,7 +175,7 @@ export async function reviewTaxPaper(
 ) {
   return checked(
     await request.post(`/api/tax/workpapers/${paper.id}/review`, {
-      headers: f.finance,
+      headers: f.reviewer,
       data: {
         book_id: f.book.id,
         expected_version: paper.version,
@@ -190,7 +190,7 @@ export async function changeFormalSource(
   request: APIRequestContext,
   f: Awaited<ReturnType<typeof taxFixture>>,
 ) {
-  return reviewedManual(request, f.headers, f.finance, {
+  return reviewedManual(request, f.headers, f.reviewer, {
     book_id: f.book.id,
     command_key: `n04-change-${crypto.randomUUID()}`,
     voucher_date: '2026-10-20',

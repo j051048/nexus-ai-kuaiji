@@ -1,3 +1,4 @@
+import { independentReviewer } from './independent-review';
 import { expect, test, type Page, type Response } from '@playwright/test';
 import type { WorkspaceProfile } from '../src/workspace-types';
 
@@ -111,7 +112,7 @@ test('岗位身份：真实员工、部门审批人与企业财务的标题、�
   }
 });
 
-test('岗位身份：真实财务兼有账套复核权保持客户门户，显式专业入口和撤权后首页均重新核权', async ({
+test('岗位身份：真实财务兼有账套编辑权保持客户门户，显式专业入口和撤权后首页均重新核权', async ({
   page,
   request,
 }) => {
@@ -137,7 +138,7 @@ test('岗位身份：真实财务兼有账套复核权保持客户门户，显�
     (
       await request.put(`/api/books/${book.id}/members/local-business-finance`, {
         headers,
-        data: { role: 'reviewer' },
+        data: { role: 'editor' },
       })
     ).status(),
   ).toBe(200);
@@ -151,7 +152,7 @@ test('岗位身份：真实财务兼有账套复核权保持客户门户，显�
       await request.get('/api/workspace/profile', { headers: financeHeaders })
     ).json();
     expect(profile.can_accounting).toBe(true);
-    expect(profile.can_review).toBe(true);
+    expect(profile.can_review).toBe(false);
     expect(profile.display_role).toBe('finance');
     await expectIdentity(page, '财务核验', 'client');
     await page.locator('.client-portal-settings > summary').click();
@@ -219,7 +220,10 @@ for (const [displayRole, title, surface] of [
   });
 }
 
-test('岗位兼任复核：财务门户同屏复核可打开并返回，未审凭证不可导出', async ({ page, request }) => {
+test('岗位分离：财务不能复核，独立复核岗可打开并返回，未审凭证不可导出', async ({
+  page,
+  request,
+}) => {
   const owner = await (await request.get('/api/session?persona=accountant')).json();
   const finance = await (await request.get('/api/session?persona=finance')).json();
   const headers = { Authorization: `Bearer ${owner.token}` };
@@ -240,7 +244,7 @@ test('岗位兼任复核：财务门户同屏复核可打开并返回，未审�
     (
       await request.put(`/api/books/${book.id}/members/local-business-finance`, {
         headers,
-        data: { role: 'reviewer' },
+        data: { role: 'editor' },
       })
     ).status(),
   ).toBe(200);
@@ -276,6 +280,18 @@ test('岗位兼任复核：财务门户同屏复核可打开并返回，未审�
     );
     await selectIdentity(page, 'finance');
     await expectIdentity(page, '财务核验', 'client');
+    expect(
+      (
+        await request.post(`/api/books/${book.id}/drafts/invalid/approve`, {
+          headers: financeHeaders,
+          data: { expected_version: 1 },
+        })
+      ).status(),
+    ).toBe(403);
+    await independentReviewer(request, headers, book.id);
+    await selectIdentity(page, 'reviewer');
+    await page.goto('/workspace/home');
+    await selectIdentity(page, 'reviewer');
     await page.getByLabel('筛选待办类型', { exact: true }).selectOption('review');
     const task = page.locator('.workspace-task').filter({ hasText: title });
     await expect(task).toBeVisible({ timeout: 30_000 });
@@ -286,7 +302,7 @@ test('岗位兼任复核：财务门户同屏复核可打开并返回，未审�
     await expect(drawer.getByRole('button', { name: '确认审核', exact: true })).toBeDisabled();
     await drawer.getByRole('button', { name: '返回列表', exact: true }).click();
     await expect(drawer).toHaveCount(0);
-    await expectIdentity(page, '财务核验', 'client');
+    await expectIdentity(page, '会计复核', 'accounting');
     await expect(page).toHaveURL(/\/workspace\/home$/);
     await expect(task.getByRole('button', { name: '同屏复核', exact: true })).toBeEnabled();
     const exports = await (await request.get(`/api/books/${book.id}/exports`, { headers })).json();

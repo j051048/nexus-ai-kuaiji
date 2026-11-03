@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { choosePersona, openNavigation } from './ui-navigation';
 import { presentationRole, workSurface } from '../src/workspace-presentation';
 
-test('四种真实验证身份按主业务角色进入待办首页，兼有复核权的财务仍先核验业务', async ({
+test('四种真实验证身份按主业务角色进入待办首页，兼有编辑权的财务仍先核验业务', async ({
   page,
   request,
 }) => {
@@ -29,7 +29,7 @@ test('四种真实验证身份按主业务角色进入待办首页，兼有复�
     (
       await request.put(`/api/books/${book.id}/members/local-business-finance`, {
         headers: ownerHeaders,
-        data: { role: 'reviewer' },
+        data: { role: 'editor' },
       })
     ).status(),
   ).toBe(200);
@@ -48,7 +48,7 @@ test('四种真实验证身份按主业务角色进入待办首页，兼有复�
     expect(profileResponse.status()).toBe(200);
     const profile = await profileResponse.json();
     expect(profile.role).toBe(role);
-    if (persona === 'finance') expect(profile.can_review).toBe(true);
+    if (persona === 'finance') expect(profile.can_review).toBe(false);
     await choosePersona(page, persona);
     await expect(page.getByRole('heading', { name: title, exact: true })).toBeVisible({
       timeout: 15_000,
@@ -113,7 +113,7 @@ test('四种真实验证身份按主业务角色进入待办首页，兼有复�
 
 test('待办打开前重新核验实时授权，撤权后不展示原件或凭证', async ({ page, request }) => {
   const accountant = await (await request.get('/api/session?persona=accountant')).json();
-  const finance = await (await request.get('/api/session?persona=finance')).json();
+  const finance = await (await request.get('/api/session?persona=reviewer')).json();
   const headers = { Authorization: `Bearer ${accountant.token}` },
     financeHeaders = { Authorization: `Bearer ${finance.token}` };
   const company = (
@@ -128,7 +128,7 @@ test('待办打开前重新核验实时授权，撤权后不展示原件或凭�
   ).json();
   expect(
     (
-      await request.put(`/api/books/${book.id}/members/local-business-finance`, {
+      await request.put(`/api/books/${book.id}/members/local-reviewer`, {
         headers,
         data: { role: 'reviewer' },
       })
@@ -158,7 +158,7 @@ test('待办打开前重新核验实时授权，撤权后不展示原件或凭�
   expect((await request.post(`/api/books/${book.id}/suggestions`, { headers })).status()).toBe(200);
   const draft = (await (await request.get(`/api/books/${book.id}`, { headers })).json()).drafts[0];
   await page.goto('/workspace/home');
-  await page.getByLabel('切换验证身份').selectOption('finance');
+  await page.getByLabel('切换验证身份').selectOption('reviewer');
   await page.getByLabel('筛选待办类型').selectOption('review');
   await expect(page.locator('.workspace-task').filter({ hasText: name })).toBeVisible();
   let revoked = false;
@@ -167,7 +167,7 @@ test('待办打开前重新核验实时授权，撤权后不展示原件或凭�
       revoked = true;
       expect(
         (
-          await request.delete(`/api/books/${book.id}/members/local-business-finance`, { headers })
+          await request.delete(`/api/books/${book.id}/members/local-reviewer`, { headers })
         ).status(),
       ).toBe(200);
     }
@@ -194,9 +194,9 @@ test('待办打开前重新核验实时授权，撤权后不展示原件或凭�
     await page.unroute(`**/api/workspace/tasks/review/${draft.id}`);
     expect(
       (
-        await request.put(`/api/books/${book.id}/members/local-business-finance`, {
+        await request.put(`/api/books/${book.id}/members/local-reviewer`, {
           headers,
-          data: { role: 'editor' },
+          data: { role: 'reviewer' },
         })
       ).status(),
     ).toBe(200);
@@ -206,7 +206,7 @@ test('待办打开前重新核验实时授权，撤权后不展示原件或凭�
 test('审核后导出待办精确打开账套，读取前撤权后不回退到其他企业凭证', async ({ page, request }) => {
   test.setTimeout(60_000);
   const owner = await (await request.get('/api/session?persona=accountant')).json();
-  const finance = await (await request.get('/api/session?persona=finance')).json();
+  const finance = await (await request.get('/api/session?persona=reviewer')).json();
   const headers = { Authorization: `Bearer ${owner.token}` },
     financeHeaders = { Authorization: `Bearer ${finance.token}` };
   const company = (
@@ -225,7 +225,7 @@ test('审核后导出待办精确打开账套，读取前撤权后不回退到�
     const book = await response.json();
     expect(
       (
-        await request.put(`/api/books/${book.id}/members/local-business-finance`, {
+        await request.put(`/api/books/${book.id}/members/local-reviewer`, {
           headers,
           data: { role: 'reviewer' },
         })
@@ -265,7 +265,7 @@ test('审核后导出待办精确打开账套，读取前撤权后不回退到�
     expect(reviewed.status(), await reviewed.text()).toBe(200);
     const responsibility = (await reviewed.json()).review_responsibility;
     expect(responsibility.maker_user_id).toBe('local-accountant');
-    expect(responsibility.reviewer_user_id).toBe('local-business-finance');
+    expect(responsibility.reviewer_user_id).toBe('local-reviewer');
     expect(responsibility.independent).toBe(true);
     books.push({ id: book.id, name, description, draft_id: draft.id });
   }
@@ -292,8 +292,8 @@ test('审核后导出待办精确打开账套，读取前撤权后不回退到�
     (await (await request.get(`/api/books/${target.id}/exports`, { headers })).json()).exports,
   ).toEqual([]);
 
-  await page.getByLabel('切换验证身份').selectOption('finance');
-  await expect(page.getByRole('heading', { name: '财务核验', exact: true })).toBeVisible();
+  await page.getByLabel('切换验证身份').selectOption('reviewer');
+  await expect(page.getByRole('heading', { name: '会计复核', exact: true })).toBeVisible();
   await page.getByLabel('筛选待办类型').selectOption('export');
   await expect(task).toBeVisible();
   let revoked = false;
@@ -304,7 +304,7 @@ test('审核后导出待办精确打开账套，读取前撤权后不回退到�
       revoked = true;
       expect(
         (
-          await request.delete(`/api/books/${target.id}/members/local-business-finance`, {
+          await request.delete(`/api/books/${target.id}/members/local-reviewer`, {
             headers,
           })
         ).status(),
@@ -342,7 +342,7 @@ test('审核后导出待办精确打开账套，读取前撤权后不回退到�
     for (const book of books)
       expect(
         (
-          await request.delete(`/api/books/${book.id}/members/local-business-finance`, { headers })
+          await request.delete(`/api/books/${book.id}/members/local-reviewer`, { headers })
         ).status(),
       ).toBe(200);
   }

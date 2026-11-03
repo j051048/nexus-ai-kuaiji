@@ -7,7 +7,7 @@ test('B06 角色首页显示服务端授权能力，员工切换后不保留会�
   await page.goto('/workspace/home', { waitUntil: 'domcontentloaded' });
   const guide = page.getByRole('region', { name: '当前职责与授权范围', exact: true });
   await expect(guide).toBeVisible({ timeout: 30_000 });
-  await expect(guide).toContainText('当前身份');
+  await expect(guide).toContainText('当前工作台');
   await expect(guide).toContainText('凭证复核与审核后导出');
   await expect(guide).toContainText('服务端逐次校验');
   await page.screenshot({ path: 'artifacts/b06-role-home-desktop.png', fullPage: false });

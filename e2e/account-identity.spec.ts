@@ -1,6 +1,10 @@
 import { expect, test, type Page } from '@playwright/test';
 
 test.setTimeout(90_000);
+test.afterEach(async ({ page }) => {
+  // Drain intercepted reads before Playwright closes their request context.
+  await page.unrouteAll({ behavior: 'wait' });
+});
 const identity = (page: Page) => page.getByRole('region', { name: '当前登录身份', exact: true });
 
 async function usePersona(page: Page, persona: string) {

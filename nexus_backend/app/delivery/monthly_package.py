@@ -21,11 +21,12 @@ from ..reports.service import ReportService
 from ..service_plans.service import ServicePlansService
 from ..service_plans.attachments import MaterialAttachmentService
 from ..subledger.service import SubledgerService
+from ..tax import filings
 from .service import DeliveryService, encode
 
 MAX_ROWS = 10000
 MAX_SNAPSHOT_BYTES = 8_000_000
-FILE_PATHS = frozenset(
+FILE_PATHS_V1 = frozenset(
     {
         "README.html",
         "report.html",
@@ -40,6 +41,12 @@ FILE_PATHS = frozenset(
         "originals_index.json",
     }
 )
+# Schema v2 appends the external filing/payment evidence chain. Old v1 packages
+# stay readable exactly as they were frozen; only newly created packages carry
+# the extra file.
+FILE_PATHS_V2 = FILE_PATHS_V1 | {"tax_filings.json"}
+FILE_PATHS_BY_SCHEMA = {1: FILE_PATHS_V1, 2: FILE_PATHS_V2}
+CURRENT_PACKAGE_SCHEMA = 2
 
 
 def digest(data):
@@ -571,6 +578,7 @@ class MonthlyPackageService:
                 "index_scope": "submitted_materials_and_mapped_business_attachments",
                 "items": originals,
             },
+            "tax_filings.json": filings.evidence_for(conn, book["id"], book["period"]),
         }
         return {
             **{path: encode(value) for path, value in files.items()},
@@ -632,7 +640,7 @@ class MonthlyPackageService:
             identifier, stamp = str(uuid4()), now()
             files = self._files(conn, actor, book, report, evidence, version)
             manifest = {
-                "schema_version": 1,
+                "schema_version": CURRENT_PACKAGE_SCHEMA,
                 "package_id": identifier,
                 "version": version,
                 "book_id": book_id,
@@ -702,10 +710,12 @@ class MonthlyPackageService:
         ):
             raise AccountingError("冻结交付包完整性核验失败", 409)
         files = snapshot["files"]
+        expected_files = FILE_PATHS_BY_SCHEMA.get(manifest.get("schema_version"))
         if (
-            set(files) != FILE_PATHS
+            expected_files is None
+            or set(files) != expected_files
             or set(files) != {item["path"] for item in manifest["files"]}
-            or len(manifest["files"]) != len(FILE_PATHS)
+            or len(manifest["files"]) != len(expected_files)
         ):
             raise AccountingError("冻结交付包文件清单不一致", 409)
         for item in manifest["files"]:

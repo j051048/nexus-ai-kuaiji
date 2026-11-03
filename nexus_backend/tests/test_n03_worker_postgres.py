@@ -123,6 +123,7 @@ def test_two_process_claims_exactly_once(notification_case):
 def test_worker_cannot_directly_read_or_mutate_notifications(notification_case):
     c = notification_case
     for statement in (
+        "SELECT email FROM users",
         "SELECT * FROM delivery_notifications",
         "UPDATE delivery_notifications SET state='sink_written'",
         "DELETE FROM delivery_notifications",
@@ -143,9 +144,16 @@ def test_begin_finish_fences_and_attempt_count(notification_case):
     c = notification_case
     row = claim(c)
     assert row["state"] == "claimed" and row["attempts"] == 0
+    assert "recipient_email" not in row
     assert call(c, "begin_delivery_notification", row["id"], "wrong-token", 30) is None
     sent = begin(c, row)
     assert sent["state"] == "sending" and sent["attempts"] == 1
+    with c.psycopg.connect(c.admin) as conn:
+        email = conn.execute(
+            "SELECT email FROM accounting.users WHERE id=%s", (sent["recipient_user_id"],)
+        ).fetchone()[0]
+    assert sent["recipient_email"] == email.strip()
+    assert "recipient_email" not in json.loads(sent["payload_json"])
     assert begin(c, row) is None
     assert (
         call(c, "finish_delivery_notification", row["id"], "wrong-token", "sink_written", "ref", "")

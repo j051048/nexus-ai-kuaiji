@@ -45,7 +45,13 @@ async function companyAndBook(request: APIRequestContext, tag: string) {
   });
   expect(bookResponse.status()).toBe(201);
   const book = await bookResponse.json();
-  return { ...identitiesValue, company, book };
+  const reviewer = await (await request.get('/api/session?persona=reviewer')).json();
+  return {
+    ...identitiesValue,
+    financeHeaders: { Authorization: `Bearer ${reviewer.token}` },
+    company,
+    book,
+  };
 }
 async function grantReviewer(
   request: APIRequestContext,
@@ -57,13 +63,13 @@ async function grantReviewer(
     (
       await request.put(`/api/companies/${companyId}/members`, {
         headers,
-        data: { email: 'finance@demo.example.invalid', role: 'finance', department_id: null },
+        data: { email: 'reviewer@demo.example.invalid', role: 'finance', department_id: null },
       })
     ).status(),
   ).toBe(200);
   expect(
     (
-      await request.put(`/api/books/${bookId}/members/local-business-finance`, {
+      await request.put(`/api/books/${bookId}/members/local-reviewer`, {
         headers,
         data: { role: 'reviewer' },
       })
@@ -77,13 +83,11 @@ async function removeReviewer(
   headers: Record<string, string>,
 ) {
   expect(
-    (
-      await request.delete(`/api/books/${bookId}/members/local-business-finance`, { headers })
-    ).status(),
+    (await request.delete(`/api/books/${bookId}/members/local-reviewer`, { headers })).status(),
   ).toBe(200);
   expect(
     (
-      await request.delete(`/api/companies/${companyId}/members/local-business-finance`, {
+      await request.delete(`/api/companies/${companyId}/members/local-reviewer`, {
         headers,
       })
     ).status(),
@@ -159,6 +163,8 @@ test('跨企业月度矩阵分页覆盖全部授权账套，精确下钻同企�
   await expect(page.getByLabel('复核企业')).toHaveValue(company.id);
   await expect(page.getByText(`办公费目标 ${tag}`, { exact: true })).toBeVisible();
   await page.goto('/workspace/monthly?period=2026-11');
+  await page.getByLabel('搜索月度客户').fill(tag);
+  await page.getByRole('button', { name: '查找', exact: true }).click();
   await expect(page.getByLabel('客户进度月份')).toHaveValue('2026-11');
   await expect(page.locator('.monthly-matrix-row').first()).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
@@ -212,7 +218,7 @@ test('外部余额独立确认后比较，人工核对保留差异且新版本�
       },
     });
     expect(closingResponse.status()).toBe(201);
-    await choosePersona(page, 'finance');
+    await choosePersona(page, 'reviewer');
     await openMonthlyTool(page, book.name, '参考余额与月度差异');
     for (const kind of ['opening', 'closing']) {
       await page
@@ -290,7 +296,7 @@ test('固定事项独立审批、生成未知结果重读不重复，新版本�
     await expect(page.getByRole('button', { name: '审批当前版本', exact: true })).toHaveCount(0);
     let overview = await (await request.get(`/api/books/${book.id}/monthly`, { headers })).json();
     const planId = overview.plans[0].id;
-    await choosePersona(page, 'finance');
+    await choosePersona(page, 'reviewer');
     await openMonthlyTool(page, book.name, '固定事项草稿');
     await page
       .getByLabel(`审批 合成租金 ${tag} v1 依据`, { exact: true })
@@ -341,9 +347,7 @@ test('固定事项独立审批、生成未知结果重读不重复，新版本�
     expect(draft.lines[0].debit).toBe('100.00');
     await page.screenshot({ path: 'artifacts/stage17-recurring-desktop.png', fullPage: false });
     expect(
-      (
-        await request.delete(`/api/books/${book.id}/members/local-business-finance`, { headers })
-      ).status(),
+      (await request.delete(`/api/books/${book.id}/members/local-reviewer`, { headers })).status(),
     ).toBe(200);
     await page.getByRole('button', { name: '刷新计划', exact: true }).click();
     await expect(page.getByRole('alert')).toBeVisible();
@@ -395,7 +399,7 @@ test('结构化余额文件核对后导入，保留UTF8原文和原件下载，�
   expect(overview.reference.opening_id).toBeNull();
 });
 
-test('企业财务兼账套复核身份保留客户门户，月度资料范围与企业事项一致', async ({
+test('企业财务兼账套编辑身份保留客户门户，月度资料范围与企业事项一致', async ({
   page,
   request,
 }) => {
@@ -421,7 +425,7 @@ test('企业财务兼账套复核身份保留客户门户，月度资料范围�
     (
       await request.put(`/api/books/${book.id}/members/local-business-finance`, {
         headers,
-        data: { role: 'reviewer' },
+        data: { role: 'editor' },
       })
     ).status(),
   ).toBe(200);
@@ -483,7 +487,7 @@ test('企业财务兼账套复核身份保留客户门户，月度资料范围�
     await choosePersona(page, 'finance');
     await expect(page.getByRole('navigation', { name: '客户服务', exact: true })).toBeVisible();
     await expect(page.getByRole('navigation', { name: '主导航', exact: true })).toHaveCount(0);
-    // An extra reviewer grant must not replace the finance user's primary
+    // An extra editor grant must not replace the finance user's primary
     // surface. Follow its real navigation and select the same company instead
     // of expecting the old firm-only monthly menu to reappear.
     await openBusiness(page);

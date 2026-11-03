@@ -76,7 +76,8 @@ def reviewer(case, book_ids=(), role="reviewer", user="reviewer-2"):
         conn.execute("INSERT INTO users(id,name) VALUES(?,?)", (user, user))
         conn.execute("INSERT INTO memberships(firm_id,user_id,role) VALUES(?,?,?)", (LOCAL_ACTOR.firm_id, user, role))
         for book_id in book_ids:
-            conn.execute("INSERT INTO book_access(book_id,firm_id,user_id,role) VALUES(?,?,?,'reviewer')", (book_id, LOCAL_ACTOR.firm_id, user))
+            book_role = {"operator": "editor", "viewer": "viewer", "reviewer": "reviewer"}[role]
+            conn.execute("INSERT INTO book_access(book_id,firm_id,user_id,role) VALUES(?,?,?,?)", (book_id, LOCAL_ACTOR.firm_id, user, book_role))
     return Actor(user_id=user, firm_id=LOCAL_ACTOR.firm_id)
 
 

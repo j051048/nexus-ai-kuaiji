@@ -461,7 +461,7 @@ def _recognize(provider, pages, *, deadline=None):
         raise ProviderError(
             "ocr_service_unavailable", "独立 OCR 服务连接失败，请稍后重试或人工处理", retryable=True
         ) from None
-    except (ValueError, UnicodeError, ValidationError):
+    except (ValueError, UnicodeError, ValidationError, RecursionError):
         raise ProviderError(
             "ocr_response_invalid", "独立 OCR 结果格式、坐标或模型版本不匹配，请人工处理"
         ) from None

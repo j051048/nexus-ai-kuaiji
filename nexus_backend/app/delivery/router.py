@@ -210,4 +210,13 @@ def build_delivery_router(actor_dependency):
     ):
         return delivery.add_note(actor, book_id, payload)
 
+    @router.get("/notifications/{notification_id}/receipts")
+    def notification_receipts(
+        book_id: str,
+        notification_id: str,
+        request: Request,
+        actor=Depends(actor_dependency),
+    ):
+        return request.app.state.delivery_receipts.timeline(actor, book_id, notification_id)
+
     return router

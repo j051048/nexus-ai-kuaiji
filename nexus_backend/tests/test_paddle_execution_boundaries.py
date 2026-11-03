@@ -164,7 +164,19 @@ def test_model_local_preflight_after_paddle_proves_no_attempt():
     assert len(calls) == 1
 
 
-def test_deeply_nested_ocr_response_releases_unattempted_field_cost(ai_case):
+@pytest.mark.parametrize("decoder_overflow", [False, True], ids=["nested-json", "decoder-overflow"])
+def test_deeply_nested_ocr_response_releases_unattempted_field_cost(
+    ai_case, monkeypatch, decoder_overflow
+):
+    if decoder_overflow:
+        # CPython versions differ in their JSON decoder recursion handling.
+        # Exercise the decoder failure boundary even on versions accepting this depth.
+        import app.intelligence.ocr as ocr
+
+        def overflow(_body):
+            raise RecursionError("synthetic decoder depth exceeded")
+
+        monkeypatch.setattr(ocr, "_json_without_duplicates", overflow)
     provider, calls, _, original_client = provider_case()
 
     def nested_response(request):

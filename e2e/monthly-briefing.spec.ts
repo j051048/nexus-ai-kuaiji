@@ -2,6 +2,8 @@ import { expect, test } from '@playwright/test';
 import { openAccounting, openBookTools } from './ui-navigation';
 
 test('月度财税简报：锁期前给出提示，锁期后交付一页纸概览且适应手机', async ({ page, request }) => {
+  // Exercise both sides of locking, reload, printing and a second viewport.
+  test.setTimeout(60_000);
   const session = await (await request.get('/api/session?persona=accountant')).json();
   const headers = { Authorization: `Bearer ${session.token}` };
   const name = `简报账套 ${crypto.randomUUID().slice(0, 8)}`;

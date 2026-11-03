@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { independentReviewer } from './independent-review';
 
 test.setTimeout(90_000);
 
@@ -28,7 +29,7 @@ test('同屏复核保留包选择，修改后重新准备，手机原件详情�
     (
       await request.put(`/api/books/${book.id}/members/local-business-finance`, {
         headers,
-        data: { role: 'reviewer' },
+        data: { role: 'editor' },
       })
     ).status(),
   ).toBe(200);
@@ -148,8 +149,9 @@ test('同屏复核保留包选择，修改后重新准备，手机原件详情�
   expect(unchanged.status).toBe('approved');
   expect(unchanged.review_responsibility.maker_user_id).toBe('local-business-finance');
   expect(unchanged.review_responsibility.reviewer_user_id).toBe('local-accountant');
+  const reviewer = await independentReviewer(request, headers, book.id);
   const independent = await request.post(`/api/books/${book.id}/drafts/${edited.id}/approve`, {
-    headers: finance,
+    headers: reviewer,
     data: {
       expected_version: edited.version,
       expected_policy_version: edited.review_responsibility.policy_version,

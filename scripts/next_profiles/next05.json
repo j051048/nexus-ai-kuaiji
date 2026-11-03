@@ -1,0 +1,30 @@
+{
+  "schema": "next-profile-v1",
+  "task": "next05",
+  "phases": [
+    {
+      "name": "filing-regression",
+      "command": [
+        ".venv/Scripts/python.exe",
+        "-m",
+        "pytest",
+        "nexus_backend/tests/test_next05_filing_evidence.py",
+        "nexus_backend/tests/test_dcp08_filings.py",
+        "nexus_backend/tests/test_dcp08_readiness.py",
+        "nexus_backend/tests/test_tax_api.py",
+        "nexus_backend/tests/test_monthly_delivery_package.py",
+        "nexus_backend/tests/test_upload_binding_http.py",
+        "nexus_backend/tests/test_upload_reference_binding.py",
+        "nexus_backend/tests/test_uploads.py"
+      ],
+      "kind": "pytest",
+      "timeout": 900
+    },
+    {
+      "name": "frontend-typecheck",
+      "command": ["node", "node_modules/typescript/bin/tsc", "--noEmit"],
+      "kind": "command",
+      "timeout": 300
+    }
+  ]
+}

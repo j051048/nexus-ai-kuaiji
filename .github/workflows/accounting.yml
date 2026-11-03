@@ -181,10 +181,19 @@ jobs:
           assert len(cases) == len(expected) and {case.attrib['name'] for case in cases} == expected
           assert all(not any(case.find(tag) is not None for tag in ('skipped', 'failure', 'error')) for case in cases)
           PY
+      # C01 must not inherit all synthetic tenants and queue rows from AK05.
+      # Reuse the restricted-role provisioner; never erase another suite's data.
+      - name: Prepare fresh C01 databases using the same candidate and restricted roles
+        run: >-
+          python scripts/ak05_postgres_gate.py prepare
+          --admin-config tmp_test/ak05-ci-config/regression.json
+          --major ${{ matrix.postgres }}
+          --out tmp_test/c01-ci-config
+          --allow-create-local-databases
       - name: Independent C01 exact identity and concurrency gate
         run: >-
           python scripts/c01_postgres_gate.py
-          --config tmp_test/ak05-ci-config/regression.json
+          --config tmp_test/c01-ci-config/regression.json
           --out tmp_test/ak05-ci-reports/c01
       - name: Independent review policy exact identity and concurrency gate
         run: >-

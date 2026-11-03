@@ -51,7 +51,7 @@ const roleEntries: Record<PresentationRole, NavigationId[]> = {
   employee: ['home', 'business', 'materials', 'messages'],
   approver: ['home', 'business', 'materials', 'messages'],
   finance: ['home', 'business', 'materials', 'messages', 'briefing'],
-  manager: ['home', 'materials', 'messages', 'briefing'],
+  manager: ['home', 'business', 'materials', 'messages', 'briefing'],
   accountant: ['home', 'review', 'business', 'cases', 'monthly'],
   reviewer: ['review', 'cases', 'monthly', 'materials'],
   firm_owner: ['firm', 'accounting', 'monthly', 'cases'],

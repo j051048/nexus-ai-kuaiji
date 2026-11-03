@@ -78,10 +78,14 @@ function TaxContent({ session, bookId, companyId, period, onBusyChange }: Props)
     locked = useRef(false),
     write = useRef(new AbortController());
   useEffect(() => {
+    // StrictMode replays setup/cleanup in development. The previous lifetime's
+    // aborted signal must never become the signal for the next user action.
+    const controller = new AbortController();
+    write.current = controller;
     live.current = true;
     return () => {
       live.current = false;
-      write.current.abort();
+      controller.abort();
     };
   }, []);
   useEffect(() => {

@@ -131,3 +131,47 @@ def test_candidates_only_include_eligible_reviewers(handoff):
     assert eligible.user_id in ids
     assert handoff.actor_accountant.user_id in ids
     assert all(item["firm_role"] in {"owner", "admin", "reviewer"} for item in view["items"])
+
+
+def test_reviewed_workpaper_cannot_be_assigned_again(handoff):
+    paper = draft(handoff)
+    target = reviewer(handoff)
+    handoff.tax.review(handoff.manager, handoff.book["id"], paper["id"], "账表一致", 1)
+    with handoff.db.transaction() as conn:
+        current = conn.execute(
+            "SELECT version FROM tax_workpapers WHERE id=?", (paper["id"],)
+        ).fetchone()["version"]
+    with pytest.raises(AccountingError) as error:
+        handoff.handoff.assign(
+            handoff.manager, paper["id"], current, target.user_id, None, "完成后重复指派"
+        )
+    assert error.value.status == 409
+    assert "已复核" in error.value.detail
+
+
+def test_source_version_change_requires_a_new_assignment(handoff):
+    paper = draft(handoff)
+    first = reviewer(handoff, email="v1@example.com")
+    old = handoff.handoff.assign(
+        handoff.manager, paper["id"], 1, first.user_id, None, "版本一复核"
+    )
+    newer = handoff.tax.generate(handoff.actor_accountant, handoff.book["id"], "2026-10")
+    assert newer["version"] == 2 and newer["id"] != paper["id"]
+    view = handoff.handoff.queue(handoff.manager)
+    ids = {entry["source"]["id"] for entry in view["items"]}
+    assert newer["id"] in ids
+    assert paper["id"] not in ids
+    item = next(entry for entry in view["items"] if entry["source"]["id"] == newer["id"])
+    assert item["assignee_id"] is None and item["label"] == "待指派"
+    with pytest.raises(AccountingError) as error:
+        handoff.handoff.assign(
+            handoff.manager, paper["id"], 1, first.user_id, None, "旧版本继续指派"
+        )
+    assert error.value.status == 409
+    assert "更新版本" in error.value.detail
+    with handoff.db.transaction() as conn:
+        historical = conn.execute(
+            "SELECT assignee_id,superseded_at FROM handoff_tasks WHERE id=?", (old["id"],)
+        ).fetchone()
+    assert historical["assignee_id"] == first.user_id
+    assert historical["superseded_at"] is None

@@ -39,8 +39,7 @@ export const config = defineConfig({
   use: { baseURL: runtime.baseURL, trace: core ? 'off' : 'retain-on-failure' },
   webServer: [
     {
-      command:
-        'python -m uvicorn app.main:app --app-dir nexus_backend --host 127.0.0.1 --port 18000',
+      command: `python -m uvicorn app.main:app --app-dir nexus_backend --host 127.0.0.1 --port ${new URL(runtime.backendURL).port}`,
       url: `${runtime.backendURL}/api/session`,
       env: runtime.backendEnv,
       reuseExistingServer: false,

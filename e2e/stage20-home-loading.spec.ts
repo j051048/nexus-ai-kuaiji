@@ -1,5 +1,10 @@
 import { expect, test } from '@playwright/test';
-import { choosePersona, openAccounting, openManagement, returnWorkspaceHome } from './ui-navigation';
+import {
+  choosePersona,
+  openAccounting,
+  openManagement,
+  returnWorkspaceHome,
+} from './ui-navigation';
 
 test.setTimeout(90_000);
 
@@ -35,7 +40,7 @@ test('首页只请求待办所需数据，会计工作区按需读取，运营�
   expect(reads).not.toContain('/api/me');
   expect(reads).not.toContain('/api/workspace/profile');
   expect(reads).not.toContain('/api/workspace/tasks');
-  expect(reads).toContain('/api/agent-workspace/summary');
+  expect(reads).not.toContain('/api/agent-workspace/summary');
   expect(reads).not.toContain('/api/workbench');
   expect(reads).not.toContain('/api/operations/companies');
   expect(reads).not.toContain('/api/business/context');
@@ -76,7 +81,7 @@ test('离开会计工作区取消慢读取；回到首页不再启动凭证瀑�
     expect(reads).not.toContain('/api/workspace/tasks');
     await page
       .getByRole('navigation', { name: '主导航', exact: true })
-      .getByRole('button', { name: '客户账套', exact: true })
+      .getByRole('button', { name: '客户企业', exact: true })
       .click();
     await arrived.promise;
     await returnWorkspaceHome(page);
@@ -147,8 +152,8 @@ test('首页关键待办不等待运行摘要，摘要失败可独立重试且�
   });
   try {
     await page.goto('/workspace/home');
-    await arrived.promise;
     await readyHome(page);
+    expect(reads).not.toContain('/api/agent-workspace/summary');
     await expect(page.getByText('正在读取待办…', { exact: true })).toHaveCount(0);
     await expect(
       page
@@ -156,14 +161,15 @@ test('首页关键待办不等待运行摘要，摘要失败可独立重试且�
         .getByRole('button', { name: /需要我处理/ })
         .locator('strong'),
     ).not.toHaveText('—');
-    await expect(page.getByRole('button', { name: '筛选待办企业', exact: true })).toBeEnabled();
-    await expect(page.getByText('读取真实运行状态', { exact: false })).toBeVisible();
-    expect(reads.filter((path) => path === '/api/workspace/bootstrap')).toHaveLength(1);
-    expect(reads).not.toContain('/api/workspace/tasks');
+    await openManagement(page);
+    await page.getByRole('button', { name: '后台运行', exact: true }).click();
+    await arrived.promise;
+    await expect(page.getByText('读取后台作业事实…', { exact: true })).toBeVisible();
     released.resolve();
-    await page.getByRole('button', { name: '重试运行概览', exact: true }).click();
-    await expect(page.getByRole('button', { name: '重试运行概览', exact: true })).toHaveCount(0);
-    await expect(page.getByText('读取真实运行状态', { exact: false })).toHaveCount(0);
+    await expect(page.getByRole('alert')).toContainText('服务暂时不可用');
+    await page.getByRole('button', { name: '刷新状态', exact: true }).click();
+    await expect(page.getByRole('alert')).toHaveCount(0);
+    await expect(page.getByText('读取后台作业事实…', { exact: true })).toHaveCount(0);
     expect(reads.filter((path) => path === '/api/workspace/bootstrap')).toHaveLength(1);
     expect(reads).not.toContain('/api/me');
     expect(reads).not.toContain('/api/workspace/tasks');

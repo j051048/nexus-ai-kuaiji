@@ -304,7 +304,8 @@ for (const status of [503, 403]) {
       });
     });
     await page.getByRole('button', { name: '刷新工作台', exact: true }).click();
-    const error = page.getByRole('alert').filter({ hasText: `V07合成待办读取${status}` });
+    const error = page.locator('.workspace-load-error');
+    if (status === 503) await expect(error).not.toContainText('V07合成待办读取503');
     await expect(error).toBeVisible();
     await expect(page.getByText('当前筛选下没有待处理事项', { exact: true })).toHaveCount(0);
     await expect(page.getByRole('heading', { name: /登录/ })).toHaveCount(0);

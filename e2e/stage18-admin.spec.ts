@@ -1,5 +1,5 @@
 import { expect, test, type APIRequestContext } from '@playwright/test';
-import { choosePersona, openNavigation } from './ui-navigation';
+import { choosePersona } from './ui-navigation';
 
 async function ownerHeaders(request: APIRequestContext) {
   const { token } = await (await request.get('/api/session?persona=accountant')).json();
@@ -88,35 +88,62 @@ test('公司管理员只看所管企业，手机管理成员和部门不产生�
     data: { email: 'finance@demo.example.invalid', role: 'admin', department_id: null },
   });
   expect(granted.status()).toBe(200);
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto('/');
-  await choosePersona(page, 'finance');
-  await openNavigation(page);
-  await page.getByRole('button', { name: '组织管理后台', exact: true }).click();
-  await expect(page.getByRole('heading', { name: '企业管理', exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: '新建企业', exact: true })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: '事务所人员', exact: true })).toHaveCount(0);
-  await page.locator('.admin-company-card').filter({ hasText: name }).click();
-  await expect(page.getByRole('button', { name: '暂停服务', exact: true })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: '归档企业', exact: true })).toHaveCount(0);
-  await page.getByRole('button', { name: '添加已有成员', exact: true }).click();
-  const dialog = page.getByRole('dialog', { name: '添加已有成员', exact: true });
-  await dialog.getByLabel('成员登录邮箱', { exact: true }).fill('employee@demo.example.invalid');
-  await dialog.getByLabel('权限角色', { exact: true }).selectOption('employee');
-  await dialog.getByRole('button', { name: '保存授权', exact: true }).click();
-  await expect(dialog).toHaveCount(0);
-  await expect(
-    page.locator('.admin-member').filter({ hasText: 'employee@demo.example.invalid' }),
-  ).toHaveCount(1);
-  await page.getByRole('tab', { name: '部门与审批', exact: true }).click();
-  await expect(page.getByLabel('客户企业', { exact: true }).locator('option')).toHaveCount(2);
-  await expect(page.getByLabel('客户企业', { exact: true })).toHaveValue(company.id);
-  await page.getByLabel('新建部门名称', { exact: true }).fill('试点采购部');
-  await page.getByRole('button', { name: '新建部门', exact: true }).click();
-  await expect(page.getByRole('heading', { name: '试点采购部', exact: true })).toBeVisible();
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
-    true,
-  );
+  try {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/');
+    await choosePersona(page, 'finance');
+    await page.locator('.client-portal-settings > summary').click();
+    await page.getByRole('button', { name: '企业与账号', exact: true }).click();
+    await expect(page.getByRole('heading', { name: '企业管理', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: '新建企业', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '事务所人员', exact: true })).toHaveCount(0);
+    await page.locator('.admin-company-card').filter({ hasText: name }).click();
+    await expect(page.getByRole('button', { name: '暂停服务', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '归档企业', exact: true })).toHaveCount(0);
+    await page.getByRole('button', { name: '添加已有成员', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: '添加已有成员', exact: true });
+    await dialog.getByLabel('成员登录邮箱', { exact: true }).fill('employee@demo.example.invalid');
+    await dialog.getByLabel('权限角色', { exact: true }).selectOption('employee');
+    await dialog.getByRole('button', { name: '保存授权', exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(
+      page.locator('.admin-member').filter({ hasText: 'employee@demo.example.invalid' }),
+    ).toHaveCount(1);
+    await page.getByRole('tab', { name: '部门与审批', exact: true }).click();
+    await expect(page.getByLabel('客户企业', { exact: true }).locator('option')).toHaveCount(2);
+    await expect(page.getByLabel('客户企业', { exact: true })).toHaveValue(company.id);
+    await page.getByLabel('新建部门名称', { exact: true }).fill('试点采购部');
+    await page.getByRole('button', { name: '新建部门', exact: true }).click();
+    await expect(page.getByRole('heading', { name: '试点采购部', exact: true })).toBeVisible();
+    const overflow = await page.evaluate(() =>
+      [...document.querySelectorAll<HTMLElement>('main input, main select, main section')]
+        .filter((element) => element.getBoundingClientRect().right > window.innerWidth)
+        .map((element) => ({
+          tag: element.tagName,
+          label: element.getAttribute('aria-label'),
+          right: element.getBoundingClientRect().right,
+        })),
+    );
+    expect(overflow).toEqual([]);
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+    ).toBe(true);
+  } finally {
+    expect(
+      (
+        await request.delete(`/api/companies/${company.id}/members/local-business-finance`, {
+          headers,
+        })
+      ).status(),
+    ).toBe(200);
+    expect(
+      (
+        await request.delete(`/api/companies/${company.id}/members/local-business-employee`, {
+          headers,
+        })
+      ).status(),
+    ).toBe(200);
+  }
 });
 
 test('员工直接访问管理路径显示无权限，激活链接缺失不显示开户表单', async ({ page }) => {
@@ -126,7 +153,9 @@ test('员工直接访问管理路径显示无权限，激活链接缺失不显�
     window.history.pushState({}, '', '/admin');
     window.dispatchEvent(new PopStateEvent('popstate'));
   });
-  await expect(page.getByText('当前账号没有管理后台权限', { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole('main').getByText('当前账号没有管理后台权限', { exact: true }),
+  ).toBeVisible();
   await expect(page.getByRole('button', { name: '新建企业', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: '返回工作台', exact: true }).click();
   await expect(page).toHaveURL(/\/workspace\/home/);
@@ -336,7 +365,7 @@ test('新用户激活先设本人密码，接受失败后重试不重复消费�
   await page.getByLabel('设置密码', { exact: true }).fill('synthetic-password-only');
   await page.getByLabel('再次输入密码', { exact: true }).fill('synthetic-password-only');
   await page.getByRole('button', { name: '设置密码并接受授权', exact: true }).click();
-  await expect(page.getByRole('alert')).toContainText('模拟授权服务暂时不可用');
+  await expect(page.getByRole('alert')).toContainText('暂时无法确认本次操作结果');
   await page.getByLabel('设置密码', { exact: true }).fill('synthetic-password-only');
   await page.getByLabel('再次输入密码', { exact: true }).fill('synthetic-password-only');
   await page.getByRole('button', { name: '设置密码并接受授权', exact: true }).click();

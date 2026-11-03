@@ -60,10 +60,27 @@ test('全所效率按月显示实际样本，暂无计时保持未知，账套�
     timeout: 15000,
   });
   await page.getByLabel('效率统计月份').fill('2026-10');
-  const measuredRow = page.getByRole('row').filter({ hasText: measured.book.name }),
-    unmeasuredRow = page.getByRole('row').filter({ hasText: unmeasured.book.name });
+  // Other cases create independent companies in this run. Exercise the real
+  // pagination instead of assuming our two new books are on the first page.
+  async function findBookRow(name: string) {
+    await expect(page.getByRole('table')).toBeVisible();
+    while (await page.getByRole('button', { name: '上一页', exact: true }).isEnabled()) {
+      await page.getByRole('button', { name: '上一页', exact: true }).click();
+      await expect(page.getByRole('table')).toBeVisible();
+    }
+    for (let count = 0; count < 30; count++) {
+      const row = page.getByRole('row').filter({ hasText: name });
+      if (await row.count()) return row;
+      const next = page.getByRole('button', { name: '下一页', exact: true });
+      await expect(next).toBeEnabled();
+      await next.click();
+      await expect(page.getByRole('table')).toBeVisible();
+    }
+    throw new Error(`Expected authorized book missing: ${name}`);
+  }
+  await expect(await findBookRow(unmeasured.book.name)).toContainText('暂无计时样本');
+  const measuredRow = await findBookRow(measured.book.name);
   await expect(measuredRow).toContainText('1 次');
-  await expect(unmeasuredRow).toContainText('暂无计时样本');
   await measuredRow.locator('summary').click();
   await expect(
     measuredRow.getByRole('button', { name: `查看${measured.book.name}的计时` }),

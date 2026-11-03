@@ -70,7 +70,10 @@ class HandoffService:
             "b.name AS book_name,c.name AS company_name "
             "FROM tax_workpapers w JOIN books b ON b.id=w.book_id "
             "JOIN companies c ON c.id=w.company_id "
-            "WHERE w.status='draft' AND b.firm_id=? ORDER BY w.period DESC,w.id",
+            "WHERE w.status='draft' AND b.firm_id=? "
+            "AND w.version=(SELECT MAX(w2.version) FROM tax_workpapers w2 "
+            "WHERE w2.book_id=w.book_id AND w2.period=w.period) "
+            "ORDER BY w.period DESC,w.id",
             (actor.firm_id,),
         ).fetchall()
         items = []
@@ -190,6 +193,14 @@ class HandoffService:
                 )
             if workpaper["status"] != "draft":
                 raise AccountingError("该底稿已复核，不需要再指派", 409)
+            latest = conn.execute(
+                "SELECT MAX(version) FROM tax_workpapers WHERE book_id=? AND period=?",
+                (workpaper["book_id"], workpaper["period"]),
+            ).fetchone()[0]
+            if workpaper["version"] != latest:
+                raise AccountingError(
+                    "税务底稿已有更新版本，旧版本不能继续指派；请刷新后核对最新版本", 409
+                )
             if assignee_id == workpaper["created_by"]:
                 raise AccountingError("制单人不能复核自己的底稿，请指派其他复核人", 409)
             target = Actor(assignee_id, actor.firm_id)

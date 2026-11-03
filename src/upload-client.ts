@@ -11,7 +11,8 @@ export type DirectUploadPurpose =
   | 'case_attachment'
   | 'material_attachment'
   | 'invoice_import'
-  | 'bank_import';
+  | 'bank_import'
+  | 'tax_filing_attachment';
 
 export function sameOriginUploadHeaders(
   firmId: string | null,

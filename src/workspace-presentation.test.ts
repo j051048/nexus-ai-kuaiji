@@ -159,7 +159,7 @@ describe('UX01 role presentation contract', () => {
         .map((item) => item.label),
     ).toEqual(['待核验', '业务事项']);
     expect(nav('manager')[0].label).toBe('企业首页');
-    expect(nav('manager').some((item) => item.id === 'submit')).toBe(false);
+    expect(nav('manager').some((item) => item.id === 'submit')).toBe(true);
   });
 
   it.each(['employee', 'approver', 'finance', 'manager', 'viewer'] as const)(
@@ -268,6 +268,7 @@ describe('UX01 role presentation contract', () => {
   it('filters customer tabs by presentation role rather than one fixed menu', () => {
     expect(clientPortalTabs(profile({ role: 'manager' }))).toEqual([
       'home',
+      'submit',
       'materials',
       'messages',
       'briefing',

@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import time
 import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -79,11 +80,16 @@ def run_gate(config_path, output):
         raise GateError("C01 requires complete unchanged migrations")
     output = Path(output).resolve()
     output.mkdir(parents=True, exist_ok=False)
+    # Full real-transaction fixtures need more than five minutes on shared CI
+    # runners. Keep a finite budget and exact-case/no-skip acceptance unchanged.
+    timeout_seconds = 600
+    started = time.monotonic()
     report = {
         "major": major,
         "status": "failed",
         "candidate": candidate_fingerprint(),
         "required_cases_sha256": hashlib.sha256(REQUIRED_PATH.read_bytes()).hexdigest(),
+        "timeout_seconds": timeout_seconds,
     }
     environment = {
         key: value
@@ -112,6 +118,9 @@ def run_gate(config_path, output):
                 str(Path(config_path).resolve()),
                 str(ROOT / "nexus_backend/tests/test_c01_remaining_postgres.py"),
                 "-q",
+                "-o",
+                "faulthandler_timeout=120",
+                "--durations=10",
                 "--junitxml=" + str(xml),
             ],
             cwd=ROOT,
@@ -120,7 +129,7 @@ def run_gate(config_path, output):
             text=True,
             encoding="utf-8",
             errors="replace",
-            timeout=300,
+            timeout=timeout_seconds,
         )
         (output / "c01.log").write_text(
             sanitized(result.stdout + result.stderr, config), encoding="utf-8"
@@ -134,9 +143,20 @@ def run_gate(config_path, output):
             raise GateError("C01 candidate changed during verification")
         report["status"] = "passed"
     except (GateError, subprocess.TimeoutExpired) as error:
+        if isinstance(error, subprocess.TimeoutExpired):
+            # TimeoutExpired may carry bytes even with text=True. Preserve the
+            # completed work/stack dump, but never upload local credentials.
+            chunks = [
+                part.decode("utf-8", errors="replace") if isinstance(part, bytes) else part or ""
+                for part in (error.stdout, error.stderr)
+            ]
+            (output / "c01.log").write_text(sanitized("".join(chunks), config), encoding="utf-8")
         report["reason"] = (
-            str(error) if isinstance(error, GateError) else "C01 verification exceeded 300 seconds"
+            str(error)
+            if isinstance(error, GateError)
+            else f"C01 verification exceeded {timeout_seconds} seconds"
         )
+    report["elapsed_seconds"] = round(time.monotonic() - started, 3)
     (output / "summary.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print(f"PG{major} C01: {report['status']}", flush=True)
     return report["status"] == "passed"

@@ -65,6 +65,8 @@ async function open(page: Page, description: string, scope: '部门审批' | '�
 }
 
 test('员工报销经过独立审批与原件上传后交接指定账套、会计复核并导出', async ({ page }) => {
+  // Four authenticated roles, attachment validation, review and an actual CSV download.
+  test.setTimeout(60_000);
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto('/');
   await persona(page, 'employee');
@@ -131,10 +133,11 @@ test('员工报销经过独立审批与原件上传后交接指定账套、会�
   await expect(drawer.getByText('已审核，待导出', { exact: true })).toBeVisible();
   await drawer.getByRole('button', { name: '返回列表', exact: true }).click();
   await openAccounting(page);
-  await page
-    .getByRole('listitem')
-    .filter({ hasText: targetBookName!.split(' · ')[0] })
-    .click();
+  // Other cases create enough companies to paginate the list. Use the real
+  // search control instead of assuming this target remains on the first page.
+  const targetName = targetBookName!.split(' · ')[0];
+  await page.getByRole('textbox', { name: '搜索企业名称', exact: true }).fill(targetName);
+  await page.getByRole('listitem').filter({ hasText: targetName }).click();
   await page.getByLabel('选择凭证 ' + description, { exact: true }).check();
   const exportDownload = page.waitForEvent('download');
   await page.getByRole('button', { name: '导出凭证 CSV', exact: true }).click();

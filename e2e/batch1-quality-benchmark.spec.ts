@@ -5,7 +5,7 @@ test('固定样本集在未知结果后重试不重复版本，回放比较不�
   request,
 }) => {
   const accountant = await (await request.get('/api/session?persona=accountant')).json();
-  const finance = await (await request.get('/api/session?persona=finance')).json();
+  const finance = await (await request.get('/api/session?persona=reviewer')).json();
   const headers = { Authorization: `Bearer ${accountant.token}` },
     second = { Authorization: `Bearer ${finance.token}` };
   const company = (await (await request.get('/api/business/context', { headers: second })).json())
@@ -20,7 +20,7 @@ test('固定样本集在未知结果后重试不重复版本，回放比较不�
   const book = await response.json();
   expect(
     (
-      await request.put(`/api/books/${book.id}/members/local-business-finance`, {
+      await request.put(`/api/books/${book.id}/members/local-reviewer`, {
         headers,
         data: { role: 'reviewer' },
       })
@@ -60,7 +60,7 @@ test('固定样本集在未知结果后重试不重复版本，回放比较不�
   expect(
     (
       await request.post(`/api/books/${book.id}/drafts/${draft.id}/approve`, {
-        headers,
+        headers: second,
         data: { expected_version: draft.version },
       })
     ).status(),

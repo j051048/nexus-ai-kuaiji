@@ -2,6 +2,8 @@
 
 import importlib
 import json
+import os
+import subprocess
 import xml.etree.ElementTree as ET
 
 import pytest
@@ -9,6 +11,43 @@ import pytest
 
 def gate():
     return importlib.import_module("scripts.p01_recovery_gate")
+
+
+def link_directory(alias, target):
+    if os.name == "nt":
+        subprocess.run(
+            ["cmd", "/c", "mklink", "/J", str(alias), str(target)],
+            check=True,
+            capture_output=True,
+        )
+    else:
+        alias.symlink_to(target, target_is_directory=True)
+
+
+def test_joint_evidence_counts_pytest_current_alias_only_once(tmp_path):
+    folder = tmp_path / "test_recovery0"
+    folder.mkdir()
+    proof = folder / "pg16-full-recovery-evidence.json"
+    proof.write_text("{}")
+    link_directory(tmp_path / "test_recoverycurrent", folder)
+    assert gate().joint_evidence_path(tmp_path, 16) == proof.resolve()
+
+
+@pytest.mark.parametrize("kind", ["missing", "distinct_duplicate", "external_alias"])
+def test_joint_evidence_still_rejects_missing_duplicate_or_outside_run(tmp_path, kind):
+    root = tmp_path / "joint-private"
+    root.mkdir()
+    for name in ["first", "second"] if kind == "distinct_duplicate" else []:
+        folder = root / name
+        folder.mkdir()
+        (folder / "pg16-full-recovery-evidence.json").write_text("{}")
+    if kind == "external_alias":
+        outside = tmp_path / "old-run"
+        outside.mkdir()
+        (outside / "pg16-full-recovery-evidence.json").write_text("{}")
+        link_directory(root / "test_recoverycurrent", outside)
+    with pytest.raises(gate().GateError):
+        gate().joint_evidence_path(root, 16)
 
 
 def report(tmp_path, cases, *, skip=False):

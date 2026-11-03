@@ -166,13 +166,48 @@ test('员工只选择本企业授权事项，空范围后台识别有明确阻�
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/');
   await choosePersona(page, 'employee');
-  await page.getByRole('button', { name: '问会计助手', exact: true }).click();
-  const assistant = page.getByRole('dialog', { name: '会计助手', exact: true });
-  await assistant.getByLabel('助手所属企业', { exact: true }).selectOption(companies[0].id);
-  await expect(assistant.getByText('当前账号没有可加入的账套', { exact: false })).toBeVisible();
-  await assistant.getByRole('button', { name: /创建会话/ }).click();
-  await assistant.getByText('直接准备后台任务', { exact: false }).click();
-  await assistant.getByRole('button', { name: '识别所选票据', exact: true }).click();
-  await expect(assistant.locator('.ga-action-plan')).toContainText('明确选择');
-  await expect(assistant.getByRole('button', { name: /确认执行这/ })).toHaveCount(0);
+  // The client shell intentionally exposes business tasks rather than firm tools.
+  // Retain this employee's server-side scope/empty-action negative coverage.
+  await expect(page.getByRole('button', { name: '问会计助手', exact: true })).toHaveCount(0);
+  const scope = await request.get(`/api/assistant/scope?company_id=${companies[0].id}`, {
+    headers,
+  });
+  expect(scope.status()).toBe(200);
+  expect((await scope.json()).books).toEqual([]);
+  const created = await request.post('/api/assistant/conversations', {
+    headers,
+    data: {
+      company_id: companies[0].id,
+      title: '合成员工空范围',
+      idempotency_key: crypto.randomUUID(),
+    },
+  });
+  expect(created.status()).toBe(201);
+  const body = await created.json(),
+    conversation = body.conversation ?? body;
+  const prepared = await request.post(`/api/assistant/conversations/${conversation.id}/actions`, {
+    headers,
+    data: {
+      kind: 'ocr_batch',
+      reason: '合成空范围不能扩大授权',
+      idempotency_key: crypto.randomUUID(),
+    },
+  });
+  expect(prepared.status()).toBe(201);
+  const plan = await prepared.json();
+  expect(plan.state).toBe('empty');
+  expect(plan.count).toBe(0);
+  expect(JSON.stringify(plan.blocked)).toContain('明确选择');
+  const confirmation = await request.post(
+    `/api/assistant/conversations/${conversation.id}/actions/${plan.id}/confirm`,
+    {
+      headers,
+      data: {
+        fingerprint: plan.fingerprint,
+        confirmed: true,
+        idempotency_key: crypto.randomUUID(),
+      },
+    },
+  );
+  expect(confirmation.status()).toBe(409);
 });

@@ -17,7 +17,12 @@ export default defineConfig({
   // E2E cannot load file-only credentials that are absent from process.env.
   envDir: process.env.E2E_LOCAL_ISOLATION === '1' ? false : './config',
   plugins: [react()],
-  server: localServer,
+  // Frozen E2E candidates do not hot-reload. Test artifacts and parallel local
+  // worktrees must not trigger reloads or consume watcher resources mid-case.
+  server: {
+    ...localServer,
+    ...(process.env.E2E_LOCAL_ISOLATION === '1' ? { watch: null } : {}),
+  },
   preview: localServer,
   build: {
     target: 'es2020',
@@ -27,7 +32,11 @@ export default defineConfig({
     ...(process.env.E2E_LOCAL_ISOLATION === '1'
       ? {
           rollupOptions: {
-            input: { main: 'index.html', n04Signing: 'e2e/fixtures/n04-package-harness.html' },
+            input: {
+              main: 'index.html',
+              n04Signing: 'e2e/fixtures/n04-package-harness.html',
+              p02Close: 'e2e/fixtures/p02-close-harness.html',
+            },
           },
         }
       : {}),

@@ -1,0 +1,34 @@
+{
+  "phases": [
+    {
+      "name": "notification-regression",
+      "command": [
+        ".venv/Scripts/python.exe",
+        "-m",
+        "pytest",
+        "nexus_backend/tests/test_dcp07_smtp_channel.py",
+        "nexus_backend/tests/test_n03_notifications.py",
+        "nexus_backend/tests/test_next06_provider_receipts.py",
+        "-q",
+        "-p",
+        "scripts.qa_no_skip"
+      ],
+      "timeout": 900
+    },
+    {
+      "name": "delivery-regression",
+      "command": [
+        ".venv/Scripts/python.exe",
+        "-m",
+        "pytest",
+        "nexus_backend/tests/test_delivery_followups.py",
+        "nexus_backend/tests/test_dcp_notification_investigation.py",
+        "nexus_backend/tests/test_monthly_delivery_package.py",
+        "-q",
+        "-p",
+        "scripts.qa_no_skip"
+      ],
+      "timeout": 900
+    }
+  ]
+}

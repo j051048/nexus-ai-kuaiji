@@ -71,6 +71,8 @@ test('真实本地 UI：企业启用、未配置服务禁识别、员工登记�
   page,
   request,
 }) => {
+  // This round trip covers settings, three roles, upload and recorded manual resolution.
+  test.setTimeout(90_000);
   await page.setViewportSize({ width: 1440, height: 1100 });
   await page.goto('/');
   await openBusiness(page);

@@ -35,7 +35,7 @@ async function fixture(request: APIRequestContext, suffix: string) {
   }
   expect(
     (
-      await request.put(`/api/books/${book.id}/members/local-business-finance`, {
+      await request.put(`/api/books/${book.id}/members/local-reviewer`, {
         headers,
         data: { role: 'reviewer' },
       })
@@ -57,7 +57,7 @@ test('真实月度服务单、显式生成资料、员工无发生声明与独�
   await page.goto(f.url);
   await expect(page.getByRole('heading', { name: /月度服务单$/ })).toBeVisible({ timeout: 30_000 });
   await page.getByLabel('主办会计', { exact: true }).selectOption('local-accountant');
-  await page.getByLabel('独立复核人', { exact: true }).selectOption('local-business-finance');
+  await page.getByLabel('独立复核人', { exact: true }).selectOption('local-reviewer');
   await page.getByLabel('客户资料联系人', { exact: true }).selectOption('local-business-employee');
   await page.getByLabel('本月交付截止日期').fill('2026-11-08');
   await page.getByLabel('服务单变更原因').fill('合成验证：明确本月分工与交付时间');
@@ -227,13 +227,11 @@ test('员工直接提交银行CSV原件并独立验收，不生成业务金额�
     mimeType: 'text/csv',
     buffer: Buffer.from('日期,摘要,收入,支出\n2026-10-16,虚构零业务核对,0.00,0.00\n', 'utf8'),
   };
-  await page
-    .getByLabel('上传月度资料原件')
-    .setInputFiles({
-      name: '不可执行宏.xlsm',
-      mimeType: 'application/octet-stream',
-      buffer: Buffer.from('SYNTHETIC NON-DOCUMENT'),
-    });
+  await page.getByLabel('上传月度资料原件').setInputFiles({
+    name: '不可执行宏.xlsm',
+    mimeType: 'application/octet-stream',
+    buffer: Buffer.from('SYNTHETIC NON-DOCUMENT'),
+  });
   await expect(page.getByRole('alert').filter({ hasText: '支持的格式' })).toBeVisible();
   await page.getByLabel('上传月度资料原件').setInputFiles(file);
   await expect(

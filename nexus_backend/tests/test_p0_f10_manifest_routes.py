@@ -43,10 +43,23 @@ def archived_item(client, tmp_path, intent):
     )
 
 
-@pytest.mark.parametrize("purpose", list(BINDINGS))
+# The six original direct-upload consumers. Tax filing receipts have their own
+# consumer contract in test_next05_filing_evidence.py; keep it in the portable
+# recovery registry but exercise its HTTP path there.
+LEGACY_CONSUMERS = {
+    key: value for key, value in BINDINGS.items() if key != "tax_filing_attachment"
+}
+
+
+@pytest.mark.parametrize("purpose", list(LEGACY_CONSUMERS))
 def test_six_runtime_consumers_are_policy3_compatible(client, tmp_path, purpose):
     _kind, _target, attachment_table, parent_column = BINDINGS[purpose]
-    assert BINDINGS == recovery.CONSUMED_TARGETS
+    assert LEGACY_CONSUMERS == {
+        key: value
+        for key, value in recovery.CONSUMED_TARGETS.items()
+        if key != "tax_filing_attachment"
+    }
+    assert BINDINGS["tax_filing_attachment"] == recovery.CONSUMED_TARGETS["tax_filing_attachment"]
     exercise_consumer(client, purpose, attachment_table)
     intent = one_intent(client, purpose)
     binding = json.loads(intent["binding_json"])

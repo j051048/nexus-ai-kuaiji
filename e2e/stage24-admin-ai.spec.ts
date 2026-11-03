@@ -32,7 +32,7 @@ test('企业AI页签按需读取，默认开启与供应商未配置分开，暂
     else writes.push({ path, body: value.postDataJSON() });
   });
   await page.goto('/workspace/home');
-  await expect(page.getByRole('heading', { name: '会计工作台', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '事务所管理', exact: true })).toBeVisible();
   expect(reads).toBe(0);
   await page.goto(`/admin/organizations/${company.id}?tab=unknown`);
   await expect(page.getByRole('heading', { name: '企业人员', exact: true })).toBeVisible();
@@ -133,53 +133,65 @@ test('客户企业管理员在智能识别页签只看到开关与外发说明�
   });
   expect(granted.status()).toBe(200);
 
-  await page.goto('/');
-  await page.getByLabel('切换验证身份').selectOption('finance');
-  await expect(page.getByRole('heading', { name: '财务工作台', exact: true })).toBeVisible();
-  await page.evaluate((companyId) => {
-    window.history.pushState({}, '', `/admin/organizations/${companyId}?tab=ai`);
-    window.dispatchEvent(new PopStateEvent('popstate'));
-  }, company.id);
+  try {
+    await page.goto('/');
+    await page.getByLabel('切换验证身份').selectOption('finance');
+    await expect(page.getByRole('heading', { name: '企业工作台', exact: true })).toBeVisible();
+    await page.evaluate((companyId) => {
+      window.history.pushState({}, '', `/admin/organizations/${companyId}?tab=ai`);
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    }, company.id);
 
-  await expect(page.getByRole('tablist', { name: '企业管理内容', exact: true })).toBeVisible({
-    timeout: 60_000,
-  });
-  await expect(page.getByRole('tab', { name: '智能识别与隐私', exact: true })).toHaveAttribute(
-    'aria-selected',
-    'true',
-  );
-  await expect(page.getByRole('heading', { name: '智能识别与隐私', exact: true })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '智能识别已开启', exact: true })).toBeVisible();
-  await expect(page.getByLabel('资料外发说明')).toContainText('费用与运行监控由事务所统一管理');
-  await expect(page.getByRole('button', { name: '暂停企业AI', exact: true })).toBeVisible();
-  await expect(page.getByLabel('企业Token与费用汇总')).toHaveCount(0);
-  await expect(page.getByLabel('企业AI费用限额')).toHaveCount(0);
-  await expect(page.getByLabel('模型服务配置状态')).toHaveCount(0);
-  await expect(page.getByLabel('近期模型调用记录')).toHaveCount(0);
-  await expect(page.getByRole('button', { name: '设置费用限额与提醒', exact: true })).toHaveCount(0);
-  await page.screenshot({ path: 'artifacts/stage24-client-admin-ai.png', fullPage: true });
+    await expect(page.getByRole('tablist', { name: '企业管理内容', exact: true })).toBeVisible({
+      timeout: 60_000,
+    });
+    await expect(page.getByRole('tab', { name: '智能识别与隐私', exact: true })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    await expect(page.getByRole('heading', { name: '智能识别与隐私', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '智能识别已开启', exact: true })).toBeVisible();
+    await expect(page.getByLabel('资料外发说明')).toContainText('费用与运行监控由事务所统一管理');
+    await expect(page.getByRole('button', { name: '暂停企业AI', exact: true })).toBeVisible();
+    await expect(page.getByLabel('企业Token与费用汇总')).toHaveCount(0);
+    await expect(page.getByLabel('企业AI费用限额')).toHaveCount(0);
+    await expect(page.getByLabel('模型服务配置状态')).toHaveCount(0);
+    await expect(page.getByLabel('近期模型调用记录')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '设置费用限额与提醒', exact: true })).toHaveCount(
+      0,
+    );
+    await page.screenshot({ path: 'artifacts/stage24-client-admin-ai.png', fullPage: true });
 
-  await page.getByRole('button', { name: '暂停企业AI', exact: true }).click();
-  const dialog = page.getByRole('dialog', { name: '暂停企业AI', exact: true });
-  await expect(dialog).not.toContainText('费用仍需计入');
-  await dialog.getByLabel('AI控制操作原因').fill('合成验证：客户侧暂停资料外发');
-  await dialog.getByRole('checkbox').check();
-  await dialog.getByRole('button', { name: '确认暂停AI', exact: true }).click();
-  await expect(page.getByRole('heading', { name: '智能识别已暂停', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: '恢复企业AI', exact: true }).click();
-  const restore = page.getByRole('dialog', { name: '恢复企业AI', exact: true });
-  await restore.getByLabel('AI控制操作原因').fill('合成验证：客户侧恢复资料外发');
-  await restore.getByRole('checkbox').check();
-  await restore.getByRole('button', { name: '确认恢复AI', exact: true }).click();
-  await expect(page.getByRole('heading', { name: '智能识别已开启', exact: true })).toBeVisible();
-  await page.setViewportSize({ width: 390, height: 844 });
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(
-    true,
-  );
-  await page.screenshot({
-    path: 'artifacts/stage24-client-admin-ai-mobile.png',
-    fullPage: true,
-  });
+    await page.getByRole('button', { name: '暂停企业AI', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: '暂停企业AI', exact: true });
+    await expect(dialog).not.toContainText('费用仍需计入');
+    await dialog.getByLabel('AI控制操作原因').fill('合成验证：客户侧暂停资料外发');
+    await dialog.getByRole('checkbox').check();
+    await dialog.getByRole('button', { name: '确认暂停AI', exact: true }).click();
+    await expect(page.getByRole('heading', { name: '智能识别已暂停', exact: true })).toBeVisible();
+    await page.getByRole('button', { name: '恢复企业AI', exact: true }).click();
+    const restore = page.getByRole('dialog', { name: '恢复企业AI', exact: true });
+    await restore.getByLabel('AI控制操作原因').fill('合成验证：客户侧恢复资料外发');
+    await restore.getByRole('checkbox').check();
+    await restore.getByRole('button', { name: '确认恢复AI', exact: true }).click();
+    await expect(page.getByRole('heading', { name: '智能识别已开启', exact: true })).toBeVisible();
+    await page.setViewportSize({ width: 390, height: 844 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(
+      true,
+    );
+    await page.screenshot({
+      path: 'artifacts/stage24-client-admin-ai-mobile.png',
+      fullPage: true,
+    });
+  } finally {
+    expect(
+      (
+        await request.delete(`/api/companies/${company.id}/members/local-business-finance`, {
+          headers,
+        })
+      ).status(),
+    ).toBe(200);
+  }
 });
 
 test('手机查看Token、费用和异常，未知用量不计零，无管理权限时隐藏控制', async ({

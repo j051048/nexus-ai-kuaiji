@@ -3,12 +3,19 @@ import { expect, test } from '@playwright/test';
 
 test('长期账套新期与主数据保留独立会计授权及原始月份', async ({ page, request }) => {
   const session = await (await request.get('/api/session?persona=accountant')).json();
-  const headers = { Authorization: `Bearer ${session.token}` }, name = `第十阶段账套 ${crypto.randomUUID().slice(0, 8)}`;
-  let response = await request.post('/api/books', { headers, data: { name, period: '2026-10' } }); expect(response.status()).toBe(201); const book = await response.json();
-  await page.goto('/'); await page.getByLabel('切换验证身份').selectOption('accountant');
-  await openAccounting(page); await page.getByLabel('搜索企业名称').fill(name); await page.getByRole('listitem').filter({ hasText: name }).click();
-  await openBookSettings(page); await page.getByRole('button', { name: '长期账套与主数据', exact: true }).click();
-  await expect(page.getByRole('heading', { name: '一家企业，一份持续的账务档案。', exact: true })).toBeVisible();
+  const headers = { Authorization: `Bearer ${session.token}` },
+    name = `第十阶段账套 ${crypto.randomUUID().slice(0, 8)}`;
+  let response = await request.post('/api/books', { headers, data: { name, period: '2026-10' } });
+  expect(response.status()).toBe(201);
+  const book = await response.json();
+  await page.goto('/');
+  await page.getByLabel('切换验证身份').selectOption('accountant');
+  await openAccounting(page);
+  await page.getByLabel('搜索企业名称').fill(name);
+  await page.getByRole('listitem').filter({ hasText: name }).click();
+  await openBookSettings(page);
+  await page.getByRole('button', { name: '长期账套与主数据', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '长期账套与主数据', exact: true })).toBeVisible();
   await page.getByLabel('新期间', { exact: true }).fill('2026-11');
   await page.getByRole('button', { name: '创建独立的新期间', exact: true }).click();
   await expect(page.getByRole('status')).toContainText('新期间已创建');
@@ -17,17 +24,29 @@ test('长期账套新期与主数据保留独立会计授权及原始月份', as
   await page.getByLabel('正式名称', { exact: true }).fill('虚构正式供应商');
   await page.getByRole('button', { name: '建立主数据', exact: true }).click();
   await expect(page.getByRole('status')).toContainText('主数据已建立');
-  await page.getByLabel('对应主数据', { exact: true }).selectOption({ label: '往来方 · 虚构正式供应商' });
+  await page
+    .getByLabel('对应主数据', { exact: true })
+    .selectOption({ label: '往来方 · 虚构正式供应商' });
   await page.getByLabel('票据 / 来源原始名称', { exact: true }).fill('虚构简称');
-  await page.getByLabel('主数据审核依据', { exact: true }).fill('合同主体和票据原名一致，等待独立审核');
+  await page
+    .getByLabel('主数据审核依据', { exact: true })
+    .fill('合同主体和票据原名一致，等待独立审核');
   await page.getByRole('button', { name: '提交别名审核', exact: true }).click();
   await expect(page.getByText('待独立审核 · v1', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: '批准映射', exact: true })).toHaveCount(0);
-  response = await request.get(`/api/books/${book.id}/ledger`, { headers }); const overview = await response.json();
-  expect(overview.periods).toHaveLength(2); expect(overview.periods.find((item: { period: string }) => item.period === '2026-10').book_id).toBe(book.id);
+  response = await request.get(`/api/books/${book.id}/ledger`, { headers });
+  const overview = await response.json();
+  expect(overview.periods).toHaveLength(2);
+  expect(
+    overview.periods.find((item: { period: string }) => item.period === '2026-10').book_id,
+  ).toBe(book.id);
   expect(overview.aliases[0].status).toBe('pending');
   const next = overview.periods.find((item: { period: string }) => item.period === '2026-11');
-  response = await request.get(`/api/books/${next.book_id}`, { headers }); expect((await response.json()).drafts).toHaveLength(0);
+  response = await request.get(`/api/books/${next.book_id}`, { headers });
+  expect((await response.json()).drafts).toHaveLength(0);
   await page.screenshot({ path: 'artifacts/stage10-longterm-ledger.png', fullPage: true });
-  await page.setViewportSize({ width: 390, height: 844 }); expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(
+    true,
+  );
 });

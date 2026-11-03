@@ -23,7 +23,7 @@ export async function reviewedManual(
       data,
     }),
   );
-  expect(prepared.request.prepared_by).not.toBe('local-business-finance');
+  expect(prepared.request.prepared_by).not.toBe('local-reviewer');
   const approved = await checked(
     await request.post(`/api/posting/manual-requests/${prepared.request.id}/approve`, {
       headers: reviewer,
@@ -52,6 +52,7 @@ export async function formalFixture(
 ) {
   const headers = await identity(request, 'accountant');
   const finance = await identity(request, 'finance');
+  const reviewer = await identity(request, 'reviewer');
   const employee = await identity(request, 'employee');
   const tag = `${namePrefix}-${crypto.randomUUID().slice(0, 8)}`;
   const company = await checked(
@@ -71,7 +72,7 @@ export async function formalFixture(
     200,
   );
   await checked(
-    await request.put(`/api/books/${book.id}/members/local-business-finance`, {
+    await request.put(`/api/books/${book.id}/members/local-reviewer`, {
       headers,
       data: { role: 'reviewer' },
     }),
@@ -80,7 +81,7 @@ export async function formalFixture(
   await checked(
     await request.post(`/api/books/${book.id}/ledger/managers`, {
       headers,
-      data: { user_id: 'local-business-finance', reason: '虚构场景独立核准正式期初' },
+      data: { user_id: 'local-reviewer', reason: '虚构场景独立核准正式期初' },
     }),
   );
   const ledger = await checked(await request.get(`/api/books/${book.id}/ledger`, { headers }), 200);
@@ -151,14 +152,14 @@ export async function formalFixture(
   );
   await checked(
     await request.post(`/api/opening/versions/${versionId}/approve`, {
-      headers: finance,
+      headers: reviewer,
       data: command,
     }),
     200,
   );
   await checked(
     await request.post(`/api/opening/versions/${versionId}/freeze`, {
-      headers: finance,
+      headers: reviewer,
       data: command,
     }),
     200,
@@ -171,7 +172,7 @@ export async function formalFixture(
   );
   const voucher = zeroActivity
     ? null
-    : await reviewedManual(request, headers, finance, {
+    : await reviewedManual(request, headers, reviewer, {
         book_id: book.id,
         command_key: `manual-${crypto.randomUUID()}`,
         voucher_date: '2026-10-15',
@@ -184,7 +185,19 @@ export async function formalFixture(
           credit: index === 1 ? '100.00' : '0.00',
         })),
       });
-  return { headers, finance, employee, tag, company, book, ledger, policy, accounts, voucher };
+  return {
+    headers,
+    finance,
+    reviewer,
+    employee,
+    tag,
+    company,
+    book,
+    ledger,
+    policy,
+    accounts,
+    voucher,
+  };
 }
 
 /** Legitimate no-activity month: no invented bank statement, receipt, approval or period lock. */
@@ -196,7 +209,7 @@ export async function monthlyFixture(request: APIRequestContext) {
       data: {
         expected_version: 0,
         lead_user_id: 'local-accountant',
-        reviewer_user_id: 'local-business-finance',
+        reviewer_user_id: 'local-reviewer',
         contact_user_id: 'local-business-finance',
         due_on: '2026-11-08',
         notes: '虚构企业本月无业务，空资料清单必须在交付包明确列示',
@@ -230,7 +243,7 @@ export async function monthlyFixture(request: APIRequestContext) {
   const command = { expected_version: 1, reason: '本地虚构无业务月结独立复核' };
   await checked(
     await request.post(`/api/reports/${report.report.id}/review`, {
-      headers: f.finance,
+      headers: f.reviewer,
       data: command,
     }),
     200,
@@ -250,7 +263,7 @@ export async function monthlyFixture(request: APIRequestContext) {
   expect(close.close.status, JSON.stringify(close.checks)).toBe('preflight_passed');
   await checked(
     await request.post(`/api/b04-close/${close.close.id}/review`, {
-      headers: f.finance,
+      headers: f.reviewer,
       data: command,
     }),
     200,
@@ -302,6 +315,13 @@ export async function secondMonth(
     }),
   );
   const bookId = created.book_id as string;
+  await checked(
+    await request.put(`/api/books/${bookId}/members/local-reviewer`, {
+      headers,
+      data: { role: 'reviewer' },
+    }),
+    200,
+  );
   const packageResponse = await checked(
     await request.post('/api/opening/packages', {
       headers,
@@ -337,14 +357,14 @@ export async function secondMonth(
   );
   await checked(
     await request.post(`/api/opening/versions/${versionId}/approve`, {
-      headers: first.finance,
+      headers: first.reviewer,
       data: command,
     }),
     200,
   );
   await checked(
     await request.post(`/api/opening/versions/${versionId}/freeze`, {
-      headers: first.finance,
+      headers: first.reviewer,
       data: command,
     }),
     200,
@@ -355,7 +375,7 @@ export async function secondMonth(
       data: { book_id: bookId, package_version_id: versionId, reason: '本地绑定次月冻结期初' },
     }),
   );
-  const voucher = await reviewedManual(request, first.headers, first.finance, {
+  const voucher = await reviewedManual(request, first.headers, first.reviewer, {
     book_id: bookId,
     command_key: `manual-${crypto.randomUUID()}`,
     voucher_date: `${period}-05`,

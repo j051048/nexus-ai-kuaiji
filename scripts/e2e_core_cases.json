@@ -52,7 +52,7 @@
     },
     {
       "file": "e2e/role-identity.spec.ts",
-      "title": "岗位身份：真实财务兼有账套复核权保持客户门户，显式专业入口和撤权后首页均重新核权"
+      "title": "岗位身份：真实财务兼有账套编辑权保持客户门户，显式专业入口和撤权后首页均重新核权"
     },
     {
       "file": "e2e/role-identity.spec.ts",
@@ -76,7 +76,7 @@
     },
     {
       "file": "e2e/role-identity.spec.ts",
-      "title": "岗位兼任复核：财务门户同屏复核可打开并返回，未审凭证不可导出"
+      "title": "岗位分离：财务不能复核，独立复核岗可打开并返回，未审凭证不可导出"
     },
     {
       "file": "e2e/role-identity.spec.ts",
@@ -120,7 +120,7 @@
     },
     {
       "file": "e2e/stage12-workspace.spec.ts",
-      "title": "四种真实验证身份按主业务角色进入待办首页，兼有复核权的财务仍先核验业务"
+      "title": "四种真实验证身份按主业务角色进入待办首页，兼有编辑权的财务仍先核验业务"
     },
     {
       "file": "e2e/stage12-workspace.spec.ts",
@@ -136,7 +136,7 @@
     },
     {
       "file": "e2e/stage17-monthly.spec.ts",
-      "title": "企业财务兼账套复核身份保留客户门户，月度资料范围与企业事项一致"
+      "title": "企业财务兼账套编辑身份保留客户门户，月度资料范围与企业事项一致"
     },
     {
       "file": "e2e/v03-entry-review.spec.ts",

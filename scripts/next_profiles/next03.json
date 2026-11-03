@@ -1,0 +1,18 @@
+{
+  "schema": "next-profile-v1",
+  "task": "next03",
+  "phases": [
+    {
+      "name": "security-regression",
+      "command": [".venv/Scripts/python.exe", "-m", "pytest", "nexus_backend/tests/test_auth_supabase.py", "nexus_backend/tests/test_admin_security.py", "nexus_backend/tests/test_qa_http_failures.py", "nexus_backend/tests/test_qa_attachment_probes.py", "nexus_backend/tests/test_attachment_storage.py", "nexus_backend/tests/test_uploads.py", "nexus_backend/tests/test_ingestion_service.py"],
+      "kind": "pytest",
+      "timeout": 900
+    },
+    {
+      "name": "live-auth-probe",
+      "command": [".venv/Scripts/python.exe", "scripts/next03_security_probe.py", "--fixture", "tmp_test/next/next02-browser-final/fixture-private.json", "--output", "tmp_test/next/next03-security/probe.json"],
+      "kind": "command",
+      "timeout": 300
+    }
+  ]
+}

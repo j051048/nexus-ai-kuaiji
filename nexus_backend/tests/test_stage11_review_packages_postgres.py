@@ -27,13 +27,13 @@ def test_pg_package_scope_full_checks_selection_and_idempotent_human_confirmatio
     first, second = bank_draft(c, c.book, uuid4().hex), bank_draft(c, c.book, uuid4().hex)
     LedgersService(c.db).create_entity(c.owner, c.book, EntityCreate(kind="counterparty", code="SUP", name="供应商"))
     key = uuid4().hex
-    service, parent = prepare(c, [first, second], key=key)
+    service, parent = prepare(c, [first, second], key=key, actor=c.reviewer)
     assert len(parent["packages"]) == 1 and parent["ready_count"] == 2
-    assert prepare(c, [first, second], key=key)[1]["id"] == parent["id"]
-    child = service.select(c.owner, parent["id"], PackageSelect(draft_ids=[first["draft_id"]], idempotency_key=uuid4().hex))
+    assert prepare(c, [first, second], key=key, actor=c.reviewer)[1]["id"] == parent["id"]
+    child = service.select(c.reviewer, parent["id"], PackageSelect(draft_ids=[first["draft_id"]], idempotency_key=uuid4().hex))
     command = ReviewConfirmRequest(idempotency_key=uuid4().hex)
-    receipt = service.confirm(c.owner, child["id"], command)
-    assert receipt["approved_count"] == 1 and service.confirm(c.owner, child["id"], command) == receipt
+    receipt = service.confirm(c.reviewer, child["id"], command)
+    assert receipt["approved_count"] == 1 and service.confirm(c.reviewer, child["id"], command) == receipt
     with c.db.transaction(actor=c.owner) as conn:
         assert conn.execute("SELECT status FROM drafts WHERE id=?", (second["draft_id"],)).fetchone()[0] == "draft"
         assert conn.execute("SELECT count(*) FROM exports WHERE book_id=?", (c.book,)).fetchone()[0] == 0

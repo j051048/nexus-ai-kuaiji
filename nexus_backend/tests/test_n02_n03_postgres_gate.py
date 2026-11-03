@@ -23,7 +23,7 @@ def junit(path, cases, *, child=None):
     return path
 
 
-@pytest.mark.parametrize("suite,count", [("n02", 45), ("n03", 55)])
+@pytest.mark.parametrize("suite,count", [("n02", 45), ("n03", 56)])
 def test_all_collected_parameterized_cases_are_required(tmp_path, suite, count):
     contract = gate.load_contract()
     cases = contract["suites"][suite]["cases"]
@@ -31,6 +31,13 @@ def test_all_collected_parameterized_cases_are_required(tmp_path, suite, count):
     checked = gate.validate_junit(junit(tmp_path / "pass.xml", cases), suite)
     assert checked["passed"] == count
     assert len(checked["junit_sha256"]) == 64
+
+
+def test_provider_receipt_permission_case_is_required():
+    assert (
+        "nexus_backend.tests.test_n03_notification_postgres::"
+        "test_provider_receipt_uses_worker_insert_and_app_tenant_read"
+    ) in gate.load_contract()["suites"]["n03"]["cases"]
 
 
 @pytest.mark.parametrize("suite", ["n02", "n03"])
@@ -181,7 +188,7 @@ def test_both_suites_pass_on_exact_actual_major_and_safe_runner(execution):
     }
     assert {key: result["passed"] for key, result in report["suites"].items()} == {
         "n02": 45,
-        "n03": 55,
+        "n03": 56,
     }
     assert len(execution.calls) == 2
     assert all(

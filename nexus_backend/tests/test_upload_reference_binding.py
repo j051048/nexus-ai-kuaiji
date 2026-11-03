@@ -266,13 +266,24 @@ def test_migration_preserves_legacy_reference_without_fabricating_verified_bindi
     real_files = database_module.migration_files
     # Build an actual pre-088 database, including its historically weak generic ref.
     with monkeypatch.context() as patch:
+        # The session template is built from the current migration set; the
+        # historical database must be migrated directly by the patched loader.
+        import conftest
+
+        patch.setattr(conftest, "_wants_template", lambda target: False)
         patch.setattr(
             database_module,
             "migration_files",
             lambda dialect: [
                 path
                 for path in real_files(dialect)
-                if not (dialect == "sqlite" and path.name.startswith("088_"))
+                if not (
+                    dialect == "sqlite"
+                    and (
+                        path.name.startswith("088_")
+                        or path.name.startswith("127_")
+                    )
+                )
             ],
         )
         c = business.__wrapped__(tmp_path)

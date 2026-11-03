@@ -3203,6 +3203,15 @@ dd,
   width: 100%;
   font-size: var(--font-size-input);
 }
+.organization-department > label {
+  display: block;
+  min-width: 0;
+}
+.organization-department > label > select,
+.organization-department > label > input {
+  width: 100%;
+  min-width: 0;
+}
 .organization-department h3 {
   display: flex;
   align-items: center;

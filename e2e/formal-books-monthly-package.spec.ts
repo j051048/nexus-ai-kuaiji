@@ -29,7 +29,7 @@ async function reviewedManual(
       data,
     }),
   );
-  expect(prepared.request.prepared_by).not.toBe('local-business-finance');
+  expect(prepared.request.prepared_by).not.toBe('local-reviewer');
   const approved = await checked(
     await request.post(`/api/posting/manual-requests/${prepared.request.id}/approve`, {
       headers: reviewer,
@@ -103,7 +103,7 @@ test('正式账簿 A 迟到响应经 B 返回 A 后不能覆盖新事实', async
     const workspace = page.locator('.formal-books-workspace');
     await expect(workspace).toContainText(second.tag);
     await expect(workspace.getByText('10,100.00', { exact: true }).first()).toBeVisible();
-    await reviewedManual(request, first.headers, first.finance, {
+    await reviewedManual(request, first.headers, first.reviewer, {
       book_id: first.book.id,
       command_key: `late-${crypto.randomUUID()}`,
       voucher_date: '2026-10-16',
@@ -152,6 +152,7 @@ async function formalFixture(
 ) {
   const headers = await identity(request, 'accountant');
   const finance = await identity(request, 'finance');
+  const reviewer = await identity(request, 'reviewer');
   const employee = await identity(request, 'employee');
   const tag = `${namePrefix}-${crypto.randomUUID().slice(0, 8)}`;
   const company = await checked(
@@ -170,18 +171,8 @@ async function formalFixture(
     }),
     200,
   );
-  // Book review responsibility is reserved to firm reviewers. The local seed
-  // has only one firm owner, so the demo finance identity is promoted at firm
-  // level here: a harness limitation, not a product policy.
   await checked(
-    await request.put('/api/firm/members', {
-      headers,
-      data: { email: 'finance@demo.example.invalid', role: 'reviewer' },
-    }),
-    200,
-  );
-  await checked(
-    await request.put(`/api/books/${book.id}/members/local-business-finance`, {
+    await request.put(`/api/books/${book.id}/members/local-reviewer`, {
       headers,
       data: { role: 'reviewer' },
     }),
@@ -190,7 +181,7 @@ async function formalFixture(
   await checked(
     await request.post(`/api/books/${book.id}/ledger/managers`, {
       headers,
-      data: { user_id: 'local-business-finance', reason: '虚构场景独立核准正式期初' },
+      data: { user_id: 'local-reviewer', reason: '虚构场景独立核准正式期初' },
     }),
   );
   const ledger = await checked(await request.get(`/api/books/${book.id}/ledger`, { headers }), 200);
@@ -261,14 +252,14 @@ async function formalFixture(
   );
   await checked(
     await request.post(`/api/opening/versions/${versionId}/approve`, {
-      headers: finance,
+      headers: reviewer,
       data: command,
     }),
     200,
   );
   await checked(
     await request.post(`/api/opening/versions/${versionId}/freeze`, {
-      headers: finance,
+      headers: reviewer,
       data: command,
     }),
     200,
@@ -281,7 +272,7 @@ async function formalFixture(
   );
   const voucher = zeroActivity
     ? null
-    : await reviewedManual(request, headers, finance, {
+    : await reviewedManual(request, headers, reviewer, {
         book_id: book.id,
         command_key: `manual-${crypto.randomUUID()}`,
         voucher_date: '2026-10-15',
@@ -294,7 +285,7 @@ async function formalFixture(
           credit: index === 1 ? '100.00' : '0.00',
         })),
       });
-  return { headers, finance, employee, tag, company, book, accounts, voucher };
+  return { headers, finance, reviewer, employee, tag, company, book, accounts, voucher };
 }
 
 /** Legitimate no-activity month: no invented bank statement, receipt, approval or period lock. */
@@ -306,7 +297,7 @@ async function monthlyFixture(request: APIRequestContext) {
       data: {
         expected_version: 0,
         lead_user_id: 'local-accountant',
-        reviewer_user_id: 'local-business-finance',
+        reviewer_user_id: 'local-reviewer',
         contact_user_id: 'local-business-finance',
         due_on: '2026-11-08',
         notes: '虚构企业本月无业务，空资料清单必须在交付包明确列示',
@@ -340,7 +331,7 @@ async function monthlyFixture(request: APIRequestContext) {
   const command = { expected_version: 1, reason: '本地虚构无业务月结独立复核' };
   await checked(
     await request.post(`/api/reports/${report.report.id}/review`, {
-      headers: f.finance,
+      headers: f.reviewer,
       data: command,
     }),
     200,
@@ -360,7 +351,7 @@ async function monthlyFixture(request: APIRequestContext) {
   expect(close.close.status, JSON.stringify(close.checks)).toBe('preflight_passed');
   await checked(
     await request.post(`/api/b04-close/${close.close.id}/review`, {
-      headers: f.finance,
+      headers: f.reviewer,
       data: command,
     }),
     200,
@@ -419,7 +410,7 @@ for (const viewport of [
     expect(
       (
         await request.post(`/api/posting/manual-requests/${item.id}/withdraw`, {
-          headers: f.finance,
+          headers: f.reviewer,
           data: { expected_version: item.version, reason: '他人不可替代制单本人撤回' },
         })
       ).status(),
@@ -455,7 +446,7 @@ for (const viewport of [
     expect([403, 409]).toContain(
       (
         await request.post(`/api/posting/manual-requests/${item.id}/approve`, {
-          headers: f.finance,
+          headers: f.reviewer,
           data: {
             expected_version: after.requests[0].version,
             expected_policy_version: item.policy_version,
@@ -515,7 +506,7 @@ for (const viewport of [
     // Select the real local finance identity; no fabricated token or role projection.
     await page.route('**/api/session', async (route) => {
       const url = new URL(route.request().url());
-      url.searchParams.set('persona', 'finance');
+      url.searchParams.set('persona', 'reviewer');
       await route.fulfill({ response: await route.fetch({ url: url.toString() }) });
     });
     await page.goto(path);
@@ -528,7 +519,7 @@ for (const viewport of [
       await request.get(`/api/books/${f.book.id}/manual-review-requests`, { headers: f.headers }),
       200,
     );
-    expect(final.requests[0].reviewed_by).toBe('local-business-finance');
+    expect(final.requests[0].reviewed_by).toBe('local-reviewer');
     expect(final.requests[0].independent).toBe(true);
     expect(final.requests[0].posted_voucher_id).toBeTruthy();
     expect(
@@ -689,19 +680,7 @@ for (const viewport of [
       ).status(),
     ).toBe(403);
     expect((await request.get(`${endpoint}/download`, { headers: f.employee })).status()).toBe(404);
-    // The client segment must run as a client-only identity. The harness had
-    // promoted this demo identity to firm reviewer so the books could be
-    // staffed at all, so the firm grant is dropped before switching, leaving
-    // only company (client) membership.
-    expect(
-      (await request.delete('/api/firm/members/local-business-finance', { headers: f.headers })).ok(),
-    ).toBe(true);
-    // Dropping the firm grant also drops the staffing it justified, so the
-    // client keeps only a read grant on its own book.
-    expect((await request.put(`/api/books/${f.book.id}/members/local-business-finance`, {
-      headers: f.headers,
-      data: { role: 'viewer' },
-    })).ok()).toBe(true);
+    // Client and reviewer are distinct for the entire scenario.
     await choosePersona(page, 'finance');
     // Local demonstration sessions intentionally reset to accountant on reload.
     // Reconnect to the real finance session endpoint instead of faking claims.

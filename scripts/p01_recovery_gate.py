@@ -91,6 +91,21 @@ def validate_junit(path, phase):
     }
 
 
+def joint_evidence_path(directory, major):
+    # pytest creates a `...current` directory alias on Linux. Count physical
+    # artifacts, not directory aliases, while refusing evidence from another run.
+    root = Path(directory).resolve(strict=True)
+    paths = set()
+    for path in root.glob(f"*/pg{major}-full-recovery-evidence.json"):
+        resolved = path.resolve(strict=True)
+        if not resolved.is_relative_to(root) or not resolved.is_file():
+            raise GateError("Joint business recovery record is outside this run")
+        paths.add(resolved)
+    if len(paths) != 1:
+        raise GateError("Exactly one joint business recovery record per major is required")
+    return next(iter(paths))
+
+
 def validate_evidence(path, major):
     try:
         value = json.loads(Path(path).read_text(encoding="utf-8"))
@@ -459,15 +474,9 @@ def _run_gate(output, *, config_dir, timeout=3600):
             if phase == "joint":
                 pointers, report["databases"] = {}, {}
                 for major in (16, 17):
-                    paths = list(
-                        (output / "joint-private").glob(f"*/pg{major}-full-recovery-evidence.json")
-                    )
-                    if len(paths) != 1:
-                        raise GateError(
-                            "Exactly one joint business recovery record per major is required"
-                        )
-                    evidence = validate_evidence(paths[0], major)
-                    pointers[str(major)] = str(paths[0].parent)
+                    path = joint_evidence_path(output / "joint-private", major)
+                    evidence = validate_evidence(path, major)
+                    pointers[str(major)] = str(path.parent)
                     report["databases"][str(major)] = {
                         k: evidence[k]
                         for k in (

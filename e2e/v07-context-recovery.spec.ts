@@ -54,7 +54,7 @@ for (const [device, viewport] of [
       }
     });
     await openBusiness(page);
-    const error = page.getByRole('alert').filter({ hasText: 'V07合成业务范围首次读取失败' });
+    const error = page.getByRole('alert').filter({ hasText: '服务暂时不可用' });
     await expect(error).toBeVisible();
     expect(contextReads).toBe(1);
     const retry = error.getByRole('button', { name: /^(重新读取业务范围|刷新列表)$/ });

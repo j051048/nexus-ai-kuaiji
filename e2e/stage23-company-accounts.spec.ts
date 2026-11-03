@@ -152,7 +152,7 @@ test('密码开户失败需重新输入，响应丢失后的重试保留首次�
   await dialog.getByLabel('初始密码', { exact: true }).fill(secret);
   await dialog.getByLabel('再次输入初始密码', { exact: true }).fill(secret);
   await dialog.getByRole('button', { name: '重试开通', exact: true }).click();
-  await expect(dialog.getByRole('alert')).toContainText('结果暂时未知');
+  await expect(dialog.getByRole('alert')).toContainText('暂时无法确认本次操作结果');
   await expect(dialog.getByLabel('初始密码', { exact: true })).toHaveValue('');
   await expect(dialog.getByLabel('再次输入初始密码', { exact: true })).toHaveValue('');
   await dialog.getByLabel('初始密码', { exact: true }).fill(secret);

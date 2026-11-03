@@ -76,6 +76,8 @@ from .delivery.monthly_package import MonthlyPackageService
 from .delivery.followups import DeliveryFollowupService
 from .delivery.followup_router import build_delivery_followup_router
 from .delivery.router import build_delivery_router
+from .delivery.callback_router import build_delivery_callback_router
+from .delivery.receipts import ProviderReceiptService
 from .delivery.middleware import DeliveryBodyLimitMiddleware
 from .tools.accounting_tools import AccountingSuggestionTool
 from .business.api import build_business_router
@@ -428,6 +430,7 @@ def create_app(
                 application.state.monthly_packages,
                 application.state.service_plans,
             )
+            application.state.delivery_receipts = ProviderReceiptService(database)
             application.state.onboarding = OnboardingService(
                 database,
                 application.state.admin,
@@ -626,6 +629,7 @@ def create_app(
         public_webhook = (
             request.url.path == "/api/integrations/webhook"
             or request.url.path.startswith("/api/integrations/webhook/")
+            or request.url.path == "/api/delivery/provider-callback"
         )
         if (
             request.method != "OPTIONS"
@@ -1144,6 +1148,7 @@ def create_app(
     app.include_router(build_bank_import_router(actor))
     app.include_router(build_reconciliation_router(actor))
     app.include_router(build_delivery_router(actor))
+    app.include_router(build_delivery_callback_router())
     app.include_router(build_delivery_followup_router(actor))
     app.include_router(build_ledgers_router(actor))
     app.include_router(build_opening_router(actor))

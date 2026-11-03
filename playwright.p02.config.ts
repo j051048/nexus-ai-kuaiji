@@ -4,7 +4,7 @@ import { defineConfig } from '@playwright/test';
 // separately. This configuration never starts a local-persona API or deploys.
 export default defineConfig({
   testDir: './e2e',
-  testMatch: /p02-(?:r1-business-flow|close-boundary)\.spec\.ts/,
+  testMatch: /(?:p02-(?:r1-business-flow|close-boundary)|next02-isolation)\.spec\.ts/,
   forbidOnly: true,
   failOnFlakyTests: true,
   retries: 0,

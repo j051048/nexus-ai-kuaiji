@@ -16,6 +16,12 @@ BINDINGS = {
     ),
     "bank_import": ("book", "books", "bank_import_files", "book_id"),
     "invoice_import": ("book", "books", "invoice_import_batches", "book_id"),
+    "tax_filing_attachment": (
+        "tax_filing",
+        "tax_filings",
+        "tax_filing_attachments",
+        "filing_id",
+    ),
 }
 
 
