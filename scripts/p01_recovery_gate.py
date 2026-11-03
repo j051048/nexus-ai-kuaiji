@@ -142,7 +142,7 @@ def validate_evidence(path, major):
 
 
 REGRESSION_FILES = (
-    "nexus_backend/tests/test_recovery_port_lifecycle.py",
+    "test_recovery_port_lifecycle.py",
     "test_next_p0_boundaries.py",
     "test_next_p0_release_contract.py",
     "test_c01_identity_recovery.py",
@@ -525,6 +525,32 @@ def _run_gate(output, *, config_dir, timeout=3600):
         failed = failed_case_names(output / f"{phase}.xml") if phase else []
         if failed:
             report["diagnostic"]["failed_cases"] = failed
+        if phase:
+            log_path = output / f"{phase}.log"
+            if log_path.is_file():
+                lines = [
+                    line.strip()
+                    for line in log_path.read_text(encoding="utf-8", errors="replace").splitlines()
+                    if line.strip()
+                ]
+                safe = [
+                    line
+                    for line in lines
+                    if not any(
+                        marker in line.lower()
+                        for marker in (
+                            "password",
+                            "secret",
+                            "token",
+                            "postgresql://",
+                            "authorization",
+                            "cookie",
+                            "bearer ",
+                        )
+                    )
+                ]
+                if safe:
+                    report["diagnostic"]["log_excerpt"] = "\n".join(safe[-8:])[:1200]
     # A public result is always an outcome of this invocation, never hand-merged.
     (public / "summary.json").write_text(
         json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
