@@ -109,8 +109,8 @@ def test_package_detail_lists_contents_month_and_receipt_states(ready_case):
     assert view["period"] == ready_case.book["period"]
     assert view["company_id"] == ready_case.company["id"]
     assert view["created_at"]
-    assert view["file_count"] == 11
-    assert {"README.html", "report.html", "account_balances.csv"} <= {
+    assert view["file_count"] == 12
+    assert {"README.html", "report.html", "account_balances.csv", "tax_filings.json"} <= {
         item["path"] for item in view["files"]
     }
     assert view["customer_opening_status"] == "not_opened"

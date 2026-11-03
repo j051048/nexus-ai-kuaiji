@@ -47,7 +47,7 @@ for (const viewport of viewports) {
     );
     expect(clientView.package.can_open).toBe(true);
     expect(clientView.package.customer_opening_status).toBe('not_opened');
-    expect(clientView.package.file_count).toBe(11);
+    expect(clientView.package.file_count).toBe(12);
     expect(clientView.package.files[0].sha256).toMatch(/^[a-f0-9]{64}$/);
 
     // The frozen package has the service plan's eligible contact. N03 binds this
@@ -90,15 +90,16 @@ for (const viewport of viewports) {
     await expect(panel.getByText('交付前还需处理', { exact: true })).toHaveCount(0);
 
     // Contents are listed, not just a download button.
-    const contents = panel.locator('summary').filter({ hasText: '本版包含 11 个文件' });
+    const contents = panel.locator('summary').filter({ hasText: '本版包含 12 个文件' });
     await expect(contents).toBeVisible();
     await contents.click();
     await expect(panel.getByText('README.html', { exact: true })).toBeVisible();
     await expect(panel.getByText('report.html', { exact: true })).toBeVisible();
     await expect(panel.getByText('account_balances.csv', { exact: true })).toBeVisible();
+    await expect(panel.getByText('tax_filings.json', { exact: true })).toBeVisible();
     // 每个文件都要给出可读体积：清单字段是 size_bytes，写成 bytes 会渲染成 NaN。
     const sizes = panel.locator('.monthly-package-contents li span');
-    await expect(sizes).toHaveCount(11);
+    await expect(sizes).toHaveCount(12);
     for (const text of await sizes.allTextContents()) {
       expect(text).toMatch(/^\d+(\.\d+)?\s(B|KB|MB)$/);
     }
