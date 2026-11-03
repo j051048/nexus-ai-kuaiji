@@ -28,7 +28,9 @@
     },
     "dcp": {
       "files": [
-        "test_dcp_r123_postgres.py"
+        "test_dcp_r123_postgres.py",
+        "test_next_p1_handoff_postgres.py",
+        "test_next_p2_handoff_postgres.py"
       ],
       "cases": [
         "nexus_backend.tests.test_dcp_r123_postgres::test_restricted_filings_and_handoff_success",
@@ -56,7 +58,20 @@
         "nexus_backend.tests.test_dcp_r123_postgres::test_export_commit_fences_and_recovery[foreign_claim]",
         "nexus_backend.tests.test_dcp_r123_postgres::test_export_commit_fences_and_recovery[revoked]",
         "nexus_backend.tests.test_dcp_r123_postgres::test_native_handoff_rechecks_authority_after_lock_wait",
-        "nexus_backend.tests.test_dcp_r123_postgres::test_export_commit_fences_and_recovery[key_collision]"
+        "nexus_backend.tests.test_dcp_r123_postgres::test_export_commit_fences_and_recovery[key_collision]",
+        "nexus_backend.tests.test_dcp_r123_postgres::test_handoff_batch_projection_binds_exact_failed_item",
+        "nexus_backend.tests.test_dcp_r123_postgres::test_handoff_delivery_package_projection_and_guard",
+        "nexus_backend.tests.test_next_p1_handoff_postgres::test_failed_export_without_result_can_assign_exact_frozen_book",
+        "nexus_backend.tests.test_next_p1_handoff_postgres::test_native_failed_item_cannot_bind_other_book_or_forged_digest[book]",
+        "nexus_backend.tests.test_next_p1_handoff_postgres::test_native_failed_item_cannot_bind_other_book_or_forged_digest[fingerprint]",
+        "nexus_backend.tests.test_next_p1_handoff_postgres::test_concurrent_identical_deadline_change_has_one_current_history",
+        "nexus_backend.tests.test_next_p1_handoff_postgres::test_unknown_notification_assignment_keeps_attempt_and_checks_native_digest",
+        "nexus_backend.tests.test_next_p1_handoff_postgres::test_forward_guards_reapply_without_changing_history_or_privileges",
+        "nexus_backend.tests.test_next_p2_handoff_postgres::test_exact_tax_read_retains_scope_and_superseded_version",
+        "nexus_backend.tests.test_next_p2_handoff_postgres::test_exact_read_rechecks_revocation_between_requests",
+        "nexus_backend.tests.test_next_p2_handoff_postgres::test_exact_batch_read_keeps_frozen_scope",
+        "nexus_backend.tests.test_next_p2_handoff_postgres::test_exact_unknown_notification_keeps_attempt",
+        "nexus_backend.tests.test_next_p2_handoff_postgres::test_exact_delivery_keeps_assignee_visibility"
       ]
     }
   }

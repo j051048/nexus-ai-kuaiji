@@ -12,6 +12,7 @@ export type BatchItem = {
   status: string;
   error_code?: string;
   error_detail?: string;
+  updated_at?: string;
   attempt?: number;
   max_attempts?: number;
   cancel_requested_at?: string | null;
@@ -51,7 +52,7 @@ export type Handoff = {
     fingerprint: string;
   };
   scope: {
-    book_id: string;
+    book_id: string | null;
     period: string;
     company_name: string;
     book_name: string;
@@ -59,6 +60,9 @@ export type Handoff = {
     batch_id?: string;
   };
   maker_id?: string;
+  assignment_id?: string | null;
+  can_assign?: boolean;
+  assignment_blocker?: string;
   role: 'reviewer' | 'ops' | 'delivery';
   next_action: string;
   assignee_id: string | null;
@@ -211,7 +215,15 @@ export function acceptHandoffs(raw: unknown): Handoff[] {
       row.source.version < 1 ||
       !hash(row.source.fingerprint) ||
       !object(row.scope) ||
-      !id(row.scope.book_id) ||
+      (!id(row.scope.book_id) &&
+        !(
+          row.source.kind === 'batch_item' &&
+          row.scope.book_id === null &&
+          row.can_assign === false &&
+          id(row.scope.company_id) &&
+          id(row.scope.batch_id) &&
+          id(row.assignment_blocker)
+        )) ||
       !id(row.scope.period) ||
       !id(row.scope.company_name) ||
       !id(row.scope.book_name) ||
@@ -236,7 +248,12 @@ export const blockedLabel = (code: string) =>
     }) as Record<string, string>
   )[code] ?? '前置条件不满足，请回企业核对';
 
-export function acceptAssignment(raw: unknown, expected: Handoff, assignee: string): void {
+export function acceptAssignment(
+  raw: unknown,
+  expected: Handoff,
+  assignee: string,
+  due?: string | null,
+): void {
   if (
     !object(raw) ||
     !object(raw.source) ||
@@ -247,6 +264,7 @@ export function acceptAssignment(raw: unknown, expected: Handoff, assignee: stri
     raw.source.fingerprint !== expected.source.fingerprint ||
     raw.scope.book_id !== expected.scope.book_id ||
     raw.assignee_id !== assignee ||
+    (due !== undefined && raw.due_on !== due) ||
     raw.status !== 'assigned'
   )
     invalid();
@@ -276,21 +294,13 @@ export function batchResultUrl(kind: BatchKind, item: BatchItem, period: string)
 /** Only navigate to the source domain that owns the item; never a lookalike list. */
 export function handoffOriginalHref(item: Pick<Handoff, 'source' | 'scope'>): string {
   const query = new URLSearchParams({
-    book: item.scope.book_id,
     period: item.scope.period,
+    handoff_kind: item.source.kind,
+    handoff_id: item.source.id,
+    handoff_version: String(item.source.version),
+    handoff_fingerprint: item.source.fingerprint,
   });
+  if (item.scope.book_id) query.set('book', item.scope.book_id);
   if (item.scope.company_id) query.set('company', item.scope.company_id);
-  if (item.source.kind === 'batch_item') {
-    if (item.scope.batch_id) query.set('batch', item.scope.batch_id);
-    return `/workspace/accounting?${query}`;
-  }
-  query.set(
-    'section',
-    item.source.kind === 'tax_workpaper'
-      ? 'tax'
-      : item.source.kind === 'delivery_package'
-        ? 'delivery'
-        : 'notifications',
-  );
-  return `/workspace/delivery?${query}`;
+  return `/workspace/monthly?${query}`;
 }

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Request, Query
 
 from .models import HandoffAssign
 
@@ -22,6 +22,17 @@ def build_handoff_router(actor_dependency):
     ):
         return handoff.candidates(current, book_id, role)
 
+    @router.get("/sources/{kind}/{source_id}")
+    def source(
+        kind: str,
+        source_id: str,
+        expected_version: int = Query(ge=1),
+        expected_fingerprint: str = Query(pattern=r"^[a-f0-9]{64}$"),
+        current=Depends(actor_dependency),
+        handoff=Depends(service),
+    ):
+        return handoff.source(current, kind, source_id, expected_version, expected_fingerprint)
+
     @router.post("/sources/{kind}/{source_id}/assign")
     def assign_source(
         kind: str,
@@ -38,6 +49,8 @@ def build_handoff_router(actor_dependency):
             payload.due_on,
             payload.reason,
             kind=kind,
+            expected_fingerprint=payload.expected_fingerprint,
+            expected_assignment_id=payload.expected_assignment_id,
         )
 
     @router.post("/tax-workpapers/{workpaper_id}/assign")
@@ -54,6 +67,8 @@ def build_handoff_router(actor_dependency):
             payload.assignee_id,
             payload.due_on,
             payload.reason,
+            expected_fingerprint=payload.expected_fingerprint,
+            expected_assignment_id=payload.expected_assignment_id,
         )
 
     return router

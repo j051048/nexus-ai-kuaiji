@@ -28,6 +28,7 @@ type Props = {
   companyId: string;
   period: string;
   onBusyChange?: (busy: boolean) => void;
+  focusSource?: { id: string; version: number; fingerprint: string };
 };
 type AccountRole = 'vat_payable' | 'excluded';
 function failureText(error: unknown): string {
@@ -56,18 +57,19 @@ export function TaxWorkpaperPanel(props: Props) {
         props.companyId,
         props.bookId,
         props.period,
+        props.focusSource,
       ])}
       {...props}
     />
   );
 }
-function TaxContent({ session, bookId, companyId, period, onBusyChange }: Props) {
+function TaxContent({ session, bookId, companyId, period, onBusyChange, focusSource }: Props) {
   const scope = { firm_id: session.firm_id ?? '', company_id: companyId, book_id: bookId, period };
   const query = `book_id=${encodeURIComponent(bookId)}&period=${encodeURIComponent(period)}`;
   const [failure, setFailure] = useState(''),
     [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(''),
-    [selectedId, setSelectedId] = useState('');
+    [selectedId, setSelectedId] = useState(focusSource?.id ?? '');
   const [roles, setRoles] = useState<Record<string, AccountRole | ''>>({});
   const [generationReason, setGenerationReason] = useState(''),
     [reviewReason, setReviewReason] = useState('');
@@ -100,7 +102,20 @@ function TaxContent({ session, bookId, companyId, period, onBusyChange }: Props)
           api<unknown>(`/tax/workpapers?${query}`, session, { signal }),
         ]);
         // Accept both responses atomically, before any field is put on screen.
-        return { context: parseTaxContext(context, scope), papers: parseTaxList(papers, scope) };
+        const parsed = {
+          context: parseTaxContext(context, scope),
+          papers: parseTaxList(papers, scope),
+        };
+        if (focusSource) {
+          const paper = parsed.papers.find((p) => p.id === focusSource.id);
+          if (
+            !paper ||
+            paper.version !== focusSource.version ||
+            paper.source_digest !== focusSource.fingerprint
+          )
+            throw new Error('底稿来源版本已变化');
+        }
+        return parsed;
       } catch (error) {
         if (signal.aborted) throw error;
         throw new Error(failureText(error));

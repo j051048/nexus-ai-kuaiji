@@ -51,9 +51,7 @@ import type { OperationsCompany } from './operations-types';
 import type { Book, BookDetail, Draft, Session, Workbench } from './types';
 
 import { EmptyState, Modal, Spinner } from './AppPrimitives';
-import { NewBookModal } from './AppDialogs';
 import { AssistantDrawer, type AssistantDrawerMode } from './AssistantDrawer';
-import { ClientAccessTools } from './ClientAccessTools';
 import { ClientPortalShell, type ClientPortalTab } from './ClientPortalShell';
 import { useBookWorkspace, type BookFilter, type BookNotice } from './useBookWorkspace';
 import { WorkspaceRouteContent } from './WorkspaceRouteContent';
@@ -73,6 +71,8 @@ import type { ServiceJourneyTarget } from './service-journey';
 import { workspaceViewLabels } from './workspace-labels';
 import {
   AccessManagement,
+  NewBookModal,
+  ClientAccessTools,
   AccountActivation,
   AccountRecovery,
   AccountingContextAssistant,
@@ -1494,11 +1494,13 @@ export default function App() {
           />
           {routeContent}
           {routeView === 'home' && (
-            <ClientAccessTools
-              key={session.scope_key}
-              session={session}
-              canApprove={profile.can_approve}
-            />
+            <Suspense fallback={<p role="status">正在载入签收与部门费用入口…</p>}>
+              <ClientAccessTools
+                key={session.scope_key}
+                session={session}
+                canApprove={profile.can_approve}
+              />
+            </Suspense>
           )}
           {taskDialogs}
           {briefingPicker && (
@@ -1824,38 +1826,46 @@ export default function App() {
         </div>
       )}
       {modal === 'book' && (
-        <NewBookModal
-          session={session}
-          canCreateCompany={!!me?.permissions.create_company}
-          serverError={notice?.kind === 'error' ? notice.text : undefined}
-          busy={!!busy}
-          onClose={() => setModal(null)}
-          onSubmit={async (name, period, companyId) => {
-            if (!session) return;
-            await runAction('book', async () => {
-              const book = await api<Book>('/books', session, {
-                method: 'POST',
-                body: { name, period, company_id: companyId },
+        <Suspense
+          fallback={
+            <Modal title="新建账套" onClose={() => setModal(null)}>
+              <p role="status">正在载入开账表单…</p>
+            </Modal>
+          }
+        >
+          <NewBookModal
+            session={session}
+            canCreateCompany={!!me?.permissions.create_company}
+            serverError={notice?.kind === 'error' ? notice.text : undefined}
+            busy={!!busy}
+            onClose={() => setModal(null)}
+            onSubmit={async (name, period, companyId) => {
+              if (!session) return;
+              await runAction('book', async () => {
+                const book = await api<Book>('/books', session, {
+                  method: 'POST',
+                  body: { name, period, company_id: companyId },
+                });
+                focusBookRef.current = book.id;
+                pendingReview.current = null;
+                const data = await api<Workbench>(
+                  '/workbench?limit=20&focus_book_id=' + encodeURIComponent(book.id),
+                  session,
+                );
+                setDraftOffset(0);
+                setSourceOffset(0);
+                setWorkbench(data);
+                setBookId(book.id);
+                setDetail(null);
+                setSelectedIds([]);
+                setFilter('all');
+                setSearch('');
+                setModal(null);
+                setNotice({ kind: 'success', text: `账套“${book.name}”已创建，可以导入流水。` });
               });
-              focusBookRef.current = book.id;
-              pendingReview.current = null;
-              const data = await api<Workbench>(
-                '/workbench?limit=20&focus_book_id=' + encodeURIComponent(book.id),
-                session,
-              );
-              setDraftOffset(0);
-              setSourceOffset(0);
-              setWorkbench(data);
-              setBookId(book.id);
-              setDetail(null);
-              setSelectedIds([]);
-              setFilter('all');
-              setSearch('');
-              setModal(null);
-              setNotice({ kind: 'success', text: `账套“${book.name}”已创建，可以导入流水。` });
-            });
-          }}
-        />
+            }}
+          />
+        </Suspense>
       )}
       {modal === 'access' && me?.permissions.manage_firm && (
         <Suspense

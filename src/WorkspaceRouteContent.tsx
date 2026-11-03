@@ -7,8 +7,6 @@ import {
   TriangleAlert,
 } from 'lucide-react';
 import { EmptyState, Spinner } from './AppPrimitives';
-import { BookWorkspaceShell } from './BookWorkspaceShell';
-import { WorkspaceHome } from './WorkspaceHome';
 import type { AgentRoute } from './agent-workspace-types';
 import type { BusinessTemplate } from './business-types';
 import type { MonthlyDestination } from './monthly-workbench-types';
@@ -21,6 +19,13 @@ import type { WorkspaceView } from './workspace-route';
 import type { useWorkspaceProgress } from './useWorkspaceProgress';
 import type { ServiceJourneyTarget } from './service-journey';
 import { presentationRole, workSurface } from './workspace-presentation';
+
+const BookWorkspaceShell = lazy(() =>
+  import('./BookWorkspaceShell').then((module) => ({ default: module.BookWorkspaceShell })),
+);
+const WorkspaceHome = lazy(() =>
+  import('./WorkspaceHome').then((module) => ({ default: module.WorkspaceHome })),
+);
 
 const AgentActivityWorkspace = lazy(() =>
   import('./AgentActivityWorkspace').then((module) => ({ default: module.AgentActivityWorkspace })),

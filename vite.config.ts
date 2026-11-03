@@ -25,6 +25,8 @@ export default defineConfig({
   },
   preview: localServer,
   build: {
+    // CI measures the full static dependency closure, including shared chunks.
+    manifest: true,
     target: 'es2020',
     sourcemap: false,
     // The real component harness is built only by the isolated local E2E runner.

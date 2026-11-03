@@ -556,7 +556,7 @@ def test_handoff_batch_projection_binds_exact_failed_item(case, worker_db):
     c = case
     s = batches(c, worker_db)
     request = CreateMonthlyOpenBatch(
-        period="2026-11",
+        period=c.book["period"],
         scope="companies",
         companies=[c.book["company_id"]],
         reason="NEXT04 批量失败接手",

@@ -1,5 +1,12 @@
 import { lazy } from 'react';
 
+export const NewBookModal = lazy(() =>
+  import('./AppDialogs').then((module) => ({ default: module.NewBookModal })),
+);
+export const ClientAccessTools = lazy(() =>
+  import('./ClientAccessTools').then((module) => ({ default: module.ClientAccessTools })),
+);
+
 export const AccessManagement = lazy(() =>
   import('./AccessManagement').then((module) => ({ default: module.AccessManagement })),
 );

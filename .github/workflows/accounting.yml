@@ -53,6 +53,8 @@ jobs:
       - run: python scripts/check_pg_test_target.py
       - run: npm test
       - run: npm run build
+      - name: Check real entry and home asset budgets
+        run: npm run test:frontend-budget
       # These suites require the four-role, non-default-port isolation contract.
       # They run below on BOTH PG16/17, with exact identities and zero skips.
       - run: >-
@@ -62,6 +64,8 @@ jobs:
           --ignore=nexus_backend/tests/test_n03_notification_postgres.py
           --ignore=nexus_backend/tests/test_n03_worker_postgres.py
           --ignore=nexus_backend/tests/test_next_p0_receipts_postgres.py
+          --ignore=nexus_backend/tests/test_next_p1_handoff_postgres.py
+          --ignore=nexus_backend/tests/test_next_p2_handoff_postgres.py
 
   e2e:
     runs-on: ubuntu-latest
@@ -82,6 +86,14 @@ jobs:
       - run: python -m pip install -r nexus_backend/requirements.lock
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e -- --shard=${{ matrix.shard }}/4
+      - name: P1 real local handoff and exact-source browser regression
+        if: matrix.shard == 1
+        run: npx playwright test --config playwright.next-p1.config.ts
+      - name: P2 production-preview loading and request regression
+        if: matrix.shard == 1
+        env:
+          E2E_FRONTEND_MODE: preview
+        run: npx playwright test e2e/next-p2-loading.spec.ts
 
   core-regression-gate:
     name: V07–V10 same-candidate dev and preview gate

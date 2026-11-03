@@ -16,6 +16,7 @@ from uuid import uuid4
 
 from ..accounting.domain import AccountingError, Actor
 from ..accounting.service import AccountingService
+from .queries import batch_rows, notification_rows, delivery_rows, tax_rows
 
 FIRM_REVIEWERS = {"owner", "admin", "reviewer"}
 ROLE_NEXT_ACTION = {
@@ -75,31 +76,40 @@ class HandoffService:
     def _manager(self, conn, actor):
         return self.access.firm_role(conn, actor) in {"owner", "admin"}
 
-    def _batch_pending(self, conn, actor):
+    def _batch_pending(self, conn, actor, source_id=None):
         if not self._manager(conn, actor):
             return []
-        rows = conn.execute(
-            "SELECT i.id,i.batch_id,i.company_id,i.company_name,i.attempt,i.error_code,"
-            "i.error_detail,i.updated_at,i.result_json,b.request_json "
-            "FROM batch_operation_items i JOIN batch_operations b ON b.id=i.batch_id "
-            "WHERE i.firm_id=? AND i.status='failed' AND b.firm_id=? "
-            "ORDER BY i.updated_at DESC,i.id",
-            (actor.firm_id, actor.firm_id),
-        ).fetchall()
+        rows = batch_rows(conn, actor.firm_id, source_id)
         items = []
         for row in rows:
             request = json.loads(row["request_json"] or "{}")
             result = json.loads(row["result_json"] or "{}")
             period = request.get("period")
             book_id = result.get("book_id")
-            if not book_id:
-                # The guard binds batch handoffs to the exact book written into
-                # result_json; a guessed book would be an invalid projection.
-                continue
+            if row["batch_kind"] in {"review_export", "package_draft"}:
+                entries = [
+                    entry
+                    for entry in request.get("companies", [])
+                    if isinstance(entry, dict) and entry.get("company_id") == row["company_id"]
+                ]
+                if len(entries) != 1:
+                    continue
+                frozen_book = entries[0].get("book_id")
+                if book_id and book_id != frozen_book:
+                    continue
+                book_id = frozen_book
             try:
-                book = self.access.book(conn, actor, book_id, "read")
+                company = self.access.company(conn, actor, row["company_id"])
             except AccountingError:
                 continue
+            book = None
+            if book_id:
+                try:
+                    book = self.access.book(conn, actor, book_id, "read")
+                except AccountingError:
+                    continue
+                if book["company_id"] != row["company_id"] or book["period"] != period:
+                    continue
             items.append(
                 {
                     "source": {
@@ -119,28 +129,29 @@ class HandoffService:
                         "book_id": book_id,
                         "period": period,
                         "company_id": row["company_id"],
-                        "company_name": row["company_name"],
-                        "book_name": book["name"],
+                        "company_name": company["name"],
+                        "book_name": book["name"] if book else "尚未绑定账套",
                         "batch_id": row["batch_id"],
                     },
                     "role": "ops",
-                    "next_action": ROLE_NEXT_ACTION["ops"],
+                    "can_assign": bool(book),
+                    "assignment_blocker": ""
+                    if book
+                    else "来源未绑定账套，请负责人打开原批次核对开账失败原因；不会猜选其他月份账套。",
+                    "next_action": (
+                        "人工核对批量结果与原始回执，不自动重试"
+                        if "unknown" in (row["error_code"] or "")
+                        else ROLE_NEXT_ACTION["ops"]
+                    ),
                     "reason": row["error_detail"] or row["error_code"],
                 }
             )
         return items
 
-    def _notification_pending(self, conn, actor):
+    def _notification_pending(self, conn, actor, source_id=None):
         if not self._manager(conn, actor):
             return []
-        rows = conn.execute(
-            "SELECT n.id,n.book_id,n.period,n.package_id,n.package_version,n.manifest_sha256,"
-            "n.attempts,n.state,n.updated_at,b.name AS book_name,b.company_id,c.name AS company_name "
-            "FROM delivery_notifications n JOIN books b ON b.id=n.book_id "
-            "JOIN companies c ON c.id=b.company_id "
-            "WHERE n.firm_id=? AND n.state='unknown' ORDER BY n.updated_at DESC,n.id",
-            (actor.firm_id,),
-        ).fetchall()
+        rows = notification_rows(conn, actor.firm_id, source_id)
         items = []
         for row in rows:
             try:
@@ -179,22 +190,9 @@ class HandoffService:
             )
         return items
 
-    def _delivery_pending(self, conn, actor):
+    def _delivery_pending(self, conn, actor, source_id=None):
         manager = self._manager(conn, actor)
-        rows = conn.execute(
-            "SELECT p.id,p.version,p.book_id,p.period,p.manifest_sha256,p.created_at,"
-            "b.name AS book_name,b.company_id,c.name AS company_name "
-            "FROM monthly_delivery_packages p JOIN books b ON b.id=p.book_id "
-            "JOIN companies c ON c.id=b.company_id "
-            "WHERE p.firm_id=? AND NOT EXISTS(SELECT 1 FROM monthly_delivery_acknowledgements a "
-            "WHERE a.package_id=p.id) AND p.version=(SELECT MAX(p2.version) FROM "
-            "monthly_delivery_packages p2 WHERE p2.book_id=p.book_id AND p2.period=p.period) "
-            "AND (? OR EXISTS(SELECT 1 FROM handoff_tasks h WHERE h.firm_id=p.firm_id "
-            "AND h.source_kind='delivery_package' AND h.source_id=p.id "
-            "AND h.assignee_id=? AND h.superseded_at IS NULL)) "
-            "ORDER BY p.created_at DESC,p.id",
-            (actor.firm_id, manager, actor.user_id),
-        ).fetchall()
+        rows = delivery_rows(conn, actor.firm_id, manager, actor.user_id, source_id)
         items = []
         for row in rows:
             try:
@@ -224,18 +222,8 @@ class HandoffService:
             )
         return items
 
-    def _tax_pending(self, conn, actor):
-        rows = conn.execute(
-            "SELECT w.id,w.version,w.source_digest,w.book_id,w.period,w.created_by,w.status,"
-            "b.name AS book_name,c.name AS company_name "
-            "FROM tax_workpapers w JOIN books b ON b.id=w.book_id "
-            "JOIN companies c ON c.id=w.company_id "
-            "WHERE w.status='draft' AND b.firm_id=? "
-            "AND w.version=(SELECT MAX(w2.version) FROM tax_workpapers w2 "
-            "WHERE w2.book_id=w.book_id AND w2.period=w.period) "
-            "ORDER BY w.period DESC,w.id",
-            (actor.firm_id,),
-        ).fetchall()
+    def _tax_pending(self, conn, actor, source_id=None):
+        rows = tax_rows(conn, actor.firm_id, source_id)
         items = []
         for row in rows:
             try:
@@ -253,6 +241,7 @@ class HandoffService:
                     "scope": {
                         "book_id": row["book_id"],
                         "period": row["period"],
+                        "company_id": row["company_id"],
                         "company_name": row["company_name"],
                         "book_name": row["book_name"],
                     },
@@ -271,6 +260,25 @@ class HandoffService:
             (kind, source_id, version, role),
         ).fetchone()
 
+    def _with_assignment(self, conn, item):
+        row = self._assignment(
+            conn,
+            item["source"]["kind"],
+            item["source"]["id"],
+            item["source"]["version"],
+            item["role"],
+        )
+        assignment_id = row["id"] if row else None
+        if row and row["source_fingerprint"] != item["source"]["fingerprint"]:
+            row = None
+        item = {**item, "assignee_id": row["assignee_id"] if row else None}
+        item["assignment_id"] = assignment_id
+        item.setdefault("can_assign", bool(item["scope"]["book_id"]))
+        item["status"] = "assigned" if item["assignee_id"] else "pending"
+        item["label"] = "待指派" if not item["assignee_id"] else "已指派"
+        item["due_on"] = row["due_on"] if row else None
+        return item
+
     def queue(self, actor):
         with self.db.transaction(actor=actor) as conn:
             items = []
@@ -281,18 +289,7 @@ class HandoffService:
                 + self._delivery_pending(conn, actor)
             )
             for item in pending:
-                row = self._assignment(
-                    conn,
-                    item["source"]["kind"],
-                    item["source"]["id"],
-                    item["source"]["version"],
-                    item["role"],
-                )
-                item = {**item, "assignee_id": row["assignee_id"] if row else None}
-                item["status"] = "assigned" if item["assignee_id"] else "pending"
-                item["label"] = "待指派" if not item["assignee_id"] else "已指派"
-                item["due_on"] = row["due_on"] if row else None
-                items.append(item)
+                items.append(self._with_assignment(conn, item))
             items.sort(
                 key=lambda value: (
                     value["status"] != "pending",
@@ -305,6 +302,28 @@ class HandoffService:
                 "total": len(items),
                 "pending": sum(1 for value in items if value["status"] == "pending"),
             }
+
+    def source(self, actor, kind, source_id, expected_version, expected_fingerprint):
+        """Resolve an explicit pending source; never substitute another/latest object."""
+        with self.db.transaction(actor=actor) as conn:
+            adapter = {
+                "tax_workpaper": self._tax_pending,
+                "batch_item": self._batch_pending,
+                "notification_investigation": self._notification_pending,
+                "delivery_package": self._delivery_pending,
+            }.get(kind)
+            pending = adapter(conn, actor, source_id) if adapter else []
+            item = self._with_assignment(conn, pending[0]) if len(pending) == 1 else None
+        if item is None:
+            raise AccountingError("来源已处理、已被替代或无权访问；请返回接手队列核对", 404)
+        if (
+            item["source"]["version"] != expected_version
+            or item["source"]["fingerprint"] != expected_fingerprint
+        ):
+            raise AccountingError(
+                "来源版本或依据已变化，请返回接手队列重新确认；不会自动打开新版", 409
+            )
+        return item
 
     def candidates(self, actor, book_id, role):
         with self.db.transaction(actor=actor) as conn:
@@ -347,6 +366,8 @@ class HandoffService:
         due_on,
         reason,
         kind="tax_workpaper",
+        expected_fingerprint=None,
+        expected_assignment_id=None,
     ):
         reason = (reason or "").strip()
         if kind not in SOURCE_ROLES:
@@ -399,6 +420,7 @@ class HandoffService:
                 fingerprint = workpaper["source_digest"]
                 target_book = book_id
                 target_role = "review"
+                next_action = ROLE_NEXT_ACTION[role]
             else:
                 if kind not in {
                     "batch_item",
@@ -410,7 +432,7 @@ class HandoffService:
                     "batch_item": self._batch_pending,
                     "notification_investigation": self._notification_pending,
                     "delivery_package": self._delivery_pending,
-                }[kind](conn, actor)
+                }[kind](conn, actor, source_id)
                 item = next(
                     (entry for entry in pending if entry["source"]["id"] == source_id), None
                 )
@@ -433,9 +455,15 @@ class HandoffService:
                     )
                 role = item["role"]
                 book_id = item["scope"]["book_id"]
+                if not book_id:
+                    raise AccountingError(item["assignment_blocker"], 409)
                 fingerprint = item["source"]["fingerprint"]
+                next_action = item["next_action"]
                 target_book = book_id
                 target_role = "read"
+
+            if expected_fingerprint is not None and expected_fingerprint != fingerprint:
+                raise AccountingError("来源依据已变化，请刷新后重新确认指派", 409)
 
             target = Actor(assignee_id, actor.firm_id)
             firm_role = self.access.firm_role(conn, target)
@@ -453,8 +481,18 @@ class HandoffService:
                 raise AccountingError("被指派人没有当前账套权限，指派不会授予权限", 403) from None
 
             current = self._assignment(conn, kind, source_id, version, role)
-            if current and current["assignee_id"] == assignee_id:
+            if (
+                current
+                and current["assignee_id"] == assignee_id
+                and current["source_fingerprint"] == fingerprint
+                and current["due_on"] == due_on
+                and current["reason"] == reason
+            ):
                 return _json(current)
+            if expected_assignment_id is not None and expected_assignment_id != (
+                current["id"] if current else ""
+            ):
+                raise AccountingError("负责人或期限已被其他人更新，请刷新后重新确认", 409)
 
             stamp = _stamp()
             conn.execute(
@@ -479,7 +517,7 @@ class HandoffService:
                     role,
                     assignee_id,
                     due_on,
-                    ROLE_NEXT_ACTION[role],
+                    next_action,
                     "assigned",
                     reason,
                     actor.user_id,
@@ -500,6 +538,9 @@ class HandoffService:
                             "source_id": source_id,
                             "version": version,
                             "assignee_id": assignee_id,
+                            "due_on": due_on,
+                            "previous_assignment_id": current["id"] if current else None,
+                            "source_fingerprint": fingerprint,
                             "reason": reason,
                         },
                         ensure_ascii=False,

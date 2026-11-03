@@ -16,6 +16,7 @@ import type { MonthlyClientRow } from './monthly-workbench-types';
 import type { Session } from './types';
 import { useOperationRequests } from './useOperationRequests';
 import './batch-operations.css';
+import { assertHandoffDigest } from './handoff-target';
 
 const root = '/firm/batch-operations';
 const routeKind = (kind: BatchKind) => kind.replace('_', '-');
@@ -25,12 +26,14 @@ export function BatchOperationsDialog({
   rows,
   onClose,
   initialBatchId,
+  focusItem,
 }: {
   session: Session;
   period: string;
   rows: MonthlyClientRow[];
   onClose: () => void;
   initialBatchId?: string;
+  focusItem?: { id: string; version: number; companyId: string; fingerprint: string };
 }) {
   const [kind, setKind] = useState<'review_export' | 'package_draft'>('review_export');
   const [selected, setSelected] = useState<string[]>([]),
@@ -53,10 +56,29 @@ export function BatchOperationsDialog({
   const request = (path: string, signal: AbortSignal, body?: unknown) =>
     api<unknown>(path, session, { signal, ...(body ? { method: 'POST', body } : {}) });
   async function load(id: string) {
-    const ok = await run(
-      async (signal) => acceptBatch(await request(`${root}/${encodeURIComponent(id)}`, signal), id),
-      setBatch,
-    );
+    const ok = await run(async (signal) => {
+      const value = acceptBatch(await request(`${root}/${encodeURIComponent(id)}`, signal), id);
+      if (focusItem) {
+        const item = value.items.find((row) => row.id === focusItem.id);
+        if (
+          value.request?.period !== period ||
+          !item ||
+          item.company_id !== focusItem.companyId ||
+          Math.max(1, item.attempt ?? 0) !== focusItem.version ||
+          item.status !== 'failed'
+        )
+          throw new Error('批量项已变化，请返回接手队列核对；不会自动重试。');
+        await assertHandoffDigest(focusItem.fingerprint, [
+          'batch_item',
+          item.id,
+          value.id,
+          item.attempt,
+          item.error_code,
+          item.updated_at,
+        ]);
+      }
+      return value;
+    }, setBatch);
     if (!ok) {
       setBatch(null);
       setAction(null);
@@ -250,7 +272,9 @@ export function BatchOperationsDialog({
       )}
       {!denied && (
         <div className="batch-operations">
-          {!batch ? (
+          {!batch && focusItem ? (
+            <p>请返回接手队列重新核对原记录。</p>
+          ) : !batch ? (
             <>
               <label>
                 办理内容
@@ -369,65 +393,67 @@ export function BatchOperationsDialog({
                 {batch.progress.percent}%
               </p>
               <div className="batch-rows" aria-label="批量逐户结果">
-                {batch.items.map((item) => (
-                  <article key={item.id} className="batch-row">
-                    <header>
-                      <strong>
-                        {item.company_name ||
-                          choices.find((r) => r.company_id === item.company_id)?.company_name ||
-                          `企业 ${item.company_id}`}
-                      </strong>
-                      <span>{itemLabel(item)}</span>
-                    </header>
-                    {item.error_detail && <p>{item.error_detail}</p>}
-                    {item.cancel_reason && <p>取消依据：{item.cancel_reason}</p>}
-                    {item.skip_reason && <p>跳过依据：{item.skip_reason}</p>}
-                    {item.status === 'succeeded' && (
-                      <p>
-                        {batch.kind === 'package_draft'
-                          ? '交付包草稿已生成，请回企业交付页检查后发布。未自动发送。'
-                          : batch.kind === 'review_export'
-                            ? '已生成冻结导出记录，可下载凭证 CSV，并到企业交付页核验回执。'
-                            : '开期已完成。'}
-                      </p>
-                    )}
-                    <div className="batch-actions">
-                      {batch.kind === 'review_export' &&
-                        item.status === 'succeeded' &&
-                        typeof item.result?.export_id === 'string' &&
-                        typeof item.result?.book_id === 'string' && (
+                {batch.items
+                  .filter((item) => !focusItem || item.id === focusItem.id)
+                  .map((item) => (
+                    <article key={item.id} className="batch-row">
+                      <header>
+                        <strong>
+                          {item.company_name ||
+                            choices.find((r) => r.company_id === item.company_id)?.company_name ||
+                            `企业 ${item.company_id}`}
+                        </strong>
+                        <span>{itemLabel(item)}</span>
+                      </header>
+                      {item.error_detail && <p>{item.error_detail}</p>}
+                      {item.cancel_reason && <p>取消依据：{item.cancel_reason}</p>}
+                      {item.skip_reason && <p>跳过依据：{item.skip_reason}</p>}
+                      {item.status === 'succeeded' && (
+                        <p>
+                          {batch.kind === 'package_draft'
+                            ? '交付包草稿已生成，请回企业交付页检查后发布。未自动发送。'
+                            : batch.kind === 'review_export'
+                              ? '已生成冻结导出记录，可下载凭证 CSV，并到企业交付页核验回执。'
+                              : '开期已完成。'}
+                        </p>
+                      )}
+                      <div className="batch-actions">
+                        {batch.kind === 'review_export' &&
+                          item.status === 'succeeded' &&
+                          typeof item.result?.export_id === 'string' &&
+                          typeof item.result?.book_id === 'string' && (
+                            <button
+                              className="button secondary"
+                              disabled={busy}
+                              onClick={() => void downloadVouchers(item)}
+                            >
+                              下载凭证 CSV
+                            </button>
+                          )}
+                        {batchResultUrl(batch.kind, item, batch.request?.period ?? '') && (
+                          <a
+                            className="button secondary"
+                            href={batchResultUrl(batch.kind, item, batch.request?.period ?? '')!}
+                          >
+                            打开办理结果
+                          </a>
+                        )}
+                        {itemActions(item).map((verb) => (
                           <button
+                            key={verb}
                             className="button secondary"
                             disabled={busy}
-                            onClick={() => void downloadVouchers(item)}
+                            onClick={() => {
+                              setAction({ item: item.id, name: item.company_name, verb });
+                              setReason('');
+                            }}
                           >
-                            下载凭证 CSV
+                            {verb === 'cancel' ? '取消此项' : '跳过此项'}
                           </button>
-                        )}
-                      {batchResultUrl(batch.kind, item, batch.request?.period ?? '') && (
-                        <a
-                          className="button secondary"
-                          href={batchResultUrl(batch.kind, item, batch.request?.period ?? '')!}
-                        >
-                          打开办理结果
-                        </a>
-                      )}
-                      {itemActions(item).map((verb) => (
-                        <button
-                          key={verb}
-                          className="button secondary"
-                          disabled={busy}
-                          onClick={() => {
-                            setAction({ item: item.id, name: item.company_name, verb });
-                            setReason('');
-                          }}
-                        >
-                          {verb === 'cancel' ? '取消此项' : '跳过此项'}
-                        </button>
-                      ))}
-                    </div>
-                  </article>
-                ))}
+                        ))}
+                      </div>
+                    </article>
+                  ))}
               </div>
               {action && (
                 <fieldset disabled={busy}>
@@ -474,6 +500,7 @@ export function BatchOperationsDialog({
                 <button
                   className="button secondary"
                   disabled={
+                    !!focusItem ||
                     busy ||
                     ['running', 'queued'].includes(batch.status) ||
                     !batch.items.some(
@@ -490,16 +517,23 @@ export function BatchOperationsDialog({
                 >
                   只重试失败项
                 </button>
+                {focusItem && (
+                  <p>当前仅查看接手的这一项。重试整个批次前，请返回批量办理核对全部失败项。</p>
+                )}
                 <button
                   className="button secondary"
                   disabled={busy}
                   onClick={() => {
+                    if (focusItem) {
+                      onClose();
+                      return;
+                    }
                     setBatch(null);
                     setAction(null);
                     setPlan(null);
                   }}
                 >
-                  返回批量选择
+                  {focusItem ? '返回接手队列' : '返回批量选择'}
                 </button>
               </div>
             </>

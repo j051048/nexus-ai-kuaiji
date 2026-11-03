@@ -26,6 +26,9 @@ import type {
 import { MonthlyBatchDialog } from './MonthlyBatchDialog';
 import { BatchOperationsDialog } from './BatchOperationsDialog';
 import { HandoffDialog } from './HandoffDialog';
+import { HandoffSourcePanel } from './HandoffSourcePanel';
+import { handoffOriginalHref } from './batch-operations';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useMonthlyData } from './useMonthlyData';
 import type { MonthlyProgress } from './workspace-progress';
 import './monthly.css';
@@ -101,6 +104,11 @@ export function MonthlyClientWorkbench({
   const [operationsOpen, setOperationsOpen] = useState(false);
   const [initialBatchId, setInitialBatchId] = useState<string | undefined>();
   const [handoffOpen, setHandoffOpen] = useState(false);
+  const location = useLocation(),
+    navigate = useNavigate();
+  const hasHandoffTarget = ['kind', 'id', 'version', 'fingerprint'].some((key) =>
+    new URLSearchParams(location.search).has(`handoff_${key}`),
+  );
   const selectedPeriod = validMonthlyPeriod(period) ? period : new Date().toISOString().slice(0, 7);
   const path =
     '/monthly/workbench?' +
@@ -450,7 +458,21 @@ export function MonthlyClientWorkbench({
           }}
         />
       )}
-      {handoffOpen && !revoked && (
+      {hasHandoffTarget && !revoked && (
+        <HandoffSourcePanel
+          key={`${session.scope_key}:${location.search}`}
+          session={session}
+          search={location.search}
+          onClose={() => {
+            const query = new URLSearchParams(location.search);
+            for (const key of ['kind', 'id', 'version', 'fingerprint'])
+              query.delete(`handoff_${key}`);
+            void navigate({ pathname: location.pathname, search: query.toString() });
+            setHandoffOpen(true);
+          }}
+        />
+      )}
+      {handoffOpen && !hasHandoffTarget && !revoked && (
         <HandoffDialog
           key={`${session.scope_key}:${selectedPeriod}`}
           session={session}
@@ -458,13 +480,7 @@ export function MonthlyClientWorkbench({
           canAssign={canBatchOpen}
           onOpenOriginal={(item) => {
             setHandoffOpen(false);
-            if (!item.scope.company_id) return;
-            onOpen({
-              view: 'delivery',
-              companyId: item.scope.company_id,
-              period: item.scope.period,
-              bookId: item.scope.book_id,
-            });
+            void navigate(handoffOriginalHref(item));
           }}
           onClose={() => setHandoffOpen(false)}
         />

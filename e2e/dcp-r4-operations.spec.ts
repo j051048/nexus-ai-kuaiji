@@ -192,7 +192,7 @@ for (const width of [1280, 390]) {
       next_action: '复核税务底稿并出具意见',
       assignee_id: assigned ? 'reviewer' : null,
       status: assigned ? 'assigned' : 'pending',
-      due_on: null,
+      due_on: assigned ? '2026-11-15' : null,
     });
     await page.route('**/api/handoff**', async (route) => {
       const path = new URL(route.request().url()).pathname;
@@ -210,6 +210,8 @@ for (const width of [1280, 390]) {
         const body = route.request().postDataJSON();
         expect(body.expected_version).toBe(version);
         expect(body.assignee_id).toBe('reviewer');
+        expect(body.due_on).toBe('2026-11-15');
+        expect(body.expected_fingerprint).toBe('c'.repeat(64));
         if (version === 1) {
           version++;
           return route.fulfill({ status: 409, json: { detail: 'stale' } });

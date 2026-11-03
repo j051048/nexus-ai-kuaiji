@@ -45,7 +45,8 @@ export function HandoffDialog({
     void load(); /* mounted scope is keyed by parent */
   }, []);
   async function choose(item: Handoff) {
-    if (!canAssign) return;
+    if (!canAssign || item.can_assign === false || !item.scope.book_id) return;
+    const bookId = item.scope.book_id;
     setSelected(null);
     setCandidates([]);
     setAssignee('');
@@ -55,7 +56,7 @@ export function HandoffDialog({
     await run(
       async (signal) => {
         const value = await api<{ items: { user_id: string; name: string }[] }>(
-          `/handoff/candidates?${new URLSearchParams({ book_id: item.scope.book_id, role: item.role })}`,
+          `/handoff/candidates?${new URLSearchParams({ book_id: bookId, role: item.role })}`,
           session,
           { signal },
         );
@@ -68,13 +69,12 @@ export function HandoffDialog({
           new Set(value.items.map((c) => c.user_id)).size !== value.items.length
         )
           throw new Error('候选人数据不完整');
-        return value.items.filter(
-          (c) => c.user_id !== item.maker_id && c.user_id !== item.assignee_id,
-        );
+        return value.items.filter((c) => c.user_id !== item.maker_id);
       },
       (value) => {
         setSelected(item);
         setCandidates(value);
+        if (value.some((c) => c.user_id === item.assignee_id)) setAssignee(item.assignee_id!);
       },
     );
   }
@@ -101,11 +101,13 @@ export function HandoffDialog({
               assignee_id: assignee,
               due_on: due || null,
               reason: reason.trim(),
+              expected_fingerprint: source.source.fingerprint,
+              expected_assignment_id: source.assignment_id ?? '',
             },
           },
         ),
       (reply) => {
-        acceptAssignment(reply, source, assignee);
+        acceptAssignment(reply, source, assignee, due || null);
         setNotice('指派已登记，请刷新队列核对；指派不会授予权限，也不代表已复核。');
       },
       true,
@@ -135,7 +137,7 @@ export function HandoffDialog({
           {!items.length && !busy && <p>本月没有待接手的异常事项。</p>}
           <div className="batch-rows">
             {items.map((item) => (
-              <article key={item.source.id} className="batch-row">
+              <article key={`${item.source.kind}:${item.source.id}`} className="batch-row">
                 <header>
                   <strong>{item.scope.company_name}</strong>
                   <span>{item.assignee_id ? '已指派' : '待指派'}</span>
@@ -155,7 +157,7 @@ export function HandoffDialog({
                   {item.next_action}
                   {item.due_on ? ` · 截止 ${item.due_on}` : ' · 尚未设期限'}
                 </p>
-                {item.source.kind === 'delivery_package' && onOpenOriginal ? (
+                {onOpenOriginal ? (
                   <button
                     className="button secondary"
                     disabled={busy}
@@ -168,13 +170,14 @@ export function HandoffDialog({
                     打开原记录核对
                   </a>
                 )}
-                {canAssign && (
+                {item.assignment_blocker && <p role="status">{item.assignment_blocker}</p>}
+                {canAssign && item.can_assign !== false && (
                   <button
                     className="button secondary"
                     disabled={busy}
                     onClick={() => void choose(item)}
                   >
-                    {item.assignee_id ? '调整负责人' : '选择负责人'}
+                    {item.assignee_id ? '调整负责人或期限' : '选择负责人'}
                   </button>
                 )}
               </article>
@@ -183,7 +186,7 @@ export function HandoffDialog({
           {selected && (
             <fieldset disabled={busy}>
               <legend>
-                {selected.scope.company_name} · 底稿版本 {selected.source.version}
+                {selected.scope.company_name} · 来源版本 {selected.source.version}
               </legend>
               <label>
                 接手人
@@ -201,9 +204,7 @@ export function HandoffDialog({
                 </select>
               </label>
               {!candidates.length && (
-                <p>
-                  没有符合独立复核条件的候选人，请管理员先核对账套授权。制单人不能作为独立复核人。
-                </p>
+                <p>没有符合当前岗位和账套权限的候选人，请管理员核对授权；指派不会授予权限。</p>
               )}
               <label>
                 办理期限

@@ -38,6 +38,10 @@ describe('批量办理可信边界', () => {
     };
     const reply = { ...row, assignee_id: 'reviewer', status: 'assigned' };
     expect(() => acceptAssignment(reply, row, 'reviewer')).not.toThrow();
+    expect(() => acceptAssignment(reply, row, 'reviewer', '2026-11-10')).toThrow();
+    expect(() =>
+      acceptAssignment({ ...reply, due_on: '2026-11-10' }, row, 'reviewer', '2026-11-10'),
+    ).not.toThrow();
     for (const bad of [
       { ...reply, source: { ...reply.source, version: 1 } },
       { ...reply, scope: { book_id: 'foreign' } },
@@ -160,7 +164,7 @@ it('统一接手队列接受批量、通知和交付来源，保留种类与版�
   ).toThrow();
 });
 
-it('批量项回到会计批次，不落到通知页', () => {
+it('批量项通过精确接手链接打开原批次，不落到通知页', () => {
   const href = handoffOriginalHref({
     source: { kind: 'batch_item', id: 'i', version: 2, fingerprint: 'a'.repeat(64) },
     scope: {
@@ -172,8 +176,10 @@ it('批量项回到会计批次，不落到通知页', () => {
       batch_id: 'batch-1',
     },
   });
-  expect(href.startsWith('/workspace/accounting?')).toBe(true);
-  expect(href).toContain('batch=batch-1');
+  expect(href.startsWith('/workspace/monthly?')).toBe(true);
+  expect(href).toContain('handoff_id=i');
+  expect(href).toContain('handoff_version=2');
+  expect(href).toContain('handoff_fingerprint=' + 'a'.repeat(64));
   expect(href).toContain('company=c');
   expect(href).not.toContain('section=notifications');
 });

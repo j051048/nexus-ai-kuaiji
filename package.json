@@ -12,6 +12,7 @@
     "preview": "vite preview --host 127.0.0.1",
     "typecheck": "tsc -p tsconfig.app.json --noEmit",
     "test": "vitest run",
+    "test:frontend-budget": "node --test scripts/frontend_budget.test.mjs && node scripts/frontend_budget.mjs dist",
     "test:e2e": "playwright test",
     "test:vercel-build": "node --test scripts/vercel_upload.test.mjs",
     "test:e2e:gate": "node --test scripts/e2e_gate.test.mjs scripts/e2e_harness.test.mjs",

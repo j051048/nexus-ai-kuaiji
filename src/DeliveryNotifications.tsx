@@ -4,6 +4,7 @@ import { NotificationInvestigation } from './NotificationInvestigation';
 import './dcp-evidence.css';
 import { api, errorMessage } from './api';
 import type { Session } from './types';
+import { assertHandoffDigest } from './handoff-target';
 import {
   notificationKindLabel,
   notificationStateView,
@@ -15,6 +16,7 @@ interface Props {
   session: Session;
   bookId: string;
   period?: string;
+  focusNotification?: { id: string; attempts: number; fingerprint: string };
 }
 
 export function DeliveryNotificationList({
@@ -68,7 +70,7 @@ export function DeliveryNotifications(props: Props) {
     />
   );
 }
-function NotificationScope({ session, bookId, period }: Props) {
+function NotificationScope({ session, bookId, period, focusNotification }: Props) {
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -105,7 +107,30 @@ function NotificationScope({ session, bookId, period }: Props) {
         if (current === epoch.current && !signal?.aborted) {
           if (value.book_id !== bookId || value.period !== period || !Array.isArray(value.items))
             throw new Error('通知范围变化，请刷新后核对');
-          setItems(value.items);
+          const selected = focusNotification
+            ? value.items.filter((item) => item.id === focusNotification.id)
+            : value.items;
+          if (
+            focusNotification &&
+            (selected.length !== 1 ||
+              selected[0].attempts !== focusNotification.attempts ||
+              selected[0].state !== 'unknown')
+          )
+            throw new Error('通知原记录或发送次数已变化，请返回接手队列核对。');
+          if (focusNotification) {
+            const item = selected[0];
+            await assertHandoffDigest(focusNotification.fingerprint, [
+              'notification_investigation',
+              item.id,
+              item.package.id,
+              item.package.version,
+              item.package.manifest_sha256,
+              item.attempts,
+              item.updated_at,
+            ]);
+          }
+          if (current !== epoch.current || signal?.aborted || revoked.current) return;
+          setItems(selected);
           setError('');
         }
       } catch (caught) {
@@ -114,7 +139,7 @@ function NotificationScope({ session, bookId, period }: Props) {
         if (current === epoch.current && !signal?.aborted) setLoading(false);
       }
     },
-    [bookId, period, session],
+    [bookId, period, session, focusNotification],
   );
 
   useEffect(() => {

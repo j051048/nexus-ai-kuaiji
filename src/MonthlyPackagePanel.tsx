@@ -31,6 +31,7 @@ type MonthlyPackagePanelProps = {
   onBusyChange?: (value: boolean) => void;
   clientOnly?: boolean;
   focusPackageId?: string;
+  expectedSource?: { id: string; version: number; fingerprint: string };
 };
 class PackageResponseError extends Error {}
 function packageError(failure: unknown, command = false): string {
@@ -77,6 +78,7 @@ function MonthlyPackageContent({
   onBusyChange,
   clientOnly = false,
   focusPackageId = '',
+  expectedSource,
   search,
 }: MonthlyPackagePanelProps & { search: string }) {
   const scope = `${session.scope_key}:${bookId}`;
@@ -103,7 +105,9 @@ function MonthlyPackageContent({
   const wanted = focusPackageId || packageFromSearch(search);
   const explicitPackage = !!focusPackageId || new URLSearchParams(search).has('package');
   const shownPackages =
-    value?.packages.filter((item) => !clientOnly || !explicitPackage || item.id === wanted) ?? [];
+    value?.packages.filter(
+      (item) => !(clientOnly || expectedSource) || !explicitPackage || item.id === wanted,
+    ) ?? [];
   const clearSensitive = useCallback(() => {
     setState(null);
     setContents(null);
@@ -183,6 +187,18 @@ function MonthlyPackageContent({
         if (signal?.aborted || current.current !== scope || generation !== epoch.current) return;
         if (!validateMonthlyOverview(result, bookId))
           throw new PackageResponseError('交付包范围或版本无效，请重新读取当前账套。');
+        if (
+          expectedSource &&
+          !result.packages.some(
+            (pack) =>
+              pack.id === expectedSource.id &&
+              pack.version === expectedSource.version &&
+              pack.manifest_sha256 === expectedSource.fingerprint,
+          )
+        )
+          throw new PackageResponseError(
+            '交付包原版本或依据已变化，请返回接手队列；不会自动打开新版。',
+          );
         setState({ scope, value: result });
         setError('');
         if (clientOnly) {
@@ -218,7 +234,18 @@ function MonthlyPackageContent({
         if (current.current === scope && generation === epoch.current) setLoading(false);
       }
     },
-    [base, bookId, clientOnly, wanted, explicitPackage, scope, session, track, clearSensitive],
+    [
+      base,
+      bookId,
+      clientOnly,
+      wanted,
+      explicitPackage,
+      scope,
+      session,
+      track,
+      clearSensitive,
+      expectedSource,
+    ],
   );
   useEffect(() => {
     current.current = scope;

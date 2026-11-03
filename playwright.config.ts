@@ -17,7 +17,7 @@ export const config = defineConfig({
   // P02 runs against explicit PostgreSQL + real isolated GoTrue fixtures through
   // playwright.p02.config.ts; the standard harness owns a fresh SQLite database.
   testIgnore:
-    '**/{stage15-assistant-model,p02-r1-business-flow,p02-close-boundary,next02-isolation}.spec.ts',
+    '**/{stage15-assistant-model,p02-r1-business-flow,p02-close-boundary,next02-isolation,next-p1-handoff}.spec.ts',
   ...(core
     ? {
         testMatch: [...new Set(manifest.cases.map(({ file }) => `**/${file.slice(4)}`))],

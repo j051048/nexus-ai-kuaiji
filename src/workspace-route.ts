@@ -157,6 +157,17 @@ export function workspaceRouteUrl(
   // arbitrary query strings, tokens, uploaded content or accounting facts.
   const previous = new URLSearchParams(existingSearch);
   const query = new URLSearchParams();
+  // A pending-source link is exact, not permission. Keep even invalid explicit
+  // values for the source panel to reject; never silently open a newer item.
+  if (
+    route.view === 'monthly' &&
+    previous.get('company') === route.companyId &&
+    previous.get('period') === route.period &&
+    (previous.get('book') ?? '') === route.bookId
+  ) {
+    for (const key of ['handoff_kind', 'handoff_id', 'handoff_version', 'handoff_fingerprint'])
+      for (const value of previous.getAll(key)) query.append(key, value);
+  }
   // Exact package links and the tax subview belong to one selected book only.
   // Never carry them when a user switches clients or leaves delivery work.
   if (route.bookId && previous.get('book') === route.bookId) {
