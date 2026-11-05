@@ -1,4 +1,4 @@
-import type { Me, Session } from './types';
+import type { CompanyRole, Me, Session } from './types';
 import type { PresentationRole, WorkspaceProfile } from './workspace-types';
 import { presentationRole } from './workspace-presentation';
 
@@ -35,6 +35,31 @@ const membershipRoles: Record<NonNullable<Session['role']>, string> = {
 const limitedScope = '仅限获授权的企业、部门及账套';
 const firmScope = '本事务所全部企业（不含其他事务所）';
 const managementCapability = '管理获授权企业与人员';
+const companyRoleLabels: Record<CompanyRole, string> = {
+  owner: '企业负责人',
+  admin: '企业管理员',
+  finance: '企业财务',
+  employee: '企业员工',
+};
+
+function memberCompanies(value: Me['company_memberships']) {
+  if (!Array.isArray(value)) return null;
+  const seen = new Set<string>();
+  for (const row of value) {
+    if (
+      !row ||
+      typeof row.id !== 'string' ||
+      !row.id.trim() ||
+      typeof row.name !== 'string' ||
+      !row.name.trim() ||
+      !Object.prototype.hasOwnProperty.call(companyRoleLabels, row.role) ||
+      seen.has(row.id)
+    )
+      return null;
+    seen.add(row.id);
+  }
+  return value.map((row) => ({ ...row, role: companyRoleLabels[row.role] }));
+}
 
 function knownProfile(profile: WorkspaceProfile | null | undefined): profile is WorkspaceProfile {
   return (
@@ -58,6 +83,10 @@ export function accountIdentity({
   scope: string;
   capabilities: string[];
   confirmed: boolean;
+  unitLabel: string;
+  unitName: string;
+  clientIdentity: boolean;
+  companyMemberships: { id: string; name: string; role: string }[];
 } {
   const base = {
     name: session.user_name || '当前账号',
@@ -69,6 +98,10 @@ export function accountIdentity({
     scope: '授权范围待确认',
     capabilities: [] as string[],
     confirmed: false,
+    unitLabel: '所属单位',
+    unitName: '所属单位待确认',
+    clientIdentity: false,
+    companyMemberships: [],
   });
   if (unavailable) return unresolved('权限待重新确认');
   if (!session.firm_id) return unresolved('身份确认中');
@@ -80,7 +113,26 @@ export function accountIdentity({
       : [];
   const currentFirm = currentFirms.length === 1 ? currentFirms[0] : undefined;
   if (me && !currentFirm) return unresolved('身份确认中');
+  base.firm = currentFirm?.name || base.firm;
   const allFirm = !!currentFirm && me?.permissions?.manage_firm === true;
+  const affiliation = (clientIdentity: boolean) => {
+    const companies = currentFirm ? memberCompanies(me?.company_memberships) : null;
+    return {
+      clientIdentity,
+      unitLabel: clientIdentity ? '所属企业' : '所属事务所',
+      unitName: !clientIdentity
+        ? base.firm
+        : companies === null
+          ? '所属企业待确认'
+          : companies.length === 0
+            ? '尚未加入企业'
+            : companies
+                .slice(0, 2)
+                .map((row) => row.name)
+                .join('、') + (companies.length > 2 ? `等 ${companies.length} 家企业` : ''),
+      companyMemberships: companies ?? [],
+    };
+  };
 
   if (administration) {
     if (!currentFirm || !Object.prototype.hasOwnProperty.call(membershipRoles, currentFirm.role))
@@ -89,6 +141,10 @@ export function accountIdentity({
     const clientMember = ['client_employee', 'client_member', 'viewer'].includes(currentFirm.role);
     return {
       ...base,
+      ...affiliation(
+        ['client_employee', 'client_member'].includes(currentFirm.role) ||
+          (currentFirm.role === 'viewer' && canManage && !allFirm),
+      ),
       role: clientMember && canManage ? '企业管理人员' : membershipRoles[currentFirm.role],
       scope: !canManage ? '当前账号没有管理后台权限' : allFirm ? firmScope : limitedScope,
       capabilities: canManage ? [managementCapability] : [],
@@ -110,6 +166,11 @@ export function accountIdentity({
   if (profile.can_manage === true) capabilities.push(managementCapability);
   return {
     ...base,
+    ...affiliation(
+      ['employee', 'approver', 'finance', 'manager'].includes(primary) ||
+        (primary === 'viewer' &&
+          ['client_employee', 'client_member'].includes(currentFirm?.role ?? session.role ?? '')),
+    ),
     role: legacyAdmin ? primaryRoles.admin : primaryRoles[primary],
     scope: allFirm ? firmScope : limitedScope,
     capabilities,

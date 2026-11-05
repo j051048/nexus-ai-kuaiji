@@ -37,7 +37,9 @@ test('员工一体化原件上传、服务端草稿恢复和独立部门审批',
   await page.getByLabel('事项金额', { exact: true }).fill('128.50');
   await page.getByLabel('交易对方', { exact: true }).fill('虚构票据供应商');
   await page.getByLabel('发生日期', { exact: true }).fill('2026-10-13');
+  await page.getByText('更多信息（分类、用途、项目）', { exact: true }).click();
   await page.getByLabel('事项分类', { exact: true }).selectOption('office');
+  await page.locator('.intake-template-picker > summary').click();
   await page.getByRole('button', { name: /^采购 \/ 费用/ }).click();
   await expect(page.getByLabel('事项金额', { exact: true })).toHaveValue('128.50');
   await expect(page.getByRole('dialog').getByRole('status')).toContainText('草稿已保存');
@@ -52,27 +54,27 @@ test('员工一体化原件上传、服务端草稿恢复和独立部门审批',
   await page.getByText(/继续未完成的录入/).click();
   await page.getByRole('button', { name: new RegExp(description) }).click();
   await expect(page.getByLabel('事项金额', { exact: true })).toHaveValue('128.50');
+  await expect(page.locator('.intake-template-picker > summary')).toContainText('采购 / 费用');
+  await page.getByText('更多信息（分类、用途、项目）', { exact: true }).click();
+  await expect(page.getByLabel('事项分类', { exact: true })).toHaveValue('office');
   await expect(page.getByText(receipt.name, { exact: true })).toBeVisible();
   await page
     .getByText('我已核对原件，确认日期、金额、交易对方与本次业务一致。', { exact: true })
     .click();
-  await page.screenshot({ path: testInfo.outputPath('stage12-employee-intake.png'), fullPage: true });
+  await page.screenshot({
+    path: testInfo.outputPath('stage12-employee-intake.png'),
+    fullPage: true,
+  });
   await page.getByRole('dialog').getByRole('button', { name: '提交审批', exact: true }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
-  await expect(
-    page.getByRole('heading', { name: description, exact: true }),
-  ).toBeVisible();
+  await expect(page.getByRole('heading', { name: description, exact: true })).toBeVisible();
   // Reselecting an already active filter must keep the loaded list and detail.
   await page.getByLabel('筛选业务事项状态').selectOption('');
   await page.getByLabel('筛选业务事项企业').selectOption('');
   await expect(
-    page
-      .getByRole('button')
-      .filter({ has: page.getByText(description, { exact: true }) }),
+    page.getByRole('button').filter({ has: page.getByText(description, { exact: true }) }),
   ).toBeVisible();
-  await expect(
-    page.getByRole('heading', { name: description, exact: true }),
-  ).toBeVisible();
+  await expect(page.getByRole('heading', { name: description, exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: '部门审批通过', exact: true })).toHaveCount(0);
   await choosePersona(page, 'department');
   await openBusiness(page);
@@ -100,19 +102,27 @@ test('手机录入同一界面完成并可返回独立事项列表', async ({ pa
   await page.getByLabel('事项摘要', { exact: true }).fill(description);
   await page.getByLabel('事项金额', { exact: true }).fill('18.60');
   await page.getByLabel('交易对方', { exact: true }).fill('虚构票据供应商');
+  // Keep this synthetic transaction in the seeded open accounting period.
+  await page.getByLabel('发生日期', { exact: true }).fill('2026-10-13');
+  await page.locator('.intake-template-picker > summary').click();
   await page.getByRole('button', { name: /^日常收支/ }).click();
+  await expect(page.getByRole('button', { name: /^日常收支/ })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
   await page
     .getByText('我已核对原件，确认日期、金额、交易对方与本次业务一致。', { exact: true })
     .click();
   expect(
     await page.getByRole('dialog').evaluate((node) => node.scrollWidth <= window.innerWidth),
   ).toBe(true);
-  await page.screenshot({ path: testInfo.outputPath('stage12-mobile-intake.png'), fullPage: false });
+  await page.screenshot({
+    path: testInfo.outputPath('stage12-mobile-intake.png'),
+    fullPage: false,
+  });
   await page.getByRole('dialog').getByRole('button', { name: '提交审批', exact: true }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
-  await expect(
-    page.getByRole('heading', { name: description, exact: true }),
-  ).toBeVisible();
+  await expect(page.getByRole('heading', { name: description, exact: true })).toBeVisible();
   await page.getByRole('button', { name: '← 返回事项列表', exact: true }).click();
   await expect(page.getByText(description, { exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(

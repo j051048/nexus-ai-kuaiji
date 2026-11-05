@@ -55,7 +55,13 @@ test('批量开期为既有客户创建当月账套、逐户报告并保持幂�
 
   await page.getByLabel('搜索月度客户').fill(`批量开期甲${tag}`);
   await page.getByRole('button', { name: '查找', exact: true }).click();
-  await expect(page.getByText(`批量开期甲${tag} 2026-11`)).toBeVisible();
+  const openedRow = page.locator('.monthly-matrix-row').filter({
+    has: page.getByRole('heading', { name: `批量开期甲${tag}`, exact: true }),
+  });
+  await expect(openedRow.locator('.monthly-client')).toContainText('2026-11 · 开放期间');
+  await expect(openedRow.locator('.monthly-row-details')).not.toHaveAttribute('open');
+  await openedRow.getByText('查看各环节明细', { exact: true }).click();
+  await expect(openedRow.getByText(`批量开期甲${tag} 2026-11`, { exact: true })).toBeVisible();
 
   const listed = await (
     await request.get(

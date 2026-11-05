@@ -13,12 +13,18 @@ async function createOriginal(page: Page, description: string) {
   await choosePersona(page, 'employee');
   await openBusiness(page);
   await page.getByRole('button', { name: '录入业务事项', exact: true }).click();
+  await page.locator('.intake-template-picker > summary').click();
   await page.getByRole('button', { name: /^员工报销/ }).click();
+  await expect(page.getByRole('button', { name: /^员工报销/ })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
   await page.getByLabel('事项客户企业').selectOption({ label: '青屿设计（虚构示例）' });
   await page.getByLabel('发生日期', { exact: true }).fill('2026-10-12');
   await page.getByLabel('事项金额', { exact: true }).fill('128.50');
   await page.getByLabel('事项摘要', { exact: true }).fill(description);
   await page.getByLabel('交易对方', { exact: true }).fill('第五阶段虚构供应商');
+  await page.getByText('更多信息（分类、用途、项目）', { exact: true }).click();
   await page.getByLabel('事项分类', { exact: true }).selectOption('office');
   if (
     await page

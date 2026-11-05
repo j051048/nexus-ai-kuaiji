@@ -58,6 +58,14 @@ test('四种真实验证身份按主业务角色进入待办首页，兼有编�
     const nav = page.getByRole('navigation', { name: client ? '客户服务' : '主导航', exact: true });
     await expect(nav.locator('[aria-current="page"]')).toHaveCount(1);
     await expect(page.getByLabel('我的工作概览')).toBeVisible();
+    if (persona === 'employee') {
+      await expect(page.getByLabel('筛选待办类型')).toHaveCount(0);
+      await page.getByRole('button', { name: '显示列表选项', exact: true }).click();
+      await expect(page.getByRole('button', { name: '收起列表选项', exact: true })).toHaveAttribute(
+        'aria-expanded',
+        'true',
+      );
+    }
     await expect(page.getByLabel('筛选待办类型')).toBeVisible();
     await openNavigation(page);
     if (!client) {

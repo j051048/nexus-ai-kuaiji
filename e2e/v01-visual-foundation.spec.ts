@@ -103,9 +103,11 @@ for (const viewport of [
     await choosePersona(page, 'employee');
     const primary = page.getByRole('region', { name: '提交与进度', exact: true });
     await expect(primary).toBeVisible();
-    // Counts can intentionally be unknown. A rendered page footer confirms
-    // the authorized task page loaded without inventing a zero count.
-    await expect(page.locator('.workspace-inbox .pagination-controls')).toBeVisible();
+    // An employee's single-page list deliberately omits pagination. Verify
+    // the loaded task list or its explicit empty state, not a hidden footer.
+    const inbox = page.getByRole('region', { name: '我的提交与补件', exact: true });
+    await expect(inbox.locator('.workspace-task-list, .workspace-clear')).toBeVisible();
+    await expect(inbox.getByRole('alert')).toHaveCount(0);
     await page.screenshot({ path: `${output}/employee-home-${device}.png`, fullPage: true });
     await primary.getByRole('button', { name: /提交报销/ }).click();
     const dialog = page.getByRole('dialog');
@@ -132,7 +134,10 @@ for (const viewport of [
       device === 'mobile' ? 16 : 14,
     );
     await fontAtLeast(submit, 13);
-    await fontAtLeast(dialog.locator('.workflow-guide-message p').first(), 12);
+    const guide = dialog.getByRole('region', { name: '员工录入引导', exact: true });
+    await fontAtLeast(guide.locator(':scope > p'), 12);
+    await guide.getByText('查看录入步骤与说明', { exact: true }).click();
+    await fontAtLeast(guide.locator('.workflow-guide-message p').first(), 12);
     await keyboardFocus(page, dialog.getByLabel('事项金额', { exact: true }));
     await dialog.getByLabel('事项金额', { exact: true }).scrollIntoViewIfNeeded();
     await page.screenshot({ path: `${output}/employee-fields-${device}.png`, fullPage: false });

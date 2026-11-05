@@ -39,6 +39,8 @@ export interface Me {
   user: { id: string; name: string; email: string };
   firms: Firm[];
   current_firm_id: string | null;
+  /** Actual memberships in the current firm; not the list of visible clients. */
+  company_memberships?: { id: string; name: string; role: CompanyRole }[];
   permissions: {
     manage_firm: boolean;
     create_company: boolean;

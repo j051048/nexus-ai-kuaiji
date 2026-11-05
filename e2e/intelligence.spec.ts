@@ -18,12 +18,18 @@ async function persona(page: Page, id: 'employee' | 'finance' | 'accountant') {
 
 async function createWithOriginal(page: Page, description: string) {
   await page.getByRole('button', { name: '录入业务事项', exact: true }).click();
+  await page.locator('.intake-template-picker > summary').click();
   await page.getByRole('button', { name: /^员工报销/ }).click();
+  await expect(page.getByRole('button', { name: /^员工报销/ })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
   await page.getByLabel('事项客户企业').selectOption({ label: companyName });
   await page.getByLabel('发生日期', { exact: true }).fill('2026-10-10');
   await page.getByLabel('事项金额', { exact: true }).fill('268.10');
   await page.getByLabel('事项摘要', { exact: true }).fill(description);
   await page.getByLabel('交易对方', { exact: true }).fill('第四阶段虚构供应商');
+  await page.getByText('更多信息（分类、用途、项目）', { exact: true }).click();
   await page.getByLabel('事项分类', { exact: true }).selectOption('office');
   await page.getByLabel('业务用途', { exact: true }).fill('第四阶段隔离浏览器验证');
   if (
@@ -154,6 +160,7 @@ test('真实本地 UI：企业启用、未配置服务禁识别、员工登记�
     await expect(exception).toBeVisible();
     await exception.getByRole('button', { name: '核对事项', exact: true }).click();
     await expect(page.getByRole('heading', { name: description, exact: true })).toBeVisible();
+    await panel.getByText('查看识别结果与处理记录（1 份附件）', { exact: true }).click();
     await expect(panel.getByRole('button', { name: '识别票据', exact: true })).toBeDisabled();
     const reason = '仅使用虚构测试原件，由独立企业财务核对金额，真实票据仍须会计复核。';
     await panel

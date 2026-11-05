@@ -99,9 +99,12 @@ for (const width of [1440, 390]) {
         });
       } else {
         await expect(page.getByRole('heading', { name: '正式账簿', exact: true })).toHaveCount(0);
-        await expect(page.getByRole('alert')).toContainText(
-          fault === 'revoked' ? '撤销' : '范围或权限已变化',
-        );
+        // The monthly-progress read can also report revocation. Assert the
+        // failed navigation's own alert, not an arbitrary first live region.
+        const message = fault === 'revoked' ? '当前账套授权已撤销' : '范围或权限已变化';
+        const alert = page.getByRole('alert').filter({ hasText: message });
+        await expect(alert).toHaveCount(1);
+        await expect(alert).toBeVisible();
       }
       expect(writes).toBe(0);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(

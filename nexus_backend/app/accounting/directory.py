@@ -96,11 +96,35 @@ class DirectoryService:
         role = available[selected]["role"] if selected else None
         manager = role in FIRM_MANAGERS
         company_admin = any(row["id"] == selected and row["company_admin"] for row in firms)
+        # Affiliation is an actual membership, not a client visible through a
+        # book grant. Keep it in the same restricted identity snapshot and firm.
+        company_memberships = []
+        if selected:
+            # /me starts with no selected firm. Company-name RLS needs the
+            # verified workspace, then the caller's scope must be restored.
+            previous_firm = None
+            if self.db.is_postgres:
+                previous_firm = conn.execute(
+                    "SELECT current_setting('app.firm_id',true)"
+                ).fetchone()[0]
+                conn.execute("SELECT set_config('app.firm_id',?,true)", (selected,))
+            company_memberships = conn.execute(
+                "SELECT c.id,c.name,cm.role FROM company_memberships cm "
+                "JOIN companies c ON c.id=cm.company_id AND c.status='active' "
+                "JOIN firm_clients fc ON fc.company_id=c.id AND fc.firm_id=? "
+                "AND fc.status='active' WHERE cm.user_id=? ORDER BY c.name,c.id",
+                (selected, user_id),
+            ).fetchall()
+            if self.db.is_postgres:
+                conn.execute("SELECT set_config('app.firm_id',?,true)", (previous_firm or "",))
+            # A SQL failure aborts the enclosing transaction; Database rolls
+            # back its local settings before returning the connection to pool.
         return {
             "mode": mode,
             "user": {"id": user["id"], "name": user["name"], "email": user["email"]},
             "firms": list(available.values()),
             "current_firm_id": selected,
+            "company_memberships": [dict(row) for row in company_memberships],
             "permissions": {
                 "manage_firm": manager,
                 "manage_admin": manager or company_admin,

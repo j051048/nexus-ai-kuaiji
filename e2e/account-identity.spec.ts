@@ -30,7 +30,11 @@ for (const [device, width] of [
       ['finance', '企业财务'],
     ]) {
       await usePersona(page, persona);
+      const bootstrap = page.waitForResponse(
+        (response) => response.url().includes('/api/workspace/bootstrap') && response.ok(),
+      );
       await page.goto('/workspace/home');
+      const current = (await (await bootstrap).json()).me;
       await expect(
         page.locator('.workspace-home,.client-portal,.agent-shell').first(),
       ).toBeVisible();
@@ -38,10 +42,28 @@ for (const [device, width] of [
       await expect(region).toBeVisible();
       await expect(region.locator('.account-identity-role')).toHaveText(role);
       await expect(region.locator('.account-identity-name')).not.toBeEmpty();
+      const unit =
+        persona === 'accountant'
+          ? current.firms.find((firm: { id: string }) => firm.id === current.current_firm_id).name
+          : current.company_memberships
+              .slice(0, 2)
+              .map((company: { name: string }) => company.name)
+              .join('、') +
+            (current.company_memberships.length > 2
+              ? `等 ${current.company_memberships.length} 家企业`
+              : '');
+      expect(unit).not.toBe('');
+      await expect(region.locator('.account-identity-unit-name')).toHaveText(unit);
+      await expect(region.locator('.account-identity-unit-name')).toBeVisible();
+      await expect(region.locator('details')).not.toHaveAttribute('open');
       await expect(region.locator('summary')).toBeInViewport();
+      await page.screenshot({ path: `tmp_test/account-identity/${device}-${persona}-closed.png` });
       await region.locator('summary').focus();
       await page.keyboard.press('Enter');
       await expect(region.getByText('授权范围', { exact: true })).toBeVisible();
+      for (const company of current.company_memberships) {
+        await expect(region.locator('dd').filter({ hasText: company.name })).toHaveCount(1);
+      }
       await expect(region).not.toContainText('超级管理员');
       if (persona !== 'accountant') await expect(region).not.toContainText('本事务所全部企业');
       expect(
@@ -63,6 +85,9 @@ for (const [device, width] of [
     await expect(page.getByRole('navigation', { name: '管理后台导航' })).toBeVisible();
     const region = identity(page);
     await expect(region.locator('.account-identity-role')).toHaveText('事务所负责人');
+    await expect(region.locator('.account-identity-unit-name')).toHaveText(
+      await page.locator('.admin-firm-name').innerText(),
+    );
     await expect(region.locator('summary')).toBeInViewport();
     await region.locator('summary').click();
     await expect(region).toContainText('本事务所全部企业（不含其他事务所）');
@@ -110,6 +135,8 @@ test('兼任复核不改主岗位，权限拒绝后清除旧能力，身份详�
   );
   await page.getByRole('button', { name: '刷新工作台', exact: true }).click();
   await expect(region.locator('.account-identity-role')).toHaveText('权限待重新确认');
+  await expect(region.locator('.account-identity-unit-name')).toHaveText('所属单位待确认');
+  await expect(region.getByText('企业成员身份', { exact: true })).toHaveCount(0);
   await expect(region).not.toContainText('复核获授权账套');
   await expect(page).not.toHaveURL(/login/);
 });
@@ -118,17 +145,30 @@ test('手机长账号名不截断身份，权限详情保持可读字号', async
   await page.setViewportSize({ width: 375, height: 900 });
   await usePersona(page, 'employee');
   const name = '虚构企业用于验收的超长员工姓名'.repeat(4);
+  const companyName = '虚构跨区域供应链综合管理服务有限公司（南方分部）';
   await page.route(/\/api\/(?:me|workspace\/bootstrap)(?:\?|$)/, async (route) => {
     const response = await route.fetch();
     const body = await response.json();
     const me = body.me ?? body;
-    const changed = { ...me, user: { ...me.user, name } };
+    const changed = {
+      ...me,
+      user: { ...me.user, name },
+      company_memberships: [
+        { id: 'unit-a', name: companyName, role: 'employee' },
+        { id: 'unit-b', name: '虚构第二所属企业', role: 'finance' },
+      ],
+    };
     await route.fulfill({ response, json: body.me ? { ...body, me: changed } : changed });
   });
   await page.goto('/workspace/home');
   const region = identity(page);
   await expect(region.locator('.account-identity-name')).toHaveText(name);
+  await expect(region.locator('.account-identity-unit-name')).toHaveText(
+    companyName + '、虚构第二所属企业',
+  );
   await region.locator('summary').click();
+  await expect(region.getByText(companyName + ' · 企业员工', { exact: true })).toBeVisible();
+  await expect(region.getByText('虚构第二所属企业 · 企业财务', { exact: true })).toBeVisible();
   expect(
     await region
       .locator('dd')

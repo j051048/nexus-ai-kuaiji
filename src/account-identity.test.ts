@@ -56,6 +56,83 @@ const roleLabels: [PresentationRole, string][] = [
 ];
 
 describe('account identity presentation without permission escalation', () => {
+  it('shows the member company rather than a visible client or service firm', () => {
+    const value = accountIdentity({
+      session: { ...session, role: 'client_member' },
+      profile: profile({ companies: [{ id: 'other', name: '仅可办理的客户' }] }),
+      me: { ...me(), company_memberships: [{ id: 'a', name: '本人企业', role: 'employee' }] },
+    });
+    expect(value).toMatchObject({ unitLabel: '所属企业', unitName: '本人企业' });
+    expect(value.unitName).not.toContain('仅可办理');
+  });
+  it.each(['owner', 'admin', 'operator', 'reviewer', 'viewer'] as const)(
+    'shows firm %s affiliation rather than selecting the first client',
+    (role) => {
+      const value = accountIdentity({
+        session: { ...session, role },
+        profile: profile({ display_role: 'accountant' }),
+        me: me({ firms: [{ id: 'firm-a', name: '最新事务所名称', role }] }),
+      });
+      expect(value).toMatchObject({ unitLabel: '所属事务所', unitName: '最新事务所名称' });
+    },
+  );
+  it('lists all joined companies without silently choosing a primary one, including admin pages', () => {
+    const current = {
+      ...me({
+        firms: [{ id: 'firm-a', name: '示例事务所', role: 'client_member' }],
+        permissions: {
+          manage_firm: false,
+          manage_admin: true,
+          create_company: false,
+          create_book: false,
+        },
+      }),
+      company_memberships: [
+        { id: 'a', name: '甲企业', role: 'admin' as const },
+        { id: 'b', name: '乙企业', role: 'finance' as const },
+      ],
+    };
+    for (const administration of [false, true]) {
+      const value = accountIdentity({
+        session,
+        profile: profile({ display_role: 'manager' }),
+        me: current,
+        administration,
+      });
+      expect(value.unitName).toBe('甲企业、乙企业');
+      expect(value.companyMemberships).toHaveLength(2);
+    }
+    const denied = accountIdentity({ session, profile: profile(), me: current, unavailable: true });
+    expect(denied.unitName).toBe('所属单位待确认');
+    expect(denied.companyMemberships).toEqual([]);
+  });
+  it('never guesses company affiliation from legacy profiles, malformed or mismatched membership data', () => {
+    for (const company_memberships of [
+      undefined,
+      [{ id: 'x', name: '坏数据', role: 'super' }],
+      [
+        { id: 'x', name: '甲', role: 'employee' },
+        { id: 'x', name: '乙', role: 'finance' },
+      ],
+    ]) {
+      const value = accountIdentity({
+        session: { ...session, role: 'client_member' },
+        profile: profile(),
+        me: { ...me(), company_memberships } as Me,
+      });
+      expect(value.unitName).toBe('所属企业待确认');
+    }
+    expect(
+      accountIdentity({
+        session,
+        profile: profile(),
+        me: {
+          ...me({ current_firm_id: 'other' }),
+          company_memberships: [{ id: 'x', name: '旧企业', role: 'employee' }],
+        },
+      }).unitName,
+    ).toBe('所属单位待确认');
+  });
   it.each(roleLabels)('keeps the server primary job %s as %s', (display_role, label) => {
     const value = accountIdentity({ session, profile: profile({ display_role }) });
     expect(value).toMatchObject({

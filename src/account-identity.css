@@ -41,6 +41,21 @@
   min-width: 0;
   overflow-wrap: anywhere;
 }
+.account-identity-unit {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+}
+.account-identity-unit > .account-identity-prefix {
+  flex-shrink: 0;
+}
+.account-identity-unit-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-weight: 600;
+}
 .account-identity-disclosure {
   display: inline-flex;
   gap: 4px;
@@ -86,9 +101,18 @@
   .account-identity,
   .admin-shell > .account-identity {
     padding-inline: 14px;
+    padding-block: 2px;
   }
   .account-identity summary {
     gap: 6px;
+  }
+  .account-identity-unit {
+    flex-basis: calc(100% - 26px);
+  }
+  .account-identity-unit-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .account-identity-disclosure {
     font-size: var(--font-size-xs);

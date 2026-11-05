@@ -29,7 +29,12 @@ export function AccountIdentity(props: AccountIdentityOptions) {
       <details key={`${session.scope_key}:${identity.role}:${identity.confirmed}`}>
         <summary>
           <UserRound size={17} aria-hidden="true" />
-          <span className="account-identity-prefix">当前身份</span>
+          <span className="account-identity-unit">
+            <span className="account-identity-prefix">{identity.unitLabel}</span>
+            <strong className="account-identity-unit-name" title={identity.unitName}>
+              {identity.unitName}
+            </strong>
+          </span>
           <strong className="account-identity-role">{identity.role}</strong>
           <span className="account-identity-name">{identity.name}</span>
           <span className="account-identity-disclosure">
@@ -39,9 +44,17 @@ export function AccountIdentity(props: AccountIdentityOptions) {
         <div className="account-identity-details">
           <dl>
             <div>
-              <dt>所属事务所</dt>
-              <dd>{identity.firm || '尚未加入事务所'}</dd>
+              <dt>{identity.clientIdentity ? '服务事务所' : '所属事务所'}</dt>
+              <dd>{identity.confirmed ? identity.firm : '待确认'}</dd>
             </div>
+            {identity.companyMemberships.map((company) => (
+              <div key={company.id}>
+                <dt>企业成员身份</dt>
+                <dd>
+                  {company.name} · {company.role}
+                </dd>
+              </div>
+            ))}
             <div>
               <dt>授权范围</dt>
               <dd>{identity.scope}</dd>

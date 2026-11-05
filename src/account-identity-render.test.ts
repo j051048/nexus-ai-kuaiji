@@ -29,6 +29,18 @@ const profile: WorkspaceProfile = {
 };
 
 describe('shared signed-in identity', () => {
+  it('keeps affiliation in the closed summary, not only in permission details', () => {
+    const html = renderToStaticMarkup(
+      createElement(AccountIdentity, {
+        session: { ...session, role: 'owner' },
+        profile: { ...profile, display_role: 'firm_owner' },
+      }),
+    );
+    const summary = html.split('</summary>')[0];
+    expect(summary).toContain('所属事务所');
+    expect(summary).toContain('虚构事务所');
+    expect(summary).toContain('事务所负责人');
+  });
   it('shows an actual job name and account, with keyboard-native disclosure and no secrets', () => {
     const html = renderToStaticMarkup(createElement(AccountIdentity, { session, profile }));
     expect(html).toContain('aria-label="当前登录身份"');
