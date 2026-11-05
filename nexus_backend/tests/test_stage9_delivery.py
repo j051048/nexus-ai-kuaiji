@@ -16,13 +16,14 @@ from app.accounting.seed import LOCAL_ACTOR
 from app.delivery.models import ReceiptCreate, ReceiptImport, DeliveryNote
 from app.delivery.service import DeliveryService
 from test_catalog import case, make_draft
+from review_policy_fixtures import independent_reviewer
 from test_business import business
 
 
 def exported(case, legacy=False):
     ledger, _, book = case
     draft = make_draft(case)
-    ledger.approve(LOCAL_ACTOR, book, draft["id"], ApprovalRequest(expected_version=draft["version"]))
+    ledger.approve(independent_reviewer(ledger.db, LOCAL_ACTOR, book), book, draft["id"], ApprovalRequest(expected_version=draft["version"]))
     approved = ledger.get_draft(LOCAL_ACTOR, book, draft["id"])
     delivery = DeliveryService(ledger.db)
     if legacy:
@@ -234,7 +235,7 @@ def test_neutral_csv_safety_encoding_decodes_only_exact_frozen_expectations(case
         with ledger.db.transaction(write=True, actor=LOCAL_ACTOR) as conn:
             conn.execute("UPDATE drafts SET description=?,version=version+1 WHERE id=? AND book_id=? AND status='draft'", (description, draft["id"], book))
         draft = ledger.get_draft(LOCAL_ACTOR, book, draft["id"])
-    ledger.approve(LOCAL_ACTOR, book, draft["id"], ApprovalRequest(expected_version=draft["version"]))
+    ledger.approve(independent_reviewer(ledger.db, LOCAL_ACTOR, book), book, draft["id"], ApprovalRequest(expected_version=draft["version"]))
     export = ledger.export(LOCAL_ACTOR, book, ExportRequest(draft_ids=[draft["id"]], idempotency_key=uuid4().hex))
     delivery = DeliveryService(ledger.db)
     content = delivery.template(LOCAL_ACTOR, book, export["id"], "csv")

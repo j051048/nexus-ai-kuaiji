@@ -65,7 +65,7 @@ def test_member_identity_and_book_authorization_are_both_required(case):
 
 
 @pytest.mark.parametrize("firm_role,book_role,edit,review", [
-    ("viewer", "reviewer", False, False), ("operator", "reviewer", True, False),
+    ("viewer", "editor", False, False), ("operator", "editor", True, False),
     ("reviewer", "viewer", False, False), ("reviewer", "editor", True, False), ("reviewer", "reviewer", True, True),
 ])
 def test_effective_role_is_intersection(case, firm_role, book_role, edit, review):
@@ -81,7 +81,10 @@ def test_effective_role_is_intersection(case, firm_role, book_role, edit, review
 
 def test_operator_cannot_review_even_if_granted_book_reviewer(case):
     operator = case.user("operator")
-    actor = grant(case, operator, "operator", "reviewer")
+    with pytest.raises(AccountingError) as denied_grant:
+        grant(case, operator, "operator", "reviewer")
+    assert denied_grant.value.status == 403
+    actor = grant(case, operator, "operator", "editor")
     case.service.import_sources(actor, case.book["id"], import_request())
     case.service.suggestions(actor, case.book["id"])
     draft = case.service.get_book(actor, case.book["id"])["drafts"][0]
@@ -113,8 +116,12 @@ def test_employee_membership_gives_workspace_not_ledger_and_finance_needs_grant(
         case.directory.grant_book_member(case.actor, case.book["id"], employee.user_id, BookMemberGrant(role="viewer"))
     case.directory.grant_company_member(case.actor, case.company["id"], CompanyMemberGrant(email=employee.email, role="finance"))
     assert case.service.workbench(actor)["books"] == []
-    case.directory.grant_book_member(case.actor, case.book["id"], employee.user_id, BookMemberGrant(role="reviewer"))
-    assert case.service.get_book(actor, case.book["id"])["book"]["permissions"]["review"]
+    with pytest.raises(AccountingError) as denied_reviewer:
+        case.directory.grant_book_member(case.actor, case.book["id"], employee.user_id, BookMemberGrant(role="reviewer"))
+    assert denied_reviewer.value.status == 403
+    case.directory.grant_book_member(case.actor, case.book["id"], employee.user_id, BookMemberGrant(role="editor"))
+    permissions = case.service.get_book(actor, case.book["id"])["book"]["permissions"]
+    assert permissions["edit"] and not permissions["review"]
 
 
 def test_departments_cannot_be_assigned_across_companies(case):

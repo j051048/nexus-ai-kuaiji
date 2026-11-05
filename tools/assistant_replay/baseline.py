@@ -104,6 +104,16 @@ def candidate_identity():
     return {**value, "fingerprint": digest(value)}
 
 
+def _canonical_text_bytes(raw):
+    """Hash frozen JSON by content, not by checkout line ending.
+
+    Git may materialize CRLF on Windows and LF on CI. The dataset itself is
+    UTF-8 JSON; normalizing line endings keeps the same logical bytes while
+    still detecting any actual content change.
+    """
+    return raw.replace(b"\r\n", b"\n")
+
+
 def load_dataset(path):
     path = Path(path).resolve()
     try:
@@ -123,7 +133,7 @@ def load_dataset(path):
         for kind in ("cases", "gold"):
             source = replay._safe(path.parent, manifest[kind]["path"])
             raw = source.read_bytes()
-            if replay.sha256_bytes(raw) != manifest[kind]["sha256"]:
+            if replay.sha256_bytes(_canonical_text_bytes(raw)) != manifest[kind]["sha256"]:
                 raise BaselineError(f"{kind} hash changed")
             loaded[kind] = replay._json(raw.decode("utf-8"))
             if set(loaded[kind]) != IDS:

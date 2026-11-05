@@ -19,8 +19,10 @@ from test_business import business
 
 
 def second_reviewer(ledger, book):
-    actor = Actor('quality-reviewer-' + uuid4().hex, LOCAL_ACTOR.firm_id)
-    with ledger.db.transaction(write=True, actor=LOCAL_ACTOR) as conn:
+    with ledger.db.transaction(actor=LOCAL_ACTOR) as conn:
+        firm_id = conn.execute("SELECT firm_id FROM books WHERE id=?", (book,)).fetchone()[0]
+    actor = Actor('quality-reviewer-' + uuid4().hex, firm_id)
+    with ledger.db.transaction(write=True, system=True) as conn:
         conn.execute("INSERT INTO users(id,name) VALUES(?,'质量独立复核人')", (actor.user_id,))
         conn.execute("INSERT INTO memberships VALUES(?,?,'reviewer')", (actor.firm_id, actor.user_id))
         conn.execute("INSERT INTO book_access VALUES(?,?,?,'reviewer')", (book, actor.firm_id, actor.user_id))
@@ -139,10 +141,17 @@ def ai_standard(c, changed_label=False):
     proposal = propose(c, mapping['draft_id'])
     assert proposal['status'] == 'succeeded'
     applied = c.intelligence.apply(c.actors['accountant'], proposal['id'], 1)
-    c.ledger.approve(c.actors['accountant'], c.book['id'], applied['id'], ApprovalRequest(expected_version=applied['version']))
+    reviewer = second_reviewer(c.ledger, c.book['id'])
+    c.ledger.approve(reviewer, c.book['id'], applied['id'], ApprovalRequest(expected_version=applied['version']))
     quality = QualityService(c.db)
+    # Public assistant projections intentionally hide provider/model metadata.
+    # The replay test is an operator-side check, so read the frozen run meta
+    # under the manager's authorized transaction instead of weakening redaction.
     with c.db.transaction(actor=c.manager) as conn:
         sample_id = conn.execute('SELECT id FROM learning_samples WHERE draft_id=?', (applied['id'],)).fetchone()[0]
+        for run in (ocr, proposal):
+            meta = conn.execute('SELECT model,prompt_version FROM ai_runs WHERE id=?', (run['id'],)).fetchone()
+            run['model'], run['prompt_version'] = meta['model'], meta['prompt_version']
     value = '人工核对的另一销售方' if changed_label else '耗材商店'
     row = quality.create_standard(c.actors['accountant'], c.book['id'], StandardCreate(sample_id=sample_id, field_labels=[{'extraction_id': ocr['id'], 'document_index': 0, 'field': 'seller_name', 'page': 1, 'value': value}, {'extraction_id': ocr['id'], 'document_index': 0, 'field': 'tax_amount', 'page': 1, 'value': '0.00'}], reason='独立评测标签来自合成原件的人工答案', idempotency_key=uuid4().hex))
     quality.confirm(c.manager, c.book['id'], row['id'], StandardConfirm(evidence_checked=True, reason='另一会计独立确认，未把模型预测作为答案'))

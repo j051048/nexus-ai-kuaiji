@@ -55,12 +55,16 @@ def approve(service, book, draft):
 
 
 def add_actor(service, user_id="other", firm_id="other-firm", role="reviewer", book_id=None):
+    # A book grant cannot make a client operator/viewer a formal reviewer.
+    # Keep the effective-intersection fixtures valid by granting the strongest
+    # non-reviewer book role when the firm membership is not a reviewer.
+    book_role = "reviewer" if role in {"reviewer", "admin", "owner"} else "editor"
     with service.db.transaction(write=True) as conn:
         conn.execute("INSERT OR IGNORE INTO firms(id,name) VALUES(?,?)", (firm_id, firm_id))
         conn.execute("INSERT OR IGNORE INTO users(id,name) VALUES(?,?)", (user_id, user_id))
         conn.execute("INSERT INTO memberships VALUES(?,?,?)", (firm_id, user_id, role))
         if book_id:
-            conn.execute("INSERT INTO book_access(book_id,firm_id,user_id) VALUES(?,?,?)", (book_id, firm_id, user_id))
+            conn.execute("INSERT INTO book_access(book_id,firm_id,user_id,role) VALUES(?,?,?,?)", (book_id, firm_id, user_id, book_role))
     return Actor(user_id=user_id, firm_id=firm_id)
 
 
@@ -462,18 +466,23 @@ def test_http_review_requires_current_book_permission(client):
 
 def http_independent_reviewer(client, book_id):
     # seed=False intentionally creates no demo staff. Register a separate
-    # synthetic identity before exercising the public assignment/review APIs.
+    # synthetic identity as an invited firm reviewer before exercising the
+    # public book-assignment/review APIs. A client finance role must not be
+    # promoted to formal reviewer.
     from types import SimpleNamespace
     from app.accounting.directory import DirectoryService
+    from app.accounting.seed import LOCAL_ACTOR
+    reviewer_id = "local-reviewer"
     DirectoryService(client.app.state.service.db).register_identity(SimpleNamespace(
-        user_id="local-business-finance", display_name="独立测试会计", email="finance@demo.example.invalid"
+        user_id=reviewer_id, display_name="独立测试会计", email="reviewer@demo.example.invalid"
     ))
-    token = client.get("/api/session", params={"persona": "finance"}).json()["token"]
-    company_id = client.get(f"/api/books/{book_id}").json()["book"]["company_id"]
-    assert client.put(f"/api/companies/{company_id}/members", json={
-        "email": "finance@demo.example.invalid", "role": "finance", "department_id": None
-    }).status_code == 200
-    assert client.put(f"/api/books/{book_id}/members/local-business-finance", json={"role": "reviewer"}).status_code == 200
+    with client.app.state.service.db.transaction(write=True, system=True) as conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO memberships(firm_id,user_id,role) VALUES(?,?,?)",
+            (LOCAL_ACTOR.firm_id, reviewer_id, "reviewer"),
+        )
+    token = client.get("/api/session", params={"persona": "reviewer"}).json()["token"]
+    assert client.put(f"/api/books/{book_id}/members/{reviewer_id}", json={"role": "reviewer"}).status_code == 200
     return {"Authorization": "Bearer " + token}
 
 

@@ -18,10 +18,10 @@
   },
   "cases": {
     "path": "cases.json",
-    "sha256": "2b6721ac98ff9cd6193e631014137f08131967bfe21c99881fbf4c0a838b76ea"
+    "sha256": "1d2f1fdc4faa4c24dfe5edf35eea7e3c0816ce101ec1d31cc8062fe46f4ceb7f"
   },
   "gold": {
     "path": "gold.json",
-    "sha256": "4ffdec4eade55a97294bb6bb34987aee671b932a40682e9a140fdd44b0d46f64"
+    "sha256": "d644ee0084f1a2fc3b72adeb0e88ab41bc3bc5f24885f6f36a98d4d66365d354"
   }
 }
