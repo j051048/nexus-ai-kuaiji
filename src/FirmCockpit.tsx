@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ArrowRight, Building2, CalendarDays, RefreshCw, ShieldAlert, Users } from 'lucide-react';
 import { useMonthlyData } from './useMonthlyData';
 import { parseFirmSnapshot } from './firm-cockpit-contract';
@@ -13,6 +13,7 @@ import {
   type FirmSnapshot,
 } from './firm-cockpit-focus';
 import './cockpit.css';
+import './workbench-focus.css';
 
 type Actions = {
   onOpenBook: (target: { bookId: string; companyId: string; period: string }) => void;
@@ -84,17 +85,54 @@ export function FirmCockpitContent({
   onTeam,
   onOnboarding,
   pageControls,
+  searchControls,
   detailsOpen,
   onDetailsChange,
 }: {
   data: FirmSnapshot;
   pageControls?: ReactNode;
+  searchControls?: ReactNode;
   detailsOpen?: boolean;
   onDetailsChange?: (value: boolean) => void;
 } & Actions) {
   const coordination = data.coordination ?? selectCoordinationClients(data.companies);
   return (
     <>
+      <section className="cockpit-summary" aria-label="全所运营概览">
+        <header>
+          <div>
+            <h2>本月服务进度</h2>
+            <p>先确认每家客户的进度，再协调负责人和阻塞事项。</p>
+          </div>
+          {onMonthly && (
+            <button
+              className={`button ${data.summary.clients ? 'primary' : 'secondary'}`}
+              type="button"
+              onClick={() => onMonthly(data.period)}
+            >
+              客户进度 <ArrowRight size={15} />
+            </button>
+          )}
+        </header>
+        <div className="cockpit-summary-values">
+          <article>
+            <span>服务客户</span>
+            <strong>{data.summary.clients}</strong>
+            <small>{data.summary.opened} 家已开通本月账套</small>
+          </article>
+          <article>
+            <span>待完成月结</span>
+            <strong>{Math.max(0, data.summary.clients - data.summary.closed)}</strong>
+            <small>按当月账套状态统计</small>
+          </article>
+          <article>
+            <span>已完成月结</span>
+            <strong>{data.summary.closed}</strong>
+            <small>交付结果请在客户进度中确认</small>
+          </article>
+        </div>
+      </section>
+
       {!data.summary.clients ? (
         <section className="cockpit-panel cockpit-first-client">
           <Building2 size={28} aria-hidden="true" />
@@ -124,7 +162,7 @@ export function FirmCockpitContent({
             </header>
             {coordination.length ? (
               <div className="cockpit-client-list">
-                {coordination.slice(0, 6).map((row) => (
+                {coordination.slice(0, 3).map((row) => (
                   <ClientProgress
                     key={row.company_id}
                     row={row}
@@ -133,6 +171,20 @@ export function FirmCockpitContent({
                     onMonthly={onMonthly}
                   />
                 ))}
+                {coordination.length > 3 && (
+                  <details className="cockpit-more-team">
+                    <summary>其余 {coordination.length - 3} 家需协调客户</summary>
+                    {coordination.slice(3).map((row) => (
+                      <ClientProgress
+                        key={row.company_id}
+                        row={row}
+                        onOpenBook={onOpenBook}
+                        onOnboarding={onOnboarding}
+                        onMonthly={onMonthly}
+                      />
+                    ))}
+                  </details>
+                )}
               </div>
             ) : (
               <EmptyState title="目前没有需要你协调的事项">
@@ -143,7 +195,6 @@ export function FirmCockpitContent({
               <button className="text-button" type="button" onClick={onOpenInbox}>
                 查看待处理问题 <ArrowRight size={14} />
               </button>
-              {coordination.length > 6 && <small>先展示 6 家，请在客户进度中查看其余客户。</small>}
             </footer>
           </section>
 
@@ -217,61 +268,33 @@ export function FirmCockpitContent({
         </div>
       )}
 
-      <section className="cockpit-summary" aria-label="全所运营概览">
-        <header>
-          <div>
-            <h2>本月服务进度</h2>
-            <p>先确认每家客户的进度，再协调负责人和阻塞事项。</p>
+      <section className="cockpit-directory" aria-label="客户查找与进度">
+        {searchControls}
+        <details
+          className="cockpit-panel cockpit-client-details"
+          open={detailsOpen}
+          onToggle={(event) => onDetailsChange?.(event.currentTarget.open)}
+        >
+          <summary>全部客户与阶段明细</summary>
+          {pageControls}
+          <div className="cockpit-client-list">
+            {data.companies.map((row) => (
+              <ClientProgress
+                key={row.company_id}
+                row={row}
+                onOpenBook={onOpenBook}
+                onOnboarding={onOnboarding}
+                onMonthly={onMonthly}
+              />
+            ))}
+            {!data.companies.length && (
+              <p className="cockpit-panel-help">
+                当前月份和搜索条件下没有匹配客户。请调整搜索或月份。
+              </p>
+            )}
           </div>
-          {onMonthly && (
-            <button
-              className={`button ${data.summary.clients ? 'primary' : 'secondary'}`}
-              type="button"
-              onClick={() => onMonthly(data.period)}
-            >
-              客户进度 <ArrowRight size={15} />
-            </button>
-          )}
-        </header>
-        <div className="cockpit-summary-values">
-          <article>
-            <span>服务客户</span>
-            <strong>{data.summary.clients}</strong>
-            <small>{data.summary.opened} 家已开通本月账套</small>
-          </article>
-          <article>
-            <span>待完成月结</span>
-            <strong>{Math.max(0, data.summary.clients - data.summary.closed)}</strong>
-            <small>按当月账套状态统计</small>
-          </article>
-          <article>
-            <span>已完成月结</span>
-            <strong>{data.summary.closed}</strong>
-            <small>交付结果请在客户进度中确认</small>
-          </article>
-        </div>
+        </details>
       </section>
-
-      <details
-        className="cockpit-panel cockpit-client-details"
-        open={detailsOpen}
-        onToggle={(event) => onDetailsChange?.(event.currentTarget.open)}
-      >
-        <summary>全部客户与阶段明细</summary>
-        {pageControls}
-        <div className="cockpit-client-list">
-          {data.companies.map((row) => (
-            <ClientProgress
-              key={row.company_id}
-              row={row}
-              onOpenBook={onOpenBook}
-              onOnboarding={onOnboarding}
-              onMonthly={onMonthly}
-            />
-          ))}
-          {!data.companies.length && <p className="cockpit-panel-help">本月尚无客户记录。</p>}
-        </div>
-      </details>
       <details className="cockpit-diagnostics">
         <summary>数据更新说明</summary>
         <p>
@@ -300,6 +323,8 @@ export function FirmCockpit({
   const [period, setPeriod] = useState(initialPeriod || new Date().toISOString().slice(0, 7));
   const [revision, setRevision] = useState(0);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const root = useRef<HTMLElement>(null);
+  const pendingSearch = useRef(false);
   const [search, setSearch] = useState(''),
     [query, setQuery] = useState(''),
     [offset, setOffset] = useState(0);
@@ -310,24 +335,66 @@ export function FirmCockpit({
       new URLSearchParams({ period, search: query, offset: String(offset), limit: String(limit) }),
     revision,
   );
-  const data =
-    result.data === null
-      ? null
-      : parseFirmSnapshot(result.data, {
-          firm_id: session.firm_id ?? '',
-          user_id: session.user_id,
-          period,
-          search: query,
-          limit,
-          offset,
-        });
+  const data = useMemo(
+    () =>
+      result.data === null
+        ? null
+        : parseFirmSnapshot(result.data, {
+            firm_id: session.firm_id ?? '',
+            user_id: session.user_id,
+            period,
+            search: query,
+            limit,
+            offset,
+          }),
+    [result.data, session.firm_id, session.user_id, period, query, offset],
+  );
   const loading = result.loading;
   const error =
     result.error ||
     (result.data !== null && !data ? '返回的企业范围或数据格式不符，请重新读取。' : '');
 
+  useEffect(() => {
+    if (!pendingSearch.current || loading || !data || error) return;
+    pendingSearch.current = false;
+    const frame = requestAnimationFrame(() => {
+      const summary = root.current?.querySelector<HTMLElement>('.cockpit-client-details > summary');
+      summary?.focus({ preventScroll: true });
+      summary?.scrollIntoView({ block: 'nearest' });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [data, loading, error]);
+
+  const searchControls = (
+    <form
+      className="cockpit-client-search"
+      onSubmit={(event) => {
+        event.preventDefault();
+        setQuery(search.trim());
+        setOffset(0);
+        setDetailsOpen(true);
+        pendingSearch.current = true;
+      }}
+    >
+      <label>
+        查找客户
+        <input
+          aria-label="搜索服务客户"
+          value={search}
+          maxLength={200}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="输入企业名称"
+        />
+      </label>
+      <button className="button secondary" type="submit">
+        查找
+      </button>
+      <small>搜索只筛选客户明细，全所汇总与需协调客户保持不变。</small>
+    </form>
+  );
+
   return (
-    <main className="cockpit">
+    <main className="cockpit" ref={root}>
       <header className="cockpit-heading">
         <div>
           <p className="eyebrow">事务所管理</p>
@@ -366,29 +433,6 @@ export function FirmCockpit({
           )}
         </div>
       </header>
-      <form
-        className="cockpit-client-search"
-        onSubmit={(event) => {
-          event.preventDefault();
-          setQuery(search.trim());
-          setOffset(0);
-        }}
-      >
-        <label>
-          查找客户
-          <input
-            aria-label="搜索服务客户"
-            value={search}
-            maxLength={200}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="输入企业名称"
-          />
-        </label>
-        <button className="button secondary" type="submit">
-          查找
-        </button>
-        <small>搜索只筛选客户明细，全所汇总与需协调客户保持不变。</small>
-      </form>
       {error ? (
         <div className="inline-error" role="alert">
           <p>本月进度暂时无法加载：{error}</p>
@@ -408,6 +452,7 @@ export function FirmCockpit({
       ) : (
         <FirmCockpitContent
           data={data}
+          searchControls={searchControls}
           detailsOpen={detailsOpen}
           onDetailsChange={setDetailsOpen}
           pageControls={

@@ -346,6 +346,7 @@ for (const viewport of [
     const row = page.locator(`[data-book="${f.book.id}"]`);
     await expect(row).toBeVisible();
     await expect(page.locator('.monthly-matrix-row')).toHaveCount(1);
+    await row.getByText('查看各环节明细', { exact: true }).click();
     await row.getByRole('button', { name: '本月服务单与资料', exact: true }).click();
     await expect(
       page.getByRole('heading', { name: `${f.company.name} · 月度服务单`, exact: true }),

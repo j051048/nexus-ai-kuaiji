@@ -154,6 +154,7 @@ test('跨企业月度矩阵分页覆盖全部授权账套，精确下钻同企�
   await expect(row).toContainText('尚未预检');
   await expect(row).not.toContainText('已完成');
   await page.screenshot({ path: 'artifacts/stage17-monthly-matrix-desktop.png', fullPage: false });
+  await row.getByText('查看各环节明细', { exact: true }).click();
   await row.getByRole('button', { name: '会计复核：1 待审', exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`book=${target.id}`));
   await expect(page.getByLabel('复核企业')).toHaveValue(company.id);
@@ -172,6 +173,10 @@ test('跨企业月度矩阵分页覆盖全部授权账套，精确下钻同企�
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(
     true,
   );
+  await page
+    .locator(`[data-book="${november.id}"]`)
+    .getByText('查看各环节明细', { exact: true })
+    .click();
   await page
     .locator(`[data-book="${november.id}"]`)
     .getByRole('button', { name: '参考余额与差异', exact: true })

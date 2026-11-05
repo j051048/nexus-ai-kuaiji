@@ -1,0 +1,79 @@
+{
+  "date": "2026-11-05",
+  "status": "local_accepted",
+  "baseline_head": "c0a9931471e79f5d20e2c572ff8c957be522c22f",
+  "candidate_head": "dd5369277b5bf55205cb3496ca46e3d73efd77df",
+  "candidate_files_sha256": {
+    "src/BusinessWorkspace.tsx": "96d3142d706a904c085fe793fc9f47306c6192075a94ad8c6eaf68748173dbf0",
+    "src/InlineReviewDrawer.tsx": "bfd31d1a5fb34d703a29737f49cca5b7899a5725cc30ed41bcf545ba2e08ccae",
+    "src/IntelligencePanel.tsx": "7e4b780b19ae86de164d39213a92e6b9a1b5943dcf831abf52d2f4c5bf5fa5d2",
+    "src/WorkflowGuide.tsx": "9e3ccb8c70f4169d275a22930ba03e6fe8fc9a46da9ac49ee03e0e83f4de5c29",
+    "src/review-focus.css": "24fd5e5091355d504b22cbda8fcdc968b3dd55a5e89049abed8a99af8403af02",
+    "src/review-focus-render.test.ts": "8d01c3856b80eda4a30641cc46bd28de4e35c4e94d7526158c5d7f433a5d20a0",
+    "e2e/review-focus.spec.ts": "f8ae83594f7d59ee948e77a8350d68a5befc850d96faf069e9b8922da3a47d01"
+  },
+  "ownership": {
+    "baseline_dirty_paths": 132,
+    "changed_baseline_paths": [
+      "src/BusinessWorkspace.tsx",
+      "src/InlineReviewDrawer.tsx",
+      "src/WorkflowGuide.tsx"
+    ],
+    "unchanged_baseline_paths": 129,
+    "head_advanced_by_other_task": true,
+    "scope": "4 production frontend files, 1 stylesheet, 2 tests, this report pair",
+    "backend_sql_c01_changed": false
+  },
+  "results": {
+    "frontend": {
+      "passed": 1244,
+      "files": 131
+    },
+    "backend": {
+      "passed": 74,
+      "skipped": 0
+    },
+    "browser": {
+      "passed": 51,
+      "new_cases": 6
+    },
+    "typecheck": "passed",
+    "build": "passed",
+    "lint": "passed",
+    "format": "passed"
+  },
+  "evidence_sha256": {
+    "tmp_test/review-focus-20261105/red-unit.txt": "756ab2127137d6611e34e52bfce9c24f22ccc303503a8f2b64a721fd94d6ee77",
+    "tmp_test/review-focus-20261105/red-browser.txt": "7720c5f5b724c248f74a54234ead5298dee9613e9930e500a013b821aa04a3bc",
+    "tmp_test/review-focus-20261105/red-conflict.txt": "b41e22ed54e89bde090ca83e265252c9995684dab72980bd7d68ab661eb87664",
+    "tmp_test/review-focus-20261105/red-stable-role.txt": "92af9d94ffd0a17c8da506fc4234062d09a75cabfed9014dfb972753400b2d93",
+    "tmp_test/review-focus-20261105/red-finance-scope.txt": "86ca518b4b582f6bddb1eb07a2059a70c525d2a3bb21ff04ce24df5bbad281d0",
+    "tmp_test/review-focus-20261105/browser-regression.txt": "5c7e148b7527b5c4db3b7c218a21d643868385f01a960eed7036cb8f1e492459",
+    "tmp_test/review-focus-20261105/frontend-final.txt": "65c3bf3332248b12e6fdbdb01fac850f4e7755eeb21dbd519c0380422e154662",
+    "tmp_test/review-focus-20261105/browser-final.txt": "83d54d1572a239d1af2bdaf8881b50cf4a6805cc068b49bf9646261dff6c4d87",
+    "tmp_test/review-focus-20261105/backend.txt": "d54014c64cc753b5be33965ebd8ca2e24c0a77b35e4b74f5096c041626064ea2",
+    "tmp_test/review-focus-20261105/backend.xml": "ea205ef1a44b8d9f90919aa882ab99b22c74325ce01bddfd9e6232ad59b75168",
+    "tmp_test/review-focus-20261105/lint-final.txt": "40ab6beca86553a912feee15d9332f1217a3d627b3120b1406f4a494af0d2444",
+    "tmp_test/review-focus-20261105/build-final.txt": "e9f9fc79baf591d5f1a9452aadb32db5b03f3b445ccc9c39c4cffe7f9abb9644",
+    "tmp_test/review-focus-20261105/format-final.txt": "f20510a9da4717c51c4cffee6d0dd88d6c9a723d0a83711d01216f5b48961283",
+    "tmp_test/review-focus-20261105/accounting-facts-1440.png": "e8ffbfbe622c3409671f5a2d1ac5c33c999838c8b704cd96e7f0afd5d2d1cb5a",
+    "tmp_test/review-focus-20261105/accounting-facts-390.png": "bd7e78b9d2ed01f38f5f7b43417ce8456018b53316bde5c4e4c1debe17a693c9",
+    "tmp_test/review-focus-20261105/accounting-original-1440.png": "41850adf78e9a8f0fe361c38694507e6e7eee45ef25b41e302ce789ca0931acc",
+    "tmp_test/review-focus-20261105/accounting-original-390.png": "782c9fa827e3c023d665a75774de65ff7928befcd590559403e6ae6f3dff760a",
+    "tmp_test/review-focus-20261105/finance-action-1440.png": "8183a33c1be0bf62770a04bd53c7c44ddb61d801d8ab521fb6cd4f3d14d6a0de",
+    "tmp_test/review-focus-20261105/finance-action-390.png": "c27780edacd37dfe390ec799695e0506e9e0b9bac6c74142c8a3af7050c04842",
+    "tmp_test/review-focus-20261105/finance-conflict-390.png": "6b63b769a71f2e970d83772276b8c89c452cbddb2561ce4ae55151c997fc9e1b",
+    "tmp_test/review-focus-20261105/finance-entry-1440.png": "61e03cd000bdc8e46606e4ec6c00790936c10dfb8582d378e2f563a81112bb37",
+    "tmp_test/review-focus-20261105/finance-entry-390.png": "c75936779b2f384f5fd455cbbee536871656469d0d95c1fc413f2bdf619d0abb",
+    "tmp_test/review-focus-20261105/finance-original-1440.png": "e99346a1bcc2e9f55f6508de25c87944cc1469d3c3b179f0a20a270c9399ec2c",
+    "tmp_test/review-focus-20261105/finance-original-390.png": "24c1e0adc477abf8ab9eac3b862238ecbcb86f71788b8d1f3c3698837183629e"
+  },
+  "boundaries": [
+    "synthetic local identities and originals",
+    "SQLite browser API harness; not new PostgreSQL acceptance",
+    "409 and some existing failures are explicit browser response injection",
+    "no real model or notification calls",
+    "no push or production change by this task",
+    "desktop/mobile viewport acceptance; not physical phone testing"
+  ]
+}

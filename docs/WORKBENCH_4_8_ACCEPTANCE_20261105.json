@@ -1,0 +1,111 @@
+{
+  "date": "2026-11-05",
+  "status": "items_4_to_7_local_accepted_item_8_partial",
+  "head": "dd5369277b5bf55205cb3496ca46e3d73efd77df",
+  "candidate_sha256": "17b8660717d895132fb238d25897cc420ee62d081d09c868d9c3ccc8e60aead3",
+  "ownership": {
+    "head": "dd5369277b5bf55205cb3496ca46e3d73efd77df",
+    "candidate_files": 1822,
+    "candidate_drift": [],
+    "previous_round_files": 7,
+    "previous_round_drift": []
+  },
+  "this_round_files_sha256": {
+    "src/WorkspaceHome.tsx": "db2a4341e2cadf1c310b15f37ee2b35b40e83eb434e2e5362b32cf8c2a68407e",
+    "src/FirmCockpit.tsx": "2ec8989e7fb8961441a32bbdfbe1abc82d3bb706d3c02091c2b37b29e077c672",
+    "src/MonthlyClientWorkbench.tsx": "ab211bf02026ee925f89767eddb295d80364c82a0421bd3677de51d70c5af979",
+    "src/ReviewWorkbench.tsx": "2cb97acf1016c2d94eeef1d6300e723fde2a34601c8cfa2b1cd78c4c59655379",
+    "src/IntakeWizard.tsx": "90a23f709c6da251b313c6f5db97f787d2e8291b96d860c9473b258f546093d7",
+    "src/workspace-progress.ts": "32a58df3dd3d7edcc478775d469586e382833a33dc4459c3b10080a777b0c311",
+    "src/workbench-focus.css": "24df5d68a91b0b09497ae5c6012e627a021555f789e6248acafb88d14e46812e",
+    "src/workbench-focus.test.ts": "94de472ec8cae582d48207b0e3767a34c8ceb5b736e94bab1d2f0cac133d6838",
+    "e2e/workbench-focus.spec.ts": "21053367b1bf3476f1912fc742ec1d781956c9583083fa6b9c0614a78f7da09e",
+    "src/firm-cockpit-focus.test.ts": "0d4680f11b7e76f1c9a1fd4cc66aa9e7464707fa4ed555849e93d7720d0973ab",
+    "src/role-workspaces-visual.test.ts": "ce5d9024d758860b16fa6ca2a2ab7c2186d7ded5b69a5a90ae40c3df3aa3406c",
+    "src/workspace-home-focus-render.test.ts": "ac4ec57db00ebafe952d58363c15dc3c9a9d1e94fd652a79aae3222f0b858642",
+    "e2e/stage17-monthly.spec.ts": "84808bdbc627d031a8d5eac54bed5af0b7fa36ec6cc87f51fc86935425ced48e",
+    "e2e/ux07-09-journey.spec.ts": "4649e0b3b10badd4ea2c4d74c5eebaeb8fcadebe6a143b4ccc095f03f2adcc2f",
+    "e2e/ux10-12-operations.spec.ts": "d39caf1eeee671229828ab47f73da125ee0b2a376202154a2576bc4760355172",
+    "e2e/v02-role-workspaces.spec.ts": "68bfcc08986d9fb86dcff04ec494cbd7ede57e9a326b78d92869db903ad42810",
+    "e2e/v06-business-journey.spec.ts": "a85436dd461ef0d94fbf743675a29c3f851bd350ac836d6c627e5a53ed753ce4"
+  },
+  "results": {
+    "frontend": {
+      "files": 132,
+      "passed": 1251
+    },
+    "backend": {
+      "passed": 74,
+      "skipped": 0
+    },
+    "browser_dev": {
+      "passed": 62
+    },
+    "browser_preview": {
+      "passed": 5,
+      "overlaps_dev": true
+    },
+    "mobile_webkit_accessibility": {
+      "passed": 3,
+      "physical_device": false
+    },
+    "typecheck": "passed",
+    "lint": "passed",
+    "build": "passed",
+    "format": "passed"
+  },
+  "red_tests": {
+    "unit_failed": 7,
+    "browser": "search placement, mobile action visibility, contrast, upload error visibility"
+  },
+  "evidence_sha256": {
+    "tmp_test/workbench-4-8-20261105/candidate.json": "f514123ce0ef63d15837baacce9005e095f6c743593f742d55659a903cea1f98",
+    "tmp_test/workbench-4-8-20261105/baseline-status.txt": "49ef78d9f529cf8e05e214bfd77b8be0e77ffcd6a45705af48efc806b2439877",
+    "tmp_test/workbench-4-8-20261105/baseline-hashes.json": "23c04d729a437d9d632379fdab3b1094243e46eaab26e02eedff2a30e77336de",
+    "tmp_test/workbench-4-8-20261105/red-unit.txt": "180f9015937c6f145f132525c241658d60012a9dcf060f391277eaf4ccce2ab2",
+    "tmp_test/workbench-4-8-20261105/red-browser.txt": "0ac10bce4cbcd626cabdc7436610e83b0e1de175edb11c69c9644c0dc3c520a1",
+    "tmp_test/workbench-4-8-20261105/mobile-red.txt": "275ac71dad3fb6c7fa9663e91b227e246619e880341e4b77a39dda12d4694db9",
+    "tmp_test/workbench-4-8-20261105/browser-first.txt": "49a1d1466e3dd1c5a9c73e5eb67631d2bfc87f46ea9ae73db4a23d9761f1bb34",
+    "tmp_test/workbench-4-8-20261105/browser-second.txt": "4b4873a31ad9270d3fd01d0b7c45e60df238f24af5de3dbc4ff54864c054c49b",
+    "tmp_test/workbench-4-8-20261105/browser-regression.txt": "7a0f798e34f171f8467e294cdaa09816c6c88c35777efd9037710472d63ae237",
+    "tmp_test/workbench-4-8-20261105/browser-target.txt": "3c948356a61dc855cbcf2391004493c422e91f84f76c9c3c7317aeae16a05818",
+    "tmp_test/workbench-4-8-20261105/final-unit.txt": "b1fed7f445d20f07bb3842dbf5147afc69fa62aa1036224ccb584bb29668552a",
+    "tmp_test/workbench-4-8-20261105/final-lint.txt": "40ab6beca86553a912feee15d9332f1217a3d627b3120b1406f4a494af0d2444",
+    "tmp_test/workbench-4-8-20261105/final-build.txt": "6c802e1708a751f9e57356321d4aad75c7914c4f13affef6f912984a0c1e0525",
+    "tmp_test/workbench-4-8-20261105/final-format.txt": "38800801653215bb351a2182ec11a542cee7aaeb8aab4e59b4bf24fff0f3919f",
+    "tmp_test/workbench-4-8-20261105/backend.txt": "e883f11a41fa7aa2a89bbdeb2ce36532329636479848c58467a91a2e45640b7c",
+    "tmp_test/workbench-4-8-20261105/backend.xml": "20f72da14ff0ca9b2260613af024d5f2a4e1acd13553bf7e9b3f4c725353956d",
+    "tmp_test/workbench-4-8-20261105/browser-final.txt": "ac8f218bb5f43282ec244c59a254a3dbbd6246cd1ce2c8b81c2967e3997a28cf",
+    "tmp_test/workbench-4-8-20261105/browser-preview.txt": "1a5360d8e9f3800224d4fcc7e876542b05cb8144e38611869ae85e5f5b328048",
+    "tmp_test/workbench-4-8-20261105/mobile-webkit-final.txt": "e482ebb764a55a0d3e444bdc8efb14867f75dd0cc65e347fc4456eca0286dcf3",
+    "tmp_test/workbench-4-8-20261105/final-ownership.json": "5d324a423956341bf3ef93a1a0e1d168e9fd307f8d7045cbdc6583d49a3d1160",
+    "tmp_test/workbench-4-8-20261105/firm-1440.png": "e6e239a6dd91a55431b4abbc55a5b83e5dca7ce43c162b63b5e2e9a88a2aa81c",
+    "tmp_test/workbench-4-8-20261105/firm-390.png": "7c009ad305bc79bb4febd50d6562426dbb77d36c86e9864aba09e96f93c162e7",
+    "tmp_test/workbench-4-8-20261105/firm-search-1440.png": "450ff4e028290516d6630edd1ec3075295c6046a862554b7572a05f79cf622b4",
+    "tmp_test/workbench-4-8-20261105/firm-search-390.png": "9c43127adf100ccb083f794e8e54562645599b9c4498e08861e7a346751ff1d0",
+    "tmp_test/workbench-4-8-20261105/mobile-reduced-viewport.png": "5ef10235f9b8b7c2553d904b47e7dba91ab47ebcb9037e88135ae13eb6a59d69",
+    "tmp_test/workbench-4-8-20261105/mobile-upload-recovered.png": "5e5327e5d33b0ca57a9a4bbadc29350c3cbf523728cf324778ada3b41c7b1faa",
+    "tmp_test/workbench-4-8-20261105/monthly-1440.png": "4fa946072b60e448304399a9a5ea77dcea933a1ac8efc0a70e74deb3abc2a87b",
+    "tmp_test/workbench-4-8-20261105/monthly-390.png": "e59b7ff552685d0b868b0ef119987f5837010f0cc6ea02069956db12e926a8d9",
+    "tmp_test/workbench-4-8-20261105/review-list-1440.png": "6c29a9bdedc527515a0b65ea7137b4b2fa363b80dc2015a6a0dfbda2a9bf6075",
+    "tmp_test/workbench-4-8-20261105/review-list-390.png": "d6082b3f9ffcb6e2f906ebe4c8c214475cc141351da021773cd6b2210b963866"
+  },
+  "not_performed": [
+    "physical phone camera/system keyboard/WeChat testing",
+    "independent employee usability trial",
+    "new PostgreSQL 16/17 run",
+    "remote CI or production acceptance"
+  ],
+  "boundaries": {
+    "backend_or_migrations_changed": false,
+    "other_round_files_modified": false,
+    "real_models_or_notifications": false,
+    "pushed": false,
+    "production_changed": false
+  },
+  "known_warnings": [
+    "existing build main chunk about 564 kB",
+    "existing dynamic/static import warning",
+    "existing Starlette/httpx deprecation"
+  ]
+}

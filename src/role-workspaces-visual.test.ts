@@ -116,11 +116,12 @@ describe('V02 employee and finance workspaces', () => {
     const html = render('finance', { action: 1, waiting: 0 }, [item]);
     const primary =
       html.match(/<section[^>]*aria-label="资料核验与移交"[\s\S]*?<\/section>/)?.[0] ?? '';
-    expect(primary).toContain('workspace-next-task overdue');
-    expect(primary).toContain('已逾期');
+    expect(primary).not.toContain('workspace-next-task');
+    expect(html).toContain('workspace-task overdue');
+    expect(html).toContain('已逾期');
     expect(primary.match(/class="button primary"/g)).toHaveLength(1);
     expect(html.match(/class="button primary(?: small)?"/g)).toHaveLength(1);
-    expect(primary).toContain('待核验采购资料');
+    expect(html.match(/待核验采购资料/g)).toHaveLength(1);
     expect(html).toContain('data-state="department_approved"');
     expect(html).not.toContain('已导出');
   });

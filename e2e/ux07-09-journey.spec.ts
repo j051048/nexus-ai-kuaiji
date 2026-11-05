@@ -167,7 +167,7 @@ for (const width of [1280, 390]) {
       ).toBe(true);
     });
   }
-  test(`员工待办优先且新建与键盘操作可用 ${width}`, async ({ page }) => {
+  test(`员工先提交再继续待办且键盘操作可用 ${width}`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     await page.goto('/');
     await choosePersona(page, 'employee');
@@ -175,7 +175,7 @@ for (const width of [1280, 390]) {
       create = page.getByRole('region', { name: '提交与进度' });
     await expect(inbox).toBeVisible();
     await expect(create).toBeVisible();
-    expect((await inbox.boundingBox())!.y).toBeLessThan((await create.boundingBox())!.y);
+    expect((await create.boundingBox())!.y).toBeLessThan((await inbox.boundingBox())!.y);
     const button = create.getByRole('button', { name: /提交报销/ });
     await button.focus();
     await expect(button).toBeFocused();
@@ -224,12 +224,12 @@ for (const width of [1280, 390]) {
     ).toBeVisible();
     await expect(panel.getByRole('button', { name: '提交待复核', exact: true })).toHaveCount(0);
   });
-  test(`管理者先协调企业财务先核验 ${width}`, async ({ page }) => {
+  test(`管理者先看进度再协调企业财务先核验 ${width}`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     await page.goto('/workspace/firm?period=2026-10');
     await expect(page.locator('.cockpit-coordination')).toBeVisible();
-    expect((await page.locator('.cockpit-coordination').boundingBox())!.y).toBeLessThan(
-      (await page.locator('.cockpit-summary').boundingBox())!.y,
+    expect((await page.locator('.cockpit-summary').boundingBox())!.y).toBeLessThan(
+      (await page.locator('.cockpit-coordination').boundingBox())!.y,
     );
     await page.screenshot({
       path: `tmp_test/ux07-09-20261104/manager-${width}.png`,

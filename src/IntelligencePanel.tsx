@@ -123,6 +123,7 @@ export function IntelligencePanel({
   onDismiss,
   onOpenBatch,
   disableProposal = false,
+  compact = false,
 }: {
   session: Session;
   eventId: string;
@@ -136,6 +137,7 @@ export function IntelligencePanel({
   onDismiss?: () => void;
   onOpenBatch?: (batchId: string) => void;
   disableProposal?: boolean;
+  compact?: boolean;
 }) {
   const [event, setEvent] = useState<BusinessEvent | null>(suppliedEvent ?? null);
   const [detail, setDetail] = useState<IntelligenceDetail | null>(null);
@@ -389,8 +391,13 @@ export function IntelligencePanel({
     (run) => run.draft_id === draft?.id,
   );
 
+  // Hide repeated OCR fields, never the current findings or operation errors.
+  const AttachmentDetails = compact ? 'details' : 'div';
   return (
-    <section className="intelligence-panel" aria-label="票据识别与交叉核对">
+    <section
+      className={`intelligence-panel ${compact ? 'intelligence-panel-compact' : ''}`}
+      aria-label="票据识别与交叉核对"
+    >
       <div className="intelligence-heading">
         <div>
           <FileSearch size={17} />
@@ -492,7 +499,10 @@ export function IntelligencePanel({
                   <span>逐份处理，可离开页面</span>
                 </div>
               )}
-              <div className="intelligence-attachment-list">
+              <AttachmentDetails className="intelligence-attachment-list">
+                {compact && (
+                  <summary>查看识别结果与处理记录（{event.attachments.length} 份附件）</summary>
+                )}
                 {event.attachments.map((attachment) => {
                   const run = latestRuns(detail.runs, 'ocr').find(
                     (item) => item.attachment_id === attachment.id,
@@ -573,7 +583,7 @@ export function IntelligencePanel({
                     </article>
                   );
                 })}
-              </div>
+              </AttachmentDetails>
               {!event.attachments.length && (
                 <p className="field-help">上传原始附件后，可提取票据字段。</p>
               )}

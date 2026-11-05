@@ -158,7 +158,8 @@ describe('岗位首页围绕主任务收敛', () => {
       pagination: { total: 9, limit: 20, offset: 0, has_more: false },
     });
     expect(html).toContain('核验资料并移交会计');
-    expect(html).toContain('当前清单下一项');
+    expect(html).toContain('核验下一项');
+    expect(html).not.toContain('workspace-next-task');
     expect(html.indexOf('核验资料并移交会计')).toBeLessThan(html.indexOf('我的工作概览'));
     expect(html.indexOf('本月财税简报入口')).toBeGreaterThan(html.indexOf('workspace-inbox'));
     expect(html.indexOf('记录本人业务')).toBeGreaterThan(html.indexOf('workspace-inbox'));

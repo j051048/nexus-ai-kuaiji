@@ -33,6 +33,7 @@ export interface MonthlyProgress {
   search: string;
   offset: number;
   scrollY?: number;
+  expandedRows?: string[];
 }
 export interface WorkOrigin {
   route: WorkspaceRoute;
@@ -118,7 +119,9 @@ export class WorkspaceProgress {
     };
   }
   getMonthly(period: string): MonthlyProgress | undefined {
-    return isPeriod(period) && this.monthly?.period === period ? { ...this.monthly } : undefined;
+    return isPeriod(period) && this.monthly?.period === period
+      ? { ...this.monthly, expandedRows: [...(this.monthly.expandedRows ?? [])] }
+      : undefined;
   }
   saveMonthly(value: MonthlyProgress) {
     if (!isRecord(value) || !isPeriod(value.period)) {
@@ -131,6 +134,9 @@ export class WorkspaceProgress {
       query: queryText(value.query),
       search: queryText(value.search),
       offset: offset(value.offset),
+      expandedRows: Array.isArray(value.expandedRows)
+        ? [...new Set(value.expandedRows.filter((key) => isIdentifier(key)))].slice(0, 20)
+        : [],
       scrollY: this.monthly?.period === value.period ? this.monthly.scrollY : 0,
     };
   }

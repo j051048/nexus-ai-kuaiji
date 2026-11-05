@@ -95,6 +95,16 @@ export function IntakeWizard({
   const [busy, setBusy] = useState('');
   const [saveState, setSaveState] = useState('内容与原件仅保存在当前账号获授权的企业');
   const [error, setError] = useState('');
+  const failureBox = useRef<HTMLDivElement>(null);
+  const [failureFocus, setFailureFocus] = useState(0);
+  useEffect(() => {
+    if (!failureFocus) return;
+    const frame = requestAnimationFrame(() => {
+      failureBox.current?.focus({ preventScroll: true });
+      failureBox.current?.scrollIntoView({ block: 'center' });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [failureFocus]);
   const [accessLost, setAccessLost] = useState(false);
   const [needsRefresh, setNeedsRefresh] = useState(false);
   const [failureInfo, setFailureInfo] = useState<ErrorPresentation | null>(null);
@@ -356,6 +366,9 @@ export function IntakeWizard({
               : ' 草稿或提交结果可能已保存，请使用“读取最新草稿”核对；重复提交保持同一保存编号。'
             : ''),
       );
+      // A deliberate action needs a visible recovery path. Background autosave
+      // must not steal focus while the user is still editing a field.
+      if (name !== 'saving') setFailureFocus((value) => value + 1);
     } finally {
       lock.current = false;
       if (active.current) setBusy('');
@@ -1161,7 +1174,7 @@ export function IntakeWizard({
           </section>
         </div>
         {error && (
-          <div className="form-error" role="alert">
+          <div className="form-error" role="alert" ref={failureBox} tabIndex={-1}>
             {failureInfo && <strong className="form-error-title">{failureInfo.title}</strong>}
             {error}
             {failureInfo && (

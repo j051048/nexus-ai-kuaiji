@@ -55,6 +55,7 @@ import { businessListEmpty, readRecovery, type ReadRecovery } from './workspace-
 import './intake.css';
 import './business-record.css';
 import './workspace-help.css';
+import './review-focus.css';
 
 const statusLabels: Record<BusinessStatus, string> = {
   draft: '草稿',
@@ -130,6 +131,8 @@ export function BusinessWorkspace({
   const [context, setContext] = useState<BusinessContext | null>(null);
   const [contextAttempt, setContextAttempt] = useState(0);
   const [scope, setScope] = useState<BusinessScope>('own');
+  const originalsFocus = useRef<HTMLDivElement>(null);
+  const actionsFocus = useRef<HTMLDivElement>(null);
   const [companyId, setCompanyId] = useState(initialCompanyId);
   const [status, setStatus] = useState('');
   const [events, setEvents] = useState<BusinessEvent[]>([]);
@@ -342,9 +345,9 @@ export function BusinessWorkspace({
   }, [loadList]);
   useEffect(() => {
     if (!initialEventId || !context) return;
-    if (context.scopes.accounting) setScope('accounting');
+    setScope(initialBusinessScope(context, initialCompanyId));
     void openEvent(initialEventId);
-  }, [initialEventId, context]);
+  }, [initialEventId, context, initialCompanyId]);
 
   function changeScope(next: BusinessScope) {
     if (busy || next === scope) return;
@@ -586,13 +589,62 @@ export function BusinessWorkspace({
     }
   }
 
+  const financeFocus =
+    scope === 'company' ||
+    (!!selected &&
+      !!context?.companies.some(
+        (company) => company.id === selected.company_id && company.can_finance,
+      ));
+  function focusBusinessSection(target: 'originals' | 'actions') {
+    const element = target === 'originals' ? originalsFocus.current : actionsFocus.current;
+    element?.scrollIntoView({ block: 'start', behavior: 'auto' });
+    element?.focus({ preventScroll: true });
+  }
+  // A selected record replaces the list on phones. Keep feedback beside the
+  // active operation instead of rendering it inside the hidden list panel.
+  const operationFeedback = (
+    <>
+      {error && (
+        <div className="inline-error" role="alert">
+          <TriangleAlert size={16} />
+          <div>
+            <p>{error}</p>
+            {listHint && <p className="workspace-recovery-next">{listHint.next}</p>}
+            {(!listHint || listHint.action === 'reload') && (
+              <button
+                className="text-button"
+                type="button"
+                disabled={!!busy || loading}
+                onClick={() => {
+                  if (context) void loadList();
+                  else setContextAttempt((attempt) => attempt + 1);
+                }}
+              >
+                {context ? '刷新列表' : '重新读取业务范围'}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+      {notice && (
+        <p className="business-notice" role="status">
+          <CheckCircle2 size={16} />
+          {notice}
+        </p>
+      )}
+    </>
+  );
   return (
-    <main className="business-workspace">
+    <main className={`business-workspace ${financeFocus ? 'business-finance-focus' : ''}`}>
       <section className="page-heading">
         <div>
-          <p className="eyebrow">BUSINESS, WITH EVIDENCE</p>
-          <h1>从业务发生，到有据可记。</h1>
-          <p className="page-description">员工录入，部门审批，财务核验，再交给会计复核。</p>
+          {!financeFocus && <p className="eyebrow">BUSINESS, WITH EVIDENCE</p>}
+          <h1>{financeFocus ? '财务核验' : '从业务发生，到有据可记。'}</h1>
+          <p className="page-description">
+            {financeFocus
+              ? '核对原件与业务信息，再交给会计。'
+              : '员工录入，部门审批，财务核验，再交给会计复核。'}
+          </p>
         </div>
         <div className="business-heading-actions">
           {context?.companies.some((company) => company.can_manage_approvers) && (
@@ -607,7 +659,7 @@ export function BusinessWorkspace({
             </button>
           )}
           <button
-            className="button primary"
+            className={financeFocus ? 'button secondary' : 'button primary'}
             type="button"
             disabled={!!busy || !context?.companies.some((company) => company.can_submit)}
             onClick={() => {
@@ -620,18 +672,20 @@ export function BusinessWorkspace({
           </button>
         </div>
       </section>
-      <section className="business-intro">
-        <div>
-          <Receipt size={22} />
+      {!financeFocus && (
+        <section className="business-intro">
+          <div>
+            <Receipt size={22} />
+            <p>
+              每件事项，保留业务全貌。<span>3 个通用模板 · 原始附件 · 分级审批 · 可追溯凭证</span>
+            </p>
+          </div>
           <p>
-            每件事项，保留业务全貌。<span>3 个通用模板 · 原始附件 · 分级审批 · 可追溯凭证</span>
+            <ShieldCheck size={15} />
+            仅显示当前账号获授权的范围
           </p>
-        </div>
-        <p>
-          <ShieldCheck size={15} />
-          仅显示当前账号获授权的范围
-        </p>
-      </section>
+        </section>
+      )}
       {initialPeriod && (
         <p className="field-help" role="status">
           当前按 {initialPeriod} 的业务发生月份筛选。可从客户月度进度切换月份。
@@ -712,34 +766,7 @@ export function BusinessWorkspace({
               </select>
             </label>
           </div>
-          {error && (
-            <div className="inline-error" role="alert">
-              <TriangleAlert size={16} />
-              <div>
-                <p>{error}</p>
-                {listHint && <p className="workspace-recovery-next">{listHint.next}</p>}
-                {(!listHint || listHint.action === 'reload') && (
-                  <button
-                    className="text-button"
-                    type="button"
-                    disabled={!!busy || loading}
-                    onClick={() => {
-                      if (context) void loadList();
-                      else setContextAttempt((attempt) => attempt + 1);
-                    }}
-                  >
-                    {context ? '刷新列表' : '重新读取业务范围'}
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
-          {notice && (
-            <p className="business-notice" role="status">
-              <CheckCircle2 size={16} />
-              {notice}
-            </p>
-          )}
+          {!selected && operationFeedback}
           {loading ? (
             <div className="loading-block">
               <Spinner />
@@ -862,11 +889,11 @@ export function BusinessWorkspace({
                 <ClipboardCheck size={18} />
               </span>
               <div>
-                <h2>事项与审批</h2>
-                <p>查看完整业务依据和处理记录</p>
+                <h2>{financeFocus ? '核验这件事项' : '事项与审批'}</h2>
+                {!financeFocus && <p>查看完整业务依据和处理记录</p>}
               </div>
             </div>
-            <span className="review-step">RECORD</span>
+            {!financeFocus && <span className="review-step">RECORD</span>}
           </div>
           {detailLoading ? (
             <div className="loading-block">
@@ -891,6 +918,24 @@ export function BusinessWorkspace({
                   {selected.applicant_name || '申请人'}
                 </p>
               </div>
+              {financeFocus && (
+                <nav className="review-focus-nav" aria-label="财务核验内容定位">
+                  <button
+                    type="button"
+                    disabled={!!busy}
+                    onClick={() => focusBusinessSection('originals')}
+                  >
+                    核对原件
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!!busy}
+                    onClick={() => focusBusinessSection('actions')}
+                  >
+                    办理本事项
+                  </button>
+                </nav>
+              )}
               <ReturnedBusinessNotice event={selected}>
                 {selected.permissions.edit && (
                   <button
@@ -905,6 +950,8 @@ export function BusinessWorkspace({
               </ReturnedBusinessNotice>
               {selected.status !== 'returned' && (
                 <WorkflowGuide
+                  compact={financeFocus}
+                  detailsLabel="查看核验步骤与说明"
                   label="事项办理引导"
                   guide={businessGuidance(selected, {
                     busy: !!busy,
@@ -916,9 +963,6 @@ export function BusinessWorkspace({
                     selectedBookEligible: eligibleBooks.some((book) => book.id === handoffBookId),
                   })}
                 />
-              )}
-              {(selected.permissions.finance_approve || selected.permissions.handoff) && (
-                <TermHelp term="draft" />
               )}
               <dl className="business-facts">
                 <div>
@@ -954,15 +998,6 @@ export function BusinessWorkspace({
                   </div>
                 )}
               </dl>
-              {!selected.mapping && (
-                <BusinessPreparation
-                  session={session}
-                  companyId={selected.company_id}
-                  occurredOn={selected.payload.occurred_on}
-                  version={selected.version}
-                  onRecheck={() => void loadCompanyBooks()}
-                />
-              )}
               <BusinessRecordLinks
                 event={selected}
                 book={mappedBook}
@@ -970,7 +1005,7 @@ export function BusinessWorkspace({
                 onOpenDraft={onOpenDraft}
                 onOpenRevision={onOpenRevision}
               />
-              <div className="business-evidence">
+              <div className="business-evidence" ref={originalsFocus} tabIndex={-1}>
                 <h4>
                   <Paperclip size={15} />
                   原始附件<span>{selected.attachments.length} / 10</span>
@@ -1031,7 +1066,17 @@ export function BusinessWorkspace({
                   </>
                 )}
               </div>
+              {!selected.mapping && (
+                <BusinessPreparation
+                  session={session}
+                  companyId={selected.company_id}
+                  occurredOn={selected.payload.occurred_on}
+                  version={selected.version}
+                  onRecheck={() => void loadCompanyBooks()}
+                />
+              )}
               <IntelligencePanel
+                compact={financeFocus}
                 onOpenBatch={onOpenBatch}
                 key={selected.id}
                 session={session}
@@ -1045,68 +1090,8 @@ export function BusinessWorkspace({
                   setSelected(null);
                 }}
               />
-              {!!selected.actions.length && (
-                <details className="business-history" open={selected.status !== 'returned'}>
-                  <summary>查看审批记录</summary>
-                  {selected.actions.map((action, index) => (
-                    <div key={index}>
-                      <span className="small-dot" />
-                      <p>
-                        <strong>
-                          {actionLabels[action.stage] ?? action.stage}
-                          {action.decision === 'return'
-                            ? ' · 退回'
-                            : action.decision === 'approve'
-                              ? ' · 通过'
-                              : ''}
-                        </strong>
-                        {action.reason && <span>{action.reason}</span>}
-                        <small>
-                          {action.created_at &&
-                            new Date(action.created_at).toLocaleString('zh-CN', {
-                              timeZone: 'Asia/Shanghai',
-                              hour12: false,
-                            })}
-                          {action.submitted_version
-                            ? ` · 审核提交版本 ${action.submitted_version}`
-                            : ''}
-                        </small>
-                      </p>
-                    </div>
-                  ))}
-                </details>
-              )}
-              {!!selected.versions?.length && (
-                <details className="business-versions">
-                  <summary>查看提交历史与原件校验</summary>
-                  {selected.versions.map((version) => (
-                    <details key={version.event_version}>
-                      <summary>
-                        提交版本 {version.event_version}
-                        <span>
-                          {version.payload.occurred_on} · ¥ {formatMoney(version.payload.amount)}
-                        </span>
-                      </summary>
-                      <p>
-                        {version.payload.description}
-                        <br />
-                        {version.payload.counterparty}
-                        <br />
-                        {version.payload.purpose || '未补充用途'}
-                      </p>
-                      <ul>
-                        {version.attachment_snapshot.map((attachment) => (
-                          <li key={attachment.id}>
-                            {attachment.filename}
-                            <span>SHA-256 {attachment.sha256}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </details>
-                  ))}
-                </details>
-              )}
-              <div className="business-actions">
+              <div className="business-actions" ref={actionsFocus} tabIndex={-1}>
+                {operationFeedback}
                 {onOpenCase &&
                   (selected.permissions.finance_approve ||
                     selected.permissions.handoff ||
@@ -1199,7 +1184,12 @@ export function BusinessWorkspace({
                   </button>
                 )}
                 {selected.permissions.return && (
-                  <div className="business-return">
+                  <details
+                    className="business-return"
+                    key={`return:${selected.id}`}
+                    open={!financeFocus}
+                  >
+                    <summary>有问题？退回修改</summary>
                     <label className="field-label" htmlFor="return-reason">
                       退回原因
                     </label>
@@ -1221,7 +1211,7 @@ export function BusinessWorkspace({
                       <RotateCcw size={14} />
                       退回修改
                     </button>
-                  </div>
+                  </details>
                 )}
                 {selected.permissions.handoff && (
                   <div className="business-handoff">
@@ -1264,6 +1254,74 @@ export function BusinessWorkspace({
                   </div>
                 )}
               </div>
+              {!!selected.actions.length && (
+                <details
+                  className="business-history"
+                  key={`history:${selected.id}`}
+                  open={!financeFocus && selected.status !== 'returned'}
+                >
+                  <summary>查看审批记录</summary>
+                  {selected.actions.map((action, index) => (
+                    <div key={index}>
+                      <span className="small-dot" />
+                      <p>
+                        <strong>
+                          {actionLabels[action.stage] ?? action.stage}
+                          {action.decision === 'return'
+                            ? ' · 退回'
+                            : action.decision === 'approve'
+                              ? ' · 通过'
+                              : ''}
+                        </strong>
+                        {action.reason && <span>{action.reason}</span>}
+                        <small>
+                          {action.created_at &&
+                            new Date(action.created_at).toLocaleString('zh-CN', {
+                              timeZone: 'Asia/Shanghai',
+                              hour12: false,
+                            })}
+                          {action.submitted_version
+                            ? ` · 审核提交版本 ${action.submitted_version}`
+                            : ''}
+                        </small>
+                      </p>
+                    </div>
+                  ))}
+                </details>
+              )}
+              {!!selected.versions?.length && (
+                <details className="business-versions">
+                  <summary>查看提交历史与原件校验</summary>
+                  {selected.versions.map((version) => (
+                    <details key={version.event_version}>
+                      <summary>
+                        提交版本 {version.event_version}
+                        <span>
+                          {version.payload.occurred_on} · ¥ {formatMoney(version.payload.amount)}
+                        </span>
+                      </summary>
+                      <p>
+                        {version.payload.description}
+                        <br />
+                        {version.payload.counterparty}
+                        <br />
+                        {version.payload.purpose || '未补充用途'}
+                      </p>
+                      <ul>
+                        {version.attachment_snapshot.map((attachment) => (
+                          <li key={attachment.id}>
+                            {attachment.filename}
+                            <span>SHA-256 {attachment.sha256}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </details>
+                  ))}
+                </details>
+              )}
+              {(selected.permissions.finance_approve || selected.permissions.handoff) && (
+                <TermHelp term="draft" />
+              )}
             </div>
           )}
         </aside>

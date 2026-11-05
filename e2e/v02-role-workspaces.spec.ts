@@ -187,7 +187,9 @@ for (const viewport of [
     await page.screenshot({ path: `${output}/finance-home-${device}.png`, fullPage: true });
     await recordHome(page, reads);
     await expect(
-      primary.getByText('虚构采购事项：附件齐全，等待财务核验', { exact: true }),
+      page
+        .locator('.workspace-task')
+        .getByText('虚构采购事项：附件齐全，等待财务核验', { exact: true }),
     ).toBeVisible();
     const summary = page.getByRole('region', { name: '我的工作概览', exact: true });
     const needs = summary.getByRole('button', { name: /需要我处理/ });

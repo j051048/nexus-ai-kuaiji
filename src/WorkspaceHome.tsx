@@ -49,6 +49,7 @@ import { currentHomeTask } from './workspace-home-focus';
 import { taskPresentation } from './task-presentation';
 import { homeProgress, type HomeProgress } from './workspace-progress';
 import './workspace.css';
+import './workbench-focus.css';
 
 export function WorkspaceHome({
   session,
@@ -349,6 +350,7 @@ export function WorkspaceHome({
   const role = presentationRole(profile);
   const employee = role === 'employee';
   const finance = role === 'finance';
+  const professional = finance || role === 'accountant' || role === 'reviewer';
   const copy = roleHome(role);
   const guide = profile ? roleHomeGuide(profile) : null;
   const briefings =
@@ -432,7 +434,8 @@ export function WorkspaceHome({
       className={
         'workspace-home' +
         (experience.simple ? ' workspace-simple' : '') +
-        (employee ? ' workspace-employee' : finance ? ' workspace-finance' : '')
+        (employee ? ' workspace-employee' : finance ? ' workspace-finance' : '') +
+        (professional ? ' workspace-professional' : '')
       }
     >
       <header className="workspace-heading">
@@ -507,7 +510,7 @@ export function WorkspaceHome({
           </div>
         </section>
       )}
-      {!employee && roleGuide}
+      {!employee && !professional && roleGuide}
       {profileError && (
         <p className="inline-error" role="alert">
           {profileError}
@@ -525,19 +528,9 @@ export function WorkspaceHome({
       {finance && (
         <section className="workspace-primary-finance" aria-label="资料核验与移交">
           <div>
-            <p className="workspace-section-eyebrow">先核对资料，再交给会计</p>
             <h2>核验资料并移交会计</h2>
             <p>核对金额、附件和业务用途；有差异就退回补充，资料完整再移交。</p>
-            {financeNext ? (
-              <div className={'workspace-next-task' + (financeNext.overdue ? ' overdue' : '')}>
-                <span>当前清单下一项</span>
-                <strong>{financeNext.title}</strong>
-                <small>
-                  {financeNext.company_name} · {taskPresentation(financeNext, profile).detail}
-                  {financeNext.overdue ? ' · 已逾期' : ''}
-                </small>
-              </div>
-            ) : (
+            {!financeNext && (
               <p className="workspace-primary-status">
                 {!profile?.can_finance
                   ? '财务权限已更新，当前无法核验或移交。请重新读取权限，或联系企业管理员。'
@@ -686,11 +679,9 @@ export function WorkspaceHome({
                 </button>
               </>
             )}
-            {first && !employee && (
+            {first && !employee && !finance && (
               <button
-                className={
-                  financeNext?.key === first.key ? 'button secondary small' : 'button primary small'
-                }
+                className="button primary small"
                 disabled={locked || loading}
                 onClick={() => void open(first)}
               >
@@ -980,7 +971,7 @@ export function WorkspaceHome({
           </div>
         )}
       </section>
-      {employee && roleGuide}
+      {(employee || professional) && roleGuide}
       {!!briefings.length && (
         <section aria-label="本月财税简报入口">
           <details className="workspace-supporting">

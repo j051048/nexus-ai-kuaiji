@@ -37,7 +37,7 @@ for (const width of [1280, 390]) {
     await page.getByLabel('搜索服务客户').fill(tag);
     await page.getByRole('button', { name: '查找', exact: true }).click();
     await expect(page.locator('.cockpit-client-details')).toContainText('共 22 家');
-    await page.getByText('全部客户与阶段明细', { exact: true }).click();
+    await expect(page.locator('.cockpit-client-details')).toHaveAttribute('open', '');
     const detail = page.locator('.cockpit-client-details');
     await expect(detail.locator('.cockpit-client')).toHaveCount(20);
     const summary = await page.locator('.cockpit-summary-values').innerText();
@@ -54,12 +54,10 @@ for (const width of [1280, 390]) {
       true,
     );
     expect(responses.every((r) => r.rows <= 20 && r.bytes < 100_000)).toBe(true);
-    await test
-      .info()
-      .attach('customer-response-size', {
-        body: JSON.stringify(responses),
-        contentType: 'application/json',
-      });
+    await test.info().attach('customer-response-size', {
+      body: JSON.stringify(responses),
+      contentType: 'application/json',
+    });
     await page.evaluate(() => window.dispatchEvent(new CustomEvent('accounting:forbidden')));
     await expect(page.locator('.cockpit-client')).toHaveCount(0);
     await expect(page.getByRole('alert')).toContainText('当前授权已更新');

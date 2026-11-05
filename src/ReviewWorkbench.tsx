@@ -27,6 +27,7 @@ import { reviewEligibility } from './review-eligibility';
 import { clearReviewSession, readReviewWorkspace, saveReviewWorkspace } from './review-session';
 import type { Draft, Session } from './types';
 import './review.css';
+import './workbench-focus.css';
 
 export function ReviewWorkbench({
   session,
@@ -413,7 +414,6 @@ export function ReviewWorkbench({
       )}
       <section className="page-heading">
         <div>
-          <p className="eyebrow">ONE DESK, MANY COMPANIES</p>
           <h1>集中复核，把时间留给判断。</h1>
           <p className="page-description">
             按企业、期间和业务类型查看待办。先核对预览，再明确确认；每个账套分别保存审核回执。
@@ -432,24 +432,27 @@ export function ReviewWorkbench({
           刷新待复核
         </button>
       </section>
-      <section className="queue-intro">
-        <ClipboardCheck size={24} />
-        <div>
-          <strong>跨企业批量复核</strong>
-          <p>预览完成金额、证据、科目和异常检查。审核通过后仍需会计执行导出。</p>
-        </div>
-        <span>
-          <ShieldCheck size={15} />
-          仅包含有复核权限的账套
-        </span>
-      </section>
+      <details className="review-instructions">
+        <summary>复核流程与权限说明</summary>
+        <section className="queue-intro">
+          <ClipboardCheck size={24} />
+          <div>
+            <strong>跨企业批量复核</strong>
+            <p>预览完成金额、证据、科目和异常检查。审核通过后仍需会计执行导出。</p>
+          </div>
+          <span>
+            <ShieldCheck size={15} />
+            仅包含有复核权限的账套
+          </span>
+        </section>
+      </details>
       {error && (
         <p className="inline-error" role="alert">
           <TriangleAlert size={15} />
           {error}
         </p>
       )}
-      <div className="batch-review-grid">
+      <div className={'batch-review-grid' + (!preview ? ' review-list-focused' : '')}>
         <section className="panel review-pending-panel">
           <div className="panel-heading">
             <div>
@@ -644,41 +647,33 @@ export function ReviewWorkbench({
             </div>
           </div>
         </section>
-        <aside className="panel batch-review-preview" aria-label="批量复核预览">
-          <div className="review-panel-header">
-            <div className="review-heading">
-              <span className="review-icon">
-                <ClipboardCheck size={18} />
-              </span>
-              <div>
-                <h2>逐张核对，再集中确认</h2>
-                <p>预览保存当前版本与证据指纹</p>
+        {preview && (
+          <aside className="panel batch-review-preview" aria-label="批量复核预览">
+            <div className="review-panel-header">
+              <div className="review-heading">
+                <span className="review-icon">
+                  <ClipboardCheck size={18} />
+                </span>
+                <div>
+                  <h2>逐张核对，再集中确认</h2>
+                  <p>预览保存当前版本与证据指纹</p>
+                </div>
               </div>
+              {preview && (
+                <button
+                  type="button"
+                  className="icon-button"
+                  aria-label="关闭复核预览"
+                  disabled={!!busy}
+                  onClick={() => {
+                    clear();
+                    void load();
+                  }}
+                >
+                  <X size={16} />
+                </button>
+              )}
             </div>
-            {preview && (
-              <button
-                type="button"
-                className="icon-button"
-                aria-label="关闭复核预览"
-                disabled={!!busy}
-                onClick={() => {
-                  clear();
-                  void load();
-                }}
-              >
-                <X size={16} />
-              </button>
-            )}
-          </div>
-          {!preview ? (
-            <div className="empty-state">
-              <div className="empty-icon">
-                <ShieldCheck size={27} />
-              </div>
-              <strong>选择要复核的凭证</strong>
-              <p>金额、分录、证据与阻断异常将在预览中逐张展示。</p>
-            </div>
-          ) : (
             <div className="batch-preview-content">
               <div className="batch-preview-summary">
                 <strong>{preview.items.length} 张凭证</strong>
@@ -858,8 +853,8 @@ export function ReviewWorkbench({
                 </section>
               )}
             </div>
-          )}
-        </aside>
+          </aside>
+        )}
       </div>
       {inlineTarget && (
         <InlineReviewDrawer

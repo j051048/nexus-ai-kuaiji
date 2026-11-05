@@ -31,6 +31,7 @@ import type { BusinessEvent } from './business-types';
 import type { SourceHistory } from './SourceHistoryPanel';
 import type { BookDetail, Draft, JournalLine, Session } from './types';
 import './inline-review.css';
+import './review-focus.css';
 
 export interface InlineReviewTarget {
   book_id: string;
@@ -80,9 +81,7 @@ export function InlineReviewDrawer({
   const [keyboardHelp, setKeyboardHelp] = useState(false);
   const [reviewReason, setReviewReason] = useState('');
   const [leaveTarget, setLeaveTarget] = useState<InlineReviewTarget | 'close' | null>(null);
-  const [assistantOpen, setAssistantOpen] = useState(
-    () => window.matchMedia('(min-width: 1440px)').matches,
-  );
+  const [assistantOpen, setAssistantOpen] = useState(false);
   const assistantWasOpen = useRef(assistantOpen);
   const [evidenceFocus, setEvidenceFocus] = useState<EvidenceFocus | undefined>();
   const panel = useRef<HTMLDivElement>(null),
@@ -344,6 +343,24 @@ export function InlineReviewDrawer({
     setAssistantOpen(false);
     assistantButton.current?.focus();
   }
+  function focusSection(section: 'originals' | 'journal' | 'confirmation') {
+    // Navigation only. Opening a section never confirms evidence or submits a review.
+    const target =
+      section === 'originals'
+        ? evidenceColumn.current
+        : section === 'journal'
+          ? facts.current?.querySelector<HTMLElement>('.inline-review-label')
+          : facts.current?.querySelector<HTMLElement>('.inline-review-ack, .permission-note');
+    if (!target) return;
+    target.scrollIntoView({ block: 'start', behavior: 'auto' });
+    const focusable =
+      section === 'journal'
+        ? target.querySelector<HTMLElement>('textarea')
+        : section === 'confirmation'
+          ? (target.querySelector<HTMLElement>('input') ?? target)
+          : target;
+    focusable?.focus({ preventScroll: true });
+  }
   function openEvidence(evidenceId: string) {
     const attachment = evidenceId.startsWith('attachment:')
       ? attachments.find((row) => row.id === evidenceId.slice('attachment:'.length))
@@ -576,11 +593,13 @@ export function InlineReviewDrawer({
               <div className="inline-review-status-axes" aria-label="审核与外部交付状态">
                 <span className={'review-axis review-axis-' + draft.status}>
                   审核：
-                  {draft.status === 'draft'
-                    ? '待会计审核'
-                    : draft.status === 'approved'
-                      ? '已审核'
-                      : '已导出'}
+                  <b>
+                    {draft.status === 'draft'
+                      ? '待会计审核'
+                      : draft.status === 'approved'
+                        ? '已审核，待导出'
+                        : '已导出'}
+                  </b>
                 </span>
                 <span className="review-axis">
                   外部交付：{draft.status === 'exported' ? '已导出，待回执核验' : '未导出'}
@@ -610,6 +629,19 @@ export function InlineReviewDrawer({
             </button>
           </div>
         </header>
+        {draft && !loading && (
+          <nav className="review-focus-nav" aria-label="复核内容定位">
+            <button type="button" disabled={!!busy} onClick={() => focusSection('originals')}>
+              查看原件
+            </button>
+            <button type="button" disabled={!!busy} onClick={() => focusSection('journal')}>
+              核对分录
+            </button>
+            <button type="button" disabled={!!busy} onClick={() => focusSection('confirmation')}>
+              前往审核确认
+            </button>
+          </nav>
+        )}
         {error && (
           <p className="inline-error inline-review-message" role="alert">
             <TriangleAlert size={16} />
@@ -662,7 +694,7 @@ export function InlineReviewDrawer({
         ) : detail && draft ? (
           <div className="inline-review-content">
             <div className="inline-review-columns">
-              <div className="inline-review-evidence-column" ref={evidenceColumn}>
+              <div className="inline-review-evidence-column" ref={evidenceColumn} tabIndex={-1}>
                 {evidenceError && (
                   <p className="inline-error" role="alert">
                     原件暂不可读取：{evidenceError}
@@ -744,16 +776,6 @@ export function InlineReviewDrawer({
                     acknowledged,
                   })}
                 />
-                <div className="inline-review-state">
-                  <span className={`badge ${draft.status}`}>
-                    {draft.status === 'draft'
-                      ? '待会计审核'
-                      : draft.status === 'approved'
-                        ? '已审核，待导出'
-                        : '已导出'}
-                  </span>
-                  <span>草稿版本 {draft.version}</span>
-                </div>
                 <ReviewResponsibility
                   value={draft.review_responsibility}
                   version={draft.version}
@@ -972,18 +994,20 @@ export function InlineReviewDrawer({
             >
               返回列表
             </button>
-            <button
-              className="button secondary"
-              disabled={readonly || !!busy || !dirty || !description.trim() || !!amountError}
-              onClick={() => void mutate('save')}
-            >
-              {busy === 'save' ? (
-                <LoaderCircle size={15} className="spinner" />
-              ) : (
-                <FileText size={15} />
-              )}
-              保存草稿
-            </button>
+            {dirty && (
+              <button
+                className="button secondary"
+                disabled={readonly || !!busy || !dirty || !description.trim() || !!amountError}
+                onClick={() => void mutate('save')}
+              >
+                {busy === 'save' ? (
+                  <LoaderCircle size={15} className="spinner" />
+                ) : (
+                  <FileText size={15} />
+                )}
+                保存草稿
+              </button>
+            )}
             <button
               className={
                 position >= 0 && position < queue.length - 1 ? 'button secondary' : 'button primary'

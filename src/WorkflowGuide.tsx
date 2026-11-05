@@ -27,10 +27,12 @@ export function WorkflowGuide({
   label,
   guide,
   compact = false,
+  detailsLabel = '查看复核步骤与说明',
 }: {
   label: string;
   guide: WorkflowGuidance;
   compact?: boolean;
+  detailsLabel?: string;
 }) {
   return (
     <section
@@ -50,7 +52,7 @@ export function WorkflowGuide({
       </div>
       {compact ? (
         <details>
-          <summary>查看复核步骤与说明</summary>
+          <summary>{detailsLabel}</summary>
           <h3>{guide.title}</h3>
           <ol aria-label="办理步骤">
             {guide.steps.map((step, index) => (
