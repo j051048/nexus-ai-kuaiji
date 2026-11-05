@@ -87,6 +87,12 @@
 .manual-review-panel td small {
   display: block;
 }
+.manual-review-panel td:nth-child(2),
+.manual-review-panel td:nth-child(3) {
+  white-space: nowrap;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
 .manual-review-panel summary {
   cursor: pointer;
   padding-block: var(--space-2);

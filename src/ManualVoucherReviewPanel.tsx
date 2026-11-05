@@ -4,6 +4,7 @@ import { moneyToCents } from './csv';
 import type { Session } from './types';
 import './review-policy.css';
 import { reviewModeLabel } from './review-policy';
+import type { CorrectionSeed } from './voucher-correction';
 import {
   manualCanReview,
   parseManualReviewList,
@@ -17,6 +18,7 @@ interface Props {
   session: Session;
   bookId: string;
   companyId?: string;
+  correction?: CorrectionSeed;
 }
 const emptyLine = (): ManualReviewLine => ({
   account_id: '',
@@ -29,23 +31,30 @@ const emptyLine = (): ManualReviewLine => ({
 export function ManualVoucherReviewPanel(props: Props) {
   return (
     <ManualReviewContentPanel
-      key={`${props.session.scope_key}:${props.bookId}:${props.companyId ?? ''}`}
+      key={`${props.session.scope_key}:${props.bookId}:${props.companyId ?? ''}:${props.correction?.original_voucher_id ?? ''}:${props.correction?.relation_kind ?? ''}`}
       {...props}
     />
   );
 }
-function ManualReviewContentPanel({ session, bookId, companyId }: Props) {
+function ManualReviewContentPanel({ session, bookId, companyId, correction }: Props) {
   const [data, setData] = useState<ManualReviewList | null>(null);
   const [error, setError] = useState(''),
     [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(true),
     [busy, setBusy] = useState(false);
   const [date, setDate] = useState(''),
-    [description, setDescription] = useState('');
+    [description, setDescription] = useState(correction?.description ?? '');
   const [reason, setReason] = useState(''),
     [reviewReason, setReviewReason] = useState<Record<string, string>>({});
   const [withdrawReason, setWithdrawReason] = useState<Record<string, string>>({});
-  const [lines, setLines] = useState([emptyLine(), emptyLine()]);
+  const [lines, setLines] = useState(
+    correction?.lines.map((l) => ({ ...l, auxiliary_values: { ...l.auxiliary_values } })) ?? [
+      emptyLine(),
+      emptyLine(),
+    ],
+  );
+  const [impactConfirmed, setImpactConfirmed] = useState(false);
+  const [submittedCorrection, setSubmittedCorrection] = useState(false);
   const [draftKey, setDraftKey] = useState(() => crypto.randomUUID());
   const [uncertain, setUncertain] = useState(false);
   const live = useRef(true),
@@ -79,6 +88,7 @@ function ManualReviewContentPanel({ session, bookId, companyId }: Props) {
               (item) => item.content.command_key === pendingSubmission.current?.command_key,
             )
           ) {
+            if (correction) setSubmittedCorrection(true);
             pendingSubmission.current = null;
             setUncertain(false);
             setDraftKey(crypto.randomUUID());
@@ -96,7 +106,7 @@ function ManualReviewContentPanel({ session, bookId, companyId }: Props) {
         if (live.current && !signal?.aborted) setLoading(false);
       }
     },
-    [bookId, companyId, session],
+    [bookId, companyId, session, correction],
   );
   useEffect(() => {
     const controller = new AbortController();
@@ -136,6 +146,7 @@ function ManualReviewContentPanel({ session, bookId, companyId }: Props) {
     }
   }
   function updateLine(index: number, value: Partial<ManualReviewLine>) {
+    setImpactConfirmed(false);
     setLines((old) =>
       old.map((line, position) => (position === index ? { ...line, ...value } : line)),
     );
@@ -172,9 +183,14 @@ function ManualReviewContentPanel({ session, bookId, companyId }: Props) {
       <button className="text-button" disabled={busy || loading} onClick={() => void load()}>
         重新读取手工凭证
       </button>
-      {data?.can_prepare && (
-        <details open={!data.requests.length}>
-          <summary>新增手工凭证</summary>
+      {correction && data && !data.can_prepare && (
+        <p role="status">
+          当前授权或期间状态不允许制单。请联系本账套主办会计确认可办理期间；原凭证继续保留。
+        </p>
+      )}
+      {data?.can_prepare && !submittedCorrection && (
+        <details open={!!correction || !data.requests.length}>
+          <summary>{correction ? '从原凭证准备更正' : '新增手工凭证'}</summary>
           <form
             onSubmit={(event) => {
               event.preventDefault();
@@ -183,7 +199,8 @@ function ManualReviewContentPanel({ session, bookId, companyId }: Props) {
                 reason.trim().length < 3 ||
                 !description.trim() ||
                 !date ||
-                uncertain
+                uncertain ||
+                (correction && !impactConfirmed)
               )
                 return;
               const content: ManualReviewContent = {
@@ -194,6 +211,12 @@ function ManualReviewContentPanel({ session, bookId, companyId }: Props) {
                 description: description.trim(),
                 reason: reason.trim(),
                 lines,
+                ...(correction
+                  ? {
+                      relation_kind: correction.relation_kind,
+                      original_voucher_id: correction.original_voucher_id,
+                    }
+                  : {}),
               };
               void execute(async () => {
                 pendingSubmission.current = content;
@@ -212,6 +235,7 @@ function ManualReviewContentPanel({ session, bookId, companyId }: Props) {
                   throw failure;
                 }
                 if (!live.current) return;
+                if (correction) setSubmittedCorrection(true);
                 pendingSubmission.current = null;
                 setUncertain(false);
                 setDraftKey(crypto.randomUUID());
@@ -223,7 +247,7 @@ function ManualReviewContentPanel({ session, bookId, companyId }: Props) {
               });
             }}
           >
-            <fieldset disabled={busy || uncertain}>
+            <fieldset disabled={busy || uncertain} onChange={() => setImpactConfirmed(false)}>
               <legend>准备新手工凭证</legend>
               <label>
                 记账日期
@@ -328,9 +352,10 @@ function ManualReviewContentPanel({ session, bookId, companyId }: Props) {
                     <button
                       type="button"
                       className="text-button"
-                      onClick={() =>
-                        setLines((old) => old.filter((_, position) => position !== index))
-                      }
+                      onClick={() => {
+                        setImpactConfirmed(false);
+                        setLines((old) => old.filter((_, position) => position !== index));
+                      }}
                     >
                       删除本行
                     </button>
@@ -341,7 +366,10 @@ function ManualReviewContentPanel({ session, bookId, companyId }: Props) {
                 type="button"
                 className="button secondary"
                 disabled={lines.length >= 20}
-                onClick={() => setLines((old) => [...old, emptyLine()])}
+                onClick={() => {
+                  setImpactConfirmed(false);
+                  setLines((old) => [...old, emptyLine()]);
+                }}
               >
                 添加分录
               </button>
@@ -350,9 +378,38 @@ function ManualReviewContentPanel({ session, bookId, companyId }: Props) {
                   ? '借贷平衡，仍须核对业务依据与科目。'
                   : '请填写正式科目及有效、平衡的借贷金额。'}
               </p>
+              {correction && (
+                <section className="review-section" aria-label="更正影响预览">
+                  <h4>
+                    {correction.relation_kind === 'reversal' ? '全额冲销' : '差额调整'} ·
+                    原凭证保持不变
+                  </h4>
+                  <p>
+                    本次只提交以上分录的待审版本；独立复核后才能正式记账。原件、原凭证和历史审核继续保留。
+                  </p>
+                  <p>关联原凭证：{correction.original_voucher_id}</p>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={impactConfirmed}
+                      onChange={(e) => {
+                        e.stopPropagation();
+                        setImpactConfirmed(e.target.checked);
+                      }}
+                    />
+                    已核对日期、金额、科目和以上更正影响
+                  </label>
+                </section>
+              )}
               <button
                 className="button primary"
-                disabled={!balanced || reason.trim().length < 3 || !description.trim() || !date}
+                disabled={
+                  !balanced ||
+                  reason.trim().length < 3 ||
+                  !description.trim() ||
+                  !date ||
+                  (!!correction && !impactConfirmed)
+                }
               >
                 提交待复核
               </button>
@@ -386,6 +443,12 @@ function ManualReviewContentPanel({ session, bookId, companyId }: Props) {
             {item.prepared_name || item.prepared_by}
           </p>
           <p>制单说明：{item.content.reason}</p>
+          {item.content.original_voucher_id && (
+            <p>
+              {item.content.relation_kind === 'reversal' ? '冲销' : '调整'}原凭证：
+              {item.content.original_voucher_id} · 原记录保留
+            </p>
+          )}
           {item.withdrawn && (
             <p>
               撤回说明：{item.withdrawal_reason || '请查看操作审计'}

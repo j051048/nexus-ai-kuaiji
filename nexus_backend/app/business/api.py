@@ -42,6 +42,15 @@ def build_business_router(actor_dependency):
     def context(current=Depends(actor_dependency), service=Depends(business)):
         return service.context(current)
 
+    @router.get("/business/preparation")
+    def preparation(
+        company_id: str,
+        occurred_on: str,
+        current=Depends(actor_dependency),
+        service=Depends(business),
+    ):
+        return service.preparation(current, company_id, occurred_on)
+
     @router.get("/business/events")
     def list_events(
         scope: Literal["own", "department", "company", "accounting"] = "own",

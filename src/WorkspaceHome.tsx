@@ -59,6 +59,7 @@ export function WorkspaceHome({
   onNew,
   onCompanyChange,
   onAccounting,
+  onMonthly,
   onMaterials,
   onBusiness,
   onReview,
@@ -79,6 +80,7 @@ export function WorkspaceHome({
   onNew: (template: BusinessTemplate) => void;
   onCompanyChange?: (companyId: string) => void;
   onAccounting: () => void;
+  onMonthly?: () => void;
   onMaterials?: () => void;
   onBusiness?: () => void;
   onReview: () => void;
@@ -101,6 +103,7 @@ export function WorkspaceHome({
   const initialProgress = useRef(homeProgress(progress, initialCompanyId));
   const [bucket, setBucket] = useState(initialProgress.current.bucket);
   const experience = workspaceExperience(profile);
+  const [expandedTasks, setExpandedTasks] = useState(!!initialProgress.current.taskKey);
   const [listOptionsOpen, setListOptionsOpen] = useState(initialProgress.current.optionsOpen);
   const showListOptions = !experience.simple || listOptionsOpen;
   const [kind, setKind] = useState<TaskKind | ''>(initialProgress.current.kind);
@@ -356,6 +359,9 @@ export function WorkspaceHome({
   const visibleValue =
     dataScope.current === session.scope_key && dataFilter.current === filterKey ? value : null;
   const rows = visibleValue?.tasks ?? [];
+  const compactTasks =
+    employee && !expandedTasks && !showListOptions && !query && !kind && offset === 0;
+  const shownRows = compactTasks ? rows.slice(0, 3) : rows;
   useEffect(() => {
     if (loading || !visibleValue || restoredScroll.current) return;
     const frame = requestAnimationFrame(() => {
@@ -395,6 +401,32 @@ export function WorkspaceHome({
         true,
       )
     : undefined;
+  const roleGuide = guide && (
+    <section className="workspace-role-guide" aria-label="当前职责与授权范围">
+      <details>
+        <summary>
+          <span>当前工作台</span>
+          <strong>{guide.label}</strong>
+          <span>查看岗位与操作说明</span>
+        </summary>
+        <div className="workspace-role-guide-content">
+          <div className="workspace-role-guide-main">
+            <p>{guide.focus}</p>
+          </div>
+          <RoleQuickStart guide={guide} />
+          <div className="workspace-role-guide-actions">
+            <span>当前可操作</span>
+            <ul>
+              {guide.actions.map((action) => (
+                <li key={action}>{action}</li>
+              ))}
+            </ul>
+          </div>
+          <p className="workspace-role-guide-boundary">{guide.boundary}</p>
+        </div>
+      </details>
+    </section>
+  );
   return (
     <main
       className={
@@ -409,9 +441,14 @@ export function WorkspaceHome({
             <CircleDot size={13} /> HENGZHANG · ACCOUNTING AGENT
           </p>
           <h1>{copy.name}</h1>
-          <p>{copy.subtitle}</p>
+          {!employee && <p>{copy.subtitle}</p>}
         </div>
         <div className="workspace-header-actions">
+          {presentationRole(profile) === 'accountant' && profile?.can_accounting && onMonthly && (
+            <button className="button secondary" disabled={locked} onClick={onMonthly}>
+              办理客户月度任务 <ArrowRight size={15} />
+            </button>
+          )}
           <button
             className="button secondary workspace-refresh"
             aria-label="刷新工作台"
@@ -426,54 +463,14 @@ export function WorkspaceHome({
             <span>刷新工作台</span>
           </button>
           {profile?.can_review && !employee && !finance && (
-            <button className="button primary" disabled={locked} onClick={onReview}>
+            <button className="button secondary" disabled={locked} onClick={onReview}>
               开始批量复核
               <ArrowRight size={15} />
             </button>
           )}
         </div>
       </header>
-      {guide && (
-        <section className="workspace-role-guide" aria-label="当前职责与授权范围">
-          <details>
-            <summary>
-              <span>当前工作台</span>
-              <strong>{guide.label}</strong>
-              <span>查看岗位与操作说明</span>
-            </summary>
-            <div className="workspace-role-guide-content">
-              <div className="workspace-role-guide-main">
-                <p>{guide.focus}</p>
-              </div>
-              <RoleQuickStart guide={guide} />
-              <div className="workspace-role-guide-actions">
-                <span>当前可操作</span>
-                <ul>
-                  {guide.actions.map((action) => (
-                    <li key={action}>{action}</li>
-                  ))}
-                </ul>
-              </div>
-              <p className="workspace-role-guide-boundary">{guide.boundary}</p>
-            </div>
-          </details>
-        </section>
-      )}
-      {profileError && (
-        <p className="inline-error" role="alert">
-          {profileError}
-          <button className="text-button" onClick={onRetryProfile}>
-            重新读取权限
-          </button>
-        </p>
-      )}
-      {!profile && !profileError && (
-        <p className="loading-block">
-          <LoaderCircle className="spinner" size={16} />
-          正在读取我的工作范围…
-        </p>
-      )}
-      {employee && profile?.can_submit && (
+      {employee && profile?.can_submit && !profileError && (
         <section
           className="workspace-intake-actions workspace-primary-intake"
           aria-label="提交与进度"
@@ -481,7 +478,7 @@ export function WorkspaceHome({
           <div>
             <FilePlus2 size={21} />
             <h2>今天要提交什么？</h2>
-            <p>上传票据，确认金额和用途后提交；需要补充的资料会在下方提醒。</p>
+            <p>拍照或上传票据，核对后提交。</p>
           </div>
           <div className="workspace-template-grid">
             {(
@@ -509,6 +506,21 @@ export function WorkspaceHome({
             ))}
           </div>
         </section>
+      )}
+      {!employee && roleGuide}
+      {profileError && (
+        <p className="inline-error" role="alert">
+          {profileError}
+          <button className="text-button" onClick={onRetryProfile}>
+            重新读取权限
+          </button>
+        </p>
+      )}
+      {!profile && !profileError && (
+        <p className="loading-block">
+          <LoaderCircle className="spinner" size={16} />
+          正在读取我的工作范围…
+        </p>
       )}
       {finance && (
         <section className="workspace-primary-finance" aria-label="资料核验与移交">
@@ -582,7 +594,13 @@ export function WorkspaceHome({
             <TriangleAlert size={16} />
             需要我处理
           </span>
-          <strong>{visibleValue?.counts.action ?? '—'}</strong>
+          {visibleValue?.counts.action != null ? (
+            <strong>{visibleValue.counts.action}</strong>
+          ) : (
+            <span className="workspace-count-pending">
+              {error ? '暂不可用' : visibleValue ? '查看清单' : '正在读取'}
+            </span>
+          )}
           <small>
             {visibleValue?.counts.action == null
               ? '数量暂未汇总，以当前清单为准'
@@ -602,19 +620,30 @@ export function WorkspaceHome({
             <Clock3 size={16} />
             {experience.waitingLabel}
           </span>
-          <strong>{visibleValue?.counts.waiting ?? '—'}</strong>
+          {visibleValue?.counts.waiting != null ? (
+            <strong>{visibleValue.counts.waiting}</strong>
+          ) : (
+            <span className="workspace-count-pending">
+              {error ? '暂不可用' : visibleValue ? '查看清单' : '正在读取'}
+            </span>
+          )}
           <small>保留当前办理进度</small>
         </button>
       </section>
-      <section className="panel workspace-inbox">
+      <section
+        className="panel workspace-inbox"
+        aria-label={employee ? '我的提交与补件' : undefined}
+      >
         <div className="workspace-inbox-heading">
           <div>
-            <p className="workspace-section-eyebrow">
-              {employee ? '我的提交与补件' : finance ? '当前资料办理清单' : '当前工作清单'}
-            </p>
+            {!employee && (
+              <p className="workspace-section-eyebrow">
+                {finance ? '当前资料办理清单' : '当前工作清单'}
+              </p>
+            )}
             <h2>
-              {bucket === 'action' ? '需要我处理' : '办理进度'}
-              <span>{visibleValue?.pagination.total ?? '—'}</span>
+              {employee ? '继续办理' : bucket === 'action' ? '需要我处理' : '办理进度'}
+              {!employee && visibleValue && <span>{visibleValue.pagination.total}</span>}
             </h2>
           </div>
           <div className="workspace-view-tools">
@@ -657,7 +686,7 @@ export function WorkspaceHome({
                 </button>
               </>
             )}
-            {first && (
+            {first && !employee && (
               <button
                 className={
                   financeNext?.key === first.key ? 'button secondary small' : 'button primary small'
@@ -671,80 +700,84 @@ export function WorkspaceHome({
             )}
           </div>
         </div>
-        <div className="workspace-inbox-filters">
-          <label className="agent-search workspace-task-search">
-            <Search size={16} />
-            <input
-              aria-label="搜索工作事项"
-              placeholder="搜索事项或企业"
-              maxLength={200}
-              value={query}
-              disabled={locked}
-              onChange={(event) => setQuery(event.target.value)}
-            />
-            {query && (
-              <button type="button" aria-label="清空事项搜索" onClick={() => setQuery('')}>
-                <X size={14} />
-              </button>
-            )}
-          </label>
-          <label className="workspace-select">
-            <span className="sr-only">事项类型</span>
-            <select
-              aria-label="筛选待办类型"
-              value={kind}
-              disabled={locked}
-              onChange={(event) => {
-                setKind(event.target.value as TaskKind | '');
-                setOffset(0);
-              }}
-            >
-              <option value="">全部事项类型</option>
-              {Object.entries(taskLabels)
-                .filter(([key]) => !experience.kinds || experience.kinds.includes(key as TaskKind))
-                .map(([key]) => (
-                  <option key={key} value={key}>
-                    {taskKindLabel(key as TaskKind, profileError ? null : profile)}
-                  </option>
-                ))}
-            </select>
-          </label>
-          {profile?.companies.length === 1 && experience.simple && !company ? (
-            <span className="workspace-company-identity">{profile.companies[0].name}</span>
-          ) : (
-            <AgentCompanyPicker
-              session={session}
-              value={company}
-              disabled={locked}
-              revision={revision + privacyRevision}
-              onChange={(id) => {
-                setCompany(id);
-                setOffset(0);
-                onCompanyChange?.(id);
-              }}
-            />
-          )}
-          {showListOptions && (
+        {(!employee || showListOptions || !!query || !!kind || !!company) && (
+          <div className="workspace-inbox-filters">
+            <label className="agent-search workspace-task-search">
+              <Search size={16} />
+              <input
+                aria-label="搜索工作事项"
+                placeholder="搜索事项或企业"
+                maxLength={200}
+                value={query}
+                disabled={locked}
+                onChange={(event) => setQuery(event.target.value)}
+              />
+              {query && (
+                <button type="button" aria-label="清空事项搜索" onClick={() => setQuery('')}>
+                  <X size={14} />
+                </button>
+              )}
+            </label>
             <label className="workspace-select">
-              <span className="sr-only">排序</span>
+              <span className="sr-only">事项类型</span>
               <select
-                aria-label="待办排序"
-                value={sort}
+                aria-label="筛选待办类型"
+                value={kind}
                 disabled={locked}
                 onChange={(event) => {
-                  setSort(event.target.value as WorkspaceSort);
+                  setKind(event.target.value as TaskKind | '');
                   setOffset(0);
                 }}
               >
-                {Object.entries(workspaceSortLabels).map(([key, label]) => (
-                  <option key={key} value={key}>
-                    {label}
-                  </option>
-                ))}
+                <option value="">全部事项类型</option>
+                {Object.entries(taskLabels)
+                  .filter(
+                    ([key]) => !experience.kinds || experience.kinds.includes(key as TaskKind),
+                  )
+                  .map(([key]) => (
+                    <option key={key} value={key}>
+                      {taskKindLabel(key as TaskKind, profileError ? null : profile)}
+                    </option>
+                  ))}
               </select>
             </label>
-          )}
-        </div>
+            {profile?.companies.length === 1 && experience.simple && !company ? (
+              <span className="workspace-company-identity">{profile.companies[0].name}</span>
+            ) : (
+              <AgentCompanyPicker
+                session={session}
+                value={company}
+                disabled={locked}
+                revision={revision + privacyRevision}
+                onChange={(id) => {
+                  setCompany(id);
+                  setOffset(0);
+                  onCompanyChange?.(id);
+                }}
+              />
+            )}
+            {showListOptions && (
+              <label className="workspace-select">
+                <span className="sr-only">排序</span>
+                <select
+                  aria-label="待办排序"
+                  value={sort}
+                  disabled={locked}
+                  onChange={(event) => {
+                    setSort(event.target.value as WorkspaceSort);
+                    setOffset(0);
+                  }}
+                >
+                  {Object.entries(workspaceSortLabels).map(([key, label]) => (
+                    <option key={key} value={key}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+          </div>
+        )}
         {showListOptions && !!views.length && (
           <div className="workspace-saved-views" aria-label="常用工作视图">
             <span>常用视图</span>
@@ -824,7 +857,7 @@ export function WorkspaceHome({
                 <span>下一步</span>
               </div>
             )}
-            {rows.map((task) => {
+            {shownRows.map((task) => {
               const summary = taskPresentation(task, profileError ? null : profile);
               return (
                 <article
@@ -843,11 +876,23 @@ export function WorkspaceHome({
                       </span>
                     </div>
                     <h3>{task.title}</h3>
-                    <small>负责人：{summary.responsible}</small>
-                    <p className="workspace-task-guidance">
-                      <span>下一步</span>
-                      {summary.next}
-                    </p>
+                    {(!employee || summary.key !== 'mine') && (
+                      <small>负责人：{summary.responsible}</small>
+                    )}
+                    {employee ? (
+                      <details className="workspace-task-help">
+                        <summary>处理说明</summary>
+                        <p className="workspace-task-guidance">
+                          <span>下一步</span>
+                          {summary.next}
+                        </p>
+                      </details>
+                    ) : (
+                      <p className="workspace-task-guidance">
+                        <span>下一步</span>
+                        {summary.next}
+                      </p>
+                    )}
                   </div>
                   <div className="workspace-task-state">
                     <span data-summary={summary.key} className="workspace-state-pill">
@@ -856,7 +901,9 @@ export function WorkspaceHome({
                     <span className="workspace-task-detail" data-state={task.state}>
                       {summary.detail}
                     </span>
-                    <small>{task.due_on ? `期限 ${task.due_on}` : '未设置期限'}</small>
+                    {(task.due_on || !employee) && (
+                      <small>{task.due_on ? `期限 ${task.due_on}` : '未设置期限'}</small>
+                    )}
                   </div>
                   <span className="workspace-task-amount">{formatTaskAmount(task.amount)}</span>
                   <button
@@ -873,7 +920,8 @@ export function WorkspaceHome({
             })}
           </div>
         ) : (
-          !error && (
+          !error &&
+          visibleValue && (
             <div className="workspace-clear">
               <CheckCircle2 size={27} />
               <strong>
@@ -902,7 +950,17 @@ export function WorkspaceHome({
             </div>
           )
         )}
-        {visibleValue && (
+        {employee && rows.length > 3 && !showListOptions && !query && !kind && offset === 0 && (
+          <button
+            className="text-button workspace-expand-tasks"
+            disabled={locked}
+            aria-expanded={!compactTasks}
+            onClick={() => setExpandedTasks((value) => !value)}
+          >
+            {compactTasks ? `展开本页全部 ${rows.length} 项` : '收起清单'}
+          </button>
+        )}
+        {visibleValue && (!employee || visibleValue.pagination.has_more || offset > 0) && (
           <div className="pagination-controls">
             <span>共 {visibleValue.pagination.total} 项 · 每页 20 项</span>
             <button
@@ -922,6 +980,7 @@ export function WorkspaceHome({
           </div>
         )}
       </section>
+      {employee && roleGuide}
       {!!briefings.length && (
         <section aria-label="本月财税简报入口">
           <details className="workspace-supporting">

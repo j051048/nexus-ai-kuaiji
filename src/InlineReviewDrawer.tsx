@@ -720,6 +720,7 @@ export function InlineReviewDrawer({
                 tabIndex={-1}
               >
                 <WorkflowGuide
+                  compact
                   label="会计复核引导"
                   guide={reviewGuidance({
                     status: draft.status,
@@ -743,11 +744,6 @@ export function InlineReviewDrawer({
                     acknowledged,
                   })}
                 />
-                <div className="review-term-help" aria-label="会计术语就地说明">
-                  <TermHelp term="draft" />
-                  <TermHelp term="debit_credit" />
-                  <TermHelp term="export_receipt" />
-                </div>
                 <div className="inline-review-state">
                   <span className={`badge ${draft.status}`}>
                     {draft.status === 'draft'
@@ -805,10 +801,10 @@ export function InlineReviewDrawer({
                     <dd>{source?.description}</dd>
                   </div>
                 </dl>
-                <div className="inline-review-rationale">
-                  <h3>建议依据</h3>
+                <details className="inline-review-rationale">
+                  <summary>查看建议依据</summary>
                   <p>{draft.explanation || '请根据原始资料核对会计处理。'}</p>
-                </div>
+                </details>
                 {draft.issues.length > 0 && (
                   <section className="issues-box" aria-label="同屏待处理问题">
                     <h3>
@@ -882,6 +878,11 @@ export function InlineReviewDrawer({
                         : `借贷差额 ¥${formatCents(debit > credit ? debit - credit : credit - debit)}，请核对金额`)
                     )}
                   </p>
+                </div>
+                <div className="review-term-help" aria-label="会计术语就地说明">
+                  <TermHelp term="draft" />
+                  <TermHelp term="debit_credit" />
+                  <TermHelp term="export_receipt" />
                 </div>
                 {dirty && (
                   <label className="inline-review-label">

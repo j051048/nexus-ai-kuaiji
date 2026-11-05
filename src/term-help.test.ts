@@ -135,8 +135,12 @@ describe('V07 术语在原操作附近解释，不形成新业务入口', () => 
     expect(source.indexOf('<TermHelp term="draft"')).toBeGreaterThan(
       source.indexOf('<WorkflowGuide'),
     );
+    expect(source).toContain('inline-review-totals');
+    expect(source.indexOf('<TermHelp term="draft"')).toBeGreaterThan(
+      source.indexOf('inline-review-totals'),
+    );
     expect(source.indexOf('<TermHelp term="export_receipt"')).toBeLessThan(
-      source.indexOf('<div className="inline-review-state">'),
+      source.indexOf('aria-label="我已核对同屏原件与分录"'),
     );
     expect(source).toContain("closest('.accounting-context-assistant, .term-help')");
     expect(source).toContain('a[href], summary, iframe');

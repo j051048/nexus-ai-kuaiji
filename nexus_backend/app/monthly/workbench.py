@@ -2,7 +2,7 @@
 
 import json
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from ..accounting.domain import AccountingError
@@ -20,8 +20,10 @@ class MonthlyWorkbenchService:
     def _groups(conn, sql, values):
         return {row["book_id"]: dict(row) for row in conn.execute(sql, values)}
 
-    def list(self, actor, period, search="", limit=20, offset=0):
+    def list(self, actor, period, search="", limit=20, offset=0, focus="all"):
         page_bounds(limit, offset)
+        if focus not in {"all", "mine", "due", "materials", "review", "receipt"}:
+            raise AccountingError("请选择有效的月度工作筛选")
         if not isinstance(period, str) or not re.fullmatch(r"20[0-9]{2}-(?:0[1-9]|1[0-2])", period):
             raise AccountingError("请选择有效的 YYYY-MM 月份")
         if not isinstance(search, str) or len(search) > 120:
@@ -49,8 +51,10 @@ class MonthlyWorkbenchService:
             values.extend(
                 [period, actor.firm_id, actor.user_id, int(role in {"owner", "admin"}), period]
             )
-            cte = f"WITH visible AS ({scope} UNION ALL {no_book}), filtered AS (SELECT * FROM visible WHERE LOWER(company_name) LIKE ? ESCAPE '\\' OR LOWER(COALESCE(name,'')) LIKE ? ESCAPE '\\')"
+            condition, focus_values = self._focus(actor, role, focus)
+            cte = f"WITH visible AS ({scope} UNION ALL {no_book}), filtered AS (SELECT v.* FROM visible v WHERE (LOWER(company_name) LIKE ? ESCAPE '\\' OR LOWER(COALESCE(name,'')) LIKE ? ESCAPE '\\') AND ({condition}))"
             values.extend(["%" + escaped + "%"] * 2)
+            values.extend(focus_values)
             rows = conn.execute(
                 cte
                 + """ SELECT page.*,(SELECT COUNT(*) FROM filtered) AS total FROM
@@ -64,8 +68,11 @@ class MonthlyWorkbenchService:
             ids = [row["id"] for row in rows if row["id"]]
             facts = self._facts(conn, actor, ids, period) if ids else {}
             public = [self._row(row, role, facts) for row in rows]
+            for item in public:
+                item["work"] = self._work(item)
             return {
                 "period": period,
+                "focus": focus,
                 "rows": public,
                 "pagination": {
                     "limit": limit,
@@ -82,6 +89,100 @@ class MonthlyWorkbenchService:
                     "人工耗时只累计明确开启且确认活跃的计时；缺少记录表示未测量。",
                 ],
             }
+
+    def _focus(self, actor, role, focus):
+        """Predicates precede LIMIT and use the same authorization as row details."""
+        manager = role in {"owner", "admin"}
+        can_edit = (
+            "1=1"
+            if manager
+            else (
+                "v.book_role IN ('editor','reviewer') AND "
+                + (
+                    "1=1"
+                    if role in {"operator", "reviewer"}
+                    else "v.company_role IN ('owner','admin','finance')"
+                    if not role
+                    else "1=0"
+                )
+            )
+        )
+        can_review = "1=1" if manager else "v.book_role='reviewer'" if role == "reviewer" else "1=0"
+        plan = "p.book_id=v.id AND p.version=(SELECT MAX(q.version) FROM service_plan_versions q WHERE q.book_id=v.id)"
+        if focus == "mine":
+            return (
+                f"({can_edit}) AND EXISTS(SELECT 1 FROM service_plan_versions p WHERE {plan} AND (p.lead_user_id=? OR p.reviewer_user_id=? OR p.backup_user_id=?))",
+                [actor.user_id] * 3,
+            )
+        if focus == "due":
+            cutoff = (
+                datetime.now(ZoneInfo("Asia/Shanghai")).date() + timedelta(days=7)
+            ).isoformat()
+            return (
+                f"({can_edit}) AND EXISTS(SELECT 1 FROM service_plan_versions p WHERE {plan} AND p.due_on<=?) AND NOT EXISTS(SELECT 1 FROM monthly_delivery_packages p JOIN monthly_delivery_acknowledgements a ON a.package_id=p.id WHERE p.book_id=v.id AND p.version=(SELECT MAX(q.version) FROM monthly_delivery_packages q WHERE q.book_id=v.id))",
+                [cutoff],
+            )
+        if focus == "materials":
+            return (
+                f"({can_edit}) AND EXISTS(SELECT 1 FROM material_requests r LEFT JOIN material_request_actions a ON a.request_id=r.id AND a.version=(SELECT MAX(q.version) FROM material_request_actions q WHERE q.request_id=r.id) WHERE r.book_id=v.id AND COALESCE(a.state,'pending') IN ('pending','returned'))",
+                [],
+            )
+        if focus == "review":
+            inactive = inactive_source_sql(self.db.dialect)
+            return (
+                f"({can_review}) AND EXISTS(SELECT 1 FROM drafts d JOIN sources s ON s.id=d.source_id AND s.book_id=d.book_id WHERE d.book_id=v.id AND d.status='draft' AND NOT ({inactive}))",
+                [],
+            )
+        if focus == "receipt":
+            return (
+                f"({can_review}) AND EXISTS(SELECT 1 FROM monthly_delivery_packages p WHERE p.book_id=v.id AND p.version=(SELECT MAX(q.version) FROM monthly_delivery_packages q WHERE q.book_id=v.id) AND NOT EXISTS(SELECT 1 FROM monthly_delivery_acknowledgements a WHERE a.package_id=p.id))",
+                [],
+            )
+        return "1=1", []
+
+    @staticmethod
+    def _work(row):
+        plan = row.get("service_plan") or {}
+        work = {
+            "owner": plan.get("lead_name") or "主办会计待安排",
+            "due_on": plan.get("due_on"),
+            "reason": "核对本月服务进度",
+            "target": "service",
+            "label": "继续办理",
+        }
+        if not row["book_id"]:
+            return {
+                **work,
+                "owner": "事务所管理员",
+                "reason": "尚未开通本月账套",
+                "target": None,
+                "label": "等待开通",
+            }
+        if (row.get("material_requests") or {}).get("pending", 0) > 0:
+            work.update(
+                reason="有待补交或退回的资料；请在服务单查看各项负责人", label="查看待补资料"
+            )
+        elif row["permissions"]["review"] and (row["drafts"]["pending"] or 0) > 0:
+            work.update(
+                owner=plan.get("reviewer_name") or "授权复核员",
+                reason="有待复核凭证；须核对当前版本制单责任",
+                target="review",
+                label="继续复核",
+            )
+        elif (row.get("customer_package") or {}).get("pending"):
+            work.update(
+                owner="指定客户签收人",
+                reason="最新月度包尚无客户签收；查看不等于签收",
+                target="delivery",
+                label="查看签收进度",
+            )
+        if not (
+            row["permissions"]["edit"]
+            or row["permissions"]["review"]
+            or row["permissions"]["manage"]
+        ):
+            work.update(target=None, label="当前仅可查看")
+        return work
 
     def _facts(self, conn, actor, ids, period):
         marks = ",".join("?" for _ in ids)
@@ -230,7 +331,16 @@ class MonthlyWorkbenchService:
                 WHERE r.book_id IN ({marks}) GROUP BY r.book_id""",
             ids,
         )
+        packages = self._groups(
+            conn,
+            f"""SELECT p.book_id,p.id,p.version,p.manifest_sha256,
+                CASE WHEN a.package_id IS NULL THEN 1 ELSE 0 END AS pending
+                FROM monthly_delivery_packages p LEFT JOIN monthly_delivery_acknowledgements a ON a.package_id=p.id
+                WHERE p.book_id IN ({marks}) AND p.version=(SELECT MAX(q.version) FROM monthly_delivery_packages q WHERE q.book_id=p.book_id)""",
+            ids,
+        )
         return {
+            "packages": packages,
             "health": health,
             "sources": sources,
             "business": business,
@@ -292,6 +402,7 @@ class MonthlyWorkbenchService:
                 key: count("delivery", key) if review else None
                 for key in ("unverified", "unknown", "differences", "verified")
             },
+            "customer_package": dict(group("packages")) if review and group("packages") else None,
             "closing": {
                 "state": "closed"
                 if closed

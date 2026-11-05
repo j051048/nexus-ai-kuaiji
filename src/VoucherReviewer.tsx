@@ -114,6 +114,7 @@ export function Reviewer({
   return (
     <div className="review-content">
       <WorkflowGuide
+        compact
         label="会计复核引导"
         guide={reviewGuidance({
           status: draft.status,

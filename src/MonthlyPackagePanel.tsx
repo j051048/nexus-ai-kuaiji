@@ -19,6 +19,7 @@ import {
 import {
   acceptPackage,
   packageFromSearch,
+  packageLinkIdentity,
   readRecovery,
   selectPackage,
   type ReadRecovery,
@@ -58,6 +59,12 @@ function RoutedPackagePanel(props: MonthlyPackagePanelProps) {
   return <ScopedPackagePanel {...props} search={location.search} />;
 }
 function ScopedPackagePanel(props: MonthlyPackagePanelProps & { search: string }) {
+  let pinned;
+  try {
+    pinned = props.expectedSource ?? packageLinkIdentity(props.search);
+  } catch {
+    return <p role="alert">通知链接的资料包版本无法核验，请从消息页重新打开。</p>;
+  }
   return (
     <MonthlyPackageContent
       key={JSON.stringify([
@@ -67,8 +74,10 @@ function ScopedPackagePanel(props: MonthlyPackagePanelProps & { search: string }
         props.bookId,
         props.focusPackageId,
         new URLSearchParams(props.search).getAll('package'),
+        pinned,
       ])}
       {...props}
+      expectedSource={pinned}
     />
   );
 }

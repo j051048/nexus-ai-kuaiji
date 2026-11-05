@@ -1,0 +1,246 @@
+{
+  "schema": "ux07-09-local-acceptance-v1",
+  "date": "2026-11-04",
+  "status": "local_scope_passed",
+  "candidate": {
+    "schema": "release-candidate-v1",
+    "head": "7fcd215011184dd62be854dd032b5d6f64af7f9b",
+    "source_files": 1884,
+    "source_sha256": "f0a8615e1649ca4cb39139b0c8ea4d7fda139b903dc4826f59cbd48cea0114b0",
+    "migration_files": 338,
+    "migration_sha256": "2c96acd52de191347a2365962e879340918fad013786faa260b4b13140646116"
+  },
+  "candidate_unchanged_at_acceptance_end": true,
+  "ownership": {
+    "baseline_file": "tmp_test/ux07-09-20261104/baseline.json",
+    "baseline_sha256": "cc77f8c7f155661626041bab00e4ca771c14d2d385d55f0c3b152fd0a6b9a5d0",
+    "existing_files_preserved": 62,
+    "existing_file_extension": {
+      "src/WorkspaceRouteContent.tsx": "Only onMonthly callback added; removing it reproduces baseline bytes."
+    },
+    "outside_scope_unassigned_changes": {
+      "nexus_backend/tests/fixtures/assistant_task/manifest.json": "21455bb66c02fb376b1f2b922b12c95d74a703afa743308864104d5315993994",
+      "nexus_backend/tests/test_accounting.py": "403af78db882806c5ffe3230dec5bc558ae09758483cd664f7339308f77a7693",
+      "nexus_backend/tests/test_directory.py": "5676545fb5405a25c30e656bb08c620df82e8aaf07d2c2aae160b6a715b13895",
+      "nexus_backend/tests/test_stage11_quality.py": "e81ab6b439f6bcf12f9b8ecdafb3c13ec8f24c7a45e80803265c6f263a1678fe",
+      "nexus_backend/tests/test_stage9_delivery.py": "97482ebc55dd9e22012ad6ae4dd85432874ade51024a8aa5f291b913c6079cb0",
+      "tools/assistant_replay/baseline.py": "8ea82fd8d26ace7cd0a8e3efb013d6a845ea9d59370f962c5508d66f9cc60a4a"
+    },
+    "outside_scope_note": "Present in the shared final candidate, but not claimed as UX07-09 work or included in a future UX-only commit. Ownership needs reconciliation before committing.",
+    "owned_paths": {
+      "e2e/formal-books-fixtures.ts": "98cad5f84c1f41a0641a18723b4ab424f5541d77abcdbfc5d30d624164d7c71b",
+      "e2e/formal-books-monthly-package.spec.ts": "2652f844b016a13fac072b6fe0781b206b8d11a5e89d9fd627560eb85896d018",
+      "e2e/ux07-09-journey.spec.ts": "812a1dd08d66b454d9e63ae5fb90f28d1c1b555c4dd53ff2df2284f26f0fd667",
+      "e2e/v02-role-workspaces.spec.ts": "dd2b72aec8685c983618ea7a73968589c8740b29d7cddfee1369ab280a488f3b",
+      "e2e/v03-entry-review.spec.ts": "6cc28e086993292dba842894ab6415c917e1148bb429e09b6752ebc12399d854",
+      "e2e/v09-navigation-history.spec.ts": "6df3ba31a4285c02940f5b38f9e5bbcae7d156c5fbd11450560c308a0ac8f8f8",
+      "nexus_backend/app/monthly/workbench.py": "e2f718b9ab12da8bf95dfae0822a54853e2752d839a530b523cdb00d53175b9a",
+      "nexus_backend/app/monthly/workbench_router.py": "e05f883ff91e12652435995b4be4a182ab6cab3da2879ddf60fb14040f7a100e",
+      "nexus_backend/tests/test_stage17_monthly_workbench.py": "06c706dedb9c09dbeaed7af1b5345c43b0e134b029c4ab0c2a10a2196eb00b10",
+      "nexus_backend/tests/test_ux07_monthly_focus.py": "91a6b423ff47b6b43a06c1ae03ba1e23ec641e8f15df216ca11bf228ee7587b7",
+      "nexus_backend/tests/test_ux07_signature_postgres.py": "eacf977860fba8f76476c8475df0a4a2b6e343e0506b7fbbc19e4ebbc222d5e8",
+      "nexus_backend/tests/test_ux08_corrections_postgres.py": "f7b0237142f649d45a85e83187fe33830e9b53704ad865c351e6fbb87d3f238e",
+      "src/FirmCockpit.tsx": "e0bb98a2e05099f45cb248bafe208e1e2b2c0de061bbc9996b969a0c00ce2317",
+      "src/FormalBooksWorkbench.tsx": "0d5ee72685bbb9c105f1518a87f0980b87f66c9d69b45a8fe5f1c1a1b9c34639",
+      "src/InlineReviewDrawer.tsx": "6a4b0f501ee3d07a3e36415101ed98d155c8103d98f8acde4e9b70cb71afebd2",
+      "src/ManualVoucherReviewPanel.tsx": "1f08fc36dde05462205d1d9fbc56e20dda5cf7b10b42f0d72e13fc4df9469935",
+      "src/MonthlyClientWorkbench.tsx": "3ab74757be08b3a066c909cd472085b6540c94d5492635888e56315d621498a4",
+      "src/VoucherReviewer.tsx": "48b77b5a954c9ad62bbc794e8c1bd867dae4ab362a984f252c94dc61448b1d27",
+      "src/WorkflowGuide.tsx": "1fd33da9e4dd1b78a2d6bf1e6bc77cbe862754ee1fd40eea7c49c7c5c909d77a",
+      "src/WorkspaceHome.tsx": "dac1401c212bce52d143c11fc9769e233be08fecaa19c0d386eb41c225194453",
+      "src/WorkspaceRouteContent.tsx": "429b9e3c5f6b7c20900fcd00cbe6c5e0bd9d505fcf874eb34ec4f7250abae047",
+      "src/firm-cockpit-focus.test.ts": "cae24cb64904fc10b65cbd30729cbc7223a896fc84f8d22404e04f7ada612873",
+      "src/manual-review-types.ts": "a32b4d0671c83cba38b768fb64800d6309f77204089b1e9e53fe5a8c49a0a1e2",
+      "src/monthly-workbench-types.ts": "d6e8bdbb4009e576d973a57a0aa816518dabff3a672d431f60a1e058d7029e9e",
+      "src/monthly.css": "7d910f207b4013b8aa1b4052b4dfeaf5f8827a2163e7498c5d17dacdc752db83",
+      "src/review-policy.css": "1bac9687d2c0272c7c69ebc00e82d60f47aa099423be40a1295271012f2bbe9f",
+      "src/role-workspaces-visual.test.ts": "df7beeeaa4ffb119868f907dc3763a84a4336ede8fac246144360ed38bedb918",
+      "src/term-help.test.ts": "3387e2eb815ad9dabd598d540659f11978d01bc390df8889906f37ccfb8d2a20",
+      "src/ux07-monthly-progress.test.ts": "2e58ece3631816c320f5c07d2b5c69b1d6e6dcb81d17412424efdca057ecb80a",
+      "src/ux08-correction.test.ts": "4d7f7267113917119f5b14e957ef730b673697cb05b28ff1b5215a3651daca41",
+      "src/voucher-correction.ts": "4ff3711f0ecc6578449875577767abfa7e86810de4e168e174250115da8d3ca7",
+      "src/workflow-guide.test.ts": "00397433634af4f7d159c48eeb25e5ba0f3c093ff06265ce10b4da1f872dff47",
+      "src/workspace-home-focus-render.test.ts": "68a8854f480ef5f26bd4ed75da997020dc7d806bd530b03178d1b409f336b0b6",
+      "src/workspace-progress.ts": "b1864739e6515d80aaf554a67558a21b43ce91ea46318c09870d6bd2112db478",
+      "src/workspace.css": "31e3f615139b04574ebbb8cc9e9760d890a9551ecb2a85fad4022e9ed8fb76e4"
+    }
+  },
+  "final_checks": {
+    "frontend": {
+      "tests": 1217,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0,
+      "file": "tmp_test/ux07-09-20261104/accepted-frontend.xml",
+      "sha256": "41bb68afd0370c8d4be3de7c3a57a75810e5b4a7420680b5700d2c13e0fe55fd"
+    },
+    "sqlite": {
+      "tests": 22,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0,
+      "file": "tmp_test/ux07-09-20261104/accepted-sqlite.xml",
+      "sha256": "4965ea4646d52b3c624cdf9b4348703743ab79e2900956e34b3c96148295167d"
+    },
+    "postgres16": {
+      "tests": 62,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0,
+      "file": "tmp_test/ux07-09-20261104/accepted-pg16.xml",
+      "sha256": "378b509074ce95efef43ea23df32789861697065501141937e6fdb31754165c5"
+    },
+    "postgres17": {
+      "tests": 62,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0,
+      "file": "tmp_test/ux07-09-20261104/accepted-pg17.xml",
+      "sha256": "f5c17f372e02a987bf1aae080d5d84e5a1bec2909acada4fc980ac7b24d36231"
+    },
+    "preview_browser_desktop_mobile": {
+      "tests": 66,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0,
+      "file": "tmp_test/ux07-09-20261104/accepted-preview.xml",
+      "sha256": "5c5fff05389d2349a0a2f571e2870518c0a4cdc76fbc94f3a4f80bc46722ee0b"
+    },
+    "frontend_budget": {
+      "schema": "frontend-budget-v1",
+      "status": "passed",
+      "initial": {
+        "jsBytes": 563933,
+        "jsGzipBytes": 174304,
+        "cssBytes": 99280,
+        "jsFiles": [
+          "assets/index-DBpm8NH8.js"
+        ],
+        "cssFiles": [
+          "assets/index-B4nwywaO.css"
+        ]
+      },
+      "home": {
+        "jsBytes": 591188,
+        "jsGzipBytes": 184728,
+        "cssBytes": 134987,
+        "jsFiles": [
+          "assets/WorkspaceHome-BDuMBazR.js",
+          "assets/arrow-right-left-B0t_8kLr.js",
+          "assets/check-CSYltKdf.js",
+          "assets/index-DBpm8NH8.js",
+          "assets/play-CHIEWbT2.js",
+          "assets/receipt-zUHuWbqx.js",
+          "assets/save-Ds8YWf_A.js",
+          "assets/workspace-DvPToEX-.js",
+          "assets/workspace-recovery-DJ2tPj9B.js"
+        ],
+        "cssFiles": [
+          "assets/index-B4nwywaO.css",
+          "assets/workspace-CgMeLri4.css"
+        ]
+      },
+      "budgets": {
+        "initialJs": 570000,
+        "initialGzip": 176000,
+        "homeJs": 625000,
+        "homeGzip": 195000,
+        "initialCss": 110000,
+        "homeCss": 145000
+      },
+      "violations": [],
+      "artifactSha256": "eca242d2731b2187363a1a306b3e06dcce3377092220900d88c3b4ba5a5e1c70"
+    }
+  },
+  "logs": {
+    "accepted-budget.log": {
+      "path": "tmp_test/ux07-09-20261104/accepted-budget.log",
+      "sha256": "0722eba7ae4a78480d94229dc527a0046d606695de1123201e68a88b36745b45"
+    },
+    "accepted-build.log": {
+      "path": "tmp_test/ux07-09-20261104/accepted-build.log",
+      "sha256": "5bde54068eee3fb0d4ba675150b2a7e571f8dae699e908151aaeadd6d73a05e5"
+    },
+    "accepted-format.log": {
+      "path": "tmp_test/ux07-09-20261104/accepted-format.log",
+      "sha256": "f20510a9da4717c51c4cffee6d0dd88d6c9a723d0a83711d01216f5b48961283"
+    },
+    "accepted-frontend.log": {
+      "path": "tmp_test/ux07-09-20261104/accepted-frontend.log",
+      "sha256": "25acfa61d6128dce506932fdc5d5898036d879a5cc93eebe4484b27b04011c27"
+    },
+    "accepted-lint.log": {
+      "path": "tmp_test/ux07-09-20261104/accepted-lint.log",
+      "sha256": "40ab6beca86553a912feee15d9332f1217a3d627b3120b1406f4a494af0d2444"
+    },
+    "accepted-preview.log": {
+      "path": "tmp_test/ux07-09-20261104/accepted-preview.log",
+      "sha256": "776c4472b7f5581697a4915c3c5d8e838f14cb6e8d6e626645dd06016893c895"
+    },
+    "accepted-ruff.log": {
+      "path": "tmp_test/ux07-09-20261104/accepted-ruff.log",
+      "sha256": "dbdbaf5e7c250ce007dcb48f3b6a8f589a5770a4256e75cca7ff90cd30c98840"
+    }
+  },
+  "red_evidence": {
+    "red-accountant.xml": "6b9921ec8c6493fdae289fd7650470e5ff22a9984c8acfc673cadac6420b5b89",
+    "red-count.xml": "819c739d356d5e5de384acca1ac88fed33795d31c094ee382539f5580c878ebb",
+    "red-evidence-order.xml": "32e06ded732f15ecdc176fa27df96b3de90a06cd39df485e652dcd4a1750b812",
+    "red-guide.xml": "267df81529812db82d588b7e8347a1732bad20bae2374a046a0c209f6d6a2aae",
+    "red-impact.xml": "0fecd8b43617e15a0db7a1f4457c08700cd92806a0f909ff7cfcf1f63269c3bc",
+    "red-interface.xml": "497fa332646263a39bbc5ae505c72cab25d9288f01c5327624a7b7604280bb54",
+    "red-manager.xml": "d5fa5e2f0af3ce21c71155a41abfa4e5442d6902dd37859880118fc431d7d2bf",
+    "red-mobile-header.xml": "5db394232ed7c2c264c2e85bed2384b2a302162db1e5d7054a282fc118004d03",
+    "red-money-wrap.xml": "5f7d8c515c88daaa8ff11f1146618bdf1b866c8d0807b322044c0165f9c8969d",
+    "red-monthly.xml": "7f1712b9018ca469fe8b38414a9c1ce874357557bfdd633b34b3ce6faa57d608",
+    "red-progress.xml": "bd909cce0b2398a16efc35f2e43bf1b8be8683e57d0e4cfbd10c544385aa5981",
+    "red-readonly.xml": "efce2cdb001870d0b0400d5436adb69f2e519ebc7505606ba7048ebdfa109d9c",
+    "red-term-order.xml": "1639471dac9ee1fdace80f7ad8b5ed175560cb5594025211ce6f369bd41ec3b8"
+  },
+  "red_fixture_caveat": "red-readonly.xml initially used the wrong local identity/full reload; corrected SPA identity setup before real read-only verification. Not counted as a product permission bypass.",
+  "screenshots": {
+    "tmp_test/ux07-09-20261104/correction-1280.png": "6359c738a8dc9c10ecc2e5a07e14a53a6ae3588be967ed47046f56828535a698",
+    "tmp_test/ux07-09-20261104/correction-390.png": "4811b8e1df0e0b5fa0a160e20f8add13046bf0dc68459ee019a30a7b63cb2dfe",
+    "tmp_test/ux07-09-20261104/correction-adjustment-1280.png": "71d3634f8ad757f78374efe7fb474fdebd5e84c537af50f33d6a8aa83fd9cf60",
+    "tmp_test/ux07-09-20261104/correction-adjustment-390.png": "0d2c50ec73aa7d7fd0c6311fbdcd9d5c6385724870ed21dba1cb6d01d0c47c25",
+    "tmp_test/ux07-09-20261104/correction-reversal-1280.png": "32a4f2005f704cd3e674809f6d62795d585b926d65d386a688390e918d7f9538",
+    "tmp_test/ux07-09-20261104/correction-reversal-390.png": "75b16b9ca592c3139352c1ecb94c772e6a84b78a51fa238fb6cb81073f2a6a71",
+    "tmp_test/ux07-09-20261104/employee-1280.png": "bc2b94c2b6529597b4c6734414b771a82a209a88c677e9b9329591b850d36f60",
+    "tmp_test/ux07-09-20261104/employee-390.png": "fa25ea9d65d4176fd8b5948bd8069235063c1de87e2ba2a9fe1ca0e8fc7fd58e",
+    "tmp_test/ux07-09-20261104/finance-1280.png": "8d6c46f6d1399d068e2abb6f94ff7d7cc83e309e250e6590f863000b16e190c3",
+    "tmp_test/ux07-09-20261104/finance-390.png": "d611f736257fa56525c6fc9f34e8a2cfda2d66547411b37b353757fd3b6cc453",
+    "tmp_test/ux07-09-20261104/manager-1280.png": "3110b021f5b7d3eadfc5ea85c84dd92769a1260208b77c221e2805aa05edb656",
+    "tmp_test/ux07-09-20261104/manager-390.png": "5b8b46e68321b710e7c045a2585c04b29eaa29c684a15466610af35cea2d4b84",
+    "tmp_test/ux07-09-20261104/monthly-1280.png": "d3d3d1821bc70a931c0558b47283d309319d749c2e4bbf71f029645b252d54fa",
+    "tmp_test/ux07-09-20261104/monthly-390.png": "d52f955f1fb54cdcd341728ec6226ab5e3b8803c34010ba1ef5538ca3635aaa8",
+    "tmp_test/v03/ux07-09/employee-attachment-desktop.png": "c5929cb423ed42b568a8da4d9d41a2b5acb03cf75a1c8921749c1e3babba7973",
+    "tmp_test/v03/ux07-09/employee-attachment-mobile.png": "5d69d39c9782fa952c9429c1f7c2ce26a89d23a24c492897b3cd4b665bd8e0fe",
+    "tmp_test/v03/ux07-09/employee-entry-desktop.png": "c57f902ab148966401b2c2fb43013b4437527a1ea2eb8e922099c774da42e6ad",
+    "tmp_test/v03/ux07-09/employee-entry-mobile.png": "41f3c1968bafa90a24284a3bd376a028d589e7d83fd9625ed303ee64a2aac0a4",
+    "tmp_test/v03/ux07-09/review-evidence-desktop.png": "bf19893953551f9ef3fa30acef55649046e38af526bc20904f306859e5e32757",
+    "tmp_test/v03/ux07-09/review-evidence-mobile.png": "f1784723d5e186d46660742b84a05a966a9c2b4e29ee7b03892d76788b0119ea",
+    "tmp_test/v03/ux07-09/review-lines-desktop.png": "7d187e0f64adc561e6b9d211d0a3d0ba950c6bdd0c8e75fd3feeff681d2d0f07",
+    "tmp_test/v03/ux07-09/review-lines-mobile.png": "4d3d7f671c3807e78580d83729968d2fdc21dd97b81cef8fc909acf25caef602",
+    "tmp_test/v03/ux07-09/review-original-error-desktop.png": "5986680fcd554b935ee276e3209782a16912b27256b897f7922a2d799ae1f135",
+    "tmp_test/v03/ux07-09/review-original-error-mobile.png": "e12d87ef7b9d6878a4a01704a1d0ede7e598db4c88fb12b80ad3d7e2596fb1f6",
+    "tmp_test/v03/ux07-09/review-tablet.png": "5548c902aacaacb216b37e79f5d241c9f085ca923f07e7360ed8a6b220ae1190"
+  },
+  "scope": {
+    "database_versions": [
+      16,
+      17
+    ],
+    "new_migrations": [],
+    "local_migration_tip": 217,
+    "browser": "Chromium desktop 1280/1366 and mobile viewport 390/740; no physical device claim",
+    "identity": "Fresh local API identities and SQLite for browser; real restricted roles and isolated databases for PG",
+    "review_ui_caveat": "New correction flow uses UI preparation/posting and another identity via local API for independent approval",
+    "real_model": false,
+    "real_notification": false,
+    "production": false,
+    "pushed": false,
+    "committed": false,
+    "full_joint_restore_rerun": false,
+    "release_approved": false
+  }
+}

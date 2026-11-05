@@ -183,6 +183,8 @@
 }
 .agent-topbar-actions {
   display: flex;
+  min-width: 0;
+  max-width: 100%;
   align-items: center;
   gap: 14px;
 }
@@ -694,6 +696,7 @@
 
 .agent-topbar-assistant {
   display: flex;
+  min-width: 0;
   gap: 7px;
   align-items: center;
   border: 1px solid var(--line);
@@ -704,6 +707,16 @@
   cursor: pointer;
   font-size: 12px;
   white-space: nowrap;
+}
+.agent-topbar-assistant > small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.agent-topbar-assistant > svg,
+.agent-topbar-assistant > span,
+.agent-topbar-command {
+  flex-shrink: 0;
 }
 .agent-topbar-assistant:disabled {
   opacity: 0.45;

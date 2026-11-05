@@ -12,6 +12,7 @@ import secrets
 import time
 from urllib.parse import urlencode
 from uuid import uuid4
+from pydantic import ValidationError
 
 from app.auth.admin import SupabaseAdmin
 from app.auth.supabase import Identity
@@ -20,6 +21,7 @@ from .access import AccessControl, FIRM_MANAGERS
 from .directory import DirectoryService
 from .domain import Actor, AccountingError
 from .service import now
+from .admin_identity_models import AccountRequestCreate
 
 
 class AdminIdentityService:
@@ -50,7 +52,79 @@ class AdminIdentityService:
         )
         result = {key: row[key] for key in fields}
         result["existing_user"] = bool(row["existing_user"])
+        result["activation_expired"] = row["status"] == "awaiting_activation" and row[
+            "expires_at"
+        ] <= int(time.time())
         return result
+
+    def preview_accounts(self, actor, items):
+        """Read-only bounded readiness; create/accept still reauthorize individually."""
+        if not isinstance(items, list) or not 1 <= len(items) <= 50:
+            raise AccountingError("每批预检须为 1–50 人", 422)
+        rows, seen, companies = [], set(), set()
+        with self.db.transaction(actor=actor) as conn:
+            self.access.require_user(conn, actor.user_id)
+            for index, raw in enumerate(items):
+                row = {"index": index, "ready": False, "book_access": "none"}
+                try:
+                    request = AccountRequestCreate.model_validate(raw)
+                    payload = request.model_dump(exclude={"initial_password"})
+                    if (
+                        not request.company_id
+                        or request.company_role not in {"employee", "finance"}
+                        or request.provisioning_mode != "activation"
+                    ):
+                        raise AccountingError(
+                            "批量入职只支持本企业员工或企业财务的本人激活；其他授权请单独办理", 422
+                        )
+                    self._authorize(conn, actor, payload)
+                    companies.add(request.company_id)
+                    if len(companies) != 1:
+                        raise AccountingError("每批只能办理一家企业", 422)
+                    row.update(
+                        email=request.email,
+                        name=request.name,
+                        company_id=request.company_id,
+                        company_role=request.company_role,
+                        department_id=request.department_id,
+                    )
+                    if request.email in seen:
+                        row.update(code="duplicate_email", message="名单中邮箱重复，请保留一行")
+                    else:
+                        seen.add(request.email)
+                        pending = conn.execute(
+                            "SELECT id FROM admin_account_requests WHERE firm_id=? AND company_id=? AND email=? "
+                            "AND (status='pending' OR (status='awaiting_activation' AND expires_at>?)) LIMIT 1",
+                            (actor.firm_id, request.company_id, request.email, int(time.time())),
+                        ).fetchone()
+                        if pending:
+                            row.update(
+                                code="existing_request",
+                                message="已有待完成邀请，请先查看开通记录，勿重复生成",
+                            )
+                            rows.append(row)
+                            continue
+                        # Both activation and password onboarding need the same department readiness.
+                        self._validate_password_department(
+                            conn, actor, {**payload, "provisioning_mode": "password"}
+                        )
+                        row.update(
+                            ready=True,
+                            code="ready",
+                            message="可生成激活邀请；不授予账套、复核或导出权限",
+                        )
+                except ValidationError:
+                    row.update(
+                        code="invalid_fields", message="姓名、邮箱或角色格式不正确，请核对本行"
+                    )
+                except AccountingError as failure:
+                    row.update(code="not_ready", message=str(failure))
+                rows.append(row)
+        return {
+            "items": rows,
+            "ready": all(row["ready"] for row in rows),
+            "provisioning_enabled": self.provider.configured,
+        }
 
     def _authorize(self, conn, actor, target):
         self.access.require_user(conn, actor.user_id)

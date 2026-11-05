@@ -8,6 +8,8 @@ export interface ManualReviewLine {
   source_ref: string;
 }
 export interface ManualReviewContent {
+  relation_kind?: 'adjustment' | 'reversal' | null;
+  original_voucher_id?: string | null;
   command_key: string;
   book_id: string;
   voucher_date: string;
@@ -92,6 +94,13 @@ export function parseManualReviewList(
       typeof item.content.description !== 'string' ||
       typeof item.content.voucher_date !== 'string' ||
       !Array.isArray(item.content.lines)
+    )
+      throw invalid();
+    if (
+      (item.content.relation_kind != null || item.content.original_voucher_id != null) &&
+      (!['adjustment', 'reversal'].includes(String(item.content.relation_kind)) ||
+        typeof item.content.original_voucher_id !== 'string' ||
+        !item.content.original_voucher_id)
     )
       throw invalid();
     if (

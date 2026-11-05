@@ -12,6 +12,7 @@ import {
   type WorkspaceDensity,
   type WorkspaceSort,
 } from './workspace-types';
+import { monthlyFocus, type MonthlyFocus } from './monthly-workbench-types';
 
 export interface HomeProgress {
   bucket: 'action' | 'waiting';
@@ -26,6 +27,7 @@ export interface HomeProgress {
   taskKey?: string;
 }
 export interface MonthlyProgress {
+  focus?: MonthlyFocus;
   period: string;
   query: string;
   search: string;
@@ -124,6 +126,7 @@ export class WorkspaceProgress {
       return;
     }
     this.monthly = {
+      focus: monthlyFocus(value.focus),
       period: value.period,
       query: queryText(value.query),
       search: queryText(value.search),

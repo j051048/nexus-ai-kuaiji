@@ -191,6 +191,31 @@
   color: var(--text-muted, #475569);
   font-size: 0.85rem;
 }
+.opening-preparation {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.opening-preparation > label {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.opening-preparation input,
+.opening-preparation select,
+.opening-preparation textarea {
+  min-width: 0;
+  width: 100%;
+}
+.opening-preparation > article {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.opening-preparation > article > strong {
+  flex-basis: 100%;
+}
 @media (max-width: 640px) {
   .setup-wizard-badge {
     margin-left: 0;

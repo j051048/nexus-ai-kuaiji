@@ -23,28 +23,21 @@ const stateLabels: Record<WorkflowGuideStep['state'], string> = {
 };
 
 /** Read-only guidance. Existing forms and server permissions remain authoritative. */
-export function WorkflowGuide({ label, guide }: { label: string; guide: WorkflowGuidance }) {
+export function WorkflowGuide({
+  label,
+  guide,
+  compact = false,
+}: {
+  label: string;
+  guide: WorkflowGuidance;
+  compact?: boolean;
+}) {
   return (
     <section
       className={`workflow-guide workflow-guide--${guide.tone ?? 'neutral'}`}
       aria-label={label}
     >
-      <h3>{guide.title}</h3>
-      <ol aria-label="办理步骤">
-        {guide.steps.map((step, index) => (
-          <li
-            key={step.id}
-            className={`workflow-guide-step workflow-guide-step--${step.state}`}
-            aria-current={['current', 'blocked'].includes(step.state) ? 'step' : undefined}
-          >
-            <span className="workflow-guide-number" aria-hidden="true">
-              {step.state === 'done' ? '✓' : index + 1}
-            </span>
-            <span>{step.label}</span>
-            <span className="sr-only">，{stateLabels[step.state]}</span>
-          </li>
-        ))}
-      </ol>
+      {!compact && <h3>{guide.title}</h3>}
       <div className="workflow-guide-message">
         <p>
           <strong>当前状态</strong>
@@ -55,6 +48,43 @@ export function WorkflowGuide({ label, guide }: { label: string; guide: Workflow
           {guide.next}
         </p>
       </div>
+      {compact ? (
+        <details>
+          <summary>查看复核步骤与说明</summary>
+          <h3>{guide.title}</h3>
+          <ol aria-label="办理步骤">
+            {guide.steps.map((step, index) => (
+              <li
+                key={step.id}
+                className={`workflow-guide-step workflow-guide-step--${step.state}`}
+                aria-current={['current', 'blocked'].includes(step.state) ? 'step' : undefined}
+              >
+                <span className="workflow-guide-number" aria-hidden="true">
+                  {step.state === 'done' ? '✓' : index + 1}
+                </span>
+                <span>{step.label}</span>
+                <span className="sr-only">，{stateLabels[step.state]}</span>
+              </li>
+            ))}
+          </ol>
+        </details>
+      ) : (
+        <ol aria-label="办理步骤">
+          {guide.steps.map((step, index) => (
+            <li
+              key={step.id}
+              className={`workflow-guide-step workflow-guide-step--${step.state}`}
+              aria-current={['current', 'blocked'].includes(step.state) ? 'step' : undefined}
+            >
+              <span className="workflow-guide-number" aria-hidden="true">
+                {step.state === 'done' ? '✓' : index + 1}
+              </span>
+              <span>{step.label}</span>
+              <span className="sr-only">，{stateLabels[step.state]}</span>
+            </li>
+          ))}
+        </ol>
+      )}
       {!!guide.checks?.length && (
         <details>
           <summary>本步核对要点</summary>

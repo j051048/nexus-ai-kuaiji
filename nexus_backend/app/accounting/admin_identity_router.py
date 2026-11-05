@@ -1,6 +1,11 @@
 from fastapi import APIRouter, Depends, Query, Request, Response
 
-from .admin_identity_models import AccountRequestAccept, AccountRequestCreate, AccountRequestRetry
+from .admin_identity_models import (
+    AccountBatchPreview,
+    AccountRequestAccept,
+    AccountRequestCreate,
+    AccountRequestRetry,
+)
 
 
 def build_admin_identity_router(actor_dependency, identity_dependency):
@@ -28,6 +33,16 @@ def build_admin_identity_router(actor_dependency, identity_dependency):
     ):
         response.headers["Cache-Control"] = "no-store"
         return svc.create(current, payload)
+
+    @router.post("/preview")
+    def preview(
+        payload: AccountBatchPreview,
+        response: Response,
+        current=Depends(actor_dependency),
+        svc=Depends(service),
+    ):
+        response.headers["Cache-Control"] = "no-store"
+        return svc.preview_accounts(current, payload.items)
 
     @router.post("/{request_id}/retry")
     def retry(

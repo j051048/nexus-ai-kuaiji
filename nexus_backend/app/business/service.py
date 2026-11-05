@@ -1,6 +1,7 @@
 """固定业务审批管道；每次操作实时核对权限，在同一事务中移交会计草稿。"""
 
 import json
+from datetime import date
 from uuid import uuid4
 
 from app.accounting.access import AccessControl, FIRM_MANAGERS
@@ -48,6 +49,74 @@ class BusinessService:
             "WHERE cm.company_id=? AND cm.user_id=? AND fc.firm_id=? AND fc.status='active'",
             (company_id, actor.user_id, actor.firm_id),
         ).fetchone()
+
+    def preparation(self, actor, company_id, occurred_on):
+        """Coarse, live preparation advice; never exposes books to an employee.
+
+        This does not replace handoff's transaction-time authorization or version
+        checks. Missing accounting setup must not change a real business date.
+        """
+        try:
+            parsed = date.fromisoformat(occurred_on)
+            if parsed.isoformat() != occurred_on or not 2000 <= parsed.year <= 2099:
+                raise ValueError
+        except (TypeError, ValueError):
+            raise AccountingError("请填写有效的业务发生日期", 422) from None
+        period = occurred_on[:7]
+        with self.db.transaction(actor=actor) as conn:
+            self.access.company(conn, actor, company_id)
+            if self.db.is_postgres:
+                state = conn.execute(
+                    "SELECT accounting.business_preparation_status(?,?) AS status",
+                    (company_id, period),
+                ).fetchone()["status"]
+            else:
+                rows = conn.execute(
+                    "SELECT b.id,p.status,a.role AS book_role FROM books b "
+                    "JOIN periods p ON p.book_id=b.id AND p.period=b.period "
+                    "LEFT JOIN effective_book_access a ON a.book_id=b.id AND a.firm_id=b.firm_id AND a.user_id=? "
+                    "WHERE b.firm_id=? AND b.company_id=? AND b.period=?",
+                    (actor.user_id, actor.firm_id, company_id, period),
+                ).fetchall()
+                role = self.access.firm_role(conn, actor)
+                company_role = self.access.company_role(conn, actor, company_id)
+                opened = [row for row in rows if row["status"] == "open"]
+                state = "period_missing" if not rows else "period_locked" if not opened else "ready"
+                if opened and (role or company_role in {"finance", "admin", "owner"}):
+                    if not any(
+                        self.access.permissions(role, row["book_role"], company_role)["edit"]
+                        for row in opened
+                    ):
+                        state = "assignment_required"
+            guidance = {
+                "ready": (
+                    "finance",
+                    f"{period} 已准备接收账务；资料提交后仍需财务核验与会计复核，正式交接时会重新核对权限。",
+                ),
+                "period_missing": (
+                    "firm_admin",
+                    f"{period} 尚未开账，请主办会计联系事务所管理员准备该月份。可先保存原件和提交资料等待处理，请勿为通过检查改动真实发生日期。",
+                ),
+                "period_locked": (
+                    "accountant",
+                    f"{period} 已关闭，请主办会计核对补录或更正方案。可先保存资料，请勿自行改到其他月份。",
+                ),
+                "assignment_required": (
+                    "firm_admin",
+                    f"{period} 已开账，但你尚无可交接账套的编辑权限，请事务所管理员安排有权人员办理。",
+                ),
+            }
+            if state not in guidance:
+                raise AccountingError("交接准备状态暂时无法核验，请重新读取", 503)
+            owner, next_action = guidance[state]
+            return {
+                "company_id": company_id,
+                "period": period,
+                "status": state,
+                "owner_role": owner,
+                "next_action": next_action,
+                "advisory": True,
+            }
 
     def _departments(self, conn, company_id):
         return [

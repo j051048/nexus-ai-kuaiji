@@ -251,7 +251,7 @@ def test_monthly_export_receipt_unknown_then_verified_is_batch_scoped(month_case
     c = month_case
     draft = imported(c)
     draft = c.accounting.approve(
-        c.owner, c.book, draft["id"], ApprovalRequest(expected_version=draft["version"])
+        c.reviewer, c.book, draft["id"], ApprovalRequest(expected_version=draft["version"])
     )
     assert find(c)["drafts"]["approved"] == 1
     exported = c.accounting.export(

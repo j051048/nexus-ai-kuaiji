@@ -1,4 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
+import { useMonthlyData } from './useMonthlyData';
+import {
+  parseFirmInbox,
+  firmTaskTarget,
+  type FirmItem as Item,
+  type Bucket,
+} from './firm-inbox-contract';
+import type { WorkspaceTask } from './workspace-types';
 import { Bell, CheckCircle2, RefreshCw, UserRoundCheck } from 'lucide-react';
 import { api, errorMessage } from './api';
 import {
@@ -11,30 +19,6 @@ import { Spinner } from './AppPrimitives';
 import type { Session } from './types';
 import './firm-inbox.css';
 
-type Bucket = 'all' | 'today' | 'overdue' | 'blocked' | 'review' | 'failed';
-type Item = {
-  kind: string;
-  ref: string;
-  company_id: string;
-  company_name: string;
-  book_id: string | null;
-  title: string;
-  state: string;
-  due_on: string;
-  assignee_id: string | null;
-  assignee_name: string;
-  assignment_version: number;
-  assignment_note: string;
-  bucket: Exclude<Bucket, 'all'>;
-  updated_at: string;
-};
-type Inbox = {
-  counts: Record<Exclude<Bucket, 'all'>, number>;
-  items: Item[];
-  assignees: { id: string; name: string; source: 'firm' | 'client' }[];
-  note: string;
-};
-
 const labels: Record<Bucket, string> = {
   all: '全部',
   today: '今天',
@@ -44,67 +28,49 @@ const labels: Record<Bucket, string> = {
   failed: '后台失败',
 };
 
-export function FirmInbox({ session }: { session: Session }) {
+export function FirmInbox({
+  session,
+  onOpen,
+}: {
+  session: Session;
+  onOpen?: (task: WorkspaceTask) => void;
+}) {
   const [bucket, setBucket] = useState<Bucket>('all');
-  const [data, setData] = useState<Inbox | null>(null);
+  const [offset, setOffset] = useState(0);
   const [selected, setSelected] = useState<string[]>([]);
   const [assignee, setAssignee] = useState('');
   const [dueOn, setDueOn] = useState('');
   const [note, setNote] = useState('');
   const [message, setMessage] = useState('请在今天完成当前待办，如缺少资料请直接反馈。');
   const [busy, setBusy] = useState('');
-  const [error, setError] = useState('');
+  const [actionError, setError] = useState('');
   const [revision, setRevision] = useState(0);
-  const [followups, setFollowups] = useState<DeliveryFollowupFeed | null>(null);
-  const [followupError, setFollowupError] = useState('');
-
-  useEffect(() => {
-    const controller = new AbortController();
-    setFollowupError('');
-    void api<DeliveryFollowupFeed>('/delivery/followups?limit=8', session, {
-      signal: controller.signal,
-    })
-      .then((value) => {
-        if (controller.signal.aborted) return;
-        if (!validateFollowupFeed(value)) {
-          setFollowupError('交付待办返回格式不符，暂不展示。');
-          setFollowups(null);
-          return;
-        }
-        setFollowups(value);
-      })
-      .catch((failure) => {
-        if (controller.signal.aborted) return;
-        // The delivery feed must never hide the task inbox behind its own failure.
-        setFollowupError(errorMessage(failure));
-        setFollowups(null);
-      });
-    return () => controller.abort();
-  }, [session, revision]);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    setBusy('load');
-    setError('');
-    void api<Inbox>(`/firm/inbox?bucket=${bucket}`, session, { signal: controller.signal })
-      .then((value) => {
-        if (!controller.signal.aborted) {
-          setData(value);
-          setAssignee((current) => current || value.assignees[0]?.id || '');
-          setSelected([]);
-        }
-      })
-      .catch((failure) => {
-        if (!controller.signal.aborted) setError(errorMessage(failure));
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setBusy('');
-      });
-    return () => controller.abort();
-  }, [session, bucket, revision]);
+  const inbox = useMonthlyData<unknown>(
+    session,
+    `/firm/inbox?bucket=${bucket}&limit=20&offset=${offset}`,
+    revision,
+  );
+  const data =
+    inbox.data === null
+      ? null
+      : parseFirmInbox(inbox.data, session.firm_id, session.user_id, bucket, offset);
+  const feed = useMonthlyData<DeliveryFollowupFeed>(
+    session,
+    '/delivery/followups?limit=8',
+    revision,
+  );
+  const followups = feed.data && validateFollowupFeed(feed.data) ? feed.data : null;
+  const followupError =
+    feed.error || (feed.data && !followups ? '交付待办返回格式不符，暂不展示。' : '');
+  const error =
+    inbox.error ||
+    (inbox.data !== null && !data ? '待办范围或格式不符，请重新读取。' : '') ||
+    actionError;
 
   const key = (item: Item) => `${item.kind}:${item.ref}`;
-  const selectedTasks = (data?.items ?? []).filter((item) => selected.includes(key(item)));
+  const selectedTasks = (data?.items ?? []).filter(
+    (item) => selected.includes(key(item)) && item.permissions.assign,
+  );
 
   async function assign() {
     if (!assignee || !selectedTasks.length) return;
@@ -171,8 +137,8 @@ export function FirmInbox({ session }: { session: Session }) {
     <main className="firm-inbox">
       <header className="firm-inbox-heading">
         <div>
-          <p className="eyebrow">EXCEPTION INBOX / SLA</p>
-          <h1>异常收件箱与任务调度</h1>
+          <p className="eyebrow">事务所待办</p>
+          <h1>待处理与人员分工</h1>
           <p>先处理逾期、阻塞和后台失败，再进入正常复核。</p>
         </div>
         <button
@@ -193,10 +159,14 @@ export function FirmInbox({ session }: { session: Session }) {
             role="tab"
             aria-selected={bucket === id}
             className={bucket === id ? 'active' : ''}
-            onClick={() => setBucket(id)}
+            onClick={() => {
+              setBucket(id);
+              setOffset(0);
+              setSelected([]);
+            }}
           >
             {labels[id]}
-            {id !== 'all' && <span>{data?.counts[id] ?? 0}</span>}
+            {id !== 'all' && <span>{data?.counts[id] ?? '—'}</span>}
           </button>
         ))}
       </div>
@@ -205,12 +175,13 @@ export function FirmInbox({ session }: { session: Session }) {
           {error}
         </p>
       )}
-      {selected.length > 0 && (
+      {selectedTasks.length > 0 && (
         <section className="firm-inbox-bulk">
           <strong>已选 {selected.length} 项</strong>
           <label>
             指派给
             <select value={assignee} onChange={(event) => setAssignee(event.target.value)}>
+              <option value="">请选择接单人</option>
               {data?.assignees.map((item) => (
                 <option key={item.id} value={item.id}>
                   {item.name}
@@ -258,14 +229,18 @@ export function FirmInbox({ session }: { session: Session }) {
             <p>按「关账 → 生成包 → 配置签收人 → 客户签收」的顺序推进，下一步只由服务端判定。</p>
           </div>
           <span className="firm-inbox-delivery-count" aria-live="polite">
-            {followupError
-              ? '暂时无法读取'
-              : delivery.total
-                ? `${delivery.total} 个月份待处理 · 其中 ${delivery.waiting} 个等待客户`
-                : '暂无待处理月份'}
+            {feed.loading
+              ? '正在读取交付待办…'
+              : followupError
+                ? '暂时无法读取'
+                : delivery.total
+                  ? `${delivery.total} 个月份待处理 · 其中 ${delivery.waiting} 个等待客户`
+                  : '暂无待处理月份'}
           </span>
         </div>
-        {followupError ? (
+        {feed.loading ? (
+          <p role="status">正在读取交付待办…</p>
+        ) : followupError ? (
           <p className="firm-inbox-delivery-error" role="status">
             交付待办读取失败：{followupError}。任务列表不受影响。
           </p>
@@ -287,18 +262,19 @@ export function FirmInbox({ session }: { session: Session }) {
         )}
       </section>
 
-      <section className="firm-inbox-list" aria-busy={busy === 'load'}>
-        {busy === 'load' && !data ? (
+      <section className="firm-inbox-list" aria-busy={inbox.loading}>
+        {inbox.loading ? (
           <div className="loading-block">
             <Spinner />
             正在汇总全所待办…
           </div>
-        ) : data?.items.length ? (
+        ) : !inbox.error && data?.items.length ? (
           data.items.map((item) => (
             <article key={key(item)} className={'firm-inbox-row ' + item.bucket}>
               <label className="checkbox-cell">
                 <input
                   type="checkbox"
+                  disabled={!item.permissions.assign || !!busy}
                   aria-label={`选择 ${item.title}`}
                   checked={selected.includes(key(item))}
                   onChange={(event) =>
@@ -313,14 +289,23 @@ export function FirmInbox({ session }: { session: Session }) {
               <div>
                 <span className={'firm-inbox-badge ' + item.bucket}>{labels[item.bucket]}</span>
                 <h2>{item.title}</h2>
+                {onOpen && (
+                  <button
+                    className="text-button"
+                    type="button"
+                    onClick={() => onOpen(firmTaskTarget(item))}
+                  >
+                    {item.action_label || '打开原事项'}
+                  </button>
+                )}
                 <p>
-                  {item.company_name} · {item.kind} · {item.state}
+                  {item.company_name} · {item.responsible}
                 </p>
               </div>
               <div className="firm-inbox-meta">
                 <strong>{item.assignee_name || '未分派'}</strong>
                 <span>{item.due_on ? `截止 ${item.due_on}` : '未设置截止日期'}</span>
-                {!item.assignee_id && (
+                {item.permissions.claim && (
                   <button
                     className="text-button"
                     type="button"
@@ -337,11 +322,36 @@ export function FirmInbox({ session }: { session: Session }) {
         ) : (
           <div className="empty-state">
             <CheckCircle2 size={28} />
-            <strong>当前分类没有待办</strong>
+            <strong>{error ? '待办暂时不可读取，请刷新或联系负责人' : '当前分类没有待办'}</strong>
             <p>{data?.note}</p>
           </div>
         )}
       </section>
+      {data && (
+        <nav className="cockpit-pages" aria-label="待办分页">
+          <span>共 {data.pagination.total} 项</span>
+          <button
+            className="button secondary"
+            disabled={offset === 0 || !!busy}
+            onClick={() => {
+              setOffset(Math.max(0, offset - 20));
+              setSelected([]);
+            }}
+          >
+            上一页
+          </button>
+          <button
+            className="button secondary"
+            disabled={!data.pagination.has_more || !!busy}
+            onClick={() => {
+              setOffset(offset + 20);
+              setSelected([]);
+            }}
+          >
+            下一页
+          </button>
+        </nav>
+      )}
     </main>
   );
 }

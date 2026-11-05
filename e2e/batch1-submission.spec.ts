@@ -82,6 +82,7 @@ test('无部门企业管理员上传 XML 核对直接提交，由授权会计接
     await page.getByRole('button', { name: '录入业务事项', exact: true }).click();
     const intake = page.getByRole('dialog');
     await intake.getByLabel('事项客户企业').selectOption(company.id);
+    await intake.locator('.intake-template-picker > summary').click();
     await intake.getByRole('button', { name: /^采购 \/ 费用/ }).click();
     const xml = readFileSync(
       'nexus_backend/tests/fixtures/stage16_SYNTHETIC_einvoice_0_3.xml',
@@ -95,6 +96,10 @@ test('无部门企业管理员上传 XML 核对直接提交，由授权会计接
     await expect(intake.getByText(`合成数电票-${marker}.xml`, { exact: true })).toBeVisible();
     await intake.getByRole('button', { name: '解析 XML 并预填', exact: true }).click();
     await expect(intake.getByText('识别建议已就绪', { exact: true })).toBeVisible();
+    await intake
+      .locator('summary')
+      .filter({ hasText: /^查看识别依据/ })
+      .click();
     const candidates = intake.locator('.intake-suggested-field');
     for (const label of ['票面总金额', '票据日期（请核对发生日）', '交易对方']) {
       await candidates
@@ -103,6 +108,7 @@ test('无部门企业管理员上传 XML 核对直接提交，由授权会计接
         .click();
     }
     await intake.getByLabel('事项摘要', { exact: true }).fill(`XML 无部门直提办公用品 ${marker}`);
+    await intake.getByText('更多信息（分类、用途、项目）', { exact: true }).click();
     await intake.getByLabel('事项分类', { exact: true }).selectOption('office');
     await expect(intake.getByLabel('事项金额', { exact: true })).toHaveValue('0.30');
     await expect(intake.getByLabel('交易对方', { exact: true })).toHaveValue('耗材商店');

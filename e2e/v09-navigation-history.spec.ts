@@ -287,9 +287,7 @@ for (const [device, viewport] of [
       .getByRole('button', { name: '月度交付', exact: true })
       .click();
     await expect(page).toHaveURL(/\/workspace\/monthly(?:\?|$)/);
-    await expect(
-      page.getByRole('heading', { name: '每家企业，这个月走到哪里。', exact: true }),
-    ).toBeVisible();
+    await expect(page.getByRole('heading', { name: '客户月度工作', exact: true })).toBeVisible();
     expect(await page.evaluate(() => history.length)).toBe(historyLength + 1);
     await page.goBack();
     await expect(page).toHaveURL(/\/workspace\/revision\?/);

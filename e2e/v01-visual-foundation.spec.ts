@@ -166,7 +166,9 @@ for (const viewport of [
       const response = await route.fetch();
       const data = await response.json();
       // Change only presentation text; keep every server identity and permission.
-      if (data.companies?.length) data.companies[0].company_name = longName;
+      for (const rows of [data.companies, data.coordination]) {
+        if (rows?.length) rows[0].company_name = longName;
+      }
       await route.fulfill({ response, json: data });
     });
     await page.goto('/workspace/firm', { waitUntil: 'domcontentloaded' });

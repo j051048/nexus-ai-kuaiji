@@ -23,6 +23,7 @@ async function create(
   amount = '268.10',
 ) {
   await page.getByRole('button', { name: '录入业务事项', exact: true }).click();
+  await page.locator('.intake-template-picker > summary').click();
   await page.getByRole('button', { name: new RegExp('^' + template.replace('/', '\\/')) }).click();
   // A different book from the default accounting view exercises the draft jump.
   await page.getByLabel('事项客户企业').selectOption({ label: '青屿设计（虚构示例）' });
@@ -30,6 +31,7 @@ async function create(
   await page.getByLabel('事项金额', { exact: true }).fill(amount);
   await page.getByLabel('事项摘要', { exact: true }).fill(description);
   await page.getByLabel('交易对方', { exact: true }).fill('虚构票据供应商');
+  await page.getByText('更多信息（分类、用途、项目）', { exact: true }).click();
   await page.getByLabel('事项分类', { exact: true }).selectOption('office');
   if (template === '日常收支')
     await page.getByLabel('收支方向', { exact: true }).selectOption('income');
@@ -164,8 +166,11 @@ test('采购费用退回重提保留版本和原件', async ({ page }) => {
     .getByRole('button')
     .filter({ has: page.getByText(description, { exact: true }) })
     .click();
-  await expect(page.getByText('请补充采购用途', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: '修改事项', exact: true }).click();
+  await expect(
+    page.getByLabel('本次退回与补充说明').getByText('请补充采购用途', { exact: true }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: '修改并重新提交', exact: true }).click();
+  await page.getByRole('button', { name: '修改信息', exact: true }).click();
   await page.getByLabel('业务用途', { exact: true }).fill('采购办公室耗材，已经补充确认');
   if (
     await page
@@ -175,13 +180,9 @@ test('采购费用退回重提保留版本和原件', async ({ page }) => {
     await page
       .getByText('我已核对原件，确认日期、金额、交易对方与本次业务一致。', { exact: true })
       .click();
-  await page.getByRole('button', { name: '保存修改', exact: true }).click();
+  await page.getByRole('button', { name: '修改后重新提交', exact: true }).click();
   await expect(page.getByRole('dialog', { name: '修改业务事项' })).toHaveCount(0);
-  await page
-    .getByLabel('业务事项详情')
-    .getByRole('button', { name: '提交审批', exact: true })
-    .click();
-  await expect(page.getByRole('status')).toContainText('事项已提交');
+  await expect(page.getByRole('status')).toContainText('事项修改已保存并重新提交');
   await expect(page.getByText('采购办公室耗材，已经补充确认', { exact: true })).toBeVisible();
   await expect(
     page.getByRole('button', { name: '下载附件 ' + receipt.name, exact: true }),

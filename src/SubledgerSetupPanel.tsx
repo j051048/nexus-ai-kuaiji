@@ -12,6 +12,7 @@ interface Props {
   accountLabels?: Record<string, string>;
   onClose: () => void;
   onChanged: () => void;
+  onBusyChange?: (busy: boolean) => void;
 }
 
 interface ControlAccount {
@@ -63,6 +64,7 @@ export function SubledgerSetupPanel({
   accountLabels = {},
   onClose,
   onChanged,
+  onBusyChange,
 }: Props) {
   const [controls, setControls] = useState<ControlAccount[]>([]);
   const [banks, setBanks] = useState<BankAccount[]>([]);
@@ -139,6 +141,7 @@ export function SubledgerSetupPanel({
   async function submit(path: string, body: unknown, success: string) {
     if (busy) return;
     setBusy(true);
+    onBusyChange?.(true);
     setError('');
     setNotice('');
     try {
@@ -151,6 +154,7 @@ export function SubledgerSetupPanel({
       if (live.current) setError(`${errorMessage(failure)} 未保存任何配置；请核对当前版本后重试。`);
     } finally {
       if (live.current) setBusy(false);
+      onBusyChange?.(false);
     }
   }
   async function submitForm(

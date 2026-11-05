@@ -55,6 +55,10 @@ const content = (data: FirmSnapshot, extra = {}) =>
   );
 
 describe('事务所管理工作台聚焦实际业务', () => {
+  it('管理者先看到需要协调的客户，再看全所汇总', () => {
+    const html = content(snapshot());
+    expect(html.indexOf('需要你协调')).toBeLessThan(html.indexOf('全所运营概览'));
+  });
   it('不会把风险分、复核待办或投影陈旧本身解释为客户业务异常', () => {
     expect(coordinationReasons(client({ risk: 99 }))).toEqual([]);
     expect(

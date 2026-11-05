@@ -1,16 +1,18 @@
-"""Loopback SMTP adapter for offline delivery rehearsal.
+"""Loopback rehearsal and explicit opt-in authenticated TLS SMTP adapters.
 
 The dispatcher's own fences decide retries; this module only classifies what the
-server actually said. An accepted SMTP transaction proves the test server took
+server actually said. An accepted SMTP transaction proves the server took
 the message, never that a client read it. Anything ambiguous stays an exception
 so the caller records ``unknown`` instead of retrying.
 """
 
 import socket
 import smtplib
+import ssl
+import hashlib
 from email.message import EmailMessage
 from email.utils import make_msgid
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlencode
 
 from .followups import ChannelDisabled, DeliveryNotSent
 
@@ -47,10 +49,24 @@ class SmtpChannel:
         if not recipient:
             raise DeliveryNotSent("收件人未配置邮箱，消息未发送")
         period, version = payload.get("period", ""), payload.get("package_version")
-        link = (
-            f"{self.base_url}/workspace/monthly?book={payload.get('book_id', '')}&period={period}"
+        query = {"book": payload.get("book_id", ""), "period": period}
+        if payload.get("package_id"):
+            query.update(
+                package=payload["package_id"],
+                package_version=version,
+                manifest_sha256=payload.get("manifest_sha256", ""),
+            )
+        link = f"{self.base_url}/workspace/monthly?{urlencode(query)}"
+        # Stable tracing identifier is not a claim that SMTP supports idempotency.
+        number = (
+            (
+                "<"
+                + hashlib.sha256(str(payload["notification_id"]).encode()).hexdigest()
+                + "@nexus-notice>"
+            )
+            if payload.get("notification_id")
+            else make_msgid(domain="smtp.local")
         )
-        number = make_msgid(domain="smtp.local")
         text = (
             f"贵司 {period} 月度财税简报第 {version} 版已准备好。\n\n"
             f"请登录后查看：{link}\n\n"
@@ -67,16 +83,22 @@ class SmtpChannel:
         message.set_content(text)
         return message, recipient
 
+    def _connect(self):
+        return smtplib.SMTP(self.host, self.port, timeout=self.timeout)
+
+    def _prepare(self, client):
+        client.ehlo()
+
     def deliver(self, payload):
         message, recipient = self.message(payload)
         try:
-            client = smtplib.SMTP(self.host, self.port, timeout=self.timeout)
+            client = self._connect()
         except (OSError, smtplib.SMTPException) as failure:
             # Nothing was written to the wire; a refused connection is provably unsent.
             raise DeliveryNotSent(f"SMTP 连接失败：{type(failure).__name__}") from failure
         try:
             try:
-                client.ehlo()
+                self._prepare(client)
             except (OSError, smtplib.SMTPException) as failure:
                 raise DeliveryNotSent(f"SMTP 握手失败：{type(failure).__name__}") from failure
             try:
@@ -97,3 +119,44 @@ class SmtpChannel:
             except Exception:
                 pass
         return "smtp:" + str(message.get("Message-ID", ""))[:400]
+
+
+class SecureSmtpChannel(SmtpChannel):
+    """Explicit opt-in SMTPS, certificate verification mandatory, no plaintext fallback."""
+
+    name = "smtp_tls"
+
+    def __init__(
+        self,
+        host,
+        port=465,
+        sender="noreply@example.invalid",
+        base_url="",
+        timeout=10,
+        username="",
+        password="",
+    ):
+        # Reuse bounds/address checks without relaxing the loopback-only adapter.
+        super().__init__("127.0.0.1", port, sender, base_url, timeout)
+        parsed = urlparse(base_url)
+        if (
+            not host
+            or not username
+            or not password
+            or parsed.scheme != "https"
+            or parsed.username
+            or parsed.password
+            or parsed.query
+            or parsed.fragment
+            or any(char in str(host) + sender + username for char in "\r\n")
+        ):
+            raise ChannelDisabled("安全邮件通道需要完整配置及 HTTPS 应用地址")
+        self.host, self.username, self._password = host, username, password
+
+    def _connect(self):
+        return smtplib.SMTP_SSL(
+            self.host, self.port, timeout=self.timeout, context=ssl.create_default_context()
+        )
+
+    def _prepare(self, client):
+        client.login(self.username, self._password)

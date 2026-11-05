@@ -56,5 +56,9 @@ class AccountRequestRetry(InputModel):
     )
 
 
+class AccountBatchPreview(InputModel):
+    items: list[dict] = Field(min_length=1, max_length=50)
+
+
 class AccountRequestAccept(InputModel):
     token: StrictStr = Field(min_length=32, max_length=160, repr=False)

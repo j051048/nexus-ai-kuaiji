@@ -150,7 +150,11 @@ for (const viewport of [
     await choosePersona(page, 'employee');
     const primary = page.getByRole('region', { name: '提交与进度', exact: true });
     await expect(primary).toBeVisible();
-    await expect(page.locator('.workspace-inbox .pagination-controls')).toBeVisible();
+    await expect(
+      page
+        .locator('.workspace-inbox .workspace-task-list, .workspace-inbox .workspace-clear')
+        .first(),
+    ).toBeVisible();
     await page.screenshot({ path: `${output}/employee-home-${device}.png`, fullPage: true });
     await recordHome(page, reads);
     await expect(primary.getByRole('button')).toHaveCount(3);
@@ -187,7 +191,8 @@ for (const viewport of [
     ).toBeVisible();
     const summary = page.getByRole('region', { name: '我的工作概览', exact: true });
     const needs = summary.getByRole('button', { name: /需要我处理/ });
-    await expect(needs.locator('strong')).toHaveText('—');
+    await expect(needs.locator('strong')).toHaveCount(0);
+    await expect(needs).toContainText('查看清单');
     await expect(needs).toContainText('数量暂未汇总');
     const next = primary.getByRole('button', { name: '核验下一项', exact: true });
     const other = primary.getByRole('button', { name: '查看待核验事项', exact: true });
@@ -216,12 +221,13 @@ for (const viewport of [
     await page.route(/\/api\/firm\/cockpit(\?|$)/, async (route) => {
       const response = await route.fetch();
       const data = await response.json();
-      if (data.companies?.length) {
-        data.companies[0] = {
-          ...data.companies[0],
+      for (const rows of [data.companies, data.coordination]) {
+        if (!rows?.length) continue;
+        rows[0] = {
+          ...rows[0],
           company_name: companyName,
           stage: 'review',
-          tasks: { ...data.companies[0].tasks, overdue: 2, exception: 1 },
+          tasks: { ...rows[0].tasks, overdue: 2, exception: 1 },
         };
       }
       await route.fulfill({ response, json: data });
@@ -266,8 +272,12 @@ test('事务所空态：保持原有开通路径，不凭空出现客户完成�
       response,
       json: {
         ...data,
-        summary: { ...data.summary, clients: 0, opened: 0, closed: 0 },
+        summary: Object.fromEntries(Object.keys(data.summary).map((key) => [key, 0])),
         companies: [],
+        coordination: [],
+        pagination: { ...data.pagination, total: 0, has_more: false },
+        assignments: { ...data.assignments, total: 0, people_total: 0, people: [], stale: false },
+        stages: {},
         workload: [],
         risks: [],
       },

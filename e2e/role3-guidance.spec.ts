@@ -268,11 +268,11 @@ test('退回事项展示真实原因并回到同一事项修改，员工不能�
   await page.goto(`/workspace/business?event=${fixture.event.id}`, {
     waitUntil: 'domcontentloaded',
   });
-  const guide = page.getByRole('region', { name: '事项办理引导' });
+  const guide = page.getByRole('region', { name: '本次退回与补充说明' });
   await expect(guide).toContainText(reason);
-  await expect(guide).toContainText('修改事项');
+  await expect(guide).toContainText('修改并重新提交');
   await expect(page.getByRole('button', { name: '财务核验通过', exact: true })).toHaveCount(0);
-  await page.getByRole('button', { name: '修改事项', exact: true }).click();
+  await guide.getByRole('button', { name: '修改并重新提交', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: '修改业务事项', exact: true });
   await expect(dialog.getByRole('region', { name: '员工录入引导' })).toContainText('尚未提交');
   await expect(dialog.getByLabel('事项摘要', { exact: true })).toHaveValue(

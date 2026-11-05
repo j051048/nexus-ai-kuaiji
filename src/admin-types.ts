@@ -38,11 +38,15 @@ export interface AdminAuditEvent {
   created_at: string;
 }
 export interface AccountRequest {
+  activation_expired?: boolean;
+  expires_at?: number;
   id: string;
   email: string;
   name: string;
   status: 'pending' | 'awaiting_activation' | 'completed' | 'failed' | 'cancelled';
   provisioning_mode?: 'activation' | 'password';
+  company_id?: string | null;
+  department_id?: string | null;
   company_role?: string;
   firm_role?: string;
   error?: string;

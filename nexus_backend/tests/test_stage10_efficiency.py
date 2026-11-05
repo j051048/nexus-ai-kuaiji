@@ -99,7 +99,8 @@ def test_audited_review_metrics_do_not_claim_unknown_accuracy_or_work_savings(se
     assert empty["review"]["reviewed_drafts"] == 0 and empty["human"]["credited_seconds"] == 0
     draft = make_draft(service, book)
     edited = service.update_draft(LOCAL_ACTOR, book, draft["id"], DraftUpdate(expected_version=draft["version"], description="更正摘要", lines=draft["lines"]))
-    service.approve(LOCAL_ACTOR, book, draft["id"], ApprovalRequest(expected_version=edited["version"]))
+    reviewer = add_actor(service, user_id="efficiency-independent-reviewer", firm_id=LOCAL_ACTOR.firm_id, role="reviewer", book_id=book)
+    service.approve(reviewer, book, draft["id"], ApprovalRequest(expected_version=edited["version"]))
     value = efficiency.overview(LOCAL_ACTOR, book)
     assert value["review"] == {"reviewed_drafts": 1, "without_recorded_correction": 0, "with_recorded_correction": 1, "company_rule_covered": 0}
     assert value["human"]["credited_seconds"] == 0

@@ -63,6 +63,26 @@ export function packageFromSearch(search: string): string {
   return /^[0-9a-fA-F-]{8,64}$/.test(wanted) ? wanted : '';
 }
 
+export function packageLinkIdentity(
+  search: string,
+): { id: string; version: number; fingerprint: string } | undefined {
+  const params = new URLSearchParams(search);
+  if (!params.has('package_version') && !params.has('manifest_sha256')) return undefined;
+  const id = packageFromSearch(search),
+    version = params.get('package_version') || '',
+    fingerprint = params.get('manifest_sha256') || '';
+  if (
+    !id ||
+    params.getAll('package_version').length !== 1 ||
+    params.getAll('manifest_sha256').length !== 1 ||
+    !/^[1-9]\d*$/.test(version) ||
+    !Number.isSafeInteger(Number(version)) ||
+    !/^[a-f0-9]{64}$/.test(fingerprint)
+  )
+    throw new Error('通知链接的资料包版本无法核验，请从消息页重新打开。');
+  return { id, version: Number(version), fingerprint };
+}
+
 export interface ReadRecovery {
   retryable: boolean;
   message: string;

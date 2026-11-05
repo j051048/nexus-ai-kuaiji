@@ -151,7 +151,10 @@ for (const viewport of [
       .getByRole('button', { name: /提交报销/ })
       .click();
     const dialog = page.getByRole('dialog', { name: '录入业务事项', exact: true });
+    await expect(dialog.locator('.intake-template-description').first()).not.toBeVisible();
+    await dialog.locator('.intake-template-picker > summary').click();
     await expect(dialog.locator('.intake-template-description').first()).toBeVisible();
+    await dialog.locator('.intake-template-picker > summary').click();
     await dialog.getByLabel('事项摘要', { exact: true }).fill('V03 虚构报销草稿，不提交');
     await dialog.getByLabel('事项金额', { exact: true }).fill('123456789.01');
     await dialog.getByLabel('交易对方', { exact: true }).fill(longName);
@@ -192,6 +195,19 @@ for (const viewport of [
     const fixture = await reviewFixture(request);
     await page.setViewportSize(viewport);
     const drawer = await openReview(page, fixture.book.id);
+    expect(
+      await drawer
+        .locator('.inline-review-source')
+        .evaluate(
+          (node) =>
+            !!(
+              node.compareDocumentPosition(document.querySelector('.review-term-help')!) &
+              Node.DOCUMENT_POSITION_FOLLOWING
+            ),
+        ),
+    ).toBe(true);
+    await expect(drawer.locator('details.inline-review-rationale')).toHaveCount(1);
+    await expect(drawer.locator('details.inline-review-rationale')).not.toHaveAttribute('open');
     const original = drawer.getByRole('img', { name: /原始票据 V03 虚构原件/ });
     await expect(original).toBeVisible();
     await expect

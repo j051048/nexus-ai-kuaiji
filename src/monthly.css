@@ -3,6 +3,54 @@
   gap: 22px;
   min-width: 0;
 }
+.monthly-focus {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.monthly-focus button {
+  min-height: 44px;
+  padding: 8px 14px;
+  border: 1px solid var(--line);
+  background: var(--surface, #fffefa);
+  color: var(--text);
+  border-radius: 6px;
+}
+.monthly-focus button[aria-pressed='true'] {
+  background: var(--brand-soft);
+  border-color: var(--brand);
+  color: var(--brand);
+  font-weight: 700;
+}
+.monthly-work-next {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+  background: var(--brand-soft);
+}
+.monthly-work-next span {
+  display: block;
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+.monthly-work-next p {
+  margin: 4px 0 0;
+  font-size: var(--font-size-sm);
+}
+@media (max-width: 640px) {
+  .monthly-work-next {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .monthly-work-next button {
+    min-height: 44px;
+  }
+}
 .monthly-workbench.embedded {
   gap: 14px;
   padding: 0 18px 18px;
@@ -483,6 +531,16 @@ button.monthly-progress-cell:hover {
   gap: 10px;
   flex-wrap: wrap;
   align-items: center;
+}
+@media (max-width: 640px) {
+  .monthly-workbench > .page-heading {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .monthly-heading-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 .batch-dialog {
   display: grid;

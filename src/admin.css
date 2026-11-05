@@ -455,6 +455,23 @@
   margin-top: 30px;
   padding-top: 20px;
 }
+.bulk-employee-invites > label {
+  display: grid;
+  gap: var(--space-2);
+  margin-block: var(--space-3);
+  min-width: 0;
+  max-width: 42rem;
+}
+.bulk-employee-invites select,
+.bulk-employee-invites textarea,
+.bulk-employee-invites li input {
+  min-width: 0;
+  width: 100%;
+}
+.bulk-employee-invites li {
+  overflow-wrap: anywhere;
+  margin-block: var(--space-2);
+}
 .admin-provisions h3,
 .admin-activation-link h3 {
   font-size: 14px;

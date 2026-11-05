@@ -66,6 +66,12 @@ jobs:
           for major in 16 17; do
             python scripts/test_accounting_postgres_isolated.py --config "$P01_RUN_DIRECTORY/pg$major-recovery_source.json" nexus_backend/tests/test_next_p0_receipts_postgres.py -p scripts.qa_no_skip -q --junitxml="tmp_test/p01-ci-acceptance/reports/next-receipts-pg$major.xml"
           done
+      - name: Message privacy and business preparation on PG16 and PG17, zero skips
+        run: |
+          set -euo pipefail
+          for major in 16 17; do
+            python scripts/test_accounting_postgres_isolated.py --config "$P01_RUN_DIRECTORY/pg$major-recovery_source.json" nexus_backend/tests/test_ux01_03_postgres.py -p scripts.qa_no_skip -q --junitxml="tmp_test/p01-ci-acceptance/reports/ux01-03-pg$major.xml"
+          done
       - name: Real PG and signed-identity browser journey, exact eight cases
         run: python scripts/p02_browser_gate.py --config-dir "$P01_RUN_DIRECTORY" --out tmp_test/p02-ci-browser
       - name: Stop only this run's bridge and owned clusters, retain data
@@ -106,5 +112,6 @@ jobs:
             tmp_test/p01-ci-acceptance/reports/**/*.json
             tmp_test/p01-ci-acceptance/reports/qa-pg*.xml
             tmp_test/p01-ci-acceptance/reports/next-receipts-pg*.xml
+            tmp_test/p01-ci-acceptance/reports/ux01-03-pg*.xml
             tmp_test/p02-ci-browser/summary.json
           if-no-files-found: error

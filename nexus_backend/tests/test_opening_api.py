@@ -94,6 +94,21 @@ def test_opening_http_policy_account_package_and_permission(tmp_path):
             },
         )
         assert version.status_code == 201, version.text
+        for path, key, identifier in [
+            (
+                f"/api/opening/packages/{package.json()['package']['id']}",
+                "package",
+                package.json()["package"]["id"],
+            ),
+            (
+                f"/api/opening/versions/{version.json()['version']['id']}",
+                "version",
+                version.json()["version"]["id"],
+            ),
+        ]:
+            fetched = client.get(path, headers=headers)
+            assert fetched.status_code == 200 and fetched.json()[key]["id"] == identifier
+            assert client.get(path, headers=auth(client, "employee")).status_code in {403, 404}
         validated = client.post(
             f"/api/opening/versions/{version.json()['version']['id']}/validate",
             headers=headers,

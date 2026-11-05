@@ -1112,6 +1112,15 @@ class WorkspaceService:
         )
         return ctes + ", tasks AS (" + " UNION ALL ".join(parts) + ") ", params
 
+    def authorized_task_query(self, conn, actor):
+        """Shared live authorization + dirty-projection fallback for task consumers."""
+        gates = self._task_gates(conn, actor)
+        if gates[2]:
+            return self._projected_query(conn, actor, gates)
+        if self.refresher is not None:
+            self.refresher.wake(actor.firm_id)
+        return self._query(conn, actor, gates)
+
     def list(
         self,
         actor,

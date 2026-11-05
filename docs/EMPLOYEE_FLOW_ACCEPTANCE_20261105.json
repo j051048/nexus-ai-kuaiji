@@ -1,0 +1,96 @@
+{
+  "schema_version": 1,
+  "date": "2026-11-05",
+  "status": "passed_local",
+  "head": "c0a9931471e79f5d20e2c572ff8c957be522c22f",
+  "source_scope": "This round frontend and tests only; does not represent a production release fingerprint",
+  "source_sha256": {
+    "src/WorkspaceHome.tsx": "ce66cd6b1766508cf59da5feba724c301ef07b59d2d87d8bb90c443b4253e751",
+    "src/IntakeWizard.tsx": "07c225a088a306ebdc7866aec06f68d71fc7d1b6b37b7c5df34373058189869d",
+    "src/BusinessWorkspace.tsx": "a1fe5fadf015dcfd2a46e3515803cb818ac4399caf6b60fcba7d8653b3f9d28a",
+    "src/ReturnedBusinessNotice.tsx": "f40fad61f7a7e8365f6183cae3095afd16ed3bf72983c3885779d36d196d785b",
+    "src/workspace.css": "6cce9751b5d8355d27fd2b8f457860ddb5eaa1b66c830d876640674f1fbc5192",
+    "src/intake.css": "2154ab7b23bf8e0dd5a81c9f7dca6eba03c6d0054fcaaafd0c6e9a9859a692b1",
+    "src/workspace-home-focus-render.test.ts": "d2a4ba645b3620a124a3dfb3ee600fab6c01ee3b7d78d00944b7c4f5a911cec8",
+    "src/employee-intake-render.test.ts": "fb9bc54bb997852aecd952e44ffcf5e48eda343eaa782307453c76519178a8e8",
+    "e2e/employee-flow.spec.ts": "3bd8a95ad832e77a60d5a923c383fcca3e5ebcfeaa4d868ac92b890688e5a7b4",
+    "e2e/business.spec.ts": "85c25fcd3932ecc8f6f1765d68283de92ff36c1e9d02e7a481fbb8bc9080b37e",
+    "e2e/role3-guidance.spec.ts": "78eaebb5ab7444f5ee2e78859b319261ccad57eb8c6c9c30ed5936eb476e7e18",
+    "e2e/batch1-submission.spec.ts": "28f507e7da3c9631fdd885f87fa35d89bc6112905b13c1e7f285764ab305ef8c",
+    "e2e/v02-role-workspaces.spec.ts": "64589c73032ca0cbe119b6c3d210138199fe22fa10e2b143d03df4f94309cd90",
+    "e2e/v03-entry-review.spec.ts": "ed9f9ce5bd22a05bef055a0e479c90a129426d37636a5e8a3fdfbe411cd50dbb"
+  },
+  "ownership": {
+    "baseline_head": "c0a9931471e79f5d20e2c572ff8c957be522c22f",
+    "current_head": "c0a9931471e79f5d20e2c572ff8c957be522c22f",
+    "original_dirty_count": 124,
+    "changed_existing": [
+      "e2e/batch1-submission.spec.ts",
+      "e2e/v02-role-workspaces.spec.ts",
+      "e2e/v03-entry-review.spec.ts",
+      "src/BusinessWorkspace.tsx",
+      "src/IntakeWizard.tsx",
+      "src/WorkspaceHome.tsx",
+      "src/workspace-home-focus-render.test.ts",
+      "src/workspace.css"
+    ],
+    "unexpected_changes": [],
+    "untouched_existing": 116
+  },
+  "verification": {
+    "frontend": {
+      "passed": 1242,
+      "files": 130
+    },
+    "backend": {
+      "passed": 74,
+      "database": "SQLite",
+      "warnings": 1
+    },
+    "browser": {
+      "browser": "Chromium",
+      "real_device": false,
+      "passed": 46,
+      "new_screenshots": [
+        "1280x844",
+        "390x844"
+      ]
+    },
+    "typecheck": "passed via npm run build",
+    "build": "passed with task-local TEMP/TMP",
+    "lint": "passed",
+    "changed_file_format": "passed",
+    "diff_check": "passed"
+  },
+  "boundaries": {
+    "postgres_retested": false,
+    "real_model_called": false,
+    "backend_modified": false,
+    "production_accessed": false,
+    "real_notifications_sent": false,
+    "pushed": false,
+    "committed": false,
+    "migrations_modified": false,
+    "c01_modified": false
+  },
+  "evidence_sha256": {
+    "tmp_test/employee-flow-20261105/baseline.json": "d3b7d32438d8bbc20a06465f7987883b487416a09236cf03646e1a1d825fc68d",
+    "tmp_test/employee-flow-20261105/ownership.json": "b0e52cfb41b1c0fb2fcf61a4c320586051c93b83eb3773c7007426953f8fe663",
+    "tmp_test/employee-flow-20261105/red-unit.txt": "1d4d0b755538570687c2ef19373d4a87efbc7c8dffb2753a0ee7dc0f364dc32f",
+    "tmp_test/employee-flow-20261105/red-browser-valid.txt": "60f8229bc11934b6537e04baf492d3687a32423fe2ce9c337eb36d0adbacddd2",
+    "tmp_test/employee-flow-20261105/red-recovery.txt": "8ee0d14daf7bd96d6b97e926034dbf5cd86690e8bf2e87f02d35c215f3eb7626",
+    "tmp_test/employee-flow-20261105/red-first-task-viewport.txt": "ebc05cab2fcc9e888c8295375094e9878710b84d031fda0419cb03951ef12f44",
+    "tmp_test/employee-flow-20261105/frontend-complete.txt": "c7bfe8e506b3b66541600551278d637dce1dab497cf2dcf7390746af03ca587a",
+    "tmp_test/employee-flow-20261105/backend.txt": "3c61966c60f21dfc6a358a9491cc5d174a0827eb288703ca5355525904d7dd1e",
+    "tmp_test/employee-flow-20261105/backend.xml": "a5fd349da18e7c941a1bc1c5e09d76f0efa76118f55bb40bf93132d5010cc823",
+    "tmp_test/employee-flow-20261105/browser-accepted.txt": "52016a8da7814980055f10d190688766ae72e85ba5c8a3b9d99c91969fa3dae7",
+    "tmp_test/employee-flow-20261105/build-complete.txt": "bc0cea426d951c04f304a5309d4fef91c94effa2e30c4c71b90fc74a0d0d80f5",
+    "tmp_test/employee-flow-20261105/lint-complete.txt": "40ab6beca86553a912feee15d9332f1217a3d627b3120b1406f4a494af0d2444",
+    "tmp_test/employee-flow-20261105/home-1280.png": "86eb5f700373c90cf46217e8698b4f56c5c8253a3ac401fdcf39dd4a88c9615e",
+    "tmp_test/employee-flow-20261105/home-390.png": "f9b001f8a53415d00050c73803fd945acf2df55c02e7c57583909d78ced5ffb0",
+    "tmp_test/employee-flow-20261105/confirm-1280.png": "756cfde89338f5401d0b40bb231dcf49c42d4d401c6e9b79d369f4f32e08ba39",
+    "tmp_test/employee-flow-20261105/confirm-390.png": "5461cd0418431ac7e815d6d98d76abb5a88dff92b89e9b1f6e55063cbbea07e2",
+    "tmp_test/employee-flow-20261105/returned-1280.png": "7d227ddef45aa23002e735af0e00acab89d7624e5b015a7abf73e1684fd230c2",
+    "tmp_test/employee-flow-20261105/returned-390.png": "100f138a38d6ba1df1bc127d8d5b5ef60ceb500f0871e7655238c777a5ea0b65"
+  }
+}

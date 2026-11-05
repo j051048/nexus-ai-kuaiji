@@ -17,6 +17,16 @@ const guide: WorkflowGuidance = {
 };
 
 describe('工作流程引导的公共展示契约', () => {
+  it('复核紧凑模式保留风险和下一步，只折叠步骤说明', () => {
+    const html = renderToStaticMarkup(
+      createElement(WorkflowGuide, { label: '会计复核引导', guide, compact: true }),
+    );
+    expect(html.indexOf('金额存在差异')).toBeLessThan(html.indexOf('<details'));
+    expect(html).toMatch(
+      /<details><summary>查看复核步骤与说明<\/summary><h3>先核对，再移交<\/h3><ol/,
+    );
+    expect(html).not.toMatch(/<details[^>]*\bopen/);
+  });
   it('用有序步骤和唯一当前步骤说明阻断，保留原始业务状态', () => {
     const html = renderToStaticMarkup(createElement(WorkflowGuide, { label: '核验引导', guide }));
     expect(html).toContain('aria-label="核验引导"');

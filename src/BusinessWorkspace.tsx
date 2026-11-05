@@ -41,9 +41,11 @@ import type {
 } from './business-types';
 import type { Book, Pagination, Session } from './types';
 import { BusinessOrganization } from './BusinessOrganization';
+import { BusinessPreparation } from './BusinessPreparation';
 import { IntelligencePanel } from './IntelligencePanel';
 import { QueueBatchDialog } from './QueueBatchDialog';
 import { IntakeWizard } from './IntakeWizard';
+import { ReturnedBusinessNotice } from './ReturnedBusinessNotice';
 import { WorkflowGuide } from './WorkflowGuide';
 import { businessGuidance, businessHandoffNotice, businessStatusLabel } from './business-guidance';
 import { BusinessRecordLinks } from './BusinessRecordLinks';
@@ -889,18 +891,32 @@ export function BusinessWorkspace({
                   {selected.applicant_name || '申请人'}
                 </p>
               </div>
-              <WorkflowGuide
-                label="事项办理引导"
-                guide={businessGuidance(selected, {
-                  busy: !!busy,
-                  error,
-                  booksLoading,
-                  booksError: currentBooksError,
-                  booksReady,
-                  hasEligibleBook: eligibleBooks.length > 0,
-                  selectedBookEligible: eligibleBooks.some((book) => book.id === handoffBookId),
-                })}
-              />
+              <ReturnedBusinessNotice event={selected}>
+                {selected.permissions.edit && (
+                  <button
+                    type="button"
+                    className="button primary"
+                    disabled={!!busy}
+                    onClick={() => setEditEvent(selected)}
+                  >
+                    修改并重新提交
+                  </button>
+                )}
+              </ReturnedBusinessNotice>
+              {selected.status !== 'returned' && (
+                <WorkflowGuide
+                  label="事项办理引导"
+                  guide={businessGuidance(selected, {
+                    busy: !!busy,
+                    error,
+                    booksLoading,
+                    booksError: currentBooksError,
+                    booksReady,
+                    hasEligibleBook: eligibleBooks.length > 0,
+                    selectedBookEligible: eligibleBooks.some((book) => book.id === handoffBookId),
+                  })}
+                />
+              )}
               {(selected.permissions.finance_approve || selected.permissions.handoff) && (
                 <TermHelp term="draft" />
               )}
@@ -938,6 +954,15 @@ export function BusinessWorkspace({
                   </div>
                 )}
               </dl>
+              {!selected.mapping && (
+                <BusinessPreparation
+                  session={session}
+                  companyId={selected.company_id}
+                  occurredOn={selected.payload.occurred_on}
+                  version={selected.version}
+                  onRecheck={() => void loadCompanyBooks()}
+                />
+              )}
               <BusinessRecordLinks
                 event={selected}
                 book={mappedBook}
@@ -980,7 +1005,7 @@ export function BusinessWorkspace({
                 {!selected.attachments.length && (
                   <p className="field-help">至少上传 1 个原始附件后才能提交审批。</p>
                 )}
-                {selected.permissions.edit && (
+                {selected.permissions.edit && selected.status !== 'returned' && (
                   <>
                     <input
                       ref={attachmentInput}
@@ -1021,8 +1046,8 @@ export function BusinessWorkspace({
                 }}
               />
               {!!selected.actions.length && (
-                <div className="business-history">
-                  <h4>审批记录</h4>
+                <details className="business-history" open={selected.status !== 'returned'}>
+                  <summary>查看审批记录</summary>
                   {selected.actions.map((action, index) => (
                     <div key={index}>
                       <span className="small-dot" />
@@ -1049,7 +1074,7 @@ export function BusinessWorkspace({
                       </p>
                     </div>
                   ))}
-                </div>
+                </details>
               )}
               {!!selected.versions?.length && (
                 <details className="business-versions">
@@ -1141,7 +1166,7 @@ export function BusinessWorkspace({
                     修改事项
                   </button>
                 )}
-                {selected.permissions.submit && (
+                {selected.permissions.submit && selected.status !== 'returned' && (
                   <button
                     type="button"
                     className="button primary"
@@ -1220,7 +1245,7 @@ export function BusinessWorkspace({
                       <p className="field-help">
                         {booksHaveMore
                           ? '本页没有可交接账套，可继续读取本企业该期间的账套。'
-                          : '当前没有该企业在事项发生期间的开放且可编辑账套，请联系管理员授权。'}
+                          : '尚无可选择的交接账套，请查看上方“交接准备”的具体原因并重新检查。'}
                       </p>
                     )}
                     <button
@@ -1299,6 +1324,10 @@ export function BusinessWorkspace({
           session={session}
           context={context}
           initialEvent={editEvent}
+          onAccessLost={() => {
+            selectionEpoch.current += 1;
+            setSelected(null);
+          }}
           onBusyChange={changeOrganizationBusy}
           onClose={() => setEditEvent(null)}
           onCompleted={(event) => {

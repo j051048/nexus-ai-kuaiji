@@ -5,7 +5,6 @@ from contextlib import ExitStack
 import json
 import os
 from pathlib import Path
-import socket
 import subprocess
 import sys
 import time
@@ -15,6 +14,7 @@ import xml.etree.ElementTree as ET
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from scripts.release_candidate import candidate_fingerprint
+from scripts.p01_local_recovery_env import port_is_occupied
 
 
 def validate_result(path):
@@ -52,8 +52,8 @@ def run(config_dir, output, node="node"):
         raise ValueError("Explicit isolated run configuration required")
     # Never attach to or terminate a developer's server.
     for port in (18100, 18180, 25511):
-        with socket.socket() as probe:
-            probe.bind(("127.0.0.1", port))
+        if port_is_occupied(port):
+            raise ValueError("Local browser acceptance port already has a listener")
     output.mkdir(parents=True)
     before = candidate_fingerprint(ROOT)
     report = {"status": "failed", "candidate": before}

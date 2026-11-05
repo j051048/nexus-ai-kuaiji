@@ -101,7 +101,8 @@ describe('V02 employee and finance workspaces', () => {
   it('explains unknown action counts while preserving known zero and selected filter semantics', () => {
     const unknown = render('employee');
     expect(unknown).toContain('数量暂未汇总，以当前清单为准');
-    expect(unknown).toContain('<strong>—</strong>');
+    expect(unknown).not.toContain('<strong>—</strong>');
+    expect(unknown).toContain('查看清单');
     const known = render('employee', { action: 0, waiting: 0 });
     expect(known).not.toContain('数量暂未汇总');
     expect(known).toContain('<strong>0</strong>');

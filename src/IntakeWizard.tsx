@@ -32,11 +32,13 @@ import type {
 } from './business-types';
 import type { Session } from './types';
 import type { IntakeDraft, IntakeRun } from './intake-types';
-import { changeIntakeTemplate, intakeCandidates } from './intake-helpers';
+import { changeIntakeTemplate, intakeCandidates, prefillIntake } from './intake-helpers';
 import { directUploadLimitLabel } from './transport-limits';
 import { WorkflowGuide } from './WorkflowGuide';
 import { intakeGuidance } from './intake-guidance';
 import { TermHelp } from './TermHelp';
+import { BusinessPreparation } from './BusinessPreparation';
+import { ReturnedBusinessNotice } from './ReturnedBusinessNotice';
 import './intake.css';
 
 export function IntakeWizard({
@@ -45,6 +47,7 @@ export function IntakeWizard({
   onClose,
   onCompleted,
   onBusyChange,
+  onAccessLost,
   initialDraftId = '',
   initialTemplate = 'reimbursement',
   initialEvent,
@@ -55,6 +58,7 @@ export function IntakeWizard({
   onClose: () => void;
   onCompleted: (event: BusinessEvent) => void;
   onBusyChange: (value: boolean) => void;
+  onAccessLost?: () => void;
   initialDraftId?: string;
   initialTemplate?: BusinessTemplate;
   initialEvent?: BusinessEvent;
@@ -68,6 +72,10 @@ export function IntakeWizard({
   const dialog = useRef<HTMLDialogElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const photoInput = useRef<HTMLInputElement>(null);
+  const amountInput = useRef<HTMLInputElement>(null);
+  const descriptionInput = useRef<HTMLInputElement>(null);
+  const uploadButton = useRef<HTMLButtonElement>(null);
+  const extraFields = useRef<HTMLDetailsElement>(null);
   const [editing, setEditing] = useState<BusinessEvent | null>(initialEvent ?? null);
   const [companyId, setCompany] = useState(initialEvent?.company_id ?? companies[0]?.id ?? '');
   const company = companies.find((item) => item.id === companyId);
@@ -87,6 +95,8 @@ export function IntakeWizard({
   const [busy, setBusy] = useState('');
   const [saveState, setSaveState] = useState('内容与原件仅保存在当前账号获授权的企业');
   const [error, setError] = useState('');
+  const [accessLost, setAccessLost] = useState(false);
+  const [needsRefresh, setNeedsRefresh] = useState(false);
   const [failureInfo, setFailureInfo] = useState<ErrorPresentation | null>(null);
   const [confirmed, setConfirmed] = useState(false);
   const [touched, setTouched] = useState(false);
@@ -106,12 +116,21 @@ export function IntakeWizard({
   const pendingCreate = useRef<{ key: string; body: object; signature: string } | null>(null);
   const completeKey = useRef<{ signature: string; key: string } | null>(null);
   const recognizeKeys = useRef(new Map<string, string>());
+  const editedFields = useRef(
+    new Set<string>(initialEvent ? Object.keys(initialEvent.payload) : []),
+  );
+  const pendingPrefill = useRef<{ draft: IntakeDraft; runId: string } | null>(null);
+  const [prefillNotice, setPrefillNotice] = useState('');
   const completionRef = useRef(false);
   useEffect(() => {
     dialog.current?.showModal();
     active.current = true;
     const controller = new AbortController();
-    if (initialEvent) return;
+    if (initialEvent)
+      return () => {
+        active.current = false;
+        controller.abort();
+      };
     void api<{ drafts: IntakeDraft[] }>('/intake/drafts', session, { signal: controller.signal })
       .then((value) => {
         if (active.current)
@@ -140,7 +159,16 @@ export function IntakeWizard({
         signal: controller.signal,
       })
         .then((value) => {
-          if (!disposed && active.current) adopt(value);
+          if (
+            !disposed &&
+            active.current &&
+            draftRef.current?.id === draft.id &&
+            value.id === draft.id &&
+            value.company_id === draft.company_id
+          ) {
+            applyPrefill(value);
+            adopt(value);
+          }
         })
         .catch((failure) => {
           if (!disposed && !controller.signal.aborted) setError(errorMessage(failure));
@@ -157,6 +185,30 @@ export function IntakeWizard({
     return () => onBusyChange(false);
   }, [busy, onBusyChange]);
 
+  function applyPrefill(value: IntakeDraft) {
+    const pending = pendingPrefill.current;
+    if (
+      !pending ||
+      !value.runs.some((item) => item.id === pending.runId && item.status !== 'running')
+    )
+      return;
+    pendingPrefill.current = null;
+    if (
+      draftRef.current?.id !== pending.draft.id ||
+      templateRef.current !== pending.draft.template_id
+    )
+      return;
+    const before = fieldRef.current;
+    const next = prefillIntake(pending.draft, value, pending.runId, before, editedFields.current);
+    if (JSON.stringify(before) !== JSON.stringify(next)) {
+      fieldRef.current = next;
+      setFields(next);
+      setTouched(true);
+      setConfirmed(false);
+      setPrefillNotice('已预填未修改的日期、金额或交易对方，请对照原件确认；你填写的内容已保留。');
+    }
+  }
+
   function adopt(value: IntakeDraft, replaceFields = false) {
     if (lockedCompanyId && value.company_id !== lockedCompanyId)
       throw new Error('当前资料请求只接受所属企业的事项，请重新选择草稿。');
@@ -165,6 +217,9 @@ export function IntakeWizard({
     setCompany(value.company_id);
     setDepartment(value.department_id ?? '');
     if (replaceFields) {
+      pendingPrefill.current = null;
+      editedFields.current = new Set(Object.keys(value.fields));
+      setPrefillNotice('');
       setCompany(value.company_id);
       setDepartment(value.department_id ?? '');
       setTemplate(value.template_id);
@@ -261,7 +316,7 @@ export function IntakeWizard({
     return value;
   }
   async function run(name: string, action: () => Promise<void>) {
-    if (lock.current) return;
+    if (lock.current || accessLost) return;
     lock.current = true;
     setBusy(name);
     setError('');
@@ -271,6 +326,9 @@ export function IntakeWizard({
     } catch (failure) {
       if (!active.current) return;
       if (failure instanceof ApiError && [401, 403, 404].includes(failure.status)) {
+        setAccessLost(true);
+        setEditing(null);
+        onAccessLost?.();
         setDraft(null);
         draftRef.current = null;
         pendingCreate.current = null;
@@ -280,15 +338,22 @@ export function IntakeWizard({
         setSavedDrafts([]);
         setConfirmed(false);
         setTouched(false);
+        setPrefillNotice('');
+        setSaveState('当前资料已隐藏，请关闭后重新确认权限。');
       }
       const uncertain =
         failure instanceof TypeError ||
         (failure instanceof ApiError && [409, 503].includes(failure.status));
+      // Existing intake creation/completion keeps its idempotent retry key.
+      // Only edits to an existing business record require a fresh version first.
+      if (uncertain && editing) setNeedsRefresh(true);
       setFailureInfo(presentApiError(failure));
       setError(
         errorMessage(failure) +
           (uncertain
-            ? ' 草稿或提交结果可能已保存，请使用“读取最新草稿”核对；重复提交保持同一保存编号。'
+            ? editing
+              ? ' 请先读取最新事项核对，当前未自动重试。尚未保存的修改将以服务端记录为准。'
+              : ' 草稿或提交结果可能已保存，请使用“读取最新草稿”核对；重复提交保持同一保存编号。'
             : ''),
       );
     } finally {
@@ -333,6 +398,8 @@ export function IntakeWizard({
     editing?.version,
   ]);
   function field<K extends keyof BusinessPayload>(key: K, value: BusinessPayload[K]) {
+    editedFields.current.add(key);
+    fieldRef.current = { ...fieldRef.current, [key]: value };
     setFields((current) => ({ ...current, [key]: value }));
     setConfirmed(false);
     setTouched(true);
@@ -354,6 +421,7 @@ export function IntakeWizard({
     await run('resume', async () => {
       const value = await api<IntakeDraft>(`/intake/drafts/${encodeURIComponent(id)}`, session);
       if (!active.current) return;
+      setNeedsRefresh(false);
       if (lockedCompanyId && value.company_id !== lockedCompanyId)
         throw new Error('该草稿不属于当前资料请求的企业。');
       if (value.status === 'completed' && value.event_id) {
@@ -438,6 +506,14 @@ export function IntakeWizard({
           `/intake/drafts/${encodeURIComponent(current.id)}`,
           session,
         );
+        if (
+          value.id !== current.id ||
+          value.company_id !== current.company_id ||
+          draftRef.current?.id !== current.id
+        )
+          throw new Error('识别返回范围已变更，请重新读取草稿。');
+        pendingPrefill.current = { draft: current, runId: result.id };
+        applyPrefill(value);
         adopt(value);
         setConfirmed(false);
         if (result.status === 'failed') {
@@ -448,6 +524,7 @@ export function IntakeWizard({
     });
   }
   async function finish(submit: boolean) {
+    if (accessLost || needsRefresh) return;
     const validation = validateBusinessPayload(template, fields);
     if (validation) {
       setError(validation);
@@ -527,7 +604,8 @@ export function IntakeWizard({
       URL.revokeObjectURL(url);
     });
   }
-  const disabled = !!busy && busy !== 'saving';
+  const disabled = accessLost || (!!busy && busy !== 'saving');
+  const fieldsDisabled = accessLost || (disabled && !busy.startsWith('recognize-'));
   const latestRuns = new Map<string, IntakeRun>();
   draft?.runs.forEach((row) => {
     if (!latestRuns.has(row.attachment_id)) latestRuns.set(row.attachment_id, row);
@@ -567,8 +645,12 @@ export function IntakeWizard({
       <header className="modal-header">
         <div>
           <p className="eyebrow">把业务说清楚，票据一起交</p>
-          <h2 id="intake-title">{editing ? '修改业务事项' : '录入业务事项'}</h2>
-          <p>上传票据 → 核对信息 → {direct ? '提交财务处理' : '提交审批'}</p>
+          <h2 id="intake-title">{initialEvent ? '修改业务事项' : '录入业务事项'}</h2>
+          <p>
+            {editing?.status === 'returned'
+              ? '按退回说明补充 → 核对信息 → 重新提交'
+              : `上传票据 → 核对信息 → ${direct ? '提交财务处理' : '提交审批'}`}
+          </p>
         </div>
         <button
           className="icon-button"
@@ -581,7 +663,38 @@ export function IntakeWizard({
         </button>
       </header>
       <div className="intake-scroll">
-        <WorkflowGuide label="员工录入引导" guide={guidance} />
+        {editing && (
+          <ReturnedBusinessNotice event={editing}>
+            <button
+              className="button secondary small"
+              type="button"
+              disabled={disabled}
+              onClick={() => uploadButton.current?.focus()}
+            >
+              补充附件
+            </button>
+            <button
+              className="button secondary small"
+              type="button"
+              disabled={disabled}
+              onClick={() => {
+                if (extraFields.current) extraFields.current.open = true;
+                descriptionInput.current?.focus();
+              }}
+            >
+              修改信息
+            </button>
+          </ReturnedBusinessNotice>
+        )}
+        <section className="intake-current-step" aria-label="员工录入引导">
+          <p>
+            <strong>{guidance.status}</strong> · {guidance.next}
+          </p>
+          <details className="intake-help">
+            <summary>查看录入步骤与说明</summary>
+            <WorkflowGuide label="详细录入步骤" guide={guidance} />
+          </details>
+        </section>
         {!!savedDrafts.length && !draft && !editing && (
           <details className="intake-resume">
             <summary>
@@ -603,28 +716,34 @@ export function IntakeWizard({
             ))}
           </details>
         )}
-        <div className="business-template-grid" role="group" aria-label="选择业务模板">
-          {BUSINESS_TEMPLATES.map((item) => (
-            <button
-              type="button"
-              key={item.id}
-              aria-pressed={template === item.id}
-              className={template === item.id ? 'selected' : ''}
-              disabled={disabled || !!editing}
-              onClick={() => chooseTemplate(item.id)}
-            >
-              <Receipt size={18} />
-              <strong>{item.name}</strong>
-              <span className="intake-template-description">{item.description}</span>
-              {template === item.id && (
-                <span className="intake-template-selected" aria-hidden="true">
-                  <CheckCircle2 size={12} />
-                  当前模板
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
+        <details className="intake-template-picker">
+          <summary>
+            事项类型：{BUSINESS_TEMPLATES.find((item) => item.id === template)?.name} ·{' '}
+            {editing ? '当前记录' : '更换类型'}
+          </summary>
+          <div className="business-template-grid" role="group" aria-label="选择业务模板">
+            {BUSINESS_TEMPLATES.map((item) => (
+              <button
+                type="button"
+                key={item.id}
+                aria-pressed={template === item.id}
+                className={template === item.id ? 'selected' : ''}
+                disabled={disabled || !!editing}
+                onClick={() => chooseTemplate(item.id)}
+              >
+                <Receipt size={18} />
+                <strong>{item.name}</strong>
+                <span className="intake-template-description">{item.description}</span>
+                {template === item.id && (
+                  <span className="intake-template-selected" aria-hidden="true">
+                    <CheckCircle2 size={12} />
+                    当前模板
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        </details>
         <div className="intake-company-grid">
           <label>
             <span className="field-label">客户企业</span>
@@ -677,6 +796,13 @@ export function IntakeWizard({
             )}
           </label>
         </div>
+        {!accessLost && (
+          <BusinessPreparation
+            session={session}
+            companyId={companyId}
+            occurredOn={fields.occurred_on}
+          />
+        )}
         <div className="intake-two-column">
           <section className="intake-originals" aria-labelledby="intake-originals-title">
             <h3 id="intake-originals-title">
@@ -693,9 +819,10 @@ export function IntakeWizard({
               <p>数电票 XML 支持本地解析，单份解析上限 1 MB。</p>
               <div>
                 <button
+                  ref={uploadButton}
                   type="button"
                   className="button secondary"
-                  disabled={!!busy || (!direct && !departmentId)}
+                  disabled={accessLost || !!busy || (!direct && !departmentId)}
                   onClick={() => fileInput.current?.click()}
                 >
                   <Upload size={15} />
@@ -704,7 +831,7 @@ export function IntakeWizard({
                 <button
                   type="button"
                   className="button secondary intake-camera"
-                  disabled={!!busy || (!direct && !departmentId)}
+                  disabled={accessLost || !!busy || (!direct && !departmentId)}
                   onClick={() => photoInput.current?.click()}
                 >
                   <Camera size={16} />
@@ -733,7 +860,7 @@ export function IntakeWizard({
             <p className="intake-ai-help">
               <Sparkles size={15} />
               {aiEnabled && (visionReady || structuredReady)
-                ? '识别后逐字段选择建议；金额和交易对方由你核对。'
+                ? '单张票据识别后预填未修改的信息，请核对后提交；多张票据逐项选择。'
                 : '票据识别尚未启用或配置，可以直接手工填写并提交。'}
             </p>
             {attachments.map((attachment) => {
@@ -791,53 +918,70 @@ export function IntakeWizard({
                         : run.error_detail}
                     </p>
                   )}
-                  {run &&
-                    intakeCandidates(run, fields.direction).map((candidate) => (
-                      <div className="intake-candidate" key={candidate.index}>
-                        <strong>
-                          单据 {candidate.index + 1}
-                          {candidate.document.invoice_number
-                            ? ` · ${candidate.document.invoice_number}`
-                            : ''}
-                        </strong>
-                        {candidate.document.tax_amount !== null && (
-                          <span>票面税额 {candidate.document.tax_amount} 元（仅供核票）</span>
-                        )}
-                        {candidate.fields.map((item) => (
-                          <div className="intake-suggested-field" key={item.target}>
-                            <div>
-                              <span>{item.label}</span>
-                              <strong>{item.value}</strong>
-                              {attachment.media_type === 'application/xml' ? (
-                                <details>
-                                  <summary>查看 XML 原文字段依据</summary>
-                                  <small>{item.quote}</small>
-                                </details>
-                              ) : (
-                                <small>
-                                  第 {item.page} 页 · {item.quote}
-                                </small>
-                              )}
+                  {run && intakeCandidates(run, fields.direction).length > 0 && (
+                    <details className="intake-evidence">
+                      <summary>
+                        查看识别依据与其他候选（{intakeCandidates(run, fields.direction).length}{' '}
+                        张单据）
+                      </summary>
+                      {intakeCandidates(run, fields.direction).map((candidate) => (
+                        <div className="intake-candidate" key={candidate.index}>
+                          <strong>
+                            单据 {candidate.index + 1}
+                            {candidate.document.invoice_number
+                              ? ` · ${candidate.document.invoice_number}`
+                              : ''}
+                          </strong>
+                          {candidate.document.tax_amount !== null && (
+                            <span>票面税额 {candidate.document.tax_amount} 元（仅供核票）</span>
+                          )}
+                          {candidate.fields.map((item) => (
+                            <div className="intake-suggested-field" key={item.target}>
+                              <div>
+                                <span>{item.label}</span>
+                                <strong>{item.value}</strong>
+                                {attachment.media_type === 'application/xml' ? (
+                                  <details>
+                                    <summary>查看 XML 原文字段依据</summary>
+                                    <small>{item.quote}</small>
+                                  </details>
+                                ) : (
+                                  <small>
+                                    第 {item.page} 页 · {item.quote}
+                                  </small>
+                                )}
+                              </div>
+                              <button
+                                type="button"
+                                className="text-button"
+                                disabled={disabled}
+                                onClick={() => field(item.target, item.value)}
+                              >
+                                采用此字段
+                              </button>
                             </div>
-                            <button
-                              type="button"
-                              className="text-button"
-                              disabled={disabled}
-                              onClick={() => field(item.target, item.value)}
-                            >
-                              采用此字段
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    ))}
+                          ))}
+                        </div>
+                      ))}
+                    </details>
+                  )}
+                  {run?.status === 'succeeded' && (
+                    <button
+                      type="button"
+                      className="text-button"
+                      disabled={fieldsDisabled}
+                      onClick={() => amountInput.current?.focus()}
+                    >
+                      核对已填写信息
+                    </button>
+                  )}
                   {!!run?.checks.length && (
-                    <details className="intake-checks">
-                      <summary>需要核对的票据问题（{run.checks.length}）</summary>
+                    <div className="intake-checks" role="note" aria-label="需要核对的票据问题">
+                      <strong>需要核对的票据问题（{run.checks.length}）</strong>
                       {run.checks.map((item) => (
                         <p key={item.code}>{item.payload.message}</p>
                       ))}
-                    </details>
+                    </div>
                   )}
                 </article>
               );
@@ -856,6 +1000,11 @@ export function IntakeWizard({
               <CheckCircle2 size={17} aria-hidden="true" />
               核对业务信息
             </h3>
+            {prefillNotice && (
+              <p role="status" className="field-help">
+                {prefillNotice}
+              </p>
+            )}
             <div className="business-form-grid">
               <div className="term-field">
                 <label>
@@ -867,7 +1016,7 @@ export function IntakeWizard({
                     min="2000-01-01"
                     max="2099-12-31"
                     value={fields.occurred_on}
-                    disabled={disabled}
+                    disabled={fieldsDisabled}
                     onChange={(event) => field('occurred_on', event.target.value)}
                   />
                 </label>
@@ -876,23 +1025,25 @@ export function IntakeWizard({
               <label>
                 <span className="field-label">金额（人民币元）</span>
                 <input
+                  ref={amountInput}
                   inputMode="decimal"
                   className="intake-amount"
                   aria-label="事项金额"
                   value={fields.amount}
                   placeholder="例如 128.50"
-                  disabled={disabled}
+                  disabled={fieldsDisabled}
                   onChange={(event) => field('amount', event.target.value)}
                 />
               </label>
               <label className="wide-field">
                 <span className="field-label">事项摘要</span>
                 <input
+                  ref={descriptionInput}
                   aria-label="事项摘要"
                   value={fields.description}
                   maxLength={500}
                   placeholder="例如：客户拜访交通费"
-                  disabled={disabled}
+                  disabled={fieldsDisabled}
                   onChange={(event) => field('description', event.target.value)}
                 />
               </label>
@@ -905,36 +1056,19 @@ export function IntakeWizard({
                     value={fields.counterparty}
                     maxLength={200}
                     placeholder="供应商、客户或实际收款人"
-                    disabled={disabled}
+                    disabled={fieldsDisabled}
                     onChange={(event) => field('counterparty', event.target.value)}
                   />
                 </label>
                 <TermHelp term="counterparty" descriptionId={`${fieldHelpId}-counterparty`} />
               </div>
-              <label>
-                <span className="field-label">事项分类</span>
-                <select
-                  aria-label="事项分类"
-                  value={fields.category}
-                  disabled={disabled}
-                  onChange={(event) =>
-                    field('category', event.target.value as BusinessPayload['category'])
-                  }
-                >
-                  {Object.entries(BUSINESS_CATEGORIES).map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
-              </label>
               {template === 'daily_cashflow' ? (
                 <label>
                   <span className="field-label">收支方向</span>
                   <select
                     aria-label="收支方向"
                     value={fields.direction}
-                    disabled={disabled}
+                    disabled={fieldsDisabled}
                     onChange={(event) =>
                       field('direction', event.target.value as BusinessPayload['direction'])
                     }
@@ -951,7 +1085,7 @@ export function IntakeWizard({
                       aria-label="企业付款状态"
                       aria-describedby={`${fieldHelpId}-payment-status`}
                       value={fields.payment_status}
-                      disabled={disabled || template === 'reimbursement'}
+                      disabled={fieldsDisabled || template === 'reimbursement'}
                       onChange={(event) =>
                         field(
                           'payment_status',
@@ -966,6 +1100,26 @@ export function IntakeWizard({
                   <TermHelp term="payment_status" descriptionId={`${fieldHelpId}-payment-status`} />
                 </div>
               )}
+            </div>
+            <details className="intake-extra" ref={extraFields}>
+              <summary>更多信息（分类、用途、项目）</summary>
+              <label>
+                <span className="field-label">事项分类</span>
+                <select
+                  aria-label="事项分类"
+                  value={fields.category}
+                  disabled={fieldsDisabled}
+                  onChange={(event) =>
+                    field('category', event.target.value as BusinessPayload['category'])
+                  }
+                >
+                  {Object.entries(BUSINESS_CATEGORIES).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <label className="wide-field">
                 <span className="field-label">业务用途（可选）</span>
                 <textarea
@@ -973,20 +1127,18 @@ export function IntakeWizard({
                   value={fields.purpose}
                   maxLength={1000}
                   rows={2}
-                  disabled={disabled}
+                  disabled={fieldsDisabled}
                   onChange={(event) => field('purpose', event.target.value)}
                 />
               </label>
-            </div>
-            <details className="intake-extra">
-              <summary>补充所属项目（可选）</summary>
+
               <label>
                 <span className="field-label">所属项目</span>
                 <input
                   aria-label="所属项目"
                   value={fields.project}
                   maxLength={200}
-                  disabled={disabled}
+                  disabled={fieldsDisabled}
                   onChange={(event) => field('project', event.target.value)}
                 />
               </label>
@@ -1034,6 +1186,46 @@ export function IntakeWizard({
                 读取最新草稿
               </button>
             )}
+            {editing && !accessLost && (
+              <button
+                className="text-button"
+                type="button"
+                disabled={!!busy}
+                onClick={() =>
+                  void run('reload-event', async () => {
+                    const value = await api<BusinessEvent>(
+                      `/business/events/${encodeURIComponent(editing.id)}`,
+                      session,
+                    );
+                    if (!active.current) return;
+                    if (
+                      value.id !== editing.id ||
+                      value.company_id !== editing.company_id ||
+                      value.firm_id !== editing.firm_id
+                    )
+                      throw new Error('事项返回范围不一致，请关闭后重新打开原事项。');
+                    setConfirmed(false);
+                    setTouched(false);
+                    setNeedsRefresh(false);
+                    if (!value.permissions.edit) {
+                      completionRef.current = true;
+                      onCompleted(value);
+                      return;
+                    }
+                    setEditing(value);
+                    setFields(value.payload);
+                    fieldRef.current = value.payload;
+                    savedSignature.current = JSON.stringify({
+                      template_id: value.template_id,
+                      fields: value.payload,
+                    });
+                    setSaveState('已读取最新事项，请重新核对后提交。');
+                  })
+                }
+              >
+                读取最新事项
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -1046,7 +1238,9 @@ export function IntakeWizard({
           <button
             className="button secondary intake-save-draft"
             type="button"
-            disabled={!!busy || (!direct && !departmentId) || !confirmed}
+            disabled={
+              accessLost || needsRefresh || !!busy || (!direct && !departmentId) || !confirmed
+            }
             onClick={() => void finish(false)}
           >
             <Save size={15} />
@@ -1055,7 +1249,14 @@ export function IntakeWizard({
           <button
             className="button primary"
             type="button"
-            disabled={!!busy || (!direct && !departmentId) || !attachments.length || !confirmed}
+            disabled={
+              accessLost ||
+              needsRefresh ||
+              !!busy ||
+              (!direct && !departmentId) ||
+              !attachments.length ||
+              !confirmed
+            }
             onClick={() => void finish(true)}
           >
             {busy === 'submit' ? (
@@ -1063,7 +1264,11 @@ export function IntakeWizard({
             ) : (
               <Send size={15} />
             )}
-            {direct ? '提交财务处理' : '提交审批'}
+            {editing?.status === 'returned'
+              ? '修改后重新提交'
+              : direct
+                ? '提交财务处理'
+                : '提交审批'}
           </button>
         </div>
       </footer>

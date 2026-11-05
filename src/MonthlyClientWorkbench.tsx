@@ -17,6 +17,8 @@ import {
   monthlyClosingLabel,
   monthlyCount,
   monthlyRowDestination,
+  monthlyFocusLabels,
+  type MonthlyFocus,
 } from './monthly-workbench-types';
 import type {
   MonthlyClients,
@@ -100,6 +102,7 @@ export function MonthlyClientWorkbench({
     [search, setSearch] = useState(initial.current?.search ?? ''),
     [offset, setOffset] = useState(initial.current?.offset ?? 0);
   const restoredScroll = useRef(false);
+  const [focus, setFocus] = useState<MonthlyFocus>(initial.current?.focus ?? 'all');
   const [batchOpen, setBatchOpen] = useState(false);
   const [operationsOpen, setOperationsOpen] = useState(false);
   const [initialBatchId, setInitialBatchId] = useState<string | undefined>();
@@ -112,15 +115,21 @@ export function MonthlyClientWorkbench({
   const selectedPeriod = validMonthlyPeriod(period) ? period : new Date().toISOString().slice(0, 7);
   const path =
     '/monthly/workbench?' +
-    new URLSearchParams({ period: selectedPeriod, search, limit: '20', offset: String(offset) });
+    new URLSearchParams({
+      period: selectedPeriod,
+      search,
+      focus,
+      limit: '20',
+      offset: String(offset),
+    });
   const { data, loading, error, revoked, load } = useMonthlyData<MonthlyClients>(
     session,
     path,
     revision,
   );
   useEffect(() => {
-    onProgressChange?.({ period: selectedPeriod, query, search, offset });
-  }, [selectedPeriod, query, search, offset, onProgressChange]);
+    onProgressChange?.({ period: selectedPeriod, query, search, offset, focus });
+  }, [selectedPeriod, query, search, offset, focus, onProgressChange]);
   useEffect(() => {
     if (!data || loading || revoked || restoredScroll.current) return;
     const frame = requestAnimationFrame(() => {
@@ -142,10 +151,8 @@ export function MonthlyClientWorkbench({
       <section className="page-heading">
         <div>
           <p className="eyebrow">CLIENTS / MONTHLY CONTROL</p>
-          <h1>每家企业，这个月走到哪里。</h1>
-          <p className="page-description">
-            按授权账套查看真实资料、草稿、异常与交付。优先进入需要人工处理的环节。
-          </p>
+          <h1>客户月度工作</h1>
+          <p className="page-description">选出要办理的客户，处理后回到当前清单继续。</p>
         </div>
         <div className="monthly-heading-actions">
           {canBatchOpen && (
@@ -173,7 +180,7 @@ export function MonthlyClientWorkbench({
           )}
           {canBatchOpen && (
             <button
-              className="button primary"
+              className="button secondary"
               disabled={loading || revoked}
               onClick={() => setBatchOpen(true)}
             >
@@ -213,6 +220,7 @@ export function MonthlyClientWorkbench({
               if (validMonthlyPeriod(event.target.value)) {
                 onPeriodChange(event.target.value);
                 setOffset(0);
+                setFocus('all');
               }
             }}
           />
@@ -233,6 +241,22 @@ export function MonthlyClientWorkbench({
         </button>
         <span>{data ? `共 ${data.pagination.total} 个授权账套 / 企业` : '正在核对授权范围'}</span>
       </form>
+      <nav className="monthly-focus" aria-label="月度工作筛选">
+        {Object.entries(monthlyFocusLabels).map(([key, label]) => (
+          <button
+            type="button"
+            key={key}
+            aria-pressed={focus === key}
+            disabled={revoked}
+            onClick={() => {
+              setFocus(key as MonthlyFocus);
+              setOffset(0);
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </nav>
       {error && (
         <p className="inline-error" role="alert">
           {error}
@@ -262,6 +286,44 @@ export function MonthlyClientWorkbench({
                 data-company={row.company_id}
                 data-book={row.book_id ?? ''}
               >
+                {row.work && (
+                  <div className="monthly-work-next">
+                    <div>
+                      <strong>{row.company_name}</strong>
+                      <span>
+                        负责人：{row.work.owner} ·{' '}
+                        {row.work.due_on ? `期限 ${row.work.due_on}` : '期限待安排'}
+                      </span>
+                      <p>{row.work.reason}</p>
+                    </div>
+                    {row.work.target && (
+                      <button
+                        type="button"
+                        className="button secondary small"
+                        disabled={revoked || !row.book_id}
+                        onClick={() => {
+                          if (!row.book_id) return;
+                          if (row.work?.target === 'service')
+                            onOpenServicePlan?.({
+                              bookId: row.book_id,
+                              companyId: row.company_id,
+                              companyName: row.company_name,
+                              period: row.period,
+                            });
+                          else if (row.work?.target)
+                            open(
+                              row,
+                              row.work.target,
+                              row.work.target === 'review' ? 'pending' : undefined,
+                            )?.();
+                        }}
+                      >
+                        {row.work.label}
+                        <ArrowUpRight size={14} />
+                      </button>
+                    )}
+                  </div>
+                )}
                 <div className="monthly-client">
                   <Building2 size={18} />
                   <div>
@@ -408,8 +470,8 @@ export function MonthlyClientWorkbench({
           </section>
           <div className="pagination-controls">
             <span>
-              第 {data.pagination.offset + 1}–{data.pagination.offset + data.rows.length} 项 · 每页{' '}
-              {data.pagination.limit} 项
+              第 {data.rows.length ? data.pagination.offset + 1 : 0}–
+              {data.pagination.offset + data.rows.length} 项 · 每页 {data.pagination.limit} 项
             </span>
             <button
               className="button secondary small"

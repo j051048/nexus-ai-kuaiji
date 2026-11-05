@@ -21,10 +21,11 @@ def build_monthly_workbench_router(actor_dependency):
         search: str = Query(default="", max_length=120),
         limit: int = Query(default=20, ge=1, le=100),
         offset: int = Query(default=0, ge=0, le=1_000_000),
+        focus: str = Query(default="all", pattern="^(all|mine|due|materials|review|receipt)$"),
         current=Depends(actor_dependency),
         monthly=Depends(service),
     ):
-        return monthly.list(current, period, search, limit, offset)
+        return monthly.list(current, period, search, limit, offset, focus)
 
     @router.post("/batch/open")
     def batch_open(

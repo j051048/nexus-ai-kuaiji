@@ -405,3 +405,25 @@
     max-width: 155px;
   }
 }
+.cockpit-client-search,
+.cockpit-pages {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--space-3, 12px);
+  margin-block: var(--space-4, 16px);
+}
+.cockpit-client-search label {
+  display: grid;
+  gap: 6px;
+}
+.cockpit-client-search input {
+  max-width: 100%;
+}
+.cockpit-client-search small {
+  flex-basis: 100%;
+  color: var(--text-secondary);
+}
+.cockpit-pages {
+  align-items: center;
+}

@@ -458,7 +458,7 @@ def create_app(
             application.state.handoff = HandoffService(database)
             application.state.review_packs = ReviewPackService(database, application.state.review)
             application.state.firm_cockpit = FirmCockpitService(database, application.state.service)
-            application.state.firm_tasks = FirmTasksService(database, application.state.service)
+            application.state.firm_tasks = FirmTasksService(database, application.state.service, application.state.workspace)
             application.state.firm_observability = FirmObservabilityService(
                 database, application.state.service
             )

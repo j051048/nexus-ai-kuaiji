@@ -2,6 +2,7 @@ export type FirmClient = {
   company_id: string;
   company_name: string;
   book_id: string | null;
+  book_count?: number;
   period: string;
   period_status: string;
   stage: 'unopened' | 'intake' | 'accounting' | 'review' | 'delivery' | 'closed';
@@ -14,6 +15,16 @@ export type FirmClient = {
 };
 
 export type FirmSnapshot = {
+  scope?: { firm_id: string; user_id: string; period: string; search: string };
+  pagination?: { total: number; limit: number; offset: number; has_more: boolean };
+  coordination?: FirmClient[];
+  assignments?: {
+    basis: 'active_task_assignments';
+    total: number;
+    people_total: number;
+    stale: boolean;
+    people: { user_id: string; name: string; pending: number; overdue: number }[];
+  };
   period: string;
   summary: {
     clients: number;
@@ -51,7 +62,8 @@ export function coordinationReasons(row: FirmClient): string[] {
   const reasons: string[] = [];
   if (row.tasks.overdue > 0) reasons.push(`${row.tasks.overdue} 项待办已逾期`);
   if (row.tasks.exception > 0) reasons.push(`${row.tasks.exception} 项异常待处理`);
-  if (!row.book_id) reasons.push('本月账套待开通');
+  if ((row.book_count ?? 0) > 1) reasons.push('本月有多个账套，请选择后办理');
+  else if (!row.book_id) reasons.push('本月账套待开通');
   if (row.book_id && !row.lead_user_id) reasons.push('主办会计待安排');
   return reasons;
 }

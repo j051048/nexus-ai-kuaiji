@@ -78,6 +78,7 @@ function render(
       onBusiness: noop,
       onMaterials: noop,
       onReview: noop,
+      onMonthly: noop,
       onBriefing: noop,
       revision: 0,
       initialTasks: tasks,
@@ -86,18 +87,62 @@ function render(
 }
 
 describe('岗位首页围绕主任务收敛', () => {
-  it('员工先看到三种业务提交，再看到本人待办；附加会计权限不抢占主操作', () => {
+  it('会计岗位主入口直达月度客户，员工兼任权限不带出该入口', () => {
+    expect(
+      render('finance', undefined, '', { display_role: 'accountant', role: 'accountant' }),
+    ).toContain('办理客户月度任务');
+    expect(render('employee')).not.toContain('办理客户月度任务');
+  });
+  it('员工首屏先交资料，三种新建入口在清单之前', () => {
     const html = render('employee');
     expect(html).toContain('今天要提交什么？');
     expect(html).toContain('提交报销');
     expect(html).toContain('采购 / 费用');
     expect(html).toContain('日常收支');
-    expect(html.indexOf('今天要提交什么？')).toBeLessThan(html.indexOf('我的工作概览'));
+    expect(html.indexOf('今天要提交什么？')).toBeLessThan(html.indexOf('workspace-inbox'));
     expect(html).toContain('我的提交与补件');
     expect(html).toContain('我的办理进度');
     expect(html).not.toContain('class="workspace-accounting-shortcuts"');
     expect(html).not.toContain('class="workspace-runtime-link"');
     expect(html.indexOf('开始批量复核')).toBeGreaterThan(html.indexOf('workspace-inbox'));
+  });
+  it('员工默认只展示当前清单前三项，可展开且不把局部计数当作总数', () => {
+    const tasks: WorkspaceTasks = {
+      tasks: Array.from({ length: 5 }, (_, i) => ({
+        ...financeTask,
+        key: `business:${i}`,
+        ref: `${i}`,
+        kind: 'business' as const,
+        state: 'returned',
+        title: `退回资料${i}`,
+      })),
+      counts: { action: 5, waiting: 0 },
+      pagination: { total: 5, limit: 20, offset: 0, has_more: false },
+    };
+    const html = render('employee', tasks);
+    expect(html.match(/data-task-key=/g)).toHaveLength(3);
+    expect(html).toContain('展开本页全部 5 项');
+    expect(html).not.toContain('处理下一项');
+    expect(html).not.toContain('未设置期限');
+    expect(html).toContain('<strong>5</strong>');
+  });
+  it('未知统计显示读取状态，不冒充零也不显示破折号', () => {
+    const html = render('employee');
+    expect(html).not.toContain('<strong>—</strong>');
+    expect(html).toContain('正在读取');
+    const known = render('employee', {
+      tasks: [],
+      counts: { action: 0, waiting: 0 },
+      pagination: { total: 0, limit: 20, offset: 0, has_more: false },
+    });
+    expect(known).toContain('<strong>0</strong>');
+    const uncounted = render('employee', {
+      tasks: [],
+      counts: {},
+      pagination: { total: 0, limit: 20, offset: 0, has_more: false },
+    });
+    expect(uncounted).toContain('查看清单');
+    expect(uncounted).not.toContain('正在读取');
   });
   it('授权说明默认收折，身份仍在可访问区域内', () => {
     const html = render('employee');

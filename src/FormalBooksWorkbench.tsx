@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, apiBlob, ApiError, errorMessage } from './api';
 import type { Session } from './types';
 import { ManualVoucherReviewPanel } from './ManualVoucherReviewPanel';
+import { correctionSeed, type CorrectionSeed } from './voucher-correction';
 import { LegacyReviewPanel } from './LegacyReviewPanel';
 import { FormalClosePanel } from './FormalClosePanel';
 import { OnboardingSetupWizard } from './OnboardingSetupWizard';
@@ -97,6 +98,8 @@ function FormalBooksContent({
   const [revoked, setRevoked] = useState(false);
   const [voucherId, setVoucherId] = useState('');
   const [voucher, setVoucher] = useState<FormalVoucher | null>(null);
+  const [original, setOriginal] = useState<unknown>(null);
+  const [correction, setCorrection] = useState<CorrectionSeed | null>(null);
   const [voucherError, setVoucherError] = useState('');
   const [voucherLoading, setVoucherLoading] = useState(false);
   const [downloading, setDownloading] = useState(false);
@@ -193,6 +196,8 @@ function FormalBooksContent({
   }, [query.path, kind, expected, session, scope, revision, revoked]);
   useEffect(() => {
     setVoucher(null);
+    setOriginal(null);
+    setCorrection(null);
     setVoucherError('');
     if (!voucherId || revoked || !confirmedScope) {
       setVoucherLoading(false);
@@ -213,6 +218,7 @@ function FormalBooksContent({
             voucherId,
           ),
         );
+        setOriginal(raw);
       })
       .catch((failure: unknown) => {
         if (details.current.accepts(ticket, liveScope.current))
@@ -233,9 +239,16 @@ function FormalBooksContent({
     setKind('account_ledger');
   }
   function closeVoucher() {
+    if (
+      correction &&
+      !window.confirm('关闭更正办理前，请确认已提交并核对结果；未提交内容不会保存。')
+    )
+      return;
     details.current.cancel();
     setVoucherId('');
     setVoucher(null);
+    setOriginal(null);
+    setCorrection(null);
     setVoucherError('');
     if (voucherTrigger.current?.isConnected) voucherTrigger.current.focus();
   }
@@ -668,8 +681,36 @@ function FormalBooksContent({
                 </table>
               </div>
               <p className="formal-books-help">
-                原凭证为已记账记录。更正需沿用冲销或调整流程；此处仅供查看。
+                原凭证保持不变。选错类型、金额或科目时，先预览更正影响，再提交独立复核。
               </p>
+              {!correction && (
+                <div className="formal-books-actions" aria-label="原凭证更正类型">
+                  {(['adjustment', 'reversal'] as const).map((kind) => (
+                    <button
+                      type="button"
+                      className="button secondary"
+                      key={kind}
+                      onClick={() => {
+                        try {
+                          setCorrection(correctionSeed(original, expected, kind));
+                        } catch (e) {
+                          setVoucherError(errorMessage(e));
+                        }
+                      }}
+                    >
+                      {kind === 'adjustment' ? '金额或科目差错：准备调整' : '整笔记错：准备冲销'}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {correction && (
+                <ManualVoucherReviewPanel
+                  session={session}
+                  bookId={bookId}
+                  companyId={companyId}
+                  correction={correction}
+                />
+              )}
             </>
           )}
         </section>

@@ -1,0 +1,273 @@
+{
+  "schema": "ux01-03-local-acceptance-v1",
+  "status": "local_passed_remote_unverified",
+  "candidate": {
+    "schema": "release-candidate-v1",
+    "head": "6b2a57963f30ea71a20fda3f5a1e60e3044b39f9",
+    "source_files": 1858,
+    "source_sha256": "afa9adf6a81479b435ab014e4d2450ee0ab6a34b9a5b8453e1b25265cb342cab",
+    "migration_files": 336,
+    "migration_sha256": "d04e47cdf39b00fb0e82a379a915a207b3801fa17f575cd420427718b2e49841"
+  },
+  "scope": "local_synthetic_only",
+  "postgres_versions": [
+    16,
+    17
+  ],
+  "local_checks": {
+    "local-final.xml": {
+      "passed": 68,
+      "skipped": 0,
+      "sha256": "0bcef421f52895638826c131c7ab8c5c7bcc69f17cf7398cea8fe871fd3a98e3"
+    },
+    "pg16-final.xml": {
+      "passed": 40,
+      "skipped": 0,
+      "sha256": "fdddd19557a718e3650c71f948e6ae82cdb0c4045e2276e115222f8311235c01"
+    },
+    "pg17-final.xml": {
+      "passed": 40,
+      "skipped": 0,
+      "sha256": "36bcbbdbcca3ae23aac15afa146e3b5a54cf8293a8bddaf4bc7e624d926aa858"
+    }
+  },
+  "recovery": {
+    "schema": "p01-recovery-v2",
+    "status": "passed",
+    "candidate": {
+      "schema": "release-candidate-v1",
+      "head": "6b2a57963f30ea71a20fda3f5a1e60e3044b39f9",
+      "source_files": 1858,
+      "source_sha256": "afa9adf6a81479b435ab014e4d2450ee0ab6a34b9a5b8453e1b25265cb342cab",
+      "migration_files": 336,
+      "migration_sha256": "d04e47cdf39b00fb0e82a379a915a207b3801fa17f575cd420427718b2e49841"
+    },
+    "scope": "local-only",
+    "phases": {
+      "regression": {
+        "passed": 183,
+        "skipped": 0,
+        "junit_sha256": "b36c02d29b18e208f435932dc07b149bc5b4754fb95445ad4a7bc76d9d75182a",
+        "execution_sha256": "ea1d017fd118bda2922c0a25576b9ea846b3327492cf488c5d3bb822cd0d6ee4",
+        "collection_sha256": "47427003c0baea285a3a2437107a38927b97101d80dc7875a063c7b6cb334da7",
+        "seconds": 177.516,
+        "candidate": {
+          "schema": "release-candidate-v1",
+          "head": "6b2a57963f30ea71a20fda3f5a1e60e3044b39f9",
+          "source_files": 1858,
+          "source_sha256": "afa9adf6a81479b435ab014e4d2450ee0ab6a34b9a5b8453e1b25265cb342cab",
+          "migration_files": 336,
+          "migration_sha256": "d04e47cdf39b00fb0e82a379a915a207b3801fa17f575cd420427718b2e49841"
+        },
+        "configuration_sha256": {
+          "pg16-recovery_source.json": "904e9399a6087a166a9335c99e626be5703bcfa26c6c01ae7d2552de9870f9b8",
+          "pg16-recovery-fresh-target.json": "4fa3ab9efa56e7db77b93c8c9f380818f5514367055e388f8bb407cb9808ee8c",
+          "pg17-recovery_source.json": "9b2b49f14d93733f066d05e70d230d406658467ed000dea7cab981d92a8e7e72",
+          "pg17-recovery-fresh-target.json": "e968b94c10851c1c9500c5338cc8fb12e65daebf9d6dd4d66a866bfd02304272",
+          "wsl-bridge-private.json": "c0a23f5edb33bbccba002c6d88f335b623fbc3a7c41c993b01efdce6b51b3d11",
+          "gotrue-migrations-manifest.json": "bdb9c5905bb49fcd9fc14b2d2e232c39c9ebc01f4ab140654a0fd192a96e8e60"
+        }
+      },
+      "joint": {
+        "passed": 2,
+        "skipped": 0,
+        "junit_sha256": "d9d0ac73ebf1797e5b10a05ff00b51d8bf29fcd2a2f1af195e41be874eb5b828",
+        "execution_sha256": "7fa4f85875d20120de8274e6eebea643807c908e3c312e335957e6bcbf6e0a93",
+        "collection_sha256": "4318ec1cd4f034e8aad44f433d3e7069951870bd6a1ec385cea5114629e7f4ab",
+        "seconds": 89.406,
+        "candidate": {
+          "schema": "release-candidate-v1",
+          "head": "6b2a57963f30ea71a20fda3f5a1e60e3044b39f9",
+          "source_files": 1858,
+          "source_sha256": "afa9adf6a81479b435ab014e4d2450ee0ab6a34b9a5b8453e1b25265cb342cab",
+          "migration_files": 336,
+          "migration_sha256": "d04e47cdf39b00fb0e82a379a915a207b3801fa17f575cd420427718b2e49841"
+        },
+        "configuration_sha256": {
+          "pg16-recovery_source.json": "904e9399a6087a166a9335c99e626be5703bcfa26c6c01ae7d2552de9870f9b8",
+          "pg16-recovery-fresh-target.json": "4fa3ab9efa56e7db77b93c8c9f380818f5514367055e388f8bb407cb9808ee8c",
+          "pg17-recovery_source.json": "9b2b49f14d93733f066d05e70d230d406658467ed000dea7cab981d92a8e7e72",
+          "pg17-recovery-fresh-target.json": "e968b94c10851c1c9500c5338cc8fb12e65daebf9d6dd4d66a866bfd02304272",
+          "wsl-bridge-private.json": "c0a23f5edb33bbccba002c6d88f335b623fbc3a7c41c993b01efdce6b51b3d11",
+          "gotrue-migrations-manifest.json": "bdb9c5905bb49fcd9fc14b2d2e232c39c9ebc01f4ab140654a0fd192a96e8e60"
+        }
+      },
+      "identity": {
+        "passed": 4,
+        "skipped": 0,
+        "junit_sha256": "3e07ebb2a79af5293e6fa1181029119f0621cbdab85e915823fe01dd446cde8a",
+        "execution_sha256": "2f7f4aee348b9baa6e84f4cababf268c7ec28fa99d09d087b3d61bb066de9119",
+        "collection_sha256": "ccc20fd16b7db2ff1702f205c3675fa1645c95cc728e049f035a9dee4c176c20",
+        "seconds": 58.5,
+        "candidate": {
+          "schema": "release-candidate-v1",
+          "head": "6b2a57963f30ea71a20fda3f5a1e60e3044b39f9",
+          "source_files": 1858,
+          "source_sha256": "afa9adf6a81479b435ab014e4d2450ee0ab6a34b9a5b8453e1b25265cb342cab",
+          "migration_files": 336,
+          "migration_sha256": "d04e47cdf39b00fb0e82a379a915a207b3801fa17f575cd420427718b2e49841"
+        },
+        "configuration_sha256": {
+          "pg16-recovery_source.json": "904e9399a6087a166a9335c99e626be5703bcfa26c6c01ae7d2552de9870f9b8",
+          "pg16-recovery-fresh-target.json": "4fa3ab9efa56e7db77b93c8c9f380818f5514367055e388f8bb407cb9808ee8c",
+          "pg17-recovery_source.json": "9b2b49f14d93733f066d05e70d230d406658467ed000dea7cab981d92a8e7e72",
+          "pg17-recovery-fresh-target.json": "e968b94c10851c1c9500c5338cc8fb12e65daebf9d6dd4d66a866bfd02304272",
+          "wsl-bridge-private.json": "c0a23f5edb33bbccba002c6d88f335b623fbc3a7c41c993b01efdce6b51b3d11",
+          "gotrue-migrations-manifest.json": "bdb9c5905bb49fcd9fc14b2d2e232c39c9ebc01f4ab140654a0fd192a96e8e60"
+        }
+      }
+    },
+    "minimum_migration": 212,
+    "configuration_sha256": {
+      "pg16-recovery_source.json": "904e9399a6087a166a9335c99e626be5703bcfa26c6c01ae7d2552de9870f9b8",
+      "pg16-recovery-fresh-target.json": "4fa3ab9efa56e7db77b93c8c9f380818f5514367055e388f8bb407cb9808ee8c",
+      "pg17-recovery_source.json": "9b2b49f14d93733f066d05e70d230d406658467ed000dea7cab981d92a8e7e72",
+      "pg17-recovery-fresh-target.json": "e968b94c10851c1c9500c5338cc8fb12e65daebf9d6dd4d66a866bfd02304272",
+      "wsl-bridge-private.json": "c0a23f5edb33bbccba002c6d88f335b623fbc3a7c41c993b01efdce6b51b3d11",
+      "gotrue-migrations-manifest.json": "bdb9c5905bb49fcd9fc14b2d2e232c39c9ebc01f4ab140654a0fd192a96e8e60"
+    },
+    "databases": {
+      "16": {
+        "source_version": "16.15 (Ubuntu 16.15-1.pgdg22.04+2)",
+        "target_version": "16.15 (Ubuntu 16.15-1.pgdg22.04+2)",
+        "migrations": 204,
+        "originals": 4,
+        "source_users": 6,
+        "restored_capability_grants": 925,
+        "restored_column_grants": 55,
+        "p01_checks": {
+          "database": true,
+          "originals": true,
+          "identity": true,
+          "permissions": true,
+          "hold": true,
+          "review_export": true,
+          "tax_delivery": true,
+          "no_replay": true
+        }
+      },
+      "17": {
+        "source_version": "17.11 (Ubuntu 17.11-1.pgdg22.04+2)",
+        "target_version": "17.11 (Ubuntu 17.11-1.pgdg22.04+2)",
+        "migrations": 204,
+        "originals": 4,
+        "source_users": 6,
+        "restored_capability_grants": 925,
+        "restored_column_grants": 55,
+        "p01_checks": {
+          "database": true,
+          "originals": true,
+          "identity": true,
+          "permissions": true,
+          "hold": true,
+          "review_export": true,
+          "tax_delivery": true,
+          "no_replay": true
+        }
+      }
+    },
+    "local_regression": {
+      "passed": 183,
+      "skipped": 0,
+      "junit_sha256": "b36c02d29b18e208f435932dc07b149bc5b4754fb95445ad4a7bc76d9d75182a",
+      "execution_sha256": "ea1d017fd118bda2922c0a25576b9ea846b3327492cf488c5d3bb822cd0d6ee4",
+      "collection_sha256": "47427003c0baea285a3a2437107a38927b97101d80dc7875a063c7b6cb334da7",
+      "seconds": 177.516,
+      "candidate": {
+        "schema": "release-candidate-v1",
+        "head": "6b2a57963f30ea71a20fda3f5a1e60e3044b39f9",
+        "source_files": 1858,
+        "source_sha256": "afa9adf6a81479b435ab014e4d2450ee0ab6a34b9a5b8453e1b25265cb342cab",
+        "migration_files": 336,
+        "migration_sha256": "d04e47cdf39b00fb0e82a379a915a207b3801fa17f575cd420427718b2e49841"
+      },
+      "configuration_sha256": {
+        "pg16-recovery_source.json": "904e9399a6087a166a9335c99e626be5703bcfa26c6c01ae7d2552de9870f9b8",
+        "pg16-recovery-fresh-target.json": "4fa3ab9efa56e7db77b93c8c9f380818f5514367055e388f8bb407cb9808ee8c",
+        "pg17-recovery_source.json": "9b2b49f14d93733f066d05e70d230d406658467ed000dea7cab981d92a8e7e72",
+        "pg17-recovery-fresh-target.json": "e968b94c10851c1c9500c5338cc8fb12e65daebf9d6dd4d66a866bfd02304272",
+        "wsl-bridge-private.json": "c0a23f5edb33bbccba002c6d88f335b623fbc3a7c41c993b01efdce6b51b3d11",
+        "gotrue-migrations-manifest.json": "bdb9c5905bb49fcd9fc14b2d2e232c39c9ebc01f4ab140654a0fd192a96e8e60"
+      }
+    }
+  },
+  "real_browser": {
+    "status": "passed",
+    "candidate": {
+      "schema": "release-candidate-v1",
+      "head": "6b2a57963f30ea71a20fda3f5a1e60e3044b39f9",
+      "source_files": 1858,
+      "source_sha256": "afa9adf6a81479b435ab014e4d2450ee0ab6a34b9a5b8453e1b25265cb342cab",
+      "migration_files": 336,
+      "migration_sha256": "d04e47cdf39b00fb0e82a379a915a207b3801fa17f575cd420427718b2e49841"
+    },
+    "passed": 8,
+    "skipped": 0,
+    "cases": [
+      "P02 client identity cannot review, lock or batch export",
+      "P02 foreign company book and reports stay invisible in the browser",
+      "P02 initial 403 clears loading and permits explicit reread",
+      "P02 real PG signed identity delivery and acknowledgement desktop",
+      "P02 real PG signed identity delivery and acknowledgement mobile",
+      "P02 real PG signed identity month-close desktop",
+      "P02 real PG signed identity month-close mobile",
+      "P02 revoked late write cannot restore data or success"
+    ],
+    "junit_sha256": "b5c1b279546d33d1dbfeec724b09fa8fe21abe79ec70ea393e502e23678c3a45",
+    "launch_mode": "separate owned backend / native frontend / fixed Playwright suite",
+    "launcher_limitation": "Windows Python-spawned SWC cache permission; initial p02_browser_gate launch failed before cases. Same frozen source and exact eight cases passed with separate native startup."
+  },
+  "desktop_mobile_specialized": {
+    "passed": 17,
+    "log_sha256": "05de9646c20a30577413c8dfe38a8c3c93bbd3ee48ae7472ae64b74c35748229"
+  },
+  "frontend": {
+    "files": 120,
+    "passed": 1189,
+    "typecheck": "passed",
+    "lint": "passed",
+    "build": "passed",
+    "log_sha256": {
+      "frontend-frozen-unit.log": "a66a734d910d6968e0e87d06ed7397030504695488788f7b6d9dfa985c3be64a",
+      "frontend-frozen-types.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "frontend-frozen-lint.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "frontend-frozen-build.log": "999c5d9623c29c5956bfe31b3bf6dfebde78d5e60b85328f3b2e9e895cd11785"
+    }
+  },
+  "protected_files_unchanged": [
+    "e2e/q04-client-signing.spec.ts",
+    "nexus_backend/tests/test_q04_client_signing.py"
+  ],
+  "environment_stop": {
+    "environment_id": "fdc6e8c1181d41eb9a3865ffbba660e8",
+    "clusters": {
+      "source16": {
+        "major": 16,
+        "port": 25496,
+        "running": false
+      },
+      "target16": {
+        "major": 16,
+        "port": 25497,
+        "running": false
+      },
+      "source17": {
+        "major": 17,
+        "port": 25498,
+        "running": false
+      },
+      "target17": {
+        "major": 17,
+        "port": 25499,
+        "running": false
+      }
+    },
+    "data_deleted": false
+  },
+  "not_performed": [
+    "production access or migration",
+    "model or notification provider calls",
+    "git commit or push by this task",
+    "remote CI for this unpushed candidate"
+  ]
+}

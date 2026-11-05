@@ -94,6 +94,20 @@ def build_opening_router(actor_dependency):
     ):
         return opening.import_version(current, package_id, payload)
 
+    @router.get("/packages/{package_id}")
+    def package_detail(
+        package_id: str, current=Depends(actor_dependency), opening=Depends(service)
+    ):
+        with opening.db.transaction(actor=current) as conn:
+            return opening._package_view(conn, current, package_id)
+
+    @router.get("/versions/{version_id}")
+    def version_detail(
+        version_id: str, current=Depends(actor_dependency), opening=Depends(service)
+    ):
+        with opening.db.transaction(actor=current) as conn:
+            return opening._version_view(conn, current, version_id)
+
     @router.post("/versions/{version_id}/validate")
     def validate_version(
         version_id: str,

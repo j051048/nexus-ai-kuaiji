@@ -26,6 +26,22 @@ const body = (steps: SetupBody['steps']): SetupBody => ({
 });
 
 describe('opening setup wizard list', () => {
+  it('提供已知步骤的办理按钮，错误范围不允许打开', () => {
+    const html = renderToStaticMarkup(
+      createElement(SetupStepList, {
+        body: body([
+          step({}),
+          step({
+            id: 'unknown',
+            action_target: { kind: 'opening', book_id: 'other', period: '2026-10' },
+          }),
+        ]),
+        onOpen: () => undefined,
+      }),
+    );
+    expect(html).toContain('办理：核算模板与适用范围');
+    expect((html.match(/办理：/g) ?? []).length).toBe(1);
+  });
   it('names the responsible role and never implies the wizard performs the step', () => {
     const html = renderToStaticMarkup(createElement(SetupStepList, { body: body([step({})]) }));
     expect(html).toContain('开账准备 0/1 项已完成');

@@ -349,6 +349,22 @@ def test_fresh_cluster_database_objects_signed_identity_and_http_recovery(
                 },
                 201,
             )
+            message_ids = [uuid4().hex, uuid4().hex]
+            with source_app.state.service.db.transaction(
+                write=True, actor=Actor(users["owner"]["id"], firm)
+            ) as conn:
+                for message_id in message_ids:
+                    conn.execute(
+                        "INSERT INTO client_messages(id,firm_id,company_id,recipient_user_id,kind,subject,body,created_by,created_at) "
+                        "VALUES(?,?,?,?,'return','恢复验收补件','仅虚构资料',?,'2026-11-03T00:00:00Z')",
+                        (message_id, firm, company, users["employee"]["id"], users["owner"]["id"]),
+                    )
+            _http(
+                client,
+                "POST",
+                f"/api/client/messages/{message_ids[0]}/read",
+                source_headers["employee"],
+            )
             result = client.post(
                 f"/api/business/events/{event['id']}/attachments?expected_version={event['version']}",
                 headers=source_headers["employee"],
@@ -717,6 +733,27 @@ def test_fresh_cluster_database_objects_signed_identity_and_http_recovery(
                 for name, row in users.items()
             }
             with TestClient(target_app, base_url="http://127.0.0.1") as client:
+                messages = _http(client, "GET", "/api/client/messages", new_headers["employee"])[
+                    "messages"
+                ]
+                receipts = {row["id"]: row["read_at"] for row in messages}
+                assert receipts[message_ids[0]] and receipts[message_ids[1]] is None
+                _http(
+                    client,
+                    "POST",
+                    f"/api/client/messages/{message_ids[1]}/read",
+                    new_headers["employee"],
+                )
+                assert all(
+                    row["read_at"]
+                    for row in _http(
+                        client, "GET", "/api/client/messages", new_headers["employee"]
+                    )["messages"]
+                    if row["id"] in message_ids
+                )
+                assert client.post(
+                    f"/api/client/messages/{message_ids[0]}/read", headers=new_headers["outsider"]
+                ).status_code in {403, 404}
                 business_proof = verify_latest_business_http(
                     client,
                     new_headers,

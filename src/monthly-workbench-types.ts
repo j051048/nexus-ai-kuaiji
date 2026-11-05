@@ -1,5 +1,21 @@
 import type { Pagination } from './types';
 
+export const monthlyFocusLabels = {
+  all: '全部客户',
+  mine: '我负责',
+  due: '临期与逾期',
+  materials: '待补件',
+  review: '待复核',
+  receipt: '待签收',
+} as const;
+export type MonthlyFocus = keyof typeof monthlyFocusLabels;
+export function monthlyFocus(value: unknown): MonthlyFocus {
+  return typeof value === 'string' &&
+    Object.prototype.hasOwnProperty.call(monthlyFocusLabels, value)
+    ? (value as MonthlyFocus)
+    : 'all';
+}
+
 export type MonthlyDestination = {
   view:
     | 'business'
@@ -70,6 +86,13 @@ export interface MonthlyClientRow {
     required_pending: number | null;
   } | null;
   warnings: string[];
+  work?: {
+    owner: string;
+    due_on: string | null;
+    reason: string;
+    target: 'service' | 'review' | 'delivery' | null;
+    label: string;
+  };
 }
 export interface MonthlyClients {
   period: string;

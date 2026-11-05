@@ -7,6 +7,7 @@ import type { Department, SubmissionPolicy } from './business-types';
 import { adminRoleLabels, type AccountRequest, type AdminCompany } from './admin-types';
 import { MemberHandoverDialog } from './MemberHandoverDialog';
 import { ReviewPolicyPanel } from './ReviewPolicyPanel';
+import { BulkEmployeeInvites } from './BulkEmployeeInvites';
 
 export function AdminMembers({
   session,
@@ -308,6 +309,16 @@ export function AdminMembers({
             await reload();
             await onChanged?.();
           }}
+        />
+      )}
+      {kind === 'company' && company && !disabled && (
+        <BulkEmployeeInvites
+          key={session.scope_key + ':' + company.id}
+          session={session}
+          companyId={company.id}
+          departments={departments}
+          onBusy={setBusy}
+          onCompleted={() => setRequestRevision((value) => value + 1)}
         />
       )}
       {handoverFrom && (
@@ -1160,7 +1171,14 @@ function AccountRequests({
                 {request.provisioning_mode === 'password' ? '管理员设置初始密码' : '本人激活'}
               </small>
             </div>
-            <span>{labels[request.status] ?? request.status}</span>
+            <span>
+              {request.activation_expired
+                ? '激活链接已过期，请重新生成'
+                : (labels[request.status] ?? request.status)}
+              {request.status === 'awaiting_activation' && !!request.expires_at && (
+                <small>有效至 {new Date(request.expires_at * 1000).toLocaleString('zh-CN')}</small>
+              )}
+            </span>
             {!['completed', 'cancelled'].includes(request.status) && (
               <div className="admin-inline-actions">
                 <button

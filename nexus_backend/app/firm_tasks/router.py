@@ -13,10 +13,11 @@ def build_firm_tasks_router(actor_dependency):
     def inbox(
         bucket: str = Query("all", pattern=r"^(all|today|overdue|blocked|review|failed)$"),
         limit: int = Query(100, ge=1, le=200),
+        offset: int = Query(0, ge=0),
         current=Depends(actor_dependency),
         tasks=Depends(service),
     ):
-        return tasks.inbox(current, bucket, limit)
+        return tasks.inbox(current, bucket, limit, offset)
 
     @router.post("/firm/tasks/assign")
     def assign(
@@ -58,5 +59,9 @@ def build_firm_tasks_router(actor_dependency):
         tasks=Depends(service),
     ):
         return tasks.mark_message_read(current, message_id)
+
+    @router.get("/client/messages/{message_id}/target")
+    def message_target(message_id: str, current=Depends(actor_dependency), tasks=Depends(service)):
+        return tasks.message_target(current, message_id)
 
     return router

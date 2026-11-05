@@ -1,5 +1,47 @@
 import type { BusinessPayload, BusinessTemplate } from './business-types';
-import type { IntakeRun } from './intake-types';
+import type { IntakeDraft, IntakeRun } from './intake-types';
+
+/** Only the explicitly requested, unchanged single original may prefill untouched facts. */
+export function prefillIntake(
+  requested: IntakeDraft,
+  received: IntakeDraft,
+  runId: string,
+  current: BusinessPayload,
+  edited: ReadonlySet<string>,
+): BusinessPayload {
+  if (
+    requested.id !== received.id ||
+    requested.company_id !== received.company_id ||
+    requested.version !== received.version ||
+    requested.template_id !== received.template_id ||
+    requested.attachments.length !== 1 ||
+    received.attachments.length !== 1
+  )
+    return current;
+  const original = requested.attachments[0],
+    attachment = received.attachments[0];
+  if (!original.sha256 || original.id !== attachment.id || original.sha256 !== attachment.sha256)
+    return current;
+  const run = received.runs.find((item) => item.id === runId && item.attachment_id === original.id);
+  if (
+    !run ||
+    run.result?.documents.length !== 1 ||
+    run.checks.some((check) => check.severity === 'blocking')
+  )
+    return current;
+  const next = { ...current };
+  for (const candidate of intakeCandidates(run, current.direction)) {
+    for (const item of candidate.fields) {
+      if (edited.has(item.target) || (item.target !== 'occurred_on' && current[item.target]))
+        continue;
+      // A date changed through another UI path is also authoritative.
+      if (item.target === 'occurred_on' && current.occurred_on !== requested.fields.occurred_on)
+        continue;
+      next[item.target] = item.value;
+    }
+  }
+  return next;
+}
 
 export function changeIntakeTemplate(
   payload: BusinessPayload,

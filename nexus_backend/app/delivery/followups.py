@@ -82,6 +82,17 @@ def channel_from_env(value: str | None) -> DeliveryChannel:
             os.environ.get("DELIVERY_SMTP_SENDER", "noreply@example.invalid"),
             os.environ.get("DELIVERY_SMTP_BASE_URL", "http://127.0.0.1:5173"),
         )
+    if choice == "smtp_tls":
+        from .smtp_channel import SecureSmtpChannel
+
+        return SecureSmtpChannel(
+            os.environ.get("DELIVERY_SMTP_HOST", ""),
+            int(os.environ.get("DELIVERY_SMTP_PORT", "465")),
+            os.environ.get("DELIVERY_SMTP_SENDER", ""),
+            os.environ.get("DELIVERY_SMTP_BASE_URL", ""),
+            username=os.environ.get("DELIVERY_SMTP_USERNAME", ""),
+            password=os.environ.get("DELIVERY_SMTP_PASSWORD", ""),
+        )
     return DisabledChannel()
 
 

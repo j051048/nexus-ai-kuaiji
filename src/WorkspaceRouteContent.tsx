@@ -371,6 +371,7 @@ export function WorkspaceRouteContent({
             setWorkPeriod('');
           }}
           onAccounting={() => navigate('accounting')}
+          onMonthly={() => navigate('monthly')}
           onReview={() => navigate('review')}
           onBriefing={(target) => {
             navigate('accounting');
@@ -445,13 +446,13 @@ export function WorkspaceRouteContent({
           }}
         />
       ) : routeView === 'inbox' ? (
-        <FirmInbox session={session} />
+        <FirmInbox key={session.scope_key} session={session} onOpen={openWorkspaceTask} />
       ) : routeView === 'observability' ? (
         <FirmObservability session={session} />
       ) : routeView === 'ingestion' ? (
         <FirmIngestionCenter session={session} />
       ) : routeView === 'messages' ? (
-        <ClientMessages session={session} />
+        <ClientMessages session={session} onOpen={openWorkspaceTask} />
       ) : routeView === 'monthly' ? (
         <MonthlyClientWorkbench
           key={session.scope_key}
