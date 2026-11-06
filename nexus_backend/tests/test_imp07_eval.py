@@ -142,3 +142,25 @@ def test_07_t7_snapshot_lineage_and_allowlist_still_reject_bad_changes(tmp_path)
     assert store.diff(base["id"], child["id"]) == ["mock.json"]
     with pytest.raises(SnapshotError, match="resource_allowlist"):
         store.snapshot({"prompt.txt": "x"}, reason="bad")
+
+
+def test_07_t8_attempt_measurement_drives_known_and_unknown_cost():
+    data = corpus()
+    rows = rows_for(data)
+    for row in rows:
+        row.pop("cost_cny", None)
+        row["attempts"] = [
+            {"attempt_id": row["item_id"] + "-a1", "status": "succeeded", "cost_cny": "0.01"}
+        ]
+    result = score(data, rows, candidate=CANDIDATE)
+    assert result["known_cost_count"] == 120
+    assert result["unknown_cost_count"] == 0
+    assert result["cost_summary"]["complete"] is True
+    assert result["cost_summary"]["known_subtotal"] == "1.20"
+
+    rows[0]["attempts"] = []
+    incomplete = score(data, rows, candidate=CANDIDATE)
+    assert incomplete["known_cost_count"] == 119
+    assert incomplete["unknown_cost_count"] == 1
+    assert incomplete["cost_summary"]["complete"] is False
+    assert incomplete["cost_summary"]["total"] is None

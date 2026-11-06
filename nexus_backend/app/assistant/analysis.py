@@ -52,6 +52,10 @@ def _database(service):
     return getattr(service, "db", service)
 
 
+def _recheck_book(service, conn, actor, book_id):
+    (getattr(service, "access", None) or AccessControl()).book(conn, actor, book_id, "read")
+
+
 def _book(service, actor, book_id, period):
     if not isinstance(book_id, str) or not book_id or not PERIOD_RE.fullmatch(str(period)):
         raise AccountingError("分析参数无效", 422)
@@ -109,13 +113,15 @@ def _expense_bridge(service, actor, book_id, period, *, account_code, compare_pe
     book = _book(service, actor, book_id, period)
     previous = _sibling_book(service, actor, book, compare_period=compare_period)
     with _database(service).transaction(actor=actor) as conn:
+        _recheck_book(service, conn, actor, book_id)
         current_total, current_rows, current_page = _expense_rows(
             conn, book_id, account_code, limit, offset
         )
+        _recheck_book(service, conn, actor, book_id)
         name = conn.execute(
             "SELECT name FROM accounts WHERE book_id=? AND code=?", (book_id, account_code)
         ).fetchone()
-    details = [
+    current_details = [
         {
             "voucher_id": row["voucher_id"],
             "voucher_no": row["voucher_no"],
@@ -126,16 +132,22 @@ def _expense_bridge(service, actor, book_id, period, *, account_code, compare_pe
         }
         for row in current_page[:limit]
     ]
+    details = current_details
     missing = []
     previous_total = None
     previous_details = []
+    previous_page = []
+    previous_n = 0
     if previous is None:
         missing.append("previous_period")
         status = "partial"
-        summary = f"本期 {account_code} 有记录，但缺少可比上期账套，不能计算跨期差额。"
+        if current_rows == 0:
+            summary = f"本期 {account_code} 无记录，且缺少可比上期账套，不能计算跨期差额。"
+        else:
+            summary = f"本期 {account_code} 有记录，但缺少可比上期账套，不能计算跨期差额。"
     else:
         with _database(service).transaction(actor=actor) as conn:
-            previous_total, _, previous_page = _expense_rows(
+            previous_total, previous_n, previous_page = _expense_rows(
                 conn, previous["id"], account_code, limit, offset
             )
         previous_details = [
@@ -151,10 +163,21 @@ def _expense_bridge(service, actor, book_id, period, *, account_code, compare_pe
         ]
         status = "complete"
         delta = current_total - previous_total
-        summary = (
-            f"{account_code} {name['name'] if name else ''}：本期 {current_total} 分，"
-            f"上期 {previous_total} 分，差额 {delta} 分；明细见引用记录。"
-        )
+        if current_rows == 0 and previous_n == 0:
+            summary = f"{account_code} {name['name'] if name else ''}：本期与上期均无该科目记录。"
+        elif current_rows == 0:
+            summary = (
+                f"{account_code} {name['name'] if name else ''}：本期无该科目记录，"
+                f"上期 {previous_total} 分；差额 {delta} 分。"
+            )
+        else:
+            summary = (
+                f"{account_code} {name['name'] if name else ''}：本期 {current_total} 分，"
+                f"上期 {previous_total} 分，差额 {delta} 分；明细见引用记录。"
+            )
+        if len(current_page) > limit or len(previous_page) > limit:
+            status = "partial"
+            summary += " 明细分页未一次显示完，不能把当前页当作全部明细。"
     facts = {
         "account_code": account_code,
         "account_name": name["name"] if name else None,
@@ -173,12 +196,20 @@ def _expense_bridge(service, actor, book_id, period, *, account_code, compare_pe
         "current_rows": details,
         "previous_rows": previous_details,
     }
+    detail_rows = len(current_details) + len(previous_details)
+    has_more = len(current_page) > limit or len(previous_page) > limit
     coverage = {
         "scope": "current_and_previous" if previous else "current_only",
-        "rows_read": len(current_page[:limit]) + len(previous_details),
-        "has_more": len(current_page) > limit,
+        "rows_read": detail_rows,
+        "detail_rows": detail_rows,
+        "total_rows": current_rows + previous_n,
+        "has_more": has_more,
+        "detail_complete": not has_more,
         "pages": 1,
-        "account_versions": sorted({row["account_version"] for row in current_page[:limit]}),
+        "account_versions": sorted(
+            {row["account_version"] for row in current_page[:limit]}
+            | ({row["account_version"] for row in previous_page[:limit]} if previous else set())
+        ),
     }
     return _result("expense_bridge", book, status, summary, facts, coverage, missing, limit, offset)
 
@@ -190,6 +221,7 @@ def _invoice_voucher_diff(service, actor, book_id, period, *, target_voucher_id,
         raise AccountingError("分页参数无效", 422)
     book = _book(service, actor, book_id, period)
     with _database(service).transaction(actor=actor) as conn:
+        _recheck_book(service, conn, actor, book_id)
         voucher = conn.execute(
             "SELECT id,voucher_no,voucher_date,description,content_fingerprint FROM vouchers "
             "WHERE id=? AND book_id=? AND period=?",
@@ -201,25 +233,43 @@ def _invoice_voucher_diff(service, actor, book_id, period, *, target_voucher_id,
             "SELECT COALESCE(SUM(debit_cents),0) AS n FROM voucher_lines WHERE voucher_id=?",
             (target_voucher_id,),
         ).fetchone()["n"]
+        credit = conn.execute(
+            "SELECT COALESCE(SUM(credit_cents),0) AS n FROM voucher_lines WHERE voucher_id=?",
+            (target_voucher_id,),
+        ).fetchone()["n"]
+        stats = conn.execute(
+            "SELECT COALESCE(SUM(amount_cents),0) AS total,COUNT(*) AS n FROM voucher_sources WHERE voucher_id=?",
+            (target_voucher_id,),
+        ).fetchone()
         sources = conn.execute(
             "SELECT source_kind,source_id,source_version,amount_cents,evidence_ref FROM voucher_sources "
             "WHERE voucher_id=? ORDER BY id LIMIT ? OFFSET ?",
             (target_voucher_id, limit + 1, offset),
         ).fetchall()
-    source_total = sum(int(row["amount_cents"]) for row in sources[:limit])
+    source_rows = int(stats["n"])
+    source_total = int(stats["total"])
+    source_detail_total = sum(int(row["amount_cents"]) for row in sources[:limit])
+    imbalanced = int(debit) != int(credit)
     missing = []
-    if not sources:
+    if source_rows == 0:
         status = "partial"
         summary = "该凭证没有绑定来源金额，不能计算票据与凭证差额；请会计核对来源。"
         difference = None
         missing.append("voucher_source")
     else:
         difference = int(debit) - source_total
-        status = "complete" if len(sources) <= limit else "partial"
+        status = "complete"
         summary = (
             f"凭证 {voucher['voucher_no']} 借方 {int(debit)} 分，来源金额 {source_total} 分，"
             f"差额 {difference} 分。差额不是舞弊或浪费结论。"
         )
+        if len(sources) > limit:
+            status = "partial"
+            summary += " 来源明细当前页未显示完，总额按全部来源计算。"
+        if imbalanced:
+            status = "partial"
+            missing.append("voucher_imbalance")
+            summary += " 凭证借贷不平，核对结果不完整。"
     facts = {
         "voucher_id": voucher["id"],
         "voucher_no": int(voucher["voucher_no"]),
@@ -227,8 +277,12 @@ def _invoice_voucher_diff(service, actor, book_id, period, *, target_voucher_id,
         "description": voucher["description"],
         "voucher_total_cents": int(debit),
         "voucher_total": _money(int(debit)),
-        "source_total_cents": source_total if sources else None,
-        "source_total": _money(source_total) if sources else None,
+        "source_total_cents": source_total if source_rows else None,
+        "source_total": _money(source_total) if source_rows else None,
+        "source_detail_total_cents": source_detail_total,
+        "source_detail_total": _money(source_detail_total),
+        "voucher_credit_cents": int(credit),
+        "voucher_imbalanced": imbalanced,
         "difference_cents": difference,
         "difference": _money(difference) if difference is not None else None,
         "currency": "CNY",
@@ -247,7 +301,10 @@ def _invoice_voucher_diff(service, actor, book_id, period, *, target_voucher_id,
     coverage = {
         "scope": "voucher_and_linked_sources",
         "rows_read": len(sources[:limit]),
+        "detail_rows": len(sources[:limit]),
+        "total_rows": source_rows,
         "has_more": len(sources) > limit,
+        "detail_complete": len(sources) <= limit,
         "pages": 1,
         "source_versions": [row["source_version"] for row in sources[:limit]],
     }
@@ -266,6 +323,7 @@ def _invoice_voucher_diff(service, actor, book_id, period, *, target_voucher_id,
 
 
 def _result(kind, book, status, summary, facts, coverage, missing, limit, offset, target=None):
+    period = book["period"]
     facts = dict(facts)
     facts["fact_ids"] = [
         f"{kind}:{key}" for key in ("current_total_cents", "difference_cents", "voucher_total_cents", "source_total_cents")
@@ -284,7 +342,21 @@ def _result(kind, book, status, summary, facts, coverage, missing, limit, offset
         "handoff": (
             None
             if status == "complete"
-            else {"role": "accountant", "reason": "分析覆盖不完整，需要会计在业务入口核对"}
+            else {
+                "reason_code": missing[0] if missing else "coverage_incomplete",
+                "reason": "分析覆盖不完整，需要会计在业务入口核对",
+                "owner_role": "accountant",
+                "source_ref": f"{kind}:{book['id']}:{period}:{target or facts.get('account_code') or '-'}",
+                "source_version": ",".join(
+                    [str(v) for v in (coverage.get("account_versions") or coverage.get("source_versions") or [])]
+                ) or f"{book['id']}:{period}",
+                "action_target": (
+                    f"/workspace/accounting?book={book['id']}&period={period}"
+                    f"&company={book['company_id']}"
+                ),
+                "deadline": None,
+                "status": "open",
+            }
         ),
         "limits": {"max_rows": MAX_ROWS, "limit": limit, "offset": offset},
         "model_calls": 0,

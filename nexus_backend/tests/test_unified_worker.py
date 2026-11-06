@@ -131,3 +131,34 @@ def test_loop_polls_until_stopped():
     settled = len(log)
     time.sleep(0.15)
     assert len(log) == settled
+
+
+def test_slow_background_preparation_does_not_block_the_assistant_lane():
+    import threading
+
+    background_started = threading.Event()
+    release = threading.Event()
+    assistant_ran = threading.Event()
+
+    class Slow:
+        def run_once(self):
+            background_started.set()
+            release.wait(3)
+            return True
+
+    class Fast:
+        def run_once(self):
+            assistant_ran.set()
+            return True
+
+    worker = UnifiedWorker(
+        assistant_worker=Fast(), queue_worker=Slow(), idle_seconds=0.05
+    )
+    worker.start()
+    try:
+        assert background_started.wait(2)
+        assert assistant_ran.wait(2)
+    finally:
+        release.set()
+        worker.stop()
+        worker.wait_for_idle(3)

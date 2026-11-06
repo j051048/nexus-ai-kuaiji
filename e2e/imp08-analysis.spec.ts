@@ -29,9 +29,15 @@ test('IMP08 analysis panel shows deterministic facts, coverage and an evidence l
           difference: null,
           fact_ids: ['expense_bridge:current_total_cents'],
         },
-        coverage: { scope: 'current_only', rows_read: 2, has_more: false },
+        coverage: { scope: 'current_only', rows_read: 2, detail_rows: 2, total_rows: 2, has_more: false, detail_complete: true },
         missing: ['previous_period'],
-        handoff: { role: 'accountant', reason: '分析覆盖不完整，需要会计在业务入口核对' },
+        handoff: {
+          reason_code: 'previous_period',
+          reason: '分析覆盖不完整，需要会计在业务入口核对',
+          owner_role: 'accountant',
+          action_target: '/workspace/accounting?book=b1&period=2026-10&company=c1',
+          deadline: null,
+        },
         fingerprint: 'a'.repeat(64),
       },
     }),
@@ -46,6 +52,7 @@ test('IMP08 analysis panel shows deterministic facts, coverage and an evidence l
   await page.getByText('只读差异核对').click();
   await page.getByRole('button', { name: '开始只读核对' }).click();
   await expect(page.getByText(/本期 150.00 元/)).toBeVisible();
+  await expect(page.getByText(/总额 2 行，当前明细 2 行/)).toBeVisible();
   await expect(page.getByText(/未检查：上期账套/)).toBeVisible();
   await expect(page.getByText(/核对本身不构成复核/)).toBeVisible();
   await expect(page.getByRole('link', { name: '打开账套原记录核对' })).toHaveAttribute(

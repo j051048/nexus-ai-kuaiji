@@ -101,7 +101,7 @@ def test_invoice_difference_uses_source_total_and_progressive_disclosure(posted)
     assert result["status"] == "partial"
     assert result["coverage"]["has_more"] is True
     assert result["facts"]["voucher_total"] == "100.00"
-    assert result["facts"]["source_total"] == "60.00"
+    assert result["facts"]["source_total"] == "90.00"
 
     full = analysis.analyze(
         case.db,
@@ -229,3 +229,115 @@ def test_period_mismatch_fails_closed(posted):
             case.db, case.manager, case.book["id"], "2026-11", "expense_bridge", account_code="6602.02"
         )
     assert caught.value.status == 422
+
+
+def test_expense_coverage_distinguishes_total_from_detail_page(posted):
+    case = posted.case
+    result = analysis.analyze(
+        case.db, case.manager, case.book["id"], "2026-10",
+        "expense_bridge", account_code="6602.02", limit=1,
+    )
+    assert result["coverage"]["total_rows"] == 2
+    assert result["coverage"]["detail_rows"] == 1
+    assert result["coverage"]["has_more"] is True
+    assert result["coverage"]["detail_complete"] is False
+    assert result["status"] == "partial"
+
+
+def test_invoice_uses_all_sources_even_when_detail_is_paginated(posted):
+    case = posted.case
+    result = analysis.analyze(
+        case.db, case.manager, case.book["id"], "2026-10",
+        "invoice_voucher_diff", target_voucher_id=posted.first["voucher"]["id"], limit=1,
+    )
+    assert result["facts"]["source_total"] == "90.00"
+    assert result["facts"]["difference"] == "10.00"
+    assert result["coverage"]["total_rows"] == 2
+    assert result["coverage"]["detail_rows"] == 1
+    assert result["coverage"]["detail_complete"] is False
+    assert result["status"] == "partial"
+
+
+
+def test_partial_analysis_returns_structured_handoff_without_inventing_owner(posted):
+    case = posted.case
+    result = analysis.analyze(
+        case.db, case.manager, case.book["id"], "2026-10",
+        "expense_bridge", account_code="6602.02",
+    )
+    handoff = result["handoff"]
+    assert handoff["reason_code"] == "previous_period"
+    assert handoff["owner_role"] == "accountant"
+    assert handoff["source_ref"].startswith("expense_bridge:")
+    assert handoff["source_version"]
+    assert handoff["deadline"] is None
+    assert handoff["action_target"].startswith("/workspace/accounting?")
+    assert handoff["status"] == "open"
+
+def test_expense_without_rows_does_not_claim_records(posted):
+    case = posted.case
+    result = analysis.analyze(case.db, case.manager, case.book["id"], "2026-10", "expense_bridge", account_code="9999.99")
+    assert result["facts"]["current_rows"] == []
+    assert "无记录" in result["summary"]
+    assert "有记录" not in result["summary"]
+
+
+def test_revocation_is_not_cached_between_analyses(posted):
+    case = posted.case
+    actor = case.actors["accountant"]
+    first = analysis.analyze(
+        case.db,
+        actor,
+        case.book["id"],
+        "2026-10",
+        "expense_bridge",
+        account_code="6602.02",
+    )
+    assert first["coverage"]["rows_read"] >= 1
+    with case.db.transaction() as conn:
+        conn.execute(
+            "DELETE FROM book_access WHERE user_id=? AND book_id=?",
+            (actor.user_id, case.book["id"]),
+        )
+    with pytest.raises(AccountingError) as rejected:
+        analysis.analyze(
+            case.db,
+            actor,
+            case.book["id"],
+            "2026-10",
+            "expense_bridge",
+            account_code="6602.02",
+        )
+    assert rejected.value.status in {403, 404}
+
+
+def test_revocation_after_initial_authorization_is_rechecked_inside_the_read(posted):
+    case = posted.case
+    actor = case.actors["accountant"]
+
+    class RevokeAfterFirst:
+        def __init__(self, db):
+            self.db = db
+            self.calls = 0
+
+        def book(self, conn, current, book_id, mode):
+            self.calls += 1
+            found = analysis.AccessControl().book(conn, current, book_id, mode)
+            if self.calls == 1:
+                conn.execute(
+                    "DELETE FROM book_access WHERE user_id=? AND book_id=?",
+                    (current.user_id, book_id),
+                )
+            return found
+
+    wrapper = RevokeAfterFirst(case.db)
+    with pytest.raises(AccountingError) as rejected:
+        analysis.analyze(
+            SimpleNamespace(db=case.db, access=wrapper),
+            actor,
+            case.book["id"],
+            "2026-10",
+            "expense_bridge",
+            account_code="6602.02",
+        )
+    assert rejected.value.status in (403, 404)

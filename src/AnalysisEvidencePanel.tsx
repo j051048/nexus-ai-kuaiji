@@ -9,9 +9,22 @@ type Analysis = {
   status: 'complete' | 'partial';
   summary: string;
   facts: Record<string, unknown>;
-  coverage: { scope: string; rows_read: number; has_more: boolean };
+  coverage: {
+    scope: string;
+    rows_read: number;
+    detail_rows?: number;
+    total_rows?: number;
+    detail_complete?: boolean;
+    has_more: boolean;
+  };
   missing: string[];
-  handoff: { role: string; reason: string } | null;
+  handoff: {
+    reason_code?: string;
+    reason: string;
+    owner_role?: string;
+    action_target?: string;
+    deadline?: string | null;
+  } | null;
   fingerprint: string;
 };
 
@@ -150,19 +163,23 @@ export function AnalysisEvidencePanel(props: {
             </p>
           )}
           <p>
-            已读取 {result.coverage.rows_read} 行
+            总额 {result.coverage.total_rows ?? result.coverage.rows_read} 行，当前明细{' '}
+            {result.coverage.detail_rows ?? result.coverage.rows_read} 行
             {result.coverage.has_more ? '，仍有下一页，当前为部分结果' : '，未发现更多分页'}。
             未检查：{result.missing.length ? result.missing.map((k) => missingLabels[k] ?? k).join('、') : '无'}。
           </p>
           {result.handoff && (
             <p>
-              下一步：{result.handoff.reason}（{result.handoff.role}）。打开原记录核对后再办理，核对本身不构成复核。
+              下一步：{result.handoff.reason}（{result.handoff.owner_role ?? 'accountant'}）。打开原记录核对后再办理，核对本身不构成复核。
             </p>
           )}
           <p className="analysis-evidence-fingerprint">证据摘要：{result.fingerprint}</p>
           <a
             className="text-button"
-            href={`/workspace/accounting?book=${encodeURIComponent(props.bookId)}&period=${encodeURIComponent(props.period)}&company=${encodeURIComponent(props.companyId)}`}
+            href={
+              result.handoff?.action_target ??
+              `/workspace/accounting?book=${encodeURIComponent(props.bookId)}&period=${encodeURIComponent(props.period)}&company=${encodeURIComponent(props.companyId)}`
+            }
           >
             打开账套原记录核对
           </a>

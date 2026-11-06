@@ -7,10 +7,13 @@ never reads customer data and never accepts a candidate-supplied score.
 from __future__ import annotations
 
 from collections import Counter, defaultdict
+from decimal import Decimal, InvalidOperation
 import hashlib
 import json
 from pathlib import Path
 import re
+
+from .costing import CostingError, summarize_attempts
 
 
 class EvaluationError(ValueError):
@@ -164,6 +167,7 @@ def score(corpus, rows, *, candidate, baseline_rows=None, baseline_candidate=Non
     missing, unknown, failed = [], [], []
     known_cost = 0
     unknown_cost = 0
+    cost_total = Decimal("0")
     for item in sorted(corpus["items"], key=lambda value: value["item_id"]):
         iid = item["item_id"]
         row = current.get(iid)
@@ -189,8 +193,17 @@ def score(corpus, rows, *, candidate, baseline_rows=None, baseline_candidate=Non
             unknown.append(iid)
         elif result["status"] == "failed":
             failed.append(iid)
-        cost = row.get("cost_cny")
-        cost_known = isinstance(cost, str) and bool(re.fullmatch(r"\d+(?:\.\d{1,2})?", cost))
+        attempt_summary = None
+        if "attempts" in row:
+            attempts = row.get("attempts")
+            attempt_summary = summarize_attempts(attempts) if isinstance(attempts, list) and attempts else None
+            cost = attempt_summary.get("total") if attempt_summary else None
+            cost_known = bool(attempt_summary and attempt_summary["complete"] and cost is not None)
+        else:
+            cost = row.get("cost_cny")
+            cost_known = isinstance(cost, str) and bool(re.fullmatch(r"\d+(?:\.\d{1,2})?", cost))
+        if cost_known:
+            cost_total += Decimal(cost)
         known_cost += cost_known
         unknown_cost += not cost_known
         details.append(
@@ -202,6 +215,7 @@ def score(corpus, rows, *, candidate, baseline_rows=None, baseline_candidate=Non
                 **result,
                 "cost_cny": cost,
                 "cost_known": cost_known,
+                "attempt_summary": attempt_summary,
             }
         )
 
@@ -255,6 +269,12 @@ def score(corpus, rows, *, candidate, baseline_rows=None, baseline_candidate=Non
         "field_total": field_total,
         "known_cost_count": known_cost,
         "unknown_cost_count": unknown_cost,
+        "cost_summary": {
+            "complete": unknown_cost == 0 and known_cost == len(details),
+            "known_subtotal": f"{cost_total:.2f}" if known_cost else None,
+            "total": f"{cost_total:.2f}" if unknown_cost == 0 and known_cost == len(details) else None,
+            "currency": "CNY",
+        },
         "safety_failure_count": len(safety_failures),
         "regressions": regressions,
         "acceptance": acceptance,
@@ -280,6 +300,7 @@ def render_markdown(report):
         f"- 来源组：{report['source_count']}；样本：{report['variant_count']}（同一来源的变体不重复计为独立原件）",
         f"- 固定分母：{report['denominator']}；成功：{report['success_count']}；缺失：{report['missing_count']}；未知：{report['unknown_count']}；失败：{report['failed_count']}",
         f"- 字段正确：{report['field_correct_total']}/{report['field_total']}；费用未知：{report['unknown_cost_count']}",
+        f"- 费用完整性：{report['cost_summary']['complete']}；已知小计：{report['cost_summary']['known_subtotal'] or '不可比较'}；完整总额：{report['cost_summary']['total'] or 'null（存在未知）'}",
         f"- 安全失败：{report['safety_failure_count']}；回归：{len(report['regressions'])}",
         f"- 结论：{report['acceptance']}（离线工程；非真实模型/生产验收）",
         "",
