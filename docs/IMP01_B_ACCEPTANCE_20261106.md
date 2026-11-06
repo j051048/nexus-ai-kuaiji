@@ -11,14 +11,14 @@
 
 | 项 | 值 |
 |---|---|
-| HEAD | `143d4aea7154b1905b96ab757ecd14865354b641` |
+| HEAD | `ec63c24ecc060eb44f1745011b6ccdae67056a05`（提交后） |
 | 分支 | `main` |
 | source files | **1927** |
 | source sha256 | **`e6a947031fe9e3b4bd23b522b29ef46bbfddd89232a5c9d989b70a170f44baa5`** |
 | migration files | **338** |
 | migration sha256 | **`2c96acd52de191347a2365962e879340918fad013786faa260b4b13140646116`** |
 | PG / SQLite 迁移 | 205 / 133；最大 PG 217、SQLite 133 |
-| 工作树 | 57 项：均为本任务 IMP 代码/测试/文档与输入文档；未提交 |
+| 工作树 | 已提交 `ec63c24e` 并推送 `origin/main`；源指纹不变 |
 | 冻结时间 | `2026-11-06T12:25:00+08:00` |
 
 候选自 IMP08 后未再修改源码；IMP09/10 只新增文档与一次外部 smoke 测试。工作树包含输入文档 `docs/AUDIT_SYNTHESIS_RECOMMENDATIONS_20261105.md`、`docs/DEEPSEEK_IMP01_IMP10_EXECUTION_20261106.md` 等，它们不参与候选摘要（docs 不在 release_candidate 前缀内）。
@@ -110,7 +110,7 @@ node scripts/frontend_budget.mjs dist
 | 真实通知/供应商 | pending；未发送 |
 | 真人试用 | pending；IMP05 记录表为空，未补零 |
 | 真机/微信/屏幕阅读器 | pending |
-| 远端 CI | pending；本轮未提交/推送 |
+| 远端 CI | 已触发，结果见 GitHub Actions |
 | 生产发布 | not authorized |
 | 多节点/跨机网络 | 未验证；IMP09 是同机双 worker |
 
@@ -124,7 +124,7 @@ node scripts/frontend_budget.mjs dist
 
 ## 7. 声明
 
-- 未提交、未推送、未部署。
+- 已提交 `ec63c24e` 并推送 `origin/main`；未部署。
 - 未执行线上 SQL、未改历史迁移 checksum。
 - 未调用真实模型、真实 OCR、真实通知渠道。
 - 本记录是本地工程组合验收，不是生产发布批准。

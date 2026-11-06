@@ -2,10 +2,10 @@
 
 - 更新时间：2026-11-06
 - 当前包：IMP01-B（已完成本地组合；同候选 P01 已通过）
-- 当前 HEAD：`143d4aea7154b1905b96ab757ecd14865354b641`
+- 当前 HEAD：`ec63c24ecc060eb44f1745011b6ccdae67056a05`
 - P01：1927 同候选 passed（183/2/4）
 - 当前候选：source 1927 / `e6a947031fe9e3b4bd23b522b29ef46bbfddd89232a5c9d989b70a170f44baa5`；migration 338 / `2c96acd52de191347a2365962e879340918fad013786faa260b4b13140646116`；冻结 `tmp_test/imp/imp-20261106-a/candidate-final.json`
-- 工作区：56 项 IMP 代码/测试/文档与输入文档；未提交、未推送
+- 工作区：IMP 代码/测试/文档已提交 `ec63c24e` 并推送 `origin/main`；源指纹不变
 
 ## 已完成
 

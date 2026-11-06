@@ -38,7 +38,7 @@
 | 2026-11-06 IMP05-B 后 | `143d4aea` | 1916 / `b00de1db…` | 338 / `2c96acd5…` | 角色链夹具显式企业更新；36 浏览器 passed；真人 pending |
 | 2026-11-06 IMP07 后 | `143d4aea` | 1921 / `9e85d77f…` | 338 / `2c96acd5…` | 合成语料 30/120、固定分母评分器、good/bad/unknown 报告 |
 | 2026-11-06 IMP08 后 | `143d4aea` | 1927 / `e6a94703…` | 338 / `2c96acd5…` | 只读差异分析、HTTP 开关、UI 面板；8 契约测试 + 1 浏览器；PG16/17 各 1 smoke；正向票据差异仅 SQLite |
-| 2026-11-06 IMP01-B 最终 | `143d4aea` | **1927 / `e6a94703…`** | **338 / `2c96acd5…`** | 冻结于 `tmp_test/imp/imp-20261106-a/candidate-final.json`；P01 同候选 passed；未提交 |
+| 2026-11-06 IMP01-B 最终 | `ec63c24e` | **1927 / `e6a94703…`** | **338 / `2c96acd5…`** | 冻结于 `tmp_test/imp/imp-20261106-a/candidate-final.json`；P01 同候选 passed；已推送 `origin/main` |
 
 ## 已确认的现有能力（复用，不重建）
 
