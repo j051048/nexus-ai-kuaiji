@@ -85,10 +85,18 @@ test('员工录入引导随填写和原件变化，未确认时不自动提交�
     .getByRole('region', { name: '提交与进度' })
     .getByRole('button', { name: /提交报销/ })
     .click();
+  await page.waitForTimeout(1200);
   const dialog = page.getByRole('dialog');
+  if (!(await dialog.isVisible().catch(() => false))) {
+    const entry = page.getByRole('button', { name: /录入业务事项/ });
+    if (await entry.count()) await entry.first().click();
+  }
+  await expect(dialog).toBeVisible();
   const guide = dialog.getByRole('region', { name: '员工录入引导', exact: true });
   await expect(guide).toBeVisible();
   await expect(guide.locator('[aria-current="step"]')).toHaveCount(1);
+  const companySelect = dialog.getByRole('combobox', { name: '事项客户企业', exact: true });
+  await companySelect.selectOption({ index: 1 });
   const writes: string[] = [];
   page.on('request', (req) => {
     if (

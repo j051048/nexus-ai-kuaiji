@@ -2,6 +2,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { WorkspaceHome } from './WorkspaceHome';
+import { taskPresentation, taskTitle } from './task-presentation';
 import type { Session } from './types';
 import type { WorkspaceProfile, WorkspaceTask, WorkspaceTasks } from './workspace-types';
 
@@ -193,5 +194,66 @@ describe('岗位首页围绕主任务收敛', () => {
     expect(html).not.toContain('核验下一项');
     expect(html).toMatch(/<button[^>]*disabled=""[^>]*>查看待核验事项/);
     expect(html).toContain('查看资料清单');
+  });
+});
+
+describe('IMP02 shell compression', () => {
+  it('removes decorative English and the duplicated 当前工作台 label while keeping role help', () => {
+    const html = render('finance');
+    expect(html).not.toContain('HENGZHANG · ACCOUNTING AGENT');
+    expect(html).not.toContain('<span>当前工作台</span>');
+    expect(html).toContain('岗位说明与权限');
+    expect(html).toContain('当前职责与授权范围');
+  });
+});
+
+describe('IMP03 row compression', () => {
+  it('keeps ordinary row guidance in one shared disclosure instead of a long inline paragraph', () => {
+    const tasks: WorkspaceTasks = {
+      tasks: [{ ...financeTask, bucket: 'action', state: 'department_approved' }],
+      counts: { action: 1, waiting: 0 },
+      pagination: { total: 1, limit: 20, offset: 0, has_more: false },
+    };
+    const html = render('finance', tasks);
+    const row = html.slice(html.indexOf('<article'), html.indexOf('</article>'));
+    expect(row).toContain('处理说明');
+    expect(row).toContain('workspace-task-help');
+    expect(row).not.toMatch(/<\/small><p class="workspace-task-guidance"/);
+    expect(row).toMatch(/<details class="workspace-task-help">[\s\S]*workspace-task-guidance/);
+  });
+
+  it('keeps the reason inline for a blocked row', () => {
+    const tasks: WorkspaceTasks = {
+      tasks: [
+        {
+          ...financeTask,
+          bucket: 'action',
+          state: 'failed',
+          title: '资料金额与原件不一致',
+          action_label: '查看差异',
+        },
+      ],
+      counts: { action: 1, waiting: 0 },
+      pagination: { total: 1, limit: 20, offset: 0, has_more: false },
+    };
+    const html = render('finance', tasks);
+    expect(html).toContain('<p class="workspace-task-guidance"');
+    expect(html).toContain('核对');
+  });
+
+  it('falls back only for empty or opaque technical titles and preserves real references', () => {
+    expect(taskTitle(financeTask, taskPresentation(financeTask, profile('finance')))).toBe(
+      '办公用品资料待核验',
+    );
+    const empty = { ...financeTask, title: '   ' };
+    expect(taskTitle(empty, taskPresentation(empty, profile('finance')))).toContain('财务核验');
+    const technical = { ...financeTask, title: '550e8400-e29b-41d4-a716-446655440000' };
+    const fallback = taskTitle(technical, taskPresentation(technical, profile('finance')));
+    expect(fallback).toContain('财务核验');
+    expect(fallback).not.toContain('550e8400');
+    const realReference = { ...financeTask, title: '发票号 000123 / 550e8400-e29b-41d4-a716-446655440000' };
+    expect(taskTitle(realReference, taskPresentation(realReference, profile('finance')))).toBe(
+      realReference.title,
+    );
   });
 });

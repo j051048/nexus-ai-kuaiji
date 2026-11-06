@@ -19,6 +19,7 @@ import { AccountingBookList } from './AccountingBookList';
 import { api } from './api';
 import { EmptyState, PageControls, Spinner, StatCard } from './AppPrimitives';
 import { AccountingBookToolbar, bookPipelineStep } from './AccountingBookToolbar';
+import { AnalysisEvidencePanel } from './AnalysisEvidencePanel';
 import { downloadCsv, formatMoney } from './csv';
 import type { Book, BookDetail, Draft, JournalLine, Me, Session, Workbench } from './types';
 import type { WorkspaceView } from './workspace-route';
@@ -337,6 +338,18 @@ export function BookWorkspaceShell({
                     setRouteView(view);
                   }}
                 />
+                {detail?.book.period && (
+                  <AnalysisEvidencePanel
+                    session={session}
+                    bookId={bookId}
+                    period={detail.book.period}
+                    companyId={
+                      detail.book.company_id ??
+                      workbench?.books.find((book) => book.id === bookId)?.company_id ??
+                      ''
+                    }
+                  />
+                )}
                 {bookView ? (
                   <div className="book-embedded-view">{bookView}</div>
                 ) : (

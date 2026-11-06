@@ -201,9 +201,6 @@ export function AgentActivityWorkspace({
               返回我的工作
             </button>
           )}
-          <p className="workspace-kicker">
-            <CircleDot size={13} /> ACCOUNTING AGENT · OPERATIONS
-          </p>
           <h1>后台运行</h1>
           <p>查看真实执行进度，在需要时接手处理。</p>
         </div>

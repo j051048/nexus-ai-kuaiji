@@ -3,6 +3,7 @@ import type { IntakeRun } from './intake-types';
 
 export interface IntakeGuideInput {
   companyReady: boolean;
+  companiesAvailable?: boolean;
   departmentReady: boolean;
   templateLabel: string;
   fieldsValidation: string;
@@ -43,6 +44,12 @@ export function intakeGuidance(input: IntakeGuideInput): WorkflowGuidance {
   };
 
   if (!input.companyReady) {
+    if (input.companiesAvailable !== false) {
+      guide.steps[0].state = 'current';
+      guide.status = '请先选择客户企业，尚未提交';
+      guide.next = '选择本次业务所属企业；仅显示当前账号可提交的范围。';
+      return guide;
+    }
     guide.steps[0].state = 'blocked';
     guide.status = '当前没有可提交的企业';
     guide.next = '联系企业管理员确认企业和提交权限，再重新打开录入。';

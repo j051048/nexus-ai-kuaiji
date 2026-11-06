@@ -1106,7 +1106,7 @@
 }
 .workspace-task {
   display: grid;
-  grid-template-columns: minmax(180px, 1fr) minmax(125px, 155px) 115px minmax(140px, auto);
+  grid-template-columns: minmax(180px, 1fr) minmax(125px, 155px) minmax(115px, 150px) minmax(140px, auto);
   padding: 18px 22px;
   gap: 18px;
   min-height: 108px;
@@ -1191,7 +1191,7 @@
 }
 .workspace-table-labels {
   display: grid;
-  grid-template-columns: minmax(180px, 1fr) minmax(125px, 155px) 115px minmax(140px, auto);
+  grid-template-columns: minmax(180px, 1fr) minmax(125px, 155px) minmax(115px, 150px) minmax(140px, auto);
   gap: 18px;
   padding: 10px 22px;
   background: #f7f9f3;
@@ -1267,7 +1267,7 @@
   }
   .workspace-task,
   .workspace-table-labels {
-    grid-template-columns: minmax(180px, 1fr) 125px 95px minmax(130px, auto);
+    grid-template-columns: minmax(180px, 1fr) 125px minmax(140px, 150px) minmax(130px, auto);
     gap: 12px;
   }
   .workspace-inbox-filters .workspace-task-search {
@@ -1505,9 +1505,7 @@
     font-size: var(--font-size-xs);
     background: #fffefa;
     padding-left: 8px;
-    max-width: 150px;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    max-width: 180px;
   }
   .workspace-table-view .workspace-task-amount {
     position: static;
@@ -2084,5 +2082,31 @@
 @media (max-width: 640px) {
   .workspace-primary-intake .workspace-template-button {
     flex-basis: 100%;
+  }
+}
+
+/* IMP03: keep the finance primary card compact so the first real task stays near the fold. */
+.workspace-primary-finance .workspace-primary-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+.workspace-primary-finance .workspace-primary-actions .button {
+  min-height: 44px;
+  padding: 8px 14px;
+}
+@media (max-width: 640px) {
+  .workspace-primary-finance .workspace-primary-actions .button:not(.primary) {
+    display: none;
+  }
+  .workspace-primary-finance {
+    padding: 12px;
+  }
+}
+@media (max-width: 640px) {
+  .workspace-primary-finance > div:first-child > p:not(.workspace-primary-status) {
+    display: none;
   }
 }

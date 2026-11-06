@@ -123,6 +123,7 @@ for (const width of [1280, 390]) {
     await choosePersona(page, 'employee');
     await page.getByRole('button', { name: /^提交报销/ }).click();
     const dialog = page.getByRole('dialog', { name: '录入业务事项', exact: true });
+    await dialog.getByRole('combobox', { name: '事项客户企业' }).selectOption(company.id);
     const xml = readFileSync(
       'nexus_backend/tests/fixtures/stage16_SYNTHETIC_einvoice_0_3.xml',
       'utf8',

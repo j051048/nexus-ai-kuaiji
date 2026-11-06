@@ -77,7 +77,9 @@ export function IntakeWizard({
   const uploadButton = useRef<HTMLButtonElement>(null);
   const extraFields = useRef<HTMLDetailsElement>(null);
   const [editing, setEditing] = useState<BusinessEvent | null>(initialEvent ?? null);
-  const [companyId, setCompany] = useState(initialEvent?.company_id ?? companies[0]?.id ?? '');
+  const initialCompanyId =
+    initialEvent?.company_id ?? (companies.length === 1 ? companies[0].id : '');
+  const [companyId, setCompany] = useState(initialCompanyId);
   const company = companies.find((item) => item.id === companyId);
   const direct =
     initialEvent?.submission_mode === 'direct' || company?.submission_policy?.mode === 'direct';
@@ -629,6 +631,7 @@ export function IntakeWizard({
   const structuredReady = !editing && !!draft?.structured_ready;
   const guidance = intakeGuidance({
     companyReady: !!company,
+    companiesAvailable: companies.length > 0,
     departmentReady: !!departmentId,
     templateLabel: BUSINESS_TEMPLATES.find((item) => item.id === template)?.name ?? '业务事项',
     fieldsValidation: validateBusinessPayload(template, fields),
@@ -701,7 +704,8 @@ export function IntakeWizard({
         )}
         <section className="intake-current-step" aria-label="员工录入引导">
           <p>
-            <strong>{guidance.status}</strong> · {guidance.next}
+            <strong>{guidance.status}</strong>
+            <span className="intake-status-next"> · {guidance.next}</span>
           </p>
           <details className="intake-help">
             <summary>查看录入步骤与说明</summary>
@@ -771,6 +775,7 @@ export function IntakeWizard({
                 disabled={!!draft || !!busy || !!pendingCreate.current || !!editing}
                 onChange={(event) => chooseCompany(event.target.value)}
               >
+                <option value="">请选择客户企业</option>
                 {companies.map((item) => (
                   <option key={item.id} value={item.id}>
                     {item.name}

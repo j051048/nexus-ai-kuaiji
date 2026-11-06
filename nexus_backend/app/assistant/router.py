@@ -4,13 +4,26 @@ from typing import Literal
 from fastapi.responses import JSONResponse
 from .models import ConversationCreate, TurnCreate, TurnCancel
 from .actions import ActionPrepare, ActionConfirm
-from . import investigation
+from . import analysis, investigation
+from ..accounting.domain import AccountingError
 
 
 class InvestigationRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     book_id: str = Field(min_length=1, max_length=100)
     period: str = Field(pattern=r"^20[0-9]{2}-(0[1-9]|1[0-2])$")
+
+
+class AnalysisRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    book_id: str = Field(min_length=1, max_length=100)
+    period: str = Field(pattern=r"^20[0-9]{2}-(0[1-9]|1[0-2])$")
+    kind: Literal["expense_bridge", "invoice_voucher_diff"]
+    account_code: str | None = Field(default=None, max_length=20)
+    compare_period: str | None = Field(default=None, pattern=r"^20[0-9]{2}-(0[1-9]|1[0-2])$")
+    target_voucher_id: str | None = Field(default=None, max_length=100)
+    limit: int = Field(default=50, ge=1, le=100)
+    offset: int = Field(default=0, ge=0, le=1_000_000)
 
 
 def build_assistant_router(actor_dependency):
@@ -41,6 +54,35 @@ def build_assistant_router(actor_dependency):
     ):
         return investigation.investigate(
             request.app.state.service, current, body.book_id, body.period
+        )
+
+    @router.get("/analyses/capability")
+    def analysis_capability(
+        request: Request,
+        book_id: str = Query(min_length=1, max_length=100),
+        current=Depends(actor_dependency),
+    ):
+        service = request.app.state.service
+        with service.db.transaction(actor=current) as conn:
+            service.access.book(conn, current, book_id, "read")
+        return {
+            "book_id": book_id,
+            "enabled": investigation.enabled(),
+            "kinds": list(analysis.KINDS),
+            "real_model_evaluated": False,
+        }
+
+    @router.post("/analyses")
+    def analyses(
+        body: AnalysisRequest,
+        request: Request,
+        current=Depends(actor_dependency),
+    ):
+        if not investigation.enabled():
+            raise AccountingError("只读分析未启用，请联系管理员", 403)
+        params = body.model_dump(exclude={"book_id", "period", "kind"}, exclude_none=True)
+        return analysis.analyze(
+            request.app.state.service, current, body.book_id, body.period, body.kind, **params
         )
 
     @router.get("/scope")

@@ -46,7 +46,7 @@ import { readRecovery, type ReadRecovery } from './workspace-recovery';
 import { taskKindLabel } from './task-language';
 import { presentationRole, roleHome } from './workspace-presentation';
 import { currentHomeTask } from './workspace-home-focus';
-import { taskPresentation } from './task-presentation';
+import { taskPresentation, taskTitle } from './task-presentation';
 import { homeProgress, type HomeProgress } from './workspace-progress';
 import './workspace.css';
 import './workbench-focus.css';
@@ -407,7 +407,7 @@ export function WorkspaceHome({
     <section className="workspace-role-guide" aria-label="当前职责与授权范围">
       <details>
         <summary>
-          <span>当前工作台</span>
+          <span>岗位说明与权限</span>
           <strong>{guide.label}</strong>
           <span>查看岗位与操作说明</span>
         </summary>
@@ -440,9 +440,6 @@ export function WorkspaceHome({
     >
       <header className="workspace-heading">
         <div>
-          <p className="workspace-kicker" aria-hidden="true">
-            <CircleDot size={13} /> HENGZHANG · ACCOUNTING AGENT
-          </p>
           <h1>{copy.name}</h1>
           {!employee && <p>{copy.subtitle}</p>}
         </div>
@@ -866,11 +863,16 @@ export function WorkspaceHome({
                         {formatTaskAmount(task.amount)}
                       </span>
                     </div>
-                    <h3>{task.title}</h3>
+                    <h3>{taskTitle(task, summary)}</h3>
                     {(!employee || summary.key !== 'mine') && (
                       <small>负责人：{summary.responsible}</small>
                     )}
-                    {employee ? (
+                    {summary.key === 'blocked' ? (
+                      <p className="workspace-task-guidance">
+                        <span>下一步</span>
+                        {summary.next}
+                      </p>
+                    ) : (
                       <details className="workspace-task-help">
                         <summary>处理说明</summary>
                         <p className="workspace-task-guidance">
@@ -878,11 +880,6 @@ export function WorkspaceHome({
                           {summary.next}
                         </p>
                       </details>
-                    ) : (
-                      <p className="workspace-task-guidance">
-                        <span>下一步</span>
-                        {summary.next}
-                      </p>
                     )}
                   </div>
                   <div className="workspace-task-state">

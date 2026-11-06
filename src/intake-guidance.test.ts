@@ -3,6 +3,7 @@ import { intakeGuidance, type IntakeGuideInput } from './intake-guidance';
 
 const ready: IntakeGuideInput = {
   companyReady: true,
+  companiesAvailable: true,
   departmentReady: true,
   templateLabel: '员工报销',
   fieldsValidation: '',
@@ -17,11 +18,17 @@ const ready: IntakeGuideInput = {
 
 describe('录入引导只解释真实表单状态', () => {
   it('无企业提交权限时先处理授权，不从旧草稿推荐上传或提交', () => {
-    const guide = intakeGuidance({ ...ready, companyReady: false });
+    const guide = intakeGuidance({ ...ready, companyReady: false, companiesAvailable: false });
     expect(guide.status).toBe('当前没有可提交的企业');
     expect(guide.next).toContain('联系企业管理员');
     expect(guide.steps[0].state).toBe('blocked');
     expect(guide.steps[2].state).toBe('upcoming');
+  });
+  it('有可提交企业但尚未选择时要求明确选择，不谎称没有权限', () => {
+    const guide = intakeGuidance({ ...ready, companyReady: false, companiesAvailable: true });
+    expect(guide.status).toContain('请先选择客户企业');
+    expect(guide.steps[0].state).toBe('current');
+    expect(guide.next).not.toContain('联系企业管理员');
   });
   it('部门审批路径缺少部门先确认范围', () => {
     const guide = intakeGuidance({ ...ready, departmentReady: false });

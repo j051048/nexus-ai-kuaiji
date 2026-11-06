@@ -959,8 +959,8 @@ h1 {
   border-bottom: 2px solid transparent;
   padding: 12px 0 11px;
   background: none;
-  color: #9aa68e;
-  font-size: 10px;
+  color: #566856;
+  font-size: var(--font-size-xs);
   display: flex;
   gap: 6px;
   align-items: center;
@@ -1540,8 +1540,8 @@ dd {
   display: flex;
   justify-content: space-between;
   gap: 10px;
-  font-size: 8px;
-  color: #b0bba2;
+  font-size: var(--font-size-xs);
+  color: #647461;
   padding: 22px 1px 8px;
 }
 .empty-state {
@@ -1568,9 +1568,9 @@ dd {
   font-weight: 500;
 }
 .empty-state p {
-  color: #a9b69a;
-  font-size: 10px;
-  line-height: 1.9;
+  color: #5f705f;
+  font-size: var(--font-size-xs);
+  line-height: 1.7;
   max-width: 310px;
 }
 .loading-block {

@@ -626,3 +626,169 @@
   outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
+
+@media (max-width: 680px) {
+  .intake-modal .modal-header .eyebrow {
+    display: none;
+  }
+  .intake-current-step {
+    padding: 10px 12px;
+  }
+  .intake-current-step > p {
+    margin: 0;
+    line-height: 1.45;
+  }
+  .intake-status-next {
+    display: none;
+  }
+  .intake-modal .business-preparation {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 8px 10px;
+    margin-block: 8px;
+  }
+  .intake-modal .business-preparation .field-help {
+    margin: 0;
+    font-size: var(--font-size-xs);
+    line-height: 1.4;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .intake-modal .business-preparation .text-button {
+    display: none;
+  }
+  .intake-two-column {
+    display: flex;
+    flex-direction: column;
+  }
+  .intake-two-column > .intake-originals {
+    padding: 10px 12px;
+  }
+  .intake-originals > h3 {
+    margin-bottom: 8px;
+    font-size: var(--font-size-sm);
+  }
+  .intake-originals .intake-ai-help {
+    display: none;
+  }
+  .intake-upload {
+    padding: 10px;
+    gap: 6px;
+  }
+  .intake-upload > svg,
+  .intake-upload p {
+    display: none;
+  }
+  .intake-upload > strong {
+    font-size: var(--font-size-sm);
+  }
+  .intake-upload > div {
+    width: 100%;
+    flex-wrap: nowrap;
+  }
+  .intake-upload > div > button {
+    flex: 1;
+  }
+}
+
+@media (max-width: 680px) {
+  .intake-current-step {
+    padding: 6px 10px;
+  }
+  .intake-current-step > p {
+    font-size: var(--font-size-sm);
+    margin-bottom: 4px;
+  }
+  .intake-help > summary {
+    min-height: 32px;
+    padding-block: 4px;
+  }
+  .intake-company-grid {
+    padding: 10px;
+    gap: 8px;
+  }
+  .intake-company-grid label {
+    gap: 4px;
+  }
+  .intake-two-column > .intake-originals {
+    padding: 8px 10px;
+  }
+  .intake-originals > h3 {
+    display: none;
+  }
+  .intake-upload {
+    padding: 8px;
+    gap: 4px;
+  }
+  .intake-upload > div > button {
+    min-height: 40px;
+  }
+}
+
+@media (max-width: 680px) {
+  .intake-modal .business-preparation {
+    padding: 6px 8px;
+  }
+  .intake-modal .business-preparation .field-help {
+    -webkit-line-clamp: 1;
+    font-size: 11px;
+  }
+  .intake-upload > strong {
+    display: none;
+  }
+}
+
+@media (max-width: 680px) {
+  .intake-help > summary {
+    min-height: 24px;
+    padding-block: 2px;
+    font-size: 11px;
+  }
+  .intake-company-grid {
+    padding: 8px;
+    gap: 6px;
+  }
+  .intake-company-grid select {
+    min-height: 40px;
+  }
+  .intake-two-column {
+    gap: 8px;
+  }
+  .intake-upload {
+    padding: 6px;
+  }
+  .intake-footer {
+    padding: 5px 12px calc(6px + env(safe-area-inset-bottom));
+    gap: 4px;
+  }
+  .intake-footer > span {
+    font-size: 10px;
+    line-height: 1.2;
+  }
+}
+
+@media (max-width: 680px) {
+  .intake-current-step {
+    padding: 4px 8px;
+  }
+  .intake-company-grid {
+    padding: 6px;
+  }
+  .intake-upload {
+    padding: 4px 6px;
+  }
+}
+
+@media (max-width: 680px) {
+  .intake-scroll {
+    scroll-padding-bottom: 96px;
+  }
+  .intake-fields input,
+  .intake-fields select,
+  .intake-fields textarea {
+    scroll-margin-bottom: 96px;
+  }
+}
