@@ -23,7 +23,18 @@ def test_complete_analysis_has_no_action():
 
 
 def test_partial_analysis_projects_existing_handoff_without_notifying():
-    result = observe(event(analysis={"status": "partial", "handoff": {"source_ref": "expense_bridge:b:p:6602.02", "action_target": "/workspace/accounting?book=b"}}))
+    result = observe(
+        event(
+            analysis={
+                "status": "partial",
+                "handoff": {
+                    "source_ref": "expense_bridge:b:p:6602.02",
+                    "action_target": "/workspace/accounting?book=b",
+                },
+            }
+        ),
+        trusted=True,
+    )
     assert result["reason_code"] == "handoff"
     assert result["would_handoff"] is True
     assert result["would_notify"] is False
@@ -31,7 +42,9 @@ def test_partial_analysis_projects_existing_handoff_without_notifying():
 
 
 def test_revoked_event_never_projects_a_handoff():
-    result = observe(event(revoked=True, analysis={"status": "partial", "handoff": {"source_ref": "x"}}))
+    result = observe(
+        event(revoked=True, analysis={"status": "partial", "handoff": {"source_ref": "x"}})
+    )
     assert result["reason_code"] == "authorization_revoked"
     assert result["would_handoff"] is False
 
@@ -39,7 +52,7 @@ def test_revoked_event_never_projects_a_handoff():
 def test_unknown_notification_only_opens_existing_verification():
     result = observe(event(notification_state="unknown"))
     assert result["reason_code"] == "verify_unknown"
-    assert result["action_target"] == "existing-verification"
+    assert result["action_target"] is None  # no invented verification entity
     assert result["would_notify"] is False
 
 

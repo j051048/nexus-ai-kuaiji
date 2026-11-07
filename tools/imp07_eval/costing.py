@@ -11,7 +11,7 @@ from decimal import Decimal, InvalidOperation
 import json
 import re
 
-_COST = re.compile(r"-?\d+(?:\.\d{1,2})?")
+_COST = re.compile(r"\d{1,16}(?:\.\d{1,12})?")
 _STATUSES = {"succeeded", "failed", "unknown", "not_sent"}
 
 
@@ -30,6 +30,10 @@ def _decimal(value, name):
         return Decimal(value)
     except InvalidOperation as error:
         raise CostingError(f"cost_{name}_invalid") from error
+
+
+def money(value):
+    return format(value, ".2f") if value == value.quantize(Decimal("0.01")) else format(value, "f")
 
 
 def summarize_attempts(attempts, *, currency="CNY"):
@@ -77,8 +81,8 @@ def summarize_attempts(attempts, *, currency="CNY"):
         "unknown_calls": unknown,
         "failed_calls": failed,
         "currency": currency,
-        "known_subtotal": f"{total:.2f}" if known else None,
-        "total": f"{total:.2f}" if unknown == 0 and known else None,
+        "known_subtotal": money(total) if known else None,
+        "total": money(total) if unknown == 0 and known else None,
         "complete": unknown == 0,
     }
 
@@ -100,7 +104,7 @@ def compare_cost(candidate, baseline):
     saving = base - cand
     return {
         "comparable": True,
-        "saving": f"{saving:.2f}",
+        "saving": money(saving),
         "saving_ratio": f"{(saving / base):.6f}",
         "reason": None,
     }

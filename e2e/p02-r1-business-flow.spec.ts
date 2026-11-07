@@ -1,5 +1,6 @@
 import { test, expect, type Browser, type Page, type Locator } from '@playwright/test';
 import { readFileSync } from 'node:fs';
+import { validateIdentityOrigin } from '../scripts/p02_identity_origin';
 
 type Account = { email: string; password: string };
 type Scenario = {
@@ -27,11 +28,7 @@ async function signIn(page: Page, account: Account) {
   await page.getByRole('button', { name: '登录工作空间', exact: true }).click();
   await expect(page.getByLabel('工作邮箱', { exact: true })).toHaveCount(0);
 }
-if (
-  !/^https:\/\/c01-real-auth-2551[12]\.example\.test$/.test(fixture.auth_origin) ||
-  !/^http:\/\/127\.0\.0\.1:2551[12]$/.test(fixture.auth_local_origin)
-)
-  throw new Error('P02 requires the isolated local identity fixture');
+validateIdentityOrigin(fixture, process.env.P02_EXPECTED_AUTH_LOCAL_ORIGIN);
 
 async function login(
   browser: Browser,

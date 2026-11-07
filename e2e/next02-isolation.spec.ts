@@ -1,5 +1,6 @@
 import { test, expect, type Browser, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
+import { validateIdentityOrigin } from '../scripts/p02_identity_origin';
 
 /**
  * NEXT02 isolation evidence on the same real PG/GoTrue fixture as P02.
@@ -34,11 +35,7 @@ const fixture: Fixture = JSON.parse(
   ).replace(/^\uFEFF/, ''),
 );
 
-if (
-  !/^https:\/\/c01-real-auth-2551[12]\.example\.test$/.test(fixture.auth_origin) ||
-  !/^http:\/\/127\.0\.0\.1:2551[12]$/.test(fixture.auth_local_origin)
-)
-  throw new Error('NEXT02 requires the isolated local identity fixture');
+validateIdentityOrigin(fixture, process.env.P02_EXPECTED_AUTH_LOCAL_ORIGIN);
 
 async function signIn(page: Page, account: Account) {
   await page.getByLabel('工作邮箱', { exact: true }).fill(account.email);

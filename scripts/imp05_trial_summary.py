@@ -97,11 +97,15 @@ def summarise(rows: list[dict[str, str]]) -> dict:
     return {
         "schema": "imp05-trial-v1",
         "status": status,
-        "reason": "invalid_records" if problems else ("no_started_attempts" if denominator == 0 else None),
+        "reason": "invalid_records"
+        if problems
+        else ("no_started_attempts" if denominator == 0 else None),
         "denominator": denominator,
         "counts": counts,
         "rates": {
-            "independent_completion": round(len(independent) / denominator, 4) if denominator else None,
+            "independent_completion": round(len(independent) / denominator, 4)
+            if denominator
+            else None,
             "assisted": round(len(assisted) / denominator, 4) if denominator else None,
             "abandoned": round(len(abandoned) / denominator, 4) if denominator else None,
             "duplicate_write": round(duplicates / denominator, 4) if denominator else None,

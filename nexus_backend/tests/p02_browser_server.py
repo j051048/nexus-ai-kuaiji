@@ -126,7 +126,7 @@ def main():
             json.dumps(
                 {
                     "auth_origin": identity.origin,
-                    "auth_local_origin": "http://127.0.0.1:25511",
+                    "auth_local_origin": f"http://127.0.0.1:{identity.port}",
                     "cases": cases,
                 },
                 ensure_ascii=False,

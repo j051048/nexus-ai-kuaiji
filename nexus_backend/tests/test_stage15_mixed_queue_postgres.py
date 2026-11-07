@@ -22,6 +22,7 @@ from test_business_api import attachment_bytes
 from test_business_postgres import ADMIN_URL,APP_URL,business_case,business_postgres
 from test_stage15_conversations_postgres import WORKER_URL,chat_pg
 from test_intelligence_workflow import FakeProvider
+from pg_queue_clock import wait_until_due
 
 pytestmark=pytest.mark.skipif(not ADMIN_URL or not APP_URL or not WORKER_URL,reason='需要专用 PostgreSQL 管理员、受限 API 和实际 worker 登录')
 
@@ -88,7 +89,9 @@ def processing(c,company,kind):
     event=business.add_attachment(company.applicant,event['id'],event['version'],attachment)
     if kind=='ocr':
         result=c.queue.enqueue(company.applicant,BatchRequest(company_id=company.company,items=[{'event_id':event['id'],'attachment_id':attachment['id'],'expected_version':event['version']}],idempotency_key=uuid4().hex))
-        return result['jobs'][0]['id']
+        task_id = result['jobs'][0]['id']
+        wait_until_due(c.raw.psycopg.connect, ADMIN_URL, 'ocr_jobs', [task_id])
+        return task_id
     # A real successful synthetic extraction avoids a waiting dependency. No
     # test-only status UPDATE or forged result bypasses the ordinary guards.
     run=c.intelligence.extract(company.applicant,event['id'],OCRRequest(attachment_id=attachment['id'],expected_version=event['version'],idempotency_key=uuid4().hex))
@@ -99,12 +102,15 @@ def processing(c,company,kind):
     result=business.handoff(company.finance,event['id'],HandoffRequest(expected_version=event['version'],book_id=company.book,idempotency_key=uuid4().hex))
     job=c.queue.proposals.get(company.finance,result['automatic_job']['id'])
     assert job['status']=='queued',job
+    wait_until_due(c.raw.psycopg.connect, ADMIN_URL, 'proposal_jobs', [job['id']])
     return job['id']
 
 
 def question(c,company):
     conversation=c.chat.service.create(c.raw.owner,ConversationCreate(company_id=company.company,book_ids=[company.book],title='合成混合队列问题',idempotency_key=uuid4().hex))['conversation']
-    return c.chat.service.enqueue(c.raw.owner,conversation['id'],TurnCreate(question='只核对合成企业的当前范围',expected_scope_version=1,idempotency_key=uuid4().hex))['turn']['id']
+    task_id = c.chat.service.enqueue(c.raw.owner,conversation['id'],TurnCreate(question='只核对合成企业的当前范围',expected_scope_version=1,idempotency_key=uuid4().hex))['turn']['id']
+    wait_until_due(c.raw.psycopg.connect, ADMIN_URL, 'assistant_turns', [task_id])
+    return task_id
 
 
 def claim_processing(c,kind,entry):

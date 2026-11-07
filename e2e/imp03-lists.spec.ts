@@ -70,7 +70,9 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
-test('IMP03 desktop keeps ordinary guidance collapsed, blocked reason visible, and fallback title readable', async ({ page }) => {
+test('IMP03 desktop keeps ordinary guidance collapsed, blocked reason visible, and fallback title readable', async ({
+  page,
+}) => {
   await finance(page);
   await page.setViewportSize({ width: 1366, height: 768 });
   await page.waitForTimeout(400);
@@ -78,9 +80,23 @@ test('IMP03 desktop keeps ordinary guidance collapsed, blocked reason visible, a
   await expect(rows.first().locator('h3')).toContainText('财务核验');
   const firstBox = await rows.first().boundingBox();
   expect(firstBox?.y ?? 9999).toBeLessThan(700);
-  await page.screenshot({ path: 'tmp_test/imp/imp-20261106-a/imp03-desktop.png', fullPage: false });
-  const metrics = await page.evaluate(() => ({ rows: [...document.querySelectorAll('article.workspace-task')].map((row) => ({ height: row.getBoundingClientRect().height, title: row.querySelector('h3')?.textContent, details: row.querySelectorAll('details.workspace-task-help').length, guidance: row.querySelectorAll(':scope > .workspace-task-main > p.workspace-task-guidance').length })), firstTop: document.querySelector('article.workspace-task')?.getBoundingClientRect().top, viewport: window.innerWidth, overflow: document.documentElement.scrollWidth - window.innerWidth }));
-  fs.writeFileSync('tmp_test/imp/imp-20261106-a/imp03-desktop-metrics.json', JSON.stringify(metrics, null, 2));
+  await page.screenshot({ path: test.info().outputPath('imp03-desktop.png'), fullPage: false });
+  const metrics = await page.evaluate(() => ({
+    rows: [...document.querySelectorAll('article.workspace-task')].map((row) => ({
+      height: row.getBoundingClientRect().height,
+      title: row.querySelector('h3')?.textContent,
+      details: row.querySelectorAll('details.workspace-task-help').length,
+      guidance: row.querySelectorAll(':scope > .workspace-task-main > p.workspace-task-guidance')
+        .length,
+    })),
+    firstTop: document.querySelector('article.workspace-task')?.getBoundingClientRect().top,
+    viewport: window.innerWidth,
+    overflow: document.documentElement.scrollWidth - window.innerWidth,
+  }));
+  fs.writeFileSync(
+    test.info().outputPath('imp03-desktop-metrics.json'),
+    JSON.stringify(metrics, null, 2),
+  );
   await expect(rows.first().locator('h3')).not.toContainText('550e8400');
   const ordinary = rows.first();
   await expect(ordinary.locator('details.workspace-task-help')).toHaveCount(1);
@@ -92,11 +108,15 @@ test('IMP03 desktop keeps ordinary guidance collapsed, blocked reason visible, a
   await expect(blocked.locator('p.workspace-task-guidance')).toContainText('重新读取');
   await expect(blocked.locator('details.workspace-task-help')).toHaveCount(0);
   await expect(page.locator('h2', { hasText: '需要我处理' })).toContainText('2');
-  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - window.innerWidth,
+  );
   expect(overflow).toBeLessThanOrEqual(0);
 });
 
-test('IMP03 mobile keeps the same reason and action without horizontal overflow', async ({ page }) => {
+test('IMP03 mobile keeps the same reason and action without horizontal overflow', async ({
+  page,
+}) => {
   await finance(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.waitForTimeout(400);
@@ -104,10 +124,12 @@ test('IMP03 mobile keeps the same reason and action without horizontal overflow'
   await expect(rows.first().locator('h3')).toContainText('财务核验');
   const mobileBox = await rows.first().boundingBox();
   expect(mobileBox?.y ?? 9999).toBeLessThan(800);
-  await page.screenshot({ path: 'tmp_test/imp/imp-20261106-a/imp03-mobile.png', fullPage: false });
+  await page.screenshot({ path: test.info().outputPath('imp03-mobile.png'), fullPage: false });
   await rows.first().locator('details.workspace-task-help summary').click();
   await expect(rows.first().locator('p.workspace-task-guidance')).toBeVisible();
   await expect(rows.first().getByRole('button', { name: '核验资料' })).toBeVisible();
-  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - window.innerWidth,
+  );
   expect(overflow).toBeLessThanOrEqual(0);
 });

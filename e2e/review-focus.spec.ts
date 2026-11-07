@@ -9,7 +9,6 @@ import {
 import type { BusinessContext, BusinessEvent } from '../src/business-types';
 
 test.setTimeout(90_000);
-const output = 'tmp_test/review-focus-20261105';
 const image = readFileSync(new URL('./fixtures/v03-receipt.png', import.meta.url));
 async function data(response: APIResponse, status = 200) {
   expect(response.status(), await response.text()).toBe(status);
@@ -169,7 +168,10 @@ for (const width of [1440, 390]) {
     await expect(guide.locator('details').first()).not.toHaveAttribute('open');
     await expect(guide.getByText('查看核验步骤与说明', { exact: true })).toBeVisible();
     await expect(detail.locator('.business-history')).not.toHaveAttribute('open');
-    await page.screenshot({ path: `${output}/finance-entry-${width}.png`, fullPage: false });
+    await page.screenshot({
+      path: test.info().outputPath(`finance-entry-${width}.png`),
+      fullPage: false,
+    });
     const writes: string[] = [];
     page.on('request', (r) => {
       if (r.method() === 'POST') writes.push(new URL(r.url()).pathname);
@@ -178,7 +180,10 @@ for (const width of [1440, 390]) {
     await detail.getByRole('button', { name: '预览原件', exact: true }).click();
     await expect(detail.getByRole('img', { name: /^原始票据 / })).toBeVisible();
     expect(writes).toEqual([]);
-    await page.screenshot({ path: `${output}/finance-original-${width}.png`, fullPage: false });
+    await page.screenshot({
+      path: test.info().outputPath(`finance-original-${width}.png`),
+      fullPage: false,
+    });
     await detail.getByRole('button', { name: '办理本事项', exact: true }).click();
     await expect(
       detail.getByRole('button', { name: '财务核验通过', exact: true }),
@@ -202,7 +207,10 @@ for (const width of [1440, 390]) {
       'open',
     );
     await expect(detail.locator('.business-return textarea')).not.toBeVisible();
-    await page.screenshot({ path: `${output}/finance-action-${width}.png`, fullPage: false });
+    await page.screenshot({
+      path: test.info().outputPath(`finance-action-${width}.png`),
+      fullPage: false,
+    });
     await detail.getByRole('button', { name: '财务核验通过', exact: true }).click();
     await expect(detail.getByLabel('交接到账套', { exact: true })).toBeVisible();
     await detail.getByLabel('交接到账套', { exact: true }).selectOption(f.book.id);
@@ -238,10 +246,16 @@ for (const width of [1440, 390]) {
     });
     await drawer.getByRole('button', { name: '查看原件', exact: true }).click();
     await expect(drawer.getByRole('img', { name: /^原始票据 / })).toBeInViewport();
-    await page.screenshot({ path: `${output}/accounting-original-${width}.png`, fullPage: false });
+    await page.screenshot({
+      path: test.info().outputPath(`accounting-original-${width}.png`),
+      fullPage: false,
+    });
     await drawer.getByRole('button', { name: '核对分录', exact: true }).click();
     await expect(drawer.getByLabel('同屏凭证摘要', { exact: true })).toBeInViewport();
-    await page.screenshot({ path: `${output}/accounting-facts-${width}.png`, fullPage: false });
+    await page.screenshot({
+      path: test.info().outputPath(`accounting-facts-${width}.png`),
+      fullPage: false,
+    });
     await drawer.getByRole('button', { name: '前往审核确认', exact: true }).click();
     await expect(drawer.getByLabel('我已核对同屏原件与分录', { exact: true })).not.toBeChecked();
     await expect(drawer.getByRole('button', { name: '确认审核', exact: true })).toBeDisabled();
@@ -304,7 +318,10 @@ test('折叠识别明细不隐藏核对阻断，核验冲突只读取最新事�
     '已重新读取最新事项',
   );
   await expect(detail.getByRole('alert')).toBeInViewport();
-  await page.screenshot({ path: `${output}/finance-conflict-390.png`, fullPage: false });
+  await page.screenshot({
+    path: test.info().outputPath('finance-conflict-390.png'),
+    fullPage: false,
+  });
   await expect(detail.getByRole('button', { name: '财务核验通过', exact: true })).toBeEnabled();
   await expect(detail.getByLabel('交接到账套', { exact: true })).toHaveCount(0);
   expect(attempts).toBe(1);

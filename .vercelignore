@@ -19,6 +19,7 @@ nexus_backend/
 # pure runtime helper, without uploading maintenance or migration scripts.
 scripts/*
 !scripts/e2e_runtime.ts
+!scripts/p02_identity_origin.ts
 node_modules/
 artifacts/
 test-results/

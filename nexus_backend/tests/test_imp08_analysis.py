@@ -63,9 +63,7 @@ def posted(business):
             "VALUES(?,?,?,?,?,?,?)",
             ("imp08-src-2", first["voucher"]["id"], "source", "invoice-2", 1, 3000, "/receipt/2"),
         )
-    return SimpleNamespace(
-        case=case, opening=opening, posting=posting, first=first, second=second
-    )
+    return SimpleNamespace(case=case, opening=opening, posting=posting, first=first, second=second)
 
 
 def test_expense_bridge_is_partial_without_previous_period(posted):
@@ -143,12 +141,26 @@ def test_claim_rejects_wrong_amount_cross_company_causality_and_missing_fact(pos
     fact_id = result["facts"]["fact_ids"][0]
     analysis.validate_claim(
         result,
-        {"company_id": case.company["id"], "amount_cents": 1000, "fact_ids": [fact_id], "text": "差额为 10.00 元"},
+        {
+            "company_id": case.company["id"],
+            "book_id": case.book["id"],
+            "period": "2026-10",
+            "fingerprint": result["fingerprint"],
+            "currency": "CNY",
+            "amount_cents": 1000,
+            "fact_ids": [fact_id],
+            "text": "差额为 10.00 元",
+        },
     )
     for claim in (
         {"company_id": case.company["id"], "amount_cents": 9900, "fact_ids": [fact_id]},
         {"company_id": "other-company", "amount_cents": 1000, "fact_ids": [fact_id]},
-        {"company_id": case.company["id"], "amount_cents": 1000, "fact_ids": [fact_id], "causal": "员工导致"},
+        {
+            "company_id": case.company["id"],
+            "amount_cents": 1000,
+            "fact_ids": [fact_id],
+            "causal": "员工导致",
+        },
         {"company_id": case.company["id"], "amount_cents": 1000, "fact_ids": ["not-a-fact"]},
     ):
         with pytest.raises(AccountingError):
@@ -211,13 +223,20 @@ def test_http_capability_is_dark_by_default_and_flag_enables_read_only_analysis(
 
 def test_analysis_fails_closed_when_book_access_is_revoked(posted, monkeypatch):
     case = posted.case
+
     class Revoked:
         def book(self, conn, actor, book_id, mode):
             raise AccountingError("当前岗位没有这项权限", 403)
+
     monkeypatch.setattr(analysis, "AccessControl", Revoked)
     with pytest.raises(AccountingError) as caught:
         analysis.analyze(
-            case.db, case.manager, case.book["id"], "2026-10", "expense_bridge", account_code="6602.02"
+            case.db,
+            case.manager,
+            case.book["id"],
+            "2026-10",
+            "expense_bridge",
+            account_code="6602.02",
         )
     assert caught.value.status == 403
 
@@ -226,7 +245,12 @@ def test_period_mismatch_fails_closed(posted):
     case = posted.case
     with pytest.raises(AccountingError) as caught:
         analysis.analyze(
-            case.db, case.manager, case.book["id"], "2026-11", "expense_bridge", account_code="6602.02"
+            case.db,
+            case.manager,
+            case.book["id"],
+            "2026-11",
+            "expense_bridge",
+            account_code="6602.02",
         )
     assert caught.value.status == 422
 
@@ -234,8 +258,13 @@ def test_period_mismatch_fails_closed(posted):
 def test_expense_coverage_distinguishes_total_from_detail_page(posted):
     case = posted.case
     result = analysis.analyze(
-        case.db, case.manager, case.book["id"], "2026-10",
-        "expense_bridge", account_code="6602.02", limit=1,
+        case.db,
+        case.manager,
+        case.book["id"],
+        "2026-10",
+        "expense_bridge",
+        account_code="6602.02",
+        limit=1,
     )
     assert result["coverage"]["total_rows"] == 2
     assert result["coverage"]["detail_rows"] == 1
@@ -247,8 +276,13 @@ def test_expense_coverage_distinguishes_total_from_detail_page(posted):
 def test_invoice_uses_all_sources_even_when_detail_is_paginated(posted):
     case = posted.case
     result = analysis.analyze(
-        case.db, case.manager, case.book["id"], "2026-10",
-        "invoice_voucher_diff", target_voucher_id=posted.first["voucher"]["id"], limit=1,
+        case.db,
+        case.manager,
+        case.book["id"],
+        "2026-10",
+        "invoice_voucher_diff",
+        target_voucher_id=posted.first["voucher"]["id"],
+        limit=1,
     )
     assert result["facts"]["source_total"] == "90.00"
     assert result["facts"]["difference"] == "10.00"
@@ -258,12 +292,15 @@ def test_invoice_uses_all_sources_even_when_detail_is_paginated(posted):
     assert result["status"] == "partial"
 
 
-
 def test_partial_analysis_returns_structured_handoff_without_inventing_owner(posted):
     case = posted.case
     result = analysis.analyze(
-        case.db, case.manager, case.book["id"], "2026-10",
-        "expense_bridge", account_code="6602.02",
+        case.db,
+        case.manager,
+        case.book["id"],
+        "2026-10",
+        "expense_bridge",
+        account_code="6602.02",
     )
     handoff = result["handoff"]
     assert handoff["reason_code"] == "previous_period"
@@ -274,9 +311,12 @@ def test_partial_analysis_returns_structured_handoff_without_inventing_owner(pos
     assert handoff["action_target"].startswith("/workspace/accounting?")
     assert handoff["status"] == "open"
 
+
 def test_expense_without_rows_does_not_claim_records(posted):
     case = posted.case
-    result = analysis.analyze(case.db, case.manager, case.book["id"], "2026-10", "expense_bridge", account_code="9999.99")
+    result = analysis.analyze(
+        case.db, case.manager, case.book["id"], "2026-10", "expense_bridge", account_code="9999.99"
+    )
     assert result["facts"]["current_rows"] == []
     assert "无记录" in result["summary"]
     assert "有记录" not in result["summary"]

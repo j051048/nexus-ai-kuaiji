@@ -35,6 +35,7 @@ def distribution(values):
         "n": len(values),
         "p50_ms": round(statistics.median(values), 2),
         "p95_ms": round(values[max(0, (95 * len(values) + 99) // 100 - 1)], 2),
+        "p99_ms": round(values[max(0, (99 * len(values) + 99) // 100 - 1)], 2),
         "max_ms": round(values[-1], 2),
     }
 

@@ -6,42 +6,36 @@ test('IMP08 analysis panel shows deterministic facts, coverage and an evidence l
 }) => {
   await page.goto('/');
   await choosePersona(page, 'accountant');
-  page.on('request', (r) => { if (r.url().includes('analyses')) console.log('ANALYSES_REQ', r.method(), r.url()); });
-  await page.route(/\/api\/assistant\/analyses\/capability/, (route) =>
-    route.fulfill({
+  await page.route(/\/api\/assistant\/analyses$/, async (route) => {
+    const response = await route.fetch();
+    expect(response.ok()).toBeTruthy();
+    const actual = await response.json();
+    await route.fulfill({
       json: {
-        book_id: new URL(route.request().url()).searchParams.get('book_id'),
-        enabled: true,
-        kinds: ['expense_bridge'],
-        real_model_evaluated: false,
-      },
-    }),
-  );
-  await page.route(/\/api\/assistant\/analyses$/, (route) =>
-    route.fulfill({
-      json: {
-        kind: 'expense_bridge',
+        ...actual,
         status: 'partial',
-        summary: '6602.02 管理费用：本期 150.00 分，差额未计算；明细见引用记录。',
+        summary: '测试展示夹具',
         facts: {
+          ...actual.facts,
           current_total: '150.00',
           previous_total: null,
           difference: null,
-          fact_ids: ['expense_bridge:current_total_cents'],
+          current_rows: [],
+          previous_rows: [],
         },
-        coverage: { scope: 'current_only', rows_read: 2, detail_rows: 2, total_rows: 2, has_more: false, detail_complete: true },
+        coverage: {
+          ...actual.coverage,
+          detail_rows: 0,
+          rows_read: 0,
+          total_rows: 2,
+          detail_complete: false,
+          has_more: true,
+        },
         missing: ['previous_period'],
-        handoff: {
-          reason_code: 'previous_period',
-          reason: '分析覆盖不完整，需要会计在业务入口核对',
-          owner_role: 'accountant',
-          action_target: '/workspace/accounting?book=b1&period=2026-10&company=c1',
-          deadline: null,
-        },
-        fingerprint: 'a'.repeat(64),
+        handoff: { reason: '分析覆盖不完整，需要会计在业务入口核对' },
       },
-    }),
-  );
+    });
+  });
   await page.getByRole('button', { name: '客户企业' }).click();
   await page.getByText('澄光科技（虚构示例）').last().click();
   const writes: string[] = [];
@@ -52,13 +46,13 @@ test('IMP08 analysis panel shows deterministic facts, coverage and an evidence l
   await page.getByText('只读差异核对').click();
   await page.getByRole('button', { name: '开始只读核对' }).click();
   await expect(page.getByText(/本期 150.00 元/)).toBeVisible();
-  await expect(page.getByText(/总额 2 行，当前明细 2 行/)).toBeVisible();
+  await expect(page.getByText(/总额 2 行，当前明细 0 行/)).toBeVisible();
   await expect(page.getByText(/未检查：上期账套/)).toBeVisible();
   await expect(page.getByText(/核对本身不构成复核/)).toBeVisible();
   await expect(page.getByRole('link', { name: '打开账套原记录核对' })).toHaveAttribute(
     'href',
     /book=.*period=.*company=/,
   );
-  await page.screenshot({ path: 'tmp_test/imp/imp-20261106-a/imp08-analysis.png', fullPage: true });
+  await page.screenshot({ path: test.info().outputPath('analysis.png'), fullPage: true });
   expect(writes).toEqual([]);
 });

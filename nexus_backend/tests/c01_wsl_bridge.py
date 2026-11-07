@@ -8,8 +8,11 @@ from urllib.request import Request, build_opener, ProxyHandler
 
 def call(config_path, op, *, timeout=200, **payload):
     config = json.loads(Path(config_path).read_text(encoding="utf-8-sig"))
+    from scripts.p01_local_recovery_env import bridge_port
+
+    port = bridge_port(config.get("bridge_port", 25510))
     request = Request(
-        "http://127.0.0.1:25510/v1/jobs",
+        f"http://127.0.0.1:{port}/v1/jobs",
         data=json.dumps({"op": op, **payload}).encode(),
         method="POST",
         headers={"Content-Type": "application/json", "Authorization": "Bearer " + config["token"]},

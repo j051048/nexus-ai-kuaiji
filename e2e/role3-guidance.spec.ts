@@ -123,10 +123,16 @@ test('员工录入引导随填写和原件变化，未确认时不自动提交�
     .click();
   await expect(guide).toContainText('可以提交，尚未提交');
   await guide.scrollIntoViewIfNeeded();
-  await page.screenshot({ path: 'tmp_test/role3-intake-mobile.png', fullPage: true });
+  await page.screenshot({
+    path: test.info().outputPath('role3-intake-mobile.png'),
+    fullPage: true,
+  });
   await page.setViewportSize({ width: 1440, height: 960 });
   await guide.scrollIntoViewIfNeeded();
-  await page.screenshot({ path: 'tmp_test/role3-intake-desktop.png', fullPage: true });
+  await page.screenshot({
+    path: test.info().outputPath('role3-intake-desktop.png'),
+    fullPage: true,
+  });
   await page.setViewportSize({ width: 390, height: 844 });
   expect(writes).toEqual([]);
   expect(await dialog.evaluate((node) => node.scrollWidth <= node.clientWidth + 1)).toBe(true);
@@ -197,10 +203,16 @@ test('财务核验和交接各有下一步，交接不等于凭证审核或导�
     ).exports,
   ).toEqual([]);
   await guide.scrollIntoViewIfNeeded();
-  await page.screenshot({ path: 'tmp_test/role3-finance-desktop.png', fullPage: true });
+  await page.screenshot({
+    path: test.info().outputPath('role3-finance-desktop.png'),
+    fullPage: true,
+  });
   await page.setViewportSize({ width: 390, height: 844 });
   await guide.scrollIntoViewIfNeeded();
-  await page.screenshot({ path: 'tmp_test/role3-finance-mobile.png', fullPage: true });
+  await page.screenshot({
+    path: test.info().outputPath('role3-finance-mobile.png'),
+    fullPage: true,
+  });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(
     true,
   );
@@ -255,10 +267,16 @@ test('原件无法核验时会计引导解释阻断，不会因为打开引导�
   await expect(guide).toContainText('原件');
   await expect(dialog.getByRole('button', { name: '确认审核', exact: true })).toBeDisabled();
   expect(writes).toEqual([]);
-  await page.screenshot({ path: 'tmp_test/role3-review-desktop.png', fullPage: true });
+  await page.screenshot({
+    path: test.info().outputPath('role3-review-desktop.png'),
+    fullPage: true,
+  });
   await page.setViewportSize({ width: 390, height: 844 });
   await guide.scrollIntoViewIfNeeded();
-  await page.screenshot({ path: 'tmp_test/role3-review-mobile.png', fullPage: true });
+  await page.screenshot({
+    path: test.info().outputPath('role3-review-mobile.png'),
+    fullPage: true,
+  });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(
     true,
   );

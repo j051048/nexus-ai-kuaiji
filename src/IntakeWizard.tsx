@@ -328,7 +328,8 @@ export function IntakeWizard({
     return value;
   }
   async function run(name: string, action: () => Promise<void>) {
-    if (lock.current || accessLost) return;
+    if (lock.current || accessLost || (needsRefresh && !['resume', 'reload-event'].includes(name)))
+      return;
     lock.current = true;
     setBusy(name);
     setError('');
@@ -355,17 +356,17 @@ export function IntakeWizard({
       }
       const uncertain =
         failure instanceof TypeError ||
-        (failure instanceof ApiError && [409, 503].includes(failure.status));
-      // Existing intake creation/completion keeps its idempotent retry key.
-      // Only edits to an existing business record require a fresh version first.
-      if (uncertain && editing) setNeedsRefresh(true);
+        (failure instanceof ApiError && (failure.status === 409 || failure.status >= 500));
+      // A committed upload/completion can lose its response. Read its original
+      // result before any subsequent write, even if an idempotency key exists.
+      if (uncertain && (editing || draftRef.current)) setNeedsRefresh(true);
       setFailureInfo(presentApiError(failure));
       setError(
         errorMessage(failure) +
           (uncertain
             ? editing
               ? ' 请先读取最新事项核对，当前未自动重试。尚未保存的修改将以服务端记录为准。'
-              : ' 草稿或提交结果可能已保存，请使用“读取最新草稿”核对；重复提交保持同一保存编号。'
+              : ' 草稿或提交结果可能已保存，请使用“读取最新草稿”核对；当前未自动重试。'
             : ''),
       );
       // A deliberate action needs a visible recovery path. Background autosave

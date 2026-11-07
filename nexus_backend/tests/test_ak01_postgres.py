@@ -30,6 +30,7 @@ from test_queue_worker_postgres import (
 from test_stage7_proposal_postgres import pg_stage7
 from test_stage15_assistant_meter_postgres import billed_chat
 from test_stage15_conversations_postgres import chat_pg, enqueue, make_thread
+from pg_queue_clock import wait_until_due
 
 
 pytestmark = pytest.mark.skipif(
@@ -147,6 +148,7 @@ def prepare(request, kind):
         case = request.getfixturevalue("billed_chat")
         thread = make_thread(case)
         task = enqueue(case, thread)
+        wait_until_due(case.source.psycopg.connect, ADMIN_URL, "assistant_turns", [task["id"]])
         return case, task["id"], case.source.owner.firm_id
     case = request.getfixturevalue("pg_stage7")
     event = create_event(case)
@@ -165,10 +167,12 @@ def prepare(request, kind):
                 idempotency_key="ak01-ocr-" + event["id"],
             ),
         )
+        wait_until_due(case.psycopg.connect, ADMIN_URL, "ocr_jobs", [batch["jobs"][0]["id"]])
         return case, batch["jobs"][0]["id"], case.manager.firm_id
     assert extract(case, event)["status"] == "succeeded"
     result = handoff(case, event)
     task_id = result["automatic_job"]["id"]
+    wait_until_due(case.psycopg.connect, ADMIN_URL, "proposal_jobs", [task_id])
     assert case.queue.proposals.get(case.actors["accountant"], task_id)["status"] == "queued"
     return case, task_id, case.manager.firm_id
 

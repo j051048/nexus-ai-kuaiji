@@ -1,7 +1,7 @@
 {
   "schema": "imp07-eval-v1",
   "dataset_id": "imp07-hard-invoices-v1",
-  "dataset_version": 1,
+  "dataset_version": 2,
   "data_nature": "synthetic_only",
   "generated_from": "scripts/imp07_build_corpus.py",
   "source_count": 30,
@@ -15,7 +15,7 @@
       "ledger_id": "ledger-a",
       "book_id": "book-a",
       "period": "2026-10",
-      "source_sha256": "61f1858ec491e977c36f235f3156972ceef443242bc997e9fe85b1998b86391c"
+      "source_sha256": "71ee13acfb0ab382b89d1ca15006a965b4deef692f4dcd07d2a9d0472cd00862"
     },
     {
       "source_id": "S002",
@@ -25,7 +25,7 @@
       "ledger_id": "ledger-b",
       "book_id": "book-b",
       "period": "2026-10",
-      "source_sha256": "977662476616fdf5ea94e6de236b3e766fdd55f26e72d6d3f7dbd6fba4ddaebf"
+      "source_sha256": "9715e8ba56d58048cfb5369c543f1bbb030ffc54c0e6e1361088b7acce391344"
     },
     {
       "source_id": "S003",
@@ -35,7 +35,7 @@
       "ledger_id": "ledger-a",
       "book_id": "book-a",
       "period": "2026-10",
-      "source_sha256": "9e3d90a185d53c6f4b9c0c9eceaf133ac3a453b2ca7c40fabb70ec0ca312d529"
+      "source_sha256": "217b4e11415661f181bd59a849510f09fd78bb724f61f571476a6c787f7863ec"
     },
     {
       "source_id": "S004",
@@ -45,7 +45,7 @@
       "ledger_id": "ledger-b",
       "book_id": "book-b",
       "period": "2026-10",
-      "source_sha256": "79f44fe84f7bfdb96992d81337616083f99fa70d45edfa23f4035378a940da74"
+      "source_sha256": "706c77f37177973aaf2f135f16e204f23356be1bb3579df53fb1a392ef9d4aa8"
     },
     {
       "source_id": "S005",
@@ -55,7 +55,7 @@
       "ledger_id": "ledger-a",
       "book_id": "book-a",
       "period": "2026-10",
-      "source_sha256": "a53e52b2a835ecd53db78e47a6c3decf0498416afcbe5a5f2a2108ff902beba1"
+      "source_sha256": "8159b80589ac075ff1a308401fb7fa2c66460e9a54aaf38a21a097f3bce9d352"
     },
     {
       "source_id": "S006",
@@ -65,7 +65,7 @@
       "ledger_id": "ledger-b",
       "book_id": "book-b",
       "period": "2026-10",
-      "source_sha256": "4c0c1e2086a4c1608a74550c928b5ba6c1129007530da96a35b8ff408036ee73"
+      "source_sha256": "4639ca32a7b4e54c573c7091ebf52d02e4231c5c257ff0b986c7e36a07d0f25a"
     },
     {
       "source_id": "S007",
@@ -75,7 +75,7 @@
       "ledger_id": "ledger-a",
       "book_id": "book-a",
       "period": "2026-10",
-      "source_sha256": "d126491744d69fd3808752782ed71aae01bc2d4fd58c15f26f7f1b46f763fdbb"
+      "source_sha256": "034d58025f055bda8ad919a0a0496f0ef3930213106f11f11f921fbf7f654347"
     },
     {
       "source_id": "S008",
@@ -85,7 +85,7 @@
       "ledger_id": "ledger-b",
       "book_id": "book-b",
       "period": "2026-10",
-      "source_sha256": "2f788f0540db1d137a479cb8f77427f3491602ea8ba5005b1b3931cab992e8a8"
+      "source_sha256": "9628e33b99e0adbc74dae4b396e26110fb222e970da688edcc174db5a2e24ca5"
     },
     {
       "source_id": "S009",
@@ -95,7 +95,7 @@
       "ledger_id": "ledger-a",
       "book_id": "book-a",
       "period": "2026-10",
-      "source_sha256": "7d0dde7d513c83e1afcd9c8069d7f31d8e0877ec7e35416e41a631da4713b19b"
+      "source_sha256": "67bd2b0608ee5a5a2a7468cfe05419ad6a881b35b153d728da7eb00469ffc8f8"
     },
     {
       "source_id": "S010",
@@ -105,7 +105,7 @@
       "ledger_id": "ledger-b",
       "book_id": "book-b",
       "period": "2026-10",
-      "source_sha256": "bf36e71591df6cc0cc50374703e6567296ea5c96258622b01534632df14217cb"
+      "source_sha256": "6f6d5d6b36e4b71e635cca3050856548c17926a91cee741200d33375cc7d3a47"
     },
     {
       "source_id": "S011",
@@ -115,7 +115,7 @@
       "ledger_id": "ledger-a",
       "book_id": "book-a",
       "period": "2026-10",
-      "source_sha256": "dbd01dbddbecef92a38a5dba89825c40194de7c06fee56f312f103b53ab7cdf3"
+      "source_sha256": "45c1bf610975503ef45c8fc02fc8b9d22525a8335ecc9e60c355f2811eb55cd3"
     },
     {
       "source_id": "S012",
@@ -125,7 +125,7 @@
       "ledger_id": "ledger-b",
       "book_id": "book-b",
       "period": "2026-10",
-      "source_sha256": "810a4a5aa9e437b219c6da8993ac2281124ee5e8150f589bb6898c4a97726035"
+      "source_sha256": "55809b6a637d603926a870bdadd9961d8d6dda395ac5f183458ad814dcfc4ce1"
     },
     {
       "source_id": "S013",
@@ -135,7 +135,7 @@
       "ledger_id": "ledger-a",
       "book_id": "book-a",
       "period": "2026-10",
-      "source_sha256": "f5f0fbb83839d4d81480eadeb18afe470797520b0727d58307ab8575d13224df"
+      "source_sha256": "c84da657f4c5ca32da898a9a644b5e8a8306da0040838b1e5308eef399258650"
     },
     {
       "source_id": "S014",
@@ -145,7 +145,7 @@
       "ledger_id": "ledger-b",
       "book_id": "book-b",
       "period": "2026-10",
-      "source_sha256": "3eeeea5a36f89c9af7d3b91989f90cc7b80389b28ba3f768585f45a4b91ffacd"
+      "source_sha256": "91e3bb296da084a27d7c7ec2dc043be739affb63f8f7f9f45c026c1e49104734"
     },
     {
       "source_id": "S015",
@@ -155,7 +155,7 @@
       "ledger_id": "ledger-a",
       "book_id": "book-a",
       "period": "2026-10",
-      "source_sha256": "8530c9b944a9d961791eabc8ba9682a41c04592c129e34ec660bedac33285a5a"
+      "source_sha256": "821bc000e08d710773e93c57b0ea7625f17fb62d77f848c2bf811604e58cb4ba"
     },
     {
       "source_id": "S016",
@@ -165,7 +165,7 @@
       "ledger_id": "ledger-b",
       "book_id": "book-b",
       "period": "2026-10",
-      "source_sha256": "c3edddc218258d16aa2088815eae56631ad4a5038517ed5d4cc2aad1cc978f10"
+      "source_sha256": "a602f7f323378463d7e1098d3e237b3c6cf1533722cf748caecf1ec3b93a3250"
     },
     {
       "source_id": "S017",
@@ -175,7 +175,7 @@
       "ledger_id": "ledger-a",
       "book_id": "book-a",
       "period": "2026-10",
-      "source_sha256": "e5830978b5de9b15b7450e7947b23ee994162120b0c885fb942a5fa0a3993f34"
+      "source_sha256": "32faa1e2bb0a267400d6f3c57e8703e03303c9679094751785598efc30ea1c69"
     },
     {
       "source_id": "S018",
@@ -185,7 +185,7 @@
       "ledger_id": "ledger-b",
       "book_id": "book-b",
       "period": "2026-10",
-      "source_sha256": "b4f8bb799ee6edc9ef9726cb80506274cb0d78ed3f88a7c6dd301728f112af4c"
+      "source_sha256": "4283689e3f9075004fd84dd1511897dc3a1a1ecfa544104d22388d02a9a1f556"
     },
     {
       "source_id": "S019",
@@ -195,7 +195,7 @@
       "ledger_id": "ledger-a",
       "book_id": "book-a",
       "period": "2026-10",
-      "source_sha256": "af5bb4f160eddeaa18db8716fd436de7db99edf5605eb1034267df827bf1d5fe"
+      "source_sha256": "57f4802efe19ce5186e9bdcfb25e884390a9d06586cfc64a583a582bd7acf8a0"
     },
     {
       "source_id": "S020",
@@ -205,7 +205,7 @@
       "ledger_id": "ledger-b",
       "book_id": "book-b",
       "period": "2026-10",
-      "source_sha256": "153e3e4864eea52952244e2da11673dd9f02e5d70e2352185bcdb1a288564940"
+      "source_sha256": "c03d64281f2eb63a03abc43fb55a4b5b4a12771ee0fe0d015e80774828d59577"
     },
     {
       "source_id": "S021",
@@ -215,7 +215,7 @@
       "ledger_id": "ledger-a",
       "book_id": "book-a",
       "period": "2026-10",
-      "source_sha256": "ab99f3a282230bff447ed1f42baa807ae2176d88d7d1b539975badd79d1dbb87"
+      "source_sha256": "d34b6c855801dc4fbd812f2846271e5fed54fe317e68ee6479e77de4708a1c20"
     },
     {
       "source_id": "S022",
@@ -225,7 +225,7 @@
       "ledger_id": "ledger-b",
       "book_id": "book-b",
       "period": "2026-10",
-      "source_sha256": "846373693cd28a21d74ffe3da889bbb784726873a0913877f4e1e929897eb0a9"
+      "source_sha256": "400fe91dc740aa9e80921fa340e3db205be5fed421ced59ee08009bd9c82c8ef"
     },
     {
       "source_id": "S023",
@@ -235,7 +235,7 @@
       "ledger_id": "ledger-a",
       "book_id": "book-a",
       "period": "2026-10",
-      "source_sha256": "5f5e02f1c1c5bdcb97be5d9cbc1fa9ef1ae6cdca3962017911368f3e66d950b3"
+      "source_sha256": "ae72f5a5681d8e79ac291f2664cc7dc07184bb2e63b68d3db1a85cfb9b4b51fe"
     },
     {
       "source_id": "S024",
@@ -245,7 +245,7 @@
       "ledger_id": "ledger-b",
       "book_id": "book-b",
       "period": "2026-10",
-      "source_sha256": "959e93564f7e85481b0046663732cf577da412939f12323d2d68dc24fb7adfd2"
+      "source_sha256": "17d0e253d598047104eb83467c1c7da94f78497d1b0d8cdcc5a0ee4dfacc42a8"
     },
     {
       "source_id": "S025",
@@ -255,7 +255,7 @@
       "ledger_id": "ledger-a",
       "book_id": "book-a",
       "period": "2026-10",
-      "source_sha256": "dcd0e0255899b3c24cac5fd5a1765d9eb44b049c80bdc64c92fc168869109437"
+      "source_sha256": "4cb3c88185bc04ef97cab3d921c2617c70c89bb7ffeab03b62c4a3e815251278"
     },
     {
       "source_id": "S026",
@@ -265,7 +265,7 @@
       "ledger_id": "ledger-b",
       "book_id": "book-b",
       "period": "2026-10",
-      "source_sha256": "5e829fb9df406d4d5fb5c4d444ff0ddaf5562c9086681214ec5079b3ce8cf530"
+      "source_sha256": "f0637f5eb2a1d9f58c137de87e11bcbee617ed5a70db3f1fc497c37e200054fc"
     },
     {
       "source_id": "S027",
@@ -275,7 +275,7 @@
       "ledger_id": "ledger-a",
       "book_id": "book-a",
       "period": "2026-10",
-      "source_sha256": "7a48b4ff9ae9ae5663b0863e86094e958080ff88247186d404ae4a184cca3b17"
+      "source_sha256": "d2cbb3d6beb9f1c656349aa852dca535c7d5ff6233f8898d61fb77459997836c"
     },
     {
       "source_id": "S028",
@@ -285,7 +285,7 @@
       "ledger_id": "ledger-b",
       "book_id": "book-b",
       "period": "2026-10",
-      "source_sha256": "a639312814c823b390a22d9840a77f590cb10fbd892a2b43f119c896b4de4250"
+      "source_sha256": "1cc52eafe1a2cec994645f2027363993238ee990f5e62809a5555171217d6e85"
     },
     {
       "source_id": "S029",
@@ -295,7 +295,7 @@
       "ledger_id": "ledger-a",
       "book_id": "book-a",
       "period": "2026-10",
-      "source_sha256": "718e443479863b934c49085747eb30f93b755d85717218eeee2c01b060058b4f"
+      "source_sha256": "cbfa141d4b8719295af5b4ac608a9edc538dc54b02afd9e78f0a946074c23790"
     },
     {
       "source_id": "S030",
@@ -305,7 +305,7 @@
       "ledger_id": "ledger-b",
       "book_id": "book-b",
       "period": "2026-10",
-      "source_sha256": "bc0a03d4081354916e2040d585f238b9994595bdacd83807398c2f2ce6365b72"
+      "source_sha256": "b02050062da7bcd7359767b5c16a5bf894c8c9b90fdb308b0fc827984338109b"
     }
   ],
   "items": [
@@ -1017,8 +1017,8 @@
       "period": "2026-10",
       "category": "standard",
       "capability": "field_extraction",
-      "input_sha256": "d79dae54905d2662516baa96e825f1b272a259d6d9f6083eb308fbbd72dbed9f",
-      "ocr_text": "增值税电子普通发票\n发票号码：0007\n开票日期：2026-10-07\n购买方名称：虚构企业07\n购买方纳税人识别号：91110000BUY070007\n销售方名称：合成供应商07\n销售方纳税人识别号：91110000IMP070007\n价税合计（小写）：113.42\n金额：107.00\n税额：6.42\n币种：CNY",
+      "input_sha256": "034d58025f055bda8ad919a0a0496f0ef3930213106f11f11f921fbf7f654347",
+      "ocr_text": "增值税电子普通发票\n发票号码：0007\n开票日期：2026-10-07\n购买方名称：虚构企业07\n购买方纳税人识别号：91110000BUY070007\n销售方名称：合成供应商07\n销售方纳税人识别号：91110000IMP070007\n价税合计（小写）：113.42\n金额：107.00\n税额：6.42\n币种：CNY\n人工核对提示：请复核票面金额",
       "gold_fields": {
         "invoice_number": "0007",
         "issued_on": "2026-10-07",
@@ -1046,8 +1046,8 @@
       "period": "2026-10",
       "category": "rotated",
       "capability": "field_extraction",
-      "input_sha256": "63e112ee249e062dd6a21a48a6627e1224f51a1dd0736b48ff2875582b9269e3",
-      "ocr_text": "扫描件旋转 3.2°\n增值税电子普通发票\n发票号码 ∶ 0007\n开票日期 ∶ 2026-10-07\n购买方名称 ∶ 虚构企业07\n购买方纳税人识别号 ∶ 91110000BUY070007\n销售方名称 ∶ 合成供应商07\n销售方纳税人识别号 ∶ 91110000IMP070007\n价税合计（小写） ∶ 113.42\n金额 ∶ 107.00\n税额 ∶ 6.42\n币种 ∶ CNY",
+      "input_sha256": "974445a96fe5b4def2cd23b6d5ccc92a08a91577d76b3d2e12959cedf80716ba",
+      "ocr_text": "扫描件旋转 3.2°\n增值税电子普通发票\n发票号码 ∶ 0007\n开票日期 ∶ 2026-10-07\n购买方名称 ∶ 虚构企业07\n购买方纳税人识别号 ∶ 91110000BUY070007\n销售方名称 ∶ 合成供应商07\n销售方纳税人识别号 ∶ 91110000IMP070007\n价税合计（小写） ∶ 113.42\n金额 ∶ 107.00\n税额 ∶ 6.42\n币种 ∶ CNY\n人工核对提示 ∶ 请复核票面金额",
       "gold_fields": {
         "invoice_number": "0007",
         "issued_on": "2026-10-07",
@@ -1075,8 +1075,8 @@
       "period": "2026-10",
       "category": "multi_page",
       "capability": "field_extraction",
-      "input_sha256": "9f0af71c7f3d09aa224ee61181f859ad82bb6e03d854684d747d6d2dd912d871",
-      "ocr_text": "边缘裁切；第二页为明细。\n增值税电子普通发票\n发票号码：0007\n开票日期：2026-10-07\n购买方名称：虚构企业07\n购买方纳税人识别号：91110000BUY070007\n销售方名称：合成供应商07\n销售方纳税人识别号：91110000IMP070007\n价税合计（小写）：113.42\n金额：107.00\n税额：6.42\n币种：CNY\n明细校验码：IMP07-007",
+      "input_sha256": "c56bf8e97ed2a01929196211046c24ada0f7d5f9db6857b87c5d953428d81c2b",
+      "ocr_text": "边缘裁切；第二页为明细。\n增值税电子普通发票\n发票号码：0007\n开票日期：2026-10-07\n购买方名称：虚构企业07\n购买方纳税人识别号：91110000BUY070007\n销售方名称：合成供应商07\n销售方纳税人识别号：91110000IMP070007\n价税合计（小写）：113.42\n金额：107.00\n税额：6.42\n币种：CNY\n人工核对提示：请复核票面金额\n明细校验码：IMP07-007",
       "gold_fields": {
         "invoice_number": "0007",
         "issued_on": "2026-10-07",
@@ -1104,8 +1104,8 @@
       "period": "2026-10",
       "category": "low_contrast",
       "capability": "field_extraction",
-      "input_sha256": "e365a0a6493ecd88c6e90fc2935d5e56e91aece16b1fccea9276da010f92e19d",
-      "ocr_text": "低对比度重扫\n增值税电子普通发票\n发票号码：0007\n开票日期：2026-10-07\n购买方名称：虚构企业07\n购买方纳税人识别号：91110000BUY070007\n销售方名称：合成供应商07\n销售方纳税人识别号：91110000IMP070007\n价税合计（小写）：113.42\n金额：107.00\n税额：6.42\n币种：CNY",
+      "input_sha256": "3bc325bdfe2ccbaf476618383c1dace76dba596ef2eac723c02aa32f42f0d344",
+      "ocr_text": "低对比度重扫\n增值税电子普通发票\n发票号码：0007\n开票日期：2026-10-07\n购买方名称：虚构企业07\n购买方纳税人识别号：91110000BUY070007\n销售方名称：合成供应商07\n销售方纳税人识别号：91110000IMP070007\n价税合计（小写）：113.42\n金额：107.00\n税额：6.42\n币种：CNY\n人工核对提示：请复核票面金额",
       "gold_fields": {
         "invoice_number": "0007",
         "issued_on": "2026-10-07",
@@ -1829,8 +1829,8 @@
       "period": "2026-10",
       "category": "standard",
       "capability": "field_extraction",
-      "input_sha256": "a72bb6d2c9e6ad0508ef30cc7f03b026f5b04dea69f535c2dcf0a9e99a6574fd",
-      "ocr_text": "增值税电子普通发票\n发票号码：0014\n开票日期：2026-10-14\n购买方名称：虚构企业14\n购买方纳税人识别号：91110000BUY070014\n销售方名称：合成供应商14\n销售方纳税人识别号：91110000IMP070014\n价税合计（小写）：120.84\n金额：114.00\n税额：6.84\n币种：CNY",
+      "input_sha256": "91e3bb296da084a27d7c7ec2dc043be739affb63f8f7f9f45c026c1e49104734",
+      "ocr_text": "增值税电子普通发票\n发票号码：0014\n开票日期：2026-10-14\n购买方名称：虚构企业14\n购买方纳税人识别号：91110000BUY070014\n销售方名称：合成供应商14\n销售方纳税人识别号：91110000IMP070014\n价税合计（小写）：120.84\n金额：114.00\n税额：6.84\n币种：CNY\n人工核对提示：请复核票面金额",
       "gold_fields": {
         "invoice_number": "0014",
         "issued_on": "2026-10-14",
@@ -1858,8 +1858,8 @@
       "period": "2026-10",
       "category": "rotated",
       "capability": "field_extraction",
-      "input_sha256": "4a0c742aacb917fcebf9d4a3aa17ab5023e5c4a545cfbf9e420ddc2c5a50dd71",
-      "ocr_text": "扫描件旋转 3.2°\n增值税电子普通发票\n发票号码 ∶ 0014\n开票日期 ∶ 2026-10-14\n购买方名称 ∶ 虚构企业14\n购买方纳税人识别号 ∶ 91110000BUY070014\n销售方名称 ∶ 合成供应商14\n销售方纳税人识别号 ∶ 91110000IMP070014\n价税合计（小写） ∶ 120.84\n金额 ∶ 114.00\n税额 ∶ 6.84\n币种 ∶ CNY",
+      "input_sha256": "b4b64d2be2e45606883a3ad713e390e95dd99135f939e8b3a532c76ecc727e7d",
+      "ocr_text": "扫描件旋转 3.2°\n增值税电子普通发票\n发票号码 ∶ 0014\n开票日期 ∶ 2026-10-14\n购买方名称 ∶ 虚构企业14\n购买方纳税人识别号 ∶ 91110000BUY070014\n销售方名称 ∶ 合成供应商14\n销售方纳税人识别号 ∶ 91110000IMP070014\n价税合计（小写） ∶ 120.84\n金额 ∶ 114.00\n税额 ∶ 6.84\n币种 ∶ CNY\n人工核对提示 ∶ 请复核票面金额",
       "gold_fields": {
         "invoice_number": "0014",
         "issued_on": "2026-10-14",
@@ -1887,8 +1887,8 @@
       "period": "2026-10",
       "category": "multi_page",
       "capability": "field_extraction",
-      "input_sha256": "2afe64f8633ac661e49e09b921a5e1529c93fc1191731047a5246214a987a896",
-      "ocr_text": "边缘裁切；第二页为明细。\n增值税电子普通发票\n发票号码：0014\n开票日期：2026-10-14\n购买方名称：虚构企业14\n购买方纳税人识别号：91110000BUY070014\n销售方名称：合成供应商14\n销售方纳税人识别号：91110000IMP070014\n价税合计（小写）：120.84\n金额：114.00\n税额：6.84\n币种：CNY\n明细校验码：IMP07-014",
+      "input_sha256": "51410ed4877e31b94ed23d9d0d3bfebc9578b3184c423422c140b11b82a5bbf6",
+      "ocr_text": "边缘裁切；第二页为明细。\n增值税电子普通发票\n发票号码：0014\n开票日期：2026-10-14\n购买方名称：虚构企业14\n购买方纳税人识别号：91110000BUY070014\n销售方名称：合成供应商14\n销售方纳税人识别号：91110000IMP070014\n价税合计（小写）：120.84\n金额：114.00\n税额：6.84\n币种：CNY\n人工核对提示：请复核票面金额\n明细校验码：IMP07-014",
       "gold_fields": {
         "invoice_number": "0014",
         "issued_on": "2026-10-14",
@@ -1916,8 +1916,8 @@
       "period": "2026-10",
       "category": "low_contrast",
       "capability": "field_extraction",
-      "input_sha256": "5950f8ca7ee4f8982f6d4e618e5c67bf7bc06ac98b0bebe2b50b3fed2b59ac9e",
-      "ocr_text": "低对比度重扫\n增值税电子普通发票\n发票号码：0014\n开票日期：2026-10-14\n购买方名称：虚构企业14\n购买方纳税人识别号：91110000BUY070014\n销售方名称：合成供应商14\n销售方纳税人识别号：91110000IMP070014\n价税合计（小写）：120.84\n金额：114.00\n税额：6.84\n币种：CNY",
+      "input_sha256": "bf5dc196d11b69c90d48c505718bd86c03d783a2210df88ce8a796b079141eed",
+      "ocr_text": "低对比度重扫\n增值税电子普通发票\n发票号码：0014\n开票日期：2026-10-14\n购买方名称：虚构企业14\n购买方纳税人识别号：91110000BUY070014\n销售方名称：合成供应商14\n销售方纳税人识别号：91110000IMP070014\n价税合计（小写）：120.84\n金额：114.00\n税额：6.84\n币种：CNY\n人工核对提示：请复核票面金额",
       "gold_fields": {
         "invoice_number": "0014",
         "issued_on": "2026-10-14",
@@ -2641,8 +2641,8 @@
       "period": "2026-10",
       "category": "standard",
       "capability": "field_extraction",
-      "input_sha256": "a45df4fb14109389a11725f0c8aba699dabd6722aba00ef34ab633029d511404",
-      "ocr_text": "增值税电子普通发票\n发票号码：0021\n开票日期：2026-10-21\n购买方名称：虚构企业21\n购买方纳税人识别号：91110000BUY070021\n销售方名称：合成供应商21\n销售方纳税人识别号：91110000IMP070021\n价税合计（小写）：128.26\n金额：121.00\n税额：7.26\n币种：CNY",
+      "input_sha256": "d34b6c855801dc4fbd812f2846271e5fed54fe317e68ee6479e77de4708a1c20",
+      "ocr_text": "增值税电子普通发票\n发票号码：0021\n开票日期：2026-10-21\n购买方名称：虚构企业21\n购买方纳税人识别号：91110000BUY070021\n销售方名称：合成供应商21\n销售方纳税人识别号：91110000IMP070021\n价税合计（小写）：128.26\n金额：121.00\n税额：7.26\n币种：CNY\n人工核对提示：请复核票面金额",
       "gold_fields": {
         "invoice_number": "0021",
         "issued_on": "2026-10-21",
@@ -2670,8 +2670,8 @@
       "period": "2026-10",
       "category": "rotated",
       "capability": "field_extraction",
-      "input_sha256": "ba4a1ececedde0b5bca6c92b7c3d060fdc47850c7780db4c70b800516d0b3140",
-      "ocr_text": "扫描件旋转 3.2°\n增值税电子普通发票\n发票号码 ∶ 0021\n开票日期 ∶ 2026-10-21\n购买方名称 ∶ 虚构企业21\n购买方纳税人识别号 ∶ 91110000BUY070021\n销售方名称 ∶ 合成供应商21\n销售方纳税人识别号 ∶ 91110000IMP070021\n价税合计（小写） ∶ 128.26\n金额 ∶ 121.00\n税额 ∶ 7.26\n币种 ∶ CNY",
+      "input_sha256": "44b72a3c5544143c9ab34242ece7763da10a9005e0a3623e3dc67558721068da",
+      "ocr_text": "扫描件旋转 3.2°\n增值税电子普通发票\n发票号码 ∶ 0021\n开票日期 ∶ 2026-10-21\n购买方名称 ∶ 虚构企业21\n购买方纳税人识别号 ∶ 91110000BUY070021\n销售方名称 ∶ 合成供应商21\n销售方纳税人识别号 ∶ 91110000IMP070021\n价税合计（小写） ∶ 128.26\n金额 ∶ 121.00\n税额 ∶ 7.26\n币种 ∶ CNY\n人工核对提示 ∶ 请复核票面金额",
       "gold_fields": {
         "invoice_number": "0021",
         "issued_on": "2026-10-21",
@@ -2699,8 +2699,8 @@
       "period": "2026-10",
       "category": "multi_page",
       "capability": "field_extraction",
-      "input_sha256": "c0cdab7454424b4bdaa45acef8f0a033e1a658b86692a213c45af213eb8c4162",
-      "ocr_text": "边缘裁切；第二页为明细。\n增值税电子普通发票\n发票号码：0021\n开票日期：2026-10-21\n购买方名称：虚构企业21\n购买方纳税人识别号：91110000BUY070021\n销售方名称：合成供应商21\n销售方纳税人识别号：91110000IMP070021\n价税合计（小写）：128.26\n金额：121.00\n税额：7.26\n币种：CNY\n明细校验码：IMP07-021",
+      "input_sha256": "40b2f56ce3c11aa574af10a71b2a5cf0e658ec287337724e926e1352038d719a",
+      "ocr_text": "边缘裁切；第二页为明细。\n增值税电子普通发票\n发票号码：0021\n开票日期：2026-10-21\n购买方名称：虚构企业21\n购买方纳税人识别号：91110000BUY070021\n销售方名称：合成供应商21\n销售方纳税人识别号：91110000IMP070021\n价税合计（小写）：128.26\n金额：121.00\n税额：7.26\n币种：CNY\n人工核对提示：请复核票面金额\n明细校验码：IMP07-021",
       "gold_fields": {
         "invoice_number": "0021",
         "issued_on": "2026-10-21",
@@ -2728,8 +2728,8 @@
       "period": "2026-10",
       "category": "low_contrast",
       "capability": "field_extraction",
-      "input_sha256": "aee51c4c227aa9be483de23ff9189a47ef70df15f4da0793e643648d7b253906",
-      "ocr_text": "低对比度重扫\n增值税电子普通发票\n发票号码：0021\n开票日期：2026-10-21\n购买方名称：虚构企业21\n购买方纳税人识别号：91110000BUY070021\n销售方名称：合成供应商21\n销售方纳税人识别号：91110000IMP070021\n价税合计（小写）：128.26\n金额：121.00\n税额：7.26\n币种：CNY",
+      "input_sha256": "326dfbd69b8e37885e1e3392e22d989639623728bbfb7591709e2fb0c6b72e7c",
+      "ocr_text": "低对比度重扫\n增值税电子普通发票\n发票号码：0021\n开票日期：2026-10-21\n购买方名称：虚构企业21\n购买方纳税人识别号：91110000BUY070021\n销售方名称：合成供应商21\n销售方纳税人识别号：91110000IMP070021\n价税合计（小写）：128.26\n金额：121.00\n税额：7.26\n币种：CNY\n人工核对提示：请复核票面金额",
       "gold_fields": {
         "invoice_number": "0021",
         "issued_on": "2026-10-21",
@@ -3453,8 +3453,8 @@
       "period": "2026-10",
       "category": "standard",
       "capability": "field_extraction",
-      "input_sha256": "469ae08fc014e090765e61bb15f5af8bdc7adf3b0f1427e1fb94b4b10686cf9f",
-      "ocr_text": "增值税电子普通发票\n发票号码：0028\n开票日期：2026-10-28\n购买方名称：虚构企业28\n购买方纳税人识别号：91110000BUY070028\n销售方名称：合成供应商28\n销售方纳税人识别号：91110000IMP070028\n价税合计（小写）：135.68\n金额：128.00\n税额：7.68\n币种：CNY",
+      "input_sha256": "1cc52eafe1a2cec994645f2027363993238ee990f5e62809a5555171217d6e85",
+      "ocr_text": "增值税电子普通发票\n发票号码：0028\n开票日期：2026-10-28\n购买方名称：虚构企业28\n购买方纳税人识别号：91110000BUY070028\n销售方名称：合成供应商28\n销售方纳税人识别号：91110000IMP070028\n价税合计（小写）：135.68\n金额：128.00\n税额：7.68\n币种：CNY\n人工核对提示：请复核票面金额",
       "gold_fields": {
         "invoice_number": "0028",
         "issued_on": "2026-10-28",
@@ -3482,8 +3482,8 @@
       "period": "2026-10",
       "category": "rotated",
       "capability": "field_extraction",
-      "input_sha256": "f5cdc7e9d89920e34b8669ac78d301a48d938df7a7be1ac5c7aa35274e8c730f",
-      "ocr_text": "扫描件旋转 3.2°\n增值税电子普通发票\n发票号码 ∶ 0028\n开票日期 ∶ 2026-10-28\n购买方名称 ∶ 虚构企业28\n购买方纳税人识别号 ∶ 91110000BUY070028\n销售方名称 ∶ 合成供应商28\n销售方纳税人识别号 ∶ 91110000IMP070028\n价税合计（小写） ∶ 135.68\n金额 ∶ 128.00\n税额 ∶ 7.68\n币种 ∶ CNY",
+      "input_sha256": "9cd1859ca125831da38c948f19bf7ee3b6bc9c528a66c9b60e89de7b1d9ffc33",
+      "ocr_text": "扫描件旋转 3.2°\n增值税电子普通发票\n发票号码 ∶ 0028\n开票日期 ∶ 2026-10-28\n购买方名称 ∶ 虚构企业28\n购买方纳税人识别号 ∶ 91110000BUY070028\n销售方名称 ∶ 合成供应商28\n销售方纳税人识别号 ∶ 91110000IMP070028\n价税合计（小写） ∶ 135.68\n金额 ∶ 128.00\n税额 ∶ 7.68\n币种 ∶ CNY\n人工核对提示 ∶ 请复核票面金额",
       "gold_fields": {
         "invoice_number": "0028",
         "issued_on": "2026-10-28",
@@ -3511,8 +3511,8 @@
       "period": "2026-10",
       "category": "multi_page",
       "capability": "field_extraction",
-      "input_sha256": "89763d7d3479a3aa6c6adfe7feb6bc269a6574e9e0b99f5280dfc5cb0a789c14",
-      "ocr_text": "边缘裁切；第二页为明细。\n增值税电子普通发票\n发票号码：0028\n开票日期：2026-10-28\n购买方名称：虚构企业28\n购买方纳税人识别号：91110000BUY070028\n销售方名称：合成供应商28\n销售方纳税人识别号：91110000IMP070028\n价税合计（小写）：135.68\n金额：128.00\n税额：7.68\n币种：CNY\n明细校验码：IMP07-028",
+      "input_sha256": "36dc07b10bdc5151b2acdfce06632d0d688810a4d45c93ea46a41f475f596180",
+      "ocr_text": "边缘裁切；第二页为明细。\n增值税电子普通发票\n发票号码：0028\n开票日期：2026-10-28\n购买方名称：虚构企业28\n购买方纳税人识别号：91110000BUY070028\n销售方名称：合成供应商28\n销售方纳税人识别号：91110000IMP070028\n价税合计（小写）：135.68\n金额：128.00\n税额：7.68\n币种：CNY\n人工核对提示：请复核票面金额\n明细校验码：IMP07-028",
       "gold_fields": {
         "invoice_number": "0028",
         "issued_on": "2026-10-28",
@@ -3540,8 +3540,8 @@
       "period": "2026-10",
       "category": "low_contrast",
       "capability": "field_extraction",
-      "input_sha256": "8f3ca1cadf60e07b3cc215995e35e83e497dd94c33ca73f303e61d8595d600c2",
-      "ocr_text": "低对比度重扫\n增值税电子普通发票\n发票号码：0028\n开票日期：2026-10-28\n购买方名称：虚构企业28\n购买方纳税人识别号：91110000BUY070028\n销售方名称：合成供应商28\n销售方纳税人识别号：91110000IMP070028\n价税合计（小写）：135.68\n金额：128.00\n税额：7.68\n币种：CNY",
+      "input_sha256": "f3c4c58d17c8f6bdb9dcba3eb9f036033b8efd5a68fe900413d65f9b59ada705",
+      "ocr_text": "低对比度重扫\n增值税电子普通发票\n发票号码：0028\n开票日期：2026-10-28\n购买方名称：虚构企业28\n购买方纳税人识别号：91110000BUY070028\n销售方名称：合成供应商28\n销售方纳税人识别号：91110000IMP070028\n价税合计（小写）：135.68\n金额：128.00\n税额：7.68\n币种：CNY\n人工核对提示：请复核票面金额",
       "gold_fields": {
         "invoice_number": "0028",
         "issued_on": "2026-10-28",

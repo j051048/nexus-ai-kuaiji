@@ -55,12 +55,13 @@ def enqueue(case, *, actor=None, event_id=None, attachment_id=None, batch_id=Non
         "company_id": case.company, "event_id": event_id, "attachment_id": attachment_id,
         "expected_version": 1, "attachment_sha256": "a" * 64, "configuration_fingerprint": "configured-vision",
         "execution_user_id": actor.user_id, "created_by": actor.user_id, "created_at": stamp,
-        # Windows and the WSL PostgreSQL clock can differ by tens of ms; this
-        # SQL unit case is immediately eligible, without relying on wall-clock
-        # synchronization or sleeps. Delay cases use database-generated times.
-        "available_at": (datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat(), "updated_at": stamp, **changes,
+        # Fill immediate eligibility from the database clock below. Explicit
+        # delayed jobs retain the caller's timestamp and scheduling assertion.
+        "available_at": None, "updated_at": stamp, **changes,
     }
     with case.db.transaction(write=True, actor=actor) as conn:
+        if "available_at" not in changes:
+            job["available_at"] = conn.execute("SELECT clock_timestamp()").fetchone()[0].isoformat()
         if not conn.execute("SELECT id FROM ocr_batches WHERE id=?", (batch_id,)).fetchone():
             conn.execute("INSERT INTO ocr_batches VALUES(?,?,?,?,?,?,?)", (batch_id, actor.firm_id, case.company, actor.user_id, uuid4().hex, uuid4().hex, stamp))
         conn.execute(f"INSERT INTO ocr_jobs({','.join(job)}) VALUES({','.join('?' for _ in job)})", tuple(job.values()))

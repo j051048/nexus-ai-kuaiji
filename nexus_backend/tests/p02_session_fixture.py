@@ -38,12 +38,17 @@ class P02Session(SimpleNamespace):
 
 
 @contextmanager
-def create_session(config_path, directory, *, identity=None):
+def create_session(config_path, directory, *, identity=None, major=None):
     """No identity lambda or business SQL: setup uses verified profiles/services."""
     config_path, directory = Path(config_path), Path(directory)
     config = json.loads(config_path.read_text(encoding="utf-8"))
     # The gate rejects non-loopback endpoints and privileged business accounts.
-    major = 17 if "17" in config_path.name else 16
+    # Legacy P02 configurations encode the version in their filename. New
+    # callers with generic configuration names must pass their explicit gate.
+    if major is None:
+        major = 17 if "17" in config_path.name else 16
+    if type(major) is not int or major not in {16, 17}:
+        raise ValueError("Explicit PostgreSQL 16 or 17 required")
     assert_server_and_roles(config, major)
     migrate(config["admin"])
     directory.mkdir(parents=True, exist_ok=True)

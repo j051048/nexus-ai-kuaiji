@@ -2,7 +2,8 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-const source = (name: string) => readFileSync(new URL(`./${name}`, import.meta.url), 'utf8');
+const source = (name: string) =>
+  readFileSync(new URL(`./${name}`, import.meta.url), 'utf8').replace(/\r\n?/g, '\n');
 const tokens = () => source('tokens.css');
 
 function declarations(css: string) {

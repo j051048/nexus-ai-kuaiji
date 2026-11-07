@@ -4,6 +4,7 @@ import type { Session } from './types';
 import { ManualVoucherReviewPanel } from './ManualVoucherReviewPanel';
 import { correctionSeed, type CorrectionSeed } from './voucher-correction';
 import { LegacyReviewPanel } from './LegacyReviewPanel';
+import { AnalysisEvidencePanel } from './AnalysisEvidencePanel';
 import { FormalClosePanel } from './FormalClosePanel';
 import { OnboardingSetupWizard } from './OnboardingSetupWizard';
 import {
@@ -683,6 +684,16 @@ function FormalBooksContent({
               <p className="formal-books-help">
                 原凭证保持不变。选错类型、金额或科目时，先预览更正影响，再提交独立复核。
               </p>
+              {companyId && period && (
+                <AnalysisEvidencePanel
+                  key={voucherId}
+                  session={session}
+                  bookId={bookId}
+                  companyId={companyId}
+                  period={period}
+                  targetVoucherId={voucherId}
+                />
+              )}
               {!correction && (
                 <div className="formal-books-actions" aria-label="原凭证更正类型">
                   {(['adjustment', 'reversal'] as const).map((kind) => (

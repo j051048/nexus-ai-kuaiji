@@ -409,7 +409,7 @@ def _run_gate(output, *, config_dir, timeout=3600):
         C01_GOTRUE_ACCEPT="1",
         C01_GOTRUE_APP="1",
         C01_AUTH_PORT_FORWARDED=os.environ.get("C01_AUTH_PORT_FORWARDED", "0"),
-        C01_AUTH_PROXY_HOST=os.environ.get("C01_AUTH_PROXY_HOST", ""),
+        C01_AUTH_PROXY_HOST=(os.environ.get("C01_AUTH_PROXY_HOST") or "127.0.0.1"),
         P01_CONFIG_DIR=str(snapshot),
     )
     phase = "environment"

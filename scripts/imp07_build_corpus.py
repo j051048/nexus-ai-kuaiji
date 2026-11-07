@@ -81,6 +81,9 @@ def build() -> dict:
                 "币种：CNY",
             ]
         )
+        if n % 7 == 0:
+            body += "\n人工核对提示：请复核票面金额"
+        sources[-1]["source_sha256"] = sha(body)
         variants = [
             ("V1", "standard", body),
             ("V2", "rotated", "扫描件旋转 3.2°\n" + body.replace("：", " ∶ ")),
@@ -115,7 +118,7 @@ def build() -> dict:
     return {
         "schema": "imp07-eval-v1",
         "dataset_id": "imp07-hard-invoices-v1",
-        "dataset_version": 1,
+        "dataset_version": 2,
         "data_nature": "synthetic_only",
         "generated_from": "scripts/imp07_build_corpus.py",
         "source_count": len(sources),

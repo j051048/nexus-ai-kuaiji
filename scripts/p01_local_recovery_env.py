@@ -85,10 +85,35 @@ def write_new_private(path, data):
 write_private = write_new_private
 
 
-def make_plan(runtime_base, pg_bin_root, gotrue_root):
+def bridge_port(value=25510):
+    if (
+        type(value) is not int
+        or not 1024 <= value <= 65535
+        or value in {5432, 25511, 25512, *[row["port"] for row in LAYOUT.values()]}
+    ):
+        raise RecoveryEnvironmentError("bridge_port_invalid")
+    return value
+
+
+def auth_ports(config):
+    ports = config.get("auth_ports", [25511, 25512])
+    forbidden = {5432, config.get("bridge_port", 25510), *[row["port"] for row in LAYOUT.values()]}
+    if (
+        not isinstance(ports, list)
+        or len(ports) != 2
+        or len(set(ports)) != 2
+        or any(type(p) is not int or not 1024 <= p <= 65535 or p in forbidden for p in ports)
+    ):
+        raise RecoveryEnvironmentError("auth_ports_invalid")
+    return ports
+
+
+def make_plan(runtime_base, pg_bin_root, gotrue_root, *, bridge_port=25510):
+    port = globals()["bridge_port"](bridge_port)
     identifier = uuid4().hex
     return {
         "schema": "p01-environment-v2",
+        "bridge_port": port,
         "environment_id": identifier,
         "root": str(Path(runtime_base).resolve() / ("p01-recovery-" + identifier)),
         "pg_bin_root": str(Path(pg_bin_root).resolve()),
@@ -126,6 +151,7 @@ def read_plan(directory):
             for key, row in plan["clusters"].items()
         }
     )
+    bridge_port(plan.get("bridge_port", 25510))
     return plan
 
 
@@ -146,10 +172,8 @@ def port_is_occupied(port):
     return False
 
 
-def occupied_ports():
-    return [
-        port for port in (25496, 25497, 25498, 25499, 25510, 25511, 25512) if port_is_occupied(port)
-    ]
+def occupied_ports(ports=(25496, 25497, 25498, 25499, 25510, 25511, 25512)):
+    return [port for port in ports if port_is_occupied(port)]
 
 
 def validate_owned_cluster(plan, name):
@@ -229,7 +253,14 @@ def _owned_pid(data, expected_port):
     return pid
 
 
-def prepare(directory, runtime_base=None, pg_bin_root="/usr/lib/postgresql", gotrue_root=None):
+def prepare(
+    directory,
+    runtime_base=None,
+    pg_bin_root="/usr/lib/postgresql",
+    gotrue_root=None,
+    *,
+    bridge_port=25510,
+):
     _native()
     directory = Path(directory).resolve()
     if directory.exists():
@@ -238,6 +269,7 @@ def prepare(directory, runtime_base=None, pg_bin_root="/usr/lib/postgresql", got
         runtime_base or Path.home() / ".local/share/nexus-local-tests",
         pg_bin_root,
         gotrue_root or Path.home() / ".local/share/nexus-local-tests/gotrue-v2.197.0",
+        bridge_port=bridge_port,
     )
     directory.mkdir(parents=True, mode=0o700)
     secure(directory)
@@ -260,7 +292,9 @@ def bootstrap(directory):
     root = Path(plan["root"])
     if root.exists():
         raise RecoveryEnvironmentError("root_exists: use start; do not reinitialize")
-    busy = occupied_ports()
+    busy = occupied_ports(
+        [row["port"] for row in LAYOUT.values()] + [plan.get("bridge_port", 25510), 25511, 25512]
+    )
     if busy:
         raise RecoveryEnvironmentError("port_occupied: " + ",".join(map(str, busy)))
     root.parent.mkdir(parents=True, exist_ok=True)
@@ -389,7 +423,7 @@ def needs_login_provision(existing):
     return not existing
 
 
-def new_pair(directory):
+def new_pair(directory, *, auth_port_base=25511):
     sys.path[:0] = [str(ROOT), str(ROOT / "nexus_backend")]
     import psycopg
     from psycopg import sql
@@ -403,6 +437,12 @@ def new_pair(directory):
     from scripts.c01_local_wsl_bridge import AUTH_SHA
 
     plan = read_plan(directory)
+    approved_auth_ports = auth_ports(
+        {
+            "auth_ports": [auth_port_base, auth_port_base + 1],
+            "bridge_port": plan.get("bridge_port", 25510),
+        }
+    )
     run = Path(directory).resolve() / "runs" / uuid4().hex
     run.mkdir(parents=True, mode=0o700)
     secure(run)
@@ -487,6 +527,8 @@ def new_pair(directory):
     manifest = assets["migrations"]
     write_new_private(run / "gotrue-migrations-manifest.json", manifest)
     bridge = {
+        "auth_ports": approved_auth_ports,
+        "bridge_port": plan.get("bridge_port", 25510),
         "token": secrets.token_urlsafe(48),
         "targets": bridge_targets,
         "binary_directories": [
@@ -509,7 +551,8 @@ def new_pair(directory):
 def bridge_start(config_dir):
     _native()
     config = Path(config_dir).resolve() / "wsl-bridge-private.json"
-    if 25510 in occupied_ports():
+    port = bridge_port(json.loads(config.read_text(encoding="utf-8-sig")).get("bridge_port", 25510))
+    if port_is_occupied(port):
         raise RecoveryEnvironmentError("bridge_occupied: never replace another run's bridge")
     log = config.parent / ("bridge-" + uuid4().hex + ".log")
     with log.open("xb") as output:
@@ -550,13 +593,14 @@ def bridge_stop(config_dir):
     from c01_wsl_bridge import call
 
     config = Path(config_dir) / "wsl-bridge-private.json"
-    if 25510 not in occupied_ports():
+    port = bridge_port(json.loads(config.read_text(encoding="utf-8-sig")).get("bridge_port", 25510))
+    if not port_is_occupied(port):
         return {"bridge_stopped": True, "already_stopped": True}
     result = call(config, "shutdown")
     deadline = time.monotonic() + 15
-    while 25510 in occupied_ports() and time.monotonic() < deadline:
+    while port_is_occupied(port) and time.monotonic() < deadline:
         time.sleep(0.1)
-    if 25510 in occupied_ports():
+    if port_is_occupied(port):
         raise RecoveryEnvironmentError("bridge_stop_timeout: do not signal foreign processes")
     return result
 
@@ -581,14 +625,22 @@ def main():
     parser.add_argument("--runtime-base")
     parser.add_argument("--pg-bin-root", default="/usr/lib/postgresql")
     parser.add_argument("--gotrue-root")
+    parser.add_argument("--bridge-port", type=int, default=25510)
+    parser.add_argument("--auth-port-base", type=int, default=25511)
     args = parser.parse_args()
     try:
         if args.command == "prepare":
-            result = prepare(args.directory, args.runtime_base, args.pg_bin_root, args.gotrue_root)
+            result = prepare(
+                args.directory,
+                args.runtime_base,
+                args.pg_bin_root,
+                args.gotrue_root,
+                bridge_port=args.bridge_port,
+            )
         elif args.command == "bootstrap":
             result = bootstrap(args.directory)
         elif args.command == "new-pair":
-            result = new_pair(args.directory)
+            result = new_pair(args.directory, auth_port_base=args.auth_port_base)
         elif args.command == "bridge-start":
             result = bridge_start(args.directory)
         elif args.command == "bridge-stop":

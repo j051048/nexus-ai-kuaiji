@@ -14,7 +14,14 @@ import xml.etree.ElementTree as ET
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from scripts.release_candidate import candidate_fingerprint
-from scripts.p01_local_recovery_env import port_is_occupied
+from scripts.p01_local_recovery_env import port_is_occupied, auth_ports
+
+
+def required_ports(config_dir):
+    config = json.loads(
+        (Path(config_dir) / "wsl-bridge-private.json").read_text(encoding="utf-8-sig")
+    )
+    return (18100, 18180, auth_ports(config)[0])
 
 
 def validate_result(path):
@@ -51,7 +58,7 @@ def run(config_dir, output, node="node"):
     if not config_dir.is_relative_to(ROOT / "tmp_test"):
         raise ValueError("Explicit isolated run configuration required")
     # Never attach to or terminate a developer's server.
-    for port in (18100, 18180, 25511):
+    for port in required_ports(config_dir):
         if port_is_occupied(port):
             raise ValueError("Local browser acceptance port already has a listener")
     output.mkdir(parents=True)
@@ -81,6 +88,7 @@ def run(config_dir, output, node="node"):
         E2E_LOCAL_ISOLATION="1",
         ACCOUNTING_API_PROXY="http://127.0.0.1:18100",
         P02_BROWSER_FIXTURE=str(host_dir / "fixture-private.json"),
+        P02_EXPECTED_AUTH_LOCAL_ORIGIN=f"http://127.0.0.1:{required_ports(config_dir)[2]}",
         PLAYWRIGHT_JUNIT_OUTPUT_FILE=str(output / "browser-private.xml"),
         P02_BROWSER_OUTPUT=str(output / "browser-private"),
         PYTHONDONTWRITEBYTECODE="1",

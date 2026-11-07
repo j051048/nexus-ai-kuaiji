@@ -26,7 +26,15 @@ const longTask = {
 
 const tasks = [
   longTask,
-  { ...longTask, key: 'finance:blocked', ref: 'blocked', state: 'failed', title: '资料金额与原件不一致', amount: '88.00', bucket: 'action' },
+  {
+    ...longTask,
+    key: 'finance:blocked',
+    ref: 'blocked',
+    state: 'failed',
+    title: '资料金额与原件不一致',
+    amount: '88.00',
+    bucket: 'action',
+  },
 ];
 
 async function mockTasks(page: Page) {
@@ -85,8 +93,12 @@ test('IMP06 long and negative amount is complete on desktop and mobile', async (
   const desktop = page.locator('article.workspace-task').first();
   await expect(desktop.locator('.workspace-task-amount')).toContainText('¥-123,456,789,012.34');
   const support = await page.evaluate(() => ({
-    guidance: parseFloat(getComputedStyle(document.querySelector('details.workspace-task-help summary')!).fontSize),
-    state: parseFloat(getComputedStyle(document.querySelector('.workspace-task-state small')!).fontSize),
+    guidance: parseFloat(
+      getComputedStyle(document.querySelector('details.workspace-task-help summary')!).fontSize,
+    ),
+    state: parseFloat(
+      getComputedStyle(document.querySelector('.workspace-task-state small')!).fontSize,
+    ),
     statusText: document.querySelector('.workspace-state-pill')?.textContent?.trim() ?? '',
   }));
   expect(support.guidance).toBeGreaterThanOrEqual(12);
@@ -100,7 +112,10 @@ test('IMP06 long and negative amount is complete on desktop and mobile', async (
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.waitForTimeout(300);
-  const mobileAmount = page.locator('article.workspace-task').first().locator('.workspace-task-mobile-amount');
+  const mobileAmount = page
+    .locator('article.workspace-task')
+    .first()
+    .locator('.workspace-task-mobile-amount');
   await expect(mobileAmount).toBeVisible();
   await expect(mobileAmount).toContainText('¥-123,456,789,012.34');
   const metrics = await page.evaluate(() => {
@@ -112,10 +127,16 @@ test('IMP06 long and negative amount is complete on desktop and mobile', async (
       amountText: amount?.textContent,
     };
   });
-  fs.writeFileSync('tmp_test/imp/imp-20261106-a/imp06-amount-metrics.json', JSON.stringify(metrics, null, 2));
+  fs.writeFileSync(
+    test.info().outputPath('imp06-amount-metrics.json'),
+    JSON.stringify(metrics, null, 2),
+  );
   expect(metrics.pageOverflow).toBeLessThanOrEqual(0);
   expect(metrics.amountOverflow).toBeLessThanOrEqual(1);
-  await page.screenshot({ path: 'tmp_test/imp/imp-20261106-a/imp06-mobile-long-amount.png', fullPage: false });
+  await page.screenshot({
+    path: test.info().outputPath('imp06-mobile-long-amount.png'),
+    fullPage: false,
+  });
 
   // 200% browser zoom on a 1366px window yields an effective 683px layout viewport.
   await page.setViewportSize({ width: 683, height: 450 });
@@ -132,7 +153,6 @@ test('IMP06 long and negative amount is complete on desktop and mobile', async (
   expect(zoomed.visible).toBe(true);
   expect(zoomed.text).toContain('¥-123,456,789,012.34');
 });
-
 
 test('IMP06 tokens reach the lazy intake dialog and mobile inputs stay 16px', async ({ page }) => {
   await page.goto('/');
@@ -158,16 +178,23 @@ test('IMP06 tokens reach the lazy intake dialog and mobile inputs stay 16px', as
   await page.keyboard.press('Escape');
 });
 
-
-test('IMP06 help opens from the keyboard and key list has no new axe violations', async ({ page }, info) => {
+test('IMP06 help opens from the keyboard and key list has no new axe violations', async ({
+  page,
+}, info) => {
   await finance(page);
-  const summary = page.locator('article.workspace-task').first().locator('details.workspace-task-help summary');
+  const summary = page
+    .locator('article.workspace-task')
+    .first()
+    .locator('details.workspace-task-help summary');
   await summary.focus();
   await page.keyboard.press('Enter');
-  await expect(page.locator('article.workspace-task').first().locator('p.workspace-task-guidance')).toBeVisible();
-  const scan = await new AxeBuilder({ page })
-    .withTags(['wcag2a', 'wcag2aa', 'wcag21aa'])
-    .analyze();
-  await info.attach('imp06-axe', { body: JSON.stringify(scan.violations, null, 2), contentType: 'application/json' });
+  await expect(
+    page.locator('article.workspace-task').first().locator('p.workspace-task-guidance'),
+  ).toBeVisible();
+  const scan = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
+  await info.attach('imp06-axe', {
+    body: JSON.stringify(scan.violations, null, 2),
+    contentType: 'application/json',
+  });
   expect(scan.violations).toEqual([]);
 });

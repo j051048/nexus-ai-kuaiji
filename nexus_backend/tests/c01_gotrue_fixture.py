@@ -101,7 +101,7 @@ def restore_auth_database(config, archive, proof):
 class _LocalAuthTransport(httpx.BaseTransport):
     def __init__(self, origin, port):
         self.origin, self.port = origin, port
-        self.reach_host = os.environ.get("C01_AUTH_PROXY_HOST", "127.0.0.1")
+        self.reach_host = os.environ.get("C01_AUTH_PROXY_HOST") or "127.0.0.1"
         self.reach_port = port if self.reach_host == "127.0.0.1" else port + 1000
         self.client = httpx.Client(trust_env=False, timeout=10)
 
@@ -134,6 +134,11 @@ class RealGoTrue:
             raise ValueError("真实GoTrue只允许独立本机Auth测试库")
         if port not in {25511, 25512}:
             raise ValueError("真实GoTrue仅允许固定两个回环测试端口")
+        from scripts.p01_local_recovery_env import auth_ports
+
+        # Logical source/target ports are mapped by this run's immutable config,
+        # never by an event or an environment-provided remote endpoint.
+        port = auth_ports(json.loads(BRIDGE.read_text(encoding="utf-8-sig")))[port - 25511]
         self.config, self.directory, self.port = config, Path(directory), port
         self.origin = "https://c01-real-auth-" + str(port) + ".example.test"
         self.secret = secrets.token_urlsafe(48)
@@ -162,12 +167,9 @@ class RealGoTrue:
         deadline = time.monotonic() + 30
         while time.monotonic() < deadline:
             try:
-                reach_host = os.environ.get("C01_AUTH_PROXY_HOST", "127.0.0.1")
+                reach_host = os.environ.get("C01_AUTH_PROXY_HOST") or "127.0.0.1"
                 reach_port = self.port if reach_host == "127.0.0.1" else self.port + 1000
-                if (
-                    self.client.get(f"http://{reach_host}:{reach_port}/health").status_code
-                    == 200
-                ):
+                if self.client.get(f"http://{reach_host}:{reach_port}/health").status_code == 200:
                     return self
             except httpx.TransportError:
                 pass
@@ -187,7 +189,7 @@ class RealGoTrue:
 
     def _request(self, method, path, *, token=None, body=None):
         headers = {"Authorization": "Bearer " + token} if token else {}
-        reach_host = os.environ.get("C01_AUTH_PROXY_HOST", "127.0.0.1")
+        reach_host = os.environ.get("C01_AUTH_PROXY_HOST") or "127.0.0.1"
         reach_port = self.port if reach_host == "127.0.0.1" else self.port + 1000
         response = self.client.request(
             method, f"http://{reach_host}:{reach_port}" + path, headers=headers, json=body

@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
-const BASE = process.env.IMP02_BASE_URL || 'http://127.0.0.1:8082';
+const BASE = process.env.IMP02_BASE_URL || '/';
 
 async function switchRole(page: Page, role: string) {
   await page.locator('select[aria-label="切换验证身份"]').evaluate((el, value) => {

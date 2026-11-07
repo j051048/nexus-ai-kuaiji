@@ -50,7 +50,12 @@ function uploadFiles(paths) {
 }
 
 test('Vercel keeps the typecheck dependency while excluding private and operational files', () => {
-  const retained = ['scripts/e2e_runtime.ts', 'src/App.tsx', 'services/api_gateway/main.py'];
+  const retained = [
+    'scripts/e2e_runtime.ts',
+    'scripts/p02_identity_origin.ts',
+    'src/App.tsx',
+    'services/api_gateway/main.py',
+  ];
   const excluded = [
     'scripts/migrate_accounting.py',
     'scripts/e2e_core_cases.json',

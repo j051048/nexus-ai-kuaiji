@@ -216,8 +216,10 @@ class Bridge:
         return {"completed": True}
 
     def start(self, data, config, target, pg, env):
+        from scripts.p01_local_recovery_env import auth_ports
+
         port = data.get("port")
-        if type(port) is not int or port not in {25511, 25512}:
+        if type(port) is not int or port not in auth_ports(config):
             raise BridgeError("Unapproved auth port")
         if not re.fullmatch(r"ak01_local_ak05_auth_[a-f0-9]{32}", pg["PGDATABASE"]):
             raise BridgeError("Auth requires a dedicated synthetic database")
@@ -337,7 +339,9 @@ class Bridge:
         return {"started": True, "port": port, "pid": process.pid, "auth_tables": int(count_text)}
 
     def stop(self, port):
-        if type(port) is not int or port not in {25511, 25512}:
+        from scripts.p01_local_recovery_env import auth_ports
+
+        if type(port) is not int or port not in auth_ports(self.config()):
             raise BridgeError("Unapproved auth port")
         with self.lock:
             process = self.processes.get(port)
@@ -393,7 +397,12 @@ def serve(config_path):
             if status == 200 and data.get("op") == "shutdown":
                 threading.Thread(target=self.server.shutdown, daemon=True).start()
 
-    server = ThreadingHTTPServer(("127.0.0.1", 25510), Handler)
+    from scripts.p01_local_recovery_env import bridge_port
+
+    port = bridge_port(
+        json.loads(Path(config_path).read_text(encoding="utf-8-sig")).get("bridge_port", 25510)
+    )
+    server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     server.daemon_threads = True
     try:
         server.serve_forever()

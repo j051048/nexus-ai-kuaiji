@@ -1,4 +1,5 @@
 """Read-only enterprise example retrieval and regression evaluation (AG05)."""
+
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
@@ -73,26 +74,40 @@ def _identity(item: Query | Example) -> None:
     is_query = isinstance(item, Query)
     code = "query_identity_invalid" if is_query else "example_identity_invalid"
     keys = (
-        "firm_id", "company_id", "book_id", "vendor_id", "business_type",
-        "direction", "accounting_policy",
+        "firm_id",
+        "company_id",
+        "book_id",
+        "vendor_id",
+        "business_type",
+        "direction",
+        "accounting_policy",
     )
     if (
         not isinstance(item, (Query, Example))
         or any(not _text(getattr(item, key)) for key in keys)
-        or (is_query and (
-            not _text(item.sample_id)
-            or not isinstance(item.evaluation_ids, tuple)
-            or any(not _text(value) for value in item.evaluation_ids)
-            or not isinstance(item.evaluation_source_hashes, tuple)
-        ))
-        or (not is_query and (
-            any(not _text(getattr(item, key)) for key in ("example_id", "account_code", "status", "split"))
-            or type(item.reviewed) is not bool
-            or type(item.evidence_complete) is not bool
-            or not isinstance(item.source_sample_ids, tuple)
-            or any(not _text(value) for value in item.source_sample_ids)
-            or not isinstance(item.ancestor_source_hashes, tuple)
-        ))
+        or (
+            is_query
+            and (
+                not _text(item.sample_id)
+                or not isinstance(item.evaluation_ids, tuple)
+                or any(not _text(value) for value in item.evaluation_ids)
+                or not isinstance(item.evaluation_source_hashes, tuple)
+            )
+        )
+        or (
+            not is_query
+            and (
+                any(
+                    not _text(getattr(item, key))
+                    for key in ("example_id", "account_code", "status", "split")
+                )
+                or type(item.reviewed) is not bool
+                or type(item.evidence_complete) is not bool
+                or not isinstance(item.source_sample_ids, tuple)
+                or any(not _text(value) for value in item.source_sample_ids)
+                or not isinstance(item.ancestor_source_hashes, tuple)
+            )
+        )
     ):
         raise RetrievalError(code, "范围身份必须为非空文本，审核/证据标志必须为布尔值")
 
@@ -113,7 +128,10 @@ def retrieve(query: Query, examples: Iterable[Example]) -> list[Example]:
     if any(not _digest(value) for value in query.evaluation_source_hashes):
         raise RetrievalError("query_provenance_missing", "验收来源摘要无效")
     excluded_ids = {query.sample_id, *query.evaluation_ids}
-    excluded_hashes = {query.source_hash.lower(), *(value.lower() for value in query.evaluation_source_hashes)}
+    excluded_hashes = {
+        query.source_hash.lower(),
+        *(value.lower() for value in query.evaluation_source_hashes),
+    }
     result = []
     for item in examples:
         if not isinstance(item, Example):
@@ -142,11 +160,14 @@ def retrieve(query: Query, examples: Iterable[Example]) -> list[Example]:
             or not _period(item.historical_period)
             or item.historical_period > query.period
             or item.policy_effective_from > query.period
-            or (item.policy_effective_to is not None and (
-                not _period(item.policy_effective_to)
-                or item.policy_effective_to < item.policy_effective_from
-                or item.policy_effective_to < query.period
-            ))
+            or (
+                item.policy_effective_to is not None
+                and (
+                    not _period(item.policy_effective_to)
+                    or item.policy_effective_to < item.policy_effective_from
+                    or item.policy_effective_to < query.period
+                )
+            )
         ):
             continue
         result.append(item)
@@ -174,7 +195,9 @@ class CandidateConfig:
 
     @property
     def fingerprint(self) -> str:
-        payload = json.dumps(asdict(self), ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        payload = json.dumps(
+            asdict(self), ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        )
         return sha256(payload.encode("utf-8")).hexdigest()
 
 
@@ -216,12 +239,23 @@ def evaluate(baseline, candidate, *, spec: EvaluationSpec | None = None) -> dict
 
 
 def evaluation_report(result: dict[str, Any]) -> dict[str, str]:
-    if result.get("schema_version") != "ag05-evaluation-v2" or not isinstance(result.get("samples"), list):
+    if result.get("schema_version") != "ag05-evaluation-v2" or not isinstance(
+        result.get("samples"), list
+    ):
         raise RetrievalError("evaluation_report_invalid", "只能展示强绑定评分器的报告")
     json_report = json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True, allow_nan=False)
+
     # Escape evidence-controlled text; the generated Markdown is not executable.
     def plain(value):
-        return str(value).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("|", "\\|").replace("\n", " ")
+        return (
+            str(value)
+            .replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace("|", "\\|")
+            .replace("\n", " ")
+        )
+
     lines = [
         "# 样例评测报告",
         "",
@@ -243,19 +277,29 @@ def evaluation_report(result: dict[str, Any]) -> dict[str, str]:
     for row in result["samples"]:
         reasons = row["baseline"]["reasons"] + row["candidate"]["reasons"] + row["regressions"]
         scope = row["scope"]
-        lines.append("| " + " | ".join(plain(value) for value in (
-            f"{row['sample_id']} / {scope['company_id']} / {scope['book_id']} / {scope['period']}",
-            f"{row['baseline']['status']} / correct={row['baseline']['correct']}",
-            f"{row['candidate']['status']} / correct={row['candidate']['correct']}",
-            row["risk_required"], ", ".join(reasons) or "ok",
-            f"{row['source_hash']} / {row['input_hash']} / {row['gold_sha256']}",
-        )) + " |")
+        lines.append(
+            "| "
+            + " | ".join(
+                plain(value)
+                for value in (
+                    f"{row['sample_id']} / {scope['company_id']} / {scope['book_id']} / {scope['period']}",
+                    f"{row['baseline']['status']} / correct={row['baseline']['correct']}",
+                    f"{row['candidate']['status']} / correct={row['candidate']['correct']}",
+                    row["risk_required"],
+                    ", ".join(reasons) or "ok",
+                    f"{row['source_hash']} / {row['input_hash']} / {row['gold_sha256']}",
+                )
+            )
+            + " |"
+        )
     lines.extend(["", "仅限离线评测；不授权模型发布、会计审核、记账或导出。"])
     return {"json": json_report, "markdown": "\n".join(lines) + "\n"}
 
 
 def validate_splits(
-    rows: Iterable[Example], evaluation_ids: set[str], *,
+    rows: Iterable[Example],
+    evaluation_ids: set[str],
+    *,
     evaluation_source_hashes: set[str] | None = None,
 ) -> None:
     forbidden_hashes = {value.lower() for value in (evaluation_source_hashes or set())}
@@ -283,7 +327,14 @@ def validate_manifest(
     *,
     allowed_differences: set[str] | None = None,
 ) -> None:
-    required = ("dataset_id", "policy_version", "prompt_version", "context_version", "split", "sample_ids")
+    required = (
+        "dataset_id",
+        "policy_version",
+        "prompt_version",
+        "context_version",
+        "split",
+        "sample_ids",
+    )
     if not isinstance(manifest, dict) or not isinstance(expected, dict):
         raise RetrievalError("manifest_invalid", "manifest 必须是对象")
     for key in required:
@@ -309,7 +360,9 @@ def validate_manifest(
         raise RetrievalError("manifest_invalid", "allowed_differences 必须是集合")
     allowed = allowed_differences or set()
     if not allowed.issubset({"prompt_version", "policy_version", "context_version"}):
-        raise RetrievalError("manifest_difference_not_allowed", "实验差异只允许 prompt/policy/context 版本")
+        raise RetrievalError(
+            "manifest_difference_not_allowed", "实验差异只允许 prompt/policy/context 版本"
+        )
     for key in required:
         if key in allowed:
             continue
@@ -338,12 +391,18 @@ def evaluate_samples(
             not isinstance(value, str) or not value.strip() for value in asdict(config).values()
         ):
             raise RetrievalError("evaluation_config_invalid", "候选配置缺少明确版本")
-        if config.schema_version != replay.SCHEMA or config.mode not in {"mock", "archived_results"}:
+        if config.schema_version != replay.SCHEMA or config.mode not in {
+            "mock",
+            "archived_results",
+        }:
             raise RetrievalError("evaluation_config_invalid", "仅允许明确的离线候选")
     if spec.baseline.mode != spec.candidate.mode:
         raise RetrievalError("evaluation_mode_mismatch", "比较必须使用相同离线运行模式")
     path = Path(spec.manifest_path)
-    if not _digest(spec.manifest_sha256) or replay.sha256_path(path) != spec.manifest_sha256.lower():
+    if (
+        not _digest(spec.manifest_sha256)
+        or replay.sha256_path(path) != spec.manifest_sha256.lower()
+    ):
         raise RetrievalError("evaluation_manifest_changed", "数据集与执行前冻结摘要不一致")
     try:
         manifest = replay.load_manifest(path)
@@ -384,7 +443,13 @@ def evaluate_samples(
             raise RetrievalError("evaluation_results_invalid", "结果必须是数组")
         found = {}
         for row in rows:
-            sid = row.sample_id if isinstance(row, UnknownAttempt) else row.get("sample_id") if isinstance(row, dict) else None
+            sid = (
+                row.sample_id
+                if isinstance(row, UnknownAttempt)
+                else row.get("sample_id")
+                if isinstance(row, dict)
+                else None
+            )
             if not isinstance(sid, str) or sid not in samples:
                 raise RetrievalError("evaluation_identity_mismatch", f"{label} 含未冻结样本")
             if sid in found:
@@ -400,7 +465,9 @@ def evaluate_samples(
             }
             actual = asdict(row) if isinstance(row, UnknownAttempt) else row
             if any(actual.get(key) != value for key, value in bindings.items()):
-                raise RetrievalError("evaluation_binding_mismatch", f"{label}/{sid} 来源/金标/候选绑定不一致")
+                raise RetrievalError(
+                    "evaluation_binding_mismatch", f"{label}/{sid} 来源/金标/候选绑定不一致"
+                )
             if isinstance(row, UnknownAttempt):
                 if not isinstance(row.attempt_id, str) or not row.attempt_id.strip():
                     raise RetrievalError("evaluation_attempt_invalid", "未知执行缺少 attempt 身份")
@@ -413,8 +480,13 @@ def evaluate_samples(
                     raise RetrievalError(error.code, error.message) from None
                 if set(row["fields"]) - set(FIELDS):
                     raise RetrievalError("evaluation_fields_invalid", f"{sid} 含未知字段")
-                if any(value is not None and not isinstance(value, str) for value in row["fields"].values()):
-                    raise RetrievalError("evaluation_fields_invalid", f"{sid} 字段只能为文本或 null")
+                if any(
+                    value is not None and not isinstance(value, str)
+                    for value in row["fields"].values()
+                ):
+                    raise RetrievalError(
+                        "evaluation_fields_invalid", f"{sid} 字段只能为文本或 null"
+                    )
                 if row["status"] == "failed" and row["review_required"] is not True:
                     raise RetrievalError("evaluation_failed_unrouted", "失败执行必须转人工")
             found[sid] = row
@@ -424,89 +496,22 @@ def evaluate_samples(
     cand = index(candidate, "candidate", spec.candidate)
 
     def score(sid, row):
-        truth, sample = truths[sid], samples[sid]
-        if row is None or isinstance(row, UnknownAttempt):
-            state = "missing" if row is None else "unknown"
-            return {
-                "status": state, "correct": False, "amount_correct": False,
-                "evidence_complete": False, "field_correct": {}, "risk_cell": "unobserved",
-                "review_required": None, "correct_abstention": False,
-                "safety_failed": True, "reasons": [state],
-            }
-        fields = row["fields"]
-        # An execution failure cannot count as a domain decision even if the
-        # expected output is abstention. Contradictory error-bearing "success"
-        # envelopes also remain incomplete, rather than becoming a correct TP.
-        execution_failed = row["status"] == "failed" or any(
-            row.get(key) is not None for key in ("error_code", "failure_kind", "error")
-        )
-        field_correct = {}
-        for field, value in sample["gold_fields"].items():
-            try:
-                field_correct[field] = (
-                    not execution_failed and row["status"] == "succeeded" and field in fields
-                    and canonical(field, fields[field]) == canonical(field, value)
-                )
-            except (ValueError, ArithmeticError):
-                field_correct[field] = False
-        try:
-            evidence_errors = replay.validate_evidence(row.get("evidence", []), sample["ocr_pages"], fields)
-        except (ArithmeticError, ValueError, TypeError):
-            evidence_errors = ["invalid-evidence-value"]
-        evidence_complete = not evidence_errors
-        review = row["review_required"]
-        risk_cell = ("tp" if review else "fn") if truth["risk_required"] else ("fp" if review else "tn")
-        decision = row.get("decision")
-        abstained = (
-            not execution_failed and row["status"] == "succeeded"
-            and type(decision) is dict
-            and decision == {"kind": "abstain", "reason": "unsupported_case"}
-            and not fields and not row.get("evidence") and review is True
-        )
-        # A declared decision is part of every result's domain contract, even
-        # when the gold expects ordinary extraction. Never ignore contradictory
-        # fields plus abstention, unknown decisions, or an explicit null.
-        decision_valid = "decision" not in row or abstained
-        correct_abstention = truth["abstention_expected"] and abstained and review
-        exact = all(field_correct.values())
-        amount_keys = [field for field in field_correct if field.endswith("_amount")]
-        amount_correct = bool(amount_keys) and all(field_correct[field] for field in amount_keys)
-        # A planned unsupported-case abstention is a valid result, not a failed
-        # execution. Any other failed execution prevents comparison.
-        state = "failed" if execution_failed else "expected_abstention" if correct_abstention else row["status"]
-        reasons = [f"field_incorrect:{field}" for field, ok in field_correct.items() if not ok]
-        if correct_abstention:
-            reasons = ["correct_abstention"]
-        elif execution_failed:
-            reasons.append("execution_failed")
-        if not decision_valid:
-            reasons.append("domain_decision_invalid")
-        reasons += [f"evidence:{error}" for error in evidence_errors]
-        if risk_cell in {"fn", "fp"}:
-            reasons.append("risk_false_negative" if risk_cell == "fn" else "risk_false_positive")
-        if truth["abstention_expected"] and not correct_abstention:
-            reasons.append("expected_abstention_missing")
-        safety_failed = bool(
-            risk_cell == "fn" or not evidence_complete or not decision_valid
-            or (truth["abstention_expected"] and not correct_abstention)
-            or execution_failed
-            or (not truth["abstention_expected"] and (not exact or row["status"] != "succeeded"))
-        )
-        return {
-            "status": state,
-            "correct": bool(decision_valid and (correct_abstention or (exact and evidence_complete and risk_cell in {"tp", "tn"} and not truth["abstention_expected"]))),
-            "amount_correct": amount_correct, "field_correct": field_correct,
-            "evidence_complete": evidence_complete, "review_required": review,
-            "risk_cell": risk_cell, "correct_abstention": bool(correct_abstention),
-            "safety_failed": safety_failed, "reasons": reasons,
-        }
+        return score_sample(samples[sid], truths[sid], row)
 
     details, regressions, fixes = [], [], []
     for sid in sorted(samples):
         b, c = score(sid, base.get(sid)), score(sid, cand.get(sid))
         reasons = []
-        if b["status"] not in {"missing", "unknown", "failed"} and c["status"] not in {"missing", "unknown", "failed"}:
-            reasons += [f"field_regression:{field}" for field, ok in b["field_correct"].items() if ok and not c["field_correct"].get(field)]
+        if b["status"] not in {"missing", "unknown", "failed"} and c["status"] not in {
+            "missing",
+            "unknown",
+            "failed",
+        }:
+            reasons += [
+                f"field_regression:{field}"
+                for field, ok in b["field_correct"].items()
+                if ok and not c["field_correct"].get(field)
+            ]
             if b["evidence_complete"] and not c["evidence_complete"]:
                 reasons.append("evidence_regression")
             if b["risk_cell"] in {"tp", "tn"} and c["risk_cell"] in {"fn", "fp"}:
@@ -517,13 +522,24 @@ def evaluate_samples(
                 fixes.append({"sample_id": sid, "reason": "sample_corrected"})
         regressions += [{"sample_id": sid, "reason": reason} for reason in reasons]
         sample = samples[sid]
-        details.append({
-            "sample_id": sid, "scope": {key: sample[key] for key in ("firm_id", "company_id", "ledger_id", "book_id", "period")},
-            "split": sample["split"], "source_hash": sample["source_hash"],
-            "input_hash": sample["ocr_sha256"].lower(), "gold_sha256": sample["gold_sha256"].lower(),
-            "risk_required": truths[sid]["risk_required"], "abstention_expected": truths[sid]["abstention_expected"],
-            "baseline": b, "candidate": c, "regressions": reasons,
-        })
+        details.append(
+            {
+                "sample_id": sid,
+                "scope": {
+                    key: sample[key]
+                    for key in ("firm_id", "company_id", "ledger_id", "book_id", "period")
+                },
+                "split": sample["split"],
+                "source_hash": sample["source_hash"],
+                "input_hash": sample["ocr_sha256"].lower(),
+                "gold_sha256": sample["gold_sha256"].lower(),
+                "risk_required": truths[sid]["risk_required"],
+                "abstention_expected": truths[sid]["abstention_expected"],
+                "baseline": b,
+                "candidate": c,
+                "regressions": reasons,
+            }
+        )
 
     def summary(label):
         risk = {key: [] for key in ("tp", "tn", "fp", "fn", "unobserved", "correct_abstentions")}
@@ -541,17 +557,37 @@ def evaluate_samples(
                 failed.append(row["sample_id"])
         correct = sum(row[label]["correct"] for row in details)
         return {
-            "correct": correct, "average": round(correct / len(samples), 4),
-            "missing": missing, "missing_count": len(missing),
-            "unknown": unknown, "unknown_count": len(unknown), "failed": failed,
-            "risk": risk, "complete": not (missing or unknown or failed),
+            "correct": correct,
+            "average": round(correct / len(samples), 4),
+            "missing": missing,
+            "missing_count": len(missing),
+            "unknown": unknown,
+            "unknown_count": len(unknown),
+            "failed": failed,
+            "risk": risk,
+            "complete": not (missing or unknown or failed),
         }
+
     b_summary, c_summary = summary("baseline"), summary("candidate")
     comparable = b_summary["complete"] and c_summary["complete"]
-    relative = "not_comparable" if not comparable else "regression" if regressions else "improvement" if fixes else "no_improvement"
+    relative = (
+        "not_comparable"
+        if not comparable
+        else "regression"
+        if regressions
+        else "improvement"
+        if fixes
+        else "no_improvement"
+    )
     safety_failed = any(row["candidate"]["safety_failed"] for row in details)
     quality_failed = c_summary["correct"] != len(samples)
-    acceptance = "incomplete" if not comparable else "rejected" if safety_failed or quality_failed or regressions else "accepted_offline"
+    acceptance = (
+        "incomplete"
+        if not comparable
+        else "rejected"
+        if safety_failed or quality_failed or regressions
+        else "accepted_offline"
+    )
     # Recheck external inputs before declaring the score valid (detect changes
     # during evaluation; no mutable gold/source payload is returned to callers).
     try:
@@ -561,17 +597,35 @@ def evaluate_samples(
     if end["manifest_sha256"] != spec.manifest_sha256.lower():
         raise RetrievalError("evaluation_manifest_changed", "评分期间 manifest 发生变化")
     return {
-        "schema_version": "ag05-evaluation-v2", "manifest_sha256": spec.manifest_sha256.lower(),
-        "configurations": {label: {**asdict(config), "fingerprint": config.fingerprint} for label, config in (("baseline", spec.baseline), ("candidate", spec.candidate))},
-        "denominator": len(samples), "baseline": b_summary, "candidate": c_summary,
-        "candidate_correct": c_summary["correct"], "average": c_summary["average"],
-        "regressions": regressions, "regression": bool(regressions), "fixes": fixes,
-        "missing": c_summary["missing"], "missing_count": c_summary["missing_count"],
-        "unknown": c_summary["unknown"], "unknown_count": c_summary["unknown_count"],
-        "absolute_safety_failed": safety_failed, "quality_failed": quality_failed, "risk": c_summary["risk"],
-        "relative_result": relative, "comparable": comparable, "acceptance": acceptance,
-        "result": relative, "result_code": acceptance, "samples": details,
-        "mode": spec.candidate.mode, "model_verified": False,
+        "schema_version": "ag05-evaluation-v2",
+        "manifest_sha256": spec.manifest_sha256.lower(),
+        "configurations": {
+            label: {**asdict(config), "fingerprint": config.fingerprint}
+            for label, config in (("baseline", spec.baseline), ("candidate", spec.candidate))
+        },
+        "denominator": len(samples),
+        "baseline": b_summary,
+        "candidate": c_summary,
+        "candidate_correct": c_summary["correct"],
+        "average": c_summary["average"],
+        "regressions": regressions,
+        "regression": bool(regressions),
+        "fixes": fixes,
+        "missing": c_summary["missing"],
+        "missing_count": c_summary["missing_count"],
+        "unknown": c_summary["unknown"],
+        "unknown_count": c_summary["unknown_count"],
+        "absolute_safety_failed": safety_failed,
+        "quality_failed": quality_failed,
+        "risk": c_summary["risk"],
+        "relative_result": relative,
+        "comparable": comparable,
+        "acceptance": acceptance,
+        "result": relative,
+        "result_code": acceptance,
+        "samples": details,
+        "mode": spec.candidate.mode,
+        "model_verified": False,
     }
 
 
@@ -584,7 +638,9 @@ def h01_manifest_identity(path: str | Path) -> dict[str, Any]:
         "dataset_id": manifest["manifest_sha256"],
         "sample_ids": [sample["sample_id"] for sample in manifest["samples"]],
         "companies": {sample["sample_id"]: sample["company_id"] for sample in manifest["samples"]},
-        "splits": {sample["sample_id"]: sample.get("split", "test") for sample in manifest["samples"]},
+        "splits": {
+            sample["sample_id"]: sample.get("split", "test") for sample in manifest["samples"]
+        },
     }
 
 
@@ -618,9 +674,14 @@ def money(value: str) -> Decimal:
 
 
 def compile_example_context(
-    query: Query, examples: Iterable[Example], *,
-    current_facts, current_evidence, budget: dict[str, int],
-    prompt_version: str, schema_version: str,
+    query: Query,
+    examples: Iterable[Example],
+    *,
+    current_facts,
+    current_evidence,
+    budget: dict[str, int],
+    prompt_version: str,
+    schema_version: str,
 ):
     """Use the real AG02 compiler; history never becomes a current fact.
 
@@ -633,8 +694,10 @@ def compile_example_context(
     facts = list(current_facts)
     evidence = list(current_evidence)
     if not facts or any(
-        not isinstance(item, Fact) or item.source not in {"approved_fact", "ocr_unreviewed"}
-        or type(item.version) is not int or item.version < 1
+        not isinstance(item, Fact)
+        or item.source not in {"approved_fact", "ocr_unreviewed"}
+        or type(item.version) is not int
+        or item.version < 1
         or item.key.startswith("history:")
         for item in facts
     ):
@@ -645,10 +708,19 @@ def compile_example_context(
     ]
     return compile_context_pack(
         task="journal_suggest",
-        scope={"firm_id": query.firm_id, "company_id": query.company_id, "book_id": query.book_id, "period": query.period},
-        facts=[*facts, *history], evidence=evidence,
-        budget=budget, prompt_version=prompt_version, schema_version=schema_version,
-        policy_version=query.accounting_policy, required_keys=[item.key for item in facts],
+        scope={
+            "firm_id": query.firm_id,
+            "company_id": query.company_id,
+            "book_id": query.book_id,
+            "period": query.period,
+        },
+        facts=[*facts, *history],
+        evidence=evidence,
+        budget=budget,
+        prompt_version=prompt_version,
+        schema_version=schema_version,
+        policy_version=query.accounting_policy,
+        required_keys=[item.key for item in facts],
     )
 
 
@@ -660,7 +732,9 @@ def validate_context_suggestion(pack, suggestion):
     # AG03's general constant-arithmetic contract has no input provenance;
     # allowing it here would let historical 100 replace current 120 via 50+50.
     if any(claim.kind != "source_fact" for claim in suggestion.claims):
-        raise RetrievalError("context_claim_kind_unsupported", "当前事实适配只允许可核验的 source_fact 引用")
+        raise RetrievalError(
+            "context_claim_kind_unsupported", "当前事实适配只允许可核验的 source_fact 引用"
+        )
     by_id = {row["id"]: row for row in pack.evidence}
     evidence = []
     for fact in pack.facts:
@@ -668,17 +742,152 @@ def validate_context_suggestion(pack, suggestion):
             continue
         source = by_id.get(fact["evidence_id"])
         if (
-            source is None or source["field"] != fact["key"] or source["value"] != fact["value"]
-            or source["version"] != fact["version"] or fact["version"] != pack.fact_version
+            source is None
+            or source["field"] != fact["key"]
+            or source["value"] != fact["value"]
+            or source["version"] != fact["version"]
+            or fact["version"] != pack.fact_version
         ):
             raise RetrievalError("current_evidence_mismatch", "当前事实与 ContextPack 证据不一致")
-        currencies = [item["value"] for item in pack.facts if item["key"] == "currency" and item["source"] in {"approved_fact", "ocr_unreviewed"}]
+        currencies = [
+            item["value"]
+            for item in pack.facts
+            if item["key"] == "currency" and item["source"] in {"approved_fact", "ocr_unreviewed"}
+        ]
         currency = currencies[0] if len(currencies) == 1 else ""
-        evidence.append(EvidenceFact(
-            fact["key"], str(fact["value"]), pack.scope["company_id"], pack.scope["book_id"],
-            fact["version"], currency, fact["evidence_id"],
-        ))
+        evidence.append(
+            EvidenceFact(
+                fact["key"],
+                str(fact["value"]),
+                pack.scope["company_id"],
+                pack.scope["book_id"],
+                fact["version"],
+                currency,
+                fact["evidence_id"],
+            )
+        )
     return validate_suggestion(
-        suggestion, company_id=pack.scope["company_id"], book_id=pack.scope["book_id"],
-        fact_version=pack.fact_version, evidence=evidence,
+        suggestion,
+        company_id=pack.scope["company_id"],
+        book_id=pack.scope["book_id"],
+        fact_version=pack.fact_version,
+        evidence=evidence,
     )
+
+
+def score_sample(sample, truth, row):
+    """Shared AG05 field/evidence/risk judge; execution never receives truth."""
+    from tools.ocr_replay import replay
+    from scripts.evaluate_ocr_fields import canonical
+
+    if row is None or isinstance(row, UnknownAttempt):
+        state = "missing" if row is None else "unknown"
+        return {
+            "status": state,
+            "correct": False,
+            "amount_correct": False,
+            "evidence_complete": False,
+            "field_correct": {},
+            "risk_cell": "unobserved",
+            "review_required": None,
+            "correct_abstention": False,
+            "safety_failed": True,
+            "reasons": [state],
+        }
+    fields = row["fields"]
+    # An execution failure cannot count as a domain decision even if the
+    # expected output is abstention. Contradictory error-bearing "success"
+    # envelopes also remain incomplete, rather than becoming a correct TP.
+    execution_failed = row["status"] == "failed" or any(
+        row.get(key) is not None for key in ("error_code", "failure_kind", "error")
+    )
+    field_correct = {}
+    for field, value in sample["gold_fields"].items():
+        try:
+            field_correct[field] = (
+                not execution_failed
+                and row["status"] == "succeeded"
+                and field in fields
+                and canonical(field, fields[field]) == canonical(field, value)
+            )
+        except (ValueError, ArithmeticError):
+            field_correct[field] = False
+    try:
+        evidence_errors = replay.validate_evidence(
+            row.get("evidence", []), sample["ocr_pages"], fields
+        )
+    except (ArithmeticError, ValueError, TypeError):
+        evidence_errors = ["invalid-evidence-value"]
+    evidence_complete = not evidence_errors
+    review = row["review_required"]
+    risk_cell = ("tp" if review else "fn") if truth["risk_required"] else ("fp" if review else "tn")
+    decision = row.get("decision")
+    abstained = (
+        not execution_failed
+        and row["status"] == "succeeded"
+        and type(decision) is dict
+        and decision == {"kind": "abstain", "reason": "unsupported_case"}
+        and not fields
+        and not row.get("evidence")
+        and review is True
+    )
+    # A declared decision is part of every result's domain contract, even
+    # when the gold expects ordinary extraction. Never ignore contradictory
+    # fields plus abstention, unknown decisions, or an explicit null.
+    decision_valid = "decision" not in row or abstained
+    correct_abstention = truth["abstention_expected"] and abstained and review
+    exact = all(field_correct.values())
+    amount_keys = [field for field in field_correct if field.endswith("_amount")]
+    amount_correct = bool(amount_keys) and all(field_correct[field] for field in amount_keys)
+    # A planned unsupported-case abstention is a valid result, not a failed
+    # execution. Any other failed execution prevents comparison.
+    state = (
+        "failed"
+        if execution_failed
+        else "expected_abstention"
+        if correct_abstention
+        else row["status"]
+    )
+    reasons = [f"field_incorrect:{field}" for field, ok in field_correct.items() if not ok]
+    if correct_abstention:
+        reasons = ["correct_abstention"]
+    elif execution_failed:
+        reasons.append("execution_failed")
+    if not decision_valid:
+        reasons.append("domain_decision_invalid")
+    reasons += [f"evidence:{error}" for error in evidence_errors]
+    if risk_cell in {"fn", "fp"}:
+        reasons.append("risk_false_negative" if risk_cell == "fn" else "risk_false_positive")
+    if truth["abstention_expected"] and not correct_abstention:
+        reasons.append("expected_abstention_missing")
+    safety_failed = bool(
+        risk_cell == "fn"
+        or not evidence_complete
+        or not decision_valid
+        or (truth["abstention_expected"] and not correct_abstention)
+        or execution_failed
+        or (not truth["abstention_expected"] and (not exact or row["status"] != "succeeded"))
+    )
+    return {
+        "status": state,
+        "correct": bool(
+            decision_valid
+            and (
+                correct_abstention
+                or (
+                    exact
+                    and evidence_complete
+                    and risk_cell in {"tp", "tn"}
+                    and not truth["abstention_expected"]
+                )
+            )
+        ),
+        "amount_correct": amount_correct,
+        "field_correct": field_correct,
+        "evidence_complete": evidence_complete,
+        "review_required": review,
+        "risk_cell": risk_cell,
+        "correct_abstention": bool(correct_abstention),
+        "safety_failed": safety_failed,
+        "reasons": reasons,
+    }

@@ -22,8 +22,9 @@ class AnalysisRequest(BaseModel):
     account_code: str | None = Field(default=None, max_length=20)
     compare_period: str | None = Field(default=None, pattern=r"^20[0-9]{2}-(0[1-9]|1[0-2])$")
     target_voucher_id: str | None = Field(default=None, max_length=100)
-    limit: int = Field(default=50, ge=1, le=100)
-    offset: int = Field(default=0, ge=0, le=1_000_000)
+    limit: int = Field(default=50, strict=True, ge=1, le=100)
+    offset: int = Field(default=0, strict=True, ge=0, le=1_000_000)
+    expected_source_version: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
 
 
 def build_assistant_router(actor_dependency):

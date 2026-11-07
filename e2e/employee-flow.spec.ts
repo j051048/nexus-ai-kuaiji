@@ -97,7 +97,7 @@ for (const width of [1280, 390]) {
       ratio: 0.8,
     });
     await page.screenshot({
-      path: `tmp_test/employee-flow-20261105/home-${width}.png`,
+      path: test.info().outputPath(`home-${width}.png`),
       fullPage: true,
     });
     await page.getByRole('button', { name: /展开本页全部/ }).click();
@@ -141,7 +141,7 @@ for (const width of [1280, 390]) {
     await expect(dialog.getByRole('button', { name: '提交审批', exact: true })).toBeDisabled();
     await dialog.getByRole('button', { name: '核对已填写信息', exact: true }).click();
     await expect(dialog.getByLabel('事项金额', { exact: true })).toBeFocused();
-    await page.screenshot({ path: `tmp_test/employee-flow-20261105/confirm-${width}.png` });
+    await page.screenshot({ path: test.info().outputPath(`confirm-${width}.png`) });
     await dialog
       .locator('summary')
       .filter({ hasText: /^查看识别依据/ })
@@ -160,7 +160,7 @@ for (const width of [1280, 390]) {
     await expect(
       dialog.getByRole('button', { name: '修改后重新提交', exact: true }),
     ).toBeDisabled();
-    await page.screenshot({ path: `tmp_test/employee-flow-20261105/returned-${width}.png` });
+    await page.screenshot({ path: test.info().outputPath(`returned-${width}.png`) });
     await dialog.getByRole('button', { name: '修改信息', exact: true }).click();
     await expect(dialog.getByLabel('事项摘要', { exact: true })).toBeFocused();
     await dialog.getByLabel('业务用途', { exact: true }).fill('补充：拜访虚构客户的市内交通');

@@ -8,7 +8,14 @@ from pathlib import Path
 
 import pytest
 
-from tools.imp07_eval import EvaluationError, load_corpus, render_markdown, score
+from tools.imp07_eval import (
+    EvaluationError,
+    load_corpus,
+    render_markdown,
+    score,
+    result_identity,
+    evidence_for,
+)
 from tools.ai_inference_lab.rsi.snapshots import Store, SnapshotError
 
 
@@ -20,13 +27,55 @@ def corpus():
     return load_corpus(CORPUS)
 
 
+def bound_attempt(row, attempt):
+    return {
+        **{
+            key: row[key]
+            for key in (
+                "firm_id",
+                "company_id",
+                "ledger_id",
+                "book_id",
+                "period",
+                "item_id",
+                "source_sha256",
+                "input_sha256",
+                "candidate_version",
+                "candidate_fingerprint",
+                "request_fingerprint",
+                "schema_version",
+            )
+        },
+        "currency": "CNY",
+        "pricing_version": "synthetic-v1",
+        "measurement_nature": "mock",
+        **attempt,
+    }
+
+
 def rows_for(data, *, status="succeeded", cost="0.01"):
     rows = []
     for item in data["items"]:
         if status == "unknown":
-            rows.append({"item_id": item["item_id"], "candidate_version": CANDIDATE["version"], "status": "unknown", "fields": {}, "cost_cny": None})
+            rows.append(
+                {
+                    "item_id": item["item_id"],
+                    "candidate_version": CANDIDATE["version"],
+                    "status": "unknown",
+                    "fields": {},
+                    "cost_cny": None,
+                }
+            )
         elif status == "abstained":
-            rows.append({"item_id": item["item_id"], "candidate_version": CANDIDATE["version"], "status": "abstained", "fields": {}, "cost_cny": cost})
+            rows.append(
+                {
+                    "item_id": item["item_id"],
+                    "candidate_version": CANDIDATE["version"],
+                    "status": "abstained",
+                    "fields": {},
+                    "cost_cny": cost,
+                }
+            )
         else:
             rows.append(
                 {
@@ -38,6 +87,19 @@ def rows_for(data, *, status="succeeded", cost="0.01"):
                     "cost_cny": cost,
                 }
             )
+    for item, row in zip(data["items"], rows):
+        row.update(result_identity(data, item, CANDIDATE))
+        row["evidence"] = evidence_for(item["ocr_text"], row["fields"])
+        row["attempts"] = [
+            bound_attempt(
+                row,
+                {
+                    "attempt_id": row["item_id"] + "-mock",
+                    "status": "unknown" if status == "unknown" else "succeeded",
+                    "cost_cny": row["cost_cny"],
+                },
+            )
+        ]
     return rows
 
 
@@ -90,12 +152,17 @@ def test_07_t3_amount_fix_cannot_drop_invoice_leading_zero():
     data = corpus()
     baseline = rows_for(data)
     candidate = deepcopy(baseline)
-    victim = next(item for item in data["items"] if item["gold_fields"]["invoice_number"].startswith("000"))
+    victim = next(
+        item for item in data["items"] if item["gold_fields"]["invoice_number"].startswith("000")
+    )
     row = next(item for item in candidate if item["item_id"] == victim["item_id"])
     row["fields"]["invoice_number"] = row["fields"]["invoice_number"].lstrip("0")
     result = score(data, candidate, candidate=CANDIDATE, baseline_rows=baseline)
     assert result["acceptance"] == "rejected"
-    assert any(reg["item_id"] == victim["item_id"] and reg["reason"] == "field_regression" for reg in result["regressions"])
+    assert any(
+        reg["item_id"] == victim["item_id"] and reg["reason"] == "field_regression"
+        for reg in result["regressions"]
+    )
 
 
 def test_07_t4_holdout_cannot_participate_in_selection():
@@ -123,7 +190,9 @@ def test_07_t6_report_details_and_markdown_stay_consistent():
     result = score(data, rows_for(data), candidate=CANDIDATE)
     assert len(result["details"]) == 120
     assert result["success_count"] == sum(row["correct"] for row in result["details"])
-    assert result["field_correct_total"] == sum(sum(row["field_correct"].values()) for row in result["details"])
+    assert result["field_correct_total"] == sum(
+        sum(row["field_correct"].values()) for row in result["details"]
+    )
     text = render_markdown(result)
     assert "真实模型效果未验证" in text
     assert "合成" in text
@@ -132,7 +201,9 @@ def test_07_t6_report_details_and_markdown_stay_consistent():
 
 def test_07_t7_snapshot_lineage_and_allowlist_still_reject_bad_changes(tmp_path):
     store = Store(tmp_path / "snaps")
-    base = store.snapshot({"prompt.txt": "只提取有来源的字段", "mock.json": '{"strategy":"baseline"}'}, reason="base")
+    base = store.snapshot(
+        {"prompt.txt": "只提取有来源的字段", "mock.json": '{"strategy":"baseline"}'}, reason="base"
+    )
     child = store.snapshot(
         {"prompt.txt": "只提取有来源的字段", "mock.json": '{"strategy":"gross-label-safe"}'},
         reason="child",
@@ -150,7 +221,10 @@ def test_07_t8_attempt_measurement_drives_known_and_unknown_cost():
     for row in rows:
         row.pop("cost_cny", None)
         row["attempts"] = [
-            {"attempt_id": row["item_id"] + "-a1", "status": "succeeded", "cost_cny": "0.01"}
+            bound_attempt(
+                row,
+                {"attempt_id": row["item_id"] + "-a1", "status": "succeeded", "cost_cny": "0.01"},
+            )
         ]
     result = score(data, rows, candidate=CANDIDATE)
     assert result["known_cost_count"] == 120
