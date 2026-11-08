@@ -32,7 +32,12 @@ import type {
 } from './business-types';
 import type { Session } from './types';
 import type { IntakeDraft, IntakeRun } from './intake-types';
-import { changeIntakeTemplate, intakeCandidates, prefillIntake } from './intake-helpers';
+import {
+  changeIntakeTemplate,
+  intakeCandidates,
+  prefillIntake,
+  intakeNextStep,
+} from './intake-helpers';
 import { directUploadLimitLabel } from './transport-limits';
 import { WorkflowGuide } from './WorkflowGuide';
 import { intakeGuidance } from './intake-guidance';
@@ -881,6 +886,12 @@ export function IntakeWizard({
               {aiEnabled && (visionReady || structuredReady)
                 ? '单张票据识别后预填未修改的信息，请核对后提交；多张票据逐项选择。'
                 : '票据识别尚未启用或配置，可以直接手工填写并提交。'}
+            </p>
+            <p className="field-help" role="status" aria-label="票据办理下一步">
+              {
+                intakeNextStep(companyId, attachments.length, [...latestRuns.values()], confirmed)
+                  .text
+              }
             </p>
             {attachments.map((attachment) => {
               const run = latestRuns.get(attachment.id);

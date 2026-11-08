@@ -1,0 +1,86 @@
+{
+  "version": 1,
+  "basis": "Tasks 01-12: local APIs, synthetic originals/providers and fault responses; dev/preview, desktop/mobile, zero skips or retries",
+  "cases": [
+    {
+      "file": "e2e/task-journey.spec.ts",
+      "title": "desktop 在交付待办中实际生成包，返回仍等待客户本人签收"
+    },
+    {
+      "file": "e2e/task-journey.spec.ts",
+      "title": "desktop 事务所待办直达月结，返回保留分类并重新读取"
+    },
+    {
+      "file": "e2e/task-journey.spec.ts",
+      "title": "desktop 迟到或错范围的交付待办不可办理"
+    },
+    {
+      "file": "e2e/task-journey.spec.ts",
+      "title": "mobile 在交付待办中实际生成包，返回仍等待客户本人签收"
+    },
+    {
+      "file": "e2e/task-journey.spec.ts",
+      "title": "mobile 事务所待办直达月结，返回保留分类并重新读取"
+    },
+    {
+      "file": "e2e/task-journey.spec.ts",
+      "title": "mobile 迟到或错范围的交付待办不可办理"
+    },
+    {
+      "file": "e2e/tasks0406.spec.ts",
+      "title": "0406 1365 邀请明确发送且未知不重发"
+    },
+    {
+      "file": "e2e/tasks0406.spec.ts",
+      "title": "0406 1365 通道回执与本人签收分开并拒绝错版本"
+    },
+    {
+      "file": "e2e/tasks0406.spec.ts",
+      "title": "0406 1365 单人政策须确认且历史分类保持"
+    },
+    {
+      "file": "e2e/tasks0406.spec.ts",
+      "title": "0406 390 邀请明确发送且未知不重发"
+    },
+    {
+      "file": "e2e/tasks0406.spec.ts",
+      "title": "0406 390 通道回执与本人签收分开并拒绝错版本"
+    },
+    {
+      "file": "e2e/tasks0406.spec.ts",
+      "title": "0406 390 单人政策须确认且历史分类保持"
+    },
+    {
+      "file": "e2e/tasks0712.spec.ts",
+      "title": "0712 1365 试点样本和产品边界可核对"
+    },
+    {
+      "file": "e2e/tasks0712.spec.ts",
+      "title": "0712 1365 运行记录按范围展示且人工打开处理"
+    },
+    {
+      "file": "e2e/tasks0712.spec.ts",
+      "title": "0712 1365 原件解析后仍由员工确认且保留人工金额"
+    },
+    {
+      "file": "e2e/tasks0712.spec.ts",
+      "title": "0712 390 试点样本和产品边界可核对"
+    },
+    {
+      "file": "e2e/tasks0712.spec.ts",
+      "title": "0712 390 运行记录按范围展示且人工打开处理"
+    },
+    {
+      "file": "e2e/tasks0712.spec.ts",
+      "title": "0712 390 原件解析后仍由员工确认且保留人工金额"
+    },
+    {
+      "file": "e2e/dcp-r567-evidence.spec.ts",
+      "title": "DCP 核查与只读调查 1280"
+    },
+    {
+      "file": "e2e/dcp-r567-evidence.spec.ts",
+      "title": "DCP 核查与只读调查 390"
+    }
+  ]
+}

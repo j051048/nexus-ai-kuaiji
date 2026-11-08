@@ -1,5 +1,10 @@
 name: Accounting foundation
-on: [push, pull_request]
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: '15 18 * * *'
 permissions:
   contents: read
 jobs:
@@ -66,6 +71,7 @@ jobs:
           --ignore=nexus_backend/tests/test_next_p0_receipts_postgres.py
           --ignore=nexus_backend/tests/test_next_p1_handoff_postgres.py
           --ignore=nexus_backend/tests/test_next_p2_handoff_postgres.py
+          --ignore=nexus_backend/tests/test_task_journey_postgres.py
 
   e2e:
     runs-on: ubuntu-latest
@@ -86,6 +92,16 @@ jobs:
       - run: python -m pip install -r nexus_backend/requirements.lock
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e -- --shard=${{ matrix.shard }}/4
+      - name: Task journey exact browser gate in dev and preview
+        if: matrix.shard == 1
+        run: node scripts/run_e2e.mjs --mode both --suite tasks
+      - name: Retain sanitized task journey evidence
+        if: always() && matrix.shard == 1
+        uses: actions/upload-artifact@v4
+        with:
+          name: task-journey-browser-evidence
+          path: test-reports/e2e-tasks/*/reports/*.json
+          if-no-files-found: error
       - name: P1 real local handoff and exact-source browser regression
         if: matrix.shard == 1
         run: npx playwright test --config playwright.next-p1.config.ts
@@ -254,6 +270,12 @@ jobs:
           python scripts/dcp_reliability_gate.py --suite dcp
           --config tmp_test/ak05-ci-config/regression.json
           --out tmp_test/ak05-ci-reports/dcp-reliability
+      - name: Task journey, analysis isolation and queue clock exact gate
+        run: >-
+          python scripts/dcp_reliability_gate.py --suite tasks
+          --major ${{ matrix.postgres }}
+          --config tmp_test/ak05-ci-config/regression.json
+          --out tmp_test/ak05-ci-reports/task-journey
       - name: Retain only sanitized gate evidence
         if: always()
         uses: actions/upload-artifact@v4

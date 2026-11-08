@@ -9,6 +9,10 @@ def build_periodic_router(actor_dependency):
     def service(request: Request):
         return request.app.state.periodic
 
+    @router.get("/workspace")
+    def workspace(book_id: str, current=Depends(actor_dependency), periodic=Depends(service)):
+        return periodic.workspace(current, book_id)
+
     @router.post("/accrual-rules", status_code=201)
     def accrual_rule(
         payload: AccrualRule, current=Depends(actor_dependency), periodic=Depends(service)

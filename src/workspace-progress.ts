@@ -13,6 +13,14 @@ import {
   type WorkspaceSort,
 } from './workspace-types';
 import { monthlyFocus, type MonthlyFocus } from './monthly-workbench-types';
+import type { Bucket } from './firm-inbox-contract';
+
+export interface InboxProgress {
+  bucket: Bucket;
+  offset: number;
+  scrollY?: number;
+  taskKey?: string;
+}
 
 export interface HomeProgress {
   bucket: 'action' | 'waiting';
@@ -52,6 +60,8 @@ const origins: Partial<Record<WorkspaceRoute['view'], string>> = {
   business: '返回原业务事项',
   review: '返回复核清单',
   accounting: '返回会计工作台',
+  inbox: '返回事务所待办',
+  messages: '返回消息',
 };
 const offset = (value: number) =>
   Number.isInteger(value) && value >= 0 ? Math.min(value, 100000) : 0;
@@ -99,9 +109,27 @@ export function homeProgress(value?: HomeProgress, companyId = ''): HomeProgress
 export class WorkspaceProgress {
   private home?: HomeProgress;
   private monthly?: MonthlyProgress;
+  private inbox?: InboxProgress;
   private trail: WorkOrigin[] = [];
   private entries = new Map<string, { routeKey: string; trail: WorkOrigin[] }>();
   constructor(readonly scope: string) {}
+
+  getInbox(): InboxProgress {
+    return { bucket: 'all', offset: 0, ...this.inbox };
+  }
+  saveInbox(value: InboxProgress) {
+    const bucket = ['all', 'today', 'overdue', 'blocked', 'review', 'failed'].includes(
+      value?.bucket,
+    )
+      ? value.bucket
+      : 'all';
+    this.inbox = {
+      bucket,
+      offset: offset(value?.offset),
+      scrollY: this.inbox?.bucket === bucket ? this.inbox.scrollY : 0,
+      taskKey: this.inbox?.bucket === bucket ? this.inbox.taskKey : undefined,
+    };
+  }
 
   getHome(companyId = '') {
     return homeProgress(this.home, companyId);
@@ -141,6 +169,8 @@ export class WorkspaceProgress {
     };
   }
   capture(route: WorkspaceRoute, scrollY: number, taskKey?: string) {
+    if (route.view === 'inbox' && this.inbox)
+      this.inbox = { ...this.inbox, scrollY: scroll(scrollY), taskKey: focusKey(taskKey) };
     if (route.view === 'home' && this.home)
       this.home = { ...this.home, scrollY: scroll(scrollY), taskKey: focusKey(taskKey) };
     if (route.view === 'monthly' && this.monthly)

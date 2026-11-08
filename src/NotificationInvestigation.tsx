@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from './api';
 import { useOperationRequests } from './useOperationRequests';
 import {
@@ -14,11 +14,13 @@ export function NotificationInvestigation({
   session,
   bookId,
   onSaved,
+  onBusyChange,
 }: {
   item: NotificationItem;
   session: Session;
   bookId: string;
   onSaved: () => void;
+  onBusyChange?: (busy: boolean) => void;
 }) {
   const [open, setOpen] = useState(false),
     [evidence, setEvidence] = useState(''),
@@ -26,6 +28,10 @@ export function NotificationInvestigation({
   const [conclusion, setConclusion] = useState<InvestigationConclusion>('unresolved');
   const [key] = useState(() => crypto.randomUUID());
   const requests = useOperationRequests(session);
+  useEffect(() => {
+    onBusyChange?.(requests.busy);
+    return () => onBusyChange?.(false);
+  }, [requests.busy, onBusyChange]);
   if (requests.denied) return <p role="alert">{requests.error}</p>;
   return (
     <div>

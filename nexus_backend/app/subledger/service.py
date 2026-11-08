@@ -597,13 +597,25 @@ class SubledgerService:
     def aging(self, actor, book_id, as_of):
         with self.db.transaction(actor=actor) as conn:
             book, _ = self._book(conn, actor, book_id)
-            cutoff = date.fromisoformat(as_of)
+            try:
+                cutoff = date.fromisoformat(as_of)
+                if cutoff.isoformat() != as_of:
+                    raise ValueError("noncanonical date")
+            except (ValueError, TypeError):
+                raise AccountingError("账龄截止日期必须是有效的 YYYY-MM-DD", 422) from None
             rows = conn.execute(
-                "SELECT * FROM subledger_items WHERE book_id=? AND status IN('open','partial') "
-                "ORDER BY due_date,original_date,id",
+                "SELECT i.*,e.name AS counterparty_name FROM subledger_items i "
+                "LEFT JOIN company_master_entities e ON e.id=i.counterparty_id "
+                "AND e.company_id=i.company_id AND e.firm_id=i.firm_id "
+                "WHERE i.book_id=? AND i.status IN('open','partial') "
+                "ORDER BY i.due_date,i.original_date,i.id",
                 (book["id"],),
             ).fetchall()
             buckets = {"current": 0, "1_30": 0, "31_60": 0, "61_90": 0, "over_90": 0}
+            by_kind = {
+                kind: dict(buckets)
+                for kind in ("receivable", "payable", "advance_received", "advance_paid")
+            }
             detail = []
             for row in rows:
                 if row["original_date"] > as_of:
@@ -624,10 +636,22 @@ class SubledgerService:
                 else:
                     bucket = "over_90"
                 buckets[bucket] += remaining
+                by_kind[row["kind"]][bucket] += remaining
                 detail.append(
                     {**dict(row), "remaining_cents": remaining, "age_days": days, "bucket": bucket}
                 )
-            return {"as_of": as_of, "buckets": buckets, "items": detail}
+            return {
+                "as_of": as_of,
+                "buckets": buckets,
+                "by_kind": by_kind,
+                "items": detail,
+                "scope": {
+                    "firm_id": book["firm_id"],
+                    "company_id": book["company_id"],
+                    "book_id": book["id"],
+                    "period": book["period"],
+                },
+            }
 
     def control_reconciliation(self, actor, book_id, as_of=None):
         with self.db.transaction(actor=actor) as conn:

@@ -44,7 +44,7 @@ class PeriodicService:
             raise AccountingError("账套未关联长期账套", 409)
         return book, ledger["ledger_id"]
 
-    def _account(self, conn, ledger_id, account_id, version):
+    def _account(self, conn, ledger_id, account_id, version, period):
         row = conn.execute(
             "SELECT a.current_version,v.* FROM ledger_accounts a JOIN ledger_account_versions v "
             "ON v.account_id=a.id AND v.version=? WHERE a.id=? AND a.ledger_id=?",
@@ -54,6 +54,8 @@ class PeriodicService:
             raise AccountingError("科目不存在、版本过期或不是末级", 409)
         if row["status"] != "active":
             raise AccountingError("科目已停用", 409)
+        if row["effective_from"] > period or (row["effective_to"] and row["effective_to"] < period):
+            raise AccountingError("科目在当前期间尚未生效或已到期", 409)
         return row
 
     def create_accrual_rule(self, actor, request: AccrualRule):
@@ -63,7 +65,7 @@ class PeriodicService:
                 (request.debit_account_id, request.debit_account_version),
                 (request.credit_account_id, request.credit_account_version),
             ):
-                self._account(conn, ledger_id, account_id, version)
+                self._account(conn, ledger_id, account_id, version, book["period"])
             rule_id = uuid4().hex
             conn.execute(
                 "INSERT INTO periodic_rules(id,firm_id,company_id,ledger_id,book_id,kind,name,"
@@ -81,15 +83,33 @@ class PeriodicService:
                     now(),
                 ),
             )
+            self._audit(
+                conn,
+                actor,
+                book["id"],
+                "periodic.rule.create",
+                rule_id,
+                {"reason": request.reason, "version": 1},
+            )
             return {"id": rule_id, **request.model_dump()}
 
     def create_asset(self, actor, request: DepreciableAsset):
         with self.db.transaction(write=True, actor=actor) as conn:
             book, ledger_id = self._book(conn, actor, request.book_id, write=True)
             self._account(
-                conn, ledger_id, request.expense_account_id, request.expense_account_version
+                conn,
+                ledger_id,
+                request.expense_account_id,
+                request.expense_account_version,
+                book["period"],
             )
-            self._account(conn, ledger_id, request.accum_account_id, request.accum_account_version)
+            self._account(
+                conn,
+                ledger_id,
+                request.accum_account_id,
+                request.accum_account_version,
+                book["period"],
+            )
             if money_to_cents(request.residual) >= money_to_cents(request.cost):
                 raise AccountingError("残值必须小于原值", 422)
             asset_id = uuid4().hex
@@ -114,6 +134,14 @@ class PeriodicService:
                     actor.user_id,
                     now(),
                 ),
+            )
+            self._audit(
+                conn,
+                actor,
+                book["id"],
+                "periodic.asset.create",
+                asset_id,
+                {"reason": request.reason},
             )
             return {"id": asset_id, **request.model_dump()}
 
@@ -242,7 +270,9 @@ class PeriodicService:
             elapsed = current - start + 1
             depreciable = int(asset["cost_cents"]) - int(asset["residual_cents"])
             monthly = depreciable // int(asset["life_months"])
-            total = min(depreciable, monthly * elapsed)
+            # Preserve existing monthly rounding; absorb the residual cents in
+            # the last month instead of leaving them permanently unallocated.
+            total = depreciable if elapsed >= int(asset["life_months"]) else monthly * elapsed
             prior_posted = self._asset_prior_posted(conn, asset_id, book["period"])
             amount = total - prior_posted
             if amount <= 0:
@@ -321,7 +351,11 @@ class PeriodicService:
             if request.period != book["period"]:
                 raise AccountingError("结转期间与账套期间不一致", 422)
             profit = self._account(
-                conn, ledger_id, request.profit_account_id, request.profit_account_version
+                conn,
+                ledger_id,
+                request.profit_account_id,
+                request.profit_account_version,
+                book["period"],
             )
             if profit["category"] != "equity":
                 raise AccountingError("本年利润目标必须是权益类科目", 422)
@@ -430,7 +464,14 @@ class PeriodicService:
             conn.execute(
                 "UPDATE periodic_runs SET status='approved' WHERE id=?", (draft["run_id"],)
             )
-            self._audit(conn, actor, book["id"], "periodic.approve", draft_id, {})
+            self._audit(
+                conn,
+                actor,
+                book["id"],
+                "periodic.approve",
+                draft_id,
+                {"reason": request.reason, "version": request.expected_version},
+            )
             return self._draft_view(conn, draft_id)
 
     def post(self, actor, draft_id, request: DraftPost):
@@ -503,6 +544,76 @@ class PeriodicService:
                 (book["id"],),
             ).fetchall()
             return [dict(row) for row in rows]
+
+    def workspace(self, actor, book_id):
+        """Read-only projection of existing assets and reviewable draft lines."""
+        with self.db.transaction(actor=actor) as conn:
+            book, ledger_id = self._book(conn, actor, book_id)
+            scope = {
+                "firm_id": book["firm_id"],
+                "company_id": book["company_id"],
+                "book_id": book["id"],
+                "period": book["period"],
+            }
+            locked = book["period_status"] != "open" or bool(
+                conn.execute(
+                    "SELECT 1 FROM internal_period_locks WHERE book_id=? AND period=?",
+                    (book["id"], book["period"]),
+                ).fetchone()
+            )
+            can_operate = bool(book["permissions"]["review"]) and not locked
+            accounts = [
+                dict(row)
+                for row in conn.execute(
+                    "SELECT a.id,a.current_version AS version,v.code,v.name FROM ledger_accounts a "
+                    "JOIN ledger_account_versions v ON v.account_id=a.id AND v.version=a.current_version "
+                    "WHERE a.ledger_id=? AND v.is_leaf=1 AND v.status='active' "
+                    "AND v.effective_from<=? AND (v.effective_to IS NULL OR v.effective_to>=?) "
+                    "ORDER BY v.code,a.id",
+                    (ledger_id, book["period"], book["period"]),
+                ).fetchall()
+            ]
+            assets = [
+                dict(row)
+                for row in conn.execute(
+                    "SELECT a.*,COALESCE(p.posted_cents,0) AS posted_cents FROM periodic_assets a "
+                    "LEFT JOIN (SELECT r.asset_id,SUM(l.debit_cents) AS posted_cents FROM periodic_runs r "
+                    "JOIN periodic_drafts d ON d.run_id=r.id JOIN periodic_draft_lines l ON l.draft_id=d.id "
+                    "WHERE r.book_id=? AND r.status='posted' GROUP BY r.asset_id) p ON p.asset_id=a.id "
+                    "WHERE a.book_id=? ORDER BY a.created_at,a.id",
+                    (book["id"], book["id"]),
+                ).fetchall()
+            ]
+            lines = {}
+            for row in conn.execute(
+                "SELECT l.* FROM periodic_draft_lines l JOIN periodic_drafts d ON d.id=l.draft_id "
+                "WHERE d.book_id=? ORDER BY l.draft_id,l.line_no",
+                (book["id"],),
+            ).fetchall():
+                lines.setdefault(row["draft_id"], []).append(dict(row))
+            drafts = []
+            for row in conn.execute(
+                "SELECT * FROM periodic_drafts WHERE book_id=? ORDER BY created_at DESC,id",
+                (book["id"],),
+            ).fetchall():
+                drafts.append(
+                    {
+                        "draft": dict(row),
+                        "lines": lines.get(row["id"], []),
+                        "can_approve": can_operate
+                        and row["status"] == "draft"
+                        and row["created_by"] != actor.user_id,
+                        "can_post": can_operate and row["status"] == "approved",
+                    }
+                )
+            return {
+                "scope": scope,
+                "locked": locked,
+                "can_generate": can_operate,
+                "accounts": accounts,
+                "assets": assets,
+                "drafts": drafts,
+            }
 
     @staticmethod
     def _audit(conn, actor, book_id, action, object_id, details):

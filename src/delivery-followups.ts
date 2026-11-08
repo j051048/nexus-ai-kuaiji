@@ -5,6 +5,9 @@
  * contract, so a malformed response degrades to "unknown" instead of inventing a
  * step that nobody owes. */
 export type DeliveryFollowup = {
+  company_id?: string;
+  source_fingerprint?: string;
+  action?: FollowupAction;
   book_id: string;
   book_name: string;
   period: string;
@@ -14,8 +17,37 @@ export type DeliveryFollowup = {
   package_id: string | null;
   recipient_user_id: string | null;
 };
-export type DeliveryFollowupFeed = { items: DeliveryFollowup[]; count: number };
+export type FollowupAction = {
+  kind: string;
+  owner: string;
+  label: string;
+  can_act: boolean;
+  reason: string;
+};
+export type DeliveryFollowupFeed = {
+  items: DeliveryFollowup[];
+  count: number;
+  scope?: { firm_id: string | null; user_id: string };
+};
+export type FollowupState = {
+  company_name: string;
+  book_name: string;
+  scope: { firm_id: string | null; user_id: string };
+  company_id: string;
+  book_id: string;
+  period: string;
+  source_fingerprint: string;
+  action: FollowupAction;
+  event: {
+    package_id: string | null;
+    package_version: number | null;
+    manifest_sha256: string | null;
+  };
+  recipient: { user_id: string | null; state: string };
+  recipient_candidates: { user_id: string; name: string }[];
+};
 export type FollowupRow = {
+  source: DeliveryFollowup;
   key: string;
   bookName: string;
   period: string;
@@ -48,10 +80,37 @@ const ownerText: Record<string, string> = {
   customer: '客户',
 };
 
-export function validateFollowupFeed(value: unknown): value is DeliveryFollowupFeed {
+const object = (value: unknown): value is Record<string, unknown> =>
+  !!value && typeof value === 'object' && !Array.isArray(value);
+const hash = (value: unknown): value is string =>
+  typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
+const id = (value: unknown): value is string =>
+  typeof value === 'string' && value.length > 0 && value.length <= 200;
+export function validFollowupAction(value: unknown): value is FollowupAction {
+  return (
+    object(value) &&
+    Object.prototype.hasOwnProperty.call(stepText, String(value.kind)) &&
+    Object.prototype.hasOwnProperty.call(ownerText, String(value.owner)) &&
+    id(value.label) &&
+    typeof value.can_act === 'boolean' &&
+    typeof value.reason === 'string'
+  );
+}
+export function validateFollowupFeed(
+  value: unknown,
+  scope?: { firm_id: string | null; user_id: string },
+): value is DeliveryFollowupFeed {
   if (!value || typeof value !== 'object') return false;
   const feed = value as Partial<DeliveryFollowupFeed>;
   if (!Array.isArray(feed.items)) return false;
+  if (
+    !Number.isSafeInteger(feed.count) ||
+    feed.count !== feed.items.length ||
+    new Set(feed.items.map((item) => `${item?.book_id}:${item?.period}`)).size !== feed.items.length
+  )
+    return false;
+  if (scope && (feed.scope?.firm_id !== scope.firm_id || feed.scope?.user_id !== scope.user_id))
+    return false;
   return feed.items.every((item) => {
     if (!item || typeof item !== 'object') return false;
     const row = item as Partial<DeliveryFollowup>;
@@ -62,6 +121,13 @@ export function validateFollowupFeed(value: unknown): value is DeliveryFollowupF
       typeof row.period === 'string' &&
       /^20\d{2}-(0[1-9]|1[0-2])$/.test(row.period) &&
       Array.isArray(row.reasons) &&
+      row.reasons.every((reason) => typeof reason === 'string') &&
+      (!scope ||
+        (id(row.company_id) &&
+          hash(row.source_fingerprint) &&
+          validFollowupAction(row.action) &&
+          row.action.kind === row.next_step &&
+          row.action.owner === row.owner)) &&
       typeof row.next_step === 'string' &&
       typeof row.owner === 'string'
     );
@@ -73,6 +139,7 @@ export function followupRows(feed: DeliveryFollowupFeed | null, limit = 6): Foll
   return feed.items.slice(0, Math.max(1, limit)).map((item) => {
     const reasons = item.reasons.map((reason) => reasonText[reason] ?? reason);
     return {
+      source: item,
       key: `${item.book_id}:${item.period}`,
       bookName: item.book_name || item.book_id,
       period: item.period,
@@ -82,6 +149,52 @@ export function followupRows(feed: DeliveryFollowupFeed | null, limit = 6): Foll
       tone: item.owner === 'customer' ? 'waiting' : 'action',
     };
   });
+}
+
+/** Accept the entire new projection at once. Never silently switch company or package version. */
+export function acceptFollowup(
+  value: unknown,
+  source: DeliveryFollowup,
+  scope: { firm_id: string | null; user_id: string },
+): FollowupState | null {
+  if (
+    !object(value) ||
+    typeof value.company_name !== 'string' ||
+    typeof value.book_name !== 'string' ||
+    !object(value.scope) ||
+    value.scope.firm_id !== scope.firm_id ||
+    value.scope.user_id !== scope.user_id ||
+    value.company_id !== source.company_id ||
+    value.book_id !== source.book_id ||
+    value.period !== source.period ||
+    !hash(value.source_fingerprint) ||
+    value.source_fingerprint !== source.source_fingerprint ||
+    !validFollowupAction(value.action) ||
+    value.action.kind !== source.next_step ||
+    !object(value.event) ||
+    !object(value.recipient) ||
+    !Array.isArray(value.recipient_candidates)
+  )
+    return null;
+  const event = value.event;
+  if (
+    event.package_id !== source.package_id ||
+    (event.package_id !== null &&
+      (!id(event.package_id) ||
+        !Number.isSafeInteger(event.package_version) ||
+        Number(event.package_version) < 1 ||
+        !hash(event.manifest_sha256)))
+  )
+    return null;
+  if (
+    !value.recipient_candidates.every(
+      (c) => object(c) && id(c.user_id) && typeof c.name === 'string',
+    ) ||
+    new Set(value.recipient_candidates.map((c) => c.user_id)).size !==
+      value.recipient_candidates.length
+  )
+    return null;
+  return value as unknown as FollowupState;
 }
 
 export function followupSummary(rows: FollowupRow[]) {

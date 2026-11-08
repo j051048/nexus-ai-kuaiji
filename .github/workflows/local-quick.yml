@@ -1,0 +1,31 @@
+name: Local contract quick feedback (not release acceptance)
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  quick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: python -m pip install -r nexus_backend/requirements.lock
+      - run: npm ci
+      - run: mkdir -p tmp_test/quick
+      - run: python -c "import json; from scripts.release_candidate import candidate_fingerprint; from pathlib import Path; Path('tmp_test/quick/candidate.json').write_text(json.dumps(candidate_fingerprint(), indent=2), encoding='utf-8')"
+      - run: python scripts/env_doctor.py --json > tmp_test/quick/environment.json
+      - run: python scripts/test_accounting_offline.py nexus_backend/tests/test_tasks0712.py nexus_backend/tests/test_tasks0712_environment.py nexus_backend/tests/test_dcp_reliability_gate.py -p scripts.qa_no_skip -q --junitxml=tmp_test/quick/results.xml
+      - run: npx vitest run src/tasks0712.test.ts src/tasks0712-ui.test.ts src/tasks0406.test.ts
+      - run: npm run typecheck
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: local-contract-quick-evidence
+          path: tmp_test/quick/*
+          if-no-files-found: error

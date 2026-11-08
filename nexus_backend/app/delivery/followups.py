@@ -14,6 +14,7 @@ rewrites a package or moves an existing signature.
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 from datetime import date, datetime
 from typing import Any, Protocol
@@ -213,93 +214,155 @@ class DeliveryFollowupService(NotificationDispatcher):
     def status(self, actor, book_id: str, period: str) -> dict:
         validate_period(period)
         with self.db.transaction(actor=actor) as conn:
-            book = self._book(conn, actor, book_id)
-            row = self._period_row(conn, book_id, period)
-            if not row:
-                raise AccountingError("该账套没有这个会计期间", 404)
-            grant = self._grant(conn, book_id, period)
-            package = self._package(conn, book_id, period)
-            ack = self._ack(conn, package["id"]) if package else None
-            planned = self._plan_contact(conn, book_id)
-            tasks = conn.execute(
-                "SELECT state,kind,COUNT(*) AS total FROM delivery_notifications "
-                "WHERE book_id=? AND period=? GROUP BY state,kind",
+            return self._status(conn, actor, book_id, period)
+
+    def _status(self, conn, actor, book_id: str, period: str) -> dict:
+        book = self._book(conn, actor, book_id)
+        row = self._period_row(conn, book_id, period)
+        if not row:
+            raise AccountingError("该账套没有这个会计期间", 404)
+        grant = self._grant(conn, book_id, period)
+        package = self._package(conn, book_id, period)
+        ack = self._ack(conn, package["id"]) if package else None
+        planned = self._plan_contact(conn, book_id)
+        tasks = conn.execute(
+            "SELECT state,kind,COUNT(*) AS total FROM delivery_notifications "
+            "WHERE book_id=? AND period=? GROUP BY state,kind",
+            (book_id, period),
+        ).fetchall()
+        counts = {
+            key: 0
+            for key in (
+                "pending",
+                "claimed",
+                "sending",
+                "unknown",
+                "sink_written",
+                "failed",
+                "cancelled",
+            )
+        }
+        for item in tasks:
+            counts[item["state"]] = counts.get(item["state"], 0) + int(item["total"])
+        manual_review = [
+            dict(item)
+            for item in conn.execute(
+                "SELECT id AS notification_id,package_id,package_version,manifest_sha256,"
+                "recipient_user_id,state,attempts,last_error,send_started_at,updated_at "
+                "FROM delivery_notifications WHERE book_id=? AND period=? AND state='unknown' "
+                "ORDER BY created_at,id LIMIT 100",
                 (book_id, period),
             ).fetchall()
-            counts = {
-                key: 0
-                for key in (
-                    "pending",
-                    "claimed",
-                    "sending",
-                    "unknown",
-                    "sink_written",
-                    "failed",
-                    "cancelled",
-                )
-            }
-            for item in tasks:
-                counts[item["state"]] = counts.get(item["state"], 0) + int(item["total"])
-            manual_review = [
-                dict(item)
-                for item in conn.execute(
-                    "SELECT id AS notification_id,package_id,package_version,manifest_sha256,"
-                    "recipient_user_id,state,attempts,last_error,send_started_at,updated_at "
-                    "FROM delivery_notifications WHERE book_id=? AND period=? AND state='unknown' "
-                    "ORDER BY created_at,id LIMIT 100",
-                    (book_id, period),
-                ).fetchall()
-            ]
-            reasons = []
-            locked = self._locked(row)
-            if not locked:
-                reasons.append("period_not_closed")
-            if not package:
-                reasons.append("package_missing")
-            elif not ack:
-                reasons.append("signature_missing")
-            if counts["unknown"]:
-                reasons.append("notification_unknown")
-            target = grant["recipient_user_id"] if grant else planned
-            recipient_valid = bool(target) and (
-                self._recipient_eligible(
-                    conn, actor.firm_id, book["company_id"], book_id, package, target
-                )
-                if package
-                else self._company_member(conn, book["company_id"], book_id, target)
+        ]
+        reasons = []
+        locked = self._locked(row)
+        if not locked:
+            reasons.append("period_not_closed")
+        if not package:
+            reasons.append("package_missing")
+        elif not ack:
+            reasons.append("signature_missing")
+        if counts["unknown"]:
+            reasons.append("notification_unknown")
+        target = grant["recipient_user_id"] if grant else planned
+        recipient_valid = bool(target) and (
+            self._recipient_eligible(
+                conn, actor.firm_id, book["company_id"], book_id, package, target
             )
-            latest_grant = self._latest_grant(conn, book_id, period)
-            if latest_grant and not grant:
-                recipient_valid = False
-            if not target:
-                reasons.append("recipient_missing")
-            elif not recipient_valid:
-                reasons.append("recipient_invalid")
-            return {
-                "book_id": book_id,
-                "period": period,
-                "period_status": "closed" if locked else row["status"],
-                "event": {
-                    "state": "published" if package else "missing",
-                    "package_id": package["id"] if package else None,
-                    "package_version": package["version"] if package else None,
-                    "package_contact_user_id": package["contact_user_id"] if package else None,
-                },
-                "recipient": {
-                    "state": ("valid" if recipient_valid else "invalid" if target else "missing"),
-                    "user_id": target,
-                    "source": "grant" if grant else "service_plan" if target else None,
-                    "grant_id": grant["id"] if grant else None,
-                    "grant_version": grant["version"] if grant else None,
-                },
-                "notification": {**counts, "channel": "disabled", "manual_review": manual_review},
-                "signature": {
-                    "state": "signed" if ack else "awaiting",
-                    "signed_by": ack["created_by"] if ack else None,
-                    "signed_at": ack["created_at"] if ack else None,
-                },
-                "followup": {"needed": bool(reasons), "reasons": reasons},
-            }
+            if package
+            else self._company_member(conn, book["company_id"], book_id, target)
+        )
+        latest_grant = self._latest_grant(conn, book_id, period)
+        if latest_grant and not grant:
+            recipient_valid = False
+        if not ack and not target:
+            reasons.append("recipient_missing")
+        elif not ack and not recipient_valid:
+            reasons.append("recipient_invalid")
+        result = {
+            "scope": {"firm_id": actor.firm_id, "user_id": actor.user_id},
+            "company_id": book["company_id"],
+            "company_name": book["company_name"],
+            "book_name": book["name"],
+            "book_id": book_id,
+            "period": period,
+            "period_status": "closed" if locked else row["status"],
+            "event": {
+                "state": "published" if package else "missing",
+                "package_id": package["id"] if package else None,
+                "package_version": package["version"] if package else None,
+                "manifest_sha256": package["manifest_sha256"] if package else None,
+                "package_contact_user_id": package["contact_user_id"] if package else None,
+            },
+            "recipient": {
+                "state": ("valid" if recipient_valid else "invalid" if target else "missing"),
+                "user_id": target,
+                "source": "grant" if grant else "service_plan" if target else None,
+                "grant_id": grant["id"] if grant else None,
+                "grant_version": grant["version"] if grant else None,
+            },
+            "notification": {**counts, "channel": "disabled", "manual_review": manual_review},
+            "signature": {
+                "state": "signed" if ack else "awaiting",
+                "signed_by": ack["created_by"] if ack else None,
+                "signed_at": ack["created_at"] if ack else None,
+            },
+            "followup": {"needed": bool(reasons), "reasons": reasons},
+        }
+        kind, owner = self._next_step(reasons)
+        manager = self.access.firm_role(conn, actor) in {"owner", "admin"}
+        labels = {
+            "close_period": "去处理月结阻断",
+            "publish_package": "准备月度交付包",
+            "configure_recipient": "配置签收人",
+            "fix_recipient": "核对签收人",
+            "reconcile_notification": "核查发送结果",
+            "await_customer_signature": "查看签收进度",
+            "review": "查看交付结果",
+        }
+        result["action"] = {
+            "kind": kind,
+            "owner": owner,
+            "label": labels[kind],
+            "can_act": kind not in {"await_customer_signature", "review"}
+            and (kind != "reconcile_notification" or manager),
+            "reason": "请事务所管理员核查；不会自动重发"
+            if kind == "reconcile_notification" and not manager
+            else "由客户本人确认签收"
+            if kind == "await_customer_signature"
+            else "",
+        }
+        # A cursor is not a grant. Every open and command still rechecks DB authorization.
+        identity = {
+            k: result[k]
+            for k in (
+                "scope",
+                "company_id",
+                "book_id",
+                "period",
+                "period_status",
+                "event",
+                "recipient",
+                "signature",
+                "followup",
+                "action",
+            )
+        }
+        identity["notifications"] = manual_review
+        identity["latest_grant"] = dict(latest_grant) if latest_grant else None
+        result["source_fingerprint"] = hashlib.sha256(
+            json.dumps(identity, sort_keys=True, ensure_ascii=False, default=str).encode()
+        ).hexdigest()
+        result["recipient_candidates"] = (
+            [
+                {"user_id": c["user_id"], "name": c["name"]}
+                for c in (self.plans._candidates(conn, actor, book) if self.plans else [])
+                if c["can_contact"]
+            ]
+            if kind in {"configure_recipient", "fix_recipient"}
+            else []
+        )
+        return result
 
     @staticmethod
     def _next_step(reasons: list) -> tuple:
@@ -332,58 +395,32 @@ class DeliveryFollowupService(NotificationDispatcher):
             items = []
             for row in rows:
                 try:
-                    self._book(conn, actor, row["book_id"])
+                    state = self._status(conn, actor, row["book_id"], row["period"])
                 except AccountingError:
                     continue
-                package = self._package(conn, row["book_id"], row["period"])
-                grant = self._grant(conn, row["book_id"], row["period"])
-                ack = self._ack(conn, package["id"]) if package else None
-                reasons = []
-                if conn.execute(
-                    "SELECT 1 FROM delivery_notifications WHERE book_id=? AND period=? "
-                    "AND state='unknown' LIMIT 1",
-                    (row["book_id"], row["period"]),
-                ).fetchone():
-                    reasons.append("notification_unknown")
-                if not self._locked(row):
-                    reasons.append("period_not_closed")
-                if not package:
-                    reasons.append("package_missing")
-                elif not ack:
-                    reasons.append("signature_missing")
-                # Who signs only matters while a signature is still owed; once the
-                # customer has signed, an unconfigured recipient is not an open item.
-                target = (
-                    grant["recipient_user_id"]
-                    if grant
-                    else self._plan_contact(conn, row["book_id"])
-                )
-                if package and not ack:
-                    if not target:
-                        reasons.append("recipient_missing")
-                    elif (
-                        not grant and self._latest_grant(conn, row["book_id"], row["period"])
-                    ) or not self._recipient_eligible(
-                        conn, actor.firm_id, row["company_id"], row["book_id"], package, target
-                    ):
-                        reasons.append("recipient_invalid")
-                if reasons:
-                    next_step, owner = self._next_step(reasons)
+                if state["followup"]["needed"]:
                     items.append(
                         {
+                            "company_id": row["company_id"],
                             "book_id": row["book_id"],
                             "book_name": row["book_name"],
                             "period": row["period"],
-                            "reasons": reasons,
-                            "next_step": next_step,
-                            "owner": owner,
-                            "package_id": package["id"] if package else None,
-                            "recipient_user_id": target,
+                            "reasons": state["followup"]["reasons"],
+                            "next_step": state["action"]["kind"],
+                            "owner": state["action"]["owner"],
+                            "package_id": state["event"]["package_id"],
+                            "recipient_user_id": state["recipient"]["user_id"],
+                            "source_fingerprint": state["source_fingerprint"],
+                            "action": state["action"],
                         }
                     )
                 if len(items) >= limit:
                     break
-            return {"items": items, "count": len(items)}
+            return {
+                "items": items,
+                "count": len(items),
+                "scope": {"firm_id": actor.firm_id, "user_id": actor.user_id},
+            }
 
     # --------------------------------------------------- notification states
     SEMANTICS = {
@@ -473,6 +510,12 @@ class DeliveryFollowupService(NotificationDispatcher):
                 raise AccountingError("只有复核或管理角色可以配置交付收件人", 403)
             if not self._period_row(conn, book_id, request.period):
                 raise AccountingError("该账套没有这个会计期间", 404)
+            if (
+                request.expected_source_fingerprint is not None
+                and request.expected_source_fingerprint
+                != self._status(conn, actor, book_id, request.period)["source_fingerprint"]
+            ):
+                raise AccountingError("交付来源或收件人配置已变化，请重新读取后确认", 409)
             if not self._company_member(
                 conn, book["company_id"], book_id, request.recipient_user_id
             ):

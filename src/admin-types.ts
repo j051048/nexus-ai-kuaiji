@@ -38,6 +38,11 @@ export interface AdminAuditEvent {
   created_at: string;
 }
 export interface AccountRequest {
+  invitation_delivery?: {
+    id: string;
+    state: 'sending' | 'accepted' | 'not_sent' | 'unknown';
+    current_link: boolean;
+  } | null;
   activation_expired?: boolean;
   expires_at?: number;
   id: string;

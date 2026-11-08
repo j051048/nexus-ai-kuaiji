@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 import json
+import re
 
 from ..accounting.domain import AccountingError
 from ..workspace.projection import status_snapshot
@@ -47,11 +48,8 @@ class FirmObservabilityService:
         }
 
     def snapshot(self, actor, period=""):
-        if period and not (
-            len(period) == 7
-            and period[4] == "-"
-            and period[:4].isdigit()
-            and 1 <= int(period[5:]) <= 12
+        if not isinstance(period, str) or (
+            period and not re.fullmatch(r"20[0-9]{2}-(0[1-9]|1[0-2])", period)
         ):
             raise AccountingError("请选择有效的 YYYY-MM 月份", 422)
         with self.db.transaction(actor=actor) as conn:
@@ -97,20 +95,71 @@ class FirmObservabilityService:
                 "SELECT COUNT(*) AS buckets,COALESCE(SUM(tx_count),0) AS transactions,"
                 "COALESCE(SUM(write_count),0) AS writes,"
                 "COALESCE(SUM(rollback_count),0) AS rollbacks,"
-                "COALESCE(AVG(connection_sum/NULLIF(tx_count,0)),0) AS avg_connection_ms,"
-                "COALESCE(AVG(lock_sum/NULLIF(tx_count,0)),0) AS avg_lock_ms,"
-                "COALESCE(MAX(transaction_max),0) AS max_transaction_ms "
+                "SUM(connection_sum)*1.0/NULLIF(SUM(tx_count),0) AS avg_connection_ms,"
+                "SUM(lock_sum)*1.0/NULLIF(SUM(tx_count),0) AS avg_lock_ms,"
+                "MAX(transaction_max) AS max_transaction_ms "
                 "FROM transaction_metric_buckets WHERE firm_id=? AND bucket_minute>=?",
                 (actor.firm_id, minute - 60),
             ).fetchone()
             cost_period = period or datetime.now(timezone.utc).strftime("%Y-%m")
             costs = conn.execute(
-                "SELECT COALESCE(SUM(COALESCE(confirmed_micro,estimated_micro,0)),0) AS micros "
+                "SELECT COUNT(*) AS sample_count,"
+                "SUM(CASE WHEN state='released' THEN 0 ELSE COALESCE(confirmed_micro,estimated_micro) END) AS micros,"
+                "SUM(CASE WHEN state<>'released' AND confirmed_micro IS NULL AND estimated_micro IS NULL THEN 1 ELSE 0 END) AS unknown_count,"
+                "SUM(CASE WHEN state<>'released' AND confirmed_micro IS NULL AND estimated_micro IS NOT NULL THEN 1 ELSE 0 END) AS estimated_count "
                 "FROM model_costs WHERE firm_id=? AND period=?",
                 (actor.firm_id, cost_period),
             ).fetchone()
             projection = status_snapshot(conn, actor.firm_id)
+            cost_summary = {
+                "sample_count": int(costs["sample_count"]),
+                "known_micro": int(costs["micros"]) if costs["micros"] is not None else None,
+                "unknown_count": int(costs["unknown_count"] or 0),
+                "estimated_count": int(costs["estimated_count"] or 0),
+            }
+            signals = []
+
+            def signal(code, text, target):
+                signals.append(
+                    {
+                        "code": code,
+                        "owner_role": "admin",
+                        "next_action": text,
+                        "target": target,
+                        "automatic_action": False,
+                    }
+                )
+
+            if not worker_health["available"]:
+                signal(
+                    "worker_heartbeat_missing",
+                    "请管理员检查后台服务及最近日志；先核对在途任务，不直接重发。",
+                    "queue",
+                )
+            if cost_summary["unknown_count"]:
+                signal(
+                    "cost_unknown",
+                    "请管理员按调用记录核定费用；未知结果不得当作免费或自动重发。",
+                    "operations",
+                )
+            if any(
+                sum(counts.get(s, 0) for s in ("failed", "interrupted", "stale", "needs_attention"))
+                for counts in queues.values()
+            ):
+                signal(
+                    "task_attention", "打开处理任务，核对原始失败原因后交给对应负责人。", "queue"
+                )
+            if projection["failing"]:
+                signal(
+                    "projection_failing",
+                    "请管理员核对汇总任务日志；以原记录为准，不把旧汇总当实时状态。",
+                    "runs",
+                )
         return {
+            "firm_id": actor.firm_id,
+            "period": cost_period,
+            "cost_summary": cost_summary,
+            "signals": signals,
             "queues": queues,
             "alerts": alerts,
             "worker_health": worker_health,

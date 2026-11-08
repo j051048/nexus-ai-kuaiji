@@ -8,6 +8,7 @@ duration of a request; neither passwords nor their hashes are persisted locally.
 import hashlib
 import hmac
 import json
+import os
 import secrets
 import time
 from urllib.parse import urlencode
@@ -203,9 +204,146 @@ class AdminIdentityService:
                 sql + " ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?", (*params, limit, offset)
             ).fetchall()
             return {
-                "requests": [self._public(row) for row in rows],
+                "requests": [
+                    {
+                        **self._public(row),
+                        "invitation_delivery": self.invitation_delivery(conn, row),
+                    }
+                    for row in rows
+                ],
                 "provisioning_enabled": self.provider.configured,
+                "invitation_channel_enabled": self.invitation_channel_enabled(),
             }
+
+    @staticmethod
+    def invitation_channel_enabled():
+        return os.environ.get("ACCOUNTING_INVITATION_CHANNEL", "") in {"smtp", "smtp_tls"}
+
+    def invitation_status(self, actor, request_id):
+        with self.db.transaction(actor=actor) as conn:
+            row = self._get(conn, actor, request_id)
+            return {
+                "request_id": row["id"],
+                "request_attempt": row["attempts"],
+                "email": row["email"],
+                "status": row["status"],
+                "enabled": self.invitation_channel_enabled(),
+                "delivery": self.invitation_delivery(conn, row),
+            }
+
+    @staticmethod
+    def invitation_delivery(conn, request):
+        row = conn.execute(
+            "SELECT id,state,request_attempt,created_at,finished_at FROM account_invitation_deliveries "
+            "WHERE request_id=? ORDER BY created_at DESC,id DESC LIMIT 1",
+            (request["id"],),
+        ).fetchone()
+        if not row:
+            return None
+        return {**dict(row), "current_link": row["request_attempt"] == request["attempts"]}
+
+    def send_invitation(self, actor, request_id, activation_url, idempotency_key, channel=None):
+        """One explicit send, no stored secret and no automatic retry after ambiguity."""
+        from app.delivery.followups import channel_from_env, DeliveryNotSent, ChannelDisabled
+        from app.delivery.notification_dispatch import assert_not_held
+
+        if not isinstance(activation_url, str) or not 1 <= len(activation_url) <= 8192:
+            raise AccountingError("激活链接格式不正确", 422)
+        if not isinstance(idempotency_key, str) or not 8 <= len(idempotency_key) <= 120:
+            raise AccountingError("发送请求编号格式不正确", 422)
+        digest = hashlib.sha256(activation_url.encode()).hexdigest()
+        if channel is None:
+            if not self.invitation_channel_enabled():
+                raise AccountingError("邀请邮件尚未启用，请通过可信方式交付链接", 503)
+            channel = channel_from_env(os.environ.get("ACCOUNTING_INVITATION_CHANNEL"))
+        with self.db.transaction(write=True, actor=actor) as conn:
+            assert_not_held(conn, self.db)
+            row = self._get(conn, actor, request_id)
+            self._originator_authorized(actor, row)
+            if row["status"] != "awaiting_activation" or row["expires_at"] <= int(time.time()):
+                raise AccountingError("邀请已失效，请刷新开通记录", 409)
+            evidence = conn.execute(
+                "SELECT details FROM audit_events WHERE object_id=? AND action='admin.account.link_created'",
+                (request_id,),
+            ).fetchall()
+            if not any(
+                (detail := json.loads(item["details"])).get("request_attempt") == row["attempts"]
+                and hmac.compare_digest(str(detail.get("activation_digest", "")), digest)
+                for item in evidence
+            ):
+                raise AccountingError("链接与当前邀请版本不一致，请重新生成", 409)
+            prior = conn.execute(
+                "SELECT id,state,request_attempt,activation_digest FROM account_invitation_deliveries "
+                "WHERE request_id=? AND idempotency_key=?",
+                (request_id, idempotency_key),
+            ).fetchone()
+            if prior:
+                if (
+                    prior["activation_digest"] != digest
+                    or prior["request_attempt"] != row["attempts"]
+                ):
+                    raise AccountingError("同一发送编号不能用于不同链接版本", 409)
+                return {"id": prior["id"], "state": prior["state"]}
+            attempts = conn.execute(
+                "SELECT state FROM account_invitation_deliveries WHERE request_id=? AND request_attempt=?",
+                (request_id, row["attempts"]),
+            ).fetchall()
+            if len(attempts) >= 3 or any(item["state"] != "not_sent" for item in attempts):
+                raise AccountingError("已有发送或结果未知，请先核查；不会重复发送", 409)
+            delivery_id = uuid4().hex
+            conn.execute(
+                "INSERT INTO account_invitation_deliveries(id,request_id,firm_id,company_id,request_attempt,"
+                "activation_digest,recipient_email,idempotency_key,created_by,created_at,state,channel) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?,'sending',?)",
+                (
+                    delivery_id,
+                    request_id,
+                    actor.firm_id,
+                    row["company_id"],
+                    row["attempts"],
+                    digest,
+                    row["email"],
+                    idempotency_key,
+                    actor.user_id,
+                    now(),
+                    channel.name,
+                ),
+            )
+            payload = {
+                "purpose": "account_invitation",
+                "notification_id": delivery_id,
+                "recipient_email": row["email"],
+                "activation_url": activation_url,
+            }
+        # No DB connection or company lock is held while contacting the channel.
+        try:
+            with self.db.transaction(actor=actor) as conn:
+                assert_not_held(conn, self.db)
+                current = self._get(conn, actor, request_id)
+                self._originator_authorized(actor, current)
+                if (
+                    current["status"] != "awaiting_activation"
+                    or current["attempts"] != row["attempts"]
+                ):
+                    raise AccountingError("邀请已变化，未发送", 409)
+            channel.deliver(payload)
+            state = "accepted"
+        except (DeliveryNotSent, ChannelDisabled):
+            state = "not_sent"
+        except Exception:
+            state = "unknown"
+        finally:
+            payload.clear()
+        # A revoked caller cannot publish a result. The durable sending fence
+        # remains non-retryable, including after process death or restoration.
+        with self.db.transaction(write=True, actor=actor) as conn:
+            assert_not_held(conn, self.db)
+            self._get(conn, actor, request_id)
+            conn.execute(
+                "UPDATE account_invitation_deliveries SET state=?,finished_at=? WHERE id=? AND state='sending'",
+                (state, now(), delivery_id),
+            )
+        return {"id": delivery_id, "state": state}
 
     def create(self, actor, request):
         payload = request.model_dump(exclude={"idempotency_key", "initial_password"})
@@ -324,18 +462,23 @@ class AdminIdentityService:
             )
         if password_mode:
             return self._finish_password(actor, request_id, lease, original, result)
-        response = self._finish(actor, request_id, lease, result=result)
+        fragment = {
+            "request_id": request_id,
+            "token": secret,
+            "mode": "existing" if result["existing_user"] else "invite",
+        }
+        if not result["existing_user"]:
+            fragment["token_hash"] = result["token_hash"]
+        activation_url = self.provider.public_app_url + "/account-activation#" + urlencode(fragment)
+        response = self._finish(
+            actor,
+            request_id,
+            lease,
+            result=result,
+            activation_digest=hashlib.sha256(activation_url.encode()).hexdigest(),
+        )
         if response.pop("_issued", False):
-            fragment = {
-                "request_id": request_id,
-                "token": secret,
-                "mode": "existing" if result["existing_user"] else "invite",
-            }
-            if not result["existing_user"]:
-                fragment["token_hash"] = result["token_hash"]
-            response["activation_url"] = (
-                self.provider.public_app_url + "/account-activation#" + urlencode(fragment)
-            )
+            response["activation_url"] = activation_url
         return response
 
     def _finish_password(self, actor, request_id, lease, original, result):
@@ -388,7 +531,7 @@ class AdminIdentityService:
                 "password_already_created": bool(result.get("password_already_created")),
             }
 
-    def _finish(self, actor, request_id, lease, result=None, error=None):
+    def _finish(self, actor, request_id, lease, result=None, error=None, activation_digest=None):
         # Authorization may have been revoked while Auth was processing. In that
         # case no local grant/activation link is produced; the lease can expire.
         with self.db.transaction(write=True, actor=actor) as conn:
@@ -413,7 +556,11 @@ class AdminIdentityService:
                 actor,
                 "admin.account.failed" if error else "admin.account.link_created",
                 request_id,
-                {"company_id": row["company_id"]},
+                {
+                    "company_id": row["company_id"],
+                    "request_attempt": row["attempts"],
+                    "activation_digest": activation_digest,
+                },
             )
             response = {
                 "request": self._public(

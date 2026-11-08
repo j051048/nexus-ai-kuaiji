@@ -8,6 +8,7 @@ import { adminRoleLabels, type AccountRequest, type AdminCompany } from './admin
 import { MemberHandoverDialog } from './MemberHandoverDialog';
 import { ReviewPolicyPanel } from './ReviewPolicyPanel';
 import { BulkEmployeeInvites } from './BulkEmployeeInvites';
+import { InvitationDelivery } from './InvitationDelivery';
 
 export function AdminMembers({
   session,
@@ -571,28 +572,6 @@ function GrantForm({
   );
 }
 
-function ActivationLink({ value }: { value: string }) {
-  const [copied, setCopied] = useState(false);
-  return (
-    <section className="admin-activation-link">
-      <h3>将激活链接交给本人</h3>
-      <p>链接包含一次性凭据，仅在本次操作后显示。不会发送邮件；请通过你信任的方式交给账号本人。</p>
-      <textarea aria-label="账号激活链接" readOnly value={value} spellCheck={false} />
-      <button
-        className="button secondary"
-        onClick={() => {
-          void navigator.clipboard
-            .writeText(value)
-            .then(() => setCopied(true))
-            .catch(() => setCopied(false));
-        }}
-      >
-        {copied ? '已复制' : '复制激活链接'}
-      </button>
-    </section>
-  );
-}
-
 function AccountRolePreview({
   role,
   company,
@@ -842,7 +821,7 @@ function AccountForm({
               role={role}
             />
           ) : result.activation_url ? (
-            <ActivationLink value={result.activation_url} />
+            <InvitationDelivery value={result.activation_url} session={session} />
           ) : (
             <p role="status">
               {result.request.status === 'failed'
@@ -1178,6 +1157,16 @@ function AccountRequests({
               {request.status === 'awaiting_activation' && !!request.expires_at && (
                 <small>有效至 {new Date(request.expires_at * 1000).toLocaleString('zh-CN')}</small>
               )}
+              {request.invitation_delivery && (
+                <small>
+                  {request.invitation_delivery.current_link ? '本版链接：' : '旧版链接：'}
+                  {request.invitation_delivery.state === 'accepted'
+                    ? '邮件通道已接受，不代表本人激活'
+                    : request.invitation_delivery.state === 'not_sent'
+                      ? '确认未发送'
+                      : '发送结果未核定，不自动重发'}
+                </small>
+              )}
             </span>
             {!['completed', 'cancelled'].includes(request.status) && (
               <div className="admin-inline-actions">
@@ -1292,7 +1281,7 @@ function AccountRequests({
       {link && (
         <Modal title="新的账号激活链接" onClose={() => setLink('')}>
           <div className="admin-form">
-            <ActivationLink value={link} />
+            <InvitationDelivery value={link} session={session} />
             <button className="button primary" onClick={() => setLink('')}>
               完成
             </button>

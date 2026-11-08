@@ -5,6 +5,7 @@ from .admin_identity_models import (
     AccountRequestAccept,
     AccountRequestCreate,
     AccountRequestRetry,
+    InvitationSend,
 )
 
 
@@ -58,6 +59,26 @@ def build_admin_identity_router(actor_dependency, identity_dependency):
     @router.post("/{request_id}/cancel")
     def cancel(request_id: str, current=Depends(actor_dependency), svc=Depends(service)):
         return svc.cancel(current, request_id)
+
+    @router.post("/{request_id}/send-invitation")
+    def send_invitation(
+        request_id: str,
+        payload: InvitationSend,
+        response: Response,
+        current=Depends(actor_dependency),
+        svc=Depends(service),
+    ):
+        response.headers["Cache-Control"] = "no-store"
+        return svc.send_invitation(
+            current, request_id, payload.activation_url.get_secret_value(), payload.idempotency_key
+        )
+
+    @router.get("/{request_id}/invitation-delivery")
+    def invitation_delivery(
+        request_id: str, response: Response, current=Depends(actor_dependency), svc=Depends(service)
+    ):
+        response.headers["Cache-Control"] = "no-store"
+        return svc.invitation_status(current, request_id)
 
     @router.post("/{request_id}/accept")
     def accept(

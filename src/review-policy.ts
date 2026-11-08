@@ -28,6 +28,13 @@ export interface ReviewPolicyData {
     created_at: string | null;
   };
   can_manage: boolean;
+  review_summary?: {
+    total_reviewed: number;
+    independent: number;
+    single_operator: number;
+    unverified: number;
+    single_operator_ratio: string | null;
+  };
 }
 const record = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === 'object' && !Array.isArray(value);
@@ -122,5 +129,25 @@ export function parseReviewPolicy(value: unknown, bookId: string): ReviewPolicyD
     !nullableText(value.policy.created_at)
   )
     throw new Error('复核政策范围或版本无效，请重新读取当前账套。');
+  const s = value.review_summary;
+  if (s !== undefined) {
+    if (
+      !record(s) ||
+      !['total_reviewed', 'independent', 'single_operator', 'unverified'].every((k) =>
+        policyVersion(s[k]),
+      ) ||
+      s.total_reviewed !==
+        (s.independent as number) + (s.single_operator as number) + (s.unverified as number) ||
+      (s.total_reviewed === 0
+        ? s.single_operator_ratio !== null
+        : typeof s.single_operator_ratio !== 'string' ||
+          !/^0\.\d{4}$|^1\.0000$/.test(s.single_operator_ratio) ||
+          Math.abs(
+            Number(s.single_operator_ratio) -
+              (s.single_operator as number) / (s.total_reviewed as number),
+          ) > 0.000051)
+    )
+      throw new Error('复核分类统计不完整，请重新读取；未知不能计为独立复核。');
+  }
   return value as unknown as ReviewPolicyData;
 }

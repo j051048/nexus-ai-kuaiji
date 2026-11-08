@@ -6,6 +6,7 @@ import {
   canAcknowledgeActivity,
   durationLabel,
   measuredRate,
+  readEfficiencyOverview,
   workActivities,
   workStates,
 } from './efficiency-helpers';
@@ -29,7 +30,10 @@ export function EfficiencyWorkbench({
   onOpenBook?: (bookId: string) => void;
 }) {
   return props.bookId || props.eventId ? (
-    <BookEfficiencyWorkbench {...props} />
+    <BookEfficiencyWorkbench
+      key={`${props.session.scope_key}:${props.bookId ?? ''}:${props.eventId ?? ''}`}
+      {...props}
+    />
   ) : (
     <EfficiencyPortfolio session={props.session} onBack={props.onBack} onOpenBook={onOpenBook} />
   );
@@ -99,7 +103,7 @@ function BookEfficiencyWorkbench({
           captured === scopeRef.current
         ) {
           setSessions(own.sessions);
-          setOverview(summary);
+          setOverview(summary && bookId ? readEfficiencyOverview(summary, bookId) : null);
           setError('');
         }
       } catch (failure) {
@@ -332,7 +336,11 @@ function BookEfficiencyWorkbench({
           <section className="efficiency-summary" aria-label="账套效率统计">
             <article>
               <span>明确记录的人工时间</span>
-              <strong>{durationLabel(overview.human.credited_seconds)}</strong>
+              <strong>
+                {overview.pilot.human_seconds === null
+                  ? '暂无计时样本'
+                  : durationLabel(overview.pilot.human_seconds)}
+              </strong>
               <small>{overview.human.session_count} 次记录 · 不是估算节省时间</small>
             </article>
             <article>
@@ -360,6 +368,20 @@ function BookEfficiencyWorkbench({
               </strong>
               <small>仅计算有应用审计的已审核凭证</small>
             </article>
+          </section>
+          <section className="efficiency-evidence" aria-label="试点样本口径">
+            <h2>已记录的处理效果</h2>
+            <p>
+              当前已复核对象 {overview.pilot.review.total_reviewed} 个：独立复核{' '}
+              {overview.pilot.review.independent}，单人办理 {overview.pilot.review.single_operator}
+              ，依据待核对 {overview.pilot.review.unverified}。
+            </p>
+            <p>单人办理不计作独立复核。尚无配对的人工基线，节省工时与真实客户效果未验证。</p>
+            <details>
+              <summary>查看统计依据</summary>
+              <p>{overview.period} · 当前账套 · 仅已确认计时与准确审核版本。</p>
+              <p className="dcp-fingerprint">{overview.pilot.source_fingerprint}</p>
+            </details>
           </section>
           <section className="efficiency-evidence">
             <div>

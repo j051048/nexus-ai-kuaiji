@@ -64,6 +64,7 @@ BUSINESS_TABLES = (
     "tax_filing_attachments",
     "delivery_provider_events",
     "handoff_tasks",
+    "account_invitation_deliveries",
     *TABLE_FIELDS,
 )
 
@@ -72,6 +73,107 @@ def require_latest_business_inventory(inventory):
     """Two equal empty inventories are not proof of recovering these domains."""
     for table in BUSINESS_TABLES:
         assert inventory.get("tables", {}).get(table), f"P01 recovery lacks populated {table}"
+
+
+def seed_invitation_recovery(db, owner, company_id):
+    """Local fake identity/channel only; never grant the invitee membership."""
+    from app.accounting.admin_identity import AdminIdentityService
+    from app.accounting.admin_identity_models import AccountRequestCreate
+    from test_admin_identity import FakeProvider
+
+    service = AdminIdentityService(db, FakeProvider())
+    evidence = []
+    for state in ("accepted", "unknown", "sending"):
+        result = service.create(
+            owner,
+            AccountRequestCreate(
+                idempotency_key="recovery-invite-" + uuid4().hex,
+                name="虚构恢复待激活员工",
+                email=uuid4().hex + "@example.test",
+                company_id=company_id,
+                company_role="employee",
+            ),
+        )
+
+        class Channel:
+            name = "local_recovery_fixture"
+            calls = 0
+
+            def deliver(self, _payload):
+                self.calls += 1
+                if state == "unknown":
+                    raise TimeoutError("synthetic ambiguous response")
+                if state == "sending":
+                    raise SystemExit("synthetic process loss")
+                return "synthetic accepted"
+
+        channel = Channel()
+        key = "recovery-send-" + uuid4().hex
+        try:
+            sent = service.send_invitation(
+                owner, result["request"]["id"], result["activation_url"], key, channel=channel
+            )
+            assert sent["state"] == state
+        except SystemExit:
+            assert state == "sending"
+        assert channel.calls == 1
+        assert (
+            service.invitation_status(owner, result["request"]["id"])["delivery"]["state"] == state
+        )
+        evidence.append({**result, "key": key, "state": state})
+    return evidence
+
+
+def assert_restored_invitations(db, owner, evidence, *, held):
+    """Actual restored rows must never resend or grant membership implicitly."""
+    from app.accounting.admin_identity import AdminIdentityService
+    from app.accounting.domain import AccountingError
+    from test_admin_identity import FakeProvider
+
+    class ForbiddenChannel:
+        name = "local_recovery_forbidden"
+        calls = 0
+
+        def deliver(self, _payload):
+            self.calls += 1
+            raise AssertionError("Restoration must not send an invitation")
+
+    provider, channel = FakeProvider(), ForbiddenChannel()
+    service = AdminIdentityService(db, provider)
+    for item in evidence["invitations_private"]:
+        request_id = item["request"]["id"]
+        for key in (item["key"], item["key"] + "-new"):
+            try:
+                result = service.send_invitation(
+                    owner, request_id, item["activation_url"], key, channel=channel
+                )
+            except AccountingError as error:
+                assert error.status == 409
+                assert held or key != item["key"]
+            else:
+                assert not held and key == item["key"]
+                assert result["state"] == item["state"]
+        with db.transaction(actor=owner) as conn:
+            row = conn.execute(
+                "SELECT status,provider_user_id FROM admin_account_requests WHERE id=?",
+                (request_id,),
+            ).fetchone()
+            assert row["status"] == "awaiting_activation"
+            assert (
+                conn.execute(
+                    "SELECT 1 FROM company_memberships WHERE user_id=?", (row["provider_user_id"],)
+                ).fetchone()
+                is None
+            )
+            assert (
+                conn.execute(
+                    "SELECT count(*) FROM account_invitation_deliveries WHERE request_id=?",
+                    (request_id,),
+                ).fetchone()[0]
+                == 1
+            )
+    assert channel.calls == 0 and provider.calls == []
+    return {"channel_calls": 0, "implicit_memberships": 0}
 
 
 def _zero_formal_opening(db, owner, reviewer, book):
@@ -429,6 +531,7 @@ def seed_latest_recovery_business(
             event_id,
         )
     return {
+        "invitations_private": seed_invitation_recovery(db, owner, company["id"]),
         "tax_filing": filing,
         "filing_attachment": filing_attachment,
         "filing_original": filing_original,
@@ -488,6 +591,15 @@ def _response(client, method, path, headers, body=None, expected=200):
 
 def verify_latest_business_http(client, headers, evidence, *, wrong_book_id):
     """Fresh signed sessions exercise original IO, independent review and exact acknowledgement."""
+    for item in evidence["invitations_private"]:
+        path = f"/api/admin/account-requests/{item['request']['id']}/invitation-delivery"
+        restored = _response(client, "GET", path, headers["owner"]).json()
+        assert restored["delivery"]["state"] == item["state"]
+        assert restored["status"] == "awaiting_activation"
+        assert restored["request_attempt"] == item["request"]["attempts"]
+        assert "activation_url" not in json.dumps(restored)
+        for role in ("employee", "outsider"):
+            assert client.get(path, headers=headers[role]).status_code in (403, 404)
     tax_book, delivery_book = evidence["tax_book"]["id"], evidence["delivery_book"]["id"]
     filing = evidence["tax_filing"]
     rows = _response(
@@ -640,6 +752,7 @@ def verify_latest_business_http(client, headers, evidence, *, wrong_book_id):
     assert signed == again and signed["customer_receipt_status"] == "acknowledged"
     assert signed["external_import_status"] == "separate_workflow"
     return {
+        "invitation_state_and_scope_restored": True,
         "filing_original_and_version_restored": True,
         "handoff_and_provider_receipt_restored": True,
         "tax_independent_review_export": True,

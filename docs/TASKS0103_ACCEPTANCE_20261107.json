@@ -1,0 +1,226 @@
+{
+  "schema": "tasks0103-local-acceptance-v1",
+  "status": "local_passed",
+  "candidate": {
+    "schema": "release-candidate-v1",
+    "head": "34daa36afa1b7400ee873794d57abdc4f7ec2b4e",
+    "source_files": 1958,
+    "source_sha256": "aae0f1073d54c1306f02549a4e71e79c4462294852fb038de1ae3a82dd2abd6d",
+    "migration_files": 338,
+    "migration_sha256": "2c96acd52de191347a2365962e879340918fad013786faa260b4b13140646116"
+  },
+  "baseline": {
+    "schema": "release-candidate-v1",
+    "head": "34daa36afa1b7400ee873794d57abdc4f7ec2b4e",
+    "source_files": 1952,
+    "source_sha256": "7eb6c3fb4cf3155e6bbd3a7c4e93adba70e98526aa373fb119d46466b263d731",
+    "migration_files": 338,
+    "migration_sha256": "2c96acd52de191347a2365962e879340918fad013786faa260b4b13140646116"
+  },
+  "baseline_worktree_clean": true,
+  "migrations_unchanged": true,
+  "offline": {
+    "path": "tmp_test/tasks0103-20261107-091747-6f85db/offline-final-v3.xml",
+    "sha256": "7f0ee890b0370a285f6276a51ab2e600cdf427d6a2ae70df1311f576707b3be9",
+    "passed": 54,
+    "failed": 0,
+    "skipped": 0
+  },
+  "frontend": {
+    "report": {
+      "path": "tmp_test/tasks0103-20261107-091747-6f85db/vitest-final-v3.json",
+      "sha256": "032bded220bf53e62ee052f198c0c4674b63fa07fbf1c240c68573550e231b96"
+    },
+    "passed": 1282,
+    "failed": 0,
+    "skipped": 0
+  },
+  "postgres": [
+    {
+      "major": 16,
+      "summary": {
+        "path": "tmp_test/tasks0103-20261107-091747-6f85db/pg16-final-v3/summary.json",
+        "sha256": "a3ecb99b9468a7a3c578ecaf751489d854ad035d39a4c747a1510bab8d303ca1"
+      },
+      "evidence": {
+        "status": "passed",
+        "suite": "tasks",
+        "major": 16,
+        "candidate": {
+          "schema": "release-candidate-v1",
+          "head": "34daa36afa1b7400ee873794d57abdc4f7ec2b4e",
+          "source_files": 1958,
+          "source_sha256": "aae0f1073d54c1306f02549a4e71e79c4462294852fb038de1ae3a82dd2abd6d",
+          "migration_files": 338,
+          "migration_sha256": "2c96acd52de191347a2365962e879340918fad013786faa260b4b13140646116"
+        },
+        "manifest_sha256": "c55a2de8aec32707f2fdba605b4d86a699026737e2f4dd65dd9e4d86ba0b8222",
+        "configuration_sha256": "fc083d98db6cbbae89551b231b1bd70573e88c49eb888c1edc0290a129465aa0",
+        "passed": 13,
+        "junit_sha256": "2acfbed43cf27695ff12c582a865c509b72381bd846dacbf593ae69aa8fbb8cb"
+      },
+      "junit": {
+        "path": "tmp_test/tasks0103-20261107-091747-6f85db/pg16-final-v3/results.xml",
+        "sha256": "2acfbed43cf27695ff12c582a865c509b72381bd846dacbf593ae69aa8fbb8cb",
+        "passed": 13,
+        "failed": 0,
+        "skipped": 0
+      }
+    },
+    {
+      "major": 17,
+      "summary": {
+        "path": "tmp_test/tasks0103-20261107-091747-6f85db/pg17-final-v3/summary.json",
+        "sha256": "2cd3b3d29704fbee2c7f3872899d7ab8cfaaddf51ca3cf2536c1421e7583c56c"
+      },
+      "evidence": {
+        "status": "passed",
+        "suite": "tasks",
+        "major": 17,
+        "candidate": {
+          "schema": "release-candidate-v1",
+          "head": "34daa36afa1b7400ee873794d57abdc4f7ec2b4e",
+          "source_files": 1958,
+          "source_sha256": "aae0f1073d54c1306f02549a4e71e79c4462294852fb038de1ae3a82dd2abd6d",
+          "migration_files": 338,
+          "migration_sha256": "2c96acd52de191347a2365962e879340918fad013786faa260b4b13140646116"
+        },
+        "manifest_sha256": "c55a2de8aec32707f2fdba605b4d86a699026737e2f4dd65dd9e4d86ba0b8222",
+        "configuration_sha256": "4e8d38ab3b56beb5321f259956f65b22a965e255fd59e708a19f0b48b596a4d2",
+        "passed": 13,
+        "junit_sha256": "2df6b46db92d7a59c9dbd0c61902d5fe3a3b144ca01c69ad65e22133eadd358e"
+      },
+      "junit": {
+        "path": "tmp_test/tasks0103-20261107-091747-6f85db/pg17-final-v3/results.xml",
+        "sha256": "2df6b46db92d7a59c9dbd0c61902d5fe3a3b144ca01c69ad65e22133eadd358e",
+        "passed": 13,
+        "failed": 0,
+        "skipped": 0
+      }
+    }
+  ],
+  "browser": [
+    {
+      "mode": "dev",
+      "passed": 6,
+      "report": {
+        "path": "test-reports/e2e-tasks/daff44b3-3a8f-4a47-be03-0000c4f3dc20/reports/dev.json",
+        "sha256": "87ac3196bb9411ec25b32baa1dcb8cb8f5d63b4275ef6cbe65b6fdd834c988dd"
+      },
+      "build_sha256": null,
+      "run_id": "1a3a334c-8899-4c8d-9897-b2c6d75f1c3a"
+    },
+    {
+      "mode": "preview",
+      "passed": 6,
+      "report": {
+        "path": "test-reports/e2e-tasks/daff44b3-3a8f-4a47-be03-0000c4f3dc20/reports/preview.json",
+        "sha256": "d49a39d23e13a46773093f641cb482435e6a5f81551232b7d75acaa154ad8a4c"
+      },
+      "build_sha256": "d03fa54c8fd959a7b004961d4252f30044e591bb29576d895f76f832a127c58d",
+      "run_id": "dabf627e-9860-435f-8d57-07d478a63c59"
+    }
+  ],
+  "navigation_regression": {
+    "path": "tmp_test/tasks0103-20261107-091747-6f85db/navigation-final-v3.xml",
+    "sha256": "2e99439dcbac453d7eb945df3b7f98f655c82eb0136fce814f5c8beaf44c567d",
+    "passed": 23,
+    "failed": 0,
+    "skipped": 0
+  },
+  "static": {
+    "report": {
+      "path": "tmp_test/tasks0103-20261107-091747-6f85db/static-final-v3-isolated.json",
+      "sha256": "0ae9ad8c8ec1dcf06b52bcdb6994cc692f4c5abfc37d312dadb62ad9b93ba261"
+    },
+    "checks": [
+      {
+        "name": "typecheck",
+        "exit_code": 0,
+        "log": "typecheck-final.log"
+      },
+      {
+        "name": "lint",
+        "exit_code": 0,
+        "log": "lint-final.log"
+      },
+      {
+        "name": "ruff",
+        "exit_code": 0,
+        "log": "ruff-final.log"
+      },
+      {
+        "name": "python_format",
+        "exit_code": 0,
+        "log": "python_format-final.log"
+      },
+      {
+        "name": "e2e_harness",
+        "exit_code": 0,
+        "log": "e2e_harness-local-temp-final.log",
+        "environment": "run-owned temporary directory"
+      },
+      {
+        "name": "diff_whitespace",
+        "exit_code": 0,
+        "log": "diff_whitespace-final.log"
+      }
+    ],
+    "prior_environment_failure": {
+      "report": "static-final-v3.json",
+      "reason": "Default Windows TEMP rejected creation; rerun unchanged harness with run-owned TEMP/TMP/TMPDIR"
+    }
+  },
+  "screenshots": [
+    {
+      "path": "tmp_test/task-journey-screenshots/desktop.png",
+      "sha256": "6e1916bd5afe29009706a11e604a467798c7e6f47a4ab88164a3f9005949ada8"
+    },
+    {
+      "path": "tmp_test/task-journey-screenshots/mobile.png",
+      "sha256": "d8be949ad88781aea1e954db3a2a9df4c78dfca2f481f1d8826858e11e05ee60"
+    }
+  ],
+  "environment_stopped": {
+    "report": {
+      "path": "tmp_test/tasks0103-20261107-091747-6f85db/environment-stop.json",
+      "sha256": "7bb91ba7fa77f6aefd9c836c18bf94f8ae2144b881a7ea1b250b8e06377b8171"
+    },
+    "state": {
+      "environment_id": "f4d984e0c1fd4c8ebb8f8252acd906e5",
+      "clusters": {
+        "source16": {
+          "major": 16,
+          "port": 25496,
+          "running": false
+        },
+        "target16": {
+          "major": 16,
+          "port": 25497,
+          "running": false
+        },
+        "source17": {
+          "major": 17,
+          "port": 25498,
+          "running": false
+        },
+        "target17": {
+          "major": 17,
+          "port": 25499,
+          "running": false
+        }
+      },
+      "data_deleted": false
+    }
+  },
+  "remote_ci": "not_run",
+  "production": "not_accessed",
+  "model_calls": 0,
+  "real_notifications": 0,
+  "git_commit_or_push": false,
+  "limits": [
+    "Browser uses local real API, synthetic identities and SQLite; PG acceptance is a separate restricted-role dynamic gate.",
+    "Full recovery, capacity and production acceptance were not rerun for this candidate.",
+    "No passing result is imported from earlier candidate snapshots."
+  ]
+}

@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from 'react';
 import {
   WorkspaceProgress,
   type HomeProgress,
+  type InboxProgress,
   type MonthlyProgress,
   type WorkspaceHistoryVisit,
 } from './workspace-progress';
@@ -38,6 +39,7 @@ export function useWorkspaceProgress(scope?: string) {
     refresh((value) => value + 1);
   }, [memory]);
   const saveHome = useCallback((value: HomeProgress) => memory.saveHome(value), [memory]);
+  const saveInbox = useCallback((value: InboxProgress) => memory.saveInbox(value), [memory]);
   const saveMonthly = useCallback((value: MonthlyProgress) => memory.saveMonthly(value), [memory]);
   return {
     memory,
@@ -47,6 +49,7 @@ export function useWorkspaceProgress(scope?: string) {
     rememberEntry,
     clearTrail,
     saveHome,
+    saveInbox,
     saveMonthly,
     origin: memory.origin(),
   };

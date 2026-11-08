@@ -6,6 +6,8 @@ for (const width of [1280, 390]) {
     await page.setViewportSize({ width, height: 844 });
     const session = await (await request.get('/api/session?persona=accountant')).json();
     const headers = { Authorization: `Bearer ${session.token}` };
+    const me = await (await request.get('/api/me', { headers })).json();
+    expect(me.current_firm_id).toBeTruthy();
     const company = await (
       await request.post('/api/companies', {
         headers,
@@ -65,8 +67,15 @@ for (const width of [1280, 390]) {
       model_calls: 0,
       coverage: { read: 3, of: 3 },
       missing: [],
-      steps: [],
-      evidence: { firm_id: 'synthetic-firm', company_id: company.id, fingerprint: 'b'.repeat(64) },
+      steps: ['voucher_status', 'close_blockers', 'delivery_status'].map((tool) => ({
+        tool,
+        ok: true,
+      })),
+      evidence: {
+        firm_id: me.current_firm_id,
+        company_id: company.id,
+        fingerprint: 'b'.repeat(64),
+      },
       findings: {
         voucher_status: { posted_vouchers: 0, draft_rows: 1 },
         close_blockers: { status: 'no_run', blockers: [], version: null },

@@ -821,8 +821,18 @@ export default function App() {
     // A second bare-URL push here races it and adds duplicate history entries.
   }
   function openWorkspaceTask(task: WorkspaceTask) {
-    if (navigationLocked) return;
+    if (navigationLocked) {
+      setNotice({ kind: 'error', text: '请先保存或结束当前办理，再打开这项待办。' });
+      return;
+    }
     const target = taskDestination(task, primarySurface === 'client');
+    if (!target || !target.id || ('bookId' in target && !target.bookId)) {
+      setNotice({
+        kind: 'error',
+        text: '这项待办缺少可办理的原记录，请刷新待办；仍无法打开时联系负责会计核对。',
+      });
+      return;
+    }
     if (target.type === 'review' && target.bookId) {
       setInlineTarget({ bookId: target.bookId, draftId: target.id });
       return;

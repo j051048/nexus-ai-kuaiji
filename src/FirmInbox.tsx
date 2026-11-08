@@ -1,11 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { DeliveryFollowupPanel } from './DeliveryFollowupPanel';
+import type { MonthlyDestination } from './monthly-workbench-types';
+import type { InboxProgress } from './workspace-progress';
 import { useMonthlyData } from './useMonthlyData';
-import {
-  parseFirmInbox,
-  firmTaskTarget,
-  type FirmItem as Item,
-  type Bucket,
-} from './firm-inbox-contract';
+import { parseFirmInbox, type FirmItem as Item, type Bucket } from './firm-inbox-contract';
 import type { WorkspaceTask } from './workspace-types';
 import { Bell, CheckCircle2, RefreshCw, UserRoundCheck } from 'lucide-react';
 import { api, errorMessage } from './api';
@@ -13,6 +11,9 @@ import {
   followupRows,
   followupSummary,
   validateFollowupFeed,
+  acceptFollowup,
+  type DeliveryFollowup,
+  type FollowupState,
   type DeliveryFollowupFeed,
 } from './delivery-followups';
 import { Spinner } from './AppPrimitives';
@@ -31,12 +32,34 @@ const labels: Record<Bucket, string> = {
 export function FirmInbox({
   session,
   onOpen,
+  onOpenMonthly,
+  locked = false,
+  initialProgress,
+  onProgress,
+  revision: externalRevision = 0,
+  onBusyChange,
+  onDirtyChange,
 }: {
   session: Session;
   onOpen?: (task: WorkspaceTask) => void;
+  onOpenMonthly?: (target: MonthlyDestination) => void;
+  locked?: boolean;
+  initialProgress?: InboxProgress;
+  onProgress?: (value: InboxProgress) => void;
+  revision?: number;
+  onBusyChange?: (busy: boolean) => void;
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
-  const [bucket, setBucket] = useState<Bucket>('all');
-  const [offset, setOffset] = useState(0);
+  const [bucket, setBucket] = useState<Bucket>(initialProgress?.bucket ?? 'all');
+  const [offset, setOffset] = useState(initialProgress?.offset ?? 0);
+  const [followup, setFollowup] = useState<FollowupState | null>(null);
+  const [panelBusy, setPanelBusy] = useState(false);
+  const opening = useRef(false),
+    epoch = useRef(0);
+  useEffect(() => {
+    onBusyChange?.(panelBusy);
+    return () => onBusyChange?.(false);
+  }, [panelBusy, onBusyChange]);
   const [selected, setSelected] = useState<string[]>([]);
   const [assignee, setAssignee] = useState('');
   const [dueOn, setDueOn] = useState('');
@@ -48,7 +71,7 @@ export function FirmInbox({
   const inbox = useMonthlyData<unknown>(
     session,
     `/firm/inbox?bucket=${bucket}&limit=20&offset=${offset}`,
-    revision,
+    revision + externalRevision,
   );
   const data =
     inbox.data === null
@@ -57,9 +80,9 @@ export function FirmInbox({
   const feed = useMonthlyData<DeliveryFollowupFeed>(
     session,
     '/delivery/followups?limit=8',
-    revision,
+    revision + externalRevision,
   );
-  const followups = feed.data && validateFollowupFeed(feed.data) ? feed.data : null;
+  const followups = feed.data && validateFollowupFeed(feed.data, session) ? feed.data : null;
   const followupError =
     feed.error || (feed.data && !followups ? '交付待办返回格式不符，暂不展示。' : '');
   const error =
@@ -68,6 +91,94 @@ export function FirmInbox({
     actionError;
 
   const key = (item: Item) => `${item.kind}:${item.ref}`;
+  useEffect(() => {
+    onProgress?.({ bucket, offset });
+  }, [bucket, offset, onProgress]);
+  useEffect(() => {
+    if (data && offset > 0 && offset >= data.pagination.total)
+      setOffset(Math.max(0, Math.floor((data.pagination.total - 1) / 20) * 20));
+  }, [data, offset]);
+  useEffect(
+    () => () => {
+      epoch.current++;
+    },
+    [],
+  );
+  useEffect(() => {
+    if (inbox.revoked || feed.revoked) {
+      epoch.current++;
+      setFollowup(null);
+      setBusy('');
+      setSelected([]);
+    }
+  }, [inbox.revoked, feed.revoked]);
+  const restored = useRef(false);
+  useEffect(() => {
+    if (!inbox.loading && !feed.loading && !restored.current) {
+      restored.current = true;
+      window.scrollTo(0, initialProgress?.scrollY ?? 0);
+    }
+  }, [inbox.loading, feed.loading, initialProgress?.scrollY]);
+  function back() {
+    setFollowup(null);
+    setRevision((n) => n + 1);
+  }
+  async function openDelivery(source: DeliveryFollowup) {
+    if (opening.current || locked || panelBusy) return;
+    opening.current = true;
+    const stamp = ++epoch.current;
+    setBusy('open');
+    setError('');
+    setFollowup(null);
+    try {
+      const result = await api<unknown>(
+        `/books/${encodeURIComponent(source.book_id)}/delivery/monthly-followup?period=${encodeURIComponent(source.period)}`,
+        session,
+      );
+      if (stamp !== epoch.current) return;
+      const current = acceptFollowup(result, source, session);
+      if (!current) throw new Error('待办范围或来源已变化，请刷新列表后重新打开。');
+      setFollowup(current);
+    } catch (caught) {
+      if (stamp === epoch.current) {
+        setError(errorMessage(caught));
+        setRevision((n) => n + 1);
+      }
+    } finally {
+      opening.current = false;
+      if (stamp === epoch.current) setBusy('');
+    }
+  }
+  async function openTask(item: Item) {
+    if (opening.current || locked || panelBusy) return;
+    opening.current = true;
+    const stamp = ++epoch.current;
+    setBusy('open');
+    setError('');
+    try {
+      const current = await api<WorkspaceTask>(
+        `/workspace/tasks/${encodeURIComponent(item.kind)}/${encodeURIComponent(item.ref)}`,
+        session,
+      );
+      if (stamp !== epoch.current) return;
+      if (
+        current.kind !== item.kind ||
+        current.ref !== item.ref ||
+        current.company_id !== item.company_id ||
+        current.book_id !== item.book_id
+      )
+        throw new Error('待办范围已变化，请刷新列表后重新打开。');
+      onOpen?.(current);
+    } catch (caught) {
+      if (stamp === epoch.current) {
+        setError(errorMessage(caught));
+        setRevision((n) => n + 1);
+      }
+    } finally {
+      opening.current = false;
+      if (stamp === epoch.current) setBusy('');
+    }
+  }
   const selectedTasks = (data?.items ?? []).filter(
     (item) => selected.includes(key(item)) && item.permissions.assign,
   );
@@ -130,7 +241,7 @@ export function FirmInbox({
     }
   }
 
-  const deliveryRows = followupRows(followups);
+  const deliveryRows = followupRows(followups, 8);
   const delivery = followupSummary(deliveryRows);
 
   return (
@@ -158,6 +269,7 @@ export function FirmInbox({
             type="button"
             role="tab"
             aria-selected={bucket === id}
+            disabled={!!busy || locked || panelBusy}
             className={bucket === id ? 'active' : ''}
             onClick={() => {
               setBucket(id);
@@ -174,6 +286,18 @@ export function FirmInbox({
         <p className="form-error" role="alert">
           {error}
         </p>
+      )}
+      {followup && (
+        <DeliveryFollowupPanel
+          key={followup.source_fingerprint}
+          session={session}
+          value={followup}
+          onBack={back}
+          onChanged={back}
+          onOpen={onOpenMonthly}
+          onBusyChange={setPanelBusy}
+          onDirtyChange={onDirtyChange}
+        />
       )}
       {selectedTasks.length > 0 && (
         <section className="firm-inbox-bulk">
@@ -234,7 +358,7 @@ export function FirmInbox({
               : followupError
                 ? '暂时无法读取'
                 : delivery.total
-                  ? `${delivery.total} 个月份待处理 · 其中 ${delivery.waiting} 个等待客户`
+                  ? `当前列出 ${delivery.total} 个月份 · 其中 ${delivery.waiting} 个等待客户`
                   : '暂无待处理月份'}
           </span>
         </div>
@@ -254,11 +378,19 @@ export function FirmInbox({
                 <span className="firm-inbox-delivery-step">
                   下一步：{row.nextStepText} · {row.ownerText}
                 </span>
+                <button
+                  type="button"
+                  className="button secondary"
+                  disabled={!!busy || locked || panelBusy}
+                  onClick={() => void openDelivery(row.source)}
+                >
+                  {row.source.action?.label ?? '查看办理说明'}
+                </button>
               </li>
             ))}
           </ul>
         ) : (
-          <p className="firm-inbox-delivery-empty">所有已关账月份都已完成交付与签收。</p>
+          <p className="firm-inbox-delivery-empty">当前可见范围内暂无交付待办。</p>
         )}
       </section>
 
@@ -293,7 +425,8 @@ export function FirmInbox({
                   <button
                     className="text-button"
                     type="button"
-                    onClick={() => onOpen(firmTaskTarget(item))}
+                    disabled={!!busy || locked || panelBusy}
+                    onClick={() => void openTask(item)}
                   >
                     {item.action_label || '打开原事项'}
                   </button>

@@ -1,0 +1,410 @@
+{
+  "schema": "tasks0712-local-acceptance-v1",
+  "generated_at": "2026-11-07T12:47:54.601707+00:00",
+  "status": "local_engineering_passed",
+  "release_approved": false,
+  "candidate": {
+    "schema": "release-candidate-v1",
+    "head": "34daa36afa1b7400ee873794d57abdc4f7ec2b4e",
+    "source_files": 1977,
+    "source_sha256": "82d79c200d6ef9be13a2533768f3691c41dc1d91db3e163da1b5ec52cfe01983",
+    "migration_files": 340,
+    "migration_sha256": "5e02beb380596ea28c17248d00b417060e5100365d27127e2941c085b29da7f7"
+  },
+  "baseline_candidate": {
+    "schema": "release-candidate-v1",
+    "head": "34daa36afa1b7400ee873794d57abdc4f7ec2b4e",
+    "source_files": 1968,
+    "source_sha256": "31d2256dc7372638a54cadf24f4ad863f24e987951d5dd611679130f3879b697",
+    "migration_files": 340,
+    "migration_sha256": "5e02beb380596ea28c17248d00b417060e5100365d27127e2941c085b29da7f7"
+  },
+  "packages": {
+    "7": "local_engineering_passed",
+    "8": "local_engineering_passed",
+    "9": "local_engineering_passed",
+    "10": "local_engineering_passed",
+    "11": "local_engineering_passed",
+    "12": "local_engineering_passed"
+  },
+  "ownership": {
+    "baseline": {
+      "path": "tmp_test/tasks0712-20261107/baseline.json",
+      "sha256": "e2a2f85b3068d12414dc80b2d64368155265894223ba3ed99707bf41f3d3444e",
+      "bytes": 281092
+    },
+    "source_paths_changed_since_baseline": 30,
+    "changes": [
+      {
+        "path": ".github/workflows/accounting.yml",
+        "before_sha256": "9d610b550f9911b034490edb49ea9ff90664139f5238d5a833673ee285adece0",
+        "after_sha256": "0b3f9a730e433c3288b641c6cb1cec68bf06733f4476fca1e08fa07c061a8488"
+      },
+      {
+        "path": ".github/workflows/local-quick.yml",
+        "before_sha256": null,
+        "after_sha256": "343358703dc3c7bbadf237a311aed2d2f0235f4dcfa0090036c3bce679de54b4"
+      },
+      {
+        "path": ".github/workflows/p01-recovery.yml",
+        "before_sha256": "9e01e13ab6ec0076b3f7cac414e1c25e1e927b23a1b2d1f847d3414b3a1adc16",
+        "after_sha256": "8ba306d3dcf435d473c62a98a1aa1b0ee93e01cb8b98bc940835d0b3ccab9853"
+      },
+      {
+        "path": ".github/workflows/qa-reliability.yml",
+        "before_sha256": "07fe005a974086138cd4c8f91e18e954e55f58406f2d5f8a00ba9cb8d31bd0b4",
+        "after_sha256": "20e6e6eb366a45336fa39ecdd9d0a41481642a67f6e6c007b3fa7ff62c4e6b80"
+      },
+      {
+        "path": "e2e/dcp-r567-evidence.spec.ts",
+        "before_sha256": "67179acfb06db346fc22e93a8a7e033a9dc862d243b413fcfc7f6548bce3ca6b",
+        "after_sha256": "43daed97ba6e835e21487c66801a42ef143a6c34cd7f2359f3378f44f7825526"
+      },
+      {
+        "path": "e2e/tasks0712.spec.ts",
+        "before_sha256": null,
+        "after_sha256": "3cab87dfb47af5b160c481e6e472b89145fa4dd5cae40bad38c26b0a980292b1"
+      },
+      {
+        "path": "nexus_backend/app/observability/service.py",
+        "before_sha256": "18f8c7fc86359716e551ad527f1374fe6101dce3a6f6b313883f62ef1501f31f",
+        "after_sha256": "44a5540ef99d9b7f67617967d0a84410f9f81d1599f3192011dc26605e34eccd"
+      },
+      {
+        "path": "nexus_backend/app/operations/efficiency.py",
+        "before_sha256": "0aa83294560f5bd3b9fb94737682425bc0e3ebcb4f55fe4fba22f8ad47c3d2fb",
+        "after_sha256": "715d0b0f7fc91b0d41d1edf0377533e8c9ee2b94ac98201de87f11ab7bc2fc4b"
+      },
+      {
+        "path": "nexus_backend/tests/test_dcp_reliability_gate.py",
+        "before_sha256": "a708a35e077b6f3e7671105455f7c8a483a3118ececd1699afa7051dabc4748b",
+        "after_sha256": "a3e36b83ee04b2bd11ce0b8fe4581e5b2588d2df96ce540a094045f057733d8c"
+      },
+      {
+        "path": "nexus_backend/tests/test_tasks0712.py",
+        "before_sha256": null,
+        "after_sha256": "75e04a57c2a9194f78e2f47084b0e4e504f9d504c44b6fcdf8500bcdcb427eeb"
+      },
+      {
+        "path": "nexus_backend/tests/test_tasks0712_environment.py",
+        "before_sha256": null,
+        "after_sha256": "803f6cdc75791396bf30c0e3ff5133dd5b9cf0aab4adf5e666507a9092965048"
+      },
+      {
+        "path": "nexus_backend/tests/test_tasks0712_postgres.py",
+        "before_sha256": null,
+        "after_sha256": "a097dcf38181e9270ba5ac2e650aa935c22dda83b5d52cc94a1fca406c0b90c7"
+      },
+      {
+        "path": "scripts/dcp_reliability_required_cases.json",
+        "before_sha256": "71d1a8e1d6c05bc20c7ec3eb8d027aefd487feec66405ba35692fb8e2e7ed08a",
+        "after_sha256": "cbc5e26d92f2a3c608b7f8d2d86def6582e86881103a62e5f1e61e6152aeed4f"
+      },
+      {
+        "path": "scripts/e2e_task_cases.json",
+        "before_sha256": "3e4dcf3712c3df11b4440b80f54594854327698908aec6eb58e146e904dc4f5f",
+        "after_sha256": "c4c80abb225e55951794a2fb26b329a9ea15c526fcde93424bab8d2589c70fbd"
+      },
+      {
+        "path": "scripts/env_doctor.py",
+        "before_sha256": "beaa415d5567a1b1c7e2bb14062ed379a2f97063bb04b1584d7161ff6c22763e",
+        "after_sha256": "3a5cde2ad7fb436696eb23d73c29a5d1840601adccbf9a013db69fc1d3c77039"
+      },
+      {
+        "path": "scripts/test_layers.json",
+        "before_sha256": null,
+        "after_sha256": "4fccc8924e05e344ab8cd6103ef7816bc793d6d6aca7dda2616b8736aa4ecb38"
+      },
+      {
+        "path": "src/EfficiencyWorkbench.tsx",
+        "before_sha256": "a35999648e57b5a6647e96210f22e388bad6b0d042bdf5bf0e05c23659d1a1ab",
+        "after_sha256": "aafd29b186d1619067416e454b9f163ae1b8dce80bd1840425c85aaab0d8cff3"
+      },
+      {
+        "path": "src/FirmObservability.tsx",
+        "before_sha256": "d6a929a20b711195a696bbb43af51b0464bc67f4a2754e1e6c6186facd0e4ade",
+        "after_sha256": "e853aca4e22f12581ed9823c3a338bc5fe73cfac4c284634e85196eeadd916a1"
+      },
+      {
+        "path": "src/FormalBooksWorkbench.tsx",
+        "before_sha256": "694ab87f661f0b68c579cf9917b4b2d07b68612d6fd790ee4fff9f4a45207f71",
+        "after_sha256": "852c1da51845023f4399a5780b5084f3c85c96344266279154be2f7224f2d0ae"
+      },
+      {
+        "path": "src/IntakeWizard.tsx",
+        "before_sha256": "91bca30a2ac95fd2cb1647b49d32069a33e562b07bd16be2996227c5c6e28ce6",
+        "after_sha256": "863e09351f2ca0e234df2dda663241a9a12b5302adef7f540f92a5d3861d50cc"
+      },
+      {
+        "path": "src/InvestigationEvidencePanel.tsx",
+        "before_sha256": "576ccfc0f885a458b5058e496e19888775a3dd613056e6c569483162dc1f13a8",
+        "after_sha256": "f887306e480e78ec871a59eb6d95d6579fd2c58c37efe897a0a79ec7256c6dfc"
+      },
+      {
+        "path": "src/TaxWorkpaperPanel.tsx",
+        "before_sha256": "d752181ad400b2c938eb7687f05c3555c244f2b7a9ec2a4d4190c5c096c73473",
+        "after_sha256": "6fc5b07edb7262762ba57560a7e0d0fd9bb269c2d9945923ebd2100b44918cbf"
+      },
+      {
+        "path": "src/dcp-evidence.test.ts",
+        "before_sha256": "f87ea954251bd53ccd19e73d5ad105d90cf8e873e96cde4b3959a47c3b89548f",
+        "after_sha256": "016a3d8f3069a6414c7abbd818fa683c555e208bc80e928ab650c65f0c9ee230"
+      },
+      {
+        "path": "src/dcp-evidence.ts",
+        "before_sha256": "55c14e573c956e6c61e71ec66481146d59c8b0339352e2efaf935c540a6857e7",
+        "after_sha256": "f0155537491f82bd9b5d2fc5e75b12168c712e630cd8a85b72dc247c949ba899"
+      },
+      {
+        "path": "src/efficiency-helpers.ts",
+        "before_sha256": "87a51eb5b07a50b557aba688fd828a779735ed79faa052821e64f30ea4dfcfc2",
+        "after_sha256": "b59b40c7788f4f73bdd77ca5f3cd3cc98b4938ffd2de9f4becd62927c6be5bc2"
+      },
+      {
+        "path": "src/firm-observability-contract.ts",
+        "before_sha256": null,
+        "after_sha256": "f95faf7dbcabb8dd630d64ac89620dc85927269bc2e002a055bce344575f465c"
+      },
+      {
+        "path": "src/intake-helpers.ts",
+        "before_sha256": "4b166ca6a39e25cab0744cda9ca1f08e01ce145d0d420f5d9c739f3ce39f7f7e",
+        "after_sha256": "368ee902a6ec72bdea592c4e28254fe3a76930943f2807b4acccf38c3d36fca5"
+      },
+      {
+        "path": "src/tasks0712-ui.test.ts",
+        "before_sha256": null,
+        "after_sha256": "6311cd65bf060529a524a8e654f9c750be3e07a3f5276a1e7b95443d877c588c"
+      },
+      {
+        "path": "src/tasks0712.test.ts",
+        "before_sha256": null,
+        "after_sha256": "9e4100e70c4cd70dfc05380d3868e76e7499b352db61f6128d13389c0447ec7b"
+      },
+      {
+        "path": "tools/assistant_replay/investigation.py",
+        "before_sha256": "90d10513fbcc7eeec4b4141fcb221f17500e56a13c560b0bb362e415f24b7e3e",
+        "after_sha256": "ec4c3eac48a36897d7414d121afe0640b3723bae51b0a12fe349858c2c75443d"
+      }
+    ],
+    "migration_bytes_unchanged": true,
+    "prior_0106_changes_preserved": true,
+    "other_agent_prompt_untouched": true
+  },
+  "tests": {
+    "offline": {
+      "tests": 79,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 79,
+      "report": {
+        "path": "tmp_test/tasks0712-20261107/combined-final.xml",
+        "sha256": "ca4854b378b9d67a3b9bf8662c81060d65eb93b23f31aa813e3eb2a48d9ffdef",
+        "bytes": 12044
+      }
+    },
+    "frontend": {
+      "passed": 1309,
+      "skipped": 0,
+      "report": {
+        "path": "tmp_test/tasks0712-20261107/vitest-final.json",
+        "sha256": "c3282c4cfc24d29118b0dd1cbd8b324252c8386de8d69f521e2f8e49f6933ff2",
+        "bytes": 467289
+      }
+    },
+    "postgres": [
+      {
+        "major": 16,
+        "passed": 35,
+        "skipped": 0,
+        "summary": {
+          "path": "tmp_test/tasks0712-20261107/pg16-gate/summary.json",
+          "sha256": "3fce4da9015f43952d19603b4b05d8f7e91b5385d945b68d3095095c9e05fe5c",
+          "bytes": 712
+        },
+        "junit": {
+          "path": "tmp_test/tasks0712-20261107/pg16-gate/results.xml",
+          "sha256": "09369f3fad6fb210f75944120e1645df72c44d82b2f2bbb0a39cf687dfdb3cb0",
+          "bytes": 5363
+        }
+      },
+      {
+        "major": 17,
+        "passed": 35,
+        "skipped": 0,
+        "summary": {
+          "path": "tmp_test/tasks0712-20261107/pg17-gate/summary.json",
+          "sha256": "85f3e51fea7ab3537eb7481f2c441655c0d8fd443ef6082a2633f3be0de4c682",
+          "bytes": 712
+        },
+        "junit": {
+          "path": "tmp_test/tasks0712-20261107/pg17-gate/results.xml",
+          "sha256": "644b24824bfd15a7c1b237a3b685fab39d7be0a71da705a925d23ae1a3a739d9",
+          "bytes": 5363
+        }
+      }
+    ],
+    "browser": {
+      "provenance": "local API, SQLite, synthetic identities; injected fault responses for contract cases; separate from PostgreSQL evidence",
+      "summary": {
+        "path": "test-reports/e2e-tasks/580c62e0-46a4-4d58-b7d5-6b2137cf5855/reports/summary.json",
+        "sha256": "e68252cfa5c769951a70be49fe038f60bcd56d7bdf4c361de69e49c40c2a4a50",
+        "bytes": 728
+      },
+      "modes": [
+        {
+          "mode": "dev",
+          "passed": 20,
+          "skipped": 0,
+          "retries": 0,
+          "report": {
+            "path": "test-reports/e2e-tasks/580c62e0-46a4-4d58-b7d5-6b2137cf5855/reports/dev.json",
+            "sha256": "2db3854de763f18bae046ba958a9412e5cc1e78f24225c60357dc8f8d389ffa6",
+            "bytes": 6944
+          }
+        },
+        {
+          "mode": "preview",
+          "passed": 20,
+          "skipped": 0,
+          "retries": 0,
+          "report": {
+            "path": "test-reports/e2e-tasks/580c62e0-46a4-4d58-b7d5-6b2137cf5855/reports/preview.json",
+            "sha256": "7c798241c3a78b50a356e160511be41afe490c21f6cb3fb34d49b6dfd6c2fb40",
+            "bytes": 7072
+          }
+        }
+      ]
+    },
+    "static_checks": {
+      "typescript": "passed",
+      "eslint": "passed",
+      "targeted_ruff_lint": "passed",
+      "ruff_format_app_services_scripts": "368 files already formatted",
+      "build": "passed in preview runner",
+      "git_diff_check": "passed"
+    }
+  },
+  "red_evidence": [
+    {
+      "path": "tmp_test/tasks0712-20261107/red-backend.xml",
+      "sha256": "41fd1834f42d8ec4fa4a0458c56a5b23aec552b457392d793420bee52a5be990",
+      "bytes": 12293
+    },
+    {
+      "path": "tmp_test/tasks0712-20261107/red-environment.xml",
+      "sha256": "765245c866846c44b42fbd25ba824957843e9feb98d9660ef91c91a12bcce297",
+      "bytes": 3082
+    },
+    {
+      "path": "tmp_test/tasks0712-20261107/red-frontend.json",
+      "sha256": "7f2c78027272c799399af7b75c870946b9aa444bdfe8bc116307d86f9065a52a",
+      "bytes": 9210
+    },
+    {
+      "path": "tmp_test/tasks0712-20261107/red-intake-failure.json",
+      "sha256": "3b9811913192e9696fa6e9ce183b8d5df5d759dafbfdf93e0f8e9abe9f12876f",
+      "bytes": 4822
+    },
+    {
+      "path": "tmp_test/tasks0712-20261107/red-investigation-firm.json",
+      "sha256": "f38b1fd4255858ff1ad7902adc7188c99def5f72f243efdb0c196861bd2f1e02",
+      "bytes": 4514
+    },
+    {
+      "path": "tmp_test/tasks0712-20261107/red-monitor-contract.json",
+      "sha256": "668d933f29012b69a056efe4d71f64526b392b51edd35ec939aec5a04c5240e6",
+      "bytes": 5443
+    },
+    {
+      "path": "tmp_test/tasks0712-20261107/red-ui.json",
+      "sha256": "2093bd45146b1f9215b9d04919ece125415f517e2127ef720999dd5631e0bbc7",
+      "bytes": 4943
+    }
+  ],
+  "red_evidence_notes": [
+    "red-monitor-contract.json contains one product failure and one assertion accessing the returned object incorrectly; only the first is a product defect.",
+    "Browser fixture fixes preserve strict scope and step validation; no retry-based green."
+  ],
+  "environment": {
+    "doctor": {
+      "path": "tmp_test/tasks0712-20261107/environment.json",
+      "sha256": "15999b7f913a739f495a21ba050ae3c3a556c21718bb8cca6dafbd179910f1e5",
+      "bytes": 3594
+    },
+    "python_version": "3.14.1",
+    "doctor_scope": "local_dependencies_only",
+    "stopped": {
+      "path": "tmp_test/tasks0712-20261107/environment-stop.json",
+      "sha256": "7bb91ba7fa77f6aefd9c836c18bf94f8ae2144b881a7ea1b250b8e06377b8171",
+      "bytes": 333
+    },
+    "data_deleted": false
+  },
+  "screenshots": [
+    {
+      "path": "tmp_test/tasks0712-20261107/screenshots/boundary-1365.png",
+      "sha256": "cf118c2afbf78cf32bb0b07445269682582ba486fb0bc88b58a756523e3623cb",
+      "bytes": 174307
+    },
+    {
+      "path": "tmp_test/tasks0712-20261107/screenshots/boundary-390.png",
+      "sha256": "bf46005a9186a1e21973c4d171080fec24085ab1dddfd84ead1f586b45aabaed",
+      "bytes": 102218
+    },
+    {
+      "path": "tmp_test/tasks0712-20261107/screenshots/intake-1365.png",
+      "sha256": "ef85553e484330d47432e23ca5985f0552e85a8d4e558af92d464183e8c7c78c",
+      "bytes": 121657
+    },
+    {
+      "path": "tmp_test/tasks0712-20261107/screenshots/intake-390.png",
+      "sha256": "3f31e159b97a6884cfaf11247bb03dce6b15839384cac48e7d2a3ea110761d9b",
+      "bytes": 53930
+    },
+    {
+      "path": "tmp_test/tasks0712-20261107/screenshots/monitor-1365.png",
+      "sha256": "760efc691a947de68f423b08cbceff18b3cfa5f5c28d47e6c4436c5690772870",
+      "bytes": 147812
+    },
+    {
+      "path": "tmp_test/tasks0712-20261107/screenshots/monitor-390.png",
+      "sha256": "614945405319bf7d3a2aa5eeab587913535580dc8b57d8dc34341e945ec4f2c6",
+      "bytes": 79680
+    },
+    {
+      "path": "tmp_test/tasks0712-20261107/screenshots/pilot-1365.png",
+      "sha256": "a09078f7cf9886aef02b4e381c19c5a0e4b4868c18f3fb7f30603a975a3151e7",
+      "bytes": 184686
+    },
+    {
+      "path": "tmp_test/tasks0712-20261107/screenshots/pilot-390.png",
+      "sha256": "a1965a23af68cb46c8d085a2f71a236be6f51d45c0123957813d56f5f8e529bc",
+      "bytes": 112690
+    }
+  ],
+  "not_validated": [
+    "real_customer_trial",
+    "real_model_or_ocr_quality",
+    "real_notifications",
+    "remote_ci",
+    "full_joint_recovery_on_this_candidate",
+    "capacity_on_this_candidate",
+    "physical_mobile_devices"
+  ],
+  "actions": {
+    "commit": false,
+    "push": false,
+    "deploy": false,
+    "production_access": false,
+    "real_model_call": false,
+    "real_notification_send": false,
+    "migration_edit": false
+  },
+  "reports": [
+    "docs/TASKS0712_ACCEPTANCE_20261107.md",
+    "docs/TASKS0712_LOCAL_GUIDE.md",
+    "docs/CURRENT_ACCEPTANCE.md"
+  ],
+  "evidence_retention": "Local ignored test artifacts are referenced by digest; not evidence of remote CI or production acceptance."
+}

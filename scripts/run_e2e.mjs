@@ -100,14 +100,34 @@ async function runProcess(cli, env, root, outDir) {
 }
 
 export async function main(args) {
-  const modes = parseModes(args);
+  const taskSuite = args.length === 4 && args[2] === '--suite' && args[3] === 'tasks';
+  const modes = parseModes(taskSuite ? args.slice(0, 2) : args);
   const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-  const manifestPath = join(root, 'scripts/e2e_core_cases.json');
+  const manifestPath = join(
+    root,
+    taskSuite ? 'scripts/e2e_task_cases.json' : 'scripts/e2e_core_cases.json',
+  );
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf8').replace(/^\uFEFF/, ''));
   validateManifest(manifest);
   const source = sourceFingerprint(root);
+  const candidate = taskSuite
+    ? JSON.parse(
+        execFileSync(
+          'python',
+          [
+            '-c',
+            'import json; from scripts.release_candidate import candidate_fingerprint; print(json.dumps(candidate_fingerprint()))',
+          ],
+          { cwd: root, encoding: 'utf8', windowsHide: true },
+        ),
+      )
+    : null;
   const suiteId = randomUUID();
-  const folder = join(root, 'test-reports/e2e-core', suiteId);
+  const folder = join(
+    root,
+    taskSuite ? 'test-reports/e2e-tasks' : 'test-reports/e2e-core',
+    suiteId,
+  );
   const reports = join(folder, 'reports');
   mkdirSync(reports, { recursive: true });
   const cli = playwrightCLI();
@@ -127,6 +147,7 @@ export async function main(args) {
         {
           ...process.env,
           E2E_CORE_ACCEPTANCE: '1',
+          E2E_TASK_ACCEPTANCE: taskSuite ? '1' : '0',
           E2E_FRONTEND_MODE: mode,
           E2E_GATE_RUN_ID: runId,
           E2E_GATE_RESULT: resultPath,
@@ -167,6 +188,7 @@ export async function main(args) {
       mode,
       runId,
       source,
+      ...(candidate ? { candidate } : {}),
       manifestSha256: createHash('sha256').update(readFileSync(manifestPath)).digest('hex'),
       passed: validation.passed,
       issues: validation.issues,
@@ -198,6 +220,7 @@ export async function main(args) {
         version: 1,
         suiteId,
         source,
+        ...(candidate ? { candidate } : {}),
         modes,
         expectedPerMode: manifest.cases.length,
         passed: combined.passed,

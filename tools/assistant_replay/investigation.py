@@ -34,16 +34,23 @@ def load_dataset():
 
 def observe(dataset, candidate, sample_id, service, actor, book_id, period, **hooks):
     from app.assistant.investigation import investigate
+    from app.accounting.domain import AccountingError
 
     if dataset != load_dataset() or candidate != candidate_identity():
         raise ValueError("Candidate or input changed before execution")
     sample = next((s for s in dataset["samples"] if s["id"] == sample_id), None)
     if sample is None:
         raise ValueError("Unknown sample")
+    try:
+        with service.db.transaction(actor=actor) as conn:
+            company_id = service.access.book(conn, actor, book_id, "read")["company_id"]
+    except AccountingError:
+        company_id = None
     request = {
         "sample_id": sample_id,
         "firm_id": actor.firm_id,
         "user_id": actor.user_id,
+        "company_id": company_id,
         "book_id": book_id,
         "period": period,
         "candidate": candidate["fingerprint"],
@@ -61,6 +68,8 @@ def observe(dataset, candidate, sample_id, service, actor, book_id, period, **ho
 
 
 def evaluate(dataset, observations, candidate):
+    from app.assistant.investigation import TOOLS, evidence_fingerprint
+
     if dataset != load_dataset() or candidate != candidate_identity():
         raise ValueError("Candidate or frozen input changed")
     expected = {s["id"]: s for s in dataset["samples"]}
@@ -87,6 +96,45 @@ def evaluate(dataset, observations, candidate):
             failures.append("missing")
         else:
             result, request = row["result"], row["request"]
+            facts, missing, steps = (
+                result.get("findings"),
+                result.get("missing"),
+                result.get("steps"),
+            )
+            try:
+                names = list(facts)
+                if (
+                    not isinstance(facts, dict)
+                    or not isinstance(missing, list)
+                    or len(set(names + missing)) != len(TOOLS)
+                    or len(names + missing) != len(TOOLS)
+                    or set(names + missing) != set(TOOLS)
+                    or result.get("coverage") != {"read": len(names), "of": len(TOOLS)}
+                    or (result.get("status") == "complete" and missing)
+                ):
+                    failures.append("evidence_coverage")
+                if not isinstance(steps, list) or len(steps) > len(TOOLS):
+                    failures.append("execution_steps")
+                else:
+                    step_names = [step["tool"] for step in steps]
+                    if (
+                        step_names != list(TOOLS[: len(steps)])
+                        or any(type(step.get("ok")) is not bool for step in steps)
+                        or any(not any(s["tool"] == n and s["ok"] for s in steps) for n in names)
+                    ):
+                        failures.append("execution_steps")
+                evidence = result.get("evidence")
+                if names:
+                    if (
+                        evidence["firm_id"] != request["firm_id"]
+                        or evidence["company_id"] != request["company_id"]
+                        or evidence["fingerprint"] != evidence_fingerprint(result)
+                    ):
+                        failures.append("evidence_identity")
+                elif evidence is not None:
+                    failures.append("unsafe_stale_evidence")
+            except (KeyError, TypeError, ValueError):
+                failures.append("evidence_invalid")
             if (
                 result.get("book_id") != request["book_id"]
                 or result.get("period") != request["period"]

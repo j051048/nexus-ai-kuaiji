@@ -5,11 +5,15 @@ import { resolveE2ERuntime } from './scripts/e2e_runtime';
 // Every run owns a fresh database. Never exercise a developer's working books.
 const runtime = resolveE2ERuntime();
 const core = process.env.E2E_CORE_ACCEPTANCE === '1';
+const tasks = core && process.env.E2E_TASK_ACCEPTANCE === '1';
 const manifest: { cases: { file: string; title: string }[] } = JSON.parse(
-  readFileSync(new URL('./scripts/e2e_core_cases.json', import.meta.url), 'utf8').replace(
-    /^\uFEFF/,
-    '',
-  ),
+  readFileSync(
+    new URL(
+      tasks ? './scripts/e2e_task_cases.json' : './scripts/e2e_core_cases.json',
+      import.meta.url,
+    ),
+    'utf8',
+  ).replace(/^\uFEFF/, ''),
 );
 const literal = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 export const config = defineConfig({

@@ -299,7 +299,7 @@ function TaxContent({ session, bookId, companyId, period, onBusyChange, focusSou
         </button>
       </header>
       <p className="tax-boundary">
-        用于会计核对与导出，尚未申报。来源会在复核和导出时重新校验；模型不会代替独立复核。
+        生成底稿不代表已申报；办理状态以人工登记及回执为准。本系统不自动申报或缴款，来源在复核和导出时重新校验。
       </p>
       <TaxReadinessList data={readiness} />
       <TaxFilingRecords

@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "quick": {
+    "workflows": ["local-quick.yml"],
+    "release_eligible": false,
+    "purpose": "快速反馈；不替代数据库、恢复和浏览器门禁"
+  },
+  "nightly": {
+    "workflows": ["accounting.yml", "p01-recovery.yml", "qa-reliability.yml"],
+    "release_eligible": false,
+    "purpose": "持续发现环境及集成回归；仍须核对候选"
+  },
+  "release": {
+    "workflows": ["accounting.yml", "p01-recovery.yml", "qa-reliability.yml"],
+    "require_same_candidate": true,
+    "require_zero_skips": true,
+    "purpose": "完整门禁和授权发布检查；快检不能升格为发布通过"
+  }
+}

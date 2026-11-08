@@ -4,8 +4,24 @@ import { api, ApiError, errorMessage } from './api';
 import { Spinner } from './AppPrimitives';
 import type { Session } from './types';
 import './firm-observability.css';
+import { readFirmSnapshot } from './firm-observability-contract';
 
-type Snapshot = {
+export type Snapshot = {
+  firm_id: string;
+  period: string;
+  cost_summary: {
+    sample_count: number;
+    known_micro: number | null;
+    unknown_count: number;
+    estimated_count: number;
+  };
+  signals: {
+    code: string;
+    owner_role: string;
+    next_action: string;
+    target: 'queue' | 'operations' | 'runs';
+    automatic_action: false;
+  }[];
   queues: Record<string, Record<string, number>>;
   alerts: Record<string, { open: number; critical: number }>;
   worker_health?: {
@@ -18,9 +34,9 @@ type Snapshot = {
     transactions: number;
     writes: number;
     rollbacks: number;
-    avg_connection_ms: number;
-    avg_lock_ms: number;
-    max_transaction_ms: number;
+    avg_connection_ms: number | null;
+    avg_lock_ms: number | null;
+    max_transaction_ms: number | null;
   };
   ai_cost_cny: number;
   projection: {
@@ -74,7 +90,7 @@ function ObservabilityWorkspace({ session }: { session: Session }) {
       { signal: controller.signal },
     )
       .then((value) => {
-        if (current()) setData(value);
+        if (current()) setData(readFirmSnapshot(value, session.firm_id, period));
       })
       .catch((failure) => {
         if (
@@ -105,7 +121,12 @@ function ObservabilityWorkspace({ session }: { session: Session }) {
           <p>队列、锁等待、后台处理服务、投影与 AI 成本集中在一个只读视图。</p>
         </div>
         <div className="firm-observability-actions">
-          <input type="month" value={period} onChange={(event) => setPeriod(event.target.value)} />
+          <input
+            aria-label="运行记录月份"
+            type="month"
+            value={period}
+            onChange={(event) => setPeriod(event.target.value)}
+          />
           <button
             className="button secondary"
             type="button"
@@ -140,8 +161,17 @@ function ObservabilityWorkspace({ session }: { session: Session }) {
             </article>
             <article>
               <span>锁等待均值</span>
-              <strong>{data.metrics.avg_lock_ms.toFixed(1)} ms</strong>
-              <small>连接均值 {data.metrics.avg_connection_ms.toFixed(1)} ms</small>
+              <strong>
+                {data.metrics.avg_lock_ms == null
+                  ? '暂无样本'
+                  : `${data.metrics.avg_lock_ms.toFixed(1)} ms`}
+              </strong>
+              <small>
+                连接均值{' '}
+                {data.metrics.avg_connection_ms == null
+                  ? '暂无样本'
+                  : `${data.metrics.avg_connection_ms.toFixed(1)} ms`}
+              </small>
             </article>
             <article>
               <Server size={18} />
@@ -163,11 +193,41 @@ function ObservabilityWorkspace({ session }: { session: Session }) {
             </article>
             <article>
               <Database size={18} />
-              <span>AI 估算成本</span>
-              <strong>¥ {data.ai_cost_cny}</strong>
-              <small>{period} · 已确认或估算费用</small>
+              <span>AI 已知费用小计</span>
+              <strong>
+                {data.cost_summary.known_micro === null
+                  ? '暂无已知费用'
+                  : `¥ ${(data.cost_summary.known_micro / 1_000_000).toFixed(2)}`}
+              </strong>
+              <small>
+                {period} · {data.cost_summary.sample_count} 条记录 ·{' '}
+                {data.cost_summary.unknown_count} 条未知 · {data.cost_summary.estimated_count}{' '}
+                条估算
+              </small>
             </article>
           </section>
+          {data.signals.length > 0 && (
+            <section className="observability-panel" aria-label="运行异常下一步">
+              <header>
+                <h2>需要管理员处理</h2>
+              </header>
+              <div className="observability-health">
+                {data.signals.map((s) => (
+                  <article key={s.code}>
+                    <p>{s.next_action}</p>
+                    <a className="button secondary" href={`/workspace/${s.target}`}>
+                      打开
+                      {s.target === 'queue'
+                        ? '处理任务'
+                        : s.target === 'operations'
+                          ? '费用与运行记录'
+                          : '执行记录'}
+                    </a>
+                  </article>
+                ))}
+              </div>
+            </section>
+          )}
           <div className="observability-grid">
             <section className="observability-panel">
               <header>

@@ -188,13 +188,36 @@
 }
 .firm-inbox-delivery-row {
   display: grid;
-  grid-template-columns: minmax(140px, 1.4fr) 76px minmax(120px, 1fr) auto;
+  grid-template-columns: minmax(140px, 1.4fr) 76px minmax(120px, 1fr) minmax(140px, 1fr);
   gap: 10px;
   align-items: baseline;
   padding: 8px 10px;
   border-radius: 8px;
   background: var(--wash, #f4f6f2);
   font-size: 13px;
+}
+.firm-inbox-delivery-row > button {
+  justify-self: start;
+  grid-column: 1 / -1;
+}
+.task-followup-panel {
+  min-width: 0;
+}
+.task-followup-panel > header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: space-between;
+  align-items: center;
+}
+.task-followup-panel > form {
+  display: grid;
+  gap: 12px;
+  max-width: 38rem;
+}
+.task-followup-panel label {
+  display: grid;
+  gap: 6px;
 }
 .firm-inbox-delivery-row.waiting {
   background: #eef3ec;
@@ -214,6 +237,13 @@
   color: var(--muted, #5c6b62);
 }
 @media (max-width: 720px) {
+  .firm-inbox-delivery-heading {
+    display: grid;
+    gap: 8px;
+  }
+  .firm-inbox-delivery-count {
+    white-space: normal;
+  }
   .firm-inbox-delivery-row {
     grid-template-columns: 1fr;
     gap: 2px;

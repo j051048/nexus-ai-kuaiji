@@ -159,8 +159,15 @@ class ProviderReceiptService(NotificationDispatcher):
 
     # ------------------------------------------------------------------- read
     def timeline(self, actor, book_id, notification_id):
+        from .followups import DeliveryFollowupService
+
         with self.db.transaction(actor=actor) as conn:
             self.access.book(conn, actor, book_id, "read")
+            if (
+                self.access.firm_role(conn, actor)
+                not in DeliveryFollowupService.NOTIFICATION_READERS
+            ):
+                raise AccountingError("请由事务所负责人、管理员或复核人核查通知", 403)
             source = conn.execute(
                 "SELECT * FROM delivery_notifications WHERE id=? AND book_id=? AND firm_id=?",
                 (notification_id, book_id, actor.firm_id),
@@ -185,6 +192,14 @@ class ProviderReceiptService(NotificationDispatcher):
             )
             return {
                 "notification_id": notification_id,
+                "book_id": book_id,
+                "company_id": source["company_id"],
+                "period": source["period"],
+                "package_id": source["package_id"],
+                "package_version": source["package_version"],
+                "manifest_sha256": source["manifest_sha256"],
+                "attempts": source["attempts"],
+                "recipient_user_id": source["recipient_user_id"],
                 "state": source["state"],
                 "events": events,
                 "accepted": any(item["event_type"] == "accepted" for item in events),
@@ -192,4 +207,13 @@ class ProviderReceiptService(NotificationDispatcher):
                 "viewed": any(item["event_type"] == "viewed" for item in events),
                 "bounced": any(item["event_type"] == "bounced" for item in events),
                 "signed": signed,
+                "customer_opened": bool(
+                    conn.execute(
+                        "SELECT 1 FROM monthly_delivery_opens WHERE package_id=?",
+                        (source["package_id"],),
+                    ).fetchone()
+                ),
+                "receipt_conflict": any(item["event_type"] == "bounced" for item in events)
+                and any(item["event_type"] in {"delivered", "viewed"} for item in events),
+                "can_retry": False,
             }

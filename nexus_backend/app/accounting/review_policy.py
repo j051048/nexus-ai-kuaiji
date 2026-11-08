@@ -6,6 +6,7 @@ The database repeats these guards for callers bypassing the HTTP service.
 
 import json
 from datetime import datetime, timezone
+from decimal import Decimal
 
 from .access import AccessControl, FIRM_MANAGERS
 from .domain import AccountingError
@@ -56,8 +57,46 @@ class ReviewPolicyService:
             "book_id": book["id"],
             "ledger_id": policy["ledger_id"],
             "policy": policy,
+            "review_summary": self.review_summary(conn, book["id"]),
             "can_manage": self.access.firm_role(conn, actor) in FIRM_MANAGERS
             and book["permissions"]["manage"],
+        }
+
+    @staticmethod
+    def review_summary(conn, book_id):
+        # Count current approved objects once, using frozen evidence rather than
+        # today's policy. Missing/legacy evidence remains in the denominator.
+        modes = conn.execute(
+            "SELECT e.mode,e.independent FROM drafts d LEFT JOIN firm_review_evidence e "
+            "ON e.kind='draft' AND e.subject_id=d.id AND e.book_id=d.book_id "
+            "AND e.reviewed_version=d.version-CASE WHEN d.status='exported' THEN 2 ELSE 1 END "
+            "WHERE d.book_id=? AND d.status IN ('approved','exported') "
+            "UNION ALL SELECT e.mode,e.independent FROM manual_review_requests m "
+            "LEFT JOIN firm_review_evidence e ON e.kind='manual' AND e.subject_id=m.id "
+            "AND e.book_id=m.book_id AND e.reviewed_version=m.version "
+            "WHERE m.book_id=? AND m.status='approved' AND NOT EXISTS "
+            "(SELECT 1 FROM manual_review_withdrawals w WHERE w.request_id=m.id)",
+            (book_id, book_id),
+        ).fetchall()
+        counts = {"independent": 0, "single_operator": 0, "unverified": 0}
+        for row in modes:
+            key = (
+                "independent"
+                if row["mode"] == "independent" and row["independent"]
+                else "single_operator"
+                if row["mode"] == "single_operator" and not row["independent"]
+                else "unverified"
+            )
+            counts[key] += 1
+        total = len(modes)
+        return {
+            **counts,
+            "total_reviewed": total,
+            "single_operator_ratio": str(
+                (Decimal(counts["single_operator"]) / Decimal(total)).quantize(Decimal("0.0001"))
+            )
+            if total
+            else None,
         }
 
     def get(self, actor, book_id):

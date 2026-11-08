@@ -45,6 +45,7 @@ INVENTORY_TABLES = (
     "bridge_outbox",
     "delivery_receipt_items",
     "delivery_notifications",
+    "account_invitation_deliveries",
     "notification_investigations",
     "tax_filings",
     "tax_filing_attachments",
@@ -99,6 +100,10 @@ DELIVERY_INVENTORY_FIELDS = (
 # the same version. A pre-N04 schema cannot
 # silently supply a partial inventory, so these columns are required verbatim.
 BUSINESS_EVIDENCE_FIELDS = {
+    # Requires forward migration 218. No plaintext activation secrets exist.
+    "account_invitation_deliveries": tuple(
+        "id request_id firm_id company_id request_attempt activation_digest recipient_email idempotency_key created_by created_at state finished_at channel".split()
+    ),
     "tax_filings": tuple(
         "id firm_id company_id book_id period kind status external_ref occurred_at amount_cents evidence_note created_by created_at entry_kind supersedes_id workpaper_id workpaper_version workpaper_digest workpaper_status amount_check correction_reason".split()
     ),
@@ -282,6 +287,10 @@ def pending_inventory(conn):
         normalized = []
         for row in rows:
             item = dict(zip(fields, row))
+            if table == "account_invitation_deliveries":
+                item["recipient_email"] = hashlib.sha256(
+                    str(item["recipient_email"]).encode()
+                ).hexdigest()
             if table == "notification_investigations":
                 for name in ("evidence_ref", "reason"):
                     item[name] = hashlib.sha256(str(item[name]).encode()).hexdigest()

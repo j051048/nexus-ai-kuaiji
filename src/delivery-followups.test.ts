@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   followupRows,
+  acceptFollowup,
   followupSummary,
   validateFollowupFeed,
   type DeliveryFollowupFeed,
@@ -113,5 +114,49 @@ describe('delivery followups', () => {
     expect(validateFollowupFeed({ items: [{ book_id: 'b1', period: '2026-13' }] })).toBe(false);
     expect(validateFollowupFeed({ items: 'nope' })).toBe(false);
     expect(validateFollowupFeed(null)).toBe(false);
+  });
+
+  it('打开前原子校验企业、账套、月份、操作者、包版本摘要和来源，不接纳部分字段', () => {
+    const scope = { firm_id: 'firm-a', user_id: 'reviewer-a' };
+    const source = {
+      ...feed.items[0],
+      company_id: 'company-a',
+      source_fingerprint: 'a'.repeat(64),
+      action: {
+        kind: 'configure_recipient',
+        owner: 'firm_manager',
+        label: '配置签收人',
+        can_act: true,
+        reason: '',
+      },
+    };
+    const value = {
+      ...source,
+      company_name: '虚构企业',
+      scope,
+      recipient: { user_id: null, state: 'missing' },
+      recipient_candidates: [],
+      event: { package_id: 'p1', package_version: 1, manifest_sha256: 'b'.repeat(64) },
+    };
+    expect(acceptFollowup(value, source, scope)).not.toBeNull();
+    for (const fault of [
+      { company_id: 'other' },
+      { book_id: 'other' },
+      { period: '2026-09' },
+      { source_fingerprint: 'c'.repeat(64) },
+      { scope: { ...scope, user_id: 'other' } },
+      { event: { ...value.event, package_version: true } },
+      { event: { ...value.event, package_id: 'other' } },
+      { action: { ...source.action, can_act: 'yes' } },
+    ]) {
+      expect(acceptFollowup({ ...value, ...fault }, source, scope)).toBeNull();
+    }
+    expect(validateFollowupFeed({ ...feed, count: true })).toBe(false);
+    expect(
+      validateFollowupFeed(
+        { items: [source], count: 1, scope: { ...scope, firm_id: 'other' } },
+        scope,
+      ),
+    ).toBe(false);
   });
 });

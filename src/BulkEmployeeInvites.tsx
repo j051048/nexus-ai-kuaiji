@@ -4,6 +4,7 @@ import type { Session } from './types';
 import type { Department } from './business-types';
 import type { AccountRequest } from './admin-types';
 import { validInvitePreview } from './invite-preview';
+import { InvitationDelivery } from './InvitationDelivery';
 
 type Item = {
   name: string;
@@ -43,6 +44,7 @@ export function BulkEmployeeInvites({
   const [error, setError] = useState('');
   const [started, setStarted] = useState(false);
   const [results, setResults] = useState<{ email: string; status: string; link?: string }[]>([]);
+  const [deliveryEmail, setDeliveryEmail] = useState('');
   const live = useRef(true),
     lock = useRef(false);
   useEffect(() => {
@@ -245,7 +247,7 @@ export function BulkEmployeeInvites({
       {!!results.length && (
         <>
           <p>
-            链接仅在本次显示，请私下交给本人；系统未发送邀请邮件。未确认项请先查开通记录，禁止重复生成。
+            链接仅在本次显示。生成邀请不会发送邮件；可逐人打开受控发送，或通过可信方式交给本人。未确认项请先查开通记录，禁止重复生成。
           </p>
           <ul>
             {results.map((row) => (
@@ -258,6 +260,18 @@ export function BulkEmployeeInvites({
                     value={row.link}
                     onFocus={(e) => e.target.select()}
                   />
+                )}
+                {row.link && (
+                  <button
+                    type="button"
+                    className="text-button"
+                    onClick={() => setDeliveryEmail(deliveryEmail === row.email ? '' : row.email)}
+                  >
+                    {deliveryEmail === row.email ? '收起邮件邀请' : '办理邮件邀请'}
+                  </button>
+                )}
+                {row.link && deliveryEmail === row.email && (
+                  <InvitationDelivery value={row.link} session={session} />
                 )}
               </li>
             ))}

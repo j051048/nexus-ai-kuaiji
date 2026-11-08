@@ -80,6 +80,16 @@ class SmtpChannel:
             (f"衡账 · {period} 月度财税简报已就绪"),
         )
         message["Message-ID"] = number
+        if payload.get("purpose") == "account_invitation":
+            link = payload.get("activation_url", "")
+            if not link.startswith(self.base_url + "/account-activation#"):
+                raise DeliveryNotSent("激活链接与应用地址不一致，未发送")
+            message.replace_header("Subject", "衡账 · 请本人激活账号")
+            text = (
+                "请使用本人邮箱打开以下一次性激活链接；请勿转发。链接一小时内有效，重新生成后旧链接失效。\n\n"
+                + link
+                + "\n\n邮件被接受不代表账号已激活；账套与复核权限仍须另行授权。"
+            )
         message.set_content(text)
         return message, recipient
 

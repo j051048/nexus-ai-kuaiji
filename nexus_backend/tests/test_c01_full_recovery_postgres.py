@@ -48,6 +48,7 @@ from p01_recovery_business import (
     require_latest_business_inventory,
     verify_latest_business_http,
     assert_notifications_fenced,
+    assert_restored_invitations,
 )
 
 
@@ -681,6 +682,7 @@ def test_fresh_cluster_database_objects_signed_identity_and_http_recovery(
             p01_checks["permissions"] = True
             database = Database(target["app"])
             try:
+                assert_restored_invitations(database, owner_actor, latest_business, held=True)
                 accounting = AccountingService(database)
                 actor = Actor(users["reviewer"]["id"], firm)
                 before = accounting.get_book(actor, book)
@@ -733,6 +735,9 @@ def test_fresh_cluster_database_objects_signed_identity_and_http_recovery(
                 for name, row in users.items()
             }
             with TestClient(target_app, base_url="http://127.0.0.1") as client:
+                assert_restored_invitations(
+                    target_app.state.service.db, owner_actor, latest_business, held=False
+                )
                 messages = _http(client, "GET", "/api/client/messages", new_headers["employee"])[
                     "messages"
                 ]

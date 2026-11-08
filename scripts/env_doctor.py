@@ -9,6 +9,7 @@ from __future__ import annotations
 import importlib
 import importlib.metadata as metadata
 import inspect
+import json
 import re
 import sys
 from pathlib import Path
@@ -89,7 +90,64 @@ def format_specifiers(specifiers):
     return ",".join(operator + target for operator, target in specifiers) or "任意版本"
 
 
+def inspect_environment():
+    """Machine-readable dependency probes, with no credentials, paths or DB I/O."""
+    checks = []
+    for relative in REQUIREMENT_FILES:
+        for line in (ROOT / relative).read_text(encoding="utf-8").splitlines():
+            try:
+                parsed = parse_requirement(line)
+                if not parsed:
+                    continue
+                name, specifiers = parsed
+                installed = metadata.version(name)
+                checks.append(
+                    {
+                        "name": name,
+                        "version": installed,
+                        "passed": satisfies(installed, specifiers),
+                        "code": "dependency_version",
+                    }
+                )
+            except Exception:
+                checks.append(
+                    {"name": "dependency", "passed": False, "code": "dependency_probe_failed"}
+                )
+    for distribution, module in MODULES.items():
+        try:
+            importlib.import_module(module)
+            checks.append({"name": distribution, "passed": True, "code": "import"})
+        except Exception:
+            checks.append({"name": distribution, "passed": False, "code": "import_failed"})
+    try:
+        from starlette.testclient import TestClient
+
+        supported = "client" in inspect.signature(TestClient.__init__).parameters
+    except Exception:
+        supported = False
+    checks.append({"name": "TestClient", "passed": supported, "code": "http_fixture_capability"})
+    return {
+        "schema": "local-environment-v1",
+        "scope": "local_dependencies_only",
+        "status": "passed" if all(c["passed"] for c in checks) else "blocked",
+        "python_version": sys.version.split()[0],
+        "checks": checks,
+        "not_checked": [
+            "postgres16",
+            "postgres17",
+            "joint_recovery",
+            "browser",
+            "real_channels",
+            "production",
+        ],
+    }
+
+
 def main():
+    if "--json" in sys.argv[1:]:
+        report = inspect_environment()
+        print(json.dumps(report, ensure_ascii=True, indent=2))
+        return 0 if report["status"] == "passed" else 1
     try:  # Windows 控制台默认 GBK，中文说明按 UTF-8 输出以免出现乱码
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     except Exception:  # noqa: BLE001 - 老控制台不支持 reconfigure 时保持原样
@@ -160,7 +218,7 @@ def main():
         print("  .venv\\Scripts\\python -m pip install -r nexus_backend/requirements.lock")
         print("  .venv\\Scripts\\python scripts/env_doctor.py")
         return 1
-    print("\n环境可用于全量测试。")
+    print("\n本地依赖探针通过；数据库、身份、浏览器与恢复环境仍须分别验收。")
     return 0
 
 

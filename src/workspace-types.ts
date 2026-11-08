@@ -162,7 +162,7 @@ export function taskStateLabel(task: Pick<WorkspaceTask, 'kind' | 'state'>): str
 }
 
 export function taskDestination(task: WorkspaceTask, client = false) {
-  if (client && task.kind === 'ocr' && task.event_id)
+  if ((client || !task.batch_id) && task.kind === 'ocr' && task.event_id)
     return { type: 'business' as const, id: task.event_id };
   switch (task.kind) {
     case 'material':

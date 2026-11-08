@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, apiBlob, ApiError, errorMessage } from './api';
 import type { Session } from './types';
 import { ManualVoucherReviewPanel } from './ManualVoucherReviewPanel';
+import { FinanceOperationsPanel } from './FinanceOperationsPanel';
 import { correctionSeed, type CorrectionSeed } from './voucher-correction';
 import { LegacyReviewPanel } from './LegacyReviewPanel';
 import { AnalysisEvidencePanel } from './AnalysisEvidencePanel';
@@ -84,6 +85,7 @@ function FormalBooksContent({
   const [legacyOpen, setLegacyOpen] = useState(false);
   const [setupOpen, setSetupOpen] = useState(false);
   const [manualOpen, setManualOpen] = useState(false);
+  const [financeOpen, setFinanceOpen] = useState(false);
   const [closeOpen, setCloseOpen] = useState(false);
   const [accountId, setAccountId] = useState('');
   const [asOf, setAsOf] = useState('');
@@ -344,6 +346,7 @@ function FormalBooksContent({
       </header>
       <p className="formal-books-boundary">
         余额来自已绑定的正式期初与正式凭证；未审核、未记账草稿不计入余额。查看与下载不会审核或记账。
+        本系统内的正式记账不代表外部财务软件已过账；外部结果需另行核对回执。
       </p>
       {period && companyId && (
         <details
@@ -393,6 +396,23 @@ function FormalBooksContent({
               accountLabels={Object.fromEntries(
                 catalog.map((row) => [row.account_id, `${row.code} ${row.name}`]),
               )}
+            />
+          )}
+        </details>
+      )}
+      {companyId && period && (
+        <details
+          className="review-section"
+          onToggle={(event) => setFinanceOpen(event.currentTarget.open)}
+        >
+          <summary>往来与期末办理（账龄、资产及计提草稿）</summary>
+          {financeOpen && (
+            <FinanceOperationsPanel
+              session={session}
+              companyId={companyId}
+              bookId={bookId}
+              period={period}
+              onChanged={() => setRevision((value) => value + 1)}
             />
           )}
         </details>

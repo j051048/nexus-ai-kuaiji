@@ -10,11 +10,14 @@ describe('DCP evidence scope', () => {
     coverage: { read: 3, of: 3 },
     findings: { voucher_status: {}, close_blockers: {}, delivery_status: {} },
     missing: [],
-    steps: [],
+    steps: ['voucher_status', 'close_blockers', 'delivery_status'].map((tool) => ({
+      tool,
+      ok: true,
+    })),
     evidence: { firm_id: 'f', company_id: 'c', fingerprint: 'a'.repeat(64) },
   };
   it('accepts exact scope and rejects wrong book/period/company or malformed counts', () => {
-    expect(readInvestigation(result, 'a', '2026-10', 'c')).toEqual(result);
+    expect(readInvestigation(result, 'a', '2026-10', 'c', 'f')).toEqual(result);
     for (const bad of [
       { ...result, book_id: 'b' },
       { ...result, period: '2026-11' },
@@ -23,11 +26,11 @@ describe('DCP evidence scope', () => {
       { ...result, model_calls: 1 },
       { ...result, missing: ['voucher_status'] },
     ])
-      expect(() => readInvestigation(bad, 'a', '2026-10', 'c')).toThrow();
+      expect(() => readInvestigation(bad, 'a', '2026-10', 'c', 'f')).toThrow();
   });
   it('does not accept stale facts attached to revoked results', () => {
     expect(() =>
-      readInvestigation({ ...result, status: 'blocked', evidence: null }, 'a', '2026-10', 'c'),
+      readInvestigation({ ...result, status: 'blocked', evidence: null }, 'a', '2026-10', 'c', 'f'),
     ).toThrow();
   });
   it('freezes unknown attempt and package in manual command', () => {

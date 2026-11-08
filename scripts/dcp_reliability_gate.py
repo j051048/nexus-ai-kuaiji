@@ -15,18 +15,18 @@ sys.path.insert(0, str(ROOT))
 from scripts.ak05_postgres_gate import (  # noqa: E402
     GateError,
     assert_server_and_roles,
-    candidate_fingerprint,
     local_connection,
     sanitized,
     validate_config,
 )
+from scripts.release_candidate import candidate_fingerprint  # noqa: E402
 
 MANIFEST = Path(__file__).with_name("dcp_reliability_required_cases.json")
 
 
 def contract(suite):
     data = json.loads(MANIFEST.read_text(encoding="utf-8"))
-    if data.get("version") != 1 or suite not in {"settlement", "dcp"}:
+    if data.get("version") != 1 or suite not in {"settlement", "dcp", "tasks"}:
         raise GateError("Invalid DCP gate manifest")
     result = data["suites"][suite]
     if not result["cases"] or len(set(result["cases"])) != len(result["cases"]):
@@ -64,13 +64,15 @@ def validate_junit(path, required):
     }
 
 
-def run(config_path, output, suite):
+def run(config_path, output, suite, expected_major=None):
     selected = contract(suite)
     config = validate_config(json.loads(Path(config_path).read_text(encoding="utf-8-sig")))
     with local_connection(config["admin"]) as conn:
         major = int(conn.execute("SHOW server_version_num").fetchone()[0]) // 10000
     if major not in {16, 17}:
         raise GateError("Actual PostgreSQL 16 or 17 is required")
+    if expected_major is not None and major != expected_major:
+        raise GateError("Actual PostgreSQL major does not match the required matrix entry")
     assert_server_and_roles(config, major)
     output = Path(output).resolve()
     output.mkdir(parents=True, exist_ok=False)
@@ -81,6 +83,7 @@ def run(config_path, output, suite):
         "major": major,
         "candidate": before,
         "manifest_sha256": hashlib.sha256(MANIFEST.read_bytes()).hexdigest(),
+        "configuration_sha256": hashlib.sha256(Path(config_path).read_bytes()).hexdigest(),
     }
     xml = output / "results.xml"
     # The isolated runner strips deployment/model credentials and blocks WAN.
@@ -133,12 +136,13 @@ def run(config_path, output, suite):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--suite", choices=["settlement", "dcp"], required=True)
+    parser.add_argument("--suite", choices=["settlement", "dcp", "tasks"], required=True)
+    parser.add_argument("--major", type=int, choices=[16, 17])
     parser.add_argument("--config", required=True)
     parser.add_argument("--out", required=True)
     args = parser.parse_args()
     try:
-        return 0 if run(args.config, args.out, args.suite) else 1
+        return 0 if run(args.config, args.out, args.suite, args.major) else 1
     except Exception:
         print(
             "PG gate failed; inspect local configuration and sanitized evidence.", file=sys.stderr

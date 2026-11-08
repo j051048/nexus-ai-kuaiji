@@ -18,6 +18,19 @@ export interface EfficiencyOverview {
   book_id: string;
   company_id: string;
   period: string;
+  pilot: {
+    measurement: 'observed_only';
+    session_count: number;
+    human_seconds: number | null;
+    measured_savings_seconds: null;
+    review: {
+      total_reviewed: number;
+      independent: number;
+      single_operator: number;
+      unverified: number;
+    };
+    source_fingerprint: string;
+  };
   human: {
     credited_seconds: number;
     session_count: number;
@@ -64,7 +77,50 @@ export function durationLabel(seconds: number): string {
       : `${safe}秒`;
 }
 export function measuredRate(part: number, total: number): string {
+  if (
+    !Number.isSafeInteger(part) ||
+    !Number.isSafeInteger(total) ||
+    part < 0 ||
+    total < 0 ||
+    part > total
+  )
+    return '数据待核对';
   return total > 0 ? `${((part * 100) / total).toFixed(1)}%` : '暂无样本';
+}
+
+export function readEfficiencyOverview(
+  value: EfficiencyOverview,
+  bookId: string,
+): EfficiencyOverview {
+  const count = (n: unknown) => typeof n === 'number' && Number.isSafeInteger(n) && n >= 0;
+  const p = value?.pilot,
+    r = p?.review,
+    h = value?.human,
+    v = value?.review;
+  if (
+    value?.book_id !== bookId ||
+    !value.company_id ||
+    !/^20\d{2}-(0[1-9]|1[0-2])$/.test(value.period) ||
+    !p ||
+    p.measurement !== 'observed_only' ||
+    p.measured_savings_seconds !== null ||
+    !count(p.session_count) ||
+    !/^[a-f0-9]{64}$/.test(p.source_fingerprint) ||
+    (p.session_count === 0 ? p.human_seconds !== null : !count(p.human_seconds)) ||
+    !r ||
+    ![r.total_reviewed, r.independent, r.single_operator, r.unverified].every(count) ||
+    r.total_reviewed !== r.independent + r.single_operator + r.unverified ||
+    !h ||
+    h.session_count !== p.session_count ||
+    !count(h.credited_seconds) ||
+    (p.human_seconds !== null && p.human_seconds !== h.credited_seconds) ||
+    !v ||
+    !Object.values(v).every(count) ||
+    v.reviewed_drafts !== v.with_recorded_correction + v.without_recorded_correction ||
+    v.company_rule_covered > v.reviewed_drafts
+  )
+    throw new Error('统计范围或样本不一致，请重新读取；不会推算缺失数据。');
+  return value;
 }
 export function canAcknowledgeActivity(
   visible: boolean,

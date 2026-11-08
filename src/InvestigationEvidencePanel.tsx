@@ -68,6 +68,7 @@ function Panel({
                 bookId,
                 period,
                 companyId,
+                session.firm_id ?? '',
               ),
             setResult,
           );

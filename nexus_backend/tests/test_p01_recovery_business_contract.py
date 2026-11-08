@@ -82,6 +82,12 @@ def test_latest_business_http_shapes_and_guard_assertions(latest_case):
         return JSONResponse({"detail": failure.detail}, status_code=failure.status)
 
     app.state.tax = TaxWorkpaperService(c.db)
+    from app.accounting.admin_identity import AdminIdentityService
+    from app.accounting.admin_identity_router import build_admin_identity_router
+    from test_admin_identity import FakeProvider
+
+    app.state.admin_identity = AdminIdentityService(c.db, FakeProvider())
+    app.include_router(build_admin_identity_router(actor, actor))
     from app.handoff.service import HandoffService
     from app.handoff.router import build_handoff_router
     from app.delivery.receipts import ProviderReceiptService
@@ -115,12 +121,32 @@ def test_empty_recovery_business_tables_cannot_pass_by_equal_hashes():
         require_latest_business_inventory({"tables": {}})
 
 
+def test_current_recovery_requires_populated_invitation_delivery_evidence():
+    from p01_recovery_business import BUSINESS_TABLES, require_latest_business_inventory
+
+    assert "account_invitation_deliveries" in BUSINESS_TABLES
+    inventory = {"tables": {name: [{"id": "synthetic"}] for name in BUSINESS_TABLES}}
+    inventory["tables"]["account_invitation_deliveries"] = []
+    with pytest.raises(AssertionError, match="account_invitation_deliveries"):
+        require_latest_business_inventory(inventory)
+
+
+def test_current_recovery_fixture_contains_invitation_send_boundaries(latest_case):
+    evidence = latest_case.evidence
+    assert "invitations_private" in evidence
+    assert {row["state"] for row in evidence["invitations_private"]} == {
+        "accepted",
+        "unknown",
+        "sending",
+    }
+
+
 def test_latest_domain_restore_keeps_old_notifications_unsent(latest_case, tmp_path):
     """Local SQLite smoke; PG roles/restore/release are proved by the full drill."""
     from app.accounting.database import Database
     from app.delivery.followups import DeliveryFollowupService, LocalSinkChannel
     from scripts import backup_accounting
-    from p01_recovery_business import assert_notifications_fenced
+    from p01_recovery_business import assert_notifications_fenced, assert_restored_invitations
 
     c, evidence = latest_case.case, latest_case.evidence
     archive, target = tmp_path / "archive", tmp_path / "restored"
@@ -129,6 +155,7 @@ def test_latest_domain_restore_keeps_old_notifications_unsent(latest_case, tmp_p
     assert receipt["serving_enabled"] is False
     copied = Database(target / "database.sqlite")
     try:
+        assert_restored_invitations(copied, c.manager, evidence, held=True)
         with pytest.raises(AccountingError) as blocked:
             DeliveryFollowupService(copied).dispatch(LocalSinkChannel())
         assert blocked.value.status == 409
@@ -139,6 +166,7 @@ def test_latest_domain_restore_keeps_old_notifications_unsent(latest_case, tmp_p
             )
         (target / "restore-verification.json").rename(target / "released-test-marker.json")
         assert assert_notifications_fenced(copied, evidence)["channel_calls"] == 0
+        assert_restored_invitations(copied, c.manager, evidence, held=False)
         with copied.transaction(actor=c.manager) as conn:
             rows = {
                 r["id"]: r["state"]

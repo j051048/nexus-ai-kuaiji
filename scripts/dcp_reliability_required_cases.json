@@ -73,6 +73,52 @@
         "nexus_backend.tests.test_next_p2_handoff_postgres::test_exact_unknown_notification_keeps_attempt",
         "nexus_backend.tests.test_next_p2_handoff_postgres::test_exact_delivery_keeps_assignee_visibility"
       ]
+    },
+    "tasks": {
+      "files": [
+        "test_task_journey_postgres.py",
+        "test_imp08_analysis_postgres.py",
+        "test_pg_queue_clock_postgres.py",
+        "test_tasks0406_postgres.py",
+        "test_tasks0712_postgres.py"
+      ],
+      "cases": [
+        "nexus_backend.tests.test_task_journey_postgres::test_task_target_matches_frozen_package_and_current_reviewer",
+        "nexus_backend.tests.test_task_journey_postgres::test_foreign_viewer_and_other_company_cannot_resolve_tasks",
+        "nexus_backend.tests.test_task_journey_postgres::test_open_rechecks_revocation_committed_by_another_session",
+        "nexus_backend.tests.test_task_journey_postgres::test_source_change_invalidates_target_without_signing_or_resending",
+        "nexus_backend.tests.test_task_journey_postgres::test_reviewer_recipient_form_lists_only_current_company_and_saves_bound_source",
+        "nexus_backend.tests.test_imp08_analysis_postgres::test_pg_analysis_success_scope_and_exact_fact",
+        "nexus_backend.tests.test_imp08_analysis_postgres::test_pg_two_session_publication_fence[revoke]",
+        "nexus_backend.tests.test_imp08_analysis_postgres::test_pg_two_session_publication_fence[source]",
+        "nexus_backend.tests.test_imp08_analysis_postgres::test_pg_page_version_and_observation_use_same_reader",
+        "nexus_backend.tests.test_imp08_analysis_postgres::test_pg_observation_runner_uses_trusted_current_database",
+        "nexus_backend.tests.test_pg_queue_clock_postgres::test_immediate_sql_fixture_uses_database_clock[-30]",
+        "nexus_backend.tests.test_pg_queue_clock_postgres::test_immediate_sql_fixture_uses_database_clock[30]",
+        "nexus_backend.tests.test_pg_queue_clock_postgres::test_explicit_delayed_sql_fixture_remains_unclaimable",
+        "nexus_backend.tests.test_tasks0406_postgres::test_invite_send_is_bound_private_and_never_grants_membership",
+        "nexus_backend.tests.test_tasks0406_postgres::test_invite_tampering_or_stale_link_never_sends[host]",
+        "nexus_backend.tests.test_tasks0406_postgres::test_invite_tampering_or_stale_link_never_sends[provider_token]",
+        "nexus_backend.tests.test_tasks0406_postgres::test_invite_tampering_or_stale_link_never_sends[rotated]",
+        "nexus_backend.tests.test_tasks0406_postgres::test_invite_tampering_or_stale_link_never_sends[cancelled]",
+        "nexus_backend.tests.test_tasks0406_postgres::test_unknown_invite_is_not_resent_even_with_new_key",
+        "nexus_backend.tests.test_tasks0406_postgres::test_proven_unsent_invite_allows_only_explicit_bounded_new_attempt",
+        "nexus_backend.tests.test_tasks0406_postgres::test_crash_after_send_marker_is_not_retried_after_restart",
+        "nexus_backend.tests.test_tasks0406_postgres::test_restore_hold_blocks_new_invites_and_restart_keeps_unknown",
+        "nexus_backend.tests.test_tasks0406_postgres::test_expired_and_budgeted_invites_never_send_again",
+        "nexus_backend.tests.test_tasks0406_postgres::test_invitation_disabled_by_default_creates_no_attempt",
+        "nexus_backend.tests.test_tasks0406_postgres::test_concurrent_invitation_clicks_send_once",
+        "nexus_backend.tests.test_tasks0406_postgres::test_invitation_transport_holds_no_write_lock",
+        "nexus_backend.tests.test_tasks0406_postgres::test_native_invitation_evidence_is_scoped_and_immutable",
+        "nexus_backend.tests.test_tasks0406_postgres::test_pg_review_stats_remain_separate_after_policy_change",
+        "nexus_backend.tests.test_tasks0406_postgres::test_pg_receipts_bound_and_revoked_viewer_denied",
+        "nexus_backend.tests.test_tasks0406_postgres::test_invitation_revocation_during_send_cannot_publish_or_resend",
+        "nexus_backend.tests.test_tasks0712_postgres::test_pilot_scope_zero_review_classification_and_revocation",
+        "nexus_backend.tests.test_tasks0712_postgres::test_monitor_restricted_current_firm_and_unknown_samples",
+        "nexus_backend.tests.test_tasks0712_postgres::test_monitor_weights_transactions_not_bucket_means",
+        "nexus_backend.tests.test_tasks0712_postgres::test_monitor_unknown_model_cost_does_not_disappear_or_resend",
+        "nexus_backend.tests.test_tasks0712_postgres::test_task_replay_uses_real_pg_scope_and_rejects_rehashed_steps"
+      ]
     }
   }
 }

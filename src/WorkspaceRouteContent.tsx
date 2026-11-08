@@ -446,7 +446,18 @@ export function WorkspaceRouteContent({
           }}
         />
       ) : routeView === 'inbox' ? (
-        <FirmInbox key={session.scope_key} session={session} onOpen={openWorkspaceTask} />
+        <FirmInbox
+          key={session.scope_key}
+          session={session}
+          onOpen={openWorkspaceTask}
+          onOpenMonthly={openMonthlyTarget}
+          locked={navigationLocked}
+          revision={workspaceRevision}
+          onBusyChange={changeBusinessBusy}
+          onDirtyChange={changeMonthlyDirty}
+          initialProgress={progress.memory.getInbox()}
+          onProgress={progress.saveInbox}
+        />
       ) : routeView === 'observability' ? (
         <FirmObservability session={session} />
       ) : routeView === 'ingestion' ? (

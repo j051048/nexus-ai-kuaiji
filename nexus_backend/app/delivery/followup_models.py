@@ -12,6 +12,9 @@ class DeliveryGrantRequest(BaseModel):
     period: Annotated[str, StringConstraints(pattern=r"^20[0-9]{2}-(0[1-9]|1[0-2])$")]
     recipient_user_id: Identifier
     reason: Reason
+    expected_source_fingerprint: (
+        Annotated[str, StringConstraints(pattern=r"^[a-f0-9]{64}$")] | None
+    ) = None
 
 
 class DeliveryRevokeRequest(BaseModel):

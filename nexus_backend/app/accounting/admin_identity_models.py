@@ -5,6 +5,11 @@ from pydantic import Field, SecretStr, StrictStr, field_validator, model_validat
 from .models import FirmMemberGrant, InputModel
 
 
+class InvitationSend(InputModel):
+    activation_url: SecretStr = Field(min_length=1, max_length=8192, repr=False)
+    idempotency_key: StrictStr = Field(min_length=8, max_length=120)
+
+
 class AccountRequestCreate(InputModel):
     idempotency_key: StrictStr = Field(min_length=8, max_length=120)
     name: StrictStr = Field(min_length=1, max_length=120)

@@ -9,6 +9,7 @@ from ..accounting.access import AccessControl
 from ..accounting.domain import AccountingError
 from ..accounting.service import fingerprint
 from ..accounting.queries import page_bounds
+from ..accounting.review_policy import ReviewPolicyService
 from ..business.service import BusinessService, encode
 
 HEARTBEAT_CAP_SECONDS = 60
@@ -271,10 +272,31 @@ class EfficiencyService:
                     waits.append(max(0, int((ended - begun).total_seconds())))
             # Fixed rules are draft help, and a zero modification count is not
             # independently proven accounting correctness or saved work time.
+            sample_count = sum(row["count"] for row in sessions)
+            pilot = {
+                "measurement": "observed_only",
+                "session_count": sample_count,
+                "human_seconds": sum(int(row["seconds"]) for row in sessions)
+                if sample_count
+                else None,
+                "review": ReviewPolicyService.review_summary(conn, book_id),
+                # No paired human baseline has been collected by this reader.
+                "measured_savings_seconds": None,
+            }
+            pilot["source_fingerprint"] = fingerprint(
+                {
+                    "firm_id": actor.firm_id,
+                    "book_id": book_id,
+                    "company_id": book["company_id"],
+                    "period": book["period"],
+                    **pilot,
+                }
+            )
             return {
                 "book_id": book_id,
                 "company_id": book["company_id"],
                 "period": book["period"],
+                "pilot": pilot,
                 "human": {
                     "credited_seconds": sum(int(row["seconds"]) for row in sessions),
                     "session_count": sum(row["count"] for row in sessions),

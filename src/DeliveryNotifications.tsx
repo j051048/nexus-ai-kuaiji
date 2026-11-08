@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { RefreshCw, Send } from 'lucide-react';
 import { NotificationInvestigation } from './NotificationInvestigation';
+import { NotificationReceipts } from './NotificationReceipts';
 import './dcp-evidence.css';
 import { api, errorMessage } from './api';
 import type { Session } from './types';
@@ -17,6 +18,8 @@ interface Props {
   bookId: string;
   period?: string;
   focusNotification?: { id: string; attempts: number; fingerprint: string };
+  onChanged?: () => void;
+  onBusyChange?: (busy: boolean) => void;
 }
 
 export function DeliveryNotificationList({
@@ -24,11 +27,13 @@ export function DeliveryNotificationList({
   session,
   bookId,
   onSaved,
+  onBusyChange,
 }: {
   items: NotificationItem[];
   session?: Session;
   bookId?: string;
   onSaved?: () => void;
+  onBusyChange?: (busy: boolean) => void;
 }) {
   if (!items.length) return <p className="delivery-notification-empty">本月还没有外发提醒记录。</p>;
   return (
@@ -46,6 +51,9 @@ export function DeliveryNotificationList({
               {notificationTime(item)}
             </p>
             {view.hint && <p className="delivery-notification-hint">{view.hint}</p>}
+            {session && bookId && (
+              <NotificationReceipts session={session} bookId={bookId} item={item} />
+            )}
             {session && bookId && onSaved && (
               <NotificationInvestigation
                 key={item.id + ':' + (item.investigation?.revision ?? 0)}
@@ -53,6 +61,7 @@ export function DeliveryNotificationList({
                 session={session}
                 bookId={bookId}
                 onSaved={onSaved}
+                onBusyChange={onBusyChange}
               />
             )}
           </li>
@@ -70,7 +79,14 @@ export function DeliveryNotifications(props: Props) {
     />
   );
 }
-function NotificationScope({ session, bookId, period, focusNotification }: Props) {
+function NotificationScope({
+  session,
+  bookId,
+  period,
+  focusNotification,
+  onChanged,
+  onBusyChange,
+}: Props) {
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -185,7 +201,9 @@ function NotificationScope({ session, bookId, period, focusNotification }: Props
           bookId={bookId}
           onSaved={() => {
             void load();
+            onChanged?.();
           }}
+          onBusyChange={onBusyChange}
         />
       )}
     </section>

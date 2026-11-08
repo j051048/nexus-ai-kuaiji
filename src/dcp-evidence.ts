@@ -40,6 +40,7 @@ export function readInvestigation(
   book: string,
   period: string,
   company: string,
+  firm: string,
 ): InvestigationEvidence {
   const v = object(value),
     coverage = object(v.coverage),
@@ -64,9 +65,16 @@ export function readInvestigation(
   )
     throw new Error('证据范围变化，请重新调查');
   names.forEach((n) => object(facts[n]));
+  const steps = v.steps.map(object);
+  if (
+    steps.length > investigationTools.length ||
+    steps.some((s, i) => s.tool !== investigationTools[i] || typeof s.ok !== 'boolean') ||
+    names.some((n) => !steps.some((s) => s.tool === n && s.ok === true))
+  )
+    throw new Error('调查步骤与证据不一致，请重新核对');
   if (names.length) {
     const evidence = object(v.evidence);
-    if (evidence.company_id !== company || typeof evidence.firm_id !== 'string')
+    if (evidence.company_id !== company || !firm || evidence.firm_id !== firm)
       throw new Error('企业范围不一致');
     hash(evidence.fingerprint);
   } else if (v.evidence !== null) throw new Error('空结果不得携带旧证据');
