@@ -85,10 +85,14 @@ const details: Record<TaskKind, Readonly<Record<string, string>>> = {
   },
 };
 
-const opaqueTitle = /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9a-f]{24,64}|undefined|null|untitled|未命名)$/i;
+const opaqueTitle =
+  /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9a-f]{24,64}|undefined|null|untitled|未命名)$/i;
 
 /** Keep a real business summary; only replace empty or wholly technical titles. */
-export function taskTitle(task: Pick<WorkspaceTask, 'title' | 'company_name' | 'amount'>, summary: Pick<TaskPresentation, 'kindLabel'>): string {
+export function taskTitle(
+  task: Pick<WorkspaceTask, 'title' | 'company_name' | 'amount'>,
+  summary: Pick<TaskPresentation, 'kindLabel'>,
+): string {
   const title = task.title.trim();
   if (title && !opaqueTitle.test(title)) return title;
   const amount = task.amount ? `¥${task.amount}` : '';

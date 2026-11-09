@@ -3,11 +3,54 @@
 import pytest
 
 from app.accounting.domain import AccountingError
+from app.accounting.models import BookCreate
+from app.delivery.followups import DeliveryFollowupService
 from app.delivery.followup_models import DeliveryGrantRequest
 from test_delivery_followups import case, freeze, grant  # noqa: F401
 from test_monthly_delivery_package import ready_case  # noqa: F401
 from test_p0_close_dependencies import close_case  # noqa: F401
 from test_business import business  # noqa: F401
+
+
+def test_delivery_feed_pages_reach_later_companies_without_duplicates(business):
+    c = business
+    expected = {c.book["id"], c.other_book["id"]}
+    for index in range(10):
+        book = c.ledger.create_book(
+            c.manager,
+            BookCreate(
+                name=f"CI同名账套-{index // 2}", period="2026-10", company_id=c.company["id"]
+            ),
+        )
+        expected.add(book["id"])
+    service = DeliveryFollowupService(c.db)
+    offset, seen = 0, []
+    for _ in range(20):
+        result = service.followups(c.manager, limit=3, offset=offset)
+        assert result["pagination"]["offset"] == offset
+        assert result["count"] <= 3
+        seen.extend(row["book_id"] for row in result["items"])
+        offset = result["pagination"]["next_offset"]
+        if offset is None:
+            break
+    assert set(seen) == expected
+    assert len(seen) == len(expected)
+
+
+def test_delivery_feed_paging_keeps_authorization_and_validates_bounds(business):
+    c = business
+    service = DeliveryFollowupService(c.db)
+    for value in (-1, True, 1.5, 1_000_001):
+        with pytest.raises(AccountingError):
+            service.followups(c.manager, limit=1, offset=value)
+    seen, offset = [], 0
+    for _ in range(5):
+        result = service.followups(c.actors["accountant"], limit=1, offset=offset)
+        seen.extend(row["book_id"] for row in result["items"])
+        offset = result["pagination"]["next_offset"]
+        if offset is None:
+            break
+    assert seen == [c.book["id"]]
 
 
 def test_followup_feed_binds_actor_company_period_and_current_package(case):

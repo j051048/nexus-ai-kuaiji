@@ -117,7 +117,8 @@
         "nexus_backend.tests.test_tasks0712_postgres::test_monitor_restricted_current_firm_and_unknown_samples",
         "nexus_backend.tests.test_tasks0712_postgres::test_monitor_weights_transactions_not_bucket_means",
         "nexus_backend.tests.test_tasks0712_postgres::test_monitor_unknown_model_cost_does_not_disappear_or_resend",
-        "nexus_backend.tests.test_tasks0712_postgres::test_task_replay_uses_real_pg_scope_and_rejects_rehashed_steps"
+        "nexus_backend.tests.test_tasks0712_postgres::test_task_replay_uses_real_pg_scope_and_rejects_rehashed_steps",
+        "nexus_backend.tests.test_task_journey_postgres::test_paged_delivery_feed_reaches_later_books_and_keeps_reviewer_scope"
       ]
     },
     "finance": {

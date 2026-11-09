@@ -1260,7 +1260,13 @@ export function IntakeWizard({
         )}
       </div>
       <footer className="modal-footer intake-footer">
-        <span className="intake-save-state" role="status" aria-live="polite" aria-atomic="true">
+        <span
+          className="intake-save-state"
+          role="status"
+          aria-label="草稿保存状态"
+          aria-live="polite"
+          aria-atomic="true"
+        >
           <Save size={15} aria-hidden="true" />
           <span>{busy === 'saving' ? '正在保存草稿…' : saveState}</span>
         </span>

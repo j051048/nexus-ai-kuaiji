@@ -20,6 +20,7 @@ export interface InboxProgress {
   offset: number;
   scrollY?: number;
   taskKey?: string;
+  deliveryPages?: number[];
 }
 
 export interface HomeProgress {
@@ -115,7 +116,12 @@ export class WorkspaceProgress {
   constructor(readonly scope: string) {}
 
   getInbox(): InboxProgress {
-    return { bucket: 'all', offset: 0, ...this.inbox };
+    return {
+      bucket: 'all',
+      offset: 0,
+      ...this.inbox,
+      ...(this.inbox?.deliveryPages ? { deliveryPages: [...this.inbox.deliveryPages] } : {}),
+    };
   }
   saveInbox(value: InboxProgress) {
     const bucket = ['all', 'today', 'overdue', 'blocked', 'review', 'failed'].includes(
@@ -126,6 +132,19 @@ export class WorkspaceProgress {
     this.inbox = {
       bucket,
       offset: offset(value?.offset),
+      ...(Array.isArray(value?.deliveryPages) &&
+      value.deliveryPages.length > 0 &&
+      value.deliveryPages.length <= 125001 &&
+      value.deliveryPages[0] === 0 &&
+      value.deliveryPages.every(
+        (n, i, pages) =>
+          Number.isSafeInteger(n) &&
+          n >= 0 &&
+          n <= 1_000_000 &&
+          (i === 0 || (n > pages[i - 1] && n <= pages[i - 1] + 32)),
+      )
+        ? { deliveryPages: [...value.deliveryPages] }
+        : {}),
       scrollY: this.inbox?.bucket === bucket ? this.inbox.scrollY : 0,
       taskKey: this.inbox?.bucket === bucket ? this.inbox.taskKey : undefined,
     };

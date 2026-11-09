@@ -49,11 +49,15 @@ async function mockFirmPages(page: Page) {
           },
         }),
   );
-  await page.route('**/api/firm/observability?**', (route) =>
-    denied.has('observability')
+  await page.route('**/api/firm/observability?**', async (route) => {
+    const response = await route.fetch();
+    expect(response.ok()).toBe(true);
+    const { worker_health: _health, ...actual } = await response.json();
+    return denied.has('observability')
       ? route.fulfill({ status: 403, json: forbidden })
       : route.fulfill({
           json: {
+            ...actual,
             queues: { ocr: {} },
             alerts: {},
             metrics: {
@@ -87,8 +91,8 @@ async function mockFirmPages(page: Page) {
               },
             ],
           },
-        }),
-  );
+        });
+  });
   await page.route('**/api/firm/onboarding/preview?**', (route) =>
     denied.has('onboarding')
       ? route.fulfill({ status: 403, json: forbidden })

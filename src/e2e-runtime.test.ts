@@ -19,6 +19,17 @@ afterEach(() => {
 });
 
 describe('local E2E runtime contract', { timeout: 15_000 }, () => {
+  it.each(['dev', 'preview'])(
+    'enables deterministic read-only analysis in isolated %s acceptance without a model',
+    async (mode) => {
+      const { resolveE2ERuntime } = await import('../scripts/e2e_runtime');
+      const runtime = resolveE2ERuntime({ E2E_FRONTEND_MODE: mode });
+      expect(runtime.backendEnv.ACCOUNTING_ASSISTANT_INVESTIGATION).toBe('1');
+      expect(runtime.backendEnv.ACCOUNTING_AI_BASE_URL).toBe('');
+      expect(runtime.backendEnv.ACCOUNTING_AI_API_KEY).toBe('');
+      expect(runtime.backendEnv.ACCOUNTING_AUTH_MODE).toBe('local');
+    },
+  );
   it('builds the signing component harness only for isolated local acceptance', async () => {
     vi.stubEnv('E2E_LOCAL_ISOLATION', '1');
     vi.resetModules();

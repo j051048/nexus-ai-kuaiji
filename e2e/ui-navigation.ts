@@ -1,5 +1,17 @@
-import { expect, type Page, type Response } from '@playwright/test';
+import { expect, type Page, type Response, type Locator } from '@playwright/test';
 import { presentationRole, workSurface } from '../src/workspace-presentation';
+
+/** Choose an explicit authorized company, never assume a multi-company default. */
+export async function selectIntakeCompany(dialog: Locator, name = '青屿设计（虚构示例）') {
+  const company = dialog.getByLabel('事项客户企业', { exact: true });
+  await expect(company).toBeVisible();
+  if (await company.evaluate((node) => node.tagName === 'SELECT')) {
+    await company.selectOption({ label: name });
+    await expect(company.locator('option:checked')).toHaveText(name);
+  } else {
+    await expect(company).toHaveText(name);
+  }
+}
 
 export async function openNavigation(page: Page) {
   const opener = page.getByRole('button', { name: '打开工作空间导航', exact: true });

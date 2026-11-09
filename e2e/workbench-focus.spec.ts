@@ -1,3 +1,4 @@
+import { selectIntakeCompany } from './ui-navigation';
 import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { checked, identity } from './formal-books-fixtures';
@@ -144,6 +145,7 @@ test('手机缩小视口和上传断网：保留填写、显式核对再重试�
   await page.goto('/workspace/home');
   await page.getByRole('button', { name: /^提交报销/ }).click();
   const dialog = page.getByRole('dialog', { name: '录入业务事项', exact: true });
+  await selectIntakeCompany(dialog);
   await dialog.getByLabel('发生日期', { exact: true }).fill('2026-10-03');
   await dialog.getByLabel('事项金额', { exact: true }).fill('128.50');
   await dialog.getByLabel('事项摘要', { exact: true }).fill('手机断网合成报销');

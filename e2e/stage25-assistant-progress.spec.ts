@@ -53,43 +53,64 @@ test('全所效率按月显示实际样本，暂无计时保持未知，账套�
     },
   });
   expect(started.status()).toBe(200);
-  await page.goto('/');
-  await choosePersona(page, 'accountant');
-  await page.goto('/workspace/portfolio');
-  await expect(page.getByRole('heading', { name: '看清每家企业的人工负担' })).toBeVisible({
-    timeout: 15000,
-  });
-  await page.getByLabel('效率统计月份').fill('2026-10');
-  // Other cases create independent companies in this run. Exercise the real
-  // pagination instead of assuming our two new books are on the first page.
-  async function findBookRow(name: string) {
-    await expect(page.getByRole('table')).toBeVisible();
-    while (await page.getByRole('button', { name: '上一页', exact: true }).isEnabled()) {
-      await page.getByRole('button', { name: '上一页', exact: true }).click();
+  const timer = await started.json();
+  try {
+    await page.goto('/');
+    await choosePersona(page, 'accountant');
+    await page.goto('/workspace/portfolio');
+    await expect(page.getByRole('heading', { name: '看清每家企业的人工负担' })).toBeVisible({
+      timeout: 15000,
+    });
+    await page.getByLabel('效率统计月份').fill('2026-10');
+    // Other cases create independent companies in this run. Exercise the real
+    // pagination instead of assuming our two new books are on the first page.
+    async function findBookRow(name: string) {
       await expect(page.getByRole('table')).toBeVisible();
+      while (await page.getByRole('button', { name: '上一页', exact: true }).isEnabled()) {
+        await page.getByRole('button', { name: '上一页', exact: true }).click();
+        await expect(page.getByRole('table')).toBeVisible();
+      }
+      for (let count = 0; count < 30; count++) {
+        const row = page.getByRole('row').filter({ hasText: name });
+        if (await row.count()) return row;
+        const next = page.getByRole('button', { name: '下一页', exact: true });
+        await expect(next).toBeEnabled();
+        await next.click();
+        await expect(page.getByRole('table')).toBeVisible();
+      }
+      throw new Error(`Expected authorized book missing: ${name}`);
     }
-    for (let count = 0; count < 30; count++) {
-      const row = page.getByRole('row').filter({ hasText: name });
-      if (await row.count()) return row;
-      const next = page.getByRole('button', { name: '下一页', exact: true });
-      await expect(next).toBeEnabled();
-      await next.click();
-      await expect(page.getByRole('table')).toBeVisible();
-    }
-    throw new Error(`Expected authorized book missing: ${name}`);
+    await expect(await findBookRow(unmeasured.book.name)).toContainText('暂无计时样本');
+    const measuredRow = await findBookRow(measured.book.name);
+    await expect(measuredRow).toContainText('1 次');
+    await measuredRow.locator('summary').click();
+    await expect(
+      measuredRow.getByRole('button', { name: `查看${measured.book.name}的计时` }),
+    ).toBeVisible();
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.screenshot({ path: 'artifacts/stage25-efficiency-mobile.png', fullPage: true });
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await measuredRow.getByRole('button', { name: `查看${measured.book.name}的计时` }).click();
+    await expect(page.getByRole('heading', { name: '用真实处理时间，衡量自动化。' })).toBeVisible();
+  } finally {
+    // Only release this test's own timer, using its latest server version.
+    await page.close();
+    const current = await (
+      await request.get('/api/efficiency/sessions', { headers: measured.headers })
+    ).json();
+    const owned = current.sessions.find((item: { id: string }) => item.id === timer.id);
+    expect(owned.book_id).toBe(measured.book.id);
+    const completed = await request.post(`/api/efficiency/sessions/${timer.id}/commands`, {
+      headers: measured.headers,
+      data: {
+        action: 'complete',
+        expected_version: owned.version,
+        idempotency_key: crypto.randomUUID(),
+      },
+    });
+    expect(completed.status(), await completed.text()).toBe(200);
+    expect((await completed.json()).state).toBe('completed');
   }
-  await expect(await findBookRow(unmeasured.book.name)).toContainText('暂无计时样本');
-  const measuredRow = await findBookRow(measured.book.name);
-  await expect(measuredRow).toContainText('1 次');
-  await measuredRow.locator('summary').click();
-  await expect(
-    measuredRow.getByRole('button', { name: `查看${measured.book.name}的计时` }),
-  ).toBeVisible();
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.screenshot({ path: 'artifacts/stage25-efficiency-mobile.png', fullPage: true });
-  await page.setViewportSize({ width: 1440, height: 1000 });
-  await measuredRow.getByRole('button', { name: `查看${measured.book.name}的计时` }).click();
-  await expect(page.getByRole('heading', { name: '用真实处理时间，衡量自动化。' })).toBeVisible();
 });
 async function open(page: Page, value: Awaited<ReturnType<typeof fixture>>) {
   await page.goto('/');

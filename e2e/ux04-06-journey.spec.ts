@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { expect, test, type APIRequestContext, type APIResponse } from '@playwright/test';
-import { choosePersona, openBusiness } from './ui-navigation';
+import { choosePersona, openBusiness, selectIntakeCompany } from './ui-navigation';
 import { independentReviewer } from './independent-review';
 
 test.setTimeout(90_000);
@@ -120,6 +120,7 @@ for (const width of [1280, 390]) {
     await openBusiness(page);
     await page.getByRole('button', { name: '录入业务事项', exact: true }).click();
     const dialog = page.getByRole('dialog');
+    await selectIntakeCompany(dialog, company.name);
     await expect(dialog.getByLabel('事项客户企业')).toHaveValue(company.id);
     const xml = readFileSync(
       'nexus_backend/tests/fixtures/stage16_SYNTHETIC_einvoice_0_3.xml',

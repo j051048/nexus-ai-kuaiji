@@ -251,7 +251,10 @@ describe('IMP03 row compression', () => {
     const fallback = taskTitle(technical, taskPresentation(technical, profile('finance')));
     expect(fallback).toContain('财务核验');
     expect(fallback).not.toContain('550e8400');
-    const realReference = { ...financeTask, title: '发票号 000123 / 550e8400-e29b-41d4-a716-446655440000' };
+    const realReference = {
+      ...financeTask,
+      title: '发票号 000123 / 550e8400-e29b-41d4-a716-446655440000',
+    };
     expect(taskTitle(realReference, taskPresentation(realReference, profile('finance')))).toBe(
       realReference.title,
     );

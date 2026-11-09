@@ -86,6 +86,11 @@ function render(initialEvent?: BusinessEvent) {
   );
 }
 describe('员工录入与退回补件呈现', () => {
+  it('分别命名办理建议和草稿保存状态，读屏和恢复断言不混用两者', () => {
+    const html = render();
+    expect(html).toContain('aria-label="票据办理下一步"');
+    expect(html).toMatch(/<span[^>]*role="status"[^>]*aria-label="草稿保存状态"/);
+  });
   it('退回原因置顶，保留原值和附件，明确重新提交而不是新建', () => {
     const html = render(event);
     expect(html).toContain('请补充本次差旅用途');

@@ -12,7 +12,17 @@ for (const [device, viewport] of [
     await page.setViewportSize(viewport);
     await page.goto('/workspace/inbox');
     const row = page.locator('.firm-inbox-delivery-row').filter({ hasText: f.book.name });
+    const pages = page.getByRole('navigation', { name: '交付待办分页', exact: true });
+    await expect(pages).toBeVisible();
+    for (let n = 0; n < 100 && !(await row.count()); n++) {
+      await expect(
+        pages.getByRole('button', { name: '下一页交付待办', exact: true }),
+      ).toBeEnabled();
+      await pages.getByRole('button', { name: '下一页交付待办', exact: true }).click();
+      await expect(pages).toBeVisible();
+    }
     await expect(row).toBeVisible();
+    const pageLabel = await pages.locator('span').innerText();
     if (device === 'mobile') {
       const description = page.locator('.firm-inbox-delivery-heading > div');
       expect((await description.boundingBox())!.width).toBeGreaterThanOrEqual(viewport.width - 80);
@@ -27,6 +37,7 @@ for (const [device, viewport] of [
     await panel.getByRole('button', { name: '返回待办列表', exact: true }).click();
     await expect(row.getByRole('button', { name: '查看签收进度', exact: true })).toBeVisible();
     await expect(row).toContainText('客户未签收');
+    await expect(pages.locator('span')).toHaveText(pageLabel);
     await row.getByRole('button', { name: '查看签收进度', exact: true }).click();
     await expect(panel).toContainText('由客户本人确认签收');
     await expect(panel.getByRole('button', { name: '确认签收', exact: true })).toHaveCount(0);

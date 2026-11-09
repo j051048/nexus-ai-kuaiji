@@ -17,6 +17,7 @@ SPECIALISTS = (
     "test_next_p0_receipts_postgres.py",
     "test_next_p1_handoff_postgres.py",
     "test_next_p2_handoff_postgres.py",
+    "test_task_journey_postgres.py",
 )
 
 
@@ -62,6 +63,20 @@ def test_delegated_handoff_suites_have_exact_cases_in_both_pg_gates(filename):
     assert filename in contract["files"]
     prefix = "nexus_backend.tests." + Path(filename).stem + "::"
     assert any(case.startswith(prefix) for case in contract["cases"])
+
+
+def test_delegated_task_journey_suite_has_an_exact_required_pg16_pg17_gate():
+    gate = job("ak05-postgres-gate")
+    assert "postgres: [16, 17]" in gate
+    assert "scripts/dcp_reliability_gate.py --suite tasks" in gate
+    assert "continue-on-error" not in gate and "|| true" not in gate
+    manifest = json.loads((ROOT / "scripts/dcp_reliability_required_cases.json").read_text())
+    contract = manifest["suites"]["tasks"]
+    assert "test_task_journey_postgres.py" in contract["files"]
+    assert any(
+        case.startswith("nexus_backend.tests.test_task_journey_postgres::")
+        for case in contract["cases"]
+    )
 
 
 def test_delegated_receipts_suite_runs_on_both_recovery_databases_without_skips():

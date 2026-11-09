@@ -52,6 +52,8 @@ export function FirmInbox({
 }) {
   const [bucket, setBucket] = useState<Bucket>(initialProgress?.bucket ?? 'all');
   const [offset, setOffset] = useState(initialProgress?.offset ?? 0);
+  const [deliveryPages, setDeliveryPages] = useState(initialProgress?.deliveryPages ?? [0]);
+  const deliveryOffset = deliveryPages[deliveryPages.length - 1];
   const [followup, setFollowup] = useState<FollowupState | null>(null);
   const [panelBusy, setPanelBusy] = useState(false);
   const opening = useRef(false),
@@ -79,10 +81,13 @@ export function FirmInbox({
       : parseFirmInbox(inbox.data, session.firm_id, session.user_id, bucket, offset);
   const feed = useMonthlyData<DeliveryFollowupFeed>(
     session,
-    '/delivery/followups?limit=8',
+    `/delivery/followups?limit=8&offset=${deliveryOffset}`,
     revision + externalRevision,
   );
-  const followups = feed.data && validateFollowupFeed(feed.data, session) ? feed.data : null;
+  const followups =
+    feed.data && validateFollowupFeed(feed.data, session, { offset: deliveryOffset, limit: 8 })
+      ? feed.data
+      : null;
   const followupError =
     feed.error || (feed.data && !followups ? '交付待办返回格式不符，暂不展示。' : '');
   const error =
@@ -92,8 +97,8 @@ export function FirmInbox({
 
   const key = (item: Item) => `${item.kind}:${item.ref}`;
   useEffect(() => {
-    onProgress?.({ bucket, offset });
-  }, [bucket, offset, onProgress]);
+    onProgress?.({ bucket, offset, deliveryPages });
+  }, [bucket, offset, deliveryPages, onProgress]);
   useEffect(() => {
     if (data && offset > 0 && offset >= data.pagination.total)
       setOffset(Math.max(0, Math.floor((data.pagination.total - 1) / 20) * 20));
@@ -390,7 +395,37 @@ export function FirmInbox({
             ))}
           </ul>
         ) : (
-          <p className="firm-inbox-delivery-empty">当前可见范围内暂无交付待办。</p>
+          <p className="firm-inbox-delivery-empty">本页暂无可见交付待办。</p>
+        )}
+        {followups?.pagination && (
+          <nav className="pagination-controls" aria-label="交付待办分页">
+            <button
+              type="button"
+              className="button secondary"
+              disabled={feed.loading || locked || !!busy || panelBusy || deliveryPages.length < 2}
+              onClick={() => setDeliveryPages((pages) => pages.slice(0, -1))}
+            >
+              上一页交付待办
+            </button>
+            <span>第 {deliveryPages.length} 页</span>
+            <button
+              type="button"
+              className="button secondary"
+              disabled={
+                feed.loading ||
+                locked ||
+                !!busy ||
+                panelBusy ||
+                followups.pagination.next_offset === null
+              }
+              onClick={() => {
+                const next = followups.pagination?.next_offset;
+                if (next != null) setDeliveryPages((pages) => [...pages, next]);
+              }}
+            >
+              下一页交付待办
+            </button>
+          </nav>
         )}
       </section>
 

@@ -35,7 +35,7 @@ for (const viewport of [
     page.on('pageerror', (error) => errors.push(error.message));
     await page.setViewportSize(viewport);
     let panel = await openTax(page, f);
-    await expect(panel).toContainText('尚未申报');
+    await expect(panel).toContainText('生成底稿不代表已申报');
     await expect(panel.getByRole('combobox', { name: '纳税人类型', exact: true })).toBeVisible();
     await expect(panel.getByLabel('增值税率（%）', { exact: true })).toHaveValue('');
     await expect(panel.getByRole('button', { name: '生成税务底稿', exact: true })).toBeDisabled();

@@ -155,7 +155,7 @@ for (const viewport of [
     await expect(page.locator('.workspace-inbox .pagination-controls')).toBeVisible();
     await page.screenshot({ path: `${output}/finance-home-${device}.png`, fullPage: true });
     await noPageOverflow(page);
-    await fontAtLeast(primary.getByRole('button', { name: '查看待核验事项', exact: true }), 13);
+    await fontAtLeast(primary.locator('.button.primary'), 13);
     await fontAtLeast(page.locator('.workspace-task-search input'), device === 'mobile' ? 16 : 14);
     await fontAtLeast(
       page

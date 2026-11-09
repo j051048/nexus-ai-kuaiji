@@ -72,7 +72,7 @@ describe('V03 employee intake presentation', () => {
   it('announces the existing save state atomically and links confirmation to its submission path', () => {
     const html = render();
     expect(html).toContain(
-      'class="intake-save-state" role="status" aria-live="polite" aria-atomic="true"',
+      'class="intake-save-state" role="status" aria-label="草稿保存状态" aria-live="polite" aria-atomic="true"',
     );
     expect(html).toMatch(/type="checkbox"[^>]*aria-describedby="intake-submit-help"/);
     expect(html).toContain('id="intake-submit-help"');

@@ -10,8 +10,9 @@ def build_delivery_followup_router(actor_dependency):
     def feed(
         request: Request,
         limit: int = Query(default=50, ge=1, le=200),
+        offset: int = Query(default=0, ge=0, le=1_000_000),
         actor=Depends(actor_dependency),
     ):
-        return request.app.state.delivery_followups.followups(actor, limit)
+        return request.app.state.delivery_followups.followups(actor, limit, offset)
 
     return router

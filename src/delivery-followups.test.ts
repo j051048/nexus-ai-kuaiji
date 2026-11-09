@@ -44,6 +44,21 @@ const feed: DeliveryFollowupFeed = {
 };
 
 describe('delivery followups', () => {
+  it('拒绝错误页码、倒退游标和超额条数，不把上一页当作当前页', () => {
+    const page = { ...feed, pagination: { offset: 8, limit: 8, next_offset: 16 } };
+    expect(validateFollowupFeed(page, undefined, { offset: 8, limit: 8 })).toBe(true);
+    for (const pagination of [
+      { offset: 0, limit: 8, next_offset: 8 },
+      { offset: 8, limit: 8, next_offset: 8 },
+      { offset: 8, limit: 8, next_offset: true },
+      { offset: 8, limit: 8, next_offset: 1000001 },
+      { offset: 8, limit: 2, next_offset: 16 },
+    ])
+      expect(
+        validateFollowupFeed({ ...feed, pagination }, undefined, { offset: 8, limit: 8 }),
+      ).toBe(false);
+    expect(validateFollowupFeed(feed, undefined, { offset: 8, limit: 8 })).toBe(false);
+  });
   it('routes unknown sends to a human instead of asking the customer to wait', () => {
     const rows = followupRows({
       count: 1,

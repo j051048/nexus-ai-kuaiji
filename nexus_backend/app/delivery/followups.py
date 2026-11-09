@@ -379,8 +379,10 @@ class DeliveryFollowupService(NotificationDispatcher):
                 return step, owner
         return "review", "accountant"
 
-    def followups(self, actor, limit: int = 100) -> dict:
+    def followups(self, actor, limit: int = 100, offset: int = 0) -> dict:
         """Bounded feed for the firm inbox: only periods that need a human step."""
+        if type(offset) is not int or not 0 <= offset <= 1_000_000:
+            raise AccountingError("交付待办页码无效", 422)
         limit = max(1, min(int(limit), 200))
         with self.db.transaction(actor=actor) as conn:
             self.access.require_user(conn, actor.user_id)
@@ -389,11 +391,16 @@ class DeliveryFollowupService(NotificationDispatcher):
                 "EXISTS(SELECT 1 FROM internal_period_locks l WHERE l.book_id=p.book_id "
                 "AND l.period=p.period) AS locked "
                 "FROM books b JOIN periods p ON p.book_id=b.id "
-                "WHERE b.firm_id=? ORDER BY p.period DESC,b.name LIMIT ?",
-                (actor.firm_id, limit * 4),
+                "WHERE b.firm_id=? ORDER BY p.period DESC,b.name,b.id LIMIT ? OFFSET ?",
+                (actor.firm_id, limit * 4 + 1, offset),
             ).fetchall()
             items = []
-            for row in rows:
+            scanned = 0
+            # Bound work even when most rows are unauthorized or already complete.
+            # Advance over examined rows, not returned items; an empty visible
+            # page can still offer a next page without exposing hidden records.
+            for row in rows[: limit * 4]:
+                scanned += 1
                 try:
                     state = self._status(conn, actor, row["book_id"], row["period"])
                 except AccountingError:
@@ -420,6 +427,11 @@ class DeliveryFollowupService(NotificationDispatcher):
                 "items": items,
                 "count": len(items),
                 "scope": {"firm_id": actor.firm_id, "user_id": actor.user_id},
+                "pagination": {
+                    "offset": offset,
+                    "limit": limit,
+                    "next_offset": offset + scanned if scanned < len(rows) else None,
+                },
             }
 
     # --------------------------------------------------- notification states

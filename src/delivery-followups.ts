@@ -27,6 +27,7 @@ export type FollowupAction = {
 export type DeliveryFollowupFeed = {
   items: DeliveryFollowup[];
   count: number;
+  pagination?: { offset: number; limit: number; next_offset: number | null };
   scope?: { firm_id: string | null; user_id: string };
 };
 export type FollowupState = {
@@ -99,10 +100,30 @@ export function validFollowupAction(value: unknown): value is FollowupAction {
 export function validateFollowupFeed(
   value: unknown,
   scope?: { firm_id: string | null; user_id: string },
+  page?: { offset: number; limit: number },
 ): value is DeliveryFollowupFeed {
   if (!value || typeof value !== 'object') return false;
   const feed = value as Partial<DeliveryFollowupFeed>;
   if (!Array.isArray(feed.items)) return false;
+  const pagination = feed.pagination;
+  if (pagination) {
+    if (
+      !object(pagination) ||
+      !Number.isSafeInteger(pagination.offset) ||
+      pagination.offset < 0 ||
+      pagination.offset > 1_000_000 ||
+      !Number.isSafeInteger(pagination.limit) ||
+      pagination.limit < 1 ||
+      pagination.limit > 200 ||
+      feed.items.length > pagination.limit ||
+      (page && (pagination.offset !== page.offset || pagination.limit !== page.limit)) ||
+      (pagination.next_offset !== null &&
+        (!Number.isSafeInteger(pagination.next_offset) ||
+          pagination.next_offset <= pagination.offset ||
+          pagination.next_offset > Math.min(1_000_000, pagination.offset + pagination.limit * 4)))
+    )
+      return false;
+  } else if (page && (page.offset !== 0 || feed.items.length > page.limit)) return false;
   if (
     !Number.isSafeInteger(feed.count) ||
     feed.count !== feed.items.length ||

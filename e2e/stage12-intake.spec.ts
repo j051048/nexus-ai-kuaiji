@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { choosePersona, openBusiness } from './ui-navigation';
+import { choosePersona, openBusiness, selectIntakeCompany } from './ui-navigation';
 
 const receipt = {
   name: '第十二阶段原始票据.png',
@@ -42,8 +42,12 @@ test('员工一体化原件上传、服务端草稿恢复和独立部门审批',
   await page.locator('.intake-template-picker > summary').click();
   await page.getByRole('button', { name: /^采购 \/ 费用/ }).click();
   await expect(page.getByLabel('事项金额', { exact: true })).toHaveValue('128.50');
-  await expect(page.getByRole('dialog').getByRole('status')).toContainText('草稿已保存');
-  await expect(page.getByRole('dialog').getByRole('status')).toContainText('草稿已保存');
+  await expect(
+    page.getByRole('dialog').getByRole('status', { name: '草稿保存状态', exact: true }),
+  ).toContainText('草稿已保存');
+  await expect(
+    page.getByRole('dialog').getByRole('status', { name: '草稿保存状态', exact: true }),
+  ).toContainText('草稿已保存');
   await page.getByRole('button', { name: '关闭业务事项表单', exact: true }).click();
   await page.reload();
   // Demo reload intentionally signs in as the default accountant; authenticate
@@ -97,6 +101,7 @@ test('手机录入同一界面完成并可返回独立事项列表', async ({ pa
   await choosePersona(page, 'employee');
   await openBusiness(page);
   await page.getByRole('button', { name: '录入业务事项', exact: true }).click();
+  await selectIntakeCompany(page.getByRole('dialog'));
   await page.getByLabel('一体化录入上传附件').setInputFiles(receipt);
   await expect(page.getByText(receipt.name, { exact: true })).toBeVisible();
   await page.getByLabel('事项摘要', { exact: true }).fill(description);

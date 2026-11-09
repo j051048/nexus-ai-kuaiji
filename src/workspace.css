@@ -1106,7 +1106,10 @@
 }
 .workspace-task {
   display: grid;
-  grid-template-columns: minmax(180px, 1fr) minmax(125px, 155px) minmax(115px, 150px) minmax(140px, auto);
+  grid-template-columns: minmax(180px, 1fr) minmax(125px, 155px) minmax(115px, 150px) minmax(
+      140px,
+      auto
+    );
   padding: 18px 22px;
   gap: 18px;
   min-height: 108px;
@@ -1191,7 +1194,10 @@
 }
 .workspace-table-labels {
   display: grid;
-  grid-template-columns: minmax(180px, 1fr) minmax(125px, 155px) minmax(115px, 150px) minmax(140px, auto);
+  grid-template-columns: minmax(180px, 1fr) minmax(125px, 155px) minmax(115px, 150px) minmax(
+      140px,
+      auto
+    );
   gap: 18px;
   padding: 10px 22px;
   background: #f7f9f3;

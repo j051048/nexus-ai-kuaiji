@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { choosePersona } from './ui-navigation';
+import { choosePersona, selectIntakeCompany } from './ui-navigation';
 
 test.setTimeout(60_000);
 for (const viewport of [
@@ -15,6 +15,7 @@ for (const viewport of [
       .getByRole('button', { name: /提交报销/ })
       .click();
     const dialog = page.getByRole('dialog');
+    await selectIntakeCompany(dialog);
     await dialog.getByLabel('发生日期', { exact: true }).fill('2035-01-03');
     const preparation = dialog.getByRole('region', { name: '交接准备', exact: true });
     await expect(preparation).toContainText('2035-01 尚未开账');
@@ -44,6 +45,7 @@ test('准备检查拒绝错企业响应，切换日期后不接纳迟到建议',
     .getByRole('button', { name: /提交报销/ })
     .click();
   const dialog = page.getByRole('dialog');
+  await selectIntakeCompany(dialog);
   const preparation = dialog.getByRole('region', { name: '交接准备', exact: true });
   let release!: () => void;
   const waiting = new Promise<void>((resolve) => {

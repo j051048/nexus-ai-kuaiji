@@ -1,6 +1,6 @@
 import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
-import { choosePersona } from './ui-navigation';
+import { choosePersona, selectIntakeCompany } from './ui-navigation';
 import type { BusinessContext, BusinessEvent } from '../src/business-types';
 
 test.setTimeout(90_000);
@@ -151,6 +151,7 @@ for (const viewport of [
       .getByRole('button', { name: /提交报销/ })
       .click();
     const dialog = page.getByRole('dialog', { name: '录入业务事项', exact: true });
+    await selectIntakeCompany(dialog);
     await expect(dialog.locator('.intake-template-description').first()).not.toBeVisible();
     await dialog.locator('.intake-template-picker > summary').click();
     await expect(dialog.locator('.intake-template-description').first()).toBeVisible();
@@ -165,7 +166,9 @@ for (const viewport of [
       .setInputFiles({ name: fileName, mimeType: 'image/png', buffer: image });
     await expect(dialog.locator('.intake-file')).toContainText(fileName);
     await expect(dialog.locator('.intake-file')).toContainText('原件已保存');
-    await expect(dialog.getByRole('status')).toContainText('草稿已保存');
+    await expect(dialog.getByRole('status', { name: '草稿保存状态', exact: true })).toContainText(
+      '草稿已保存',
+    );
     await expect(dialog.getByRole('button', { name: '提交审批', exact: true })).toBeDisabled();
     await dialog.locator('.intake-scroll').evaluate((node) => {
       node.scrollTop = 0;

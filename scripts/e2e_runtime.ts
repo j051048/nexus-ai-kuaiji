@@ -98,6 +98,9 @@ function isolatedEnvironment(environ: RuntimeEnvironment): Record<string, string
     ACCOUNTING_MIGRATION_CONCURRENCY: '1',
     ACCOUNTING_PROJECTION_POLL_SECONDS: '5',
     ACCOUNTING_SEED: '1',
+    // The isolated suite exercises deterministic read-only analysis. Provider
+    // endpoints and credentials remain empty; production defaults are untouched.
+    ACCOUNTING_ASSISTANT_INVESTIGATION: '1',
     APP_ENV: 'test',
     ENV: 'test',
     ENVIRONMENT: 'test',

@@ -1,0 +1,889 @@
+{
+  "schema": "ci-repair-acceptance-v1",
+  "date": "2026-11-09",
+  "status": "local_passed_with_intermittent_history",
+  "candidate": {
+    "schema": "release-candidate-v1",
+    "head": "0c8ac11830b858d54f380f842cb2b41dcd648a73",
+    "source_files": 2016,
+    "source_sha256": "43f71363605056aff3f48ed21c291543da5f07b6e38cda7d92adeeeeb89dc2aa",
+    "migration_files": 349,
+    "migration_sha256": "5ac57554c2b7e68f0cbc126f4a54b3c7481db18b208d8be114a0edf71729024f"
+  },
+  "remote_ci": "not_run_no_push",
+  "original_remote_failures": [
+    {
+      "shard": 1,
+      "test": "e2e/b06-role-home.spec.ts:6:1 › B06 角色首页显示服务端授权能力，员工切换后不保留会计入口",
+      "local_status": [
+        "expected"
+      ]
+    },
+    {
+      "shard": 1,
+      "test": "e2e/c01-intake-recovery.spec.ts:110:3 › F12 1440 过期识别恢复保留原件且不采用旧建议，可人工确认后提交",
+      "local_status": [
+        "expected"
+      ]
+    },
+    {
+      "shard": 1,
+      "test": "e2e/c01-intake-recovery.spec.ts:168:3 › F13 1440 识别运行态保存后刷新重开不重复识别、不自动提交",
+      "local_status": [
+        "expected"
+      ]
+    },
+    {
+      "shard": 1,
+      "test": "e2e/c01-intake-recovery.spec.ts:110:3 › F12 375 过期识别恢复保留原件且不采用旧建议，可人工确认后提交",
+      "local_status": [
+        "expected"
+      ]
+    },
+    {
+      "shard": 1,
+      "test": "e2e/c01-intake-recovery.spec.ts:168:3 › F13 375 识别运行态保存后刷新重开不重复识别、不自动提交",
+      "local_status": [
+        "expected"
+      ]
+    },
+    {
+      "shard": 2,
+      "test": "e2e/imp08-analysis-boundaries.spec.ts:20:3 › IMP-R2 rejects foreign analysis atomically 1366",
+      "local_status": [
+        "expected"
+      ]
+    },
+    {
+      "shard": 2,
+      "test": "e2e/imp08-analysis-boundaries.spec.ts:33:3 › IMP-R2 drops late result after target change 1366 ",
+      "local_status": [
+        "expected"
+      ]
+    },
+    {
+      "shard": 2,
+      "test": "e2e/imp08-analysis-boundaries.spec.ts:20:3 › IMP-R2 rejects foreign analysis atomically 390",
+      "local_status": [
+        "expected"
+      ]
+    },
+    {
+      "shard": 2,
+      "test": "e2e/imp08-analysis-boundaries.spec.ts:33:3 › IMP-R2 drops late result after target change 390",
+      "local_status": [
+        "expected"
+      ]
+    },
+    {
+      "shard": 2,
+      "test": "e2e/imp08-analysis-real.spec.ts:4:1 › IMP08 analysis panel runs against the real local API and never writes ",
+      "local_status": [
+        "expected"
+      ]
+    },
+    {
+      "shard": 2,
+      "test": "e2e/imp08-analysis.spec.ts:4:1 › IMP08 analysis panel shows deterministic facts, coverage and an evidence link without writes ",
+      "local_status": [
+        "expected"
+      ]
+    },
+    {
+      "shard": 2,
+      "test": "e2e/n04-tax-workpapers.spec.ts:29:3 › N04 1280 档案到独立复核导出使用真实身份和发票",
+      "local_status": [
+        "expected"
+      ]
+    },
+    {
+      "shard": 2,
+      "test": "e2e/n04-tax-workpapers.spec.ts:29:3 › N04 390 档案到独立复核导出使用真实身份和发票",
+      "local_status": [
+        "expected"
+      ]
+    },
+    {
+      "shard": 3,
+      "test": "e2e/stage12-intake.spec.ts:22:1 › 员工一体化原件上传、服务端草稿恢复和独立部门审批",
+      "local_status": [
+        "expected"
+      ]
+    },
+    {
+      "shard": 3,
+      "test": "e2e/stage12-intake.spec.ts:93:1 › 手机录入同一界面完成并可返回独立事项列表",
+      "local_status": [
+        "expected"
+      ]
+    },
+    {
+      "shard": 3,
+      "test": "e2e/task-journey.spec.ts:9:3 › desktop 在交付待办中实际生成包，返回仍等待客户本人签收",
+      "local_status": [
+        "expected"
+      ]
+    },
+    {
+      "shard": 3,
+      "test": "e2e/task-journey.spec.ts:9:3 › mobile 在交付待办中实际生成包，返回仍等待客户本人签收",
+      "local_status": [
+        "expected"
+      ]
+    },
+    {
+      "shard": 3,
+      "test": "e2e/tasks0712.spec.ts:34:3 › 0712 1365 试点样本和产品边界可核对",
+      "local_status": [
+        "expected"
+      ]
+    },
+    {
+      "shard": 3,
+      "test": "e2e/tasks0712.spec.ts:34:3 › 0712 390 试点样本和产品边界可核对",
+      "local_status": [
+        "expected"
+      ]
+    },
+    {
+      "shard": 4,
+      "test": "e2e/ux03-preparation.spec.ts:9:3 › 填写日期时即知交接准备，不改业务日期 1280",
+      "local_status": [
+        "expected"
+      ]
+    },
+    {
+      "shard": 4,
+      "test": "e2e/ux03-preparation.spec.ts:9:3 › 填写日期时即知交接准备，不改业务日期 390",
+      "local_status": [
+        "expected"
+      ]
+    },
+    {
+      "shard": 4,
+      "test": "e2e/ux03-preparation.spec.ts:39:1 › 准备检查拒绝错企业响应，切换日期后不接纳迟到建议",
+      "local_status": [
+        "expected"
+      ]
+    },
+    {
+      "shard": 4,
+      "test": "e2e/ux04-06-journey.spec.ts:106:3 › 真实 XML 预填且迟到结果保留人工金额 1280",
+      "local_status": [
+        "expected"
+      ]
+    },
+    {
+      "shard": 4,
+      "test": "e2e/ux04-06-journey.spec.ts:106:3 › 真实 XML 预填且迟到结果保留人工金额 390",
+      "local_status": [
+        "expected"
+      ]
+    },
+    {
+      "shard": 4,
+      "test": "e2e/v01-visual-foundation.spec.ts:149:3 › mobile 企业财务及事务所：导航、标题和全局变量不依赖懒加载顺序",
+      "local_status": [
+        "expected"
+      ]
+    },
+    {
+      "shard": 4,
+      "test": "e2e/v02-role-workspaces.spec.ts:178:3 › mobile 企业财务：下一项优先，未知数量与等待状态不伪装完成",
+      "local_status": [
+        "expected"
+      ]
+    },
+    {
+      "shard": 4,
+      "test": "e2e/v03-entry-review.spec.ts:145:3 › desktop 员工录入：真实附件与草稿状态可读，尚未确认不提交",
+      "local_status": [
+        "expected"
+      ]
+    },
+    {
+      "shard": 4,
+      "test": "e2e/v03-entry-review.spec.ts:145:3 › mobile 员工录入：真实附件与草稿状态可读，尚未确认不提交",
+      "local_status": [
+        "expected"
+      ]
+    },
+    {
+      "shard": 4,
+      "test": "e2e/verify-firm-access.spec.ts:144:1 › 三个事务所页面正常加载，不访问管理企业接口，不重建登录身份",
+      "local_status": [
+        "expected"
+      ]
+    },
+    {
+      "shard": 4,
+      "test": "e2e/verify-firm-access.spec.ts:165:3 › 运行可观测性收到普通资源403后保留原页面并清除旧结果",
+      "local_status": [
+        "expected"
+      ]
+    },
+    {
+      "shard": 4,
+      "test": "e2e/verify-firm-access.spec.ts:197:1 › 滚动部署缺少worker_health时显示未知，仍不展示旧全局worker内容",
+      "local_status": [
+        "expected"
+      ]
+    },
+    {
+      "shard": 4,
+      "test": "e2e/verify-firm-access.spec.ts:207:1 › 真正401会清除登录与页面数据，不后台自动重新登录",
+      "local_status": [
+        "expected"
+      ]
+    },
+    {
+      "shard": 4,
+      "test": "e2e/workbench-focus.spec.ts:137:1 › 手机缩小视口和上传断网：保留填写、显式核对再重试，不重复提交",
+      "local_status": [
+        "expected"
+      ]
+    }
+  ],
+  "frontend": {
+    "path": "tmp_test/ci-repair/20261109/frontend-full-green.json",
+    "sha256": "13141b5d9adb3324934e0f9f1f0a77b6088f589d36a1234c5b93c7cfd4a3bd29",
+    "passed": 1354,
+    "failed": 0,
+    "pending": 0
+  },
+  "backend": [
+    {
+      "path": "tmp_test/ci-repair/20261109/gate-contracts.xml",
+      "sha256": "1aa42e5abd45c1b1a93776c0429c6c8e9dc96cbe41d51c03aa61f603033f0a03",
+      "tests": 174,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 174
+    },
+    {
+      "path": "tmp_test/ci-repair/20261109/backend-related.xml",
+      "sha256": "98a1d876950217e03b6bb229afff2932fca2bddc86d1fb4f6ee94eaf19003d4f",
+      "tests": 49,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 49
+    },
+    {
+      "path": "tmp_test/ci-repair/20261109/n02-contract-red.xml",
+      "sha256": "e5e4290f58098a68851f8795941f3a4fefc45f957a8e44dc0936686a0d8bf86a",
+      "tests": 11,
+      "failures": 1,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 10
+    },
+    {
+      "path": "tmp_test/ci-repair/20261109/n02-contract-green.xml",
+      "sha256": "c6121f18393c3c26d28c97ff65810171a5d9eafb3e325e91501083cdc9b43f63",
+      "tests": 12,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 12
+    },
+    {
+      "path": "tmp_test/ci-repair/20261109/feed-red.xml",
+      "sha256": "512cafe9279b6dca1df514824c58e86ab1a1a613219645368c12695b2de1217e",
+      "tests": 6,
+      "failures": 2,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 4
+    },
+    {
+      "path": "tmp_test/ci-repair/20261109/feed-green.xml",
+      "sha256": "efc51d5aac8ac91ca6ed2c4f6ddbe9a0877b0bfbe275cd5c7e949a0acbeed711",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 6
+    }
+  ],
+  "postgres": [
+    {
+      "suite": "n02-n03",
+      "major": 16,
+      "path": "tmp_test/ci-repair/20261109/pg16-n02-n03/summary.json",
+      "sha256": "83561a9a333f46ce12227a9d6e335822e4e7529b5cc79fbdb2ec3a5e0dde7661",
+      "result": {
+        "schema": "n02-n03-pg-gate-v1",
+        "status": "passed",
+        "major": 16,
+        "suites": {
+          "n02": {
+            "status": "passed",
+            "passed": 45,
+            "junit_sha256": "a26b29a2bee004d99cbd27ff4b28791bf3204e33c9e684281ebe631aaab214d4"
+          },
+          "n03": {
+            "status": "passed",
+            "passed": 56,
+            "junit_sha256": "2ba5753b02d356cfaca3998cf821d28482e18a724c0ba3fdef525a590e060968"
+          }
+        },
+        "roles_checked": true,
+        "candidate": {
+          "schema": "release-candidate-v1",
+          "head": "0c8ac11830b858d54f380f842cb2b41dcd648a73",
+          "source_files": 2016,
+          "source_sha256": "43f71363605056aff3f48ed21c291543da5f07b6e38cda7d92adeeeeb89dc2aa",
+          "migration_files": 349,
+          "migration_sha256": "5ac57554c2b7e68f0cbc126f4a54b3c7481db18b208d8be114a0edf71729024f"
+        },
+        "required_cases_sha256": "7742fbf621476d7feb0a61870a56915947828530426a1440ccd0b0c2fd91b050",
+        "server_version_num": 160015,
+        "durability": {
+          "fsync": "on",
+          "synchronous_commit": "on",
+          "full_page_writes": "on"
+        },
+        "migrations": {
+          "status": "verified",
+          "count": 210,
+          "digest": "5ac57554c2b7e68f0cbc126f4a54b3c7481db18b208d8be114a0edf71729024f"
+        },
+        "passed": 101
+      }
+    },
+    {
+      "suite": "tasks",
+      "major": 16,
+      "path": "tmp_test/ci-repair/20261109/pg16-tasks/summary.json",
+      "sha256": "95f62cc06f19cebab8462e2246eb7fe05a0ec829493805277ef9ede3ac26a222",
+      "result": {
+        "status": "passed",
+        "suite": "tasks",
+        "major": 16,
+        "candidate": {
+          "schema": "release-candidate-v1",
+          "head": "0c8ac11830b858d54f380f842cb2b41dcd648a73",
+          "source_files": 2016,
+          "source_sha256": "43f71363605056aff3f48ed21c291543da5f07b6e38cda7d92adeeeeb89dc2aa",
+          "migration_files": 349,
+          "migration_sha256": "5ac57554c2b7e68f0cbc126f4a54b3c7481db18b208d8be114a0edf71729024f"
+        },
+        "manifest_sha256": "afb8c631bb7afca06f0921e84ce8a79dc4e18e188dafe0c8f92414e00257fdef",
+        "configuration_sha256": "4a52a8394ac30381c9f59b53aa49cdf44fab8d7b7c4807df3a4cfb62d2e6adb1",
+        "passed": 36,
+        "junit_sha256": "716c4264b320bfa4305c3dcac900fd3fc5f0b7d187183c0161844161154b7a0a"
+      }
+    },
+    {
+      "suite": "c01",
+      "major": 16,
+      "path": "tmp_test/ci-repair/20261109/pg16-c01/summary.json",
+      "sha256": "4554b56bd2ba388da6f69bd91746bcfcc2125a0faabad888a0f5f014885f93e7",
+      "result": {
+        "schema": "c01-fresh-gate-v1",
+        "status": "passed",
+        "phase": "verification",
+        "candidate": {
+          "schema": "release-candidate-v1",
+          "head": "0c8ac11830b858d54f380f842cb2b41dcd648a73",
+          "source_files": 2016,
+          "source_sha256": "43f71363605056aff3f48ed21c291543da5f07b6e38cda7d92adeeeeb89dc2aa",
+          "migration_files": 349,
+          "migration_sha256": "5ac57554c2b7e68f0cbc126f4a54b3c7481db18b208d8be114a0edf71729024f"
+        },
+        "major": 16,
+        "environment": {
+          "run_id": "bfdc8a8c7a744d5bba37ad8ab243eba4",
+          "fresh_database": true,
+          "initial_companies": 0,
+          "configuration_sha256": "7f9002303a875721c445281c73077e0ce499b976649ec96c0170957f807bd7d1",
+          "retained_for_diagnosis": true
+        },
+        "verification": {
+          "major": 16,
+          "status": "passed",
+          "candidate": {
+            "schema": "release-candidate-v1",
+            "head": "0c8ac11830b858d54f380f842cb2b41dcd648a73",
+            "source_files": 2016,
+            "source_sha256": "43f71363605056aff3f48ed21c291543da5f07b6e38cda7d92adeeeeb89dc2aa",
+            "migration_files": 349,
+            "migration_sha256": "5ac57554c2b7e68f0cbc126f4a54b3c7481db18b208d8be114a0edf71729024f"
+          },
+          "required_cases_sha256": "c21369c3a5bebaae78a7a4df0a21b61f8a3a57de29782b470dd7d78d99d80e47",
+          "timeout_seconds": 600,
+          "passed": 34,
+          "junit_sha256": "9839bc0457c8e741b84805a78b10903f3e7ece13e4bc148834e9d86ee3485bf3",
+          "elapsed_seconds": 132.459
+        },
+        "passed": 34,
+        "junit_sha256": "9839bc0457c8e741b84805a78b10903f3e7ece13e4bc148834e9d86ee3485bf3",
+        "required_cases_sha256": "c21369c3a5bebaae78a7a4df0a21b61f8a3a57de29782b470dd7d78d99d80e47",
+        "elapsed_seconds": 132.459,
+        "timeout_seconds": 600
+      }
+    },
+    {
+      "suite": "n02-n03",
+      "major": 17,
+      "path": "tmp_test/ci-repair/20261109/pg17-n02-n03/summary.json",
+      "sha256": "f216fdec2a6d15167856fd2444a67cb9218e4616c96517fe1c8431ff3c8cf1fa",
+      "result": {
+        "schema": "n02-n03-pg-gate-v1",
+        "status": "passed",
+        "major": 17,
+        "suites": {
+          "n02": {
+            "status": "passed",
+            "passed": 45,
+            "junit_sha256": "b5a66588a3d77864f55c507faf15a2580a2b9a36830de340312e26ba64fef732"
+          },
+          "n03": {
+            "status": "passed",
+            "passed": 56,
+            "junit_sha256": "b05826216a6611d143b73324cb26f79e07143e460a2c243fa22227880f748246"
+          }
+        },
+        "roles_checked": true,
+        "candidate": {
+          "schema": "release-candidate-v1",
+          "head": "0c8ac11830b858d54f380f842cb2b41dcd648a73",
+          "source_files": 2016,
+          "source_sha256": "43f71363605056aff3f48ed21c291543da5f07b6e38cda7d92adeeeeb89dc2aa",
+          "migration_files": 349,
+          "migration_sha256": "5ac57554c2b7e68f0cbc126f4a54b3c7481db18b208d8be114a0edf71729024f"
+        },
+        "required_cases_sha256": "7742fbf621476d7feb0a61870a56915947828530426a1440ccd0b0c2fd91b050",
+        "server_version_num": 170011,
+        "durability": {
+          "fsync": "on",
+          "synchronous_commit": "on",
+          "full_page_writes": "on"
+        },
+        "migrations": {
+          "status": "verified",
+          "count": 210,
+          "digest": "5ac57554c2b7e68f0cbc126f4a54b3c7481db18b208d8be114a0edf71729024f"
+        },
+        "passed": 101
+      }
+    },
+    {
+      "suite": "tasks",
+      "major": 17,
+      "path": "tmp_test/ci-repair/20261109/pg17-tasks/summary.json",
+      "sha256": "fc3b570aa0c46ec4371be0ba3827695c4729e8b4a1e3486196ee724ff8c55b4b",
+      "result": {
+        "status": "passed",
+        "suite": "tasks",
+        "major": 17,
+        "candidate": {
+          "schema": "release-candidate-v1",
+          "head": "0c8ac11830b858d54f380f842cb2b41dcd648a73",
+          "source_files": 2016,
+          "source_sha256": "43f71363605056aff3f48ed21c291543da5f07b6e38cda7d92adeeeeb89dc2aa",
+          "migration_files": 349,
+          "migration_sha256": "5ac57554c2b7e68f0cbc126f4a54b3c7481db18b208d8be114a0edf71729024f"
+        },
+        "manifest_sha256": "afb8c631bb7afca06f0921e84ce8a79dc4e18e188dafe0c8f92414e00257fdef",
+        "configuration_sha256": "0c426ae963aaae3c504dcc16d929a51754436b3e7a1cb12dbb1f21a663af5ccb",
+        "passed": 36,
+        "junit_sha256": "6f142ff488a4ec5900cf1da7c2601f88d0fca4b4158c55e2fa582c5ef2c4f5bb"
+      }
+    },
+    {
+      "suite": "c01",
+      "major": 17,
+      "path": "tmp_test/ci-repair/20261109/pg17-c01/summary.json",
+      "sha256": "cb2f00c0e34234d104355d5748ffc86597c8b0f7bcd6f08bfef37bbb8f3559ad",
+      "result": {
+        "schema": "c01-fresh-gate-v1",
+        "status": "passed",
+        "phase": "verification",
+        "candidate": {
+          "schema": "release-candidate-v1",
+          "head": "0c8ac11830b858d54f380f842cb2b41dcd648a73",
+          "source_files": 2016,
+          "source_sha256": "43f71363605056aff3f48ed21c291543da5f07b6e38cda7d92adeeeeb89dc2aa",
+          "migration_files": 349,
+          "migration_sha256": "5ac57554c2b7e68f0cbc126f4a54b3c7481db18b208d8be114a0edf71729024f"
+        },
+        "major": 17,
+        "environment": {
+          "run_id": "071bb9e691e44f4cbb1f9ee49afc9f3a",
+          "fresh_database": true,
+          "initial_companies": 0,
+          "configuration_sha256": "90da513e5ef9178f743810860ce9bf3ad0f9313963d802afa3d965a487e97b6c",
+          "retained_for_diagnosis": true
+        },
+        "verification": {
+          "major": 17,
+          "status": "passed",
+          "candidate": {
+            "schema": "release-candidate-v1",
+            "head": "0c8ac11830b858d54f380f842cb2b41dcd648a73",
+            "source_files": 2016,
+            "source_sha256": "43f71363605056aff3f48ed21c291543da5f07b6e38cda7d92adeeeeb89dc2aa",
+            "migration_files": 349,
+            "migration_sha256": "5ac57554c2b7e68f0cbc126f4a54b3c7481db18b208d8be114a0edf71729024f"
+          },
+          "required_cases_sha256": "c21369c3a5bebaae78a7a4df0a21b61f8a3a57de29782b470dd7d78d99d80e47",
+          "timeout_seconds": 600,
+          "passed": 34,
+          "junit_sha256": "b1eb388ecb1215e7ab0e853383579c2f3dc893751349f54ff2daa23eaedcfe08",
+          "elapsed_seconds": 135.846
+        },
+        "passed": 34,
+        "junit_sha256": "b1eb388ecb1215e7ab0e853383579c2f3dc893751349f54ff2daa23eaedcfe08",
+        "required_cases_sha256": "c21369c3a5bebaae78a7a4df0a21b61f8a3a57de29782b470dd7d78d99d80e47",
+        "elapsed_seconds": 135.846,
+        "timeout_seconds": 600
+      }
+    }
+  ],
+  "browser_core": {
+    "path": "test-reports/e2e-core/65a7468f-0ca1-471a-ba76-30f6ea04faea/reports/summary.json",
+    "sha256": "a4e295f327ae4b7556e884e08aaba99d8450932ce84c63a85d86981177704132",
+    "result": {
+      "version": 1,
+      "suiteId": "65a7468f-0ca1-471a-ba76-30f6ea04faea",
+      "source": "31cf2ecaa0a09837fd33a7af20f7a60fbb03c6d40af2d1001c82b6a1a170ef2d",
+      "modes": [
+        "dev",
+        "preview"
+      ],
+      "expectedPerMode": 106,
+      "passed": true,
+      "issues": [],
+      "boundary": "Local SQLite and synthetic identities only. No production, real AI, or PostgreSQL authorization acceptance."
+    }
+  },
+  "browser_tasks": {
+    "path": "test-reports/e2e-tasks/27d688c8-41d2-4f04-a898-663b3e06a9f3/reports/summary.json",
+    "sha256": "eed4e671b204bc6d0be3bd69673e4b0e073069c1b96efd0d91fe64f6cb93fb7b",
+    "result": {
+      "version": 1,
+      "suiteId": "27d688c8-41d2-4f04-a898-663b3e06a9f3",
+      "source": "31cf2ecaa0a09837fd33a7af20f7a60fbb03c6d40af2d1001c82b6a1a170ef2d",
+      "candidate": {
+        "schema": "release-candidate-v1",
+        "head": "0c8ac11830b858d54f380f842cb2b41dcd648a73",
+        "source_files": 2016,
+        "source_sha256": "43f71363605056aff3f48ed21c291543da5f07b6e38cda7d92adeeeeb89dc2aa",
+        "migration_files": 349,
+        "migration_sha256": "5ac57554c2b7e68f0cbc126f4a54b3c7481db18b208d8be114a0edf71729024f"
+      },
+      "modes": [
+        "dev",
+        "preview"
+      ],
+      "expectedPerMode": 20,
+      "passed": true,
+      "issues": [],
+      "boundary": "Local SQLite and synthetic identities only. No production, real AI, or PostgreSQL authorization acceptance."
+    }
+  },
+  "browser_runs": [
+    {
+      "name": "full-shard1",
+      "path": "tmp_test/ci-repair/20261109/full-shard1/report.json",
+      "sha256": "9e6ded8c85823170017ebce16dff4d26a50763ebce5bd000d937b9eabfa91ce8",
+      "stats": {
+        "startTime": "2026-11-09T10:05:09.805Z",
+        "duration": 676276.765,
+        "expected": 120,
+        "skipped": 0,
+        "unexpected": 0,
+        "flaky": 0
+      },
+      "diagnostic_only": false,
+      "trace": "retain-on-failure",
+      "failures": []
+    },
+    {
+      "name": "full-shard2",
+      "path": "tmp_test/ci-repair/20261109/full-shard2/report.json",
+      "sha256": "09f6e384c71d508b5d5bb53cd2182b7f1fd78f04786d2ac475305e004fd26126",
+      "stats": {
+        "startTime": "2026-11-09T10:05:09.657Z",
+        "duration": 445973.185,
+        "expected": 111,
+        "skipped": 0,
+        "unexpected": 0,
+        "flaky": 0
+      },
+      "diagnostic_only": false,
+      "trace": "retain-on-failure",
+      "failures": []
+    },
+    {
+      "name": "full-shard3",
+      "path": "tmp_test/ci-repair/20261109/full-shard3/report.json",
+      "sha256": "097a28e2f03d3012d24917876c502c705e2c2d6ed9f293196c11b198b8f1296b",
+      "stats": {
+        "startTime": "2026-11-09T10:07:01.091Z",
+        "duration": 527555.117,
+        "expected": 115,
+        "skipped": 0,
+        "unexpected": 0,
+        "flaky": 0
+      },
+      "diagnostic_only": false,
+      "trace": "retain-on-failure",
+      "failures": []
+    },
+    {
+      "name": "full-shard4",
+      "path": "tmp_test/ci-repair/20261109/full-shard4/report.json",
+      "sha256": "eda39ff5bf08b345aa2dea8a9d4f734fa4116cf7c8a7fdf6b34896acf681f8b8",
+      "stats": {
+        "startTime": "2026-11-09T10:07:03.759Z",
+        "duration": 536518.944,
+        "expected": 113,
+        "skipped": 0,
+        "unexpected": 2,
+        "flaky": 0
+      },
+      "diagnostic_only": false,
+      "trace": "retain-on-failure",
+      "failures": [
+        {
+          "file": "ux07-09-journey.spec.ts",
+          "title": "只读身份查看更正入口时给出可执行说明 1280",
+          "status": "unexpected"
+        },
+        {
+          "file": "ux10-12-operations.spec.ts",
+          "title": "实际待办可打开原凭证且错误不冒充空列表 1280",
+          "status": "unexpected"
+        }
+      ]
+    },
+    {
+      "name": "full-shard4-isolated",
+      "path": "tmp_test/ci-repair/20261109/full-shard4-isolated/report.json",
+      "sha256": "023f36be778920f02c1e4fdd26cc533d38b62ec495931cef4b667b83db0f17fa",
+      "stats": {
+        "startTime": "2026-11-09T10:16:36.791Z",
+        "duration": 296123.523,
+        "expected": 114,
+        "skipped": 0,
+        "unexpected": 1,
+        "flaky": 0
+      },
+      "diagnostic_only": false,
+      "trace": "retain-on-failure",
+      "failures": [
+        {
+          "file": "v09-navigation-history.spec.ts",
+          "title": "desktop V09 子页面明确归属月度服务和客户账套且只有一个导航高亮",
+          "status": "unexpected"
+        }
+      ]
+    },
+    {
+      "name": "full-shard4-serial",
+      "path": "tmp_test/ci-repair/20261109/full-shard4-serial/report.json",
+      "sha256": "3a3d072b997c4189c4f6f224ec0c4ddae63151500a4da1a552fdcb4f3e4e4e3a",
+      "stats": {
+        "startTime": "2026-11-09T10:23:31.849Z",
+        "duration": 272309.854,
+        "expected": 114,
+        "skipped": 0,
+        "unexpected": 1,
+        "flaky": 0
+      },
+      "diagnostic_only": false,
+      "trace": "retain-on-failure",
+      "failures": [
+        {
+          "file": "v06-business-journey.spec.ts",
+          "title": "V06 修订提交成功后可以直接返回，已保存的申请不再冒充未提交编辑",
+          "status": "unexpected"
+        }
+      ]
+    },
+    {
+      "name": "full-shard4-traceoff",
+      "path": "tmp_test/ci-repair/20261109/full-shard4-traceoff/report.json",
+      "sha256": "4b363574bf3216189759d7b4c1187844ea03a058fcae46f7f2b39c045b1b8c7a",
+      "stats": {
+        "startTime": "2026-11-09T10:35:34.892Z",
+        "duration": 242078.658,
+        "expected": 115,
+        "skipped": 0,
+        "unexpected": 0,
+        "flaky": 0
+      },
+      "diagnostic_only": true,
+      "trace": "off",
+      "failures": []
+    },
+    {
+      "name": "full-shard4-final",
+      "path": "tmp_test/ci-repair/20261109/full-shard4-final/report.json",
+      "sha256": "3b469bdb82e60597b5d3dc28b609669cb18ee3e4c287ad441cdc6270fb35b76c",
+      "stats": {
+        "startTime": "2026-11-09T10:40:33.157Z",
+        "duration": 274102.56700000004,
+        "expected": 115,
+        "skipped": 0,
+        "unexpected": 0,
+        "flaky": 0
+      },
+      "diagnostic_only": false,
+      "trace": "retain-on-failure",
+      "failures": []
+    },
+    {
+      "name": "readonly-repeat",
+      "path": "tmp_test/ci-repair/20261109/readonly-repeat/report.json",
+      "sha256": "1e4707219227908455e343a25ab5ad5b525449b69913255907af746868eedb89",
+      "stats": {
+        "startTime": "2026-11-09T10:28:05.339Z",
+        "duration": 41482.924999999996,
+        "expected": 10,
+        "skipped": 0,
+        "unexpected": 0,
+        "flaky": 0
+      },
+      "diagnostic_only": false,
+      "trace": "retain-on-failure",
+      "failures": []
+    },
+    {
+      "name": "revision-repeat",
+      "path": "tmp_test/ci-repair/20261109/revision-repeat/report.json",
+      "sha256": "873ce089d003456318ad75c7701933b37cfe4512446af87a41d4f9c23ce996b5",
+      "stats": {
+        "startTime": "2026-11-09T10:34:12.900Z",
+        "duration": 61979.466,
+        "expected": 12,
+        "skipped": 0,
+        "unexpected": 0,
+        "flaky": 0
+      },
+      "diagnostic_only": false,
+      "trace": "retain-on-failure",
+      "failures": []
+    },
+    {
+      "name": "qa-browser",
+      "path": "tmp_test/ci-repair/20261109/qa-browser/report.json",
+      "sha256": "387c5902f2b07b0f4451d21643577c268dfe357282b007dfe36183a8396200be",
+      "stats": {
+        "startTime": "2026-11-09T10:28:48.556Z",
+        "duration": 211116.904,
+        "expected": 96,
+        "skipped": 0,
+        "unexpected": 0,
+        "flaky": 0
+      },
+      "diagnostic_only": false,
+      "trace": "retain-on-failure",
+      "failures": []
+    }
+  ],
+  "full_browser": {
+    "passed": true,
+    "selected_runs": [
+      "full-shard1",
+      "full-shard2",
+      "full-shard3",
+      "full-shard4-final"
+    ],
+    "passed_cases": 461,
+    "initial_four_shards_clean": false,
+    "all_runs_same_application_candidate": true,
+    "automatic_retries": 0,
+    "intermittent_failure_root_cause": "not_established"
+  },
+  "build": {
+    "path": "tmp_test/ci-repair/20261109/build.log",
+    "sha256": "654ad15442d2db7b107c4297574f04444c8cba86d7aaf34e14758d85a0f03178",
+    "status": "passed"
+  },
+  "budget": {
+    "path": "tmp_test/ci-repair/20261109/budget.log",
+    "sha256": "8fede0a0824a6c5258b8befaa2de7948195f77b829e9999f43695a29fcf4900d",
+    "status": "passed",
+    "limits_changed": false
+  },
+  "local_environment": {
+    "path": "tmp_test/ci-repair/20261109/environment-stop.json",
+    "sha256": "67705501d6031635d445449ac138d2ac0d4cd4d731bd98fc4dbf9f5417ab8cf3",
+    "result": {
+      "environment_id": "f4d984e0c1fd4c8ebb8f8252acd906e5",
+      "clusters": {
+        "source16": {
+          "major": 16,
+          "port": 25496,
+          "running": false
+        },
+        "target16": {
+          "major": 16,
+          "port": 25497,
+          "running": false
+        },
+        "source17": {
+          "major": 17,
+          "port": 25498,
+          "running": false
+        },
+        "target17": {
+          "major": 17,
+          "port": 25499,
+          "running": false
+        }
+      },
+      "data_deleted": false
+    }
+  },
+  "modified_paths": [
+    "e2e/b06-role-home.spec.ts",
+    "e2e/c01-intake-recovery.spec.ts",
+    "e2e/n04-tax-workpapers.spec.ts",
+    "e2e/stage12-intake.spec.ts",
+    "e2e/stage25-assistant-progress.spec.ts",
+    "e2e/task-journey.spec.ts",
+    "e2e/tasks0712.spec.ts",
+    "e2e/ui-navigation.ts",
+    "e2e/ux03-preparation.spec.ts",
+    "e2e/ux04-06-journey.spec.ts",
+    "e2e/v01-visual-foundation.spec.ts",
+    "e2e/v02-role-workspaces.spec.ts",
+    "e2e/v03-entry-review.spec.ts",
+    "e2e/verify-firm-access.spec.ts",
+    "e2e/workbench-focus.spec.ts",
+    "nexus_backend/app/delivery/followup_router.py",
+    "nexus_backend/app/delivery/followups.py",
+    "nexus_backend/tests/test_n02_n03_ci_contract.py",
+    "nexus_backend/tests/test_task_journey.py",
+    "nexus_backend/tests/test_task_journey_postgres.py",
+    "scripts/dcp_reliability_required_cases.json",
+    "scripts/e2e_runtime.ts",
+    "src/FirmInbox.tsx",
+    "src/IntakeWizard.tsx",
+    "src/delivery-followups.test.ts",
+    "src/delivery-followups.ts",
+    "src/e2e-runtime.test.ts",
+    "src/employee-intake-render.test.ts",
+    "src/intake-visual.test.ts",
+    "src/task-presentation.ts",
+    "src/workspace-home-focus-render.test.ts",
+    "src/workspace-progress.test.ts",
+    "src/workspace-progress.ts",
+    "src/workspace.css"
+  ],
+  "boundaries": {
+    "committed": false,
+    "pushed": false,
+    "production_access": false,
+    "real_model_or_notification": false,
+    "historical_sql_changed": false,
+    "authorization_or_review_export_weakened": false,
+    "other_agents_changes_overwritten": false
+  }
+}

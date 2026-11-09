@@ -18,6 +18,21 @@ const view: HomeProgress = {
   optionsOpen: true,
 };
 describe('V06 办理进度只保留本会话的选择，不缓存账务事实', () => {
+  it('返回交付待办保留真实分页历史，副本和其他登录不能改动历史', () => {
+    const state = new WorkspaceProgress('a');
+    const pages = [0, 8, 21];
+    state.saveInbox({ bucket: 'blocked', offset: 20, deliveryPages: pages });
+    pages.push(29);
+    const copy = state.getInbox();
+    expect(copy.deliveryPages).toEqual([0, 8, 21]);
+    copy.deliveryPages!.push(29);
+    expect(state.getInbox().deliveryPages).toEqual([0, 8, 21]);
+    expect(new WorkspaceProgress('b').getInbox().deliveryPages).toBeUndefined();
+    for (const invalid of [[], [8], [0, 0], [0, 33], [0, -1], [0, 1.5], [0, true]]) {
+      state.saveInbox({ bucket: 'all', offset: 0, deliveryPages: invalid as number[] });
+      expect(state.getInbox().deliveryPages).toBeUndefined();
+    }
+  });
   it('保留筛选页码和离开时位置，但不同企业不继承旧选择', () => {
     const state = new WorkspaceProgress('user-a');
     state.saveHome(view);

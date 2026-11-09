@@ -2,6 +2,7 @@
 
 import pytest
 from app.accounting.domain import AccountingError
+from app.accounting.models import BookCreate
 from app.delivery.followup_models import DeliveryGrantRequest, DeliveryRevokeRequest
 from app.service_plans.service import ServicePlansService
 from test_p02_reviewer_notifications_postgres import (  # noqa: F401
@@ -15,6 +16,47 @@ from test_p02_reviewer_notifications_postgres import (  # noqa: F401
 
 def read(c, actor=None):
     return c.followups.status(actor or c.plain, c.book["id"], "2026-10")
+
+
+def test_paged_delivery_feed_reaches_later_books_and_keeps_reviewer_scope(plain_case):
+    c = plain_case
+    added = {
+        c.accounting.create_book(
+            c.reviewer,
+            BookCreate(
+                name=f"000-分页合成-{index // 2}", period="2026-10", company_id=c.book["company_id"]
+            ),
+        )["id"]
+        for index in range(9)
+    }
+
+    def collect(actor):
+        offset, rows = 0, []
+        for _ in range(30):
+            value = c.followups.followups(actor, limit=2, offset=offset)
+            assert value["scope"] == {"firm_id": actor.firm_id, "user_id": actor.user_id}
+            assert value["pagination"]["offset"] == offset
+            assert len(value["items"]) <= 2
+            rows.extend(value["items"])
+            following = value["pagination"]["next_offset"]
+            if following is None:
+                return rows
+            assert offset < following <= offset + 8
+            offset = following
+        pytest.fail("分页未终止")
+
+    rows = collect(c.reviewer)
+    ids = [row["book_id"] for row in rows]
+    assert added | {c.book["id"], c.other_book["id"]} == set(ids)
+    assert len(ids) == len(set(ids))
+    assert [row["book_id"] for row in collect(c.plain)] == [c.book["id"]]
+    assert all(row["book_id"] == c.foreign_book["id"] for row in collect(c.foreign))
+    with c.psycopg.connect(c.admin) as conn:
+        conn.execute(
+            "DELETE FROM accounting.book_access WHERE book_id=%s AND user_id=%s",
+            (c.book["id"], c.plain.user_id),
+        )
+    assert collect(c.plain) == []
 
 
 def test_task_target_matches_frozen_package_and_current_reviewer(plain_case):

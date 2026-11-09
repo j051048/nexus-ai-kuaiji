@@ -45,7 +45,7 @@ for (const width of [1365, 390]) {
       headers,
       data: { book_id: book.id, activity: 'review', idempotency_key: crypto.randomUUID() },
     });
-    expect(started.ok()).toBe(true);
+    expect(started.status(), await started.text()).toBe(200);
     await page.reload();
     await expect(pilot).toContainText('单人办理不计作独立复核');
     await expect(page.locator('.efficiency-summary')).toContainText('0秒');
@@ -158,13 +158,11 @@ for (const width of [1365, 390]) {
       'nexus_backend/tests/fixtures/stage16_SYNTHETIC_einvoice_0_3.xml',
       'utf8',
     ).replace('第一客户企业', company.name);
-    await dialog
-      .getByLabel('一体化录入上传附件')
-      .setInputFiles({
-        name: '0712虚构票.xml',
-        mimeType: 'application/xml',
-        buffer: Buffer.from(xml),
-      });
+    await dialog.getByLabel('一体化录入上传附件').setInputFiles({
+      name: '0712虚构票.xml',
+      mimeType: 'application/xml',
+      buffer: Buffer.from(xml),
+    });
     await expect(dialog.getByLabel('票据办理下一步')).toContainText('原件已保存');
     await dialog.getByLabel('事项金额', { exact: true }).fill('128.50');
     await dialog.getByRole('button', { name: '解析 XML 并预填', exact: true }).click();

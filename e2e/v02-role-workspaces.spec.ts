@@ -198,9 +198,16 @@ for (const viewport of [
     await expect(needs).toContainText('数量暂未汇总');
     const next = primary.getByRole('button', { name: '核验下一项', exact: true });
     const other = primary.getByRole('button', { name: '查看待核验事项', exact: true });
-    expect(await next.evaluate((node) => getComputedStyle(node).backgroundColor)).not.toBe(
-      await other.evaluate((node) => getComputedStyle(node).backgroundColor),
-    );
+    if (device === 'mobile') {
+      await expect(
+        primary.getByRole('button', { name: '查看待核验事项', exact: true, includeHidden: true }),
+      ).not.toBeVisible();
+      await expect(primary.locator('.button.primary')).toHaveCount(1);
+    } else {
+      expect(await next.evaluate((node) => getComputedStyle(node).backgroundColor)).not.toBe(
+        await other.evaluate((node) => getComputedStyle(node).backgroundColor),
+      );
+    }
     await keyboardFocus(page, next);
     await noOverflow(page);
     await summary.getByRole('button', { name: /等待/ }).click();

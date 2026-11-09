@@ -102,7 +102,9 @@ async function reopen(page: Page, description: string, reload = false) {
   const dialog = page.getByRole('dialog', { name: '录入业务事项', exact: true });
   await dialog.getByText(/继续未完成的录入/).click();
   await dialog.getByRole('button', { name: new RegExp(description) }).click();
-  await expect(dialog.getByRole('status')).toContainText('已恢复服务端草稿');
+  await expect(dialog.getByRole('status', { name: '草稿保存状态', exact: true })).toContainText(
+    '已恢复服务端草稿',
+  );
   return dialog;
 }
 
