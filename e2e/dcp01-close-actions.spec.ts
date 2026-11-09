@@ -263,6 +263,10 @@ for (const viewport of [
     ).toBeVisible();
     // Configuration is never a substitute for evidence: the panel says so.
     await expect(setup).toContainText('配置本身不会通过检查');
+    // Leave the focused close task through the same action a user takes.
+    await page.getByRole('button', { name: '返回账簿（保留筛选）', exact: true }).click();
+    await expect(page).toHaveURL(new URL(path, page.url()).href);
+    await expect(page.getByRole('navigation', { name: '账簿类型', exact: true })).toBeVisible();
     // The opening wizard reuses the same close facts and shows who owns the rest.
     await page
       .getByText('开账准备（核对模板、科目、子账、银行、期初与岗位分工）', { exact: true })

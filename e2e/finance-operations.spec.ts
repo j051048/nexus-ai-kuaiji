@@ -84,6 +84,12 @@ for (const width of [1365, 390]) {
     await panel.getByRole('button', { name: '确认正式记账', exact: true }).click();
     await expect(panel.getByText(/已正式记账 · 版本/)).toBeVisible();
     await expect(panel.getByText(/已记账计提 100.00 元/)).toBeVisible();
+    // A focused task hides the books until the user returns; retain the same
+    // scope and verify the posted result through the actual return action.
+    const postedScope = page.url();
+    await page.getByRole('button', { name: '返回账簿（保留筛选）', exact: true }).click();
+    await expect(page).toHaveURL(postedScope);
+    await expect(page.getByRole('navigation', { name: '账簿类型', exact: true })).toBeVisible();
     await expect(page.getByRole('region', { name: '科目余额表', exact: true })).toContainText(
       '折旧费用',
     );

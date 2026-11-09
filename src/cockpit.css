@@ -327,7 +327,9 @@
   }
 }
 @media (max-width: 520px) {
-  .cockpit .button,
+  /* Keep touch targets above generic shell buttons regardless of lazy CSS order. */
+  .cockpit button.button,
+  .cockpit summary.button,
   .cockpit .text-button,
   .cockpit summary {
     min-height: var(--control-height-touch);
