@@ -10,13 +10,16 @@ import {
   type PeriodicWorkspace,
 } from './finance-operations';
 import './finance-operations.css';
+import { SettlementDetail } from './SettlementDetail';
 
 type Props = {
   session: Session;
   bookId: string;
   companyId: string;
   period: string;
+  initialTab?: 'aging' | 'periodic';
   onChanged?: () => void;
+  onVoucher?: (id: string) => void;
 };
 const amount = (cents: number) =>
   `${Math.trunc(cents / 100)}.${String(cents % 100).padStart(2, '0')}`;
@@ -33,7 +36,7 @@ export function FinanceOperationsPanel(props: Props) {
   );
 }
 function Content(props: Props) {
-  const [tab, setTab] = useState<'aging' | 'periodic'>('aging');
+  const [tab, setTab] = useState<'aging' | 'periodic'>(props.initialTab ?? 'aging');
   const [revoked, setRevoked] = useState(false);
   useEffect(() => {
     const deny = (event: Event) => {
@@ -71,7 +74,9 @@ function Content(props: Props) {
     </section>
   );
 }
-function Aging({ session, bookId, companyId, period }: Props) {
+function Aging({ session, bookId, companyId, period, onChanged, onVoucher }: Props) {
+  const [selected, setSelected] = useState<string | null>(null);
+  const returnFocus = useRef<string | null>(null);
   const [date, setDate] = useState(monthEnd(period)),
     [kind, setKind] = useState<keyof typeof agingKinds>('receivable');
   const expected = { firmId: session.firm_id, bookId, companyId, period };
@@ -92,6 +97,33 @@ function Aging({ session, bookId, companyId, period }: Props) {
   );
   const data = query.data?.date === date ? query.data.value : null;
   const rows = data?.items.filter((row) => row.kind === kind) ?? [];
+  useEffect(() => {
+    if (!selected && !query.loading && data && returnFocus.current) {
+      document.getElementById(`settlement-${returnFocus.current}`)?.focus();
+      returnFocus.current = null;
+    }
+  }, [selected, query.loading, data]);
+  if (selected)
+    return (
+      <SettlementDetail
+        key={selected}
+        session={session}
+        bookId={bookId}
+        companyId={companyId}
+        period={period}
+        itemId={selected}
+        onVoucher={onVoucher}
+        onChanged={() => {
+          query.reload();
+          onChanged?.();
+        }}
+        onBack={() => {
+          returnFocus.current = selected;
+          setSelected(null);
+          query.reload();
+        }}
+      />
+    );
   return (
     <>
       <p>按未结事项及已记账核销查看，不把应收、应付与预收预付相互抵消。此处不会新增收付款凭证。</p>
@@ -150,6 +182,14 @@ function Aging({ session, bookId, companyId, period }: Props) {
                 发生日期 {row.original_date} · 到期日期{' '}
                 {row.due_date ?? '未登记（以发生日期计算账龄）'}
               </p>
+              <button
+                id={`settlement-${row.id}`}
+                type="button"
+                className="button secondary"
+                onClick={() => setSelected(row.id)}
+              >
+                查看并办理核销
+              </button>
             </article>
           ))}
         </>
@@ -263,6 +303,9 @@ function Periodic({ session, bookId, companyId, period, onChanged }: Props) {
                 {asset.life_months} 个月
               </p>
               <p>
+                建卡月份 {asset.origin_period} · 当前办理 {period}，沿用同一卡片和已记账历史。
+              </p>
+              <p>
                 原值 {amount(asset.cost_cents)} 元 · 残值 {amount(asset.residual_cents)} 元 ·
                 已记账计提 {amount(asset.posted_cents)} 元
               </p>
@@ -272,7 +315,9 @@ function Periodic({ session, bookId, companyId, period, onChanged }: Props) {
                   className="button secondary"
                   disabled={busy || uncertain}
                   onClick={() =>
-                    command(`/periodic/assets/${encodeURIComponent(asset.id)}/generate`)
+                    command(
+                      `/periodic/assets/${encodeURIComponent(asset.id)}/generate?book_id=${encodeURIComponent(bookId)}`,
+                    )
                   }
                 >
                   生成或查看本期草稿

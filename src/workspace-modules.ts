@@ -1,5 +1,9 @@
 import { lazy } from 'react';
 
+export const AgentCommandPalette = lazy(() =>
+  import('./AgentCommandPalette').then((module) => ({ default: module.AgentCommandPalette })),
+);
+
 export const NewBookModal = lazy(() =>
   import('./AppDialogs').then((module) => ({ default: module.NewBookModal })),
 );

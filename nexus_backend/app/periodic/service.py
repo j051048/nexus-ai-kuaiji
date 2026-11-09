@@ -37,6 +37,14 @@ class PeriodicService:
 
     def _book(self, conn, actor, book_id, write=False):
         book = self.accounting.access.book(conn, actor, book_id, "review" if write else "read")
+        if write and (
+            book["period_status"] != "open"
+            or conn.execute(
+                "SELECT 1 FROM internal_period_locks WHERE book_id=? AND period=?",
+                (book["id"], book["period"]),
+            ).fetchone()
+        ):
+            raise AccountingError("本期已锁定，请从原记录走更正流程", 403)
         ledger = conn.execute(
             "SELECT ledger_id FROM ledger_periods WHERE book_id=?", (book["id"],)
         ).fetchone()
@@ -251,13 +259,54 @@ class PeriodicService:
         ).fetchone()
         return int(row[0])
 
-    def generate_asset(self, actor, asset_id):
+    def _asset_context(self, conn, actor, asset, book_id):
+        book, ledger_id = self._book(conn, actor, book_id, write=True)
+        origin, origin_ledger = self._book(conn, actor, asset["book_id"])
+        if (
+            origin_ledger != ledger_id
+            or origin["company_id"] != book["company_id"]
+            or origin["period"] > book["period"]
+        ):
+            raise AccountingError("资产不属于当前长期账套或早于建卡期间", 409)
+        self._asset_history_access(conn, actor, asset, book, ledger_id)
+        if conn.execute(
+            "SELECT 1 FROM periodic_runs r JOIN vouchers correction "
+            "ON correction.reversal_of=r.voucher_id WHERE r.asset_id=? AND r.status='posted'",
+            (asset["id"],),
+        ).fetchone():
+            raise AccountingError("历史计提已冲销或调整，请先由会计核对资产与正式账余额", 409)
+        if conn.execute(
+            "SELECT 1 FROM periodic_runs WHERE asset_id=? AND period<>? AND status<>'void' AND (period>? OR status<>'posted')",
+            (asset["id"], book["period"], book["period"]),
+        ).fetchone():
+            raise AccountingError("前期草稿尚未完成或已有后续期间记录，请先核对原记录", 409)
+        for account, version in (
+            (asset["expense_account_id"], asset["expense_account_version"]),
+            (asset["accum_account_id"], asset["accum_account_version"]),
+        ):
+            self._account(conn, ledger_id, account, version, book["period"])
+        return book
+
+    def _asset_history_access(self, conn, actor, asset, book, ledger_id):
+        # RLS must not silently omit a revoked historical period and inflate the next charge.
+        if self.db.is_postgres:
+            if not conn.execute(
+                "SELECT accounting.asset_history_allowed(?,?)", (asset["id"], book["id"])
+            ).fetchone()[0]:
+                raise AccountingError("历史期间授权不完整，请由有完整历史权限的会计核对资产", 403)
+        else:
+            for period in conn.execute(
+                "SELECT book_id FROM ledger_periods WHERE ledger_id=? AND period<=?",
+                (ledger_id, book["period"]),
+            ):
+                self.accounting.access.book(conn, actor, period["book_id"], "read")
+
+    def generate_asset(self, actor, asset_id, book_id=None):
         with self.db.transaction(write=True, actor=actor) as conn:
             asset = conn.execute("SELECT * FROM periodic_assets WHERE id=?", (asset_id,)).fetchone()
             if not asset or asset["status"] != "active":
                 raise AccountingError("资产不存在或已处置", 404)
-            book = conn.execute("SELECT * FROM books WHERE id=?", (asset["book_id"],)).fetchone()
-            self._book(conn, actor, book["id"], write=True)
+            book = self._asset_context(conn, actor, asset, book_id or asset["book_id"])
             key = f"{asset['kind']}:{asset_id}:{book['period']}"
             prior = self._run(conn, book["id"], key)
             if prior:
@@ -446,6 +495,35 @@ class PeriodicService:
             raise AccountingError("期末草稿不存在", 404)
         return row
 
+    def _validate_asset_draft(self, conn, actor, draft):
+        run = conn.execute("SELECT * FROM periodic_runs WHERE id=?", (draft["run_id"],)).fetchone()
+        if not run["asset_id"]:
+            return
+        asset = conn.execute(
+            "SELECT * FROM periodic_assets WHERE id=?", (run["asset_id"],)
+        ).fetchone()
+        if not asset or asset["status"] != "active":
+            raise AccountingError("资产来源已失效，请核对原记录", 409)
+        self._asset_context(conn, actor, asset, draft["book_id"])
+        if run["input_fingerprint"] != _fingerprint(
+            {"asset": dict(asset), "period": draft["period"]}
+        ):
+            raise AccountingError("资产来源已变化，请核对原记录", 409)
+        depreciable = int(asset["cost_cents"]) - int(asset["residual_cents"])
+        elapsed = _month_index(draft["period"]) - _month_index(asset["start_period"]) + 1
+        total = (
+            depreciable
+            if elapsed >= int(asset["life_months"])
+            else depreciable // int(asset["life_months"]) * elapsed
+        )
+        expected = total - self._asset_prior_posted(conn, asset["id"], draft["period"])
+        actual = conn.execute(
+            "SELECT COALESCE(SUM(debit_cents),0) FROM periodic_draft_lines WHERE draft_id=?",
+            (draft["id"],),
+        ).fetchone()[0]
+        if expected <= 0 or int(actual) != expected:
+            raise AccountingError("前期计提事实已变化，请核对原记录", 409)
+
     def approve(self, actor, draft_id, request: DraftCommand):
         with self.db.transaction(write=True, actor=actor) as conn:
             draft = self._draft(conn, draft_id)
@@ -456,6 +534,7 @@ class PeriodicService:
                 raise AccountingError("期末草稿版本已变化", 409)
             if draft["created_by"] == actor.user_id:
                 raise AccountingError("期末草稿编制人与复核人必须分离", 403)
+            self._validate_asset_draft(conn, actor, draft)
             conn.execute(
                 "UPDATE periodic_drafts SET status='approved',version=version+1,approved_by=?,"
                 "approved_at=? WHERE id=?",
@@ -487,6 +566,7 @@ class PeriodicService:
                 raise AccountingError("期末草稿尚未复核", 409)
             if int(draft["version"]) != request.expected_version:
                 raise AccountingError("期末草稿版本已变化", 409)
+            self._validate_asset_draft(conn, actor, draft)
             lines = conn.execute(
                 "SELECT * FROM periodic_draft_lines WHERE draft_id=? ORDER BY line_no", (draft_id,)
             ).fetchall()
@@ -573,17 +653,32 @@ class PeriodicService:
                     (ledger_id, book["period"], book["period"]),
                 ).fetchall()
             ]
-            assets = [
-                dict(row)
-                for row in conn.execute(
-                    "SELECT a.*,COALESCE(p.posted_cents,0) AS posted_cents FROM periodic_assets a "
-                    "LEFT JOIN (SELECT r.asset_id,SUM(l.debit_cents) AS posted_cents FROM periodic_runs r "
+            assets = []
+            for row in conn.execute(
+                "SELECT a.*,b.period AS origin_period FROM periodic_assets a "
+                "JOIN ledger_periods p ON p.book_id=a.book_id JOIN books b ON b.id=a.book_id "
+                "WHERE p.ledger_id=? AND b.company_id=? AND b.period<=? ORDER BY a.created_at,a.id",
+                (ledger_id, book["company_id"], book["period"]),
+            ).fetchall():
+                try:
+                    self.accounting.access.book(conn, actor, row["book_id"], "read")
+                except AccountingError:
+                    continue
+                self._asset_history_access(conn, actor, row, book, ledger_id)
+                posted = conn.execute(
+                    "SELECT COALESCE(SUM(l.debit_cents),0) FROM periodic_runs r "
                     "JOIN periodic_drafts d ON d.run_id=r.id JOIN periodic_draft_lines l ON l.draft_id=d.id "
-                    "WHERE r.book_id=? AND r.status='posted' GROUP BY r.asset_id) p ON p.asset_id=a.id "
-                    "WHERE a.book_id=? ORDER BY a.created_at,a.id",
-                    (book["id"], book["id"]),
-                ).fetchall()
-            ]
+                    "WHERE r.asset_id=? AND r.status='posted' AND r.period<=?",
+                    (row["id"], book["period"]),
+                ).fetchone()[0]
+                assets.append(
+                    {
+                        **dict(row),
+                        "origin_book_id": row["book_id"],
+                        "book_id": book["id"],
+                        "posted_cents": int(posted),
+                    }
+                )
             lines = {}
             for row in conn.execute(
                 "SELECT l.* FROM periodic_draft_lines l JOIN periodic_drafts d ON d.id=l.draft_id "

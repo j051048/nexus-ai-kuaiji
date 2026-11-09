@@ -9,6 +9,8 @@ from pathlib import Path
 import subprocess
 import sys
 import time
+from urllib.parse import urlsplit
+from uuid import uuid4
 import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -16,11 +18,12 @@ sys.path.insert(0, str(ROOT))
 from scripts.ak05_postgres_gate import (
     GateError,
     assert_server_and_roles,
-    candidate_fingerprint,
     local_connection,
+    prepare,
     sanitized,
     validate_config,
 )
+from scripts.release_candidate import candidate_fingerprint
 
 REQUIRED_PATH = Path(__file__).with_name("c01_postgres_required_cases.json")
 REQUIRED_MANIFEST = json.loads(REQUIRED_PATH.read_text(encoding="utf-8"))
@@ -162,13 +165,92 @@ def run_gate(config_path, output):
     return report["status"] == "passed"
 
 
+def run_fresh_gate(config_path, output, *, private_root=None):
+    """Borrow local cluster credentials, never its existing business database.
+
+    Every invocation creates one disposable database via the existing AK05
+    preparation path. Keep failed databases/configs for diagnosis; never drop,
+    reset or rotate credentials of someone else's run. Public reports contain
+    only hashes, while credentials remain in a separate ignored run directory.
+    """
+    output = Path(output).resolve()
+    private_root = Path(private_root or ROOT / "tmp_test/c01-private").resolve()
+    if private_root == output or output in private_root.parents:
+        raise GateError("私有配置不得放在公开报告目录内")
+    output.mkdir(parents=True, exist_ok=False)
+    report = {"schema": "c01-fresh-gate-v1", "status": "failed", "phase": "prepare"}
+    source = {}
+    try:
+        report["candidate"] = candidate_fingerprint()
+        source = validate_config(json.loads(Path(config_path).read_text(encoding="utf-8-sig")))
+        with local_connection(source["admin"]) as conn:
+            major = int(conn.execute("SHOW server_version_num").fetchone()[0]) // 10000
+        if major not in {16, 17}:
+            raise GateError("C01 requires actual PostgreSQL 16 or 17")
+        report["major"] = major
+        run_id = uuid4().hex
+        manifest_path = prepare(
+            dict(source),
+            major,
+            private_root / run_id / "config",
+            allow_create=True,
+            groups=("regression",),
+        )
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        fresh_path = Path(manifest["groups"]["regression"])
+        fresh = validate_config(json.loads(fresh_path.read_text(encoding="utf-8")))
+        if urlsplit(source["admin"]).path == urlsplit(fresh["admin"]).path:
+            raise GateError("C01 must not run on its source database")
+        with local_connection(fresh["admin"]) as conn:
+            if conn.execute("SELECT COUNT(*) FROM accounting.companies").fetchone()[0] != 0:
+                raise GateError("C01 requires a fresh database without previous fixtures")
+        report["environment"] = {
+            "run_id": run_id,
+            "fresh_database": True,
+            "initial_companies": 0,
+            "configuration_sha256": hashlib.sha256(fresh_path.read_bytes()).hexdigest(),
+            "retained_for_diagnosis": True,
+        }
+        if report["candidate"] != candidate_fingerprint():
+            raise GateError("C01 candidate changed during environment preparation")
+        report["phase"] = "verification"
+        passed = run_gate(fresh_path, output / "verification")
+        inner = json.loads((output / "verification/summary.json").read_text(encoding="utf-8"))
+        report["verification"] = inner
+        if (
+            inner.get("candidate") != report["candidate"]
+            or candidate_fingerprint() != report["candidate"]
+        ):
+            raise GateError("C01 candidate changed during verification")
+        for key in (
+            "passed",
+            "junit_sha256",
+            "required_cases_sha256",
+            "elapsed_seconds",
+            "timeout_seconds",
+        ):
+            if key in inner:
+                report[key] = inner[key]
+        report["status"] = "passed" if passed else "failed"
+    except Exception as error:
+        report["error_type"] = type(error).__name__
+        report["reason"] = (
+            sanitized(str(error), source)
+            if isinstance(error, GateError)
+            else ("Local preparation failed; preserve the private run and inspect its environment.")
+        )
+    (output / "summary.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    print(f"C01 fresh environment: {report['status']}", flush=True)
+    return report["status"] == "passed"
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", required=True)
     parser.add_argument("--out", required=True)
     args = parser.parse_args()
     try:
-        return 0 if run_gate(args.config, args.out) else 1
+        return 0 if run_fresh_gate(args.config, args.out) else 1
     except Exception:
         print(
             "C01 gate failed; inspect the sanitized report and approved local configuration.",

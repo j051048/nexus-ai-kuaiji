@@ -108,3 +108,94 @@ def test_timeout_retains_sanitized_partial_evidence(tmp_path, monkeypatch):
     assert report["timeout_seconds"] == 600
     assert report["elapsed_seconds"] >= 0
     assert not report.get("passed")
+
+
+@pytest.mark.parametrize(
+    "fault", [None, "prepare", "same_database", "dirty_database", "candidate", "during_run"]
+)
+def test_fresh_gate_never_runs_on_source_or_reuses_old_evidence(tmp_path, monkeypatch, fault):
+    import json
+    from contextlib import contextmanager
+    from scripts import c01_postgres_gate as gate
+    from test_ak05_postgres_gate import config
+
+    source = config()
+    source_path = tmp_path / "source.json"
+    source_path.write_text(json.dumps(source))
+    private = tmp_path / "private"
+    calls = []
+
+    @contextmanager
+    def connect(*_):
+        class Connection:
+            def execute(self, sql):
+                self.sql = sql
+                return self
+
+            def fetchone(self):
+                if self.sql.startswith("SHOW"):
+                    return (160015,)
+                assert self.sql == "SELECT COUNT(*) FROM accounting.companies"
+                return (1 if fault == "dirty_database" else 0,)
+
+        yield Connection()
+
+    def prepare(value, major, destination, **kwargs):
+        assert value == source and major == 16
+        assert kwargs == {"allow_create": True, "groups": ("regression",)}
+        if fault == "prepare":
+            raise GateError("fixture-secret must not appear in public evidence")
+        destination.mkdir(parents=True, exist_ok=False)
+        fresh = (
+            value
+            if fault == "same_database"
+            else {
+                key: url.replace("bootstrap", destination.parent.name) for key, url in value.items()
+            }
+        )
+        path = destination / "regression.json"
+        path.write_text(json.dumps(fresh))
+        manifest = destination / "manifest.json"
+        manifest.write_text(json.dumps({"groups": {"regression": str(path)}}))
+        return manifest
+
+    def run(path, output):
+        calls.append(path)
+        output.mkdir()
+        (output / "summary.json").write_text(
+            json.dumps({"status": "passed", "passed": 34, "candidate": {"source_sha256": "before"}})
+        )
+        return True
+
+    fingerprints = iter(
+        [
+            {"source_sha256": "before"},
+            {"source_sha256": "changed" if fault == "candidate" else "before"},
+            {"source_sha256": "changed" if fault == "during_run" else "before"},
+        ]
+    )
+    monkeypatch.setattr(gate, "candidate_fingerprint", lambda: next(fingerprints))
+    monkeypatch.setattr(gate, "local_connection", connect)
+    monkeypatch.setattr(gate, "prepare", prepare, raising=False)
+    monkeypatch.setattr(gate, "run_gate", run)
+    out = tmp_path / "report"
+    assert gate.run_fresh_gate(source_path, out, private_root=private) is (fault is None)
+    report_text = (out / "summary.json").read_text()
+    report = json.loads(report_text)
+    assert report["status"] == ("failed" if fault else "passed")
+    assert "fixture-secret" not in report_text
+    assert source_path.read_text() == json.dumps(source)
+    assert len(calls) == (1 if fault in (None, "during_run") else 0)
+    with pytest.raises(FileExistsError):
+        gate.run_fresh_gate(source_path, out, private_root=private)
+
+
+def test_cli_uses_a_fresh_database_by_default(monkeypatch, tmp_path):
+    import sys
+    from scripts import c01_postgres_gate as gate
+
+    called = []
+    monkeypatch.setattr(gate, "run_fresh_gate", lambda *a: called.append(a) or True, raising=False)
+    monkeypatch.setattr(sys, "argv", ["gate", "--config", "source.json", "--out", str(tmp_path)])
+    assert gate.main() == 0
+    assert called == [("source.json", str(tmp_path))]

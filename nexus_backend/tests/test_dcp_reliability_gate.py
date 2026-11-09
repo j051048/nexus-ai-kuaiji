@@ -98,3 +98,16 @@ def test_tasks0712_extend_both_required_gates():
     browser = json.loads((gate.ROOT / "scripts/e2e_task_cases.json").read_text(encoding="utf-8"))
     assert sum(row["file"] == "e2e/tasks0712.spec.ts" for row in browser["cases"]) == 6
     assert sum(row["file"] == "e2e/dcp-r567-evidence.spec.ts" for row in browser["cases"]) == 2
+
+
+def test_finance_workflows_are_required_on_both_postgres_versions():
+    selected = gate.contract("finance")
+    assert set(selected["files"]) == {
+        "test_finance_agent_reuse_postgres.py",
+        "test_finance_continuation_postgres.py",
+    }
+    assert any("cross_year" in case for case in selected["cases"])
+    assert any("revoked_intermediate_period" in case for case in selected["cases"])
+    workflow = (gate.ROOT / ".github/workflows/accounting.yml").read_text(encoding="utf-8")
+    assert "--suite finance" in workflow
+    assert "--major ${{ matrix.postgres }}" in workflow

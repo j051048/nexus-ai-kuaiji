@@ -26,7 +26,7 @@ MANIFEST = Path(__file__).with_name("dcp_reliability_required_cases.json")
 
 def contract(suite):
     data = json.loads(MANIFEST.read_text(encoding="utf-8"))
-    if data.get("version") != 1 or suite not in {"settlement", "dcp", "tasks"}:
+    if data.get("version") != 1 or suite not in {"settlement", "dcp", "tasks", "finance"}:
         raise GateError("Invalid DCP gate manifest")
     result = data["suites"][suite]
     if not result["cases"] or len(set(result["cases"])) != len(result["cases"]):
@@ -136,7 +136,7 @@ def run(config_path, output, suite, expected_major=None):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--suite", choices=["settlement", "dcp", "tasks"], required=True)
+    parser.add_argument("--suite", choices=["settlement", "dcp", "tasks", "finance"], required=True)
     parser.add_argument("--major", type=int, choices=[16, 17])
     parser.add_argument("--config", required=True)
     parser.add_argument("--out", required=True)

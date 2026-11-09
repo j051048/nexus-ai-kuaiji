@@ -1,0 +1,589 @@
+{
+  "environment": {
+    "environment_id": "f4d984e0c1fd4c8ebb8f8252acd906e5",
+    "clusters": {
+      "source16": {
+        "major": 16,
+        "port": 25496,
+        "running": false
+      },
+      "target16": {
+        "major": 16,
+        "port": 25497,
+        "running": false
+      },
+      "source17": {
+        "major": 17,
+        "port": 25498,
+        "running": false
+      },
+      "target17": {
+        "major": 17,
+        "port": 25499,
+        "running": false
+      }
+    },
+    "data_deleted": false
+  },
+  "schema": "finance-continuation-acceptance-v1",
+  "status": "local_passed",
+  "candidate": {
+    "schema": "release-candidate-v1",
+    "head": "1cda743fd9725fdc5b22dd2d46e2faeedf912d05",
+    "source_files": 1996,
+    "source_sha256": "c337ee9c6b773f1ac470b60c53d88e0c6845c54b91606992ffed2430291ac789",
+    "migration_files": 344,
+    "migration_sha256": "34eb2cc86af9138583a6d6f2a495c8b15189d8ab38edee75154b50344f0e04ee"
+  },
+  "migrations": {
+    "postgres_latest": 220,
+    "sqlite_latest": 136,
+    "historical": {
+      "old_files": 340,
+      "old_migration_sha256": "5e02beb380596ea28c17248d00b417060e5100365d27127e2941c085b29da7f7",
+      "unchanged": true
+    }
+  },
+  "tests": {
+    "offline": 365,
+    "browser_dev": 15,
+    "browser_preview": 15,
+    "frontend": 1329
+  },
+  "postgres": {
+    "16": {
+      "finance": 27,
+      "c01": 34,
+      "tasks": 35,
+      "attempt": 32,
+      "http": {
+        "total": 250,
+        "ok": 250,
+        "failed": 0,
+        "status_counts": {
+          "200": 250
+        },
+        "latency_ms": {
+          "p50": 1421.08,
+          "p95": 1826.12,
+          "p99": 1904.94,
+          "max": 1974.79
+        }
+      },
+      "capacity": {
+        "export_count": 200,
+        "export_seconds": 14.673,
+        "package_count": 200,
+        "package_seconds": 32.875,
+        "sustained": {
+          "seconds": 1800.888,
+          "rounds": 1367,
+          "concurrency": 8,
+          "latency": {
+            "clients": {
+              "n": 10936,
+              "p50_ms": 642.17,
+              "p95_ms": 1228.65,
+              "p99_ms": 1257.09,
+              "max_ms": 1385.03
+            },
+            "package": {
+              "n": 10936,
+              "p50_ms": 30.89,
+              "p95_ms": 620.26,
+              "p99_ms": 631.45,
+              "max_ms": 665.12
+            },
+            "original": {
+              "n": 10936,
+              "p50_ms": 35.37,
+              "p95_ms": 622.26,
+              "p99_ms": 634.68,
+              "max_ms": 670.34
+            }
+          },
+          "largest_client_response_bytes": 22931,
+          "original_bytes": 7089542,
+          "pool": {
+            "enabled": true,
+            "scope": "current_process",
+            "pool_min": 0,
+            "pool_max": 4,
+            "pool_size": 4,
+            "pool_available": 4,
+            "pool_max_waiting": 64,
+            "pool_timeout_seconds": 5.0
+          },
+          "transactions": {
+            "scope": "current_process",
+            "window_seconds": 900,
+            "sample_limit": 4096,
+            "count": 1366,
+            "writes": 0,
+            "rollbacks": 0,
+            "connection_failures": 0,
+            "connection": {
+              "mean_ms": 88.612,
+              "p95_ms": 604.124,
+              "max_ms": 639.748
+            },
+            "lock_wait": {
+              "mean_ms": 0.0,
+              "p95_ms": 0,
+              "max_ms": 0
+            },
+            "transaction": {
+              "mean_ms": 628.249,
+              "p95_ms": 656.256,
+              "max_ms": 741.856
+            }
+          }
+        }
+      }
+    },
+    "17": {
+      "finance": 27,
+      "c01": 34,
+      "tasks": 35,
+      "attempt": 32,
+      "http": {
+        "total": 250,
+        "ok": 250,
+        "failed": 0,
+        "status_counts": {
+          "200": 250
+        },
+        "latency_ms": {
+          "p50": 1374.58,
+          "p95": 1762.26,
+          "p99": 1832.31,
+          "max": 1860.84
+        }
+      },
+      "capacity": {
+        "export_count": 200,
+        "export_seconds": 14.785,
+        "package_count": 200,
+        "package_seconds": 31.394,
+        "sustained": {
+          "seconds": 1800.284,
+          "rounds": 1466,
+          "concurrency": 8,
+          "latency": {
+            "clients": {
+              "n": 11728,
+              "p50_ms": 596.95,
+              "p95_ms": 1141.17,
+              "p99_ms": 1166.85,
+              "max_ms": 1259.0
+            },
+            "package": {
+              "n": 11728,
+              "p50_ms": 30.56,
+              "p95_ms": 575.9,
+              "p99_ms": 587.77,
+              "max_ms": 621.51
+            },
+            "original": {
+              "n": 11728,
+              "p50_ms": 34.7,
+              "p95_ms": 578.07,
+              "p99_ms": 590.51,
+              "max_ms": 622.92
+            }
+          },
+          "largest_client_response_bytes": 22931,
+          "original_bytes": 7089506,
+          "pool": {
+            "enabled": true,
+            "scope": "current_process",
+            "pool_min": 0,
+            "pool_max": 4,
+            "pool_size": 4,
+            "pool_available": 4,
+            "pool_max_waiting": 64,
+            "pool_timeout_seconds": 5.0
+          },
+          "transactions": {
+            "scope": "current_process",
+            "window_seconds": 900,
+            "sample_limit": 4096,
+            "count": 1366,
+            "writes": 0,
+            "rollbacks": 0,
+            "connection_failures": 0,
+            "connection": {
+              "mean_ms": 83.46,
+              "p95_ms": 562.648,
+              "max_ms": 601.464
+            },
+            "lock_wait": {
+              "mean_ms": 0.0,
+              "p95_ms": 0,
+              "max_ms": 0
+            },
+            "transaction": {
+              "mean_ms": 585.913,
+              "p95_ms": 609.791,
+              "max_ms": 712.027
+            }
+          }
+        }
+      }
+    }
+  },
+  "recovery": {
+    "phases": {
+      "regression": {
+        "passed": 185,
+        "skipped": 0
+      },
+      "joint": {
+        "passed": 2,
+        "skipped": 0
+      },
+      "identity": {
+        "passed": 4,
+        "skipped": 0
+      }
+    },
+    "databases": {
+      "16": {
+        "source_version": "16.15 (Ubuntu 16.15-1.pgdg22.04+2)",
+        "target_version": "16.15 (Ubuntu 16.15-1.pgdg22.04+2)",
+        "migrations": 208,
+        "originals": 4,
+        "source_users": 6,
+        "restored_capability_grants": 930,
+        "restored_column_grants": 55,
+        "p01_checks": {
+          "database": true,
+          "originals": true,
+          "identity": true,
+          "permissions": true,
+          "hold": true,
+          "review_export": true,
+          "tax_delivery": true,
+          "no_replay": true
+        }
+      },
+      "17": {
+        "source_version": "17.11 (Ubuntu 17.11-1.pgdg22.04+2)",
+        "target_version": "17.11 (Ubuntu 17.11-1.pgdg22.04+2)",
+        "migrations": 208,
+        "originals": 4,
+        "source_users": 6,
+        "restored_capability_grants": 930,
+        "restored_column_grants": 55,
+        "p01_checks": {
+          "database": true,
+          "originals": true,
+          "identity": true,
+          "permissions": true,
+          "hold": true,
+          "review_export": true,
+          "tax_delivery": true,
+          "no_replay": true
+        }
+      }
+    }
+  },
+  "frontend_budget": {
+    "schema": "frontend-budget-v1",
+    "status": "passed",
+    "initial": {
+      "jsBytes": 565076,
+      "jsGzipBytes": 175052,
+      "cssBytes": 99722,
+      "jsFiles": [
+        "assets/index-C_pUWcCl.js"
+      ],
+      "cssFiles": [
+        "assets/index-BXglmTDB.css"
+      ]
+    },
+    "home": {
+      "jsBytes": 592599,
+      "jsGzipBytes": 185622,
+      "cssBytes": 144373,
+      "jsFiles": [
+        "assets/WorkspaceHome-BMxiwE8-.js",
+        "assets/arrow-right-left-C5Yu7-9U.js",
+        "assets/check-QKAv8vvM.js",
+        "assets/index-C_pUWcCl.js",
+        "assets/play-Cw7PL33O.js",
+        "assets/receipt-CO5GENjT.js",
+        "assets/save-ByTETJyw.js",
+        "assets/workspace-Cw_2U9Se.js",
+        "assets/workspace-recovery-CeqBypK2.js"
+      ],
+      "cssFiles": [
+        "assets/index-BXglmTDB.css",
+        "assets/workbench-focus-CZeJGxk8.css",
+        "assets/workspace-Do0oLTUT.css"
+      ]
+    },
+    "budgets": {
+      "initialJs": 570000,
+      "initialGzip": 176000,
+      "homeJs": 625000,
+      "homeGzip": 195000,
+      "initialCss": 110000,
+      "homeCss": 145000
+    },
+    "violations": [],
+    "artifactSha256": "a7db7c2a03c4d7245087d4b8487809914959f8dfd3b964dc92782195a6c12026"
+  },
+  "evidence": [
+    {
+      "path": "tmp_test/finance-continuation/20261108/accepted/offline-execution.json",
+      "sha256": "20db6af91431f8fdb42861a1a5124937a14e858250354af3a07a9fd79fcc27f3"
+    },
+    {
+      "path": "tmp_test/finance-continuation/20261108/accepted/recovery-execution.json",
+      "sha256": "1ab4b3683ab948878771ca5c25c6d2a6b27b0cb02073eec92b4633a5c22c99c5"
+    },
+    {
+      "path": "tmp_test/finance-continuation/20261108/accepted/migration-discipline-execution.json",
+      "sha256": "186382219e52874b6be24a3e280224eb99186a9f9d8f03fbf5efe71083f8b224"
+    },
+    {
+      "path": "tmp_test/finance-continuation/20261108/accepted/pg16-finance-execution.json",
+      "sha256": "5056823ab29b850ee7209f9e92aad58c6f96be5d786c607d30305b30308d65ce"
+    },
+    {
+      "path": "tmp_test/finance-continuation/20261108/accepted/pg16-c01-execution.json",
+      "sha256": "1e33861aa203f8751cabefff2177fb320b5c81e8af2f1d3b2ba14d3306812984"
+    },
+    {
+      "path": "tmp_test/finance-continuation/20261108/accepted/pg16-attempt-execution.json",
+      "sha256": "e7ae25548f79db8e1601364d89d4c21118845cc6c03cf03a35ffa23593a3db28"
+    },
+    {
+      "path": "tmp_test/finance-continuation/20261108/accepted/pg16-tasks-execution.json",
+      "sha256": "7c1f85c0ed6213130e619111ea64091e1fecd156d24a5c3bfee308a12be29aeb"
+    },
+    {
+      "path": "tmp_test/finance-continuation/20261108/accepted/http16-execution.json",
+      "sha256": "9a77360e606039ba6fba72cc29a9a165150127774b1c7ee22ef3fe71eb2519c5"
+    },
+    {
+      "path": "tmp_test/finance-continuation/20261108/accepted/capacity16-execution.json",
+      "sha256": "e9096dab6278f4f4668fe1640af0b838419fd99f44911a5c136caf381bc88126"
+    },
+    {
+      "path": "tmp_test/finance-continuation/20261108/accepted/pg17-finance-execution.json",
+      "sha256": "b941409b63f3461714e73bc9e2bad702adfe7546f2796aaf4b22f92cea73d641"
+    },
+    {
+      "path": "tmp_test/finance-continuation/20261108/accepted/pg17-c01-execution.json",
+      "sha256": "7010bf53de0cbde6b3b28ac418437c0c50b008b5faf6878d4788621ca6b58da6"
+    },
+    {
+      "path": "tmp_test/finance-continuation/20261108/accepted/pg17-attempt-execution.json",
+      "sha256": "13edaf3785308c7b982e8ca2a7fd2ba6576ae6c3a890fc0b2b081446701166a5"
+    },
+    {
+      "path": "tmp_test/finance-continuation/20261108/accepted/pg17-tasks-execution.json",
+      "sha256": "108ffabd0a64bc6a25ffeef88b34886b58dbda8e287ae09cad7b6415a0528380"
+    },
+    {
+      "path": "tmp_test/finance-continuation/20261108/accepted/http17-execution.json",
+      "sha256": "8e6f03eab6c392513f6785a0e9c716c04dd681c386758ba2e40ceb289feac625"
+    },
+    {
+      "path": "tmp_test/finance-continuation/20261108/accepted/capacity17-execution.json",
+      "sha256": "e9a604342ca6ddc8195880245f1f53277537c06d3a763b0792aef0f8d043fab3"
+    },
+    {
+      "path": "tmp_test/finance-continuation/20261108/accepted/direct-build/execution.json",
+      "sha256": "522cde2030ed9def2431049ccebe6d5644a1f747b794f6837b0f24fde3f2daff"
+    },
+    {
+      "path": "tmp_test/finance-continuation/20261108/accepted/direct-frontend/execution.json",
+      "sha256": "b1976582b1c15f26b718c1dc6daec6237c5ab27b6505cad673a05a30f4b75e8d"
+    },
+    {
+      "path": "tmp_test/finance-continuation/20261108/accepted/direct-browser-dev/execution.json",
+      "sha256": "1f1fb962665f032aaaa805a113544d0f4613f6265b671ca886e24d551b105e9d"
+    },
+    {
+      "path": "tmp_test/finance-continuation/20261108/accepted/direct-browser-preview/execution.json",
+      "sha256": "9d976968b376e8d9adfddd893d636070dc67c52ce3a411bd0b146d20e5a38ce9"
+    },
+    {
+      "path": "tmp_test/finance-continuation/20261108/accepted/static-checks/exit-codes.json",
+      "sha256": "2659a2e458e2b846956516b6f0776aae091b8c9714b8236a6d55bebbec75dd4b"
+    },
+    {
+      "path": "tmp_test/finance-continuation/20261108/accepted/pg16-finance/summary.json",
+      "sha256": "da121fa956a3d3faa57d73039f5ee955b98e547b975d0f914750691407af48ff"
+    },
+    {
+      "path": "tmp_test/finance-continuation/20261108/accepted/pg16-c01/summary.json",
+      "sha256": "860dafc3b527081e06e26c43c80296e280bbbdd99eaddddd6454070b87884f27"
+    },
+    {
+      "path": "tmp_test/finance-continuation/20261108/accepted/pg16-tasks/summary.json",
+      "sha256": "a1ce8ca28c3ac786424d70f990b697d0f859d3850a9a9450f248601234b13739"
+    },
+    {
+      "path": "tmp_test/finance-continuation/20261108/accepted/http16/summary.json",
+      "sha256": "12e366294d37035672fc4742e0c042401407b93237d5bd304e88d17edeb9c39a"
+    },
+    {
+      "path": "tmp_test/finance-continuation/20261108/accepted/capacity16/report.json",
+      "sha256": "78f6964183a952e7c25970ea5f9c5263e819d0309ea1e440ca3eb5d450fa2a0a"
+    },
+    {
+      "path": "tmp_test/finance-continuation/20261108/accepted/pg17-finance/summary.json",
+      "sha256": "c32fbefc64e2c87228e3b746c828d4fb824873dc9fd05d3c2a20708a97ba6fe8"
+    },
+    {
+      "path": "tmp_test/finance-continuation/20261108/accepted/pg17-c01/summary.json",
+      "sha256": "d07061b713cae5fb8d452d3dea974111dfc939288f4f5ccee22f4d55c116c8c5"
+    },
+    {
+      "path": "tmp_test/finance-continuation/20261108/accepted/pg17-tasks/summary.json",
+      "sha256": "42c262e4540e2f3c29cb585a785591f633117d31fd1a51e062ae82322f9f2ffd"
+    },
+    {
+      "path": "tmp_test/finance-continuation/20261108/accepted/http17/summary.json",
+      "sha256": "6fa216c047c3e1ea093c3c48cf5a95bd652013e5f1b20a38be229ad54cf4cec5"
+    },
+    {
+      "path": "tmp_test/finance-continuation/20261108/accepted/capacity17/report.json",
+      "sha256": "5a5f98046a0139eb30496ab60973de4191f894b0423f77e2dc9e3406eaf5f262"
+    },
+    {
+      "path": "tmp_test/finance-continuation/20261108/accepted/recovery/reports/summary.json",
+      "sha256": "dce206a3e97e4072997a5f9169cea4aa5d95e5fd0c2846b8885d9ecc8401102d"
+    },
+    {
+      "path": "tmp_test/finance-continuation/20261108/accepted/frontend-budget.json",
+      "sha256": "4923bdd6962341d5969eb9cbad87e91071917520bb949271eaab1d17eeb02bd0"
+    },
+    {
+      "path": "tmp_test/finance-continuation/20261108/accepted/environment-status.json",
+      "sha256": "7bb91ba7fa77f6aefd9c836c18bf94f8ae2144b881a7ea1b250b8e06377b8171"
+    },
+    {
+      "path": "tmp_test/finance-continuation/20261108/accepted/screenshots/manifest.json",
+      "sha256": "3bd0ba5bafae54284b5bd8a5def68bebdd1d53908b69ac6bec65ceeb49df4c8e"
+    },
+    {
+      "path": "tmp_test/finance-continuation/20261108/accepted/capacity-observations.jsonl",
+      "sha256": "dca2fa0cd6a030ccf14da7b87d76c6f5548438286999d51aaf31e1e465c9ebce"
+    }
+  ],
+  "ownership": {
+    "baseline_candidate": {
+      "schema": "release-candidate-v1",
+      "head": "1cda743fd9725fdc5b22dd2d46e2faeedf912d05",
+      "source_files": 1986,
+      "source_sha256": "2633dc199162c160b3d27892a35664cabd0462cd0f725c33a2934656414bb4a5",
+      "migration_files": 340,
+      "migration_sha256": "5e02beb380596ea28c17248d00b417060e5100365d27127e2941c085b29da7f7"
+    },
+    "candidate": {
+      "schema": "release-candidate-v1",
+      "head": "1cda743fd9725fdc5b22dd2d46e2faeedf912d05",
+      "source_files": 1996,
+      "source_sha256": "c337ee9c6b773f1ac470b60c53d88e0c6845c54b91606992ffed2430291ac789",
+      "migration_files": 344,
+      "migration_sha256": "34eb2cc86af9138583a6d6f2a495c8b15189d8ab38edee75154b50344f0e04ee"
+    },
+    "preserved_existing": [
+      "docs/FINANCE_AGENT_FINAL_ACCEPTANCE_20261107_kernel-reuse.md",
+      "nexus_backend/tests/test_ak05_postgres_gate.py",
+      "nexus_backend/tests/test_c01_closure.py",
+      "nexus_backend/tests/test_c01_postgres_gate.py",
+      "scripts/ak05_postgres_gate.py",
+      "scripts/c01_postgres_gate.py",
+      "scripts/frontend_budget.mjs",
+      "src/workspace-modules.ts",
+      "docs/FINANCE_CLOSURE_ACCEPTANCE_20261108.json",
+      "docs/FINANCE_CLOSURE_ACCEPTANCE_20261108.md",
+      "e2e/finance-closure.spec.ts",
+      "nexus_backend/tests/fixtures/c01_sqlite095_bank.sql"
+    ],
+    "incremental_existing": [
+      ".github/workflows/accounting.yml",
+      "docs/CURRENT_ACCEPTANCE.md",
+      "src/App.tsx"
+    ],
+    "task_paths": [
+      ".github/workflows/accounting.yml",
+      "docs/CURRENT_ACCEPTANCE.md",
+      "docs/FINANCE_AGENT_CHECKPOINT.md",
+      "docs/FINANCE_AGENT_EXECUTION_STATUS.md",
+      "docs/FINANCE_CONTINUATION_ACCEPTANCE_20261108.json",
+      "docs/FINANCE_CONTINUATION_ACCEPTANCE_20261108.md",
+      "e2e/finance-continuation.spec.ts",
+      "nexus_backend/app/periodic/router.py",
+      "nexus_backend/app/periodic/service.py",
+      "nexus_backend/app/subledger/models.py",
+      "nexus_backend/app/subledger/router.py",
+      "nexus_backend/app/subledger/service.py",
+      "nexus_backend/app/subledger/workspace.py",
+      "nexus_backend/migrations/postgres/219_asset_period_binding.sql",
+      "nexus_backend/migrations/postgres/220_subledger_payment_correction.sql",
+      "nexus_backend/migrations/sqlite/135_asset_period_binding.sql",
+      "nexus_backend/migrations/sqlite/136_subledger_payment_correction.sql",
+      "nexus_backend/tests/test_dcp_reliability_gate.py",
+      "nexus_backend/tests/test_finance_continuation.py",
+      "nexus_backend/tests/test_finance_continuation_postgres.py",
+      "scripts/dcp_reliability_gate.py",
+      "scripts/dcp_reliability_required_cases.json",
+      "src/App.tsx",
+      "src/FinanceOperationsPanel.tsx",
+      "src/FormalBooksWorkbench.tsx",
+      "src/ServicePlanPanel.tsx",
+      "src/SettlementDetail.tsx",
+      "src/WorkspaceRouteContent.tsx",
+      "src/finance-continuation.test.ts",
+      "src/finance-operations.css",
+      "src/finance-operations.ts",
+      "src/service-journey.ts",
+      "src/workspace-route.ts"
+    ],
+    "task_source_paths": [
+      ".github/workflows/accounting.yml",
+      "e2e/finance-continuation.spec.ts",
+      "nexus_backend/app/periodic/router.py",
+      "nexus_backend/app/periodic/service.py",
+      "nexus_backend/app/subledger/models.py",
+      "nexus_backend/app/subledger/router.py",
+      "nexus_backend/app/subledger/service.py",
+      "nexus_backend/app/subledger/workspace.py",
+      "nexus_backend/migrations/postgres/219_asset_period_binding.sql",
+      "nexus_backend/migrations/postgres/220_subledger_payment_correction.sql",
+      "nexus_backend/migrations/sqlite/135_asset_period_binding.sql",
+      "nexus_backend/migrations/sqlite/136_subledger_payment_correction.sql",
+      "nexus_backend/tests/test_dcp_reliability_gate.py",
+      "nexus_backend/tests/test_finance_continuation.py",
+      "nexus_backend/tests/test_finance_continuation_postgres.py",
+      "scripts/dcp_reliability_gate.py",
+      "scripts/dcp_reliability_required_cases.json",
+      "src/App.tsx",
+      "src/FinanceOperationsPanel.tsx",
+      "src/FormalBooksWorkbench.tsx",
+      "src/ServicePlanPanel.tsx",
+      "src/SettlementDetail.tsx",
+      "src/WorkspaceRouteContent.tsx",
+      "src/finance-continuation.test.ts",
+      "src/finance-operations.css",
+      "src/finance-operations.ts",
+      "src/service-journey.ts",
+      "src/workspace-route.ts"
+    ]
+  },
+  "boundary": {
+    "models": "not_called",
+    "notifications": "not_sent",
+    "production": "not_accessed",
+    "commit_push_deploy": "not_performed",
+    "remote_ci": "not_run",
+    "capacity": "synthetic, two local PG versions co-running on shared host; service/storage and loopback HTTP; not production throughput"
+  }
+}

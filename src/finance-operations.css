@@ -48,3 +48,26 @@
   padding: 0;
   min-width: 0;
 }
+.finance-settlement fieldset {
+  min-inline-size: 0;
+  margin: var(--space-3) 0;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+.finance-settlement legend {
+  max-inline-size: 100%;
+  white-space: normal;
+}
+.finance-settlement input,
+.finance-settlement select {
+  width: 100%;
+  box-sizing: border-box;
+}
+.finance-settlement p {
+  margin-block: var(--space-2);
+}
+.finance-settlement h3,
+.finance-settlement h4 {
+  margin-block: var(--space-4) var(--space-2);
+}

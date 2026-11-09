@@ -1,6 +1,6 @@
 """C01 remaining controls: dimensions, capacity and independent bank evidence."""
 
-from review_policy_fixtures import post_reviewed_manual, seed_pre_review_manual_voucher
+from review_policy_fixtures import post_reviewed_manual
 
 import json
 import sqlite3
@@ -140,64 +140,53 @@ def test_legacy_unresolved_adjustments_cannot_cancel_each_other(tmp_path, monkey
         "migration_files",
         lambda dialect: [p for p in migration_files(dialect) if int(p.name[:3]) < 96],
     )
-    c = business.__wrapped__(tmp_path)
-    opening, posting = setup_b03(c)
-    sub = SubledgerService(c.db)
-    voucher = seed_pre_review_manual_voucher(
-        posting,
-        c.manager,
-        ManualVoucher(
-            book_id=c.book["id"],
-            voucher_date="2026-10-20",
-            command_key="empty-bank-balance",
-            description="清偿期初",
-            lines=[
-                ManualLine(
-                    account_id=opening["payable"]["id"], account_version=1, debit="10000.00"
-                ),
-                ManualLine(account_id=opening["bank"]["id"], account_version=1, credit="10000.00"),
-            ],
-        ),
-    )
-    # Native historic fixture: offsets are still separate unresolved facts.
-    with c.db.transaction(write=True, actor=c.manager) as conn:
-        for cents in (100, -100):
-            conn.execute(
-                "INSERT INTO bank_recon_adjustments(id,book_id,period,kind,amount_cents,explanation,status,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
-                (
-                    uuid4().hex,
-                    c.book["id"],
-                    "2026-10",
-                    "other",
-                    cents,
-                    "分别未解决的调整项",
-                    "open",
-                    c.manager.user_id,
-                    "2026-10-21",
-                ),
+    from pathlib import Path
+    from app.accounting.domain import Actor
+
+    # Never borrow a current-schema template for a historical migration test.
+    monkeypatch.setenv("ACCOUNTING_TEST_SCHEMA_TEMPLATE", "0")
+    db = database.Database(tmp_path / "sqlite095.db")
+    actor = Actor("legacy-owner", "legacy-firm")
+    with db.transaction(write=True, actor=actor) as conn:
+        assert conn.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == 95
+        assert not conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE name='effective_book_access'"
+        ).fetchone()
+        seed = Path(__file__).with_name("fixtures") / "c01_sqlite095_bank.sql"
+        for statement in seed.read_text(encoding="utf-8").split(";"):
+            if statement.strip():
+                conn.execute(statement)
+        checksums = dict(conn.execute("SELECT version,checksum FROM schema_migrations"))
+        history = [
+            tuple(row)
+            for row in conn.execute(
+                "SELECT id,amount_cents,status FROM bank_recon_adjustments ORDER BY id"
             )
-        line = next(x for x in voucher["lines"] if x["account_id"] == opening["bank"]["id"])
-        conn.execute(
-            "INSERT INTO bank_statement_lines(id,book_id,period,line_date,description,amount_cents,matched_voucher_line_id,status,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
-            (
-                uuid4().hex,
-                c.book["id"],
-                "2026-10",
-                "2026-10-20",
-                "合成清偿流水",
-                -1000000,
-                line["id"],
-                "matched",
-                c.manager.user_id,
-                "2026-10-20",
-            ),
-        )
+        ]
+        assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
     monkeypatch.setattr(database, "migration_files", migration_files)
-    c.db._migrate_sqlite()
-    result = sub.bank_reconciliation(c.manager, c.book["id"])
+    db._migrate_sqlite()
+    with db.transaction(actor=actor) as conn:
+        upgraded = dict(conn.execute("SELECT version,checksum FROM schema_migrations"))
+        assert all(upgraded[version] == digest for version, digest in checksums.items())
+        assert max(upgraded) == max(int(p.name[:3]) for p in migration_files("sqlite"))
+        assert [
+            tuple(row)
+            for row in conn.execute(
+                "SELECT id,amount_cents,status FROM bank_recon_adjustments ORDER BY id"
+            )
+        ] == history
+        assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
+        assert conn.execute("SELECT COUNT(*) FROM voucher_review_completions").fetchone()[0] == 0
+    result = SubledgerService(db).bank_reconciliation(actor, "legacy-book")
+    assert result["opening_cash_cents"] == 1000000
+    assert result["book_cash_cents"] == 0
+    assert result["difference_cents"] == 0
+    assert result["invalid_match_count"] == result["unmatched_formal_count"] == 0
     assert result["unexplained_cents"] == 0
     assert result["passed"] is False
     assert result["unresolved_adjustment_count"] == 2
+    assert result["unresolved_adjustment_absolute_cents"] == 200
 
 
 def test_native_allocation_cannot_claim_another_book(business):

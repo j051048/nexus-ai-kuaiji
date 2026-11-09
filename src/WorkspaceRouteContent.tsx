@@ -814,7 +814,16 @@ export function WorkspaceRouteContent({
                 period={detail?.book.period}
                 canDownload={detail?.book.permissions.export ?? false}
                 canReview={detail?.book.permissions.review ?? false}
-                onBack={() => setRouteView('accounting')}
+                onBack={() => (progress.origin ? returnToWork() : setRouteView('accounting'))}
+                onReturnService={
+                  !progress.origin && detail
+                    ? () => {
+                        const companyId = detail.book.company_id;
+                        if (companyId)
+                          openServicePlan({ bookId, companyId, period: detail.book.period });
+                      }
+                    : undefined
+                }
               />
             ) : routeView === 'ledger' && bookId ? (
               <LedgerWorkspace

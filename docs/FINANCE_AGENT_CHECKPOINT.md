@@ -22,7 +22,11 @@
 - `browser-acceptance.xml`：开发模式桌面/手机 4 项通过；真实本地 API 与 SQLite，错范围和撤权为受控注入。
 - `build-isolated.log`：使用任务独立临时目录构建通过。首次系统临时目录文件占用错误保留在 `build-acceptance.log`。
 
-## 保留的失败与后续
+## 当时保留的失败与后续
+
+时效说明：下述旧迁移夹具与体积红项已在 2026-11-08 的 [收口报告](FINANCE_CLOSURE_ACCEPTANCE_20261108.md) 修复；新的往来核销、跨期计提与同候选验收见 [续批报告](FINANCE_CONTINUATION_ACCEPTANCE_20261108.md)。原始失败记录保留，不改写为旧候选已通过。
+
+续批最终候选 `c337ee9c…` 已完成本地、PG16/17、两模式桌面手机、完整恢复和持续容量验收；本轮四个 PG 集群及身份桥已停止。历史 SQL 不变，新增 PG219/220、SQLite135/136 仅在本地应用。未提交、未推送、未部署。
 
 扩展回归发现 `test_c01_closure.py::test_legacy_unresolved_adjustments_cannot_cancel_each_other` 的旧数据库夹具失败：只装 `<96` 的 SQLite 迁移，当前开户服务查询不存在的 `effective_book_access`。尚未进入银行勾稽断言。相关测试、开户及权限文件本轮均未改变，未添加 skip/xfail，也未为旧夹具降低产品权限。
 

@@ -23,7 +23,7 @@ import { ActivityTimer } from './ActivityTimer';
 import { AgentNavigation, type AgentNavigationView } from './AgentNavigation';
 import { navigationCurrent } from './workspace-navigation';
 import { projectNavigationCapabilities } from './navigation-capabilities';
-import { AgentCommandPalette, type AgentCommand } from './AgentCommandPalette';
+import type { AgentCommand } from './AgentCommandPalette';
 import { buildQuickCommands } from './quick-commands';
 import type { AgentRoute } from './agent-workspace-types';
 import type {
@@ -70,6 +70,7 @@ import type { MonthlyDestination } from './monthly-workbench-types';
 import type { ServiceJourneyTarget } from './service-journey';
 import { workspaceViewLabels } from './workspace-labels';
 import {
+  AgentCommandPalette,
   AccessManagement,
   NewBookModal,
   ClientAccessTools,
@@ -939,6 +940,17 @@ export default function App() {
   }
   function openServiceStage(target: ServiceJourneyTarget) {
     if (navigationLocked || monthlyDirty) return;
+    if (target.view === 'formal-books') {
+      progress.capture(workspaceRoute);
+      const query = new URLSearchParams({
+        book: target.bookId,
+        company: target.companyId,
+        period: target.period,
+        finance: target.finance ?? 'aging',
+      });
+      void routerNavigate(`/workspace/formal-books?${query}`);
+      return;
+    }
     if (target.view !== 'materials') {
       openMonthlyTarget({
         view: target.view,
@@ -1812,14 +1824,22 @@ export default function App() {
         </AssistantDrawer>
       )}
       {commandOpen && (
-        <AgentCommandPalette
-          key={session.scope_key}
-          session={session}
-          commands={quickCommands}
-          canSearchBooks={canSeeAccounting}
-          onOpenBook={openCommandBook}
-          onClose={() => setCommandOpen(false)}
-        />
+        <Suspense
+          fallback={
+            <Modal title="搜索与快捷操作" onClose={() => setCommandOpen(false)}>
+              <p role="status">正在载入搜索…</p>
+            </Modal>
+          }
+        >
+          <AgentCommandPalette
+            key={session.scope_key}
+            session={session}
+            commands={quickCommands}
+            canSearchBooks={canSeeAccounting}
+            onOpenBook={openCommandBook}
+            onClose={() => setCommandOpen(false)}
+          />
+        </Suspense>
       )}
       {notice && (
         <div className={`toast ${notice.kind}`} role={notice.kind === 'error' ? 'alert' : 'status'}>

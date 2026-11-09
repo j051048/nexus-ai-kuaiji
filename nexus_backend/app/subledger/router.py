@@ -116,6 +116,12 @@ def build_subledger_router(actor_dependency):
     ):
         return {"items": subledger.list_items(current, book_id, kind, as_of)}
 
+    @router.get("/items/{item_id}/workspace")
+    def item_workspace(
+        item_id: str, book_id: str, current=Depends(actor_dependency), subledger=Depends(service)
+    ):
+        return subledger.item_workspace(current, book_id, item_id)
+
     @router.post("/allocations", status_code=201)
     def allocate(
         payload: AllocationCreate, current=Depends(actor_dependency), subledger=Depends(service)

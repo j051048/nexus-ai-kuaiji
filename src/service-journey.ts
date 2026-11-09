@@ -2,7 +2,8 @@ import type { ServicePlanOverview } from './service-plan-types';
 
 export type ServiceJourneyView = 'materials' | 'review' | 'delivery';
 export type ServiceJourneyTarget = {
-  view: ServiceJourneyView;
+  view: ServiceJourneyView | 'formal-books';
+  finance?: 'aging' | 'periodic';
   bookId: string;
   companyId: string;
   period: string;

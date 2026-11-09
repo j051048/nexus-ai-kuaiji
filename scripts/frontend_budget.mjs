@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { gzipSync } from 'node:zlib';
 
 export const deferredScreens = [
+  'src/AgentCommandPalette.tsx',
   'src/BookWorkspaceShell.tsx',
   'src/WorkspaceHome.tsx',
   'src/AppDialogs.tsx',

@@ -72,6 +72,7 @@ class AllocationPart(InputModel):
 
 
 class AllocationCreate(InputModel):
+    expected_fingerprint: StrictStr | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     book_id: StrictStr = Field(min_length=1, max_length=100)
     voucher_id: StrictStr = Field(min_length=1, max_length=100)
     parts: list[AllocationPart] = Field(min_length=1, max_length=100)
@@ -87,6 +88,7 @@ class AllocationCreate(InputModel):
 
 
 class AllocationReverse(InputModel):
+    expected_fingerprint: StrictStr | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     idempotency_key: StrictStr = Field(min_length=8, max_length=120)
     reason: StrictStr = Field(min_length=3, max_length=1000)
 

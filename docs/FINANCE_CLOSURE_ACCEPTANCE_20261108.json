@@ -1,0 +1,222 @@
+{
+  "schema": "finance-closure-acceptance-v1",
+  "status": "local_requested_scope_passed",
+  "candidate": {
+    "schema": "release-candidate-v1",
+    "head": "1cda743fd9725fdc5b22dd2d46e2faeedf912d05",
+    "source_files": 1986,
+    "source_sha256": "2633dc199162c160b3d27892a35664cabd0462cd0f725c33a2934656414bb4a5",
+    "migration_files": 340,
+    "migration_sha256": "5e02beb380596ea28c17248d00b417060e5100365d27127e2941c085b29da7f7"
+  },
+  "baseline_candidate": {
+    "schema": "release-candidate-v1",
+    "head": "1cda743fd9725fdc5b22dd2d46e2faeedf912d05",
+    "source_files": 1984,
+    "source_sha256": "36e164d9bc43e4d0807b0ea8782969a49753071da5b855d3a50ae3f4e09cea26",
+    "migration_files": 340,
+    "migration_sha256": "5e02beb380596ea28c17248d00b417060e5100365d27127e2941c085b29da7f7"
+  },
+  "migration_files_unchanged": true,
+  "migrations": {
+    "postgres": 218,
+    "sqlite": 134
+  },
+  "executions": {
+    "offline": {
+      "evidence": "tmp_test/finance-closure/20261108/offline-final/offline-execution.json",
+      "sha256": "f2421c733cc7aacb7ec302f263c8f8efc4024d066e4f06d50d0df72951e2fd1b",
+      "seconds": 173.141
+    },
+    "pg16_c01": {
+      "evidence": "tmp_test/finance-closure/20261108/pg16-final/c01-16-execution.json",
+      "sha256": "32a0ab99294eec9883de4b656c81c16e15580d84b4496f72f117fec43469800e",
+      "seconds": 98.564
+    },
+    "pg17_c01": {
+      "evidence": "tmp_test/finance-closure/20261108/pg17-final/c01-17-execution.json",
+      "sha256": "128dde2b7e73e242692df3bb374977f68ae01761c0c4fab3617f174e99758dce",
+      "seconds": 96.018
+    },
+    "pg16_finance": {
+      "evidence": "tmp_test/finance-closure/20261108/finance-16-execution.json",
+      "sha256": "f67b8f4d8dadc71ab1c11d518b03e92d588e64609594eb4998e924af8fe314c3",
+      "seconds": 22.801
+    },
+    "pg17_finance": {
+      "evidence": "tmp_test/finance-closure/20261108/finance-17-execution.json",
+      "sha256": "2f2d5c3489909203d1da68475f7e2e1f933160ced2402eecef0809854a18501b",
+      "seconds": 22.364
+    },
+    "frontend": {
+      "evidence": "tmp_test/finance-closure/20261108/direct-frontend/execution.json",
+      "sha256": "b9189f27d4e794ca0af793e605d9f22b36c1bf565c994b18b6143518eab55fd7",
+      "seconds": 3.3944727
+    },
+    "browser_dev": {
+      "evidence": "tmp_test/finance-closure/20261108/direct-browser-dev/execution.json",
+      "sha256": "4e02642d99ce0c23dc98a6e85ff9b04253cbfa6ca9b363245cd412dd7b83a7c9",
+      "seconds": 18.9437251
+    },
+    "browser_preview": {
+      "evidence": "tmp_test/finance-closure/20261108/direct-browser-preview/execution.json",
+      "sha256": "3ba1bb6a65fe2aefdbf4516a077214d5a1ab16259a5733722ce486f667fe8b89",
+      "seconds": 31.2320846
+    },
+    "build": {
+      "evidence": "tmp_test/finance-closure/20261108/direct-build/execution.json",
+      "sha256": "92dd43d4c7014937a9f13e151dc9d0443c235deb399082c239e6dc07d53e357c",
+      "seconds": 3.6824462
+    }
+  },
+  "junit": {
+    "offline": {
+      "passed": 334,
+      "failed": 0,
+      "skipped": 0,
+      "path": "tmp_test/finance-closure/20261108/offline-final/offline.xml",
+      "sha256": "a3602e176d38f3e959af18bb514580412e2e3caae27db7c76831fca575afc63d"
+    },
+    "pg16_c01": {
+      "passed": 34,
+      "failed": 0,
+      "skipped": 0,
+      "path": "tmp_test/finance-closure/20261108/pg16-final/c01-16/verification/c01.xml",
+      "sha256": "54dec8ee25c2d33e985fc5e10b0b41169900670fd986ebe78b32e8a37e56c836"
+    },
+    "pg17_c01": {
+      "passed": 34,
+      "failed": 0,
+      "skipped": 0,
+      "path": "tmp_test/finance-closure/20261108/pg17-final/c01-17/verification/c01.xml",
+      "sha256": "76f1db6775cc1752c170ecc14e727d35b96efe265c14f226de03f36ffaa96598"
+    },
+    "pg16_finance": {
+      "passed": 14,
+      "failed": 0,
+      "skipped": 0,
+      "path": "tmp_test/finance-closure/20261108/finance-16.xml",
+      "sha256": "7f12a10ebc8ef64de71747d76301ab5e2e60af92bb44d1941aee83fd2bbd3ed5"
+    },
+    "pg17_finance": {
+      "passed": 14,
+      "failed": 0,
+      "skipped": 0,
+      "path": "tmp_test/finance-closure/20261108/finance-17.xml",
+      "sha256": "5a6f1d1474a0cca0c18b9941480574af94e8c0c9ef5a44a913b8ad939372a815"
+    },
+    "browser_dev": {
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "path": "tmp_test/finance-closure/20261108/direct-browser-dev/results.xml",
+      "sha256": "bba5fee8fc417ae37d7476a0e308b8d05ef56fbb7b480c0baa97226711d08d93"
+    },
+    "browser_preview": {
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "path": "tmp_test/finance-closure/20261108/direct-browser-preview/results.xml",
+      "sha256": "0def93ac4a5293fe0d43f4e8cd203943f6917b4b1fb3a397fd12cb14b388dffc"
+    }
+  },
+  "frontend": {
+    "passed": 1322,
+    "skipped": 0,
+    "path": "tmp_test/finance-closure/20261108/direct-frontend/results.json",
+    "sha256": "6d50b2bc0a12739fe3063a351ed39815452c1e86704bc9d1dcfc1ec199669923"
+  },
+  "frontend_budget": {
+    "schema": "frontend-budget-v1",
+    "status": "passed",
+    "initial": {
+      "jsBytes": 564602,
+      "jsGzipBytes": 174883,
+      "cssBytes": 99722,
+      "jsFiles": [
+        "assets/index-DhHDpRX6.js"
+      ],
+      "cssFiles": [
+        "assets/index-BXglmTDB.css"
+      ]
+    },
+    "home": {
+      "jsBytes": 592125,
+      "jsGzipBytes": 185457,
+      "cssBytes": 144373,
+      "jsFiles": [
+        "assets/WorkspaceHome-CXbf4Jy-.js",
+        "assets/arrow-right-left-BjEpESdA.js",
+        "assets/check-CYDH739r.js",
+        "assets/index-DhHDpRX6.js",
+        "assets/play-BhsGVObK.js",
+        "assets/receipt-O6HQF-lg.js",
+        "assets/save-BbotN8mG.js",
+        "assets/workspace-DwwvrV41.js",
+        "assets/workspace-recovery-CsCALlqe.js"
+      ],
+      "cssFiles": [
+        "assets/index-BXglmTDB.css",
+        "assets/workbench-focus-CZeJGxk8.css",
+        "assets/workspace-Do0oLTUT.css"
+      ]
+    },
+    "budgets": {
+      "initialJs": 570000,
+      "initialGzip": 176000,
+      "homeJs": 625000,
+      "homeGzip": 195000,
+      "initialCss": 110000,
+      "homeCss": 145000
+    },
+    "violations": [],
+    "artifactSha256": "e4892f5e422c357b48488881b5ce17177be2f2d529c97f502bb9844a9a4e8fc8"
+  },
+  "environment_stop": {
+    "environment_id": "f4d984e0c1fd4c8ebb8f8252acd906e5",
+    "clusters": {
+      "source16": {
+        "major": 16,
+        "port": 25496,
+        "running": false
+      },
+      "target16": {
+        "major": 16,
+        "port": 25497,
+        "running": false
+      },
+      "source17": {
+        "major": 17,
+        "port": 25498,
+        "running": false
+      },
+      "target17": {
+        "major": 17,
+        "port": 25499,
+        "running": false
+      }
+    },
+    "data_deleted": false
+  },
+  "browser_listeners": 0,
+  "full_release_passed": false,
+  "full_recovery_rerun": false,
+  "capacity_rerun": false,
+  "remote_ci_verified": false,
+  "production_touched": false,
+  "real_models_or_notifications_used": false,
+  "retained_diagnostics": [
+    "legacy-red.xml",
+    "environment-red.xml",
+    "budget-red.json",
+    "c01-16/summary.json",
+    "frontend-execution.json",
+    "frontend-final/frontend-execution.json",
+    "browser-dev-final/browser-dev-execution.json"
+  ],
+  "notes": [
+    "C01 now creates one fresh database per CLI invocation and keeps credentials outside public reports.",
+    "SQLITE095 history is seeded natively; original checksums, adjustments and missing independent-review evidence are preserved.",
+    "Windows SWC native cache access differs for Python child processes; direct Node full regression passed without changing dependencies or disabling checks."
+  ]
+}

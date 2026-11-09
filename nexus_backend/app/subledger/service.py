@@ -425,7 +425,7 @@ class SubledgerService:
         )
 
     def allocate(self, actor, request: AllocationCreate):
-        fingerprint = _fingerprint(request.model_dump())
+        fingerprint = _fingerprint(request.model_dump(exclude={"expected_fingerprint"}))
         with self.db.transaction(write=True, actor=actor) as conn:
             book, ledger_id = self._book(conn, actor, request.book_id, write=True)
             prior = conn.execute(
@@ -436,12 +436,30 @@ class SubledgerService:
                 if prior["request_fingerprint"] != fingerprint:
                     raise AccountingError("核销幂等键已用于不同内容", 409)
                 return self._allocation_view(conn, prior["voucher_id"])
+            if request.expected_fingerprint:
+                if len(request.parts) != 1:
+                    raise AccountingError("单项办理快照不能用于多项核销", 422)
+                self._check_workspace(
+                    conn, actor, book["id"], request.parts[0].item_id, request.expected_fingerprint
+                )
             voucher = conn.execute(
                 "SELECT * FROM vouchers WHERE id=? AND book_id=?",
                 (request.voucher_id, book["id"]),
             ).fetchone()
             if not voucher:
                 raise AccountingError("收付款凭证不存在或不属于当前账套", 404)
+            current_payment = (
+                conn.execute(
+                    "SELECT accounting.subledger_payment_current(?)", (voucher["id"],)
+                ).fetchone()[0]
+                if self.db.is_postgres
+                else not voucher["reversal_of"]
+                and not conn.execute(
+                    "SELECT 1 FROM vouchers WHERE reversal_of=?", (voucher["id"],)
+                ).fetchone()
+            )
+            if not current_payment:
+                raise AccountingError("收付款凭证已冲销或调整，请先核对更正记录再办理核销", 409)
             items = []
             seen_items = set()
             for part in request.parts:
@@ -533,6 +551,7 @@ class SubledgerService:
                 {
                     "items": [item["id"] for item, _ in items],
                     "total_cents": total,
+                    "reason": request.reason,
                     "idempotency_key": request.idempotency_key,
                 },
             )
@@ -548,7 +567,7 @@ class SubledgerService:
         return {"voucher_id": voucher_id, "allocations": [dict(row) for row in rows]}
 
     def reverse_allocation(self, actor, allocation_id, request: AllocationReverse):
-        fingerprint = _fingerprint(request.model_dump())
+        fingerprint = _fingerprint(request.model_dump(exclude={"expected_fingerprint"}))
         with self.db.transaction(write=True, actor=actor) as conn:
             allocation = conn.execute(
                 "SELECT a.*,i.book_id FROM subledger_allocations a "
@@ -569,6 +588,9 @@ class SubledgerService:
                 ):
                     raise AccountingError("撤销核销幂等键已用于不同内容", 409)
                 return {"allocation_id": allocation_id, "reversal_id": prior["id"]}
+            self._check_workspace(
+                conn, actor, book["id"], allocation["item_id"], request.expected_fingerprint
+            )
             if conn.execute(
                 "SELECT 1 FROM subledger_allocation_reversals WHERE allocation_id=?",
                 (allocation_id,),
@@ -593,6 +615,21 @@ class SubledgerService:
             )
             self._audit(conn, actor, book["id"], "subledger.allocate.reverse", allocation_id, {})
             return {"allocation_id": allocation_id, "reversed": True}
+
+    def item_workspace(self, actor, book_id, item_id):
+        from .workspace import item_workspace
+
+        with self.db.transaction(actor=actor) as conn:
+            return item_workspace(self, conn, actor, book_id, item_id)
+
+    def _check_workspace(self, conn, actor, book_id, item_id, expected):
+        from .workspace import item_workspace
+
+        if (
+            expected
+            and item_workspace(self, conn, actor, book_id, item_id)["fingerprint"] != expected
+        ):
+            raise AccountingError("往来事项或付款凭证已变化，请重新读取并核对后办理", 409)
 
     def aging(self, actor, book_id, as_of):
         with self.db.transaction(actor=actor) as conn:

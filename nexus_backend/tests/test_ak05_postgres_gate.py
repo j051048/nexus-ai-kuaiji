@@ -175,6 +175,17 @@ def test_prepare_without_explicit_opt_in_never_opens_a_database(tmp_path, monkey
         prepare(config(), 16, tmp_path / "config")
 
 
+@pytest.mark.parametrize("groups", [(), ("../other",), ("regression", "regression")])
+def test_preparation_group_selection_is_bounded_before_any_connection(
+    tmp_path, monkeypatch, groups
+):
+    monkeypatch.setattr(
+        gate, "local_connection", lambda *_: pytest.fail("must reject before connecting")
+    )
+    with pytest.raises(GateError):
+        prepare(config(), 16, tmp_path / "config", allow_create=True, groups=groups)
+
+
 def manifest_for(tmp_path):
     manifest = {"version": 1, "major": 16, "groups": {}}
     for group in GROUPS:

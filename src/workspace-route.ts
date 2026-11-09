@@ -171,6 +171,13 @@ export function workspaceRouteUrl(
   // Exact package links and the tax subview belong to one selected book only.
   // Never carry them when a user switches clients or leaves delivery work.
   if (route.bookId && previous.get('book') === route.bookId) {
+    if (
+      route.view === 'formal-books' &&
+      previous.get('company') === route.companyId &&
+      previous.get('period') === route.period
+    ) {
+      for (const section of previous.getAll('finance')) query.append('finance', section);
+    }
     if (route.view === 'briefing' || route.view === 'delivery') {
       // Keep malformed/duplicate explicit targets for the panel to reject.
       // Dropping them would silently turn a bad link into "open latest".

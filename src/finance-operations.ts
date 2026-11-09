@@ -132,6 +132,7 @@ export function parsePeriodic(raw: unknown, e: FormalExpectedScope) {
       posted_cents,
       life_months: integer(r.life_months, 1),
       start_period: text(r.start_period),
+      origin_period: r.origin_period === undefined ? e.period : text(r.origin_period),
     };
   });
   unique(assets.map((a) => a.id));
@@ -181,3 +182,84 @@ export function parsePeriodic(raw: unknown, e: FormalExpectedScope) {
   return { locked, can_generate, accounts, assets, drafts };
 }
 export type PeriodicWorkspace = ReturnType<typeof parsePeriodic>;
+
+export function financeSection(
+  search: string,
+  expected: Pick<FormalExpectedScope, 'bookId' | 'companyId' | 'period'>,
+): 'aging' | 'periodic' | undefined {
+  const query = new URLSearchParams(search);
+  if (
+    ['finance', 'book', 'company', 'period'].some((key) => query.getAll(key).length !== 1) ||
+    query.get('book') !== expected.bookId ||
+    query.get('company') !== expected.companyId ||
+    query.get('period') !== expected.period
+  )
+    return undefined;
+  const section = query.get('finance');
+  return section === 'aging' || section === 'periodic' ? section : undefined;
+}
+
+export function parseSettlement(raw: unknown, e: FormalExpectedScope, itemId: string) {
+  const v = object(raw);
+  scope(v.scope, e);
+  const item = object(v.item),
+    source = object(v.source);
+  if (item.id !== itemId || item.book_id !== e.bookId) throw invalid();
+  const total = integer(item.amount_cents, 1),
+    remaining = integer(item.remaining_cents),
+    allocated = integer(item.allocated_cents);
+  if (total !== remaining + allocated) throw invalid();
+  const locked = flag(v.locked),
+    can_allocate = flag(v.can_allocate),
+    fingerprint = text(v.fingerprint);
+  if ((locked && can_allocate) || !/^[0-9a-f]{64}$/.test(fingerprint)) throw invalid();
+  const vouchers = list(v.vouchers).map((rawVoucher) => {
+    const r = object(rawVoucher);
+    if (r.book_id !== e.bookId) throw invalid();
+    const available_cents = integer(r.available_cents, 1);
+    if (available_cents > integer(r.settlement_cents, 1)) throw invalid();
+    return {
+      id: text(r.id),
+      description: text(r.description),
+      voucher_date: text(r.voucher_date),
+      available_cents,
+    };
+  });
+  const allocations = list(v.allocations).map((rawAllocation) => {
+    const r = object(rawAllocation);
+    if (r.book_id !== e.bookId || r.item_id !== itemId) throw invalid();
+    return {
+      id: text(r.id),
+      voucher_id: text(r.voucher_id),
+      amount_cents: integer(r.amount_cents, 1),
+      reason: text(r.reason),
+      allocated_on: text(r.allocated_on),
+      reversal_id: r.reversal_id === null ? null : text(r.reversal_id),
+      reversal_reason: r.reversal_reason === null ? null : text(r.reversal_reason),
+    };
+  });
+  unique(vouchers.map((r) => r.id));
+  unique(allocations.map((r) => r.id));
+  if (allocations.reduce((sum, r) => sum + (r.reversal_id ? 0 : r.amount_cents), 0) !== allocated)
+    throw invalid();
+  return {
+    locked,
+    can_allocate,
+    fingerprint,
+    vouchers,
+    allocations,
+    source: {
+      kind: oneOf(source.kind, ['manual', 'opening', 'voucher']),
+      verified: flag(source.verified),
+    },
+    item: {
+      id: itemId,
+      counterparty: text(item.counterparty_name),
+      kind: oneOf(item.kind, Object.keys(agingKinds) as Kind[]),
+      amount_cents: total,
+      remaining_cents: remaining,
+      allocated_cents: allocated,
+      original_date: text(item.original_date),
+    },
+  };
+}

@@ -32,8 +32,13 @@ def build_periodic_router(actor_dependency):
         return periodic.generate_accrual(current, rule_id)
 
     @router.post("/assets/{asset_id}/generate", status_code=201)
-    def generate_asset(asset_id: str, current=Depends(actor_dependency), periodic=Depends(service)):
-        return periodic.generate_asset(current, asset_id)
+    def generate_asset(
+        asset_id: str,
+        book_id: str | None = None,
+        current=Depends(actor_dependency),
+        periodic=Depends(service),
+    ):
+        return periodic.generate_asset(current, asset_id, book_id=book_id)
 
     @router.post("/closing/generate", status_code=201)
     def generate_closing(

@@ -174,6 +174,24 @@ export function ServicePlanPanel({
               ))}
             </ol>
           </nav>
+          <details className="review-section">
+            <summary>往来核销与资产计提</summary>
+            <p>由本账套会计核对未结事项、付款凭证和资产草稿；办理后可返回本月服务单。</p>
+            {(['aging', 'periodic'] as const).map((finance) => (
+              <button
+                key={finance}
+                type="button"
+                className="button secondary"
+                disabled={!journey[1] || journey[1].disabled}
+                onClick={() =>
+                  onOpenStage?.({ view: 'formal-books', finance, bookId, companyId, period })
+                }
+              >
+                {finance === 'aging' ? '办理往来核销' : '办理资产计提'}
+              </button>
+            ))}
+            {journey[1]?.reason && <p>{journey[1].reason}</p>}
+          </details>
           <ServicePlanEditor
             key={`${session.scope_key}:${bookId}:${matching.plan?.version ?? 0}:${resource.reset}`}
             overview={matching}

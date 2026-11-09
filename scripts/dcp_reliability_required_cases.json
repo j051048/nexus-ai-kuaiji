@@ -119,6 +119,41 @@
         "nexus_backend.tests.test_tasks0712_postgres::test_monitor_unknown_model_cost_does_not_disappear_or_resend",
         "nexus_backend.tests.test_tasks0712_postgres::test_task_replay_uses_real_pg_scope_and_rejects_rehashed_steps"
       ]
+    },
+    "finance": {
+      "files": [
+        "test_finance_continuation_postgres.py",
+        "test_finance_agent_reuse_postgres.py"
+      ],
+      "cases": [
+        "nexus_backend.tests.test_finance_continuation_postgres::test_workflow[partial_reverse]",
+        "nexus_backend.tests.test_finance_continuation_postgres::test_workflow[scope]",
+        "nexus_backend.tests.test_finance_continuation_postgres::test_workflow[fingerprint]",
+        "nexus_backend.tests.test_finance_continuation_postgres::test_workflow[asset_carry]",
+        "nexus_backend.tests.test_finance_continuation_postgres::test_workflow[account_version]",
+        "nexus_backend.tests.test_finance_continuation_postgres::test_workflow[native_scope]",
+        "nexus_backend.tests.test_finance_continuation_postgres::test_workflow[cross_year]",
+        "nexus_backend.tests.test_finance_continuation_postgres::test_competing_settlement_preview_accepts_once",
+        "nexus_backend.tests.test_finance_agent_reuse_postgres::test_tail[100.00-0.00-3-2026-08-10000]",
+        "nexus_backend.tests.test_finance_agent_reuse_postgres::test_tail[100.00-1.00-7-2026-04-9900]",
+        "nexus_backend.tests.test_finance_agent_reuse_postgres::test_tail[0.01-0.00-12-2025-11-1]",
+        "nexus_backend.tests.test_finance_agent_reuse_postgres::test_tail[100.00-0.00-3-2026-10-3333]",
+        "nexus_backend.tests.test_finance_agent_reuse_postgres::test_audit",
+        "nexus_backend.tests.test_finance_agent_reuse_postgres::test_expired_account",
+        "nexus_backend.tests.test_finance_agent_reuse_postgres::test_review_post_and_isolation",
+        "nexus_backend.tests.test_finance_agent_reuse_postgres::test_aging_identity",
+        "nexus_backend.tests.test_finance_agent_reuse_postgres::test_invalid_date[2026-02-30]",
+        "nexus_backend.tests.test_finance_agent_reuse_postgres::test_invalid_date[2026-13-01]",
+        "nexus_backend.tests.test_finance_agent_reuse_postgres::test_invalid_date[20261031]",
+        "nexus_backend.tests.test_finance_agent_reuse_postgres::test_invalid_date[2026-W44-6]",
+        "nexus_backend.tests.test_finance_agent_reuse_postgres::test_generation_competition_and_revocation",
+        "nexus_backend.tests.test_finance_agent_reuse_postgres::test_locked_period_disables_actions_and_rejects_native_asset_write",
+        "nexus_backend.tests.test_finance_continuation_postgres::test_revoked_intermediate_period_never_disappears_from_asset_history",
+        "nexus_backend.tests.test_finance_continuation_postgres::test_workflow[reversed_history]",
+        "nexus_backend.tests.test_finance_continuation_postgres::test_corrected_payment[projection]",
+        "nexus_backend.tests.test_finance_continuation_postgres::test_corrected_payment[api]",
+        "nexus_backend.tests.test_finance_continuation_postgres::test_corrected_payment[native]"
+      ]
     }
   }
 }

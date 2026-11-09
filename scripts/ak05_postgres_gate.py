@@ -204,9 +204,14 @@ def private_json(path, value):
         stream.write("\n")
 
 
-def prepare(source, major, destination, *, allow_create=False):
+def prepare(source, major, destination, *, allow_create=False, groups=None):
     if not allow_create:
         raise GateError("创建隔离库必须显式提供 --allow-create-local-databases")
+    # Domain gates may reuse preparation for one group; the AK05 CLI still
+    # prepares and requires all four frozen groups, without changing its gate.
+    groups = tuple(GROUPS) if groups is None else tuple(groups)
+    if not groups or len(set(groups)) != len(groups) or any(g not in GROUPS for g in groups):
+        raise GateError("隔离库分组必须来自既有门禁且不得为空或重复")
     validate_config(source, admin_only=True)
     assert_server_and_roles(source, major, roles=False)
     sys.path[:0] = [str(ROOT), str(ROOT / "nexus_backend")]
@@ -235,7 +240,7 @@ def prepare(source, major, destination, *, allow_create=False):
     destination.mkdir(parents=True, exist_ok=False)
     run = uuid4().hex[:12]
     configs = {}
-    for group in GROUPS:
+    for group in groups:
         name = f"ak01_local_ak05_ci_pg{major}_{run}_{group}"
         admin = with_database(source["admin"], name)
         with local_connection(source["admin"], autocommit=True) as conn:

@@ -3,6 +3,7 @@ import { api, apiBlob, ApiError, errorMessage } from './api';
 import type { Session } from './types';
 import { ManualVoucherReviewPanel } from './ManualVoucherReviewPanel';
 import { FinanceOperationsPanel } from './FinanceOperationsPanel';
+import { financeSection } from './finance-operations';
 import { correctionSeed, type CorrectionSeed } from './voucher-correction';
 import { LegacyReviewPanel } from './LegacyReviewPanel';
 import { AnalysisEvidencePanel } from './AnalysisEvidencePanel';
@@ -35,6 +36,7 @@ export interface FormalBooksWorkbenchProps {
   canDownload?: boolean;
   canReview?: boolean;
   onBack: () => void;
+  onReturnService?: () => void;
 }
 const bookLabels: Record<FormalBookKind, string> = {
   trial_balance: '科目余额表',
@@ -80,12 +82,17 @@ function FormalBooksContent({
   canDownload = false,
   canReview = false,
   onBack,
+  onReturnService,
 }: FormalBooksWorkbenchProps) {
   const [kind, setKind] = useState<FormalBookKind>('trial_balance');
   const [legacyOpen, setLegacyOpen] = useState(false);
   const [setupOpen, setSetupOpen] = useState(false);
   const [manualOpen, setManualOpen] = useState(false);
-  const [financeOpen, setFinanceOpen] = useState(false);
+  const initialFinanceTab = financeSection(
+    typeof window === 'undefined' ? '' : window.location.search,
+    { bookId, companyId, period },
+  );
+  const [financeOpen, setFinanceOpen] = useState(!!initialFinanceTab);
   const [closeOpen, setCloseOpen] = useState(false);
   const [accountId, setAccountId] = useState('');
   const [asOf, setAsOf] = useState('');
@@ -339,8 +346,12 @@ function FormalBooksContent({
           <button type="button" className="button secondary" onClick={() => setRange(true)}>
             连续期间账簿
           </button>
-          <button type="button" className="button secondary" onClick={onBack}>
-            返回工作台
+          <button
+            type="button"
+            className="button secondary"
+            onClick={initialFinanceTab && onReturnService ? onReturnService : onBack}
+          >
+            {initialFinanceTab && onReturnService ? '返回本月服务单' : '返回工作台'}
           </button>
         </div>
       </header>
@@ -403,6 +414,7 @@ function FormalBooksContent({
       {companyId && period && (
         <details
           className="review-section"
+          open={financeOpen}
           onToggle={(event) => setFinanceOpen(event.currentTarget.open)}
         >
           <summary>往来与期末办理（账龄、资产及计提草稿）</summary>
@@ -412,6 +424,8 @@ function FormalBooksContent({
               companyId={companyId}
               bookId={bookId}
               period={period}
+              initialTab={initialFinanceTab}
+              onVoucher={openVoucher}
               onChanged={() => setRevision((value) => value + 1)}
             />
           )}
