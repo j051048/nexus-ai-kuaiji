@@ -52,6 +52,7 @@ import { BusinessRecordLinks } from './BusinessRecordLinks';
 import { BusinessOriginalPreview } from './BusinessOriginalPreview';
 import { TermHelp } from './TermHelp';
 import { businessListEmpty, readRecovery, type ReadRecovery } from './workspace-recovery';
+import { assertBusinessSelection, nextBusinessItem } from './business-selection';
 import './intake.css';
 import './business-record.css';
 import './workspace-help.css';
@@ -107,6 +108,7 @@ export function BusinessWorkspace({
   onOpenBatch,
   onOpenCase,
   onOpenRevision,
+  onSelectEvent,
   initialEventId = '',
   initialIntakeId = '',
   initialTemplate,
@@ -122,6 +124,7 @@ export function BusinessWorkspace({
   onOpenCase?: (target: { eventId: string; title: string }) => void;
   initialEventId?: string;
   onOpenRevision?: (eventId: string, scope?: { companyId: string; period: string }) => void;
+  onSelectEvent?: (eventId: string) => void;
   initialIntakeId?: string;
   initialTemplate?: BusinessTemplate;
   initialNew?: boolean;
@@ -136,11 +139,12 @@ export function BusinessWorkspace({
   const [companyId, setCompanyId] = useState(initialCompanyId);
   const [status, setStatus] = useState('');
   const [events, setEvents] = useState<BusinessEvent[]>([]);
-  const [total, setTotal] = useState(0);
+  const [total, setTotal] = useState<number | null>(null);
   const [offset, setOffset] = useState(0);
   const [selected, setSelected] = useState<BusinessEvent | null>(null);
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [detailFailure, setDetailFailure] = useState<{ id: string; message: string } | null>(null);
   const [operationBusy, setBusy] = useState('');
   const [intelligenceBusy, setIntelligenceBusy] = useState(false);
   const busy = operationBusy || (intelligenceBusy ? 'intelligence' : '');
@@ -148,6 +152,8 @@ export function BusinessWorkspace({
   const [listHint, setListHint] = useState<ReadRecovery | null>(null);
   const emptyGuide = businessListEmpty(scope, status);
   const [notice, setNotice] = useState('');
+  const [completedEvent, setCompletedEvent] = useState('');
+  const syncedSelection = useRef('');
   const [editEvent, setEditEvent] = useState<BusinessEvent | null>(null);
   const [intakeOpen, setIntakeOpen] = useState(false);
   const defaultScopeSet = useRef(false);
@@ -311,6 +317,7 @@ export function BusinessWorkspace({
       if (!context) return;
       const epoch = ++listEpoch.current;
       setLoading(true);
+      setTotal(null);
       setError('');
       setListHint(null);
       const query = new URLSearchParams({ scope, limit: '50', offset: String(offset) });
@@ -324,10 +331,20 @@ export function BusinessWorkspace({
           { signal },
         );
         if (signal?.aborted || !active.current || epoch !== listEpoch.current) return;
+        result.events.forEach((event) =>
+          assertBusinessSelection(event, {
+            id: event.id,
+            firmId: session.firm_id,
+            companyId,
+            period: initialPeriod,
+          }),
+        );
         setEvents(result.events);
         setTotal(result.total);
       } catch (failure) {
         if (!signal?.aborted && active.current && epoch === listEpoch.current) {
+          setEvents([]);
+          setTotal(null);
           setError(errorMessage(failure));
           setListHint(readRecovery(failure));
         }
@@ -345,6 +362,10 @@ export function BusinessWorkspace({
   }, [loadList]);
   useEffect(() => {
     if (!initialEventId || !context) return;
+    if (syncedSelection.current === initialEventId) {
+      syncedSelection.current = '';
+      return;
+    }
     setScope(initialBusinessScope(context, initialCompanyId));
     void openEvent(initialEventId);
   }, [initialEventId, context, initialCompanyId]);
@@ -354,6 +375,7 @@ export function BusinessWorkspace({
     listEpoch.current += 1;
     selectionEpoch.current += 1;
     setSelected(null);
+    setDetailFailure(null);
     setDetailLoading(false);
     setEvents([]);
     setScope(next);
@@ -370,6 +392,7 @@ export function BusinessWorkspace({
     listEpoch.current += 1;
     selectionEpoch.current += 1;
     setSelected(null);
+    setDetailFailure(null);
     setDetailLoading(false);
     setEvents([]);
     setOffset(0);
@@ -383,15 +406,39 @@ export function BusinessWorkspace({
     const epoch = ++selectionEpoch.current;
     setSelected(null);
     setDetailLoading(true);
+    setDetailFailure(null);
+    setCompletedEvent('');
     setError('');
     setNotice('');
     setReturnReason('');
     setHandoffBookId('');
     try {
       const result = await api<BusinessEvent>(`/business/events/${encoded(id)}`, session);
-      if (active.current && epoch === selectionEpoch.current) setSelected(result);
+      if (active.current && epoch === selectionEpoch.current) {
+        const listed = events.find((event) => event.id === id);
+        setSelected(
+          assertBusinessSelection(result, {
+            id,
+            firmId: session.firm_id,
+            companyId: listed?.company_id || companyId,
+            period: initialPeriod,
+            version: listed?.version,
+          }),
+        );
+        if (onSelectEvent && id !== initialEventId) {
+          syncedSelection.current = id;
+          onSelectEvent(id);
+        }
+      }
     } catch (failure) {
-      if (active.current && epoch === selectionEpoch.current) setError(errorMessage(failure));
+      if (
+        active.current &&
+        epoch === selectionEpoch.current &&
+        !(failure instanceof DOMException && failure.name === 'AbortError')
+      ) {
+        setDetailFailure({ id, message: errorMessage(failure) });
+        setListHint(readRecovery(failure));
+      }
     } finally {
       if (active.current && epoch === selectionEpoch.current) setDetailLoading(false);
     }
@@ -407,12 +454,27 @@ export function BusinessWorkspace({
     setError('');
     setListHint(null);
     setNotice('');
+    setCompletedEvent('');
     const epoch = selectionEpoch.current;
     try {
       const result = await action();
       if (!active.current || epoch !== selectionEpoch.current) return;
-      if (result) setSelected(result);
+      if (result)
+        setSelected(
+          assertBusinessSelection(result, {
+            id: selected?.id ?? result.id,
+            firmId: session.firm_id,
+            companyId: selected?.company_id ?? companyId,
+            version: selected?.version,
+          }),
+        );
       setNotice(typeof success === 'function' ? success(result) : success);
+      if (
+        selected &&
+        ['department-approve', 'finance-approve', 'return', 'handoff'].includes(name)
+      ) {
+        setCompletedEvent(selected.id);
+      }
       await loadList();
     } catch (failure) {
       if (
@@ -433,7 +495,14 @@ export function BusinessWorkspace({
               session,
             );
             if (!active.current || epoch !== selectionEpoch.current) return;
-            setSelected(latest);
+            setSelected(
+              assertBusinessSelection(latest, {
+                id: selected.id,
+                firmId: session.firm_id,
+                companyId: selected.company_id,
+                version: selected.version,
+              }),
+            );
             await loadList();
             message +=
               name === 'save'
@@ -584,7 +653,14 @@ export function BusinessWorkspace({
     const epoch = selectionEpoch.current;
     const result = await api<BusinessEvent>(`/business/events/${encoded(selected.id)}`, session);
     if (active.current && epoch === selectionEpoch.current) {
-      setSelected(result);
+      setSelected(
+        assertBusinessSelection(result, {
+          id: selected.id,
+          firmId: session.firm_id,
+          companyId: selected.company_id,
+          version: selected.version,
+        }),
+      );
       await loadList();
     }
   }
@@ -595,6 +671,10 @@ export function BusinessWorkspace({
       !!context?.companies.some(
         (company) => company.id === selected.company_id && company.can_finance,
       ));
+  const nextItem =
+    selected && completedEvent === selected.id && notice && !loading && !error && !detailFailure
+      ? nextBusinessItem(events, selected, scope)
+      : undefined;
   function focusBusinessSection(target: 'originals' | 'actions') {
     const element = target === 'originals' ? originalsFocus.current : actionsFocus.current;
     element?.scrollIntoView({ block: 'start', behavior: 'auto' });
@@ -604,11 +684,11 @@ export function BusinessWorkspace({
   // active operation instead of rendering it inside the hidden list panel.
   const operationFeedback = (
     <>
-      {error && (
+      {(detailFailure || error) && (
         <div className="inline-error" role="alert">
           <TriangleAlert size={16} />
           <div>
-            <p>{error}</p>
+            <p>{detailFailure?.message || error}</p>
             {listHint && <p className="workspace-recovery-next">{listHint.next}</p>}
             {(!listHint || listHint.action === 'reload') && (
               <button
@@ -616,11 +696,12 @@ export function BusinessWorkspace({
                 type="button"
                 disabled={!!busy || loading}
                 onClick={() => {
-                  if (context) void loadList();
+                  if (detailFailure) void openEvent(detailFailure.id);
+                  else if (context) void loadList();
                   else setContextAttempt((attempt) => attempt + 1);
                 }}
               >
-                {context ? '刷新列表' : '重新读取业务范围'}
+                {detailFailure ? '重新读取此事项' : context ? '刷新列表' : '重新读取业务范围'}
               </button>
             )}
           </div>
@@ -631,6 +712,16 @@ export function BusinessWorkspace({
           <CheckCircle2 size={16} />
           {notice}
         </p>
+      )}
+      {nextItem && (
+        <button
+          className="button secondary"
+          type="button"
+          disabled={!!busy}
+          onClick={() => void openEvent(nextItem.id)}
+        >
+          继续处理本企业下一件
+        </button>
       )}
     </>
   );
@@ -834,13 +925,15 @@ export function BusinessWorkspace({
           ) : null}
           <div className="business-pagination">
             <span>
-              {total} 件事项{total > 0 && ` · 第 ${Math.floor(offset / 50) + 1} 页`}
+              {total === null
+                ? '事项数量暂不可用'
+                : `${total} 件事项${total > 0 ? ` · 第 ${Math.floor(offset / 50) + 1} 页` : ''}`}
             </span>
             <div>
               <button
                 className="text-button"
                 type="button"
-                disabled={!!busy || offset === 0 || loading}
+                disabled={!!busy || total === null || offset === 0 || loading}
                 onClick={() => {
                   listEpoch.current += 1;
                   selectionEpoch.current += 1;
@@ -855,7 +948,7 @@ export function BusinessWorkspace({
               <button
                 className="text-button"
                 type="button"
-                disabled={!!busy || offset + 50 >= total || loading}
+                disabled={!!busy || total === null || offset + 50 >= total || loading}
                 onClick={() => {
                   listEpoch.current += 1;
                   selectionEpoch.current += 1;

@@ -11,6 +11,8 @@ import smtplib
 import ssl
 import hashlib
 from email.message import EmailMessage
+from email.headerregistry import Address
+from email.errors import HeaderParseError
 from email.utils import make_msgid
 from urllib.parse import urlparse, urlencode
 
@@ -24,20 +26,36 @@ def _loopback(host):
     return (host or "").strip().lower() in LOOPBACK
 
 
+def _mailbox(value):
+    # A notification has exactly one bound recipient, never a comma-separated list.
+    if not isinstance(value, str) or any(char in value for char in "\r\n"):
+        raise ValueError("Invalid mailbox")
+    value = value.strip()
+    try:
+        parsed = Address(addr_spec=value)
+    except HeaderParseError:
+        raise ValueError("Invalid mailbox") from None
+    if not parsed.username or not parsed.domain:
+        raise ValueError("Invalid mailbox")
+    return value
+
+
 class SmtpChannel:
     """SMTP over plain TCP to a local test server only."""
 
     name = "smtp"
 
     def __init__(self, host, port=25, sender="noreply@example.invalid", base_url="", timeout=10):
-        if not isinstance(port, int) or not 1 <= port <= 65535:
+        if type(port) is not int or not 1 <= port <= 65535:
             raise ChannelDisabled("SMTP 端口须为 1–65535 的整数")
-        if not isinstance(timeout, int) or not 1 <= timeout <= 60:
+        if type(timeout) is not int or not 1 <= timeout <= 60:
             raise ChannelDisabled("SMTP 超时须为 1–60 秒")
         if not _loopback(host):
             raise ChannelDisabled("SMTP 只允许连接本机测试服务器；生产启用需另行授权")
-        if "@" not in str(sender):
-            raise ChannelDisabled("SMTP 发件地址无效")
+        try:
+            sender = _mailbox(sender)
+        except (ValueError, TypeError, IndexError):
+            raise ChannelDisabled("SMTP 发件地址无效") from None
         parsed = urlparse(base_url or "")
         if parsed.scheme not in {"http", "https"} or not parsed.netloc:
             raise ChannelDisabled("SMTP 通知链接须为绝对地址")
@@ -45,9 +63,10 @@ class SmtpChannel:
         self.base_url, self.timeout = base_url.rstrip("/"), timeout
 
     def message(self, payload):
-        recipient = (payload.get("recipient_email") or "").strip()
-        if not recipient:
-            raise DeliveryNotSent("收件人未配置邮箱，消息未发送")
+        try:
+            recipient = _mailbox(payload.get("recipient_email"))
+        except (ValueError, TypeError, IndexError):
+            raise DeliveryNotSent("收件人邮箱无效，消息未发送") from None
         period, version = payload.get("period", ""), payload.get("package_version")
         query = {"book": payload.get("book_id", ""), "period": period}
         if payload.get("package_id"):
@@ -100,7 +119,11 @@ class SmtpChannel:
         client.ehlo()
 
     def deliver(self, payload):
-        message, recipient = self.message(payload)
+        try:
+            message, recipient = self.message(payload)
+        except (ValueError, TypeError, IndexError):
+            # Local construction failed before any connection or SMTP command.
+            raise DeliveryNotSent("通知内容格式无效，消息未发送") from None
         try:
             client = self._connect()
         except (OSError, smtplib.SMTPException) as failure:

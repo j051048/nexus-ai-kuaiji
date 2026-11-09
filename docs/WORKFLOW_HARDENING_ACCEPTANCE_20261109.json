@@ -1,0 +1,240 @@
+{
+  "schema": "workflow-hardening-acceptance-v1",
+  "status": "local_passed",
+  "candidate": {
+    "schema": "release-candidate-v1",
+    "head": "996f849ab651f9ffc46a5e0657183793b76007e4",
+    "source_files": 2020,
+    "source_sha256": "95fe70273ea79ba9c6f3b9f9c6271eb3db981fff07aea6f8165a5d2ad03f0290",
+    "migration_files": 349,
+    "migration_sha256": "5ac57554c2b7e68f0cbc126f4a54b3c7481db18b208d8be114a0edf71729024f"
+  },
+  "scope": "P0-P2 local workflow reliability; no new agent loop or visual redesign",
+  "gates": {
+    "offline": {
+      "status": "passed",
+      "passed": 209,
+      "skipped": 0,
+      "path": "tmp_test/workflow-hardening/20261109/final/offline.xml",
+      "sha256": "a0c57bcea3805bc4f3b2eeb5716b044f5bd26e8c014044d60e890fb48cd95afd"
+    },
+    "pg16": {
+      "n02-n03": {
+        "status": "passed",
+        "path": "tmp_test/workflow-hardening/20261109/final/pg16-n02-n03/summary.json",
+        "sha256": "442f807ab41bf43c7deda73d7b80031e694072f43da256da2ec5c8d11e594ea9",
+        "passed": 101,
+        "server_version_num": 160015
+      },
+      "finance": {
+        "status": "passed",
+        "path": "tmp_test/workflow-hardening/20261109/final/pg16-finance/summary.json",
+        "sha256": "1ddb64e53189f3c538f70b98fd135e224c0f227cbf7afae80288177f281e4b94",
+        "passed": 37
+      },
+      "tasks": {
+        "status": "passed",
+        "path": "tmp_test/workflow-hardening/20261109/final/pg16-tasks/summary.json",
+        "sha256": "a18738e6aa7eecd8315f8b35c609ab6f4bba5e6fe8d9cc3b25eba98c0f5a4c8f",
+        "passed": 36
+      },
+      "settlement": {
+        "status": "passed",
+        "path": "tmp_test/workflow-hardening/20261109/final/pg16-settlement/summary.json",
+        "sha256": "34e40632a8b2ec9fdc62dc0644f3ae9f8cee6ece4787c24c8d19fc41b373941c",
+        "passed": 17
+      },
+      "c01": {
+        "status": "passed",
+        "path": "tmp_test/workflow-hardening/20261109/final/pg16-c01/summary.json",
+        "sha256": "37d600c82c26263590eda1add0dad60bf602f170cfab7e101647a4ca3897f8ef",
+        "passed": 34,
+        "fresh_database": true
+      }
+    },
+    "pg17": {
+      "n02-n03": {
+        "status": "passed",
+        "path": "tmp_test/workflow-hardening/20261109/final/pg17-n02-n03/summary.json",
+        "sha256": "4d70cfd78d57df8239541918517240027a0287efe60e317360b8000be1e70978",
+        "passed": 101,
+        "server_version_num": 170011
+      },
+      "finance": {
+        "status": "passed",
+        "path": "tmp_test/workflow-hardening/20261109/final/pg17-finance/summary.json",
+        "sha256": "87976422139426fe6a675cc037c44a4674d9efa39353dc3f705987e194987d2e",
+        "passed": 37
+      },
+      "tasks": {
+        "status": "passed",
+        "path": "tmp_test/workflow-hardening/20261109/final/pg17-tasks/summary.json",
+        "sha256": "2b6eeac83c0959f171c3fd163b9d5829de3be56b59e0142970b0cb97bb1039f4",
+        "passed": 36
+      },
+      "settlement": {
+        "status": "passed",
+        "path": "tmp_test/workflow-hardening/20261109/final/pg17-settlement/summary.json",
+        "sha256": "1767d57218478df5bf7cdb10bf0611f94208e2569edf0481dc4ee121dab77f18",
+        "passed": 17
+      },
+      "c01": {
+        "status": "passed",
+        "path": "tmp_test/workflow-hardening/20261109/final/pg17-c01/summary.json",
+        "sha256": "b1ed007a68a198134048f232cfc570425d0cc4799db65a7caccbffd5552b6a05",
+        "passed": 34,
+        "fresh_database": true
+      }
+    },
+    "browser_dev": {
+      "status": "passed",
+      "passed": 30,
+      "skipped": 0,
+      "retries": 0,
+      "path": "test-reports/e2e-tasks/9760ef9e-c639-44fb-8f4f-6be1864505de/reports/dev.json",
+      "sha256": "5a45d368d58706ba6319d12a1ec1e1c6f481f9c5af44313666f9422fc5b26810"
+    },
+    "browser_preview": {
+      "status": "passed",
+      "passed": 30,
+      "skipped": 0,
+      "retries": 0,
+      "path": "test-reports/e2e-tasks/9760ef9e-c639-44fb-8f4f-6be1864505de/reports/preview.json",
+      "sha256": "72d84042505bd49a538d394bc7ea226b198bee5f0675347aa95382adb2205e12"
+    },
+    "browser_regression": {
+      "status": "passed",
+      "passed": 42,
+      "skipped": 0,
+      "retries": 0,
+      "path": "tmp_test/workflow-hardening/20261109/final/business-browser.json",
+      "sha256": "fc8e4c8be745c2908dc866d23b21ffdbc8dd74953158bebe6822e93038c7e38d"
+    },
+    "vitest": {
+      "status": "passed",
+      "passed": 1363,
+      "path": "tmp_test/workflow-hardening/20261109/final/vitest.log",
+      "sha256": "165588324fbeab367bb2c982215feaf344d8a5ef35a8e66048754422e995b482"
+    },
+    "gate-tests": {
+      "status": "passed",
+      "passed": 111,
+      "path": "tmp_test/workflow-hardening/20261109/final/gate-tests.log",
+      "sha256": "65336bd9e49afbb45c47df39dc94cf353e0136738dbe722e537daa1743f24901"
+    },
+    "budget-tests": {
+      "status": "passed",
+      "passed": 6,
+      "path": "tmp_test/workflow-hardening/20261109/final/budget-tests.log",
+      "sha256": "f78ffc5417e931e167931ad11378eb6dde8843a9509d74d26eff05df782b5319"
+    },
+    "typecheck": {
+      "status": "passed",
+      "path": "tmp_test/workflow-hardening/20261109/final/typecheck.log",
+      "sha256": "b022862ad08f52605061f16400326c7f2f567b52537c590e5a69edb4d90bd74e"
+    },
+    "lint": {
+      "status": "passed",
+      "path": "tmp_test/workflow-hardening/20261109/final/lint.log",
+      "sha256": "40ab6beca86553a912feee15d9332f1217a3d627b3120b1406f4a494af0d2444"
+    },
+    "format": {
+      "status": "passed",
+      "path": "tmp_test/workflow-hardening/20261109/final/format.log",
+      "sha256": "ff5f7f51c00252ceffff733f189c46eb73a0fce8812f6ae50deb36462184b6ce"
+    },
+    "ruff-format": {
+      "status": "passed",
+      "path": "tmp_test/workflow-hardening/20261109/final/ruff-format.log",
+      "sha256": "cd9032fa599c222a608b1c66adbb1f82cf5ef5687150b49ab82119f51088b722"
+    },
+    "build": {
+      "status": "passed",
+      "path": "tmp_test/workflow-hardening/20261109/final/build.log",
+      "sha256": "c3afb7f5c7447d7bdda3bd26d5bba185e3c7ee3baaf37055661893af54ee8f82"
+    },
+    "bundle_budget": {
+      "schema": "frontend-budget-v1",
+      "status": "passed",
+      "initial": {
+        "jsBytes": 565450,
+        "jsGzipBytes": 175157,
+        "cssBytes": 99722,
+        "jsFiles": [
+          "assets/index-C_1M18EI.js"
+        ],
+        "cssFiles": [
+          "assets/index-BXglmTDB.css"
+        ]
+      },
+      "home": {
+        "jsBytes": 593014,
+        "jsGzipBytes": 185740,
+        "cssBytes": 144373,
+        "jsFiles": [
+          "assets/AgentCompanyPicker-CoWjFX9f.js",
+          "assets/WorkspaceHome-D4JJqMki.js",
+          "assets/arrow-right-left-qGcPO5wM.js",
+          "assets/check-DHJphGwd.js",
+          "assets/index-C_1M18EI.js",
+          "assets/play-B0n3QGRK.js",
+          "assets/receipt-DefBruyL.js",
+          "assets/save-rLjMY-w7.js",
+          "assets/workspace-recovery-CJguijgX.js"
+        ],
+        "cssFiles": [
+          "assets/index-BXglmTDB.css",
+          "assets/workbench-focus-CZeJGxk8.css",
+          "assets/workspace-Do0oLTUT.css"
+        ]
+      },
+      "budgets": {
+        "initialJs": 570000,
+        "initialGzip": 176000,
+        "homeJs": 625000,
+        "homeGzip": 195000,
+        "initialCss": 110000,
+        "homeCss": 145000
+      },
+      "violations": [],
+      "artifactSha256": "eb016d13bc6d08b64f37ab89ed786e9594a1d007fe59fa1519b84f2d3dc2c36e",
+      "path": "tmp_test/workflow-hardening/20261109/final/budget.json",
+      "sha256": "5da5c52e8f6a3f91187d5bdb06e31754b01cb405e8ca4e58bf5e3a3e9a2dcfa2"
+    }
+  },
+  "release_approved": false,
+  "boundaries": [
+    "No real provider or notification calls",
+    "Local API browser flows use synthetic identities and SQLite; PG is separate dynamic acceptance",
+    "No production operations, commits or pushes",
+    "No historical SQL or checksum changes",
+    "Prior recovery/capacity evidence is not claimed for this candidate",
+    "Intermediate failed/drifted candidates remain outside final evidence"
+  ],
+  "environment": {
+    "python": "3.14.1",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "database_environment": "loopback isolated PG16/17 with restricted app/worker/projection roles",
+    "models": "synthetic",
+    "notifications": "local mock and loopback only"
+  },
+  "modified_files": [
+    "nexus_backend/app/delivery/smtp_channel.py",
+    "scripts/e2e_task_cases.json",
+    "src/BusinessWorkspace.tsx",
+    "src/WorkspaceRouteContent.tsx",
+    "src/business-selection.ts",
+    "src/business-selection.test.ts",
+    "e2e/workflow-continuity.spec.ts",
+    "nexus_backend/tests/test_workflow_smtp_boundaries.py"
+  ],
+  "environment_stop": {
+    "status": "stopped_data_retained",
+    "path": "tmp_test/workflow-hardening/20261109/final/environment-stop.json",
+    "sha256": "67705501d6031635d445449ac138d2ac0d4cd4d731bd98fc4dbf9f5417ab8cf3"
+  },
+  "warnings": [
+    "Existing test-client deprecation warning",
+    "Existing synthetic JWT fixture short-key warning"
+  ]
+}

@@ -668,6 +668,7 @@ export function WorkspaceRouteContent({
           initialNew={newIntake}
           books={workbench?.books ?? []}
           initialEventId={businessTarget}
+          onSelectEvent={setBusinessTarget}
           onOpenBatch={(id) => {
             setQueueTarget(id);
             setRouteView('queue');

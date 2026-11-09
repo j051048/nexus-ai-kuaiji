@@ -81,6 +81,46 @@
     {
       "file": "e2e/dcp-r567-evidence.spec.ts",
       "title": "DCP 核查与只读调查 390"
+    },
+    {
+      "file": "e2e/workflow-continuity.spec.ts",
+      "title": "desktop › 事项读取失败可原地重试，重试不重复办理"
+    },
+    {
+      "file": "e2e/workflow-continuity.spec.ts",
+      "title": "desktop › 错误企业的详情响应不能接纳"
+    },
+    {
+      "file": "e2e/workflow-continuity.spec.ts",
+      "title": "desktop › 办理拒绝后清空旧详情与原件，不重复发送"
+    },
+    {
+      "file": "e2e/workflow-continuity.spec.ts",
+      "title": "desktop › 成功核验后可继续同企业待办，下一件重新核验且不沿用退回理由"
+    },
+    {
+      "file": "e2e/workflow-continuity.spec.ts",
+      "title": "mobile › 事项读取失败可原地重试，重试不重复办理"
+    },
+    {
+      "file": "e2e/workflow-continuity.spec.ts",
+      "title": "mobile › 错误企业的详情响应不能接纳"
+    },
+    {
+      "file": "e2e/workflow-continuity.spec.ts",
+      "title": "mobile › 办理拒绝后清空旧详情与原件，不重复发送"
+    },
+    {
+      "file": "e2e/workflow-continuity.spec.ts",
+      "title": "mobile › 成功核验后可继续同企业待办，下一件重新核验且不沿用退回理由"
+    },
+    {
+      "file": "e2e/workflow-continuity.spec.ts",
+      "title": "desktop › 列表读取失败不显示零待办或允许翻页"
+    },
+    {
+      "file": "e2e/workflow-continuity.spec.ts",
+      "title": "mobile › 列表读取失败不显示零待办或允许翻页"
     }
   ]
 }
