@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { api, errorMessage } from './api';
 import type { Session } from './types';
 import { useScopedQuery } from './useScopedQuery';
+import { parseInvitationStatus } from './invitation-status';
 
 const labels: Record<string, string> = {
   sending: '发送结果尚未确认，请核查；不会重复发送',
@@ -9,15 +10,6 @@ const labels: Record<string, string> = {
   unknown: '发送结果未知，请核查；不会重复发送',
   not_sent: '通道确认未发送，可手动再次发送',
 };
-type Status = {
-  request_id: string;
-  email: string;
-  request_attempt: number;
-  status: string;
-  enabled: boolean;
-  delivery: { state: string; current_link: boolean } | null;
-};
-
 export function InvitationDelivery({ value, session }: { value: string; session: Session }) {
   return (
     <InvitationContent key={session.scope_key + ':' + value} value={value} session={session} />
@@ -36,15 +28,10 @@ function InvitationContent({ value, session }: { value: string; session: Session
   const path = `/admin/account-requests/${encodeURIComponent(requestId)}`;
   const status = useScopedQuery(
     async (signal) => {
-      const v = await api<Status>(`${path}/invitation-delivery`, session, { signal });
-      if (
-        v.request_id !== requestId ||
-        typeof v.enabled !== 'boolean' ||
-        !Number.isSafeInteger(v.request_attempt) ||
-        typeof v.email !== 'string'
-      )
-        throw new Error('邀请范围已变化，请重新读取开通记录。');
-      return v;
+      return parseInvitationStatus(
+        await api<unknown>(`${path}/invitation-delivery`, session, { signal }),
+        requestId,
+      );
     },
     session.scope_key + ':' + requestId,
   );

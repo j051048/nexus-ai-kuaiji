@@ -49,6 +49,7 @@ from app.uploads import UploadCreate, UploadIntentService
 
 
 from permission_recovery_business import TABLE_FIELDS
+from scripts.recovery_finance_contract import TABLE_FIELDS as FINANCE_FIELDS
 
 PERIOD = "2026-10"
 BUSINESS_TABLES = (
@@ -66,6 +67,7 @@ BUSINESS_TABLES = (
     "handoff_tasks",
     "account_invitation_deliveries",
     *TABLE_FIELDS,
+    *FINANCE_FIELDS,
 )
 
 
@@ -530,7 +532,10 @@ def seed_latest_recovery_business(
             sign(receipt_raw, timestamp),
             event_id,
         )
+    from finance_recovery_business import seed_finance_recovery
+
     return {
+        "finance": seed_finance_recovery(db, owner, reviewer, company["id"]),
         "invitations_private": seed_invitation_recovery(db, owner, company["id"]),
         "tax_filing": filing,
         "filing_attachment": filing_attachment,

@@ -159,13 +159,24 @@ class PeriodicService:
         ).fetchone()
 
     def _insert_draft(
-        self, conn, actor, book, *, kind, run_key, asset_id, description, lines, fingerprint
+        self,
+        conn,
+        actor,
+        book,
+        *,
+        kind,
+        run_key,
+        asset_id,
+        description,
+        lines,
+        fingerprint,
+        reconciliation_json=None,
     ):
         run_id, draft_id = uuid4().hex, uuid4().hex
         stamp = now()
         conn.execute(
             "INSERT INTO periodic_runs(id,book_id,period,kind,run_key,asset_id,input_fingerprint,"
-            "status,draft_id,created_by,created_at) VALUES(?,?,?,?,?,?,?,'generated',?,?,?)",
+            "status,draft_id,created_by,created_at,reconciliation_json) VALUES(?,?,?,?,?,?,?,'generated',?,?,?,?)",
             (
                 run_id,
                 book["id"],
@@ -177,6 +188,7 @@ class PeriodicService:
                 draft_id,
                 actor.user_id,
                 stamp,
+                reconciliation_json,
             ),
         )
         conn.execute(
@@ -497,7 +509,40 @@ class PeriodicService:
 
     def _validate_asset_draft(self, conn, actor, draft):
         run = conn.execute("SELECT * FROM periodic_runs WHERE id=?", (draft["run_id"],)).fetchone()
+        if run["status"] == "void":
+            raise AccountingError("该草稿已被新的核对草稿替代，请办理新版本", 409)
         if not run["asset_id"]:
+            return
+        if run["reconciliation_json"]:
+            from .reconciliation import preview
+
+            view = preview(self, conn, actor, run["asset_id"], draft["book_id"])
+            if not view["can_generate"] or json.loads(run["reconciliation_json"]) != view["basis"]:
+                raise AccountingError("资产核对依据已变化，请重新预览并交独立复核", 409)
+            actual = [
+                dict(row)
+                for row in conn.execute(
+                    "SELECT account_id,account_version,debit_cents,credit_cents FROM periodic_draft_lines WHERE draft_id=? ORDER BY line_no",
+                    (draft["id"],),
+                )
+            ]
+            basis = view["basis"]
+            expected = [
+                {
+                    "account_id": basis["expense_account_id"],
+                    "account_version": basis["expense_version"],
+                    "debit_cents": view["amount_cents"],
+                    "credit_cents": 0,
+                },
+                {
+                    "account_id": basis["accum_account_id"],
+                    "account_version": basis["accum_version"],
+                    "credit_cents": view["amount_cents"],
+                    "debit_cents": 0,
+                },
+            ]
+            if actual != expected:
+                raise AccountingError("分录与核对差额不一致，请重新制单", 409)
             return
         asset = conn.execute(
             "SELECT * FROM periodic_assets WHERE id=?", (run["asset_id"],)
@@ -666,10 +711,13 @@ class PeriodicService:
                     continue
                 self._asset_history_access(conn, actor, row, book, ledger_id)
                 posted = conn.execute(
-                    "SELECT COALESCE(SUM(l.debit_cents),0) FROM periodic_runs r "
-                    "JOIN periodic_drafts d ON d.run_id=r.id JOIN periodic_draft_lines l ON l.draft_id=d.id "
-                    "WHERE r.asset_id=? AND r.status='posted' AND r.period<=?",
-                    (row["id"], book["period"]),
+                    "WITH RECURSIVE history(id) AS ("
+                    "SELECT voucher_id FROM periodic_runs WHERE asset_id=? AND status='posted' AND period<=? "
+                    "UNION SELECT v.id FROM vouchers v JOIN history h ON v.reversal_of=h.id) "
+                    "SELECT COALESCE(SUM(l.debit_cents-l.credit_cents),0) FROM history h "
+                    "JOIN vouchers v ON v.id=h.id JOIN voucher_lines l ON l.voucher_id=v.id "
+                    "WHERE v.period<=? AND l.account_id=?",
+                    (row["id"], book["period"], book["period"], row["expense_account_id"]),
                 ).fetchone()[0]
                 assets.append(
                     {
@@ -691,6 +739,11 @@ class PeriodicService:
                 "SELECT * FROM periodic_drafts WHERE book_id=? ORDER BY created_at DESC,id",
                 (book["id"],),
             ).fetchall():
+                run = conn.execute(
+                    "SELECT status FROM periodic_runs WHERE id=?", (row["run_id"],)
+                ).fetchone()
+                if run["status"] == "void":
+                    continue
                 drafts.append(
                     {
                         "draft": dict(row),
@@ -709,6 +762,18 @@ class PeriodicService:
                 "assets": assets,
                 "drafts": drafts,
             }
+
+    def asset_reconciliation(self, actor, asset_id, book_id):
+        from .reconciliation import preview
+
+        with self.db.transaction(actor=actor) as conn:
+            return preview(self, conn, actor, asset_id, book_id)
+
+    def reconcile_asset(self, actor, asset_id, request):
+        from .reconciliation import generate
+
+        with self.db.transaction(write=True, actor=actor) as conn:
+            return generate(self, conn, actor, asset_id, request)
 
     @staticmethod
     def _audit(conn, actor, book_id, action, object_id, details):

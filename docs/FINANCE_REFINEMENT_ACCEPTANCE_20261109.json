@@ -1,0 +1,1920 @@
+{
+  "schema": "finance-refinement-acceptance-v1",
+  "date": "2026-11-09",
+  "status": "local_passed",
+  "candidate": {
+    "schema": "release-candidate-v1",
+    "head": "dfa8c45057fb05f72078d490593b2481f72615ad",
+    "source_files": 2016,
+    "source_sha256": "a260f017a3bbb6afe8c712aa68644f75f652f7ece739d89ed01012ad277424dc",
+    "migration_files": 349,
+    "migration_sha256": "5ac57554c2b7e68f0cbc126f4a54b3c7481db18b208d8be114a0edf71729024f"
+  },
+  "checks": {
+    "offline": {
+      "passed": 378,
+      "skipped": 0,
+      "path": "tmp_test/finance-refinement/20261109/verified/offline-final.xml",
+      "sha256": "53c43d8b6eec67d83edb742a5e43fe296f48e618cf50d61570c046caa8602127"
+    },
+    "frontend": {
+      "passed": 1349,
+      "path": "tmp_test/finance-refinement/20261109/verified/direct-frontend/results.json",
+      "sha256": "d22f8494ef0e5e6b5f7b00a4c25bb4ef25b96b68454e60232dbc18cf942afb23"
+    },
+    "browsers": {
+      "dev": {
+        "passed": 19,
+        "skipped": 0,
+        "path": "tmp_test/finance-refinement/20261109/verified/direct-browser-dev/results.xml",
+        "sha256": "1527f8c6ae67b9ee470c80553d3165e2ca8fd69609436ef2b32e010cd38759aa"
+      },
+      "preview": {
+        "passed": 19,
+        "skipped": 0,
+        "path": "tmp_test/finance-refinement/20261109/verified/direct-browser-preview/results.xml",
+        "sha256": "eac641aeff21a9063219fb24801d2e9e4626e33bde610c59dbf6aaf2d0014947"
+      }
+    },
+    "pg_browser": {
+      "candidate": {
+        "schema": "release-candidate-v1",
+        "head": "dfa8c45057fb05f72078d490593b2481f72615ad",
+        "source_files": 2016,
+        "source_sha256": "a260f017a3bbb6afe8c712aa68644f75f652f7ece739d89ed01012ad277424dc",
+        "migration_files": 349,
+        "migration_sha256": "5ac57554c2b7e68f0cbc126f4a54b3c7481db18b208d8be114a0edf71729024f"
+      },
+      "status": "passed",
+      "process": {
+        "exit_code": 0,
+        "drained": true
+      },
+      "candidate_unchanged": true,
+      "passed": 8,
+      "skipped": 0,
+      "cases": [
+        "P02 client identity cannot review, lock or batch export",
+        "P02 foreign company book and reports stay invisible in the browser",
+        "P02 initial 403 clears loading and permits explicit reread",
+        "P02 real PG signed identity delivery and acknowledgement desktop",
+        "P02 real PG signed identity delivery and acknowledgement mobile",
+        "P02 real PG signed identity month-close desktop",
+        "P02 real PG signed identity month-close mobile",
+        "P02 revoked late write cannot restore data or success"
+      ],
+      "junit_sha256": "c3feef0ff8e7eaa681d1a4fb5e07a94973c2a27ab2595701354bc77188014113"
+    },
+    "tasks_browser": {
+      "dev": {
+        "passed": 20,
+        "path": "test-reports/e2e-tasks/0bb96ca7-ae87-4898-875d-54458cb603b7/reports/dev.json",
+        "sha256": "5c9f9877c5631715118174adafbbf9a34f289d762e6eca0ebd89f1e06fa74409"
+      },
+      "preview": {
+        "passed": 20,
+        "path": "test-reports/e2e-tasks/0bb96ca7-ae87-4898-875d-54458cb603b7/reports/preview.json",
+        "sha256": "f99a47b31376fb55637edf062745d9ea42fd2129933053a40139791f5ecd9b89"
+      }
+    },
+    "postgres": {
+      "16": {
+        "finance": {
+          "passed": 37,
+          "path": "tmp_test/finance-refinement/20261109/verified/finance-pg16/summary.json",
+          "sha256": "76c36746df7716b4dfb056846c321558f03d836f648b59e15a9af975570c5b6e"
+        },
+        "tasks": {
+          "passed": 35,
+          "path": "tmp_test/finance-refinement/20261109/verified/tasks-pg16/summary.json",
+          "sha256": "404ecbb42c9f8aac460d6b43272f0dac3af0d289bd6a09feac9fc73d9cf0d602"
+        },
+        "c01": {
+          "passed": 34,
+          "path": "tmp_test/finance-refinement/20261109/verified/c01-pg16/summary.json",
+          "sha256": "4eb1443e17a299f0a93f2a66674e31ad26cec45db8b78c65af9b69c17d6355f4"
+        },
+        "attempt": {
+          "passed": 27,
+          "skipped": 0,
+          "path": "tmp_test/finance-refinement/20261109/verified/attempt-pg16.xml",
+          "sha256": "93261eab3db51003130a6d87c4d4f452a36a037f3d8cb8e4dfa446a9ea686757"
+        },
+        "cost": {
+          "passed": 5,
+          "skipped": 0,
+          "path": "tmp_test/finance-refinement/20261109/verified/cost-pg16.xml",
+          "sha256": "79b88caa9a01c17ea67d164f11119035e6ebc2cdfbe411e5a4234f4526f718b1"
+        }
+      },
+      "17": {
+        "finance": {
+          "passed": 37,
+          "path": "tmp_test/finance-refinement/20261109/verified/finance-pg17/summary.json",
+          "sha256": "c25dd4e964071cf6722842e9ac1d3755bb15fbe6db40aff32b7edc5456efa826"
+        },
+        "tasks": {
+          "passed": 35,
+          "path": "tmp_test/finance-refinement/20261109/verified/tasks-pg17/summary.json",
+          "sha256": "ce2cb475879d7ea95bcfd7bff6f1519f64df444f9b826bac5e097de503e9adf7"
+        },
+        "c01": {
+          "passed": 34,
+          "path": "tmp_test/finance-refinement/20261109/verified/c01-pg17/summary.json",
+          "sha256": "c8d8bd6978b67f5271d62dfe5e77d68a90af79feda9a11702e11d38b29c48a47"
+        },
+        "attempt": {
+          "passed": 27,
+          "skipped": 0,
+          "path": "tmp_test/finance-refinement/20261109/verified/attempt-pg17.xml",
+          "sha256": "8cb19b70340e9f6b258e4d5fb1d3559bda919c11cdff104d1b9c2386a60a179a"
+        },
+        "cost": {
+          "passed": 5,
+          "skipped": 0,
+          "path": "tmp_test/finance-refinement/20261109/verified/cost-pg17.xml",
+          "sha256": "8881bca1b328ec8f2e54c24d19df91cf29379d3c3050bdc442bb8f26d8d537fa"
+        }
+      }
+    },
+    "recovery": {
+      "schema": "p01-recovery-v2",
+      "status": "passed",
+      "candidate": {
+        "schema": "release-candidate-v1",
+        "head": "dfa8c45057fb05f72078d490593b2481f72615ad",
+        "source_files": 2016,
+        "source_sha256": "a260f017a3bbb6afe8c712aa68644f75f652f7ece739d89ed01012ad277424dc",
+        "migration_files": 349,
+        "migration_sha256": "5ac57554c2b7e68f0cbc126f4a54b3c7481db18b208d8be114a0edf71729024f"
+      },
+      "scope": "local-only",
+      "phases": {
+        "regression": {
+          "passed": 188,
+          "skipped": 0,
+          "junit_sha256": "ffa469bd508ec9bc33110f72800d5168bfdc611a815702417546f8ff4fbf8d64",
+          "execution_sha256": "3e21b5eb2ff7b0d0dd1881c83f4a8c467bfc93d3055327a91ec74e117aaac583",
+          "collection_sha256": "e3c9ba066e68fb92df783bc4a9023f748fa41bb6c9d69141983ad4e84664f7b2",
+          "seconds": 217.068,
+          "candidate": {
+            "schema": "release-candidate-v1",
+            "head": "dfa8c45057fb05f72078d490593b2481f72615ad",
+            "source_files": 2016,
+            "source_sha256": "a260f017a3bbb6afe8c712aa68644f75f652f7ece739d89ed01012ad277424dc",
+            "migration_files": 349,
+            "migration_sha256": "5ac57554c2b7e68f0cbc126f4a54b3c7481db18b208d8be114a0edf71729024f"
+          },
+          "configuration_sha256": {
+            "pg16-recovery_source.json": "727178fde4912202f1fbfeddd57c6d741e74bd0b2331abc2fa3fa2b084dafa85",
+            "pg16-recovery-fresh-target.json": "c91ac882877451d2c22e3a402b5cee83fab19755c9929539e94aa2a54f136994",
+            "pg17-recovery_source.json": "4f27c0f6f47ca8f9266550b13dc2dd116476db5e11630e520e03f215d800fdfe",
+            "pg17-recovery-fresh-target.json": "738cf3dda38d8141b7f437b2d0e4046219fdad2b76c9805c671946e2d65a0923",
+            "wsl-bridge-private.json": "3fc60ae135e78cad3f59be90c0a66f4b6c2b596665dea033ed605e14c05416d3",
+            "gotrue-migrations-manifest.json": "bdb9c5905bb49fcd9fc14b2d2e232c39c9ebc01f4ab140654a0fd192a96e8e60"
+          }
+        },
+        "joint": {
+          "passed": 2,
+          "skipped": 0,
+          "junit_sha256": "cd2ef2792e9fabd31aa8c3271b6e2ace110312558449740551c79abcdc893654",
+          "execution_sha256": "7fa4f85875d20120de8274e6eebea643807c908e3c312e335957e6bcbf6e0a93",
+          "collection_sha256": "4318ec1cd4f034e8aad44f433d3e7069951870bd6a1ec385cea5114629e7f4ab",
+          "seconds": 111.094,
+          "candidate": {
+            "schema": "release-candidate-v1",
+            "head": "dfa8c45057fb05f72078d490593b2481f72615ad",
+            "source_files": 2016,
+            "source_sha256": "a260f017a3bbb6afe8c712aa68644f75f652f7ece739d89ed01012ad277424dc",
+            "migration_files": 349,
+            "migration_sha256": "5ac57554c2b7e68f0cbc126f4a54b3c7481db18b208d8be114a0edf71729024f"
+          },
+          "configuration_sha256": {
+            "pg16-recovery_source.json": "727178fde4912202f1fbfeddd57c6d741e74bd0b2331abc2fa3fa2b084dafa85",
+            "pg16-recovery-fresh-target.json": "c91ac882877451d2c22e3a402b5cee83fab19755c9929539e94aa2a54f136994",
+            "pg17-recovery_source.json": "4f27c0f6f47ca8f9266550b13dc2dd116476db5e11630e520e03f215d800fdfe",
+            "pg17-recovery-fresh-target.json": "738cf3dda38d8141b7f437b2d0e4046219fdad2b76c9805c671946e2d65a0923",
+            "wsl-bridge-private.json": "3fc60ae135e78cad3f59be90c0a66f4b6c2b596665dea033ed605e14c05416d3",
+            "gotrue-migrations-manifest.json": "bdb9c5905bb49fcd9fc14b2d2e232c39c9ebc01f4ab140654a0fd192a96e8e60"
+          }
+        },
+        "identity": {
+          "passed": 4,
+          "skipped": 0,
+          "junit_sha256": "0d0d3e3146a75eb575580f6ad32ee19aa464e3975fd45b2a93ebe5eeef0e2744",
+          "execution_sha256": "2f7f4aee348b9baa6e84f4cababf268c7ec28fa99d09d087b3d61bb066de9119",
+          "collection_sha256": "ccc20fd16b7db2ff1702f205c3675fa1645c95cc728e049f035a9dee4c176c20",
+          "seconds": 69.013,
+          "candidate": {
+            "schema": "release-candidate-v1",
+            "head": "dfa8c45057fb05f72078d490593b2481f72615ad",
+            "source_files": 2016,
+            "source_sha256": "a260f017a3bbb6afe8c712aa68644f75f652f7ece739d89ed01012ad277424dc",
+            "migration_files": 349,
+            "migration_sha256": "5ac57554c2b7e68f0cbc126f4a54b3c7481db18b208d8be114a0edf71729024f"
+          },
+          "configuration_sha256": {
+            "pg16-recovery_source.json": "727178fde4912202f1fbfeddd57c6d741e74bd0b2331abc2fa3fa2b084dafa85",
+            "pg16-recovery-fresh-target.json": "c91ac882877451d2c22e3a402b5cee83fab19755c9929539e94aa2a54f136994",
+            "pg17-recovery_source.json": "4f27c0f6f47ca8f9266550b13dc2dd116476db5e11630e520e03f215d800fdfe",
+            "pg17-recovery-fresh-target.json": "738cf3dda38d8141b7f437b2d0e4046219fdad2b76c9805c671946e2d65a0923",
+            "wsl-bridge-private.json": "3fc60ae135e78cad3f59be90c0a66f4b6c2b596665dea033ed605e14c05416d3",
+            "gotrue-migrations-manifest.json": "bdb9c5905bb49fcd9fc14b2d2e232c39c9ebc01f4ab140654a0fd192a96e8e60"
+          }
+        }
+      },
+      "minimum_migration": 222,
+      "configuration_sha256": {
+        "pg16-recovery_source.json": "727178fde4912202f1fbfeddd57c6d741e74bd0b2331abc2fa3fa2b084dafa85",
+        "pg16-recovery-fresh-target.json": "c91ac882877451d2c22e3a402b5cee83fab19755c9929539e94aa2a54f136994",
+        "pg17-recovery_source.json": "4f27c0f6f47ca8f9266550b13dc2dd116476db5e11630e520e03f215d800fdfe",
+        "pg17-recovery-fresh-target.json": "738cf3dda38d8141b7f437b2d0e4046219fdad2b76c9805c671946e2d65a0923",
+        "wsl-bridge-private.json": "3fc60ae135e78cad3f59be90c0a66f4b6c2b596665dea033ed605e14c05416d3",
+        "gotrue-migrations-manifest.json": "bdb9c5905bb49fcd9fc14b2d2e232c39c9ebc01f4ab140654a0fd192a96e8e60"
+      },
+      "databases": {
+        "16": {
+          "source_version": "16.15 (Ubuntu 16.15-1.pgdg22.04+2)",
+          "target_version": "16.15 (Ubuntu 16.15-1.pgdg22.04+2)",
+          "migrations": 210,
+          "originals": 4,
+          "source_users": 6,
+          "restored_capability_grants": 932,
+          "restored_column_grants": 55,
+          "p01_checks": {
+            "database": true,
+            "originals": true,
+            "identity": true,
+            "permissions": true,
+            "hold": true,
+            "review_export": true,
+            "tax_delivery": true,
+            "no_replay": true,
+            "finance_resume": true
+          }
+        },
+        "17": {
+          "source_version": "17.11 (Ubuntu 17.11-1.pgdg22.04+2)",
+          "target_version": "17.11 (Ubuntu 17.11-1.pgdg22.04+2)",
+          "migrations": 210,
+          "originals": 4,
+          "source_users": 6,
+          "restored_capability_grants": 932,
+          "restored_column_grants": 55,
+          "p01_checks": {
+            "database": true,
+            "originals": true,
+            "identity": true,
+            "permissions": true,
+            "hold": true,
+            "review_export": true,
+            "tax_delivery": true,
+            "no_replay": true,
+            "finance_resume": true
+          }
+        }
+      },
+      "local_regression": {
+        "passed": 188,
+        "skipped": 0,
+        "junit_sha256": "ffa469bd508ec9bc33110f72800d5168bfdc611a815702417546f8ff4fbf8d64",
+        "execution_sha256": "3e21b5eb2ff7b0d0dd1881c83f4a8c467bfc93d3055327a91ec74e117aaac583",
+        "collection_sha256": "e3c9ba066e68fb92df783bc4a9023f748fa41bb6c9d69141983ad4e84664f7b2",
+        "seconds": 217.068,
+        "candidate": {
+          "schema": "release-candidate-v1",
+          "head": "dfa8c45057fb05f72078d490593b2481f72615ad",
+          "source_files": 2016,
+          "source_sha256": "a260f017a3bbb6afe8c712aa68644f75f652f7ece739d89ed01012ad277424dc",
+          "migration_files": 349,
+          "migration_sha256": "5ac57554c2b7e68f0cbc126f4a54b3c7481db18b208d8be114a0edf71729024f"
+        },
+        "configuration_sha256": {
+          "pg16-recovery_source.json": "727178fde4912202f1fbfeddd57c6d741e74bd0b2331abc2fa3fa2b084dafa85",
+          "pg16-recovery-fresh-target.json": "c91ac882877451d2c22e3a402b5cee83fab19755c9929539e94aa2a54f136994",
+          "pg17-recovery_source.json": "4f27c0f6f47ca8f9266550b13dc2dd116476db5e11630e520e03f215d800fdfe",
+          "pg17-recovery-fresh-target.json": "738cf3dda38d8141b7f437b2d0e4046219fdad2b76c9805c671946e2d65a0923",
+          "wsl-bridge-private.json": "3fc60ae135e78cad3f59be90c0a66f4b6c2b596665dea033ed605e14c05416d3",
+          "gotrue-migrations-manifest.json": "bdb9c5905bb49fcd9fc14b2d2e232c39c9ebc01f4ab140654a0fd192a96e8e60"
+        }
+      }
+    },
+    "http": {
+      "16": {
+        "http": {
+          "total": 250,
+          "ok": 250,
+          "failed": 0,
+          "status_counts": {
+            "200": 250
+          },
+          "latency_ms": {
+            "p50": 783.62,
+            "p95": 974.12,
+            "p99": 1053.79,
+            "max": 1106.37
+          }
+        },
+        "concurrency": 50,
+        "companies": 50,
+        "reads": 200,
+        "writes": 50,
+        "model_calls": 0,
+        "notification_calls": 0,
+        "application_processes": 1,
+        "database_cpu": "not_sampled"
+      },
+      "17": {
+        "http": {
+          "total": 250,
+          "ok": 250,
+          "failed": 0,
+          "status_counts": {
+            "200": 250
+          },
+          "latency_ms": {
+            "p50": 1086.16,
+            "p95": 1375.0,
+            "p99": 1437.13,
+            "max": 1483.24
+          }
+        },
+        "concurrency": 50,
+        "companies": 50,
+        "reads": 200,
+        "writes": 50,
+        "model_calls": 0,
+        "notification_calls": 0,
+        "application_processes": 1,
+        "database_cpu": "not_sampled"
+      }
+    },
+    "capacity": {
+      "16": {
+        "schema": "firm-operations-capacity-v1",
+        "status": "passed",
+        "major": 16,
+        "candidate": {
+          "schema": "release-candidate-v1",
+          "head": "dfa8c45057fb05f72078d490593b2481f72615ad",
+          "source_files": 2016,
+          "source_sha256": "a260f017a3bbb6afe8c712aa68644f75f652f7ece739d89ed01012ad277424dc",
+          "migration_files": 349,
+          "migration_sha256": "5ac57554c2b7e68f0cbc126f4a54b3c7481db18b208d8be114a0edf71729024f"
+        },
+        "companies_per_cohort": 200,
+        "requested_sustained_seconds": 1800,
+        "boundary": "restricted PG service and private local storage; two synthetic cohorts",
+        "resources_start": {
+          "scope": "current_process",
+          "cpu_seconds": 1.281,
+          "peak_rss_bytes": 77623296
+        },
+        "phases": {
+          "batch_export": {
+            "seconds": 17.35,
+            "count": 200,
+            "workers": [
+              {
+                "ok": true,
+                "pid": 48900,
+                "tasks": 100,
+                "durations_ms": [
+                  238.25829999987036,
+                  176.25309999857564,
+                  164.96159999951487,
+                  162.98169999936363,
+                  149.12719999847468,
+                  163.34919999644626,
+                  157.57979999762028,
+                  154.3320999990101,
+                  155.72750000137603,
+                  151.81909999955678,
+                  146.96269999694778,
+                  147.66649999364745,
+                  155.22090000013122,
+                  153.2576000026893,
+                  154.0958999976283,
+                  148.9817999972729,
+                  151.14170000015292,
+                  151.92159999423893,
+                  153.674699999101,
+                  155.1086999970721,
+                  147.3178000014741,
+                  150.79500000138069,
+                  146.78840000124183,
+                  143.5295999981463,
+                  150.56190000177594,
+                  147.96120000391966,
+                  144.31849999527913,
+                  149.58300000580493,
+                  157.8631000011228,
+                  157.14119999756804,
+                  157.19719999469817,
+                  156.77619999769377,
+                  200.25329999771202,
+                  187.81730000046082,
+                  181.61479999980656,
+                  158.3007000008365,
+                  168.8503000041237,
+                  178.19930000405293,
+                  188.51900000299793,
+                  164.26929999579443,
+                  167.3912000042037,
+                  153.46729999873787,
+                  171.14959999889834,
+                  163.8630000015837,
+                  150.96050000283867,
+                  161.82059999846388,
+                  151.29500000330154,
+                  160.2442000003066,
+                  168.17920000175945,
+                  158.50639999553096,
+                  154.0402000027825,
+                  158.15460000158055,
+                  158.75980000419077,
+                  161.77980000065872,
+                  157.1641000045929,
+                  153.10150000004796,
+                  152.27739999681944,
+                  154.8929999989923,
+                  154.21909999713534,
+                  155.87860000232467,
+                  151.67950000613928,
+                  151.31140000448795,
+                  151.01989999675425,
+                  150.07060000061756,
+                  152.46940000361064,
+                  147.1869000015431,
+                  149.69039999414235,
+                  158.2306000054814,
+                  150.52019999711774,
+                  147.18919999722857,
+                  149.4100999989314,
+                  148.55399999942165,
+                  145.1983000006294,
+                  143.77830000012182,
+                  147.25470000121277,
+                  146.99030000338098,
+                  147.3757999992813,
+                  148.3760999981314,
+                  145.32979999785312,
+                  153.40229999856092,
+                  149.9508999986574,
+                  158.5449000049266,
+                  151.7316999961622,
+                  155.8322999990196,
+                  151.14059999905294,
+                  158.19019999617012,
+                  157.5059999959194,
+                  160.44209999381565,
+                  154.26879999722587,
+                  149.52759999869158,
+                  178.16599999787286,
+                  157.54870000091614,
+                  150.22390000376618,
+                  151.9752000021981,
+                  160.30090000276687,
+                  164.1340999995009,
+                  155.071000001044,
+                  152.4822999999742,
+                  152.54629999981262,
+                  156.28479999577394
+                ],
+                "pool": {
+                  "enabled": true,
+                  "scope": "current_process",
+                  "pool_min": 0,
+                  "pool_max": 4,
+                  "pool_size": 2,
+                  "pool_available": 2,
+                  "pool_max_waiting": 64,
+                  "pool_timeout_seconds": 5.0
+                },
+                "resources": {
+                  "scope": "current_process",
+                  "cpu_seconds": 2.938,
+                  "peak_rss_bytes": 68173824
+                }
+              },
+              {
+                "ok": true,
+                "pid": 37696,
+                "tasks": 100,
+                "durations_ms": [
+                  224.45950000110315,
+                  165.1382000054582,
+                  163.2612999965204,
+                  164.38609999750042,
+                  154.4653000019025,
+                  164.1964000009466,
+                  157.6095999989775,
+                  146.74620000005234,
+                  164.09500000008848,
+                  151.89960000134306,
+                  148.8494000004721,
+                  147.19930000137538,
+                  155.03370000078576,
+                  153.98179999465356,
+                  154.650299999048,
+                  148.70720000180881,
+                  150.78319999884116,
+                  151.6851999986102,
+                  152.5956999976188,
+                  148.88459999929182,
+                  147.29049999732524,
+                  150.32459999929415,
+                  146.91529999981867,
+                  142.99999999639113,
+                  150.70289999857778,
+                  147.95389999926556,
+                  144.970999994257,
+                  148.69309999630786,
+                  157.98540000105277,
+                  154.34770000138087,
+                  158.85100000014063,
+                  156.80860000429675,
+                  198.9809000006062,
+                  196.58379999600584,
+                  173.5759999937727,
+                  166.83170000032987,
+                  167.7614000000176,
+                  178.62440000317292,
+                  180.90440000378294,
+                  172.84120000113035,
+                  160.2495999977691,
+                  159.80579999450129,
+                  163.41060000559082,
+                  170.8068000007188,
+                  151.57120000367286,
+                  161.69069999887142,
+                  150.5156999992323,
+                  160.5128999945009,
+                  159.41519999614684,
+                  159.89650000119582,
+                  153.63340000476455,
+                  157.5306999948225,
+                  158.92010000243317,
+                  161.54220000316855,
+                  158.26820000074804,
+                  153.21989999938523,
+                  152.51960000023246,
+                  154.90310000313912,
+                  154.62570000090636,
+                  155.52229999593692,
+                  153.0946999992011,
+                  150.650499999756,
+                  151.9107999993139,
+                  149.36060000036377,
+                  152.133399999002,
+                  147.85269999993034,
+                  148.75169999868376,
+                  157.59260000049835,
+                  151.71640000335174,
+                  146.83689999947092,
+                  149.29290000145556,
+                  147.85980000306154,
+                  146.59490000485675,
+                  144.33460000145715,
+                  147.21100000315346,
+                  146.95570000185398,
+                  147.3409000027459,
+                  147.49180000217166,
+                  144.60159999725875,
+                  154.11309999763034,
+                  149.61390000098618,
+                  158.4084999994957,
+                  152.44589999929303,
+                  156.4524999994319,
+                  150.55169999686768,
+                  158.3122999945772,
+                  156.48890000011306,
+                  160.823000005621,
+                  154.34309999545803,
+                  150.077299993427,
+                  176.902399995015,
+                  165.0599999993574,
+                  151.14750000066124,
+                  152.31009999843081,
+                  161.18060000007972,
+                  162.69080000347458,
+                  154.80689999822062,
+                  154.00809999846388,
+                  151.56080000451766,
+                  149.746299997787
+                ],
+                "pool": {
+                  "enabled": true,
+                  "scope": "current_process",
+                  "pool_min": 0,
+                  "pool_max": 4,
+                  "pool_size": 2,
+                  "pool_available": 2,
+                  "pool_max_waiting": 64,
+                  "pool_timeout_seconds": 5.0
+                },
+                "resources": {
+                  "scope": "current_process",
+                  "cpu_seconds": 2.672,
+                  "peak_rss_bytes": 67768320
+                }
+              }
+            ]
+          },
+          "batch_package": {
+            "seconds": 36.769,
+            "count": 200,
+            "workers": [
+              {
+                "ok": true,
+                "pid": 53760,
+                "tasks": 100,
+                "durations_ms": [
+                  383.2470999986981,
+                  360.90530000365106,
+                  352.3691999944276,
+                  349.81270000571385,
+                  356.6004000022076,
+                  352.6228999980958,
+                  340.5343999984325,
+                  345.6598999982816,
+                  359.5385000007809,
+                  359.7668999937014,
+                  352.42859999561915,
+                  337.7369000008912,
+                  342.47099999629427,
+                  360.20730000018375,
+                  359.03569999936735,
+                  348.4526000029291,
+                  350.6871999998111,
+                  345.19320000254083,
+                  349.10909999598516,
+                  350.49460000300314,
+                  354.54419999587117,
+                  348.4704000002239,
+                  349.8539000065648,
+                  352.21729999466334,
+                  363.15389999799663,
+                  364.5217000012053,
+                  362.3184999960358,
+                  336.2704000028316,
+                  349.1855999964173,
+                  347.41309999662917,
+                  353.6219999950845,
+                  361.37369999778457,
+                  345.8921999990707,
+                  344.5856999969692,
+                  350.3255999967223,
+                  343.662499995844,
+                  368.3915999936289,
+                  362.45539999799803,
+                  343.5537999976077,
+                  349.5984000037424,
+                  352.65919999801554,
+                  364.38519999501295,
+                  366.87869999877876,
+                  345.56699999666307,
+                  351.9488000019919,
+                  349.9844999969355,
+                  350.4897999955574,
+                  354.77430000173626,
+                  358.67720000533154,
+                  344.3989000006695,
+                  353.410999996413,
+                  353.3372000019881,
+                  354.6053999962169,
+                  349.77680000156397,
+                  342.4405000041588,
+                  346.61590000177966,
+                  354.02069999690866,
+                  357.8884000016842,
+                  360.92070000449894,
+                  348.7022000044817,
+                  361.1873000045307,
+                  352.2293999994872,
+                  361.20710000250256,
+                  364.2383000042173,
+                  341.2060999980895,
+                  343.04699999484,
+                  347.6639000000432,
+                  354.92299999896204,
+                  354.98659999575466,
+                  343.3817999975872,
+                  375.1248000044143,
+                  356.18390000308864,
+                  354.5691000035731,
+                  358.9554999998654,
+                  364.56479999469593,
+                  366.89230000047246,
+                  368.8127999994322,
+                  359.5071999952779,
+                  351.19680000207154,
+                  358.68289999780245,
+                  336.95109999825945,
+                  344.11939999699825,
+                  347.3967000027187,
+                  365.4543000011472,
+                  358.57400000531925,
+                  355.26260000187904,
+                  348.54339999583317,
+                  346.85439999884693,
+                  353.12619999604067,
+                  356.08589999901596,
+                  349.72349999588914,
+                  338.6239999963436,
+                  351.63289999763947,
+                  361.9245999943814,
+                  349.328999996942,
+                  366.0879999952158,
+                  343.04330000304617,
+                  345.50949999538716,
+                  351.82390000409214,
+                  358.50249999930384
+                ],
+                "pool": {
+                  "enabled": true,
+                  "scope": "current_process",
+                  "pool_min": 0,
+                  "pool_max": 4,
+                  "pool_size": 2,
+                  "pool_available": 2,
+                  "pool_max_waiting": 64,
+                  "pool_timeout_seconds": 5.0
+                },
+                "resources": {
+                  "scope": "current_process",
+                  "cpu_seconds": 3.734,
+                  "peak_rss_bytes": 67780608
+                }
+              },
+              {
+                "ok": true,
+                "pid": 53420,
+                "tasks": 100,
+                "durations_ms": [
+                  374.53000000095926,
+                  360.8659999954398,
+                  352.5316000013845,
+                  349.70659999817144,
+                  350.772900004813,
+                  352.79650000302354,
+                  346.376199995575,
+                  345.72380000463454,
+                  359.5956999997725,
+                  359.48649999772897,
+                  352.48370000044815,
+                  337.8736000013305,
+                  342.2980999966967,
+                  354.3768000017735,
+                  364.9236999990535,
+                  341.3603999943007,
+                  351.3891999973566,
+                  351.3667000006535,
+                  342.8949999943143,
+                  350.5185000030906,
+                  354.7545999972499,
+                  355.8019000047352,
+                  348.85669999493985,
+                  352.2302000055788,
+                  356.71300000103656,
+                  365.1343000019551,
+                  361.6072000004351,
+                  335.9693000020343,
+                  350.0013000011677,
+                  347.13639999972656,
+                  353.68670000025304,
+                  367.84980000084033,
+                  345.25260000373237,
+                  344.9505000025965,
+                  350.03499999584164,
+                  343.93209999689134,
+                  367.7232999980333,
+                  362.3444000040763,
+                  344.0307000055327,
+                  349.8466999953962,
+                  352.9246999969473,
+                  364.033500001824,
+                  366.4467999988119,
+                  345.64330000284826,
+                  345.32729999773437,
+                  356.29209999751765,
+                  350.5935000066529,
+                  354.87669999565696,
+                  358.476100002008,
+                  344.64329999900656,
+                  353.95980000612326,
+                  352.52570000011474,
+                  354.5190999939223,
+                  349.77749999961816,
+                  342.6790999947116,
+                  346.51459999440704,
+                  354.55840000213357,
+                  357.4354000011226,
+                  361.03309999452904,
+                  348.8775000005262,
+                  360.6542999987141,
+                  353.8628999958746,
+                  360.07209999661427,
+                  364.30749999999534,
+                  334.10079999885056,
+                  344.44990000338294,
+                  353.4438999995473,
+                  354.7423999989405,
+                  347.9531000048155,
+                  343.9639999996871,
+                  380.4738999970141,
+                  356.1055000027409,
+                  354.8864999975194,
+                  352.26809999585385,
+                  364.64900000282796,
+                  373.1564000045182,
+                  368.83339999621967,
+                  359.3812000035541,
+                  351.74199999892153,
+                  358.59320000599837,
+                  336.8255000023055,
+                  337.99890000227606,
+                  353.80199999781325,
+                  364.85410000022966,
+                  358.56600000261096,
+                  354.52970000187634,
+                  348.75599999941187,
+                  346.83249999943655,
+                  352.71369999827584,
+                  356.3817999965977,
+                  349.42120000050636,
+                  339.40769999753684,
+                  351.6059000030509,
+                  355.4803000006359,
+                  349.52329999941867,
+                  365.63520000345306,
+                  349.1779000032693,
+                  345.52469999471214,
+                  352.3046999980579,
+                  350.72780000336934
+                ],
+                "pool": {
+                  "enabled": true,
+                  "scope": "current_process",
+                  "pool_min": 0,
+                  "pool_max": 4,
+                  "pool_size": 2,
+                  "pool_available": 2,
+                  "pool_max_waiting": 64,
+                  "pool_timeout_seconds": 5.0
+                },
+                "resources": {
+                  "scope": "current_process",
+                  "cpu_seconds": 3.562,
+                  "peak_rss_bytes": 67936256
+                }
+              }
+            ]
+          },
+          "sustained_mixed": {
+            "seconds": 1800.066,
+            "rounds": 873,
+            "concurrency": 8,
+            "latency": {
+              "clients": {
+                "n": 5238,
+                "p50_ms": 663.58,
+                "p95_ms": 769.44,
+                "p99_ms": 797.8,
+                "max_ms": 873.68
+              },
+              "package": {
+                "n": 5238,
+                "p50_ms": 40.08,
+                "p95_ms": 586.84,
+                "p99_ms": 603.12,
+                "max_ms": 657.64
+              },
+              "original": {
+                "n": 5238,
+                "p50_ms": 51.03,
+                "p95_ms": 152.94,
+                "p99_ms": 189.95,
+                "max_ms": 303.16
+              },
+              "review_export": {
+                "n": 5238,
+                "p50_ms": 1367.71,
+                "p95_ms": 1749.9,
+                "p99_ms": 1786.88,
+                "max_ms": 1865.38
+              }
+            },
+            "largest_client_response_bytes": 22930,
+            "original_bytes": 7088745,
+            "pool": {
+              "enabled": true,
+              "scope": "current_process",
+              "pool_min": 0,
+              "pool_max": 4,
+              "pool_size": 4,
+              "pool_available": 4,
+              "pool_max_waiting": 64,
+              "pool_timeout_seconds": 5.0
+            },
+            "transactions": {
+              "scope": "current_process",
+              "window_seconds": 900,
+              "sample_limit": 4096,
+              "count": 3417,
+              "writes": 1367,
+              "rollbacks": 0,
+              "connection_failures": 0,
+              "connection": {
+                "mean_ms": 80.851,
+                "p95_ms": 391.457,
+                "max_ms": 593.359
+              },
+              "lock_wait": {
+                "mean_ms": 1.137,
+                "p95_ms": 3.19,
+                "max_ms": 7.568
+              },
+              "transaction": {
+                "mean_ms": 118.193,
+                "p95_ms": 624.507,
+                "max_ms": 694.368
+              }
+            },
+            "reviewed_outputs": {
+              "count": 5238,
+              "companies": 200,
+              "output_sha256": "1caaa34fab4df302f66e0ef67f9e6252f89b17dacd4a141b61422f477ca7bf75"
+            }
+          }
+        },
+        "resources_end": {
+          "scope": "current_process",
+          "cpu_seconds": 436.984,
+          "peak_rss_bytes": 117420032
+        }
+      },
+      "17": {
+        "schema": "firm-operations-capacity-v1",
+        "status": "passed",
+        "major": 17,
+        "candidate": {
+          "schema": "release-candidate-v1",
+          "head": "dfa8c45057fb05f72078d490593b2481f72615ad",
+          "source_files": 2016,
+          "source_sha256": "a260f017a3bbb6afe8c712aa68644f75f652f7ece739d89ed01012ad277424dc",
+          "migration_files": 349,
+          "migration_sha256": "5ac57554c2b7e68f0cbc126f4a54b3c7481db18b208d8be114a0edf71729024f"
+        },
+        "companies_per_cohort": 200,
+        "requested_sustained_seconds": 1800,
+        "boundary": "restricted PG service and private local storage; two synthetic cohorts",
+        "resources_start": {
+          "scope": "current_process",
+          "cpu_seconds": 1.438,
+          "peak_rss_bytes": 77422592
+        },
+        "phases": {
+          "batch_export": {
+            "seconds": 17.137,
+            "count": 200,
+            "workers": [
+              {
+                "ok": true,
+                "pid": 19760,
+                "tasks": 100,
+                "durations_ms": [
+                  213.70540000498295,
+                  155.42469999491004,
+                  167.01650000322843,
+                  153.51940000255127,
+                  160.48479999881238,
+                  169.39700000511948,
+                  147.40209999581566,
+                  148.06769999995595,
+                  146.16850000311388,
+                  140.2315000013914,
+                  163.1102000028477,
+                  146.63450000080047,
+                  168.6245999953826,
+                  160.10470000037458,
+                  149.33259999816073,
+                  155.72100000281353,
+                  185.88940000336152,
+                  176.50470000080531,
+                  167.93490000418387,
+                  179.23130000417586,
+                  161.97169999941252,
+                  166.16319999593543,
+                  155.34450000268407,
+                  154.30999999807682,
+                  163.7239000046975,
+                  155.8482999971602,
+                  153.0676000038511,
+                  150.61640000203624,
+                  150.89859999716282,
+                  148.34890000201995,
+                  144.33869999629678,
+                  205.1292000032845,
+                  186.01050000143005,
+                  148.2934999949066,
+                  147.03710000321735,
+                  150.4477999988012,
+                  146.76160000090022,
+                  158.0714999945485,
+                  150.85009999893373,
+                  151.0201000055531,
+                  150.72720000171103,
+                  162.35930000402732,
+                  157.39479999319883,
+                  146.758899994893,
+                  146.16940000269096,
+                  146.83819999481784,
+                  148.1424000012339,
+                  146.84549999947194,
+                  154.51919999759411,
+                  150.75350000552135,
+                  158.86589999718126,
+                  157.84490000078222,
+                  147.94209999672603,
+                  152.73549999983516,
+                  154.26179999485612,
+                  154.7710000013467,
+                  157.57010000379523,
+                  148.91979999811156,
+                  163.31889999855775,
+                  143.63759999832837,
+                  155.58719999535242,
+                  146.35940000152914,
+                  159.7193000052357,
+                  155.80020000197692,
+                  151.55939999385737,
+                  146.1046999975224,
+                  141.66909999767086,
+                  146.92169999761973,
+                  146.25759999762522,
+                  149.7758999976213,
+                  150.9957999951439,
+                  159.45270000520395,
+                  151.63650000613416,
+                  156.90970000287052,
+                  150.07770000374876,
+                  170.3890999997384,
+                  147.94609999808017,
+                  146.8064000000595,
+                  154.71070000057807,
+                  161.16880000481615,
+                  150.36099999997532,
+                  150.96600000106264,
+                  144.17220000177622,
+                  142.49379999819212,
+                  149.52110000012908,
+                  158.78499999962514,
+                  166.94730000017444,
+                  150.82279999478487,
+                  146.76490000420017,
+                  147.30409999901894,
+                  144.30839999840828,
+                  151.29450000677025,
+                  150.51539999694796,
+                  154.31399999943096,
+                  150.9844999964116,
+                  147.50420000200393,
+                  147.86399999866262,
+                  141.4031000022078,
+                  147.5784000067506,
+                  152.10690000094473
+                ],
+                "pool": {
+                  "enabled": true,
+                  "scope": "current_process",
+                  "pool_min": 0,
+                  "pool_max": 4,
+                  "pool_size": 2,
+                  "pool_available": 2,
+                  "pool_max_waiting": 64,
+                  "pool_timeout_seconds": 5.0
+                },
+                "resources": {
+                  "scope": "current_process",
+                  "cpu_seconds": 2.906,
+                  "peak_rss_bytes": 67903488
+                }
+              },
+              {
+                "ok": true,
+                "pid": 47032,
+                "tasks": 100,
+                "durations_ms": [
+                  217.74050000385614,
+                  155.63689999544295,
+                  157.4929000053089,
+                  152.9692000040086,
+                  160.3017000015825,
+                  169.0346999967005,
+                  152.485999999044,
+                  147.30819999385858,
+                  145.3710999994655,
+                  140.64179999695625,
+                  164.09879999991972,
+                  146.35809999890625,
+                  168.9150999955018,
+                  159.29579999647103,
+                  149.54040000156965,
+                  155.28220000123838,
+                  186.16389999806415,
+                  175.00130000553327,
+                  168.58659999707015,
+                  178.64040000131354,
+                  162.23570000147447,
+                  167.12169999664184,
+                  155.30159999616444,
+                  154.98429999570362,
+                  163.0589999986114,
+                  155.25449999404373,
+                  153.89649999997346,
+                  149.40850000130013,
+                  151.1196999999811,
+                  148.23510000132956,
+                  144.76279999507824,
+                  206.77059999434277,
+                  177.46600000100443,
+                  155.70319999824278,
+                  147.04689999780385,
+                  150.87130000028992,
+                  145.4481000037049,
+                  159.1610999967088,
+                  149.85169999999925,
+                  151.6944999966654,
+                  151.18290000100387,
+                  162.11489999841433,
+                  150.68529999552993,
+                  146.0847999987891,
+                  152.3049000024912,
+                  147.46639999793842,
+                  148.13909999793395,
+                  140.73500000085915,
+                  160.21480000199517,
+                  151.2016999986372,
+                  161.06330000184244,
+                  150.70140000170795,
+                  154.65980000590207,
+                  146.20450000074925,
+                  153.9693000013358,
+                  153.82859999954235,
+                  157.5368999983766,
+                  149.81640000041807,
+                  169.0048000018578,
+                  144.88559999881545,
+                  155.32629999506753,
+                  146.08790000056615,
+                  160.00119999807794,
+                  156.83290000015404,
+                  144.8266000006697,
+                  152.9448000001139,
+                  141.18459999735933,
+                  146.22619999863673,
+                  147.41009999852395,
+                  149.37130000180332,
+                  150.22689999750583,
+                  160.92940000089584,
+                  151.77330000005895,
+                  155.73450000374578,
+                  152.03919999476057,
+                  169.92600000230595,
+                  147.66229999804636,
+                  146.7393999992055,
+                  156.12490000057733,
+                  160.8600999970804,
+                  149.9404999995022,
+                  150.37780000420753,
+                  144.439899995632,
+                  142.77519999450305,
+                  149.9134999976377,
+                  158.57469999900786,
+                  158.93099999811966,
+                  158.0340000000433,
+                  147.38130000478122,
+                  148.0121999993571,
+                  143.5189999974682,
+                  151.78949999972247,
+                  151.069000006828,
+                  153.61910000501666,
+                  150.70839999680175,
+                  146.9031000015093,
+                  142.02040000236593,
+                  146.73410000250442,
+                  147.93280000594677,
+                  152.1026999980677
+                ],
+                "pool": {
+                  "enabled": true,
+                  "scope": "current_process",
+                  "pool_min": 0,
+                  "pool_max": 4,
+                  "pool_size": 2,
+                  "pool_available": 2,
+                  "pool_max_waiting": 64,
+                  "pool_timeout_seconds": 5.0
+                },
+                "resources": {
+                  "scope": "current_process",
+                  "cpu_seconds": 2.875,
+                  "peak_rss_bytes": 67743744
+                }
+              }
+            ]
+          },
+          "batch_package": {
+            "seconds": 34.792,
+            "count": 200,
+            "workers": [
+              {
+                "ok": true,
+                "pid": 32012,
+                "tasks": 100,
+                "durations_ms": [
+                  340.45489999698475,
+                  343.35039999859873,
+                  346.3819999960833,
+                  338.2844000007026,
+                  334.9119000049541,
+                  337.7517000044463,
+                  336.6620000015246,
+                  342.9801999955089,
+                  344.8253999958979,
+                  342.4640000012005,
+                  343.21079999790527,
+                  344.2575000008219,
+                  334.4619999988936,
+                  337.24159999837866,
+                  349.4866999972146,
+                  328.63790000556037,
+                  343.83279999747174,
+                  344.86420000030193,
+                  344.08970000367844,
+                  348.3161000040127,
+                  341.9274000043515,
+                  339.5070999977179,
+                  346.75330000027316,
+                  350.0759000016842,
+                  346.30509999988135,
+                  347.2020000044722,
+                  345.0531999988016,
+                  331.63429999694927,
+                  337.97869999398245,
+                  334.1504000054556,
+                  334.3544999952428,
+                  321.90609999815933,
+                  340.67269999650307,
+                  339.7949000063818,
+                  335.0212000004831,
+                  338.9679999963846,
+                  340.8504999970319,
+                  328.1915999978082,
+                  325.0543999965885,
+                  336.19309999630786,
+                  324.7131000025547,
+                  322.184799995739,
+                  332.45419999730075,
+                  328.69810000556754,
+                  324.3006999982754,
+                  345.0107000026037,
+                  326.0647999995854,
+                  320.40849999611964,
+                  324.4806000002427,
+                  325.2767000012682,
+                  357.83749999973224,
+                  350.11820000363514,
+                  343.3348999969894,
+                  322.5696999943466,
+                  328.8384999978007,
+                  324.4769000011729,
+                  328.24389999586856,
+                  322.85530000081053,
+                  324.70650000323076,
+                  323.149600000761,
+                  333.1783000030555,
+                  326.9330999974045,
+                  327.9971999945701,
+                  320.2560999998241,
+                  324.8548000046867,
+                  329.7982000003685,
+                  324.7672000070452,
+                  324.1128999943612,
+                  331.28400000714464,
+                  324.37360000039916,
+                  331.2567000029958,
+                  320.8405000041239,
+                  325.1239000019268,
+                  354.211400001077,
+                  332.42730000347365,
+                  333.18359999975655,
+                  333.71009999973467,
+                  338.6169000004884,
+                  329.2786999954842,
+                  330.866900003457,
+                  329.1711000056239,
+                  321.41309999860823,
+                  324.0665999983321,
+                  321.39070000266656,
+                  346.7391000012867,
+                  332.6653999974951,
+                  332.6415999981691,
+                  347.09250000014435,
+                  333.2492999979877,
+                  331.61090000066906,
+                  332.79740000580205,
+                  334.11660000274424,
+                  329.4108999980381,
+                  324.15250000485685,
+                  327.21850000234554,
+                  329.1328000050271,
+                  328.38819999597035,
+                  344.4637999928091,
+                  345.33669999655103,
+                  326.2883000061265
+                ],
+                "pool": {
+                  "enabled": true,
+                  "scope": "current_process",
+                  "pool_min": 0,
+                  "pool_max": 4,
+                  "pool_size": 2,
+                  "pool_available": 2,
+                  "pool_max_waiting": 64,
+                  "pool_timeout_seconds": 5.0
+                },
+                "resources": {
+                  "scope": "current_process",
+                  "cpu_seconds": 3.312,
+                  "peak_rss_bytes": 68059136
+                }
+              },
+              {
+                "ok": true,
+                "pid": 9732,
+                "tasks": 100,
+                "durations_ms": [
+                  344.4741999992402,
+                  349.98089999862714,
+                  340.0971000010031,
+                  338.0959999994957,
+                  334.9902000045404,
+                  337.6480000006268,
+                  336.7699999944307,
+                  343.39129999716533,
+                  344.8761999970884,
+                  342.73839999514166,
+                  342.5322999974014,
+                  343.2972000009613,
+                  334.88600000418955,
+                  337.8584000020055,
+                  348.7048000024515,
+                  328.12399999966146,
+                  350.41450000426266,
+                  344.7477000008803,
+                  343.8402999963728,
+                  342.56579999782844,
+                  341.93470000172965,
+                  339.193100000557,
+                  347.1348999955808,
+                  350.18240000499645,
+                  346.69489999942016,
+                  345.9468000000925,
+                  345.0001000019256,
+                  337.6901000010548,
+                  337.8295000002254,
+                  333.93140000407584,
+                  334.58149999933084,
+                  323.6636000001454,
+                  340.25300000212155,
+                  339.63499999663327,
+                  335.02519999456126,
+                  333.434699998179,
+                  345.8898000026238,
+                  328.423599996313,
+                  325.7326000020839,
+                  330.68289999937406,
+                  324.9967000010656,
+                  327.47160000144504,
+                  327.00549999572104,
+                  328.4711000014795,
+                  331.3542999967467,
+                  338.8536999991629,
+                  325.59719999699155,
+                  325.78189999912865,
+                  324.5690000039758,
+                  324.2469000033452,
+                  347.43000000162283,
+                  354.14980000496143,
+                  344.23949999472825,
+                  327.75770000444027,
+                  329.014000002644,
+                  318.86110000050394,
+                  328.88599999569124,
+                  322.47579999966547,
+                  324.6253999968758,
+                  323.10210000287043,
+                  333.31989999715006,
+                  326.8384999973932,
+                  328.1926999989082,
+                  319.9075999946217,
+                  330.4543000049307,
+                  321.69209999847226,
+                  325.33390000025975,
+                  330.78090000344673,
+                  325.804899999639,
+                  324.21980000071926,
+                  331.30260000325507,
+                  320.685600003344,
+                  330.62190000055125,
+                  359.9809000006644,
+                  321.2134999994305,
+                  338.4361999997054,
+                  328.3288000020548,
+                  344.55090000119526,
+                  329.1272000060417,
+                  331.12010000331793,
+                  324.2175999985193,
+                  321.15909999993164,
+                  323.9726000028895,
+                  326.99780000257306,
+                  346.9866999948863,
+                  332.90349999879254,
+                  332.7216999969096,
+                  347.0737999959965,
+                  327.78400000097463,
+                  331.88030000019353,
+                  337.88579999963986,
+                  333.97490000061225,
+                  324.3854000029387,
+                  329.7595999974874,
+                  320.6041000012192,
+                  335.67829999810783,
+                  328.4133999986807,
+                  351.08259999833535,
+                  339.28430000378285,
+                  327.78700000199024
+                ],
+                "pool": {
+                  "enabled": true,
+                  "scope": "current_process",
+                  "pool_min": 0,
+                  "pool_max": 4,
+                  "pool_size": 2,
+                  "pool_available": 2,
+                  "pool_max_waiting": 64,
+                  "pool_timeout_seconds": 5.0
+                },
+                "resources": {
+                  "scope": "current_process",
+                  "cpu_seconds": 3.516,
+                  "peak_rss_bytes": 68214784
+                }
+              }
+            ]
+          },
+          "sustained_mixed": {
+            "seconds": 1801.938,
+            "rounds": 914,
+            "concurrency": 8,
+            "latency": {
+              "clients": {
+                "n": 5484,
+                "p50_ms": 626.88,
+                "p95_ms": 731.19,
+                "p99_ms": 762.06,
+                "max_ms": 857.8
+              },
+              "package": {
+                "n": 5484,
+                "p50_ms": 39.48,
+                "p95_ms": 550.7,
+                "p99_ms": 567.84,
+                "max_ms": 612.46
+              },
+              "original": {
+                "n": 5484,
+                "p50_ms": 49.46,
+                "p95_ms": 143.13,
+                "p99_ms": 186.18,
+                "max_ms": 316.28
+              },
+              "review_export": {
+                "n": 5484,
+                "p50_ms": 1309.23,
+                "p95_ms": 1671.76,
+                "p99_ms": 1708.3,
+                "max_ms": 1788.52
+              }
+            },
+            "largest_client_response_bytes": 22930,
+            "original_bytes": 7087819,
+            "pool": {
+              "enabled": true,
+              "scope": "current_process",
+              "pool_min": 0,
+              "pool_max": 4,
+              "pool_size": 4,
+              "pool_available": 4,
+              "pool_max_waiting": 64,
+              "pool_timeout_seconds": 5.0
+            },
+            "transactions": {
+              "scope": "current_process",
+              "window_seconds": 900,
+              "sample_limit": 4096,
+              "count": 3417,
+              "writes": 1367,
+              "rollbacks": 0,
+              "connection_failures": 0,
+              "connection": {
+                "mean_ms": 79.036,
+                "p95_ms": 343.523,
+                "max_ms": 557.391
+              },
+              "lock_wait": {
+                "mean_ms": 1.146,
+                "p95_ms": 3.196,
+                "max_ms": 4.559
+              },
+              "transaction": {
+                "mean_ms": 116.795,
+                "p95_ms": 595.735,
+                "max_ms": 688.452
+              }
+            },
+            "reviewed_outputs": {
+              "count": 5484,
+              "companies": 200,
+              "output_sha256": "188c0b9e759ad8a010f4f23f97387776f9bdccf8f5c180ed77248079f4e7ed03"
+            }
+          }
+        },
+        "resources_end": {
+          "scope": "current_process",
+          "cpu_seconds": 451.797,
+          "peak_rss_bytes": 117583872
+        }
+      }
+    },
+    "budget": {
+      "schema": "frontend-budget-v1",
+      "status": "passed",
+      "initial": {
+        "jsBytes": 565095,
+        "jsGzipBytes": 175049,
+        "cssBytes": 99722,
+        "jsFiles": [
+          "assets/index-DlCrKt33.js"
+        ],
+        "cssFiles": [
+          "assets/index-BXglmTDB.css"
+        ]
+      },
+      "home": {
+        "jsBytes": 592659,
+        "jsGzipBytes": 185625,
+        "cssBytes": 144373,
+        "jsFiles": [
+          "assets/AgentCompanyPicker-DSJRxRo_.js",
+          "assets/WorkspaceHome-D9Suxqfd.js",
+          "assets/arrow-right-left-CpgTyd5b.js",
+          "assets/check-V760LECy.js",
+          "assets/index-DlCrKt33.js",
+          "assets/play-DUTOHNXO.js",
+          "assets/receipt-BDCZySMW.js",
+          "assets/save-xPXd-_hU.js",
+          "assets/workspace-recovery-NpcoF4sR.js"
+        ],
+        "cssFiles": [
+          "assets/index-BXglmTDB.css",
+          "assets/workbench-focus-CZeJGxk8.css",
+          "assets/workspace-Do0oLTUT.css"
+        ]
+      },
+      "budgets": {
+        "initialJs": 570000,
+        "initialGzip": 176000,
+        "homeJs": 625000,
+        "homeGzip": 195000,
+        "initialCss": 110000,
+        "homeCss": 145000
+      },
+      "violations": [],
+      "artifactSha256": "9d29e44047d4c3f9f77f64da88f43d8324ae53b27683132a10a781d7ade75e45"
+    },
+    "historical_migrations": {
+      "baseline_migrations": 344,
+      "changed": [],
+      "candidate": {
+        "schema": "release-candidate-v1",
+        "head": "dfa8c45057fb05f72078d490593b2481f72615ad",
+        "source_files": 2016,
+        "source_sha256": "a260f017a3bbb6afe8c712aa68644f75f652f7ece739d89ed01012ad277424dc",
+        "migration_files": 349,
+        "migration_sha256": "5ac57554c2b7e68f0cbc126f4a54b3c7481db18b208d8be114a0edf71729024f"
+      },
+      "candidate_unchanged": true
+    },
+    "ownership": {
+      "candidate": {
+        "schema": "release-candidate-v1",
+        "head": "dfa8c45057fb05f72078d490593b2481f72615ad",
+        "source_files": 2016,
+        "source_sha256": "a260f017a3bbb6afe8c712aa68644f75f652f7ece739d89ed01012ad277424dc",
+        "migration_files": 349,
+        "migration_sha256": "5ac57554c2b7e68f0cbc126f4a54b3c7481db18b208d8be114a0edf71729024f"
+      },
+      "source_changes": [
+        "e2e/finance-refinement.spec.ts",
+        "nexus_backend/app/b04_close/service.py",
+        "nexus_backend/app/periodic/models.py",
+        "nexus_backend/app/periodic/reconciliation.py",
+        "nexus_backend/app/periodic/router.py",
+        "nexus_backend/app/periodic/service.py",
+        "nexus_backend/migrations/postgres/221_asset_reconciliation.sql",
+        "nexus_backend/migrations/postgres/222_asset_reconciliation_open_period.sql",
+        "nexus_backend/migrations/sqlite/137_asset_reconciliation.sql",
+        "nexus_backend/migrations/sqlite/138_asset_reconciliation_review.sql",
+        "nexus_backend/migrations/sqlite/139_asset_reconciliation_open_period.sql",
+        "nexus_backend/tests/finance_opening_fixture.py",
+        "nexus_backend/tests/finance_recovery_business.py",
+        "nexus_backend/tests/p01_recovery_business.py",
+        "nexus_backend/tests/test_c01_full_recovery_postgres.py",
+        "nexus_backend/tests/test_dcp_reliability_gate.py",
+        "nexus_backend/tests/test_finance_mixed_capacity.py",
+        "nexus_backend/tests/test_finance_recovery_contract.py",
+        "nexus_backend/tests/test_finance_refinement.py",
+        "nexus_backend/tests/test_finance_refinement_postgres.py",
+        "nexus_backend/tests/test_p01_r2_gate.py",
+        "nexus_backend/tests/test_p01_recovery_business_contract.py",
+        "scripts/dcp_reliability_required_cases.json",
+        "scripts/p01_recovery_gate.py",
+        "scripts/recovery_finance_contract.py",
+        "scripts/release_recovery_hold.py",
+        "src/AccountingBookToolbar.tsx",
+        "src/AssetReconciliation.tsx",
+        "src/EfficiencyPortfolio.tsx",
+        "src/FinanceOperationsPanel.tsx",
+        "src/FormalBooksWorkbench.tsx",
+        "src/InvitationDelivery.tsx",
+        "src/collaboration-readiness.test.ts",
+        "src/efficiency-portfolio-contract.test.ts",
+        "src/efficiency-portfolio-contract.ts",
+        "src/finance-operations.ts",
+        "src/finance-refinement.test.ts",
+        "src/invitation-status.ts",
+        "tools/capacity/firm_operations.py"
+      ],
+      "deleted_sources": [],
+      "checked_same_candidate": true
+    },
+    "capacity_observations": {
+      "path": "tmp_test/finance-refinement/20261109/verified/capacity-observations.jsonl",
+      "sha256": "581012d42cef2959bbc924c95a94c3f28258f8b140b530bf82408a1f7359e1e8"
+    },
+    "environment_stop": {
+      "result": {
+        "environment_id": "f4d984e0c1fd4c8ebb8f8252acd906e5",
+        "clusters": {
+          "source16": {
+            "major": 16,
+            "port": 25496,
+            "running": false
+          },
+          "target16": {
+            "major": 16,
+            "port": 25497,
+            "running": false
+          },
+          "source17": {
+            "major": 17,
+            "port": 25498,
+            "running": false
+          },
+          "target17": {
+            "major": 17,
+            "port": 25499,
+            "running": false
+          }
+        },
+        "data_deleted": false
+      },
+      "path": "tmp_test/finance-refinement/20261109/verified/environment-stop.json",
+      "sha256": "7bb91ba7fa77f6aefd9c836c18bf94f8ae2144b881a7ea1b250b8e06377b8171"
+    },
+    "environment_idle": {
+      "result": [
+        {
+          "major": 16,
+          "kind": "recovery_source",
+          "port": 25496,
+          "other_clients": 0
+        },
+        {
+          "major": 16,
+          "kind": "recovery-fresh-target",
+          "port": 25497,
+          "other_clients": 0
+        },
+        {
+          "major": 17,
+          "kind": "recovery_source",
+          "port": 25498,
+          "other_clients": 0
+        },
+        {
+          "major": 17,
+          "kind": "recovery-fresh-target",
+          "port": 25499,
+          "other_clients": 0
+        }
+      ],
+      "path": "tmp_test/finance-refinement/20261109/verified/cluster-idle.json",
+      "sha256": "d5b3f8d0007d10686c4db4932d9cc58b18d467c874c53013c3e8d3fabcbbef7f"
+    },
+    "screenshots": [
+      {
+        "path": "tmp_test/finance-refinement/20261109/screenshots/task-1365.png",
+        "sha256": "9c919a491f9791a9a733463a5db60fb314d94fdde2bd1b8ae12b291919dcc26e"
+      },
+      {
+        "path": "tmp_test/finance-refinement/20261109/screenshots/task-390.png",
+        "sha256": "e353b6d0c8cfd93d57d0681e035dbedd3a38c419fff9fbd9b273ff2fd70f2088"
+      },
+      {
+        "path": "tmp_test/finance-refinement/20261109/screenshots/asset-1365.png",
+        "sha256": "f190c9520a9704ff0fa9d6ab81fc967ed096c4bcff77f011c6edd1656dd1c93d"
+      },
+      {
+        "path": "tmp_test/finance-refinement/20261109/screenshots/asset-390.png",
+        "sha256": "c77170a2912dbcc84bcce58e20b15e7626ee50d32823704ffab9770b3444bada"
+      }
+    ]
+  },
+  "proofs": {
+    "offline-final-execution.json": {
+      "path": "tmp_test/finance-refinement/20261109/verified/offline-final-execution.json",
+      "sha256": "f21fc7f92177d3b29af25ecee1b8fc543b72906475b968017a378d7b82641486"
+    },
+    "typecheck-execution.json": {
+      "path": "tmp_test/finance-refinement/20261109/verified/typecheck-execution.json",
+      "sha256": "0ac0994c7ec2eace423435a0e9c9fb409edb2b0bb4437473c2271fa9d696895d"
+    },
+    "lint-execution.json": {
+      "path": "tmp_test/finance-refinement/20261109/verified/lint-execution.json",
+      "sha256": "4c9904a618d2ae52cee8484901a8aeb70ff1b14c8c439219ef9becd6a3668601"
+    },
+    "python-lint-execution.json": {
+      "path": "tmp_test/finance-refinement/20261109/verified/python-lint-execution.json",
+      "sha256": "4755afc43763ca1c70ba02e25aae9b632e31edef666f83ab42e04d0e0c58d4fb"
+    },
+    "python-format-execution.json": {
+      "path": "tmp_test/finance-refinement/20261109/verified/python-format-execution.json",
+      "sha256": "a07869fa522f4a32353e5f948e23ebc6e8fbf253e76e224b5d7a93ac88557906"
+    },
+    "recovery-execution.json": {
+      "path": "tmp_test/finance-refinement/20261109/verified/recovery-execution.json",
+      "sha256": "544c1f74e35eff2dda5ba14ff03238c1a418826ae25559bee8f6fe8d0d850bee"
+    },
+    "finance-pg16-execution.json": {
+      "path": "tmp_test/finance-refinement/20261109/verified/finance-pg16-execution.json",
+      "sha256": "fe73b243a5e4fd26beb08b4353d4cc1b7f62a7d787e9f69203b6baf13aed76f9"
+    },
+    "c01-pg16-execution.json": {
+      "path": "tmp_test/finance-refinement/20261109/verified/c01-pg16-execution.json",
+      "sha256": "caf0714edcf4f2be4bf10c52d727c0bbe35ecd01aa4ef93416a64238ec45b8d8"
+    },
+    "tasks-pg16-execution.json": {
+      "path": "tmp_test/finance-refinement/20261109/verified/tasks-pg16-execution.json",
+      "sha256": "f176cfd333cddc9d7e39f401f1bf085492f65bf620cb8875f37da64953f5678e"
+    },
+    "attempt-pg16-execution.json": {
+      "path": "tmp_test/finance-refinement/20261109/verified/attempt-pg16-execution.json",
+      "sha256": "274e8013b007e9a7de589bbf8dc4de2a15021cb1e31a08a91b4885943c4c8a86"
+    },
+    "cost-pg16-execution.json": {
+      "path": "tmp_test/finance-refinement/20261109/verified/cost-pg16-execution.json",
+      "sha256": "22029eb1f3ee3ecbaa88038ce9ced2cb09a2679e5d6f830effc7d77997a4f12d"
+    },
+    "http-pg16-execution.json": {
+      "path": "tmp_test/finance-refinement/20261109/verified/http-pg16-execution.json",
+      "sha256": "d3b6ca21918486fea72f38dcd38dd2a0ef7ed87e315be36a3d8a0b932faf5dd3"
+    },
+    "capacity-pg16-execution.json": {
+      "path": "tmp_test/finance-refinement/20261109/verified/capacity-pg16-execution.json",
+      "sha256": "b7d6ba443572b0b2fd2c7af1d1d9cdf0539ec2d7b78cbd097b25d7a76b0e8cc2"
+    },
+    "finance-pg17-execution.json": {
+      "path": "tmp_test/finance-refinement/20261109/verified/finance-pg17-execution.json",
+      "sha256": "0b62c3cbb3de2828d28940ac4c5c990e336f2d28012efad0958a34c5ced45c66"
+    },
+    "c01-pg17-execution.json": {
+      "path": "tmp_test/finance-refinement/20261109/verified/c01-pg17-execution.json",
+      "sha256": "217dbd55f711a9d3ef49882a3cd8e71c84540b0ca5ec1be432a7514a7a1a1cc8"
+    },
+    "tasks-pg17-execution.json": {
+      "path": "tmp_test/finance-refinement/20261109/verified/tasks-pg17-execution.json",
+      "sha256": "3c9381088ff5aed30172c928e44b08000b392ad97558925042826dd8e1db5362"
+    },
+    "attempt-pg17-execution.json": {
+      "path": "tmp_test/finance-refinement/20261109/verified/attempt-pg17-execution.json",
+      "sha256": "332e248c988e17ff1f9d291f565e8255fa024ee9aa6db5c2e8d915d9e328dda6"
+    },
+    "cost-pg17-execution.json": {
+      "path": "tmp_test/finance-refinement/20261109/verified/cost-pg17-execution.json",
+      "sha256": "6b455fbcfd84e1474aded5a4f1cac7f91c79c9cab34eaab475754188aa135c1e"
+    },
+    "http-pg17-execution.json": {
+      "path": "tmp_test/finance-refinement/20261109/verified/http-pg17-execution.json",
+      "sha256": "628fe477bfd91b79b854e1223157f95e8c1ce262d6ba48e87d6411422b1b366b"
+    },
+    "capacity-pg17-execution.json": {
+      "path": "tmp_test/finance-refinement/20261109/verified/capacity-pg17-execution.json",
+      "sha256": "5c3391cf5a0dd52a89d780854759afd5fc7e65aeacefb8be397ba6f835935f83"
+    },
+    "direct-frontend/execution.json": {
+      "path": "tmp_test/finance-refinement/20261109/verified/direct-frontend/execution.json",
+      "sha256": "9d1c3743836d3da8a34fb539ca936b7a3028f8c523e0acebd3b3559a504276ef"
+    },
+    "direct-build/execution.json": {
+      "path": "tmp_test/finance-refinement/20261109/verified/direct-build/execution.json",
+      "sha256": "195d12df1be4b26411a745179d63becf2ed060519b908e5f49975b116e81a146"
+    },
+    "direct-browser-dev/execution.json": {
+      "path": "tmp_test/finance-refinement/20261109/verified/direct-browser-dev/execution.json",
+      "sha256": "5c8db3f468eda09f60a24d8bcaa02f9dfdf8120461a47e6e20f8fa4ccfbaf893"
+    },
+    "direct-browser-preview/execution.json": {
+      "path": "tmp_test/finance-refinement/20261109/verified/direct-browser-preview/execution.json",
+      "sha256": "36e2c3a356937a35aa49eb46764acec4ed5fe91fd399f7d07a695f23db9e77f4"
+    },
+    "direct-pg-browser/summary.json": {
+      "path": "tmp_test/finance-refinement/20261109/verified/direct-pg-browser/summary.json",
+      "sha256": "84a43f5244686cace46d6ed652333204ce2b6767426969af260e19c59c488530"
+    },
+    "test-reports/e2e-tasks/0bb96ca7-ae87-4898-875d-54458cb603b7/reports/dev.json": {
+      "path": "test-reports/e2e-tasks/0bb96ca7-ae87-4898-875d-54458cb603b7/reports/dev.json",
+      "sha256": "5c9f9877c5631715118174adafbbf9a34f289d762e6eca0ebd89f1e06fa74409"
+    },
+    "test-reports/e2e-tasks/0bb96ca7-ae87-4898-875d-54458cb603b7/reports/preview.json": {
+      "path": "test-reports/e2e-tasks/0bb96ca7-ae87-4898-875d-54458cb603b7/reports/preview.json",
+      "sha256": "f99a47b31376fb55637edf062745d9ea42fd2129933053a40139791f5ecd9b89"
+    },
+    "finance-pg16/summary.json": {
+      "path": "tmp_test/finance-refinement/20261109/verified/finance-pg16/summary.json",
+      "sha256": "76c36746df7716b4dfb056846c321558f03d836f648b59e15a9af975570c5b6e"
+    },
+    "tasks-pg16/summary.json": {
+      "path": "tmp_test/finance-refinement/20261109/verified/tasks-pg16/summary.json",
+      "sha256": "404ecbb42c9f8aac460d6b43272f0dac3af0d289bd6a09feac9fc73d9cf0d602"
+    },
+    "c01-pg16/summary.json": {
+      "path": "tmp_test/finance-refinement/20261109/verified/c01-pg16/summary.json",
+      "sha256": "4eb1443e17a299f0a93f2a66674e31ad26cec45db8b78c65af9b69c17d6355f4"
+    },
+    "finance-pg17/summary.json": {
+      "path": "tmp_test/finance-refinement/20261109/verified/finance-pg17/summary.json",
+      "sha256": "c25dd4e964071cf6722842e9ac1d3755bb15fbe6db40aff32b7edc5456efa826"
+    },
+    "tasks-pg17/summary.json": {
+      "path": "tmp_test/finance-refinement/20261109/verified/tasks-pg17/summary.json",
+      "sha256": "ce2cb475879d7ea95bcfd7bff6f1519f64df444f9b826bac5e097de503e9adf7"
+    },
+    "c01-pg17/summary.json": {
+      "path": "tmp_test/finance-refinement/20261109/verified/c01-pg17/summary.json",
+      "sha256": "c8d8bd6978b67f5271d62dfe5e77d68a90af79feda9a11702e11d38b29c48a47"
+    },
+    "recovery/reports/summary.json": {
+      "path": "tmp_test/finance-refinement/20261109/verified/recovery/reports/summary.json",
+      "sha256": "209a9c0453dda6c03ede8af5db7efef47445a664b636cd7bc8abc541d92e8add"
+    },
+    "http-pg16/summary.json": {
+      "path": "tmp_test/finance-refinement/20261109/verified/http-pg16/summary.json",
+      "sha256": "fa2e3661a6dd0a4c84da4b9c188a1df944388a097b9ce503737f56a917c3c82e"
+    },
+    "capacity-pg16/report.json": {
+      "path": "tmp_test/finance-refinement/20261109/verified/capacity-pg16/report.json",
+      "sha256": "51dda9f9bf3fa186d06fbf00092651cbb6af255dc32c225a34cddc8b4acffc70"
+    },
+    "http-pg17/summary.json": {
+      "path": "tmp_test/finance-refinement/20261109/verified/http-pg17/summary.json",
+      "sha256": "2e76b36e0cd0d9924e2c6d6aa3f71fa1942fafef2dda463e07cabee108287921"
+    },
+    "capacity-pg17/report.json": {
+      "path": "tmp_test/finance-refinement/20261109/verified/capacity-pg17/report.json",
+      "sha256": "193e413cca8b78182358fcbcc8b18bc31b0c77e6a0a5d2f7f76660c59e311581"
+    }
+  },
+  "boundary": "Local synthetic data only; no real model/notification, no push/deployment, no production capacity or pilot claim",
+  "superseded": [
+    "accepted",
+    "final"
+  ],
+  "execution_notes": [
+    "Initial Python-launched browser failed before test collection due to Windows SWC cache permissions; the same eight-case validator passed with direct local launches.",
+    "Initial offline JUnit path reused an older directory; offline-final was rerun to its own fresh path and is the only offline evidence accepted here."
+  ]
+}

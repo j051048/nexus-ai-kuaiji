@@ -44,6 +44,24 @@ def validate_results(rows, companies):
     return len(rows)
 
 
+def validate_mixed_results(rows, companies):
+    if not rows or any(
+        r.get("company_id") not in companies or not r.get("draft_id") or not r.get("export_id")
+        for r in rows
+    ):
+        raise ValueError("Mixed workload needs actual scoped reviewed exports")
+    for key in ("draft_id", "export_id"):
+        if len({r[key] for r in rows}) != len(rows):
+            raise ValueError("Mixed workload duplicated a reviewed output")
+    return {
+        "count": len(rows),
+        "companies": len({r["company_id"] for r in rows}),
+        "output_sha256": hashlib.sha256(
+            json.dumps(sorted(rows, key=lambda r: r["draft_id"]), sort_keys=True).encode()
+        ).hexdigest(),
+    }
+
+
 def process_batch(config, service, manager, batch, output_key):
     started = time.perf_counter()
     with ProcessPoolExecutor(2, mp_context=multiprocessing.get_context("spawn")) as pool:
@@ -72,11 +90,12 @@ def process_batch(config, service, manager, batch, output_key):
     }, result
 
 
-def run(config, major, out, companies=200, seconds=60):
+def run(config, major, out, companies=200, seconds=60, mixed=False):
     from PIL import Image
     import psycopg
     from app.accounting.domain import Actor, AccountingError
     from app.accounting.service import AccountingService
+    from app.accounting.models import ExportRequest
     from app.business.service import BusinessService
     from app.business.storage import AttachmentStore
     from app.business.models import BusinessEventCreate
@@ -228,16 +247,24 @@ def run(config, major, out, companies=200, seconds=60):
         except AccountingError as error:
             with_error = error.status == 404
         assert with_error, "Foreign original access unexpectedly succeeded"
-        phase = "sustained_reads"
+        phase = "sustained_mixed" if mixed else "sustained_reads"
         cockpit = FirmCockpitService(db, ledger)
         monthly = MonthlyPackageService(db)
         start = time.monotonic()
         measurements = {"clients": [], "package": [], "original": []}
+        if mixed:
+            measurements["review_export"] = []
+        written = []
         largest_response = 0
         rounds = 0
 
         def read(index):
-            kind = ("clients", "package", "original")[index % 3]
+            kinds = (
+                ("clients", "package", "original", "review_export")
+                if mixed
+                else ("clients", "package", "original")
+            )
+            kind = kinds[index % len(kinds)]
             begun = time.perf_counter()
             if kind == "clients":
                 result = cockpit.snapshot(
@@ -255,16 +282,47 @@ def run(config, major, out, companies=200, seconds=60):
                 )
                 assert payload.startswith(b"PK")
                 size = len(payload)
-            else:
+            elif kind == "original":
                 payload = store.read(business.download_metadata(employee, metadata["id"]))
                 assert hashlib.sha256(payload).hexdigest() == metadata["sha256"]
                 size = len(payload)
-            return kind, (time.perf_counter() - begun) * 1000, size
+            else:
+                row = exports.companies[(rounds * 6 + index // 4) % companies]
+                draft = reviewed_export_draft(
+                    SimpleNamespace(
+                        db=db,
+                        ledger=ledger,
+                        manager=exports.manager,
+                        reviewer=reviewers[0],
+                        book={"id": row["book_id"]},
+                        company={"id": row["company_id"]},
+                    )
+                )
+                result = ledger.export(
+                    exports.manager,
+                    row["book_id"],
+                    ExportRequest(draft_ids=[draft["id"]], idempotency_key=uuid4().hex),
+                )
+                assert result["count"] == 1
+                record = {
+                    "company_id": row["company_id"],
+                    "draft_id": draft["id"],
+                    "export_id": result["id"],
+                }
+                return (
+                    kind,
+                    (time.perf_counter() - begun) * 1000,
+                    len(json.dumps(result).encode()),
+                    record,
+                )
+            return kind, (time.perf_counter() - begun) * 1000, size, None
 
         with ThreadPoolExecutor(8) as pool:
             while time.monotonic() - start < seconds:
-                for kind, elapsed, size in pool.map(read, range(24)):
+                for kind, elapsed, size, record in pool.map(read, range(24)):
                     measurements[kind].append(elapsed)
+                    if record:
+                        written.append(record)
                     if kind == "clients":
                         largest_response = max(size, largest_response)
                 rounds += 1
@@ -279,6 +337,10 @@ def run(config, major, out, companies=200, seconds=60):
             "transactions": db.metrics.snapshot(firm_id=exports.firm),
         }
         assert largest_response < 100_000
+        if mixed:
+            report["phases"][phase]["reviewed_outputs"] = validate_mixed_results(
+                written, {r["company_id"] for r in exports.companies}
+            )
         assert candidate_fingerprint(ROOT) == candidate, "Candidate changed during capacity run"
         report["status"] = "passed"
     except Exception as error:
@@ -301,6 +363,11 @@ def main():
     parser.add_argument("--out", required=True)
     parser.add_argument("--companies", type=int, default=200)
     parser.add_argument("--seconds", type=int, default=60)
+    parser.add_argument(
+        "--mixed",
+        action="store_true",
+        help="Read, independently review/export and download concurrently",
+    )
     args = parser.parse_args()
     try:
         run(
@@ -309,6 +376,7 @@ def main():
             args.out,
             args.companies,
             args.seconds,
+            args.mixed,
         )
         print(json.dumps({"status": "passed", "report": str(Path(args.out) / "report.json")}))
         return 0

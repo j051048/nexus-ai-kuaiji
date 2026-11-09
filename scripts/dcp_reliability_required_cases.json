@@ -122,10 +122,19 @@
     },
     "finance": {
       "files": [
+        "test_finance_refinement_postgres.py",
         "test_finance_continuation_postgres.py",
         "test_finance_agent_reuse_postgres.py"
       ],
       "cases": [
+        "nexus_backend.tests.test_finance_refinement_postgres::test_reconciliation[history]",
+        "nexus_backend.tests.test_finance_refinement_postgres::test_reconciliation[scope]",
+        "nexus_backend.tests.test_finance_refinement_postgres::test_reconciliation[revision_resume]",
+        "nexus_backend.tests.test_finance_refinement_postgres::test_reconciliation[native_source]",
+        "nexus_backend.tests.test_finance_refinement_postgres::test_reconciliation[immutable]",
+        "nexus_backend.tests.test_finance_refinement_postgres::test_reconciliation[net]",
+        "nexus_backend.tests.test_finance_refinement_postgres::test_reconciliation_competition_is_one_draft",
+        "nexus_backend.tests.test_finance_refinement_postgres::test_reconciliation_revoked_reviewer_and_native_line_tamper",
         "nexus_backend.tests.test_finance_continuation_postgres::test_workflow[partial_reverse]",
         "nexus_backend.tests.test_finance_continuation_postgres::test_workflow[scope]",
         "nexus_backend.tests.test_finance_continuation_postgres::test_workflow[fingerprint]",
@@ -152,7 +161,9 @@
         "nexus_backend.tests.test_finance_continuation_postgres::test_workflow[reversed_history]",
         "nexus_backend.tests.test_finance_continuation_postgres::test_corrected_payment[projection]",
         "nexus_backend.tests.test_finance_continuation_postgres::test_corrected_payment[api]",
-        "nexus_backend.tests.test_finance_continuation_postgres::test_corrected_payment[native]"
+        "nexus_backend.tests.test_finance_continuation_postgres::test_corrected_payment[native]",
+        "nexus_backend.tests.test_finance_refinement_postgres::test_reconciliation[closed_review]",
+        "nexus_backend.tests.test_finance_refinement_postgres::test_reconciliation_closed_period_rejects_native_run"
       ]
     }
   }

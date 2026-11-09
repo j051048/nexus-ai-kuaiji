@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ArrowRight, ChevronLeft, ChevronRight, RefreshCw, Timer } from 'lucide-react';
 import { api, errorMessage } from './api';
 import { durationLabel } from './efficiency-helpers';
+import { parseEfficiencyPortfolio } from './efficiency-portfolio-contract';
 import type { Pagination, Session } from './types';
 
 export interface EfficiencyPortfolioPage {
@@ -54,13 +55,14 @@ export function EfficiencyPortfolio({
     setData(null);
     setError('');
     setLoading(true);
-    void api<EfficiencyPortfolioPage>(
+    void api<unknown>(
       `/efficiency/portfolio?${new URLSearchParams({ period, limit: '20', offset: String(offset) })}`,
       session,
       { signal: controller.signal },
     )
       .then((value) => {
-        if (!controller.signal.aborted && scope === liveScope.current) setData({ scope, value });
+        if (!controller.signal.aborted && scope === liveScope.current)
+          setData({ scope, value: parseEfficiencyPortfolio(value, { period, limit: 20, offset }) });
       })
       .catch((failure) => {
         if (!controller.signal.aborted && scope === liveScope.current)

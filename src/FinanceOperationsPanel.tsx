@@ -11,6 +11,7 @@ import {
 } from './finance-operations';
 import './finance-operations.css';
 import { SettlementDetail } from './SettlementDetail';
+import { AssetReconciliation } from './AssetReconciliation';
 
 type Props = {
   session: Session;
@@ -197,7 +198,8 @@ function Aging({ session, bookId, companyId, period, onChanged, onVoucher }: Pro
     </>
   );
 }
-function Periodic({ session, bookId, companyId, period, onChanged }: Props) {
+function Periodic({ session, bookId, companyId, period, onChanged, onVoucher }: Props) {
+  const [reconciling, setReconciling] = useState<string | null>(null);
   const expected = { firmId: session.firm_id, bookId, companyId, period };
   const query = useScopedQuery(
     (signal) =>
@@ -245,6 +247,23 @@ function Periodic({ session, bookId, companyId, period, onChanged }: Props) {
     }
   }
   const data = query.data;
+  if (reconciling)
+    return (
+      <AssetReconciliation
+        key={reconciling}
+        session={session}
+        bookId={bookId}
+        companyId={companyId}
+        period={period}
+        assetId={reconciling}
+        onVoucher={onVoucher}
+        onChanged={query.reload}
+        onBack={() => {
+          setReconciling(null);
+          query.reload();
+        }}
+      />
+    );
   return (
     <>
       <p>资产卡片 → 生成草稿 → 另一位会计独立复核 → 正式记账。查看和生成草稿不会自动记账或导出。</p>
@@ -323,6 +342,14 @@ function Periodic({ session, bookId, companyId, period, onChanged }: Props) {
                   生成或查看本期草稿
                 </button>
               )}
+              <button
+                type="button"
+                className="text-button"
+                disabled={busy}
+                onClick={() => setReconciling(asset.id)}
+              >
+                核对历史差异与科目版本
+              </button>
             </article>
           ))}
           <h3>期末草稿</h3>

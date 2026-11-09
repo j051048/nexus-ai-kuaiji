@@ -106,10 +106,23 @@ def test_latest_business_http_shapes_and_guard_assertions(latest_case):
     app.include_router(build_tax_router(actor))
     app.include_router(build_delivery_router(actor))
     app.include_router(build_invoice_imports_router(actor))
+    from app.periodic.router import build_periodic_router
+    from app.periodic.service import PeriodicService
+    from app.subledger.router import build_subledger_router
+    from app.subledger.service import SubledgerService
+    from finance_recovery_business import verify_finance_recovery_http
+
+    app.state.periodic = PeriodicService(c.db)
+    app.state.subledger = SubledgerService(c.db)
+    app.include_router(build_periodic_router(actor))
+    app.include_router(build_subledger_router(actor))
     headers = {name: {"X-Synthetic-Actor": name} for name in actors}
     with TestClient(app) as client:
         proof = verify_latest_business_http(
             client, headers, latest_case.evidence, wrong_book_id=c.other_book["id"]
+        )
+        assert all(
+            verify_finance_recovery_http(client, headers, latest_case.evidence["finance"]).values()
         )
     assert all(proof.values())
 

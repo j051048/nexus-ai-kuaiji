@@ -1,14 +1,26 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, apiBlob, ApiError, errorMessage } from './api';
 import type { Session } from './types';
-import { ManualVoucherReviewPanel } from './ManualVoucherReviewPanel';
-import { FinanceOperationsPanel } from './FinanceOperationsPanel';
+const ManualVoucherReviewPanel = lazy(() =>
+  import('./ManualVoucherReviewPanel').then((module) => ({
+    default: module.ManualVoucherReviewPanel,
+  })),
+);
+const FinanceOperationsPanel = lazy(() =>
+  import('./FinanceOperationsPanel').then((module) => ({ default: module.FinanceOperationsPanel })),
+);
 import { financeSection } from './finance-operations';
 import { correctionSeed, type CorrectionSeed } from './voucher-correction';
-import { LegacyReviewPanel } from './LegacyReviewPanel';
+const LegacyReviewPanel = lazy(() =>
+  import('./LegacyReviewPanel').then((module) => ({ default: module.LegacyReviewPanel })),
+);
 import { AnalysisEvidencePanel } from './AnalysisEvidencePanel';
-import { FormalClosePanel } from './FormalClosePanel';
-import { OnboardingSetupWizard } from './OnboardingSetupWizard';
+const FormalClosePanel = lazy(() =>
+  import('./FormalClosePanel').then((module) => ({ default: module.FormalClosePanel })),
+);
+const OnboardingSetupWizard = lazy(() =>
+  import('./OnboardingSetupWizard').then((module) => ({ default: module.OnboardingSetupWizard })),
+);
 import {
   FormalBooksRequestGuard,
   formalBooksPath,
@@ -56,7 +68,11 @@ export function FormalBooksWorkbench(props: FormalBooksWorkbenchProps) {
     props.companyId,
     props.period,
   ]);
-  return <FormalBooksContent key={identity} {...props} />;
+  return (
+    <Suspense fallback={<p role="status">正在打开当前办理内容…</p>}>
+      <FormalBooksContent key={identity} {...props} />
+    </Suspense>
+  );
 }
 
 function failureText(failure: unknown): string {
@@ -94,6 +110,15 @@ function FormalBooksContent({
   );
   const [financeOpen, setFinanceOpen] = useState(!!initialFinanceTab);
   const [closeOpen, setCloseOpen] = useState(false);
+  const taskOpen = financeOpen || closeOpen || manualOpen || setupOpen || legacyOpen;
+  function returnToBooks() {
+    setFinanceOpen(false);
+    setCloseOpen(false);
+    setManualOpen(false);
+    setSetupOpen(false);
+    setLegacyOpen(false);
+    requestAnimationFrame(() => document.getElementById('formal-books-task-menu')?.focus());
+  }
   const [accountId, setAccountId] = useState('');
   const [asOf, setAsOf] = useState('');
   const [auxKey, setAuxKey] = useState('');
@@ -355,13 +380,22 @@ function FormalBooksContent({
           </button>
         </div>
       </header>
-      <p className="formal-books-boundary">
+      <p className="formal-books-boundary" hidden={taskOpen}>
         余额来自已绑定的正式期初与正式凭证；未审核、未记账草稿不计入余额。查看与下载不会审核或记账。
         本系统内的正式记账不代表外部财务软件已过账；外部结果需另行核对回执。
       </p>
+      <div id="formal-books-task-menu" tabIndex={-1}>
+        {taskOpen && (
+          <button type="button" className="button secondary" onClick={returnToBooks}>
+            返回账簿（保留筛选）
+          </button>
+        )}
+      </div>
       {period && companyId && (
         <details
           className="review-section"
+          open={setupOpen}
+          hidden={taskOpen && !setupOpen}
           onToggle={(event) => setSetupOpen(event.currentTarget.open)}
         >
           <summary>开账准备（核对模板、科目、子账、银行、期初与岗位分工）</summary>
@@ -377,6 +411,8 @@ function FormalBooksContent({
       )}
       <details
         className="review-section"
+        open={legacyOpen}
+        hidden={taskOpen && !legacyOpen}
         onToggle={(event) => setLegacyOpen(event.currentTarget.open)}
       >
         <summary>旧稿补核（保留原历史，重新人工核对当前版本）</summary>
@@ -384,6 +420,8 @@ function FormalBooksContent({
       </details>
       <details
         className="review-section"
+        open={manualOpen}
+        hidden={taskOpen && !manualOpen}
         onToggle={(event) => setManualOpen(event.currentTarget.open)}
       >
         <summary>手工凭证办理（按制单、复核、记账三步办理）</summary>
@@ -394,6 +432,8 @@ function FormalBooksContent({
       {period && (
         <details
           className="review-section"
+          open={closeOpen}
+          hidden={taskOpen && !closeOpen}
           onToggle={(event) => setCloseOpen(event.currentTarget.open)}
         >
           <summary>正式月结与报表发布（对账、独立复核、锁期）</summary>
@@ -415,6 +455,7 @@ function FormalBooksContent({
         <details
           className="review-section"
           open={financeOpen}
+          hidden={taskOpen && !financeOpen}
           onToggle={(event) => setFinanceOpen(event.currentTarget.open)}
         >
           <summary>往来与期末办理（账龄、资产及计提草稿）</summary>
@@ -431,240 +472,244 @@ function FormalBooksContent({
           )}
         </details>
       )}
-      <nav className="formal-books-tabs" aria-label="账簿类型">
-        {(Object.entries(bookLabels) as [FormalBookKind, string][]).map(([key, label]) => (
-          <button
-            key={key}
-            type="button"
-            className="button secondary"
-            aria-pressed={kind === key}
-            onClick={() => setKind(key)}
-          >
-            {label}
-          </button>
-        ))}
-      </nav>
-      <section className="formal-books-controls" aria-label="账簿查询条件">
-        {kind === 'account_ledger' && (
-          <label>
-            科目
-            <select value={accountId} onChange={(event) => setAccountId(event.target.value)}>
-              <option value="">请选择科目</option>
-              {catalog.map((row) => (
-                <option key={row.account_id} value={row.account_id}>
-                  {row.code} · {row.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-        {(kind === 'trial_balance' || kind === 'account_ledger') && (
-          <label>
-            截止日期
-            <input type="date" value={asOf} onChange={(event) => setAsOf(event.target.value)} />
-            <small>留空查看本期全部正式记录</small>
-          </label>
-        )}
-        {kind === 'aux_ledger' && (
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              setAuxFilter({ key: auxKey.trim(), value: auxValue.trim() });
-            }}
-          >
-            <label>
-              辅助项目
-              <input
-                value={auxKey}
-                maxLength={40}
-                placeholder="例如 counterparty"
-                onChange={(event) => setAuxKey(event.target.value)}
-                required
-              />
-            </label>
-            <label>
-              辅助值
-              <input
-                value={auxValue}
-                maxLength={200}
-                placeholder="已配置的辅助核算值"
-                onChange={(event) => setAuxValue(event.target.value)}
-                required
-              />
-            </label>
-            <button className="button" disabled={!auxKey.trim() || !auxValue.trim()}>
-              查询辅助账
+      <div hidden={taskOpen}>
+        <nav className="formal-books-tabs" aria-label="账簿类型">
+          {(Object.entries(bookLabels) as [FormalBookKind, string][]).map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              className="button secondary"
+              aria-pressed={kind === key}
+              onClick={() => setKind(key)}
+            >
+              {label}
             </button>
-          </form>
+          ))}
+        </nav>
+        <section className="formal-books-controls" aria-label="账簿查询条件">
+          {kind === 'account_ledger' && (
+            <label>
+              科目
+              <select value={accountId} onChange={(event) => setAccountId(event.target.value)}>
+                <option value="">请选择科目</option>
+                {catalog.map((row) => (
+                  <option key={row.account_id} value={row.account_id}>
+                    {row.code} · {row.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {(kind === 'trial_balance' || kind === 'account_ledger') && (
+            <label>
+              截止日期
+              <input type="date" value={asOf} onChange={(event) => setAsOf(event.target.value)} />
+              <small>留空查看本期全部正式记录</small>
+            </label>
+          )}
+          {kind === 'aux_ledger' && (
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                setAuxFilter({ key: auxKey.trim(), value: auxValue.trim() });
+              }}
+            >
+              <label>
+                辅助项目
+                <input
+                  value={auxKey}
+                  maxLength={40}
+                  placeholder="例如 counterparty"
+                  onChange={(event) => setAuxKey(event.target.value)}
+                  required
+                />
+              </label>
+              <label>
+                辅助值
+                <input
+                  value={auxValue}
+                  maxLength={200}
+                  placeholder="已配置的辅助核算值"
+                  onChange={(event) => setAuxValue(event.target.value)}
+                  required
+                />
+              </label>
+              <button className="button" disabled={!auxKey.trim() || !auxValue.trim()}>
+                查询辅助账
+              </button>
+            </form>
+          )}
+          <div className="formal-books-actions">
+            <button
+              type="button"
+              className="button secondary"
+              disabled={loading || !query.path}
+              onClick={refresh}
+            >
+              刷新当前账簿
+            </button>
+            <button
+              type="button"
+              className="button secondary"
+              disabled={!canDownload || !data || loading || downloading || revoked}
+              onClick={() => void download()}
+            >
+              下载当前账簿 CSV{downloading ? '…' : ''}
+            </button>
+          </div>
+        </section>
+        {!canDownload && (
+          <p className="formal-books-help">
+            下载权限由账套授权决定；如需账簿副本，请联系获授权复核会计。
+          </p>
         )}
-        <div className="formal-books-actions">
-          <button
-            type="button"
-            className="button secondary"
-            disabled={loading || !query.path}
-            onClick={refresh}
-          >
-            刷新当前账簿
-          </button>
-          <button
-            type="button"
-            className="button secondary"
-            disabled={!canDownload || !data || loading || downloading || revoked}
-            onClick={() => void download()}
-          >
-            下载当前账簿 CSV{downloading ? '…' : ''}
-          </button>
-        </div>
-      </section>
-      {!canDownload && (
-        <p className="formal-books-help">
-          下载权限由账套授权决定；如需账簿副本，请联系获授权复核会计。
-        </p>
-      )}
-      {query.issue && (
-        <p className="formal-books-error" role="alert">
-          {query.issue}
-        </p>
-      )}
-      {error && (
-        <section className="formal-books-error" role="alert">
-          <p>{error}</p>
-          <button type="button" className="button secondary" disabled={loading} onClick={refresh}>
-            重新读取账簿
-          </button>
-          <button type="button" className="button text" onClick={onBack}>
-            返回选择账套
-          </button>
-        </section>
-      )}
-      {notice && <p role="status">{notice}</p>}
-      {loading && (
-        <p className="formal-books-empty" role="status" aria-live="polite">
-          正在读取正式账簿…
-        </p>
-      )}
-      {!loading && selectionNeeded && <p className="formal-books-empty">{selectionNeeded}</p>}
-      {data && (
-        <section aria-label={bookLabels[data.kind]} aria-busy={loading}>
-          <h2>{bookLabels[data.kind]}</h2>
-          {data.kind === 'trial_balance' && (
-            <>
-              <p className="formal-books-help">
-                借方余额为正，贷方余额为负；父级包含下级，合计仅按末级科目汇总。
-              </p>
-              {data.rows.length ? (
-                <div
-                  className="formal-books-table-wrap"
-                  tabIndex={0}
-                  role="region"
-                  aria-label="科目余额表横向查看"
-                >
-                  <table>
-                    <caption>本期正式科目余额 · 单位：人民币元</caption>
-                    <thead>
-                      <tr>
-                        <th scope="col">科目</th>
-                        <th scope="col">期初余额</th>
-                        <th scope="col">本期借方</th>
-                        <th scope="col">本期贷方</th>
-                        <th scope="col">期末余额</th>
-                        <th scope="col">操作</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {data.rows.map((row) => (
-                        <tr key={row.account_id}>
-                          <th scope="row">
-                            {row.code} · {row.name}
-                            {!row.is_leaf && <small>汇总科目</small>}
-                          </th>
-                          <td>{formatFormalCents(row.opening_cents)}</td>
-                          <td>{formatFormalCents(row.debit_cents)}</td>
-                          <td>{formatFormalCents(row.credit_cents)}</td>
-                          <td>{formatFormalCents(row.closing_cents)}</td>
-                          <td>
-                            {row.is_leaf ? (
-                              <button
-                                type="button"
-                                className="text-button"
-                                aria-label={`查看 ${row.code} 明细`}
-                                onClick={() => openAccount(row.account_id)}
-                              >
-                                查看明细
-                              </button>
-                            ) : (
-                              '汇总展示'
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                    <tfoot>
-                      <tr>
-                        <th scope="row">末级科目合计</th>
-                        <td>{formatFormalCents(data.totals.opening_cents)}</td>
-                        <td>{formatFormalCents(data.totals.debit_cents)}</td>
-                        <td>{formatFormalCents(data.totals.credit_cents)}</td>
-                        <td>{formatFormalCents(data.totals.closing_cents)}</td>
-                        <td />
-                      </tr>
-                    </tfoot>
-                  </table>
-                </div>
-              ) : (
-                <p className="formal-books-empty">
-                  本期暂无正式余额。请会计确认正式期初和已记账凭证；草稿不会在这里显示。
+        {query.issue && (
+          <p className="formal-books-error" role="alert">
+            {query.issue}
+          </p>
+        )}
+        {error && (
+          <section className="formal-books-error" role="alert">
+            <p>{error}</p>
+            <button type="button" className="button secondary" disabled={loading} onClick={refresh}>
+              重新读取账簿
+            </button>
+            <button type="button" className="button text" onClick={onBack}>
+              返回选择账套
+            </button>
+          </section>
+        )}
+        {notice && <p role="status">{notice}</p>}
+        {loading && (
+          <p className="formal-books-empty" role="status" aria-live="polite">
+            正在读取正式账簿…
+          </p>
+        )}
+        {!loading && selectionNeeded && <p className="formal-books-empty">{selectionNeeded}</p>}
+        {data && (
+          <section aria-label={bookLabels[data.kind]} aria-busy={loading}>
+            <h2>{bookLabels[data.kind]}</h2>
+            {data.kind === 'trial_balance' && (
+              <>
+                <p className="formal-books-help">
+                  借方余额为正，贷方余额为负；父级包含下级，合计仅按末级科目汇总。
                 </p>
-              )}
-            </>
-          )}
-          {data.kind === 'account_ledger' && (
-            <>
-              <p>
-                期初余额 <strong>{formatFormalCents(data.opening_cents)}</strong> · 期末余额{' '}
-                <strong>{formatFormalCents(data.closing_cents)}</strong> 元
-              </p>
-              <EntryTable entries={data.entries} onVoucher={openVoucher} />
-            </>
-          )}
-          {data.kind === 'daily_journal' && (
-            <>
-              <p className="formal-books-help">
-                当前口径为现金、银行科目（1001、1002
-                及其下级）；余额按各科目分别累计，不能将不同账户混为一个余额。
-              </p>
-              <EntryTable entries={data.entries} onVoucher={openVoucher} showAccount />
-            </>
-          )}
-          {data.kind === 'aux_ledger' && (
-            <>
-              <h3>匹配的正式期初</h3>
-              {data.opening.length ? (
-                <ul className="formal-books-openings">
-                  {data.opening.map((row, index) => (
-                    <li key={`${row.account_id}:${index}`}>
-                      <span>
-                        {row.code_snapshot ||
-                          catalog.find((account) => account.account_id === row.account_id)?.code ||
-                          row.account_id}{' '}
-                        ·{' '}
-                        {row.name_snapshot ||
-                          catalog.find((account) => account.account_id === row.account_id)?.name ||
-                          '辅助期初'}
-                      </span>
-                      <strong>{formatFormalCents(row.opening_cents)} 元</strong>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p>该辅助条件下没有正式期初记录。</p>
-              )}
-              <h3>匹配的已记账分录</h3>
-              <EntryTable entries={data.vouchers} onVoucher={openVoucher} showAccount />
-            </>
-          )}
-        </section>
-      )}
+                {data.rows.length ? (
+                  <div
+                    className="formal-books-table-wrap"
+                    tabIndex={0}
+                    role="region"
+                    aria-label="科目余额表横向查看"
+                  >
+                    <table>
+                      <caption>本期正式科目余额 · 单位：人民币元</caption>
+                      <thead>
+                        <tr>
+                          <th scope="col">科目</th>
+                          <th scope="col">期初余额</th>
+                          <th scope="col">本期借方</th>
+                          <th scope="col">本期贷方</th>
+                          <th scope="col">期末余额</th>
+                          <th scope="col">操作</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {data.rows.map((row) => (
+                          <tr key={row.account_id}>
+                            <th scope="row">
+                              {row.code} · {row.name}
+                              {!row.is_leaf && <small>汇总科目</small>}
+                            </th>
+                            <td>{formatFormalCents(row.opening_cents)}</td>
+                            <td>{formatFormalCents(row.debit_cents)}</td>
+                            <td>{formatFormalCents(row.credit_cents)}</td>
+                            <td>{formatFormalCents(row.closing_cents)}</td>
+                            <td>
+                              {row.is_leaf ? (
+                                <button
+                                  type="button"
+                                  className="text-button"
+                                  aria-label={`查看 ${row.code} 明细`}
+                                  onClick={() => openAccount(row.account_id)}
+                                >
+                                  查看明细
+                                </button>
+                              ) : (
+                                '汇总展示'
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot>
+                        <tr>
+                          <th scope="row">末级科目合计</th>
+                          <td>{formatFormalCents(data.totals.opening_cents)}</td>
+                          <td>{formatFormalCents(data.totals.debit_cents)}</td>
+                          <td>{formatFormalCents(data.totals.credit_cents)}</td>
+                          <td>{formatFormalCents(data.totals.closing_cents)}</td>
+                          <td />
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                ) : (
+                  <p className="formal-books-empty">
+                    本期暂无正式余额。请会计确认正式期初和已记账凭证；草稿不会在这里显示。
+                  </p>
+                )}
+              </>
+            )}
+            {data.kind === 'account_ledger' && (
+              <>
+                <p>
+                  期初余额 <strong>{formatFormalCents(data.opening_cents)}</strong> · 期末余额{' '}
+                  <strong>{formatFormalCents(data.closing_cents)}</strong> 元
+                </p>
+                <EntryTable entries={data.entries} onVoucher={openVoucher} />
+              </>
+            )}
+            {data.kind === 'daily_journal' && (
+              <>
+                <p className="formal-books-help">
+                  当前口径为现金、银行科目（1001、1002
+                  及其下级）；余额按各科目分别累计，不能将不同账户混为一个余额。
+                </p>
+                <EntryTable entries={data.entries} onVoucher={openVoucher} showAccount />
+              </>
+            )}
+            {data.kind === 'aux_ledger' && (
+              <>
+                <h3>匹配的正式期初</h3>
+                {data.opening.length ? (
+                  <ul className="formal-books-openings">
+                    {data.opening.map((row, index) => (
+                      <li key={`${row.account_id}:${index}`}>
+                        <span>
+                          {row.code_snapshot ||
+                            catalog.find((account) => account.account_id === row.account_id)
+                              ?.code ||
+                            row.account_id}{' '}
+                          ·{' '}
+                          {row.name_snapshot ||
+                            catalog.find((account) => account.account_id === row.account_id)
+                              ?.name ||
+                            '辅助期初'}
+                        </span>
+                        <strong>{formatFormalCents(row.opening_cents)} 元</strong>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p>该辅助条件下没有正式期初记录。</p>
+                )}
+                <h3>匹配的已记账分录</h3>
+                <EntryTable entries={data.vouchers} onVoucher={openVoucher} showAccount />
+              </>
+            )}
+          </section>
+        )}
+      </div>
       {voucherId && (
         <section
           ref={voucherPanel}

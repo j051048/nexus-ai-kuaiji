@@ -78,6 +78,12 @@ class DraftCommand(InputModel):
     reason: StrictStr = Field(min_length=3, max_length=1000)
 
 
+class AssetReconcile(InputModel):
+    book_id: StrictStr = Field(min_length=1, max_length=100)
+    expected_fingerprint: StrictStr = Field(pattern=r"^[0-9a-f]{64}$")
+    reason: StrictStr = Field(min_length=3, max_length=1000)
+
+
 class DraftPost(DraftCommand):
     command_key: StrictStr = Field(min_length=8, max_length=120)
     voucher_date: StrictStr

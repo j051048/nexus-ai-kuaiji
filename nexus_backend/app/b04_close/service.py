@@ -64,7 +64,8 @@ class CloseService:
             conn, actor, book["id"], trial=trial
         )
         unposted = conn.execute(
-            "SELECT COUNT(*) FROM periodic_drafts WHERE book_id=? AND period=? AND status<>'posted'",
+            "SELECT COUNT(*) FROM periodic_drafts d JOIN periodic_runs r ON r.id=d.run_id "
+            "WHERE d.book_id=? AND d.period=? AND d.status<>'posted' AND r.status<>'void'",
             (book["id"], period),
         ).fetchone()[0]
         unapproved = conn.execute(

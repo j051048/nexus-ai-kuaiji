@@ -183,6 +183,67 @@ export function parsePeriodic(raw: unknown, e: FormalExpectedScope) {
 }
 export type PeriodicWorkspace = ReturnType<typeof parsePeriodic>;
 
+export function parseAssetReconciliation(
+  raw: unknown,
+  expected: FormalExpectedScope,
+  assetId: string,
+) {
+  const v = object(raw);
+  scope(v.scope, expected);
+  if (v.asset_id !== assetId || !/^[0-9a-f]{64}$/.test(text(v.fingerprint))) throw invalid();
+  const history = list(v.history).map((rawRow) => {
+    const r = object(rawRow);
+    if (
+      !/^\d{4}-(0[1-9]|1[0-2])$/.test(text(r.period)) ||
+      !/^[0-9a-f]{64}$/.test(text(r.fingerprint))
+    )
+      throw invalid();
+    return {
+      id: text(r.id),
+      book_id: text(r.book_id),
+      period: text(r.period),
+      fingerprint: text(r.fingerprint),
+      net_cents: integer(r.net_cents, Number.MIN_SAFE_INTEGER),
+    };
+  });
+  unique(history.map((r) => r.id));
+  const accounts = list(v.accounts).map((rawAccount) => {
+    const a = object(rawAccount);
+    return {
+      id: text(a.id),
+      name: text(a.name),
+      version: integer(a.version, 1),
+      original_version: integer(a.original_version, 1),
+    };
+  });
+  unique(accounts.map((a) => a.id));
+  const can_generate = flag(v.can_generate),
+    blockers = list(v.blockers).map(text);
+  const amount_cents = integer(v.amount_cents, Number.MIN_SAFE_INTEGER),
+    net_posted_cents = integer(v.net_posted_cents, Number.MIN_SAFE_INTEGER),
+    cumulative_cents = integer(v.cumulative_cents);
+  if (
+    cumulative_cents - net_posted_cents !== amount_cents ||
+    history.reduce((sum, row) => sum + row.net_cents, 0) !== net_posted_cents ||
+    (can_generate && (blockers.length > 0 || amount_cents <= 0))
+  )
+    throw invalid();
+  return {
+    asset_id: assetId,
+    asset_name: text(v.asset_name),
+    fingerprint: text(v.fingerprint),
+    prior_posted_cents: integer(v.prior_posted_cents),
+    net_posted_cents,
+    amount_cents,
+    cumulative_cents,
+    can_generate,
+    blockers,
+    history,
+    accounts,
+    replaces_draft_id: v.replaces_draft_id === null ? null : text(v.replaces_draft_id),
+  };
+}
+
 export function financeSection(
   search: string,
   expected: Pick<FormalExpectedScope, 'bookId' | 'companyId' | 'period'>,

@@ -40,6 +40,7 @@ REQUIRED_CHECKS = (
     "review_export",
     "tax_delivery",
     "no_replay",
+    "finance_resume",
 )
 REQUIRED_CASES = {
     "joint": [
@@ -159,8 +160,9 @@ REGRESSION_FILES = (
     "test_stage10_backup_recovery.py",
     "test_p01_r2_gate.py",
     "test_legacy_review_recheck.py",
+    "test_finance_recovery_contract.py",
 )
-MINIMUM_MIGRATION = 212  # Includes receipt scope binding and actual PG tax-original uploads.
+MINIMUM_MIGRATION = 222  # Includes immutable asset reconciliation source for resume proof.
 
 
 def configuration_names():

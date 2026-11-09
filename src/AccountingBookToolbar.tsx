@@ -1,6 +1,7 @@
 import { Settings2, Upload } from 'lucide-react';
 import type { Book } from './types';
 import type { WorkspaceView } from './workspace-route';
+import './workspace.css';
 
 type BookAction = {
   view: WorkspaceView;

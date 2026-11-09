@@ -31,8 +31,10 @@ REQUIRED_CHECKS = {
 }
 try:
     from scripts.recovery_review_contract import TABLE_FIELDS as REVIEW_FIELDS
+    from scripts.recovery_finance_contract import TABLE_FIELDS as FINANCE_FIELDS
 except ModuleNotFoundError:
     from recovery_review_contract import TABLE_FIELDS as REVIEW_FIELDS
+    from recovery_finance_contract import TABLE_FIELDS as FINANCE_FIELDS
 
 INVENTORY_TABLES = (
     "ocr_jobs",
@@ -58,6 +60,7 @@ INVENTORY_TABLES = (
     "monthly_delivery_acknowledgements",
     "monthly_delivery_opens",
     *REVIEW_FIELDS,
+    *FINANCE_FIELDS,
 )
 
 # Notification rows are not original-file references. Their exact recipient,
@@ -218,6 +221,7 @@ REQUIRED_COLUMNS = {
     "delivery_notifications": DELIVERY_INVENTORY_FIELDS,
     **BUSINESS_EVIDENCE_FIELDS,
     **{table: tuple(fields.split()) for table, fields in REVIEW_FIELDS.items()},
+    **{table: tuple(fields.split()) for table, fields in FINANCE_FIELDS.items()},
 }
 
 
@@ -287,6 +291,10 @@ def pending_inventory(conn):
         normalized = []
         for row in rows:
             item = dict(zip(fields, row))
+            if table in FINANCE_FIELDS:
+                for name in ("name", "description", "reason", "source_ref", "aux_json"):
+                    if item.get(name) is not None:
+                        item[name] = hashlib.sha256(str(item[name]).encode()).hexdigest()
             if table == "account_invitation_deliveries":
                 item["recipient_email"] = hashlib.sha256(
                     str(item["recipient_email"]).encode()
@@ -305,6 +313,7 @@ def pending_inventory(conn):
                 "snapshot_json",
                 "lines_json",
                 "source_snapshot_json",
+                "reconciliation_json",
             ):
                 if name in item and item[name] is not None:
                     item[name] = hashlib.sha256(str(item[name]).encode()).hexdigest()

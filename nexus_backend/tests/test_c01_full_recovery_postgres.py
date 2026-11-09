@@ -770,6 +770,14 @@ def test_fresh_cluster_database_objects_signed_identity_and_http_recovery(
                 assert verify_permission_recovery_http(
                     client, new_headers, latest_business["access_review"]
                 )
+                from finance_recovery_business import verify_finance_recovery_http
+
+                p01_checks["finance_resume"] = all(
+                    verify_finance_recovery_http(
+                        client, new_headers, latest_business["finance"]
+                    ).values()
+                )
+                assert p01_checks["finance_resume"]
                 p01_checks["tax_delivery"] = all(business_proof.values())
                 for name, headers in new_headers.items():
                     if name == "outsider":

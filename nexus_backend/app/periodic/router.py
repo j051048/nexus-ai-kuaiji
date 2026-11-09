@@ -1,6 +1,13 @@
 from fastapi import APIRouter, Depends, Request
 
-from .models import AccrualRule, ClosingGenerate, DepreciableAsset, DraftCommand, DraftPost
+from .models import (
+    AccrualRule,
+    AssetReconcile,
+    ClosingGenerate,
+    DepreciableAsset,
+    DraftCommand,
+    DraftPost,
+)
 
 
 def build_periodic_router(actor_dependency):
@@ -39,6 +46,21 @@ def build_periodic_router(actor_dependency):
         periodic=Depends(service),
     ):
         return periodic.generate_asset(current, asset_id, book_id=book_id)
+
+    @router.get("/assets/{asset_id}/reconciliation")
+    def reconciliation(
+        asset_id: str, book_id: str, current=Depends(actor_dependency), periodic=Depends(service)
+    ):
+        return periodic.asset_reconciliation(current, asset_id, book_id)
+
+    @router.post("/assets/{asset_id}/reconciliation", status_code=201)
+    def reconcile(
+        asset_id: str,
+        payload: AssetReconcile,
+        current=Depends(actor_dependency),
+        periodic=Depends(service),
+    ):
+        return periodic.reconcile_asset(current, asset_id, payload)
 
     @router.post("/closing/generate", status_code=201)
     def generate_closing(
