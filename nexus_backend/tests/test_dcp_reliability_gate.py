@@ -104,6 +104,8 @@ def test_finance_workflows_are_required_on_both_postgres_versions():
     selected = gate.contract("finance")
     assert set(selected["files"]) == {
         "test_finance_agent_reuse_postgres.py",
+        "test_task_evidence_postgres.py",
+        "test_business_context_card_postgres.py",
         "test_finance_continuation_postgres.py",
         "test_finance_refinement_postgres.py",
     }
@@ -111,6 +113,9 @@ def test_finance_workflows_are_required_on_both_postgres_versions():
     assert any("revoked_intermediate_period" in case for case in selected["cases"])
     assert any("closed_review" in case for case in selected["cases"])
     assert any("closed_period_rejects_native_run" in case for case in selected["cases"])
+    assert any(
+        "detects_concurrent_review_and_rereads_after_handling" in case for case in selected["cases"]
+    )
     workflow = (gate.ROOT / ".github/workflows/accounting.yml").read_text(encoding="utf-8")
     assert "--suite finance" in workflow
     assert "--major ${{ matrix.postgres }}" in workflow

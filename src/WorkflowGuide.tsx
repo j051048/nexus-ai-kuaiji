@@ -27,18 +27,18 @@ export function WorkflowGuide({
   label,
   guide,
   compact = false,
+  collapsed = false,
   detailsLabel = '查看复核步骤与说明',
 }: {
   label: string;
   guide: WorkflowGuidance;
   compact?: boolean;
+  collapsed?: boolean;
   detailsLabel?: string;
 }) {
-  return (
-    <section
-      className={`workflow-guide workflow-guide--${guide.tone ?? 'neutral'}`}
-      aria-label={label}
-    >
+  const folded = collapsed && guide.tone !== 'warning';
+  const content = (
+    <>
       {!compact && <h3>{guide.title}</h3>}
       <div className="workflow-guide-message">
         <p>
@@ -50,7 +50,7 @@ export function WorkflowGuide({
           {guide.next}
         </p>
       </div>
-      {compact ? (
+      {compact && !folded ? (
         <details>
           <summary>{detailsLabel}</summary>
           <h3>{guide.title}</h3>
@@ -96,6 +96,21 @@ export function WorkflowGuide({
             ))}
           </ul>
         </details>
+      )}
+    </>
+  );
+  return (
+    <section
+      className={`workflow-guide workflow-guide--${guide.tone ?? 'neutral'} ${folded ? 'workflow-guide-collapsed' : ''}`}
+      aria-label={label}
+    >
+      {folded ? (
+        <details className="business-extra-guide">
+          <summary>{detailsLabel}</summary>
+          {content}
+        </details>
+      ) : (
+        content
       )}
     </section>
   );

@@ -20,6 +20,15 @@ export interface InvestigationEvidence {
   missing: string[];
   steps: unknown[];
   evidence: { firm_id: string; company_id: string; fingerprint: string } | null;
+  execution?: {
+    mode: 'bounded_parallel';
+    parallelism: 2;
+    attempted_reads: number;
+    validation_reads: number;
+    accepted_reads: number;
+    elapsed_ms: number;
+    stop_reason: string | null;
+  };
 }
 function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value))
@@ -78,6 +87,41 @@ export function readInvestigation(
       throw new Error('企业范围不一致');
     hash(evidence.fingerprint);
   } else if (v.evidence !== null) throw new Error('空结果不得携带旧证据');
+  if (v.execution !== undefined) {
+    const e = object(v.execution);
+    if (
+      e.mode !== 'bounded_parallel' ||
+      e.parallelism !== 2 ||
+      e.max_reads !== 3 ||
+      e.max_total_reads !== 6 ||
+      integer(e.attempted_reads) !== steps.length ||
+      (integer(e.validation_reads) !== names.length && v.status === 'complete') ||
+      integer(e.validation_reads) > 3 ||
+      e.accepted_reads !== names.length ||
+      e.model_calls !== 0 ||
+      e.tokens !== 0 ||
+      e.cost_cny !== null ||
+      typeof e.elapsed_ms !== 'number' ||
+      !Number.isFinite(e.elapsed_ms) ||
+      e.elapsed_ms < 0 ||
+      typeof e.budget_seconds !== 'number' ||
+      !Number.isFinite(e.budget_seconds) ||
+      e.budget_seconds < 0 ||
+      e.budget_seconds > 10 ||
+      (e.stop_reason !== null &&
+        ![
+          'invalid_budget',
+          'timeout',
+          'busy',
+          'refused',
+          'failed',
+          'cancelled',
+          'evidence_changed',
+        ].includes(String(e.stop_reason))) ||
+      (v.status === 'complete' && e.stop_reason !== null)
+    )
+      throw new Error('调查执行记录不一致，请重新核对');
+  }
   return v as unknown as InvestigationEvidence;
 }
 export function investigationCommand(

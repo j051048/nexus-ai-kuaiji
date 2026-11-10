@@ -16,6 +16,18 @@ class AgentWorkspaceService:
         self.workspace, self.migration = workspace, migration
         self.access = accounting.access
 
+    def business_context(self, actor, event_id, *, company_id, period, expected_version):
+        from .business_context import project
+
+        return project(
+            self,
+            actor,
+            event_id,
+            company_id=company_id,
+            period=period,
+            expected_version=expected_version,
+        )
+
     def _run_query(self, conn, actor):
         event_sql, event_params = event_scope(actor)
         edit_sql, edit_params = book_edit_scope(actor)

@@ -391,6 +391,15 @@ export function IntelligencePanel({
     (run) => run.draft_id === draft?.id,
   );
 
+  const availabilityNotice = unavailable && (
+    <div className="intelligence-unconfigured">
+      <ShieldCheck size={15} />
+      <span>
+        {unavailable}
+        <small>企业管理员可在“企业处理设置”开启；模型服务由系统管理员配置。</small>
+      </span>
+    </div>
+  );
   // Hide repeated OCR fields, never the current findings or operation errors.
   const AttachmentDetails = compact ? 'details' : 'div';
   return (
@@ -465,15 +474,7 @@ export function IntelligencePanel({
               处理等待超时，可重新发起。原任务仍显示处理中；重新发起会使用新的请求编号。
             </p>
           )}
-          {unavailable && (
-            <div className="intelligence-unconfigured">
-              <ShieldCheck size={15} />
-              <span>
-                {unavailable}
-                <small>企业管理员可在“企业处理设置”开启；模型服务由系统管理员配置。</small>
-              </span>
-            </div>
-          )}
+          {!compact && availabilityNotice}
           {detail && event && (
             <>
               {detail.permissions.process && activeAttachments.length > 1 && (
@@ -503,6 +504,7 @@ export function IntelligencePanel({
                 {compact && (
                   <summary>查看识别结果与处理记录（{event.attachments.length} 份附件）</summary>
                 )}
+                {compact && availabilityNotice}
                 {event.attachments.map((attachment) => {
                   const run = latestRuns(detail.runs, 'ocr').find(
                     (item) => item.attachment_id === attachment.id,
@@ -619,6 +621,8 @@ export function IntelligencePanel({
               {detail.findings.map((finding) => (
                 <article
                   className={`intelligence-finding ${finding.resolved ? 'resolved' : finding.severity}`}
+                  data-finding-code={finding.code}
+                  tabIndex={-1}
                   key={finding.id ?? `${finding.code}:${JSON.stringify(finding.payload)}`}
                 >
                   <div>

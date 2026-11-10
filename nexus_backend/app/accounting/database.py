@@ -11,6 +11,7 @@ from decimal import Decimal
 from pathlib import Path
 from time import perf_counter
 from threading import Lock
+from .time_budget import remaining as remaining_db_budget
 
 from .telemetry import (
     SharedTransactionMetrics,
@@ -293,12 +294,18 @@ class Database:
     def connect(self):
         if self._closed:
             raise RuntimeError("数据库已关闭")
+        budget = remaining_db_budget()
         if self.is_postgres:
             from psycopg_pool import PoolTimeout, TooManyRequests
 
             pool = self._postgres_pool()
             try:
-                return PostgresConnection(pool.getconn(), pool)
+                raw = (
+                    pool.getconn(timeout=min(budget, pool.timeout))
+                    if budget is not None
+                    else pool.getconn()
+                )
+                return PostgresConnection(raw, pool)
             except TooManyRequests:
                 raise DatabaseCapacityError(
                     "数据库连接池等待队列已满，请稍后核对任务状态",
@@ -317,7 +324,11 @@ class Database:
                 ) from None
         from .sqlite_connection import AccountingSQLiteConnection
 
-        conn = sqlite3.connect(self.path, timeout=15, factory=AccountingSQLiteConnection)
+        conn = sqlite3.connect(
+            self.path,
+            timeout=min(15, budget) if budget is not None else 15,
+            factory=AccountingSQLiteConnection,
+        )
         # Savepoint statement journals otherwise depend on the process temp
         # directory; keep SQLite's small demo/test temp store in memory.
         conn.execute("PRAGMA temp_store=MEMORY")
@@ -754,6 +765,13 @@ class Database:
                     user_id=getattr(actor, "user_id", ""),
                     firm_id=getattr(actor, "firm_id", ""),
                 )
+                budget = remaining_db_budget()
+                if budget is not None:
+                    milliseconds = max(1, int(budget * 1000))
+                    conn.execute(
+                        "SELECT set_config('statement_timeout', ?, true), set_config('lock_timeout', ?, true)",
+                        (str(milliseconds), str(milliseconds)),
+                    )
                 if jit is False:
                     # Transaction-local only: pooling must never inherit this,
                     # and the database default stays untouched.
@@ -773,6 +791,9 @@ class Database:
                     lock_wait_ms = (perf_counter() - lock_started) * 1000
             else:
                 lock_started = perf_counter()
+                budget = remaining_db_budget()
+                if budget is not None:
+                    conn.execute(f"PRAGMA busy_timeout={max(1, int(budget * 1000))}")
                 conn.execute("BEGIN IMMEDIATE" if write else "BEGIN")
                 if write:
                     lock_wait_ms = (perf_counter() - lock_started) * 1000

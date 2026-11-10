@@ -33,6 +33,44 @@ describe('DCP evidence scope', () => {
       readInvestigation({ ...result, status: 'blocked', evidence: null }, 'a', '2026-10', 'c', 'f'),
     ).toThrow();
   });
+  it('checks actual parallel read counts and preserves zero model calls', () => {
+    const execution = {
+      mode: 'bounded_parallel',
+      parallelism: 2,
+      max_reads: 3,
+      max_total_reads: 6,
+      attempted_reads: 3,
+      validation_reads: 3,
+      accepted_reads: 3,
+      model_calls: 0,
+      tokens: 0,
+      cost_cny: null,
+      elapsed_ms: 12,
+      budget_seconds: 3,
+      stop_reason: null,
+    };
+    expect(
+      readInvestigation({ ...result, execution }, 'a', '2026-10', 'c', 'f').execution?.parallelism,
+    ).toBe(2);
+    for (const patch of [
+      { validation_reads: 0 },
+      { attempted_reads: true },
+      { parallelism: 4 },
+      { elapsed_ms: NaN },
+      { cost_cny: 0 },
+      { stop_reason: 'timeout' },
+    ]) {
+      expect(() =>
+        readInvestigation(
+          { ...result, execution: { ...execution, ...patch } },
+          'a',
+          '2026-10',
+          'c',
+          'f',
+        ),
+      ).toThrow();
+    }
+  });
   it('freezes unknown attempt and package in manual command', () => {
     const item = {
       id: 'n',

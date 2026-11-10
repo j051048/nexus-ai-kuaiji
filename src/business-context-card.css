@@ -1,0 +1,104 @@
+.business-context-card {
+  padding: var(--space-4);
+  margin-block: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-soft);
+}
+.business-context-card header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  justify-content: space-between;
+}
+.business-context-card header span,
+.business-context-card details {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+.business-context-next {
+  display: grid;
+  gap: var(--space-1);
+  margin-block: var(--space-3);
+  line-height: 1.6;
+}
+.business-context-difference {
+  margin-block: var(--space-2);
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+.business-finance-focus .workflow-guide-collapsed {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.business-finance-focus .business-facts {
+  padding-block: var(--space-2);
+  gap: var(--space-2) var(--space-4);
+}
+.business-finance-focus .business-facts dd {
+  text-align: start;
+}
+.business-context-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.business-context-controls button {
+  min-height: var(--control-height-touch);
+  white-space: normal;
+}
+.business-context-card summary {
+  cursor: pointer;
+  min-height: var(--control-height-touch);
+  display: flex;
+  align-items: center;
+}
+.business-context-refresh {
+  font-size: var(--font-size-sm);
+  min-height: var(--control-height-touch);
+}
+.business-extra-guide {
+  margin-block: var(--space-2);
+}
+.business-context-issue {
+  border-block-start: 1px solid var(--line);
+  padding-block: var(--space-3);
+  overflow-wrap: anywhere;
+  line-height: 1.6;
+}
+.business-context-issue p {
+  margin-block: var(--space-2);
+}
+.business-task-resume {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding-block: var(--space-3);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+}
+.business-extra-guide > summary {
+  cursor: pointer;
+  color: var(--text-secondary);
+  padding-block: var(--space-2);
+  min-height: var(--control-height-touch);
+}
+.business-checks:focus {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+@media (max-width: 600px) {
+  .business-context-card {
+    padding: var(--space-3);
+  }
+  .business-context-controls {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .business-context-controls > :last-child {
+    grid-column: 1 / -1;
+  }
+}

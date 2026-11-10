@@ -119,48 +119,16 @@ class LocalRules:
                 sources.add(row["sha256"])
         for sid in positives + negatives:
             sample = service.get_sample(actor, book_id, sid)
-            draft = conn.execute(
-                "SELECT * FROM drafts WHERE id=? AND book_id=?", (sample["draft_id"], book_id)
-            ).fetchone()
-            receipt = ReviewPolicyService.approved_receipt(conn, draft)
-            authority = ReviewPolicyService(service.db).responsibility_in_transaction(
-                conn, actor, draft
-            )
-            if (
-                receipt["reviewed_version"] != sample["reviewed_version"]
-                or receipt["reviewer_user_id"] != sample["reviewed_by"]
-                or authority["state"] != "reviewed"
-            ):
-                raise SnapshotError("sample_review_binding")
-            if not sample["ordinary_rule_eligible"] or sample["source_kind"] != "business":
-                raise SnapshotError("unsupported_sample_domain")
+            from app.learning.evidence import reviewed_source, RuleEvidenceError
+
+            try:
+                binding = reviewed_source(service, conn, actor, book, sample)
+            except RuleEvidenceError as error:
+                raise SnapshotError(error.code) from None
+            source, event = binding["source"], binding["event"]
+            attachments, receipt = binding["attachments"], binding["receipt"]
             if sid in positives and not sample["corrected"]:
                 raise SnapshotError("reviewed_correction_required")
-            source = dict(
-                conn.execute(
-                    "SELECT * FROM sources WHERE id=? AND book_id=?",
-                    (sample["snapshot"]["source"]["id"], book_id),
-                ).fetchone()
-            )
-            event = conn.execute(
-                "SELECT e.* FROM business_events e JOIN business_mappings m ON m.event_id=e.id WHERE m.book_id=? AND m.draft_id=?",
-                (book_id, sample["draft_id"]),
-            ).fetchone()
-            if (
-                not event
-                or event["company_id"] != book["company_id"]
-                or event["fact_version"] != sample["snapshot"]["fact_version"]
-                or json.loads(event["payload"]) != sample["snapshot"]["payload"]
-                or source["fingerprint"] != sample["snapshot"]["source"]["fingerprint"]
-            ):
-                raise SnapshotError("sample_current_facts_stale")
-            attachments = [
-                dict(r)
-                for r in conn.execute(
-                    "SELECT id,sha256 FROM business_attachments WHERE event_id=? ORDER BY id",
-                    (event["id"],),
-                )
-            ]
             hashes = {a["sha256"] for a in attachments} | {source["fingerprint"]}
             if not hashes or sources & hashes:
                 raise SnapshotError("original_source_overlap_or_missing")

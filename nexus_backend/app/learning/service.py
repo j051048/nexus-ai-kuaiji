@@ -627,18 +627,26 @@ class LearningService:
             "counterparty_identity": snapshot.get("counterparty_identity"),
         }
 
+    def sample_in_transaction(self, conn, actor, book_id, sample_id):
+        row = self._sample(conn, actor, book_id, sample_id)
+        return (
+            self._sample_summary(row)
+            | self._eligibility(conn, book_id, row)
+            | {
+                key[:-5]: json.loads(row[key])
+                for key in ("snapshot_json", "original_json", "final_json", "corrections_json")
+            }
+            | {"evidence_fingerprint": row["evidence_fingerprint"]}
+        )
+
     def get_sample(self, actor, book_id, sample_id):
         with self.db.transaction(actor=actor) as conn:
-            row = self._sample(conn, actor, book_id, sample_id)
-            return (
-                self._sample_summary(row)
-                | self._eligibility(conn, book_id, row)
-                | {
-                    key[:-5]: json.loads(row[key])
-                    for key in ("snapshot_json", "original_json", "final_json", "corrections_json")
-                }
-                | {"evidence_fingerprint": row["evidence_fingerprint"]}
-            )
+            return self.sample_in_transaction(conn, actor, book_id, sample_id)
+
+    def rule_memory(self, actor, book_id, rule_id, **versions):
+        from .memory import project
+
+        return project(self, actor, book_id, rule_id, **versions)
 
     @staticmethod
     def _rule_json(row):

@@ -125,7 +125,9 @@
       "files": [
         "test_finance_refinement_postgres.py",
         "test_finance_continuation_postgres.py",
-        "test_finance_agent_reuse_postgres.py"
+        "test_finance_agent_reuse_postgres.py",
+        "test_business_context_card_postgres.py",
+        "test_task_evidence_postgres.py"
       ],
       "cases": [
         "nexus_backend.tests.test_finance_refinement_postgres::test_reconciliation[history]",
@@ -164,7 +166,16 @@
         "nexus_backend.tests.test_finance_continuation_postgres::test_corrected_payment[api]",
         "nexus_backend.tests.test_finance_continuation_postgres::test_corrected_payment[native]",
         "nexus_backend.tests.test_finance_refinement_postgres::test_reconciliation[closed_review]",
-        "nexus_backend.tests.test_finance_refinement_postgres::test_reconciliation_closed_period_rejects_native_run"
+        "nexus_backend.tests.test_finance_refinement_postgres::test_reconciliation_closed_period_rejects_native_run",
+        "nexus_backend.tests.test_business_context_card_postgres::test_pg_card_scopes_versions_revocation_and_no_writes",
+        "nexus_backend.tests.test_business_context_card_postgres::test_pg_card_rechecks_after_evidence_read[version]",
+        "nexus_backend.tests.test_business_context_card_postgres::test_pg_card_rechecks_after_evidence_read[revocation]",
+        "nexus_backend.tests.test_business_context_card_postgres::test_pg_card_detects_concurrent_review_and_rereads_after_handling",
+        "nexus_backend.tests.test_task_evidence_postgres::test_pg_rule_memory_current_source_scope_and_no_publication",
+        "nexus_backend.tests.test_task_evidence_postgres::test_pg_rule_memory_rechecks_committed_revocation",
+        "nexus_backend.tests.test_task_evidence_postgres::test_pg_parallel_connections_versions_and_late_results",
+        "nexus_backend.tests.test_task_evidence_postgres::test_pg_parallel_revocation_and_no_fee_or_attempt",
+        "nexus_backend.tests.test_task_evidence_postgres::test_pg_parallel_pool_wait_obeys_budget_and_resets_identity"
       ]
     }
   }

@@ -48,6 +48,23 @@ def build_learning_router(actor_dependency):
     ):
         return service.save_rule(current, book_id, payload, rule_id)
 
+    @router.get("/rules/{rule_id}/memory")
+    def memory(
+        book_id: str,
+        rule_id: str,
+        expected_version: int = Query(ge=1),
+        expected_state_version: int = Query(ge=1),
+        current=Depends(actor_dependency),
+        service=Depends(learning),
+    ):
+        return service.rule_memory(
+            current,
+            book_id,
+            rule_id,
+            expected_version=expected_version,
+            expected_state_version=expected_state_version,
+        )
+
     @router.get("/rules/{rule_id}")
     def rule(
         book_id: str, rule_id: str, current=Depends(actor_dependency), service=Depends(learning)

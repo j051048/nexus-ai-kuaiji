@@ -35,6 +35,23 @@ def build_agent_workspace_router(actor_dependency):
     ):
         return workspace.companies(current, q, limit, offset)
 
+    @router.get("/context/events/{event_id}")
+    def business_context(
+        event_id: str,
+        company_id: str = Query(..., min_length=1, max_length=100),
+        period: str = Query(..., pattern=r"^20\d{2}-(0[1-9]|1[0-2])$"),
+        expected_version: int = Query(..., ge=1),
+        current=Depends(actor_dependency),
+        workspace=Depends(service),
+    ):
+        return workspace.business_context(
+            current,
+            event_id,
+            company_id=company_id,
+            period=period,
+            expected_version=expected_version,
+        )
+
     @router.get("/context/books/{book_id}/drafts/{draft_id}")
     def context(
         book_id: str, draft_id: str, current=Depends(actor_dependency), workspace=Depends(service)

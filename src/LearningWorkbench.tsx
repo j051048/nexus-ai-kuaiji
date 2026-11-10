@@ -32,6 +32,7 @@ import type {
   LearningRuleVersion,
 } from './learning-types';
 import './learning.css';
+import { RuleMemoryPanel } from './RuleMemoryPanel';
 
 const encoded = encodeURIComponent;
 const message = (error: unknown) =>
@@ -637,6 +638,7 @@ export function LearningWorkbench({
                       ))}
                     </div>
                     <p className="learning-reason">处理依据：{rule.reason}</p>
+                    <RuleMemoryPanel session={session} rule={rule} />
                     {usage && (
                       <div className="learning-usage">
                         <strong>真实审核后的规则命中</strong>

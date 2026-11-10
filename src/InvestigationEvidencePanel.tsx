@@ -89,6 +89,18 @@ function Panel({
           {result.missing.length > 0 && (
             <p>未检查：{result.missing.map((k) => investigationLabels[k]).join('、')}</p>
           )}
+          {result.execution && (
+            <p role="status">
+              {result.execution.stop_reason === 'timeout'
+                ? '核对已超时，迟到结果不会补入，请稍后由会计重新核对。'
+                : result.execution.stop_reason === 'busy'
+                  ? '当前核对任务较多，请稍后重试。'
+                  : result.execution.stop_reason
+                    ? '依据或授权未能确认，本次结果不用于办理。'
+                    : '三类依据已重新核对，仍须按原流程人工办理。'}{' '}
+              未调用模型。
+            </p>
+          )}
           {Object.entries(result.findings).map(([kind, facts]) => (
             <details key={kind}>
               <summary>{investigationLabels[kind]}</summary>

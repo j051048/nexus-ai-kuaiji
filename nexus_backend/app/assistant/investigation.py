@@ -123,6 +123,12 @@ def investigate(service, actor, book_id, period, *, on_step=None):
     if not isinstance(book_id, str) or not isinstance(period, str):
         raise AccountingError("调查参数无效", 422)
 
+    parallelism = os.getenv("ACCOUNTING_ASSISTANT_READ_PARALLELISM", "1")
+    if parallelism != "1":
+        from .parallel_reads import run
+
+        return run(service, actor, book_id, period, parallelism=parallelism, on_step=on_step)
+
     steps = []
     findings = {}
     missing = []
@@ -155,9 +161,31 @@ def investigate(service, actor, book_id, period, *, on_step=None):
             steps.append({"tool": name, "ok": False, "code": "failed"})
             break
 
+    return finish(service, actor, book_id, period, findings, missing, steps, status, started)
+
+
+def finish(
+    service,
+    actor,
+    book_id,
+    period,
+    findings,
+    missing,
+    steps,
+    status,
+    started,
+    *,
+    deadline=None,
+    metrics=None,
+):
     # A new transaction observes revocation committed during earlier reads.
     # Audit writes never turn the evidence readers into writable transactions.
     try:
+        if deadline is not None:
+            import time
+
+            if time.monotonic() >= deadline:
+                raise AccountingError("只读调查预算已耗尽", 409)
         with service.db.transaction(actor=actor) as conn:
             scope = service.access.book(conn, actor, book_id, "read")
         with service.db.transaction(
@@ -167,6 +195,8 @@ def investigate(service, actor, book_id, period, *, on_step=None):
             if book["period"] != period:
                 raise AccountingError("调查月份与账套不一致", 422)
             for index, (name, facts) in enumerate(findings.items()):
+                if metrics is not None:
+                    metrics["validation_reads"] += 1
                 if READERS[name](conn, book_id, period) != facts:
                     raise AccountingError("调查依据已变化，请重新核对", 409)
                 _audit(
@@ -176,6 +206,8 @@ def investigate(service, actor, book_id, period, *, on_step=None):
                     "assistant.investigation.step",
                     {"tool": name, "period": period, "index": index},
                 )
+            if deadline is not None and time.monotonic() >= deadline:
+                raise AccountingError("只读调查预算已耗尽", 409)
             _audit(
                 conn,
                 actor,

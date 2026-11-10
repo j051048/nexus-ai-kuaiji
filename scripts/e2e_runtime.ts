@@ -101,6 +101,7 @@ function isolatedEnvironment(environ: RuntimeEnvironment): Record<string, string
     // The isolated suite exercises deterministic read-only analysis. Provider
     // endpoints and credentials remain empty; production defaults are untouched.
     ACCOUNTING_ASSISTANT_INVESTIGATION: '1',
+    ACCOUNTING_ASSISTANT_READ_PARALLELISM: '2',
     APP_ENV: 'test',
     ENV: 'test',
     ENVIRONMENT: 'test',

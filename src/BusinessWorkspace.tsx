@@ -42,6 +42,9 @@ import type {
 import type { Book, Pagination, Session } from './types';
 import { BusinessOrganization } from './BusinessOrganization';
 import { BusinessPreparation } from './BusinessPreparation';
+import { BusinessContextCard, type BusinessFocusTarget } from './BusinessContextCard';
+import { useBusinessTaskMemory } from './useBusinessTaskMemory';
+import type { TaskMemory } from './business-task-memory';
 import { IntelligencePanel } from './IntelligencePanel';
 import { QueueBatchDialog } from './QueueBatchDialog';
 import { IntakeWizard } from './IntakeWizard';
@@ -136,11 +139,14 @@ export function BusinessWorkspace({
   const [scope, setScope] = useState<BusinessScope>('own');
   const originalsFocus = useRef<HTMLDivElement>(null);
   const actionsFocus = useRef<HTMLDivElement>(null);
+  const differencesFocus = useRef<HTMLDivElement>(null);
   const [companyId, setCompanyId] = useState(initialCompanyId);
   const [status, setStatus] = useState('');
   const [events, setEvents] = useState<BusinessEvent[]>([]);
   const [total, setTotal] = useState<number | null>(null);
   const [offset, setOffset] = useState(0);
+  const [restoredPeriod, setRestoredPeriod] = useState('');
+  const listPeriod = initialPeriod || restoredPeriod;
   const [selected, setSelected] = useState<BusinessEvent | null>(null);
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -173,6 +179,9 @@ export function BusinessWorkspace({
   const selectionEpoch = useRef(0);
   const listEpoch = useRef(0);
   const booksEpoch = useRef(0);
+  const taskMemory = useBusinessTaskMemory(session, selected, { scope, status, offset });
+  const resumeFocus = useRef<BusinessFocusTarget | null>(null);
+  const [evidenceRevision, setEvidenceRevision] = useState(0);
   const attachmentInput = useRef<HTMLInputElement>(null);
   const handoffKey = useRef<{ eventId: string; bookId: string; key: string } | null>(null);
   const changeOrganizationBusy = useCallback(
@@ -202,6 +211,33 @@ export function BusinessWorkspace({
       selectionEpoch.current += 1;
     };
   }, [session.scope_key]);
+  useEffect(() => {
+    const revoke = (event: Event) => {
+      if ((event as CustomEvent).detail !== session.scope_key) return;
+      selectionEpoch.current += 1;
+      listEpoch.current += 1;
+      setSelected(null);
+      setEvents([]);
+      setTotal(null);
+      setCompanyBooks({ target: '', books: [], pagination: null });
+      setHandoffBookId('');
+      setDetailLoading(false);
+      setError('授权已变化，已清空事项资料。请重新确认权限后再办理。');
+    };
+    window.addEventListener('accounting:forbidden', revoke);
+    window.addEventListener('accounting:unauthorized', revoke);
+    return () => {
+      window.removeEventListener('accounting:forbidden', revoke);
+      window.removeEventListener('accounting:unauthorized', revoke);
+    };
+  }, [session.scope_key]);
+  useEffect(() => {
+    if (selected && resumeFocus.current) {
+      const target = resumeFocus.current;
+      resumeFocus.current = null;
+      focusBusinessSection(target);
+    }
+  }, [selected]);
   const loadCompanyBooks = useCallback(
     async (append = false, signal?: AbortSignal) => {
       if (!booksTarget) return;
@@ -323,7 +359,7 @@ export function BusinessWorkspace({
       const query = new URLSearchParams({ scope, limit: '50', offset: String(offset) });
       if (companyId) query.set('company_id', companyId);
       if (status) query.set('status', status);
-      if (initialPeriod) query.set('period', initialPeriod);
+      if (listPeriod) query.set('period', listPeriod);
       try {
         const result = await api<{ events: BusinessEvent[]; total: number }>(
           `/business/events?${query}`,
@@ -336,7 +372,7 @@ export function BusinessWorkspace({
             id: event.id,
             firmId: session.firm_id,
             companyId,
-            period: initialPeriod,
+            period: listPeriod,
           }),
         );
         setEvents(result.events);
@@ -352,7 +388,7 @@ export function BusinessWorkspace({
         if (!signal?.aborted && active.current && epoch === listEpoch.current) setLoading(false);
       }
     },
-    [context, session, scope, companyId, initialPeriod, status, offset],
+    [context, session, scope, companyId, listPeriod, status, offset],
   );
 
   useEffect(() => {
@@ -383,6 +419,7 @@ export function BusinessWorkspace({
       next === 'company' ? 'department_approved' : next === 'department' ? 'submitted' : '',
     );
     setCompanyId('');
+    setRestoredPeriod('');
     setOffset(0);
     setError('');
     setNotice('');
@@ -398,10 +435,12 @@ export function BusinessWorkspace({
     setOffset(0);
     setError('');
     setNotice('');
-    if (kind === 'company') setCompanyId(value);
-    else setStatus(value);
+    if (kind === 'company') {
+      setCompanyId(value);
+      setRestoredPeriod('');
+    } else setStatus(value);
   }
-  async function openEvent(id: string) {
+  async function openEvent(id: string, resume?: TaskMemory) {
     if (busy) return;
     const epoch = ++selectionEpoch.current;
     setSelected(null);
@@ -420,11 +459,20 @@ export function BusinessWorkspace({
           assertBusinessSelection(result, {
             id,
             firmId: session.firm_id,
-            companyId: listed?.company_id || companyId,
-            period: initialPeriod,
-            version: listed?.version,
+            companyId: resume?.companyId || listed?.company_id || companyId,
+            period: resume?.period || listPeriod,
+            version: resume?.version ?? listed?.version,
           }),
         );
+        if (resume) {
+          setScope(context?.scopes[resume.scope] || resume.scope === 'own' ? resume.scope : 'own');
+          setCompanyId(resume.companyId);
+          setRestoredPeriod(resume.period);
+          setStatus(resume.status);
+          setOffset(resume.offset);
+          resumeFocus.current = resume.focus;
+          taskMemory.consumed();
+        }
         if (onSelectEvent && id !== initialEventId) {
           syncedSelection.current = id;
           onSelectEvent(id);
@@ -436,6 +484,7 @@ export function BusinessWorkspace({
         epoch === selectionEpoch.current &&
         !(failure instanceof DOMException && failure.name === 'AbortError')
       ) {
+        if (resume) taskMemory.forget();
         setDetailFailure({ id, message: errorMessage(failure) });
         setListHint(readRecovery(failure));
       }
@@ -661,6 +710,7 @@ export function BusinessWorkspace({
           version: selected.version,
         }),
       );
+      setEvidenceRevision((revision) => revision + 1);
       await loadList();
     }
   }
@@ -675,8 +725,20 @@ export function BusinessWorkspace({
     selected && completedEvent === selected.id && notice && !loading && !error && !detailFailure
       ? nextBusinessItem(events, selected, scope)
       : undefined;
-  function focusBusinessSection(target: 'originals' | 'actions') {
-    const element = target === 'originals' ? originalsFocus.current : actionsFocus.current;
+  function focusBusinessSection(target: BusinessFocusTarget, issueCode?: string) {
+    taskMemory.remember(target);
+    const section =
+      target === 'originals'
+        ? originalsFocus.current
+        : target === 'differences'
+          ? differencesFocus.current
+          : actionsFocus.current;
+    const finding = issueCode
+      ? Array.from(section?.querySelectorAll<HTMLElement>('[data-finding-code]') ?? []).find(
+          (element) => element.dataset.findingCode === issueCode,
+        )
+      : undefined;
+    const element = finding ?? section;
     element?.scrollIntoView({ block: 'start', behavior: 'auto' });
     element?.focus({ preventScroll: true });
   }
@@ -725,6 +787,23 @@ export function BusinessWorkspace({
       )}
     </>
   );
+  const currentGuide = selected && selected.status !== 'returned' && (
+    <WorkflowGuide
+      compact={financeFocus}
+      collapsed={financeFocus}
+      detailsLabel="查看核验步骤与说明"
+      label="事项办理引导"
+      guide={businessGuidance(selected, {
+        busy: !!busy,
+        error,
+        booksLoading,
+        booksError: currentBooksError,
+        booksReady,
+        hasEligibleBook: eligibleBooks.length > 0,
+        selectedBookEligible: eligibleBooks.some((book) => book.id === handoffBookId),
+      })}
+    />
+  );
   return (
     <main className={`business-workspace ${financeFocus ? 'business-finance-focus' : ''}`}>
       <section className="page-heading">
@@ -763,6 +842,25 @@ export function BusinessWorkspace({
           </button>
         </div>
       </section>
+      {taskMemory.bookmark &&
+        (!initialEventId || initialEventId === taskMemory.bookmark.eventId) &&
+        (!initialCompanyId || initialCompanyId === taskMemory.bookmark.companyId) &&
+        (!initialPeriod || initialPeriod === taskMemory.bookmark.period) && (
+          <div className="business-task-resume" role="region" aria-label="继续办理">
+            <span>可回到上次停留的位置，继续时会重新读取当前资料。</span>
+            <button
+              type="button"
+              className="button secondary small"
+              disabled={!!busy || !context || detailLoading}
+              onClick={() => void openEvent(taskMemory.bookmark!.eventId, taskMemory.bookmark!)}
+            >
+              继续上次办理
+            </button>
+            <button type="button" className="text-button" onClick={taskMemory.forget}>
+              清除记录
+            </button>
+          </div>
+        )}
       {!financeFocus && (
         <section className="business-intro">
           <div>
@@ -777,9 +875,9 @@ export function BusinessWorkspace({
           </p>
         </section>
       )}
-      {initialPeriod && (
+      {listPeriod && (
         <p className="field-help" role="status">
-          当前按 {initialPeriod} 的业务发生月份筛选。可从客户月度进度切换月份。
+          当前按 {listPeriod} 的业务发生月份筛选。可从客户月度进度切换月份。
         </p>
       )}
       <div className={`business-grid ${selected || detailLoading ? 'mobile-detail' : ''}`}>
@@ -1011,24 +1109,6 @@ export function BusinessWorkspace({
                   {selected.applicant_name || '申请人'}
                 </p>
               </div>
-              {financeFocus && (
-                <nav className="review-focus-nav" aria-label="财务核验内容定位">
-                  <button
-                    type="button"
-                    disabled={!!busy}
-                    onClick={() => focusBusinessSection('originals')}
-                  >
-                    核对原件
-                  </button>
-                  <button
-                    type="button"
-                    disabled={!!busy}
-                    onClick={() => focusBusinessSection('actions')}
-                  >
-                    办理本事项
-                  </button>
-                </nav>
-              )}
               <ReturnedBusinessNotice event={selected}>
                 {selected.permissions.edit && (
                   <button
@@ -1041,22 +1121,7 @@ export function BusinessWorkspace({
                   </button>
                 )}
               </ReturnedBusinessNotice>
-              {selected.status !== 'returned' && (
-                <WorkflowGuide
-                  compact={financeFocus}
-                  detailsLabel="查看核验步骤与说明"
-                  label="事项办理引导"
-                  guide={businessGuidance(selected, {
-                    busy: !!busy,
-                    error,
-                    booksLoading,
-                    booksError: currentBooksError,
-                    booksReady,
-                    hasEligibleBook: eligibleBooks.length > 0,
-                    selectedBookEligible: eligibleBooks.some((book) => book.id === handoffBookId),
-                  })}
-                />
-              )}
+              {!financeFocus && currentGuide}
               <dl className="business-facts">
                 <div>
                   <dt>发生日期</dt>
@@ -1091,6 +1156,22 @@ export function BusinessWorkspace({
                   </div>
                 )}
               </dl>
+              {financeFocus && (
+                <BusinessContextCard
+                  key={`${session.scope_key}:${selected.id}`}
+                  session={session}
+                  event={selected}
+                  busy={!!busy}
+                  revision={evidenceRevision}
+                  onFocus={focusBusinessSection}
+                  onRefresh={() =>
+                    void refreshSelected().catch((failure) => {
+                      setSelected(null);
+                      setError(errorMessage(failure));
+                    })
+                  }
+                />
+              )}
               <BusinessRecordLinks
                 event={selected}
                 book={mappedBook}
@@ -1161,6 +1242,7 @@ export function BusinessWorkspace({
               </div>
               {!selected.mapping && (
                 <BusinessPreparation
+                  compact={financeFocus}
                   session={session}
                   companyId={selected.company_id}
                   occurredOn={selected.payload.occurred_on}
@@ -1168,21 +1250,23 @@ export function BusinessWorkspace({
                   onRecheck={() => void loadCompanyBooks()}
                 />
               )}
-              <IntelligencePanel
-                compact={financeFocus}
-                onOpenBatch={onOpenBatch}
-                key={selected.id}
-                session={session}
-                eventId={selected.id}
-                event={selected}
-                externalBusy={!!operationBusy}
-                onBusyChange={changeIntelligenceBusy}
-                onChanged={refreshSelected}
-                onDismiss={() => {
-                  selectionEpoch.current += 1;
-                  setSelected(null);
-                }}
-              />
+              <div className="business-checks" ref={differencesFocus} tabIndex={-1}>
+                <IntelligencePanel
+                  compact={financeFocus}
+                  onOpenBatch={onOpenBatch}
+                  key={selected.id}
+                  session={session}
+                  eventId={selected.id}
+                  event={selected}
+                  externalBusy={!!operationBusy}
+                  onBusyChange={changeIntelligenceBusy}
+                  onChanged={refreshSelected}
+                  onDismiss={() => {
+                    selectionEpoch.current += 1;
+                    setSelected(null);
+                  }}
+                />
+              </div>
               <div className="business-actions" ref={actionsFocus} tabIndex={-1}>
                 {operationFeedback}
                 {onOpenCase &&
@@ -1347,6 +1431,7 @@ export function BusinessWorkspace({
                   </div>
                 )}
               </div>
+              {financeFocus && currentGuide}
               {!!selected.actions.length && (
                 <details
                   className="business-history"

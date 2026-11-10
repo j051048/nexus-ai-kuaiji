@@ -121,6 +121,70 @@
     {
       "file": "e2e/workflow-continuity.spec.ts",
       "title": "mobile › 列表读取失败不显示零待办或允许翻页"
+    },
+    {
+      "file": "e2e/business-context-card.spec.ts",
+      "title": "desktop › 当前事项卡片直达原件、差异和办理，不自动核验"
+    },
+    {
+      "file": "e2e/business-context-card.spec.ts",
+      "title": "desktop › 摘要错范围或撤权不显示依据和办理按钮，重试只读"
+    },
+    {
+      "file": "e2e/business-context-card.spec.ts",
+      "title": "mobile › 当前事项卡片直达原件、差异和办理，不自动核验"
+    },
+    {
+      "file": "e2e/business-context-card.spec.ts",
+      "title": "mobile › 摘要错范围或撤权不显示依据和办理按钮，重试只读"
+    },
+    {
+      "file": "e2e/business-context-card.spec.ts",
+      "title": "desktop › 事项改版后清空旧依据，刷新事项再显示下一步"
+    },
+    {
+      "file": "e2e/business-context-card.spec.ts",
+      "title": "mobile › 事项改版后清空旧依据，刷新事项再显示下一步"
+    },
+    {
+      "file": "e2e/business-context-card.spec.ts",
+      "title": "desktop › 恢复只记位置，重新读当前版本和权限，不能恢复旧审批"
+    },
+    {
+      "file": "e2e/business-context-card.spec.ts",
+      "title": "desktop › 逐项差异直达办理，人工操作后重新核对，不把跳转当作完成"
+    },
+    {
+      "file": "e2e/business-context-card.spec.ts",
+      "title": "desktop › 同版本重新核对也更新摘要，迟到旧响应不能复活撤权资料"
+    },
+    {
+      "file": "e2e/business-context-card.spec.ts",
+      "title": "mobile › 恢复只记位置，重新读当前版本和权限，不能恢复旧审批"
+    },
+    {
+      "file": "e2e/business-context-card.spec.ts",
+      "title": "mobile › 逐项差异直达办理，人工操作后重新核对，不把跳转当作完成"
+    },
+    {
+      "file": "e2e/business-context-card.spec.ts",
+      "title": "mobile › 同版本重新核对也更新摘要，迟到旧响应不能复活撤权资料"
+    },
+    {
+      "file": "e2e/task-evidence-memory.spec.ts",
+      "title": "desktop › 规则候选读取真实审核来源，过时响应不显示也不自动发布"
+    },
+    {
+      "file": "e2e/task-evidence-memory.spec.ts",
+      "title": "desktop › 只读并行查询实际接口，结果重新核对后才展示"
+    },
+    {
+      "file": "e2e/task-evidence-memory.spec.ts",
+      "title": "mobile › 规则候选读取真实审核来源，过时响应不显示也不自动发布"
+    },
+    {
+      "file": "e2e/task-evidence-memory.spec.ts",
+      "title": "mobile › 只读并行查询实际接口，结果重新核对后才展示"
     }
   ]
 }

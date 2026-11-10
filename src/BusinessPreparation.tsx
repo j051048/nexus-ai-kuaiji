@@ -26,6 +26,7 @@ export function BusinessPreparation(props: {
   occurredOn: string;
   version?: number;
   onRecheck?: () => void;
+  compact?: boolean;
 }) {
   if (!props.companyId || !/^20\d{2}-\d{2}-\d{2}$/.test(props.occurredOn)) return null;
   return (
@@ -41,11 +42,13 @@ function PreparationRead({
   companyId,
   occurredOn,
   onRecheck,
+  compact = false,
 }: {
   session: Session;
   companyId: string;
   occurredOn: string;
   onRecheck?: () => void;
+  compact?: boolean;
 }) {
   const [invalidated, setInvalidated] = useState(false);
   const query = useScopedQuery(async (signal) => {
@@ -80,9 +83,15 @@ function PreparationRead({
     };
   }, [session.scope_key]);
   const data = invalidated ? null : query.data;
+  const readySummary = compact && data?.status === 'ready';
+  const Container = readySummary ? 'details' : 'section';
   return (
-    <section className="business-preparation" aria-label="交接准备" aria-live="polite">
-      <strong>{data ? labels[data.status] : '交接准备'}</strong>
+    <Container className="business-preparation" aria-label="交接准备" aria-live="polite">
+      {readySummary ? (
+        <summary>本月接收账套已就绪</summary>
+      ) : (
+        <strong>{data ? labels[data.status] : '交接准备'}</strong>
+      )}
       <p className="field-help">
         {invalidated
           ? '权限已变化，请重新检查；无法读取时联系企业管理员。'
@@ -100,6 +109,6 @@ function PreparationRead({
       >
         重新检查
       </button>
-    </section>
+    </Container>
   );
 }

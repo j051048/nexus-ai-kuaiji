@@ -415,3 +415,13 @@
   font-size: 13px;
   margin: 8px 0;
 }
+.rule-memory {
+  margin-block: var(--space-3, 12px);
+}
+.rule-memory section {
+  padding-block: var(--space-2, 8px);
+}
+.rule-memory p,
+.rule-memory li {
+  overflow-wrap: anywhere;
+}

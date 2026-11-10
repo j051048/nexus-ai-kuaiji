@@ -164,8 +164,8 @@ for (const width of [1440, 390]) {
     await expect(
       page.getByRole('tab', { name: '企业财务', exact: true, includeHidden: true }),
     ).toHaveAttribute('aria-selected', 'true');
-    const guide = detail.getByRole('region', { name: '事项办理引导', exact: true });
-    await expect(guide.locator('details').first()).not.toHaveAttribute('open');
+    const guide = detail.locator('details.business-extra-guide');
+    await expect(guide).not.toHaveAttribute('open');
     await expect(guide.getByText('查看核验步骤与说明', { exact: true })).toBeVisible();
     await expect(detail.locator('.business-history')).not.toHaveAttribute('open');
     await page.screenshot({
@@ -184,7 +184,7 @@ for (const width of [1440, 390]) {
       path: test.info().outputPath(`finance-original-${width}.png`),
       fullPage: false,
     });
-    await detail.getByRole('button', { name: '办理本事项', exact: true }).click();
+    await detail.getByRole('button', { name: '核对后办理', exact: true }).click();
     await expect(
       detail.getByRole('button', { name: '财务核验通过', exact: true }),
     ).toBeInViewport();
@@ -277,7 +277,7 @@ for (const width of [1440, 390]) {
 test('退回入口按需展开，原因必填，保留原事项并交回补充', async ({ page, request }) => {
   const f = await fixture(request);
   const detail = await openFinance(page, f.event);
-  await detail.getByRole('button', { name: '办理本事项', exact: true }).click();
+  await detail.getByRole('button', { name: '核对后办理', exact: true }).click();
   await detail.locator('.business-return > summary').click();
   await expect(detail.getByRole('button', { name: '退回修改', exact: true })).toBeDisabled();
   await detail.getByLabel('退回原因', { exact: true }).fill('请补充采购用途与原始清单');
@@ -302,7 +302,14 @@ test('折叠识别明细不隐藏核对阻断，核验冲突只读取最新事�
   await page.setViewportSize({ width: 390, height: 900 });
   const detail = await openFinance(page, f.event);
   await expect(detail.locator('details.intelligence-attachment-list')).not.toHaveAttribute('open');
-  await expect(detail.getByText(blocking.payload.message, { exact: true })).toBeVisible();
+  await expect(
+    detail
+      .getByLabel('票据识别与交叉核对', { exact: true })
+      .getByText(blocking.payload.message, { exact: true }),
+  ).toBeVisible();
+  await expect(
+    detail.getByLabel('本事项办理助手').getByText(blocking.payload.message, { exact: true }),
+  ).toBeVisible();
   let attempts = 0;
   await page.route(`**/api/business/events/${f.event.id}/finance-approve`, async (route) => {
     attempts += 1;
@@ -312,7 +319,7 @@ test('折叠识别明细不隐藏核对阻断，核验冲突只读取最新事�
       body: JSON.stringify({ detail: '事项版本已更新，请重新核对' }),
     });
   });
-  await detail.getByRole('button', { name: '办理本事项', exact: true }).click();
+  await detail.getByRole('button', { name: '核对后办理', exact: true }).click();
   await detail.getByRole('button', { name: '财务核验通过', exact: true }).click();
   await expect(page.getByRole('alert').filter({ hasText: '事项版本已更新' })).toContainText(
     '已重新读取最新事项',
