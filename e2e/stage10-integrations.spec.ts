@@ -111,8 +111,50 @@ test('财务软件文件底座真实 UI：配置、人工确认参考、冻结�
   expect((await request.post(base + `/outbox/${intent.id}/dispatch`, { headers })).status()).toBe(
     409,
   );
+  const artifactResponse = page.waitForResponse(
+    (r) => r.url().endsWith(`/outbox/${intent.id}/artifacts`) && r.request().method() === 'POST',
+  );
+  await page.getByRole('button', { name: '生成 54 列', exact: true }).click();
+  const artifact = await (await artifactResponse).json();
+  expect(artifact.profile).toBe('hengzhang.tplus.synthetic54.v1');
+  expect(artifact.row_count).toBe(1);
+  await expect(page.getByText(/54 列合成适配文件已冻结/)).toBeVisible();
+  const csvDownload = page.waitForEvent('download');
+  await page.getByRole('button', { name: '下载 CSV', exact: true }).click();
+  expect((await csvDownload).suggestedFilename()).toContain('tplus54-synthetic-');
+  const csvResponse = await request.get(base + `/artifacts/${artifact.id}/download`, { headers });
+  expect(csvResponse.status()).toBe(200);
+  const csvText = await csvResponse.text();
+  const header = csvText.replace(/^\uFEFF/, '').split(/\r?\n/)[0].split(',');
+  const codeIndex = header.indexOf('外部凭证编号');
+  const codes = Array.from(
+    new Set(
+      csvText
+        .replace(/^\uFEFF/, '')
+        .split(/\r?\n/)
+        .slice(1)
+        .filter(Boolean)
+        .map((line) => line.split(',')[codeIndex]),
+    ),
+  );
+  expect(codes.length).toBe(1);
+  const receipt = ['行号,外部凭证编号,结果,原因', ...codes.map((code, index) => `${index + 1},${code},accepted,`)].join('\n');
+  await page.getByLabel('客户回执编号', { exact: true }).fill(`R-UI-${marker}`);
+  await page.locator('.integration-artifact input[type=file]').setInputFiles({
+    name: '客户逐行回执.csv',
+    mimeType: 'text/csv',
+    buffer: Buffer.from(receipt, 'utf8'),
+  });
+  await page.getByRole('button', { name: '登记回执', exact: true }).click();
+  await expect(page.getByText(/接受 1、拒绝 0、重复 0、未知 0/)).toBeVisible();
+  await expect(page.getByText(/外部过账未确认/)).toBeVisible();
+  expect(artifact.native_tplus_format).toBe(false);
   await page.screenshot({ path: 'artifacts/stage10-financial-bridge.png', fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.locator('.integration-artifact').scrollIntoViewIfNeeded();
+  await expect(page.getByRole('button', { name: '下载 CSV', exact: true })).toBeVisible();
+  await expect(page.getByText(/外部过账未确认/)).toBeVisible();
+  await page.screenshot({ path: 'artifacts/stage10-financial-bridge-390.png', fullPage: true });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(
     true,
   );

@@ -14,6 +14,7 @@ export function readFirmSnapshot(value: unknown, firm: string | null, period: st
     !object(value.metrics) ||
     !object(value.cost_summary) ||
     !Array.isArray(value.signals) ||
+    !object(value.operations) ||
     !object(value.queues) ||
     !object(value.projection) ||
     !object(value.alerts)
@@ -42,6 +43,9 @@ export function readFirmSnapshot(value: unknown, firm: string | null, period: st
     !['total', 'dirty', 'never_built', 'failing'].every((k) =>
       count(value.projection && (value.projection as Record<string, unknown>)[k]),
     ) ||
+    !['materials_pending', 'drafts_pending', 'source_rejections', 'notification_unknown', 'oldest_queue_age_seconds'].every(
+      (k) => count(value.operations && (value.operations as Record<string, unknown>)[k]),
+    ) ||
     !Object.values(value.alerts).every((v) => object(v) && count(v.open) && count(v.critical)) ||
     value.signals.some(
       (s) =>
@@ -49,7 +53,7 @@ export function readFirmSnapshot(value: unknown, firm: string | null, period: st
         typeof s.code !== 'string' ||
         s.owner_role !== 'admin' ||
         typeof s.next_action !== 'string' ||
-        !['queue', 'operations', 'runs'].includes(String(s.target)) ||
+        !['queue', 'operations', 'runs', 'workbench'].includes(String(s.target)) ||
         s.automatic_action !== false,
     )
   )

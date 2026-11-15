@@ -67,6 +67,13 @@ describe('0712 运行记录只接受可信范围和有效计数', () => {
     firm_id: 'f',
     period: '2026-10',
     queues: {},
+    operations: {
+      materials_pending: 0,
+      drafts_pending: 0,
+      source_rejections: 0,
+      notification_unknown: 0,
+      oldest_queue_age_seconds: 0,
+    },
     alerts: {},
     projection: { total: 0, dirty: 0, never_built: 0, failing: 0 },
     metrics: {
@@ -92,6 +99,7 @@ describe('0712 运行记录只接受可信范围和有效计数', () => {
   };
   it('未知费用不是零且不能自动重发', () => {
     expect(readFirmSnapshot(value, 'f', '2026-10').cost_summary.known_micro).toBeNull();
+    expect(readFirmSnapshot(value, 'f', '2026-10').operations.drafts_pending).toBe(0);
     for (const bad of [
       { ...value, firm_id: 'other' },
       { ...value, period: '2026-11' },
@@ -99,6 +107,8 @@ describe('0712 运行记录只接受可信范围和有效计数', () => {
       { ...value, signals: [{ ...value.signals[0], automatic_action: true }] },
       { ...value, metrics: { ...value.metrics, avg_lock_ms: NaN } },
       { ...value, worker_health: { ...value.worker_health, available: 'yes' } },
+      { ...value, operations: { ...value.operations, drafts_pending: -1 } },
+      { ...value, signals: [{ ...value.signals[0], target: 'elsewhere' }] },
     ])
       expect(() => readFirmSnapshot(bad, 'f', '2026-10')).toThrow();
   });

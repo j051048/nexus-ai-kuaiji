@@ -1,5 +1,12 @@
 from fastapi import APIRouter, Depends, Query, Request
-from .models import BridgeConfiguration, BridgeExport, BridgeImport, BridgeImportConfirm
+from fastapi.responses import Response
+from .models import (
+    BridgeConfiguration,
+    BridgeExport,
+    BridgeImport,
+    BridgeImportConfirm,
+    BridgeReceiptImport,
+)
 
 
 def build_integrations_router(actor_dependency):
@@ -68,10 +75,62 @@ def build_integrations_router(actor_dependency):
     def intent(book_id: str, intent_id: str, actor=Depends(actor_dependency), svc=Depends(service)):
         return svc.get_outbox(actor, book_id, intent_id)
 
+    @router.post("/outbox/{intent_id}/artifacts", status_code=201)
+    def artifact(
+        book_id: str,
+        intent_id: str,
+        actor=Depends(actor_dependency),
+        svc=Depends(service),
+    ):
+        return svc.create_artifact(actor, book_id, intent_id)
+
+    @router.get("/outbox/{intent_id}/artifacts")
+    def artifacts(
+        book_id: str,
+        intent_id: str,
+        actor=Depends(actor_dependency),
+        svc=Depends(service),
+    ):
+        return svc.list_artifacts(actor, book_id, intent_id)
+
+    @router.get("/artifacts/{artifact_id}/download")
+    def artifact_download(
+        book_id: str,
+        artifact_id: str,
+        actor=Depends(actor_dependency),
+        svc=Depends(service),
+    ):
+        filename, content = svc.download_artifact(actor, book_id, artifact_id)
+        return Response(
+            content=content,
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
+    @router.post("/artifacts/{artifact_id}/receipts", status_code=201)
+    def artifact_receipt(
+        book_id: str,
+        artifact_id: str,
+        payload: BridgeReceiptImport,
+        actor=Depends(actor_dependency),
+        svc=Depends(service),
+    ):
+        return svc.record_receipt(actor, book_id, artifact_id, payload)
+
+    @router.get("/artifacts/{artifact_id}/receipts")
+    def artifact_receipts(
+        book_id: str,
+        artifact_id: str,
+        actor=Depends(actor_dependency),
+        svc=Depends(service),
+    ):
+        return svc.list_receipts(actor, book_id, artifact_id)
+
     @router.post("/outbox/{intent_id}/dispatch")
     def dispatch(
         book_id: str, intent_id: str, actor=Depends(actor_dependency), svc=Depends(service)
     ):
         return svc.dispatch(actor, book_id, intent_id)
+
 
     return router

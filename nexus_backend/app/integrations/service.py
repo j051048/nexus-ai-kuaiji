@@ -15,7 +15,8 @@ from app.accounting.domain import AccountingError
 from app.accounting.queries import page_bounds
 from app.accounting.service import fingerprint, now
 from app.delivery.service import DeliveryService
-from .models import BridgeRecord
+from . import tplus54
+from .models import BridgeRecord, BridgeReceiptImport
 
 
 def encode(value):
@@ -736,7 +737,278 @@ class FinancialBridgeService:
                 raise AccountingError("交付意图不存在或无权访问", 404)
             return self._outbox(row)
 
+    def _frozen_package(self, conn, actor, book_id, outbox_row):
+        package = json.loads(outbox_row["package_json"])
+        _, export = self.delivery._export(conn, actor, book_id, package["export_id"], True)
+        manifest = self.delivery._manifest(conn, export)
+        if manifest.get("status") == "pending_legacy":
+            raise AccountingError("交付清单尚未冻结，不能生成适配文件", 409)
+        if fingerprint(manifest) != package.get("manifest_fingerprint"):
+            raise AccountingError("冻结清单内容已变化，旧适配文件不能继续使用", 409)
+        # Frozen files remain historical evidence; a stale fee source must not
+        # be offered as a currently usable export or accepted receipt.
+        from app.tax.fee_guard import fee_context
+
+        for item in manifest["items"]:
+            source = conn.execute(
+                "SELECT s.* FROM sources s JOIN drafts d ON d.source_id=s.id AND d.book_id=s.book_id WHERE d.id=? AND d.book_id=?",
+                (item["draft_id"], book_id),
+            ).fetchone()
+            if source:
+                lines = conn.execute("SELECT * FROM draft_lines WHERE draft_id=? AND book_id=? ORDER BY ordinal",
+                                     (item["draft_id"], book_id)).fetchall()
+                _, issues = fee_context(conn, source, lines)
+                if issues:
+                    raise AccountingError("规费来源已失效，旧适配文件仅保留历史证据，请重新核定", 409)
+        return package
+
+    @staticmethod
+    def _artifact_view(row):
+        return {
+            "id": row["id"],
+            "outbox_id": row["outbox_id"],
+            "profile": row["profile"],
+            "filename": row["filename"],
+            "content_sha256": row["content_sha256"],
+            "manifest_fingerprint": row["manifest_fingerprint"],
+            "package_fingerprint": row["package_fingerprint"],
+            "row_count": row["row_count"],
+            "voucher_count": row["voucher_count"],
+            "created_at": row["created_at"],
+            "synthetic": True,
+            "native_tplus_format": False,
+        }
+
+    def create_artifact(self, actor, book_id, intent_id):
+        with self.db.transaction(write=True, actor=actor) as conn:
+            book, ledger_id = self._scope(conn, actor, book_id, True)
+            intent = conn.execute(
+                "SELECT * FROM bridge_outbox WHERE id=? AND book_id=?", (intent_id, book_id)
+            ).fetchone()
+            if not intent:
+                raise AccountingError("交付意图不存在或无权访问", 404)
+            package = self._frozen_package(conn, actor, book_id, intent)
+            content, codes, voucher_count = tplus54.render(package)
+            digest = tplus54.content_hash(content)
+            prior = conn.execute(
+                "SELECT * FROM bridge_export_artifacts WHERE outbox_id=? AND content_sha256=?",
+                (intent_id, digest),
+            ).fetchone()
+            if prior:
+                return self._artifact_view(prior)
+            identifier = uuid4().hex
+            filename = f"tplus54-synthetic-{digest[:12]}.csv"
+            meta = {
+                "outbox_id": intent_id,
+                "content_sha256": digest,
+                "manifest_fingerprint": package["manifest_fingerprint"],
+                "package_fingerprint": fingerprint(package),
+                "profile": tplus54.PROFILE,
+            }
+            conn.execute(
+                "INSERT INTO bridge_export_artifacts(id,outbox_id,ledger_id,book_id,firm_id,company_id,profile,filename,content_sha256,manifest_fingerprint,package_fingerprint,voucher_codes_json,row_count,voucher_count,created_by,created_at,fingerprint) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(outbox_id,content_sha256) DO NOTHING",
+                (
+                    identifier,
+                    intent_id,
+                    ledger_id,
+                    book_id,
+                    actor.firm_id,
+                    book["company_id"],
+                    tplus54.PROFILE,
+                    filename,
+                    digest,
+                    package["manifest_fingerprint"],
+                    meta["package_fingerprint"],
+                    tplus54.stable_json(codes),
+                    len(content.splitlines()) - 1,
+                    voucher_count,
+                    actor.user_id,
+                    now(),
+                    fingerprint(meta),
+                ),
+            )
+            return self._artifact_view(
+                conn.execute(
+                    "SELECT * FROM bridge_export_artifacts WHERE outbox_id=? AND content_sha256=?",
+                    (intent_id, digest),
+                ).fetchone()
+            )
+
+    def list_artifacts(self, actor, book_id, intent_id):
+        with self.db.transaction(actor=actor) as conn:
+            self._scope(conn, actor, book_id)
+            if not conn.execute(
+                "SELECT 1 FROM bridge_outbox WHERE id=? AND book_id=?", (intent_id, book_id)
+            ).fetchone():
+                raise AccountingError("交付意图不存在或无权访问", 404)
+            return {
+                "artifacts": [
+                    self._artifact_view(row)
+                    for row in conn.execute(
+                        "SELECT * FROM bridge_export_artifacts WHERE outbox_id=? AND book_id=? ORDER BY created_at,id",
+                        (intent_id, book_id),
+                    )
+                ]
+            }
+
+    def download_artifact(self, actor, book_id, artifact_id):
+        with self.db.transaction(actor=actor) as conn:
+            self._scope(conn, actor, book_id, True)
+            artifact = conn.execute(
+                "SELECT * FROM bridge_export_artifacts WHERE id=? AND book_id=?",
+                (artifact_id, book_id),
+            ).fetchone()
+            if not artifact:
+                raise AccountingError("适配文件不存在或无权访问", 404)
+            intent = conn.execute(
+                "SELECT * FROM bridge_outbox WHERE id=? AND book_id=?",
+                (artifact["outbox_id"], book_id),
+            ).fetchone()
+            if not intent:
+                raise AccountingError("交付意图不存在或无权访问", 404)
+            package = self._frozen_package(conn, actor, book_id, intent)
+            content, _, _ = tplus54.render(package)
+            if tplus54.content_hash(content) != artifact["content_sha256"]:
+                raise AccountingError("来源或冻结清单已变化，旧适配文件不能下载", 409)
+            return artifact["filename"], content
+
+    @staticmethod
+    def _receipt_view(conn, row):
+        rows = [
+            dict(item)
+            for item in conn.execute(
+                "SELECT row_number,voucher_external_code,status,reason FROM bridge_export_receipt_rows WHERE receipt_id=? ORDER BY row_number",
+                (row["id"],),
+            )
+        ]
+        return {
+            "id": row["id"],
+            "artifact_id": row["artifact_id"],
+            "receipt_code": row["receipt_code"],
+            "content_sha256": row["content_sha256"],
+            "result_status": row["result_status"],
+            "row_count": row["row_count"],
+            "accepted_count": row["accepted_count"],
+            "rejected_count": row["rejected_count"],
+            "duplicate_count": row["duplicate_count"],
+            "unknown_count": row["unknown_count"],
+            "external_posting": bool(row["external_posting"]),
+            "created_at": row["created_at"],
+            "rows": rows,
+            "note": "回执仅登记客户文件结果，不代表 T+ 已独立过账；外发仍关闭。",
+        }
+
+    def record_receipt(self, actor, book_id, artifact_id, request: BridgeReceiptImport):
+        raw = request.content.encode("utf-8")
+        digest = hashlib.sha256(raw).hexdigest()
+        with self.db.transaction(write=True, actor=actor) as conn:
+            book, _ = self._scope(conn, actor, book_id, True)
+            artifact = conn.execute(
+                "SELECT * FROM bridge_export_artifacts WHERE id=? AND book_id=?",
+                (artifact_id, book_id),
+            ).fetchone()
+            if not artifact:
+                raise AccountingError("适配文件不存在或无权访问", 404)
+            intent = conn.execute(
+                "SELECT * FROM bridge_outbox WHERE id=? AND book_id=?",
+                (artifact["outbox_id"], book_id),
+            ).fetchone()
+            if not intent:
+                raise AccountingError("交付意图不存在或无权访问", 404)
+            package = self._frozen_package(conn, actor, book_id, intent)
+            current, _, _ = tplus54.render(package)
+            if tplus54.content_hash(current) != artifact["content_sha256"]:
+                raise AccountingError("来源或冻结清单已变化，不能接纳旧文件回执", 409)
+            prior = conn.execute(
+                "SELECT * FROM bridge_export_receipts WHERE artifact_id=? AND (receipt_code=? OR content_sha256=?)",
+                (artifact_id, request.receipt_code, digest),
+            ).fetchone()
+            if prior:
+                if (
+                    prior["receipt_code"] != request.receipt_code
+                    or prior["content_sha256"] != digest
+                ):
+                    raise AccountingError("回执编号已用于不同内容，原记录不会覆盖", 409)
+                return self._receipt_view(conn, prior)
+            rows = tplus54.parse_result(raw, json.loads(artifact["voucher_codes_json"]))
+            status, counts = tplus54.result_summary(rows)
+            identifier = uuid4().hex
+            meta = {
+                "artifact_id": artifact_id,
+                "receipt_code": request.receipt_code,
+                "content_sha256": digest,
+                "result_status": status,
+                "counts": counts,
+            }
+            inserted = conn.execute(
+                "INSERT INTO bridge_export_receipts(id,artifact_id,book_id,firm_id,company_id,receipt_code,content_sha256,result_status,row_count,accepted_count,rejected_count,duplicate_count,unknown_count,external_posting,created_by,created_at,fingerprint) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING",
+                (
+                    identifier,
+                    artifact_id,
+                    book_id,
+                    actor.firm_id,
+                    book["company_id"],
+                    request.receipt_code,
+                    digest,
+                    status,
+                    len(rows),
+                    counts["accepted"],
+                    counts["rejected"],
+                    counts["duplicate"],
+                    counts["unknown"],
+                    False,
+                    actor.user_id,
+                    now(),
+                    fingerprint(meta),
+                ),
+            )
+            if getattr(inserted, "rowcount", 1) == 0:
+                prior = conn.execute(
+                    "SELECT * FROM bridge_export_receipts WHERE artifact_id=? AND (receipt_code=? OR content_sha256=?)",
+                    (artifact_id, request.receipt_code, digest),
+                ).fetchone()
+                if prior is None or prior["receipt_code"] != request.receipt_code or prior["content_sha256"] != digest:
+                    raise AccountingError("回执写入冲突，请重新核对", 409)
+                return self._receipt_view(conn, prior)
+            for row in rows:
+                conn.execute(
+                    "INSERT INTO bridge_export_receipt_rows(receipt_id,row_number,voucher_external_code,status,reason,raw_hash) VALUES(?,?,?,?,?,?)",
+                    (
+                        identifier,
+                        row["row_number"],
+                        row["voucher_external_code"],
+                        row["status"],
+                        row["reason"],
+                        hashlib.sha256(tplus54.stable_json(row).encode()).hexdigest(),
+                    ),
+                )
+            return self._receipt_view(
+                conn,
+                conn.execute(
+                    "SELECT * FROM bridge_export_receipts WHERE id=?", (identifier,)
+                ).fetchone(),
+            )
+
+    def list_receipts(self, actor, book_id, artifact_id):
+        with self.db.transaction(actor=actor) as conn:
+            self._scope(conn, actor, book_id)
+            if not conn.execute(
+                "SELECT 1 FROM bridge_export_artifacts WHERE id=? AND book_id=?",
+                (artifact_id, book_id),
+            ).fetchone():
+                raise AccountingError("适配文件不存在或无权访问", 404)
+            return {
+                "receipts": [
+                    self._receipt_view(conn, row)
+                    for row in conn.execute(
+                        "SELECT * FROM bridge_export_receipts WHERE artifact_id=? AND book_id=? ORDER BY created_at,id",
+                        (artifact_id, book_id),
+                    )
+                ]
+            }
+
     def dispatch(self, actor, book_id, intent_id):
+
         with self.db.transaction(actor=actor) as conn:
             self._scope(conn, actor, book_id, True)
             if not conn.execute(

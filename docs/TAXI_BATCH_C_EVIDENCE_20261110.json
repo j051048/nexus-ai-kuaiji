@@ -1,0 +1,183 @@
+{
+  "schema": "tax-batch-c-evidence-v1",
+  "executed_at": "2026-11-11T09:45:00+08:00",
+  "head": "781fd93499dcba7bb76056f0febe19e372202af2",
+  "candidate": {
+    "schema": "release-candidate-v1",
+    "head": "781fd93499dcba7bb76056f0febe19e372202af2",
+    "source_files": 2163,
+    "source_sha256": "648ae00f760c7c02312938cb1a007ded1164162c44e704548c1ec240d629e350",
+    "migration_files": 379,
+    "migration_sha256": "7ec84cbd1bce0c40d18c95bf5d15eeaa7175c873ecfd7df358658a83c87cdcd5"
+  },
+  "worktree": {
+    "dirty_entries": 94,
+    "committed": false,
+    "pushed": false,
+    "deployed": false
+  },
+  "migrations_added": [
+    "nexus_backend/migrations/sqlite/147_tax_fee_batches.sql",
+    "nexus_backend/migrations/postgres/230_tax_fee_batches.sql"
+  ],
+  "commands": [
+    {
+      "name": "TAX C combined",
+      "command": "cd nexus_backend && python -m pytest tests/test_large_voucher.py tests/test_tax06_fees.py tests/test_tax06_recovery.py tests/test_tax04_sources.py -q --disable-warnings --junitxml=../tmp_test/tax-c/tax-c-combined-final.xml",
+      "exit_code": 0,
+      "result": "33 passed",
+      "seconds": 42.03,
+      "artifacts": [
+        "tmp_test/tax-c/tax-c-combined-final.xml"
+      ]
+    },
+    {
+      "name": "TAX05 browser",
+      "command": "npx playwright test --config playwright.tax05.config.ts",
+      "exit_code": 0,
+      "result": "2 passed in 15.9s",
+      "viewports": [
+        1280,
+        390
+      ],
+      "artifacts": [
+        "tmp_test/tax05-large-voucher-1280.png",
+        "tmp_test/tax05-large-voucher-390.png",
+        "tmp_test/tax05-pager-1280.png",
+        "tmp_test/tax05-pager-390.png"
+      ]
+    },
+    {
+      "name": "TAX06 browser",
+      "command": "npx playwright test --config playwright.tax06.config.ts",
+      "exit_code": 0,
+      "result": "2 passed in 22.9s",
+      "viewports": [
+        1280,
+        390
+      ],
+      "artifacts": [
+        "tmp_test/tax06-fees-1280.png",
+        "tmp_test/tax06-fees-390.png"
+      ]
+    },
+    {
+      "name": "PG17 fee batch",
+      "command": "python scripts/test_accounting_postgres_isolated.py --config tmp_test/tax-c/pg17.json nexus_backend/tests/test_tax06_fees_postgres.py -q",
+      "exit_code": 0,
+      "result": "3 passed",
+      "seconds": 2.173,
+      "artifacts": [
+        "tmp_test/ak05-pg-runs/4e6edc9a02c1418aaa62aaefed11db8c/results.xml"
+      ]
+    },
+    {
+      "name": "PG16 fee batch",
+      "command": "python scripts/test_accounting_postgres_isolated.py --config tmp_test/tax-c/pg16.json nexus_backend/tests/test_tax06_fees_postgres.py -q",
+      "exit_code": 0,
+      "result": "3 passed",
+      "seconds": 2.185,
+      "artifacts": [
+        "tmp_test/ak05-pg-runs/8801ef04db6d4fc49e447f4e2be25d9c/results.xml"
+      ]
+    },
+    {
+      "name": "typecheck",
+      "command": "npm run typecheck",
+      "exit_code": 0,
+      "result": "passed"
+    },
+    {
+      "name": "build",
+      "command": "TEMP=\"$PWD/tmp_test/esbuild-tmp\" TMP=\"$PWD/tmp_test/esbuild-tmp\" npm run build",
+      "exit_code": 0,
+      "result": "index JS 565.54 kB/gzip 175.19 kB; CSS 99.72 kB/gzip 20.27 kB",
+      "note": "direct system TEMP encountered esbuild remove Access is denied; repo TEMP avoided it"
+    }
+  ],
+  "p01": {
+    "environment_id": "8cf97847e94c4702ae41632cdbfbfc11",
+    "run_id": "298392bfcd744d57b53ea688de175a08",
+    "report": "tmp_test/tax-c/p01-final/reports/summary.json",
+    "status": "passed",
+    "candidate_source_sha256": "1ecf01e8f1432c068ebb179b52c0beeeab5bed551066122ba65cccac780ae64e",
+    "phases": {
+      "regression": {
+        "passed": 188,
+        "skipped": 0,
+        "seconds": 152.134
+      },
+      "joint": {
+        "passed": 2,
+        "skipped": 0,
+        "seconds": 87.428
+      },
+      "identity": {
+        "passed": 4,
+        "skipped": 0,
+        "seconds": 55.768
+      }
+    },
+    "databases": {
+      "pg16": {
+        "version": "16.15",
+        "migrations": 218,
+        "schema_max_version": 230,
+        "originals": 4,
+        "restored_users": 6,
+        "p01_checks": {
+          "database": true,
+          "originals": true,
+          "identity": true,
+          "permissions": true,
+          "hold": true,
+          "review_export": true,
+          "tax_delivery": true,
+          "no_replay": true,
+          "finance_resume": true
+        }
+      },
+      "pg17": {
+        "version": "17.11",
+        "migrations": 218,
+        "schema_max_version": 230,
+        "originals": 4,
+        "restored_users": 6,
+        "p01_checks": {
+          "database": true,
+          "originals": true,
+          "identity": true,
+          "permissions": true,
+          "hold": true,
+          "review_export": true,
+          "tax_delivery": true,
+          "no_replay": true,
+          "finance_resume": true
+        }
+      }
+    },
+    "tax_c_tables": {
+      "present_on_source_and_target": true,
+      "target_row_count": 0,
+      "row_recovery_covered_by": "nexus_backend/tests/test_tax06_recovery.py"
+    }
+  },
+  "acceptance": {
+    "local": "passed",
+    "pg16": "passed",
+    "pg17": "passed",
+    "browser_desktop_mobile": "passed",
+    "p01": "passed",
+    "external_t_plus": "not_verified",
+    "real_customer_data": "not_verified",
+    "real_rule_catalog": "not_verified",
+    "production_release": "not_authorized"
+  },
+  "known_gaps": [
+    "大凭证取消/恢复状态机未新增；当前为同步原子生成与复核",
+    "575/1001 行仅服务层测试，浏览器为 516 行",
+    "没有可动态切换的客户规则目录；仅来源版本失效已验",
+    "T+ 文件、真实驾驶员/车辆/合同资料未验证",
+    "P01 通用检查不专门比对 C 业务行；C 行级恢复由 SQLite 全库恢复测试覆盖"
+  ]
+}

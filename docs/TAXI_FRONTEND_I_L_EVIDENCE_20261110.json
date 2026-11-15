@@ -1,0 +1,92 @@
+{
+  "batch": "I-L",
+  "date": "2026-11-12",
+  "head": "781fd93499dcba7bb76056f0febe19e372202af2",
+  "status": "partial",
+  "candidate": {
+    "schema": "release-candidate-v1",
+    "head": "781fd93499dcba7bb76056f0febe19e372202af2",
+    "source_files": 2163,
+    "source_sha256": "648ae00f760c7c02312938cb1a007ded1164162c44e704548c1ec240d629e350",
+    "migration_files": 379,
+    "migration_sha256": "7ec84cbd1bce0c40d18c95bf5d15eeaa7175c873ecfd7df358658a83c87cdcd5"
+  },
+  "build": {
+    "typecheck": "passed",
+    "lint": "0 errors / 4 warnings",
+    "initial_js": 565587,
+    "initial_js_gzip": 175218,
+    "initial_css": 99946,
+    "home_js": 593142,
+    "home_js_gzip": 185777,
+    "budget": "6/6 passed",
+    "budget_artifact_sha256": "ba039757584207227b694dbcdc3587218568dbfd853d3c34f2ac445b76e81a2d"
+  },
+  "batches": {
+    "I": {
+      "status": "local_passed",
+      "tests": {
+        "tax-i-shell": "5 passed / 27.9s",
+        "qa-accessibility-chromium": "3 passed / 13.7s",
+        "qa-accessibility-firefox": "3 passed / 15.9s",
+        "qa-accessibility-webkit": "3 passed / 15.0s"
+      }
+    },
+    "J": {
+      "status": "partial",
+      "tests": {
+        "tax05-large-voucher": "2 passed / 19.0s",
+        "employee-flow+b06": "10 passed"
+      },
+      "not_verified": [
+        "column resizing",
+        "cross-page frozen selection",
+        "large PDF originals",
+        "J PG subset"
+      ]
+    },
+    "K": {
+      "status": "partial_failed",
+      "tests": {
+        "employee-flow": "9 passed",
+        "b06-role-home": "1 passed",
+        "business": "2 passed / 1 failed",
+        "business-postgres": "37 passed / 28.18s (PG17), 37 passed / 28.17s (PG16)"
+      },
+      "failure": "finance handoff waits on loading and times out",
+      "not_verified": []
+    },
+    "L": {
+      "status": "partial",
+      "tests": {
+        "keyboard": "2 passed",
+        "tax-i-shell": "5 passed / 27.9s",
+        "tax05": "2 passed / 18.9s",
+        "accessibility-firefox": "3 passed",
+        "accessibility-webkit": "3 passed",
+        "reduced-motion": "1 passed / 10.4s",
+        "unknown-evidence": "2 passed / 14.3s",
+        "skeleton": "1 passed / 17.4s",
+        "nested-dialog": "1 passed / 15.5s",
+        "assistant-facts": "14 passed / 31.7s"
+      },
+      "not_verified": [
+        "real device",
+        "screen reader"
+      ]
+    },
+    "M": {
+      "status": "not_started",
+      "reason": "M gate requires explicit activation; no dependency changes"
+    }
+  },
+  "external": {
+    "real_customer": "not_authorized",
+    "real_tplus": "not_authorized",
+    "real_model": "not_authorized",
+    "real_notification": "not_authorized",
+    "real_device": "not_verified",
+    "remote_ci": "not_run"
+  },
+  "soft_keyboard_viewport": "1 passed/3.0s"
+}

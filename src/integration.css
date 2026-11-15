@@ -160,3 +160,27 @@
     width: 100%;
   }
 }
+.integration-artifact {
+  border: 1px solid var(--border, #dcd8cf);
+  background: #fbfaf6;
+  padding: 16px;
+  margin-top: 16px;
+}
+.integration-artifact .integration-history {
+  flex-wrap: wrap;
+}
+.integration-artifact .integration-fields {
+  margin-bottom: 12px;
+}
+.integration-receipts {
+  margin-top: 16px;
+  border-top: 1px solid var(--border, #dcd8cf);
+  padding-top: 12px;
+}
+.integration-receipts h3 {
+  font-size: 14px;
+}
+.integration-receipts .integration-history {
+  align-items: flex-start;
+  gap: 8px;
+}

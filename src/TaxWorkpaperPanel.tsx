@@ -3,6 +3,12 @@ import { api, apiBlob, ApiError } from './api';
 import { useScopedQuery } from './useScopedQuery';
 import { TaxReadinessList } from './TaxReadinessList';
 import { TaxFilingRecords } from './TaxFilingRecords';
+import { PilotBoundaryPanel } from './PilotBoundaryPanel';
+import { TaxSourcePanel } from './TaxSourcePanel';
+import { TaxFeeBatchPanel } from './TaxFeeBatchPanel';
+import { TaxCostBatchPanel } from './TaxCostBatchPanel';
+import { OaSnapshotPanel } from './OaSnapshotPanel';
+import { TaxFPanel } from './TaxFPanel';
 import { parseReadiness, type FilingReadiness } from './tax-readiness';
 import type { Session } from './types';
 import { taxEvidence } from './tax-evidence';
@@ -302,6 +308,12 @@ function TaxContent({ session, bookId, companyId, period, onBusyChange, focusSou
         生成底稿不代表已申报；办理状态以人工登记及回执为准。本系统不自动申报或缴款，来源在复核和导出时重新校验。
       </p>
       <TaxReadinessList data={readiness} />
+      <PilotBoundaryPanel session={session} companyId={companyId} />
+      <TaxSourcePanel session={session} bookId={bookId} />
+      <TaxFeeBatchPanel session={session} bookId={bookId} period={period} />
+      <TaxCostBatchPanel session={session} bookId={bookId} period={period} />
+      <OaSnapshotPanel session={session} bookId={bookId} period={period} canManage={!!context?.permissions.manage} />
+      <TaxFPanel session={session} bookId={bookId} period={period} />
       <TaxFilingRecords
         session={session}
         bookId={bookId}

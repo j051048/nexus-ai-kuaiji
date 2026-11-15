@@ -19,10 +19,17 @@ export type Snapshot = {
     code: string;
     owner_role: string;
     next_action: string;
-    target: 'queue' | 'operations' | 'runs';
+    target: 'queue' | 'operations' | 'runs' | 'workbench';
     automatic_action: false;
   }[];
   queues: Record<string, Record<string, number>>;
+  operations: {
+    materials_pending: number;
+    drafts_pending: number;
+    source_rejections: number;
+    notification_unknown: number;
+    oldest_queue_age_seconds: number;
+  };
   alerts: Record<string, { open: number; critical: number }>;
   worker_health?: {
     available: boolean;
@@ -206,6 +213,53 @@ function ObservabilityWorkspace({ session }: { session: Session }) {
               </small>
             </article>
           </section>
+          <section className="observability-panel" aria-label="办理积压与队列年龄">
+            <header>
+              <h2>办理积压</h2>
+              <span className="field-help">仅聚合当前事务所；每项打开原办理对象，不自动处理。</span>
+            </header>
+            <div className="observability-cards observability-operations">
+              <article>
+                <span>资料待验收</span>
+                <strong>{data.operations.materials_pending}</strong>
+                <a className="text-button" href="/workspace/monthly?focus=materials">
+                  打开月度工作台
+                </a>
+              </article>
+              <article>
+                <span>待复核凭证</span>
+                <strong>{data.operations.drafts_pending}</strong>
+                <a className="text-button" href="/workspace/monthly?focus=review">
+                  打开待复核
+                </a>
+              </article>
+              <article>
+                <span>规费/成本拒绝行</span>
+                <strong>{data.operations.source_rejections}</strong>
+                <a className="text-button" href="/workspace/accounting">
+                  打开税工作台
+                </a>
+              </article>
+              <article>
+                <span>通知 unknown</span>
+                <strong>{data.operations.notification_unknown}</strong>
+                <a className="text-button" href="/workspace/operations">
+                  打开人工接手
+                </a>
+              </article>
+              <article>
+                <span>最长队列等待</span>
+                <strong>
+                  {data.operations.oldest_queue_age_seconds >= 3600
+                    ? `${(data.operations.oldest_queue_age_seconds / 3600).toFixed(1)} 小时`
+                    : `${data.operations.oldest_queue_age_seconds} 秒`}
+                </strong>
+                <a className="text-button" href="/workspace/queue">
+                  打开任务队列
+                </a>
+              </article>
+            </div>
+          </section>
           {data.signals.length > 0 && (
             <section className="observability-panel" aria-label="运行异常下一步">
               <header>
@@ -221,7 +275,9 @@ function ObservabilityWorkspace({ session }: { session: Session }) {
                         ? '处理任务'
                         : s.target === 'operations'
                           ? '费用与运行记录'
-                          : '执行记录'}
+                          : s.target === 'workbench'
+                            ? '月度工作台'
+                            : '执行记录'}
                     </a>
                   </article>
                 ))}

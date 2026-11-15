@@ -117,3 +117,15 @@ export function firmTaskTarget(row: FirmItem): WorkspaceTask {
     overdue: row.bucket === 'overdue',
   };
 }
+
+export type FirmSelection = { key: string; kind: string; ref: string; title: string };
+
+export function updateFirmSelection(
+  current: FirmSelection[],
+  item: FirmSelection,
+  checked: boolean,
+): FirmSelection[] {
+  if (!checked) return current.filter((row) => row.key !== item.key);
+  if (current.some((row) => row.key === item.key)) return current;
+  return [...current, item];
+}

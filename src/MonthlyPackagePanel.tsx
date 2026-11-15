@@ -1,4 +1,5 @@
 import { ContactAccessPanel } from './AccessPolicyPanel';
+import { ExternalEvidencePanel } from './ExternalEvidencePanel';
 import './access-policy.css';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Download, FileArchive, RefreshCw } from 'lucide-react';
@@ -496,6 +497,16 @@ function MonthlyPackageContent({
                 ))}
               </ul>
             </div>
+          )}
+          {!clientOnly && value.permissions.generate && (
+            <ExternalEvidencePanel
+              session={session}
+              bookId={bookId}
+              reports={value.reports}
+              onChanged={async () => {
+                await load();
+              }}
+            />
           )}
           {!clientOnly && value.permissions.generate && (
             <form

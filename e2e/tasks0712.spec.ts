@@ -88,7 +88,16 @@ for (const width of [1365, 390]) {
     await expect(page.getByRole('heading', { name: '运行可观测性' })).toBeVisible();
     await expect(page.getByText('AI 已知费用小计', { exact: true })).toBeVisible();
     // The real API is used first; then inject one malformed tenant response.
-    await expect(page.locator('.observability-cards')).toBeVisible();
+    await expect(page.locator('.observability-cards:not(.observability-operations)')).toBeVisible();
+    await expect(page.locator('section[aria-label="办理积压与队列年龄"]')).toContainText('待复核凭证');
+    await expect(page.getByRole('link', { name: '打开待复核' })).toHaveAttribute(
+      'href',
+      '/workspace/monthly?focus=review',
+    );
+    await expect(page.getByRole('link', { name: '打开税工作台' })).toHaveAttribute(
+      'href',
+      '/workspace/accounting',
+    );
     await shot(page, `monitor-${width}`);
     const month = await page.getByLabel('运行记录月份').inputValue();
     const value = await (

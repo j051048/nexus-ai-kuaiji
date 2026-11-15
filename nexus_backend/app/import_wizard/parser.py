@@ -116,7 +116,7 @@ def _xml(archive, name):
     return ET.fromstring(data)
 
 
-def parse_xlsx(data):
+def parse_xlsx(data, sheet_name=None):
     try:
         with zipfile.ZipFile(io.BytesIO(data)) as archive:
             entries = archive.infolist()
@@ -158,9 +158,17 @@ def parse_xlsx(data):
             if props is not None and props.get("date1904") in {"1", "true"}:
                 raise AccountingError("此Excel使用1904日期制，请将日期列转成文本后上传", 422)
             sheets = workbook.findall("s:sheets/s:sheet", NS)
-            if len(sheets) != 1:
-                raise AccountingError("请将目标流水工作表单独另存为一个Excel文件", 422)
-            sheet_id = sheets[0].get(
+            sheet_names = [item.get("name", "") for item in sheets]
+            if sheet_name is None:
+                if len(sheets) != 1:
+                    raise AccountingError("请将目标流水工作表单独另存为一个Excel文件", 422)
+                chosen = sheets[0]
+            else:
+                matches = [item for item in sheets if item.get("name") == sheet_name]
+                if len(matches) != 1:
+                    raise AccountingError("Excel中找不到指定工作表，请核对页签名", 422)
+                chosen = matches[0]
+            sheet_id = chosen.get(
                 "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id"
             )
             rels = _xml(archive, "xl/_rels/workbook.xml.rels")
@@ -223,7 +231,8 @@ def parse_xlsx(data):
             return _table(
                 rows,
                 "Excel原始单元格值",
-                sheet_name=sheets[0].get("name", "Sheet1"),
+                sheet_name=chosen.get("name", "Sheet1"),
+                available_sheets=sheet_names,
                 row_positions=positions[1:],
             )
     except AccountingError:
@@ -240,13 +249,13 @@ def parse_xlsx(data):
         raise AccountingError("Excel文件无法安全解析，请检查或另存为CSV", 422) from None
 
 
-def parse_file(filename, data):
+def parse_file(filename, data, sheet_name=None):
     if not data or len(data) > MAX_BYTES:
         raise AccountingError("文件不能为空，单个文件最多10MB", 413)
     if filename.lower().endswith(".csv"):
         return parse_csv(data)
     if filename.lower().endswith(".xlsx") and data[:2] == b"PK":
-        return parse_xlsx(data)
+        return parse_xlsx(data, sheet_name=sheet_name)
     raise AccountingError("仅支持CSV与.xlsx；旧版.xls请另存为.xlsx或CSV", 422)
 
 

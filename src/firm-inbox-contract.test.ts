@@ -1,5 +1,5 @@
-import { expect, it } from 'vitest';
-import { firmTaskTarget, parseFirmInbox } from './firm-inbox-contract';
+import { describe, expect, it } from 'vitest';
+import { firmTaskTarget, parseFirmInbox, updateFirmSelection } from './firm-inbox-contract';
 
 const fixture = () => ({
   scope: { firm_id: 'a', user_id: 'reviewer', bucket: 'all' },
@@ -61,4 +61,17 @@ it('拒绝缺少权限、重复事项与错页', () => {
     parse({ ...v, items: [...v.items, ...v.items], pagination: { ...v.pagination, total: 2 } }),
   ).toBeNull();
   expect(parse({ ...v, pagination: { ...v.pagination, offset: 20 } })).toBeNull();
+});
+
+
+describe('跨页待办选择', () => {
+  it('跨页保留稳定 kind/ref，重复勾选不产生重复项', () => {
+    const first = { key: 'review:draft-1', kind: 'review', ref: 'draft-1', title: '第一页' };
+    const last = { key: 'review:draft-21', kind: 'review', ref: 'draft-21', title: '第二页' };
+    const once = updateFirmSelection([], first, true);
+    const twice = updateFirmSelection(once, first, true);
+    expect(twice).toEqual([first]);
+    expect(updateFirmSelection(twice, last, true)).toEqual([first, last]);
+    expect(updateFirmSelection([first, last], first, false)).toEqual([last]);
+  });
 });

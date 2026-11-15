@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, errorMessage } from './api';
+import { closingRequestBody } from './closing-command';
 import type { Session } from './types';
 import { useScopedQuery } from './useScopedQuery';
 import {
@@ -214,6 +215,7 @@ function Periodic({ session, bookId, companyId, period, onChanged, onVoucher }: 
   const [reasons, setReasons] = useState<Record<string, string>>({}),
     [date, setDate] = useState(monthEnd(period));
   const [confirmation, setConfirmation] = useState<string | null>(null);
+  const [profitAccount, setProfitAccount] = useState('');
   const active = useRef(true),
     inFlight = useRef(false);
   useEffect(() => {
@@ -222,6 +224,15 @@ function Periodic({ session, bookId, companyId, period, onChanged, onVoucher }: 
       active.current = false;
     };
   }, []);
+  useEffect(() => {
+    if (!profitAccount && query.data?.accounts.length) {
+      const preferred =
+        query.data.accounts.find((item) => item.code.startsWith('3103')) ??
+        query.data.accounts.find((item) => item.code.startsWith('310')) ??
+        query.data.accounts[0];
+      setProfitAccount(preferred.id);
+    }
+  }, [profitAccount, query.data?.accounts]);
   async function command(path: string, body?: unknown) {
     if (inFlight.current || uncertain) return;
     inFlight.current = true;
@@ -309,6 +320,44 @@ function Periodic({ session, bookId, companyId, period, onChanged, onVoucher }: 
               disabled={busy || uncertain}
               onSave={(body) => command('/periodic/assets', body)}
             />
+          )}
+          {data.can_generate && data.accounts.length > 0 && (
+            <section className="review-section" aria-label="期末结转">
+              <h3>期末结转</h3>
+              <p>
+                按本期已记账损益余额生成结转草稿；收入与费用双向余额都纳入，辅助项目随分录保留。
+                生成后仍需另一位会计独立复核，再正式记账。
+              </p>
+              <label>
+                本年利润科目
+                <select
+                  value={profitAccount}
+                  disabled={busy || uncertain}
+                  onChange={(event) => setProfitAccount(event.target.value)}
+                >
+                  {data.accounts.map((account) => (
+                    <option key={account.id} value={account.id}>
+                      {account.code} {account.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button
+                type="button"
+                className="button"
+                disabled={busy || uncertain || !profitAccount}
+                onClick={() => {
+                  const account = data.accounts.find((item) => item.id === profitAccount);
+                  if (!account) return;
+                  void command(
+                    '/periodic/closing/generate',
+                    closingRequestBody(bookId, period, account),
+                  );
+                }}
+              >
+                生成期末结转草稿
+              </button>
+            </section>
           )}
           <h3>资产卡片</h3>
           {!data.assets.length && (

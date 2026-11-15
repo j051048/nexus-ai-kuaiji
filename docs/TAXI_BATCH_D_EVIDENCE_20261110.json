@@ -1,0 +1,120 @@
+{
+  "schema": "taxi-batch-d-evidence-v1",
+  "generated_at": "2026-11-11T11:45:00+08:00",
+  "status": "partial_local",
+  "candidate": {
+    "schema": "release-candidate-v1",
+    "head": "781fd93499dcba7bb76056f0febe19e372202af2",
+    "source_files": 2163,
+    "source_sha256": "648ae00f760c7c02312938cb1a007ded1164162c44e704548c1ec240d629e350",
+    "migration_files": 379,
+    "migration_sha256": "7ec84cbd1bce0c40d18c95bf5d15eeaa7175c873ecfd7df358658a83c87cdcd5"
+  },
+  "workspace": {
+    "uncommitted_entries": 106,
+    "committed": false,
+    "pushed": false,
+    "deployed": false
+  },
+  "tax08": {
+    "profile": "hengzhang.tplus.synthetic54.v1",
+    "native_tplus_format": false,
+    "external_posting": false,
+    "unit": {
+      "path": "tmp_test/tax-d/d1-d2-combined.xml",
+      "passed": 19,
+      "seconds": 23.89
+    },
+    "pg16": {
+      "passed": 1,
+      "seconds": 1.78
+    },
+    "pg17": {
+      "passed": 1,
+      "seconds": 1.75
+    },
+    "browser": {
+      "path": "e2e/stage10-integrations.spec.ts",
+      "passed": 1,
+      "seconds": 15.6
+    },
+    "screenshots": [
+      "artifacts/stage10-financial-bridge.png",
+      "artifacts/stage10-financial-bridge-390.png"
+    ],
+    "build": {
+      "typecheck": "passed",
+      "index_js_kb": 565.54,
+      "index_js_gzip_kb": 175.18,
+      "index_css_kb": 99.72,
+      "index_css_gzip_kb": 20.27
+    }
+  },
+  "tax07": {
+    "local": {
+      "passed": 8,
+      "seconds": 16.71
+    },
+    "pg16": {
+      "passed": 4,
+      "seconds": 9.67
+    },
+    "pg17": {
+      "passed": 4,
+      "seconds": 9.39
+    },
+    "advance_direction": {
+      "passed": 4,
+      "seconds": 11.92
+    },
+    "gaps": [
+      "预收",
+      "退款",
+      "付款人非驾驶员的独立核定代收分配"
+    ]
+  },
+  "tax09": {
+    "browser": {
+      "path": "e2e/ux07-09-journey.spec.ts",
+      "passed": 12,
+      "seconds": 38.9
+    },
+    "gaps": [
+      "差异到原件、复核、冻结导出、回执的单条专项链"
+    ]
+  },
+  "recovery": {
+    "report": "tmp_test/tax-c/p01-d/reports/summary.json",
+    "status": "passed",
+    "regression": {
+      "passed": 188,
+      "seconds": 148.23
+    },
+    "joint": {
+      "passed": 2,
+      "seconds": 86.793
+    },
+    "identity": {
+      "passed": 4,
+      "seconds": 56.902
+    },
+    "pg16": {
+      "migrations": 219,
+      "schema_max": 231,
+      "checks": "all_true"
+    },
+    "pg17": {
+      "migrations": 219,
+      "schema_max": 231,
+      "checks": "all_true"
+    },
+    "d_tables_source_and_target": true,
+    "d_row_level_restore_verified": false
+  },
+  "external": {
+    "real_tplus_template": "not_verified",
+    "real_tplus_import": "not_authorized",
+    "remote_ci": "not_run",
+    "production_release": "not_authorized"
+  }
+}

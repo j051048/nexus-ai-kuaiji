@@ -580,3 +580,13 @@
   font-size: var(--font-size-xs);
   line-height: 1.6;
 }
+
+@media (max-width: 720px) {
+  .inline-review-evidence-column {
+    scroll-padding-bottom: 112px;
+  }
+  .inline-review-evidence-column .journal-grid-locate input,
+  .inline-review-evidence-column .journal-grid-pager {
+    scroll-margin-bottom: 112px;
+  }
+}

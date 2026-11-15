@@ -1,0 +1,108 @@
+{
+  "batch": "J",
+  "date": "2026-11-12",
+  "head": "781fd93499dcba7bb76056f0febe19e372202af2",
+  "status": "partial",
+  "candidate": {
+    "head": "781fd93499dcba7bb76056f0febe19e372202af2",
+    "source_files": 2167,
+    "source_sha256": "4acace7973d17a9b06699b6c08c231b2cc2c4456464e6cce38ddc5bef35a43a5",
+    "migration_files": 381,
+    "migration_sha256": "096ef4f19f13d3ef95bbb23114061a6d1cbd411b443b22464a51419e41e9cfd8"
+  },
+  "commands": [
+    {
+      "cmd": "npx playwright test --config playwright.tax05.config.ts",
+      "status": "passed",
+      "exit_code": 0,
+      "summary": "2 passed / 18.9s；断言本页 2,500.00、全量 25,800.00、末页 800.00"
+    },
+    {
+      "cmd": "npx playwright test e2e/tax-i-shell.spec.ts --workers=1",
+      "status": "passed",
+      "exit_code": 0,
+      "summary": "5 passed / 27.8s"
+    },
+    {
+      "cmd": "npx playwright test e2e/qa-accessibility.spec.ts",
+      "status": "passed",
+      "exit_code": 0,
+      "summary": "Chromium 3 passed / 13.7s"
+    },
+    {
+      "cmd": "npx playwright test e2e/employee-flow.spec.ts e2e/b06-role-home.spec.ts --workers=1",
+      "status": "passed",
+      "exit_code": 0,
+      "summary": "10 passed (employee 9 + B06 1)"
+    },
+    {
+      "cmd": "npm test -- --run src/firm-inbox-contract.test.ts",
+      "status": "passed",
+      "exit_code": 0,
+      "summary": "11 passed; cross-page selection keeps stable kind/ref"
+    },
+    {
+      "cmd": "npx playwright test e2e/tax-j-selection.spec.ts --workers=1",
+      "status": "passed",
+      "exit_code": 0,
+      "summary": "2 passed / 11.7s at 1280 and 390; submits both pages"
+    },
+    {
+      "cmd": "npx playwright test --config playwright.tax05.config.ts --workers=1",
+      "status": "passed",
+      "exit_code": 0,
+      "summary": "2 passed / 19.3s; 516 rows + compact density persisted at 1280/390"
+    }
+  ],
+  "artifacts": [
+    "tmp_test/tax05-large-voucher-1280.png",
+    "tmp_test/tax05-large-voucher-390.png",
+    "tmp_test/tax05-pager-1280.png",
+    "tmp_test/tax05-pager-390.png",
+    "docs/TAXI_BATCH_J_TABLE_MEASUREMENT_20261110.md"
+  ],
+  "not_verified": [
+    "J 的 PG16/17 专项浏览器链",
+    "列宽拖拽/密度偏好保存",
+    "跨页冻结选择",
+    "PDF/图片大原件",
+    "真实 200% 缩放/软键盘",
+    "Firefox/WebKit 516 行复核专项",
+    "J11 server-side frozen selection set (client retains across pages only)"
+  ],
+  "external": {
+    "real_customer": "not_authorized",
+    "real_tplus": "not_authorized",
+    "real_device": "not_verified",
+    "remote_ci": "not_run"
+  },
+  "cross_browser_516": {
+    "chromium": "2 passed/18.9s",
+    "firefox": "2 passed/17.6s",
+    "webkit": "2 passed/19.1s",
+    "equivalent_zoom_width": 683
+  },
+  "large_pdf": {
+    "size": 6000000,
+    "result": "1 passed/2.1s",
+    "iframe": "blob",
+    "download_bytes_verified": true,
+    "headless_render": false
+  },
+  "short_viewport": {
+    "size": "390x500",
+    "result": "1 passed/3.8s",
+    "overlap_before_px": 11
+  },
+  "j05_stale": {
+    "result": "1 passed/3.3s"
+  },
+  "j04": "not verified; book membership removal does not revoke firm-level reviewer permission",
+  "j04_backend": "5 passed/9.74s; foreign firm read/update 403/404",
+  "j04_ui_denied": "1 passed/3.3s; zero journal rows on 403",
+  "j04_revoke": {
+    "tests": "test_large_voucher.py 6 passed/8.10s; browser 403 1 passed/3.3s",
+    "method": "DELETE book_access + staff_access_assignments revoked",
+    "limit": "firm-level reviewer browser flow not verified"
+  }
+}

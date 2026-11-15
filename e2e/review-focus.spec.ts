@@ -10,6 +10,16 @@ import type { BusinessContext, BusinessEvent } from '../src/business-types';
 
 test.setTimeout(90_000);
 const image = readFileSync(new URL('./fixtures/v03-receipt.png', import.meta.url));
+function largePdf(bytes = 6_000_000) {
+  const head = [
+    '%PDF-1.4',
+    '1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj',
+    '2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj',
+    '3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 595 842]>>endobj',
+    '',
+  ].join('\n');
+  return Buffer.concat([Buffer.from(head), Buffer.alloc(bytes, 0x25), Buffer.from('\n%%EOF\n')]);
+}
 async function data(response: APIResponse, status = 200) {
   expect(response.status(), await response.text()).toBe(status);
   return response.json();
@@ -26,7 +36,11 @@ async function bindPersona(page: Page, persona: string) {
   });
 }
 // Same real local business APIs and synthetic original as the existing V03 path.
-async function fixture(request: APIRequestContext, handoff = false) {
+async function fixture(
+  request: APIRequestContext,
+  handoff = false,
+  attachment = { name: `合成票据-${crypto.randomUUID().slice(0, 8)}.png`, mimeType: 'image/png', buffer: image },
+) {
   const employee = await identity(request, 'employee');
   const department = await identity(request, 'department');
   const finance = await identity(request, 'finance');
@@ -88,7 +102,7 @@ async function fixture(request: APIRequestContext, handoff = false) {
       `/api/business/events/${event.id}/attachments?expected_version=${event.version}`,
       {
         headers: employee,
-        multipart: { file: { name: `合成票据-${tag}.png`, mimeType: 'image/png', buffer: image } },
+        multipart: { file: { name: attachment.name.replace('{tag}', tag), mimeType: attachment.mimeType, buffer: attachment.buffer } },
       },
     ),
   );
@@ -337,4 +351,27 @@ test('折叠识别明细不隐藏核对阻断，核验冲突只读取最新事�
   );
   expect(current.status).toBe('department_approved');
   expect(current.mapping).toBeNull();
+});
+
+
+test('6MB PDF 原件可在同屏复核中预览和下载，不撑破表格布局', async ({ page, request }) => {
+  const f = await fixture(request, true, {
+    name: '合成大原件-{tag}.pdf',
+    mimeType: 'application/pdf',
+    buffer: largePdf(),
+  });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const drawer = await openReview(page, f.book.id);
+  const frame = drawer.locator('iframe[title^="原始 PDF"]');
+  await expect(frame).toBeVisible({ timeout: 20_000 });
+  expect(await frame.getAttribute('src')).toMatch(/^blob:/);
+  const download = page.waitForEvent('download');
+  await drawer.getByRole('link', { name: '下载原件', exact: true }).click();
+  const file = await download;
+  expect(file.suggestedFilename()).toMatch(/合成大原件-.*\.pdf$/);
+  expect(readFileSync((await file.path())!).length).toBeGreaterThan(6_000_000);
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth),
+  ).toBeLessThanOrEqual(0);
+  await page.screenshot({ path: 'tmp_test/tax-j-large-pdf-1440.png', fullPage: false });
 });

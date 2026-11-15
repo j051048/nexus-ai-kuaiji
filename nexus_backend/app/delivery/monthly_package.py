@@ -23,6 +23,7 @@ from ..service_plans.attachments import MaterialAttachmentService
 from ..subledger.service import SubledgerService
 from ..tax import filings
 from .service import DeliveryService, encode
+from .external_evidence import MonthlyExternalEvidenceService
 
 MAX_ROWS = 10000
 MAX_SNAPSHOT_BYTES = 8_000_000
@@ -334,13 +335,41 @@ class MonthlyPackageService:
             reports.append(
                 {**pick(row, "id version status published_at content_hash"), "current": current}
             )
-        if not any(row["current"] for row in reports):
+        current_report = next((row for row in reports if row["current"]), None)
+        if current_report is None:
             block(
                 "published_report_missing",
                 "缺少当前有效且经过独立复核的已发布报表",
                 "复核人",
                 "财务报表 · 发布",
             )
+        external_mode = bool(
+            conn.execute(
+                "SELECT 1 FROM bridge_configurations WHERE book_id=? LIMIT 1", (book["id"],)
+            ).fetchone()
+        )
+        external_evidence = None
+        if external_mode and current_report is not None:
+            external_evidence = MonthlyExternalEvidenceService.verified_for(
+                conn, book["id"], current_report["id"], current_report["version"]
+            )
+            if external_evidence is None:
+                block(
+                    "external_evidence_missing",
+                    "该账套已接入 T+ 法定账；请先登记并由另一名复核人核验同版本外部报表/导入结果",
+                    "复核人",
+                    "月度交付 · 外部证据",
+                )
+            else:
+                external_evidence = {
+                    "id": external_evidence["id"],
+                    "source_kind": external_evidence["source_kind"],
+                    "source_name": external_evidence["source_name"],
+                    "source_version": external_evidence["source_version"],
+                    "sha256": external_evidence["sha256"],
+                    "verified_by": external_evidence["verified_by"],
+                    "verified_at": external_evidence["verified_at"],
+                }
         materials = self._materials(conn, actor, book) if book["permissions"]["review"] else []
         if not book["permissions"]["review"]:
             block(
@@ -385,6 +414,8 @@ class MonthlyPackageService:
             "blockers": blockers,
             "warnings": warnings,
             "reports": reports,
+            "external_mode": external_mode,
+            "external_evidence": external_evidence,
             "contact": contact,
             "plan": plan,
             "materials": materials,
@@ -440,7 +471,10 @@ class MonthlyPackageService:
             "can_acknowledge": can_ack and not acknowledgement,
             "customer_opening_status": "opened" if opening else "not_opened",
             "customer_receipt_status": "acknowledged" if acknowledgement else "not_recorded",
-            "external_import_status": "separate_workflow",
+            "external_import_status": self._snapshot(row)["manifest"].get(
+                "external_import_status", "separate_workflow"
+            ),
+            "external_evidence": self._snapshot(row)["manifest"].get("external_evidence"),
             "opening": {
                 "opened_at": opening["opened_at"],
                 "opened_by": opening["opened_by"],
@@ -653,7 +687,12 @@ class MonthlyPackageService:
                 "contact_user_id": evidence["contact"]["user_id"],
                 "service_plan_version": evidence["plan"]["version"],
                 "originals_included": False,
-                "external_import_status": "separate_workflow",
+                "external_import_status": (
+                    "verified_external_evidence"
+                    if evidence.get("external_evidence")
+                    else "separate_workflow"
+                ),
+                "external_evidence": evidence.get("external_evidence"),
                 "files": [
                     {
                         "path": path,

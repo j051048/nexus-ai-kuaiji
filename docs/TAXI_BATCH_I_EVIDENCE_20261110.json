@@ -1,0 +1,101 @@
+{
+  "schema": "tax-batch-evidence-v1",
+  "batch": "I",
+  "date": "2026-11-10",
+  "status": "local_passed",
+  "candidate": {
+    "schema": "release-candidate-v1",
+    "head": "781fd93499dcba7bb76056f0febe19e372202af2",
+    "source_files": 2163,
+    "source_sha256": "648ae00f760c7c02312938cb1a007ded1164162c44e704548c1ec240d629e350",
+    "migration_files": 379,
+    "migration_sha256": "7ec84cbd1bce0c40d18c95bf5d15eeaa7175c873ecfd7df358658a83c87cdcd5"
+  },
+  "commands": [
+    {
+      "command": "npx playwright test e2e/tax-i-shell.spec.ts --workers=1",
+      "status": "passed",
+      "passed": 5,
+      "failed": 0,
+      "seconds": 27.8
+    },
+    {
+      "command": "npx playwright test e2e/tax-i-shell.spec.ts --browser=firefox --grep accountant",
+      "status": "passed",
+      "passed": 1,
+      "failed": 0,
+      "seconds": 15.5
+    },
+    {
+      "command": "npx playwright test e2e/tax-i-shell.spec.ts --browser=webkit --grep accountant",
+      "status": "passed",
+      "passed": 1,
+      "failed": 0,
+      "seconds": 15.0
+    },
+    {
+      "command": "npx playwright test e2e/qa-accessibility.spec.ts",
+      "status": "passed",
+      "passed": 3,
+      "failed": 0,
+      "seconds": 13.7
+    },
+    {
+      "command": "npm test -- src/tasks0712.test.ts src/monthly-stage-guide.test.ts",
+      "status": "passed",
+      "passed": 13,
+      "failed": 0
+    },
+    {
+      "command": "npm run typecheck",
+      "status": "passed",
+      "exit_code": 0
+    },
+    {
+      "command": "npm run lint",
+      "status": "passed",
+      "exit_code": 0,
+      "errors": 0,
+      "warnings": 4
+    },
+    {
+      "command": "TEMP/TMP=tmp_test/esbuild-tmp npm run build",
+      "status": "passed",
+      "exit_code": 0
+    },
+    {
+      "command": "npm run test:frontend-budget",
+      "status": "passed",
+      "passed": 6,
+      "failed": 0
+    }
+  ],
+  "screenshots": [
+    "tmp_test/tax-i/accountant-1366.png",
+    "tmp_test/tax-i/accountant-390.png",
+    "tmp_test/tax-i/accountant-683.png",
+    "tmp_test/tax-i/employee-1366.png",
+    "tmp_test/tax-i/department-1366.png",
+    "tmp_test/tax-i/finance-1366.png",
+    "tmp_test/tax-i/reviewer-1366.png"
+  ],
+  "budget": {
+    "initial": {
+      "jsBytes": 565541,
+      "jsGzipBytes": 175199,
+      "cssBytes": 99722
+    },
+    "home": {
+      "jsBytes": 593043,
+      "jsGzipBytes": 185753,
+      "cssBytes": 144373
+    },
+    "artifactSha256": "a72d6a4a58c4b7257dbb540e9854c41b96a1a6c52833091e574e891410f07deb"
+  },
+  "external_unverified": [
+    "real device iOS/WeChat",
+    "manual screen reader",
+    "real client identity switching",
+    "browser 200% zoom automation"
+  ]
+}

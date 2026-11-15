@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Download, FileUp, Link2, LoaderCircle } from 'lucide-react';
-import { api, errorMessage } from './api';
+import { ArrowLeft, Download, FileCheck2, FileUp, Link2, LoaderCircle, Upload } from 'lucide-react';
+import { api, apiBlob, errorMessage } from './api';
 import type { Session } from './types';
 import { uploadSizeError } from './transport-limits';
 import './integration.css';
@@ -33,6 +33,30 @@ type Overview = {
   outbox: { id: string; export_id: string; state: string; external_code: string }[];
 };
 type Intent = { id: string; package: unknown };
+type Artifact = {
+  id: string;
+  outbox_id: string;
+  profile: string;
+  filename: string;
+  row_count: number;
+  voucher_count: number;
+  content_sha256: string;
+  created_at: string;
+  synthetic: boolean;
+  native_tplus_format: boolean;
+};
+type Receipt = {
+  id: string;
+  artifact_id: string;
+  receipt_code: string;
+  result_status: 'accepted' | 'rejected' | 'duplicate' | 'unknown' | 'partial';
+  accepted_count: number;
+  rejected_count: number;
+  duplicate_count: number;
+  unknown_count: number;
+  external_posting: boolean;
+  created_at: string;
+};
 
 const VENDOR_TEMPLATES = [
   { id: 'neutral', label: '中性模板（可直接导入）', filename: 'tplus-reference-template.json' },
@@ -54,6 +78,15 @@ function download(value: unknown, filename: string) {
   const url = URL.createObjectURL(
     new Blob([JSON.stringify(value, null, 2)], { type: 'application/json;charset=utf-8' }),
   );
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
   a.download = filename;
@@ -90,6 +123,10 @@ export function IntegrationWorkbench({
     [busy, setBusy] = useState(false),
     [error, setError] = useState(''),
     [message, setMessage] = useState(''),
+    [artifact, setArtifact] = useState<Artifact | null>(null),
+    [receipts, setReceipts] = useState<Receipt[]>([]),
+    [receiptFile, setReceiptFile] = useState<File | null>(null),
+    [receiptCode, setReceiptCode] = useState(''),
     [offset, setOffset] = useState(0);
   const live = useRef(true),
     lock = useRef(false),
@@ -239,6 +276,67 @@ export function IntegrationWorkbench({
         await load();
         setMessage('冻结交付包已生成。请按客户软件版本转换并导入，再到回执核验页核对。');
       }
+    });
+  }
+  async function loadArtifact(outboxId: string) {
+    await run(async () => {
+      const value = await api<{ artifacts: Artifact[] }>(`${base}/outbox/${outboxId}/artifacts`, session);
+      if (!live.current) return;
+      setArtifact(value.artifacts[0] ?? null);
+      setReceipts([]);
+      setMessage(
+        value.artifacts.length
+          ? '已读取冻结适配文件，可下载 CSV 或登记客户回执。'
+          : '该交付意图尚未生成 54 列适配文件。',
+      );
+      if (value.artifacts[0]) {
+        const rows = await api<{ receipts: Receipt[] }>(
+          `${base}/artifacts/${value.artifacts[0].id}/receipts`,
+          session,
+        );
+        if (live.current) setReceipts(rows.receipts);
+      }
+    });
+  }
+  async function makeArtifact(outboxId: string) {
+    await run(async () => {
+      const value = await api<Artifact>(`${base}/outbox/${outboxId}/artifacts`, session, {
+        method: 'POST',
+      });
+      if (!live.current) return;
+      setArtifact(value);
+      setReceipts([]);
+      setMessage(`54 列合成适配文件已冻结：${value.row_count} 行，${value.voucher_count} 张凭证。`);
+      await load();
+    });
+  }
+  async function downloadArtifact() {
+    if (!artifact) return;
+    await run(async () => {
+      const blob = await apiBlob(`${base}/artifacts/${artifact.id}/download`, session);
+      if (live.current) downloadBlob(blob, artifact.filename);
+    });
+  }
+  async function submitReceipt() {
+    if (!artifact || !receiptFile) return;
+    await run(async () => {
+      if (uploadSizeError(receiptFile.size, 2_000_000))
+        throw new Error(uploadSizeError(receiptFile.size, 2_000_000) ?? '回执文件过大');
+      const content = await receiptFile.text();
+      const value = await api<Receipt>(`${base}/artifacts/${artifact.id}/receipts`, session, {
+        method: 'POST',
+        body: {
+          receipt_code: receiptCode.trim(),
+          content,
+          reason,
+        },
+      });
+      if (!live.current) return;
+      setReceipts((rows) => [value, ...rows.filter((row) => row.id !== value.id)]);
+      setReceiptFile(null);
+      setMessage(
+        `回执已登记：接受 ${value.accepted_count}、拒绝 ${value.rejected_count}、重复 ${value.duplicate_count}、未知 ${value.unknown_count}。外部过账仍未确认。`,
+      );
     });
   }
   const Wrapper = embedded ? 'div' : 'main';
@@ -565,6 +663,20 @@ export function IntegrationWorkbench({
                 <span>{row.external_code.slice(0, 12)} · 等待版本适配</span>
                 <button
                   className="button secondary small"
+                  disabled={busy || !data.can_review}
+                  onClick={() => void makeArtifact(row.id)}
+                >
+                  生成 54 列
+                </button>
+                <button
+                  className="button secondary small"
+                  disabled={busy || !data.can_review}
+                  onClick={() => void loadArtifact(row.id)}
+                >
+                  查看适配文件
+                </button>
+                <button
+                  className="button secondary small"
                   disabled={busy}
                   onClick={() =>
                     void run(async () => {
@@ -577,6 +689,84 @@ export function IntegrationWorkbench({
                 </button>
               </div>
             ))}
+          </section>
+          <section className="integration-section">
+            <div className="integration-section-title">
+              <span>04</span>
+              <h2>54 列合成适配与客户回执</h2>
+            </div>
+            <p>
+              仅从已复核冻结的交付包生成；54 列为合成协议，不是客户 T+
+              原生模板。下载文件交给客户软件导入后，再逐行登记回执；“回执一致”不代表
+              T+ 已独立过账，外发仍关闭。
+            </p>
+            {!artifact ? (
+              <p>从上方交付意图选择“生成 54 列”或“查看适配文件”。</p>
+            ) : (
+              <div className="integration-artifact">
+                <div className="integration-history">
+                  <span>
+                    {artifact.filename} · {artifact.row_count} 行 · {artifact.voucher_count} 张凭证
+                  </span>
+                  <span className="integration-offline">合成 · 非原生 T+</span>
+                  <button
+                    className="button secondary small"
+                    disabled={busy}
+                    onClick={() => void downloadArtifact()}
+                  >
+                    <Download size={14} /> 下载 CSV
+                  </button>
+                </div>
+                <p className="field-help">
+                  内容指纹 {artifact.content_sha256.slice(0, 16)}… · 仅登记客户文件结果
+                </p>
+                <div className="integration-fields">
+                  <label>
+                    客户回执编号
+                    <input
+                      value={receiptCode}
+                      maxLength={120}
+                      disabled={busy}
+                      placeholder="例如 TPLUS-R-001"
+                      onChange={(e) => setReceiptCode(e.target.value)}
+                    />
+                  </label>
+                  <label>
+                    逐行回执 CSV
+                    <input
+                      type="file"
+                      accept=".csv,text/csv"
+                      disabled={busy}
+                      onChange={(e) => setReceiptFile(e.target.files?.[0] ?? null)}
+                    />
+                    <small>固定四列：行号,外部凭证编号,结果,原因。</small>
+                  </label>
+                </div>
+                <button
+                  className="button primary"
+                  disabled={busy || !receiptCode.trim() || !receiptFile || !reason.trim()}
+                  onClick={() => void submitReceipt()}
+                >
+                  <Upload size={15} /> 登记回执
+                </button>
+                {receipts.length > 0 && (
+                  <div className="integration-receipts">
+                    <h3>回执记录</h3>
+                    {receipts.map((row) => (
+                      <div className="integration-history" key={row.id}>
+                        <span>
+                          {row.receipt_code} · {row.result_status} · 接受 {row.accepted_count} / 拒绝{' '}
+                          {row.rejected_count} / 重复 {row.duplicate_count} / 未知 {row.unknown_count}
+                        </span>
+                        <span className="integration-offline">
+                          <FileCheck2 size={14} /> 外部过账未确认
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </section>
           {data.pagination.total > 20 && (
             <div className="integration-actions">

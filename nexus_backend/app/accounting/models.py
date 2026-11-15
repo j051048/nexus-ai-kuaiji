@@ -93,7 +93,7 @@ class DraftLine(InputModel):
 class DraftUpdate(InputModel):
     expected_version: int = Field(strict=True, ge=1)
     description: StrictStr = Field(min_length=1, max_length=500)
-    lines: list[DraftLine] = Field(min_length=1, max_length=100)
+    lines: list[DraftLine] = Field(min_length=1, max_length=2400)
     correction_reason: StrictStr = Field(default="", max_length=1000)
 
 

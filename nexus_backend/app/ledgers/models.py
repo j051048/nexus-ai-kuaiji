@@ -77,3 +77,40 @@ class InheritanceActivate(InputModel):
     @classmethod
     def negative(cls, value):
         return RuleEvaluate.unique_samples(value)
+
+
+class TransportSubjectCreate(InputModel):
+    kind: Literal["vehicle", "driver"]
+    external_id: StrictStr = Field(min_length=1, max_length=100)
+    display_name: StrictStr = Field(min_length=1, max_length=200)
+
+
+class TransportSubjectUpdate(InputModel):
+    expected_version: int = Field(strict=True, ge=1)
+    display_name: StrictStr = Field(min_length=1, max_length=200)
+    active: bool = Field(strict=True)
+    reason: StrictStr = Field(min_length=3, max_length=1000)
+
+
+class TransportRelationCreate(InputModel):
+    subject_id: StrictStr = Field(min_length=1, max_length=100)
+    target_id: StrictStr = Field(min_length=1, max_length=100)
+    contract_external_id: StrictStr = Field(min_length=1, max_length=120)
+    operating_right: StrictStr = Field(min_length=1, max_length=200)
+    valid_from: StrictStr = Field(min_length=10, max_length=10)
+    valid_to: StrictStr | None = Field(default=None, min_length=10, max_length=10)
+
+
+class TransportAssignmentCreate(InputModel):
+    vehicle_id: StrictStr = Field(min_length=1, max_length=100)
+    driver_id: StrictStr = Field(min_length=1, max_length=100)
+    shift: Literal["day", "night", "full"]
+    contract_external_id: StrictStr = Field(min_length=1, max_length=120)
+    valid_from: StrictStr = Field(min_length=10, max_length=10)
+    valid_to: StrictStr | None = Field(default=None, min_length=10, max_length=10)
+
+
+class TransportAliasCreate(InputModel):
+    subject_id: StrictStr = Field(min_length=1, max_length=100)
+    alias: StrictStr = Field(min_length=1, max_length=200)
+    source: StrictStr = Field(min_length=1, max_length=200)

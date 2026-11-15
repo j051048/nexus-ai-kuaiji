@@ -175,6 +175,17 @@ test('IMP06 tokens reach the lazy intake dialog and mobile inputs stay 16px', as
   expect(values.base).toBe('14px');
   expect(values.dialogFont).toBe('14px');
   expect(values.input).toBe('16px');
+  // Keyboard-visible viewport: the focused amount field must stay above the sticky action bar.
+  await page.setViewportSize({ width: 390, height: 500 });
+  const amount = page.locator('.intake-fields input[inputmode="decimal"]');
+  await amount.focus();
+  const [field, actions] = await Promise.all([
+    amount.boundingBox(),
+    page.locator('.intake-footer').boundingBox(),
+  ]);
+  expect(field).not.toBeNull();
+  expect(actions).not.toBeNull();
+  expect(field!.y + field!.height).toBeLessThanOrEqual(actions!.y + 1);
   await page.keyboard.press('Escape');
 });
 

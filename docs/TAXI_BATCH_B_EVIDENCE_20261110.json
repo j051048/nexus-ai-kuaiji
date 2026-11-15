@@ -1,0 +1,158 @@
+{
+  "schema": "taxi-batch-b-evidence-v1",
+  "executed_at": "2026-11-11T08:06:00+08:00",
+  "candidate": {
+    "schema": "release-candidate-v1",
+    "head": "781fd93499dcba7bb76056f0febe19e372202af2",
+    "source_files": 2163,
+    "source_sha256": "648ae00f760c7c02312938cb1a007ded1164162c44e704548c1ec240d629e350",
+    "migration_files": 379,
+    "migration_sha256": "7ec84cbd1bce0c40d18c95bf5d15eeaa7175c873ecfd7df358658a83c87cdcd5"
+  },
+  "checks": [
+    {
+      "name": "tax03_sqlite",
+      "command": "pytest -q tests/test_tax03_transport.py",
+      "result": "7 passed",
+      "exit_code": 0,
+      "evidence": "tmp_test/tax03.xml"
+    },
+    {
+      "name": "tax03_pg17",
+      "command": "test_accounting_postgres_isolated.py --config pg17 test_tax03_transport_postgres.py",
+      "result": "2 passed",
+      "exit_code": 0,
+      "evidence": "tmp_test/ak05-pg-runs/c014795834124a62a5480077daa33f9f/results.xml"
+    },
+    {
+      "name": "tax03_pg16",
+      "command": "test_accounting_postgres_isolated.py --config pg16 test_tax03_transport_postgres.py",
+      "result": "2 passed",
+      "exit_code": 0,
+      "evidence": "tmp_test/ak05-pg-runs/ddcdb1a80dc44e66a6c7e945df9bcd18/results.xml"
+    },
+    {
+      "name": "tax03_browser",
+      "command": "playwright test e2e/tax03-transport.spec.ts",
+      "result": "1 passed",
+      "exit_code": 0,
+      "evidence": "tmp_test/tax03-transport-1280.png"
+    },
+    {
+      "name": "tax04_sqlite",
+      "command": "pytest -q tests/test_tax04_sources.py --junitxml=../tmp_test/tax04-final.xml",
+      "result": "16 passed/27.26s",
+      "exit_code": 0,
+      "evidence": "tmp_test/tax04-final.xml"
+    },
+    {
+      "name": "tax04_pg17",
+      "command": "test_accounting_postgres_isolated.py --config pg17 test_tax04_sources_postgres.py",
+      "result": "1 passed/1.15s",
+      "exit_code": 0,
+      "evidence": "tmp_test/ak05-pg-runs/7465b6a1c1e4495aad2683f885c6a027/results.xml"
+    },
+    {
+      "name": "tax04_pg16",
+      "command": "test_accounting_postgres_isolated.py --config pg16 test_tax04_sources_postgres.py",
+      "result": "1 passed/1.10s",
+      "exit_code": 0,
+      "evidence": "tmp_test/ak05-pg-runs/db088bb0916b4c2280b1d98d2f3a41cf/results.xml"
+    },
+    {
+      "name": "tax04_browser",
+      "command": "playwright test e2e/tax04-sources.spec.ts",
+      "result": "2 passed/24.4s",
+      "exit_code": 0,
+      "evidence": "tmp_test/tax04-source-1280.png; tmp_test/tax04-source-390.png"
+    },
+    {
+      "name": "opening_regression",
+      "command": "pytest -q tests/test_opening_service.py",
+      "result": "5 passed",
+      "exit_code": 0
+    },
+    {
+      "name": "typecheck",
+      "command": "npm run typecheck",
+      "result": "passed",
+      "exit_code": 0
+    },
+    {
+      "name": "build_and_budget",
+      "command": "npm run build && node scripts/frontend_budget.mjs dist",
+      "result": "passed",
+      "exit_code": 0,
+      "evidence": "tmp_test/tax-batch-b-budget.json"
+    },
+    {
+      "name": "tax_batch_b_combined",
+      "command": "pytest -q tests/test_tax01_pilot.py tests/test_tax02_closing.py tests/test_tax03_transport.py tests/test_tax04_sources.py tests/test_tax04_recovery.py tests/test_opening_service.py --junitxml=../tmp_test/tax-batch-b-combined.xml",
+      "result": "46 passed/85.63s",
+      "exit_code": 0,
+      "evidence": "tmp_test/tax-batch-b-combined.xml"
+    },
+    {
+      "name": "tax04_recovery",
+      "command": "pytest -q tests/test_tax04_recovery.py",
+      "result": "1 passed/4.31s",
+      "exit_code": 0
+    },
+    {
+      "name": "tax04_contributions_split",
+      "command": "pytest -q tests/test_tax04_sources.py",
+      "result": "split lines + multi-source aggregate passed",
+      "exit_code": 0
+    },
+    {
+      "name": "p01_full_recovery",
+      "command": "p01_recovery_gate.py --all",
+      "result": "passed; regression 188/167.761s, joint 2/90.789s, identity 4/61.140s, 0 skipped; PG16/17 9 checks true",
+      "exit_code": 0,
+      "evidence": "tmp_test/tax-b/batch-b-p01-2087-final3/reports/summary.json"
+    }
+  ],
+  "limitations": [
+    "TAX04 contribution validation/persistence、split lines、multi-source aggregate 为服务/API 与来源台账 UI；自动回写正式底稿行、贡献差异 UI 未实现。",
+    "SQLite 全库与 P01 PG16/17 全量恢复均 passed；新增表的对象级专项恢复断言只在 SQLite 完成，P01 未单独 seed B 批新表。",
+    "运输行业期初承接只验证既有 opening/subledger 服务，未新增运输行业期初台账导入器。",
+    "没有客户真实原始文件、真实 T+/OA/出管、通知或模型调用；合成 xlsx 只证明契约与拒绝路径。",
+    "test_stage13_migration_workflow.py 仍有既存 8 个失败，与本批路径无关，未计入通过。",
+    "未提交、未推送、未部署、未执行线上迁移。"
+  ],
+  "recovery": {
+    "sqlite": "test_tax04_recovery.py 1 passed/4.31s",
+    "postgres": {
+      "status": "passed",
+      "regression": 188,
+      "joint": 2,
+      "identity": 4,
+      "skipped": 0,
+      "seconds": {
+        "regression": 167.761,
+        "joint": 90.789,
+        "identity": 61.14
+      },
+      "report": "tmp_test/tax-b/batch-b-p01-2087-final3/reports/summary.json",
+      "checks": [
+        "database",
+        "originals",
+        "identity",
+        "permissions",
+        "hold",
+        "review_export",
+        "tax_delivery",
+        "no_replay",
+        "finance_resume"
+      ]
+    }
+  },
+  "contributions": {
+    "split_lines": true,
+    "multi_source_merge": true,
+    "aggregate": true,
+    "sqlite": "16 passed/27.26s",
+    "pg17": "1 passed/1.15s",
+    "pg16": "1 passed/1.10s"
+  }
+}

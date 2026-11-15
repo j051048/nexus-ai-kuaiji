@@ -1,0 +1,11 @@
+.transport-master { border-top: 3px solid var(--color-accent, #1f6f50); }
+.transport-summary { display: flex; gap: 18px; flex-wrap: wrap; padding: 8px 0 14px; color: #405448; font-size: 13px; }
+.transport-list { display: grid; gap: 8px; margin-bottom: 16px; }
+.transport-list article { padding: 10px 12px; border: 1px solid #d9e4dc; border-radius: 8px; background: #f7faf8; display: grid; gap: 3px; }
+.transport-list small { color: #5b6d61; }
+.transport-forms { display: grid; gap: 18px; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); }
+.transport-forms form { display: grid; gap: 9px; align-content: start; padding: 12px; border: 1px solid #e0e8e3; border-radius: 8px; }
+.transport-forms h3 { margin: 0; font-size: 14px; }
+.transport-forms label { display: grid; gap: 4px; font-size: 12px; color: #405448; }
+.transport-forms input, .transport-forms select { min-height: 38px; }
+@media (max-width: 700px) { .transport-forms { grid-template-columns: 1fr; } .transport-summary { gap: 10px; } }

@@ -68,3 +68,9 @@ class BridgeExport(InputModel):
     configuration_version: int = Field(strict=True, ge=1)
     reason: StrictStr = Field(min_length=1, max_length=1000)
     idempotency_key: StrictStr = Field(min_length=8, max_length=120)
+
+
+class BridgeReceiptImport(InputModel):
+    receipt_code: StrictStr = Field(min_length=1, max_length=100)
+    content: StrictStr = Field(min_length=1, max_length=2_000_000)
+    reason: StrictStr = Field(min_length=3, max_length=1000)

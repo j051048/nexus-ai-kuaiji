@@ -1,5 +1,5 @@
 import { checked, reviewedManual, identity, formalFixture } from './formal-books-fixtures';
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
+import { expect, test, type APIRequestContext, type Page, type TestInfo } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { choosePersona } from './ui-navigation';
 
@@ -557,5 +557,101 @@ for (const viewport of [
     );
     expect(value.ready).toBe(false);
     expect(value.packages).toHaveLength(0);
+  });
+}
+
+async function runExternalEvidenceScenario(
+  page: Page,
+  request: APIRequestContext,
+  testInfo: TestInfo,
+  viewport: { width: number; height: number },
+) {
+  await page.setViewportSize(viewport);
+
+  const f = await monthlyFixture(request);
+  const configured = await request.post(`/api/books/${f.book.id}/integrations/tplus/configuration`, {
+    headers: f.headers,
+    data: {
+      expected_version: 0,
+      external_book_id: `g1-${crypto.randomUUID().slice(0, 8)}`,
+      product_version: '合成 T+ 18.0',
+      deployment: 'on_premise',
+      accounts: [
+        { local_code: '1002', external_code: '100201' },
+        { local_code: '6602.02', external_code: '660202' },
+      ],
+      auxiliaries: [],
+      reason: 'G1 验证 T+ 外部账双档证据门禁',
+      idempotency_key: `g1-bridge-${crypto.randomUUID()}`,
+    },
+  });
+  expect(configured.status()).toBe(200);
+  await page.goto(`/workspace/delivery?book=${f.book.id}&company=${f.company.id}&period=2026-10`);
+  const panel = page.getByRole('region', { name: '月度交付包', exact: true });
+  await expect(panel.getByRole('heading', { name: '月度交付包', exact: true })).toBeVisible({
+    timeout: 30_000,
+  });
+  const evidence = page.getByRole('region', { name: '外部账报表证据', exact: true });
+  await expect(evidence).toBeVisible();
+  await evidence.getByLabel('来源版本/批次', { exact: true }).fill('2026-10-v1');
+  await evidence
+    .getByLabel('证据正文（本地合成/脱敏；保存摘要，不执行内容）', { exact: true })
+    .fill('{"period":"2026-10","report":"资产负债表与利润表","balanced":true}');
+  await evidence.getByLabel('登记说明', { exact: true }).fill('本地合成 T+ 报表，登记后待第二人核验');
+  await evidence.getByRole('button', { name: '登记待核验证据', exact: true }).click();
+  await expect(evidence.getByText('pending', { exact: true })).toBeVisible();
+  // The registering accountant must not even see a self-review control.
+  await expect(evidence.getByRole('button', { name: '独立核验通过', exact: true })).toHaveCount(0);
+  const listed = await checked(
+    await request.get(`/api/books/${f.book.id}/delivery/external-evidence`, { headers: f.headers }),
+    200,
+  );
+  expect(listed.items).toHaveLength(1);
+  expect(listed.items[0].status).toBe('pending');
+  const selfReview = await request.post(
+    `/api/books/${f.book.id}/delivery/external-evidence/${listed.items[0].id}/review`,
+    {
+      headers: f.headers,
+      data: { decision: 'verified', note: '登记人尝试自审必须被拒绝' },
+    },
+  );
+  expect(selfReview.status()).toBe(403);
+  await page.route('**/api/session', async (route) => {
+    const url = new URL(route.request().url());
+    url.searchParams.set('persona', 'reviewer');
+    await route.fulfill({ response: await route.fetch({ url: url.toString() }) });
+  });
+  await page.reload();
+  await expect(panel.getByRole('heading', { name: '月度交付包', exact: true })).toBeVisible({
+    timeout: 30_000,
+  });
+  const reviewerEvidence = page.getByRole('region', { name: '外部账报表证据', exact: true });
+  await expect(reviewerEvidence).toContainText('pending');
+  await reviewerEvidence.getByRole('button', { name: '独立核验通过', exact: true }).click();
+  await expect(reviewerEvidence).toContainText('verified');
+  await panel
+    .getByRole('combobox', { name: '交付报表版本', exact: true })
+    .selectOption(f.report.report.id);
+  await panel
+    .getByLabel('交付或签收说明', { exact: true })
+    .fill('外部 T+ 报表已由第二复核人核验，按该冻结版本交付');
+  await panel.getByRole('checkbox', { name: '我已核对本企业、本月份及本次版本' }).check();
+  await panel.getByRole('button', { name: '生成本月交付包', exact: true }).click();
+  await expect(panel.getByText('待客户签收', { exact: true })).toBeVisible();
+  await page.screenshot({
+    path: testInfo.outputPath(`g1-external-evidence-${viewport.width}.png`),
+    fullPage: true,
+  });
+}
+
+for (const viewport of [
+  { width: 1280, height: 720 },
+  { width: 390, height: 844 },
+]) {
+  test(`T+ 外部报表证据必须由第二复核人核验后才允许冻结交付 ${viewport.width}`, async ({
+    page,
+    request,
+  }, testInfo) => {
+    await runExternalEvidenceScenario(page, request, testInfo, viewport);
   });
 }

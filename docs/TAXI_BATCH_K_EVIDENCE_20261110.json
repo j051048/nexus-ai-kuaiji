@@ -1,0 +1,88 @@
+{
+  "batch": "K",
+  "date": "2026-11-12",
+  "head": "781fd93499dcba7bb76056f0febe19e372202af2",
+  "status": "partial",
+  "candidate_note": "未重新冻结 K 候选；前端最终 candidate source 2155，待最终重算",
+  "commands": [
+    {
+      "cmd": "npx playwright test e2e/employee-flow.spec.ts e2e/b06-role-home.spec.ts --workers=1",
+      "status": "passed",
+      "exit_code": 0,
+      "summary": "10 passed (employee-flow 9 + b06-role-home 1)"
+    },
+    {
+      "cmd": "npx playwright test e2e/business.spec.ts --workers=1",
+      "status": "passed",
+      "exit_code": 0,
+      "summary": "3 passed / 43.3s (finance handoff, returned resubmit, narrow screen)"
+    },
+    {
+      "cmd": "ACCOUNTING_TEST_*=<tax-g1-pg17> PYTHONPATH=.. python -m pytest tests/test_business_postgres.py -q",
+      "status": "passed",
+      "exit_code": 0,
+      "summary": "37 passed / 28.18s (PG17)"
+    },
+    {
+      "cmd": "ACCOUNTING_TEST_*=<tax-g1-pg16> PYTHONPATH=.. python -m pytest tests/test_business_postgres.py -q",
+      "status": "passed",
+      "exit_code": 0,
+      "summary": "37 passed / 28.17s (PG16)"
+    }
+  ],
+  "artifacts": [
+    "artifacts/business-intake-review.png",
+    "artifacts/business-workbench.png"
+  ],
+  "passed_items": [
+    "K01",
+    "K02",
+    "K03",
+    "K04 (partial)",
+    "K06",
+    "K07",
+    "K08 (viewport)",
+    "K09",
+    "K10",
+    "K PG16/17 business boundary subset"
+  ],
+  "failed_or_missing": [
+    "K05 OA source-only supplement",
+    "K08 soft keyboard",
+    "real OCR/WeChat/iOS"
+  ],
+  "external": {
+    "real_customer": "not_authorized",
+    "real_oa": "not_authorized",
+    "real_ocr": "not_authorized",
+    "real_device": "not_verified"
+  },
+  "candidate": {
+    "head": "781fd93499dcba7bb76056f0febe19e372202af2",
+    "source_sha256": "6baabb04e423a22b17468b67ae6f3544b92ac01b3deabb5fede37b99e14a9ab7",
+    "source_files": 2174,
+    "migration_sha256": "7cc65c3d8e83145ccf10729216b697b046cac4a85a2ae86ab35d5f50af8758ec",
+    "migration_files": 383
+  },
+  "soft_keyboard_viewport": "1 passed/3.0s",
+  "k05_oa_snapshot": {
+    "tests": "2 passed/7.41s",
+    "migrations": [
+      "155_oa_approval_snapshots.sql",
+      "238_oa_approval_snapshots.sql"
+    ],
+    "limits": "未绑定补件/未跑PG/无UI"
+  },
+  "tests": {
+    "k05_browser": {
+      "command": "npx playwright test --config playwright.tax-k.config.ts",
+      "passed": 2,
+      "failed": 0,
+      "duration": "26.9s",
+      "screenshots": [
+        "tmp_test/tax-k-oa-1280.png",
+        "tmp_test/tax-k-oa-390.png"
+      ]
+    }
+  }
+}

@@ -3,7 +3,12 @@ from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import Response
 from .models import ReceiptCreate, ReceiptImport, DeliveryNote
 from .notification_investigations import InvestigationCreate, NotificationInvestigations
-from .monthly_models import MonthlyPackageCreate, MonthlyPackageAcknowledge
+from .monthly_models import (
+    MonthlyPackageCreate,
+    MonthlyPackageAcknowledge,
+    ExternalEvidenceCreate,
+    ExternalEvidenceReview,
+)
 from .followup_models import DeliveryGrantRequest, DeliveryRevokeRequest, DeliveryTaskRequest
 
 
@@ -18,6 +23,9 @@ def build_delivery_router(actor_dependency):
 
     def followups(request: Request):
         return request.app.state.delivery_followups
+
+    def external_evidence(request: Request):
+        return request.app.state.external_evidence
 
     @router.get("/monthly-followup")
     def followup_status(
@@ -105,6 +113,33 @@ def build_delivery_router(actor_dependency):
         monthly=Depends(packages),
     ):
         return monthly.acknowledge(actor, book_id, package_id, payload)
+
+    @router.get("/external-evidence")
+    def external_evidence_list(
+        book_id: str,
+        actor=Depends(actor_dependency),
+        evidence=Depends(external_evidence),
+    ):
+        return evidence.list(actor, book_id)
+
+    @router.post("/external-evidence", status_code=201)
+    def external_evidence_create(
+        book_id: str,
+        payload: ExternalEvidenceCreate,
+        actor=Depends(actor_dependency),
+        evidence=Depends(external_evidence),
+    ):
+        return evidence.create(actor, book_id, payload)
+
+    @router.post("/external-evidence/{evidence_id}/review")
+    def external_evidence_review(
+        book_id: str,
+        evidence_id: str,
+        payload: ExternalEvidenceReview,
+        actor=Depends(actor_dependency),
+        evidence=Depends(external_evidence),
+    ):
+        return evidence.review(actor, book_id, evidence_id, payload)
 
     @router.get("/notifications/{notification_id}/investigations")
     def notification_history(

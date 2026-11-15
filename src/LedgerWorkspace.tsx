@@ -5,6 +5,7 @@ import type { Session } from './types';
 import { canReviewAlias, masterNames, nextPeriod } from './ledger-types';
 import type { LedgerOverview, MasterKind } from './ledger-types';
 import './ledger.css';
+import { TransportMasterPanel } from './TransportMasterPanel';
 
 const enc = encodeURIComponent;
 const errorText = (failure: unknown) =>
@@ -181,6 +182,7 @@ export function LedgerWorkspace({
             </div>
             <span className="badge">当前 {data.period}</span>
           </section>
+          <TransportMasterPanel session={session} bookId={bookId} entities={data.entities} canManage={data.can_manage} />
           <section className="panel">
             <div className="panel-heading">
               <div>

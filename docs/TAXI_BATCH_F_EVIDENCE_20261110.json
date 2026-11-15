@@ -1,0 +1,95 @@
+{
+  "schema": "taxi-batch-evidence-v1",
+  "batch": "F",
+  "packages": [
+    "TAX13",
+    "TAX14",
+    "TAX15"
+  ],
+  "recorded_at": "2026-11-12T09:00:00+08:00",
+  "candidate": {
+    "schema": "release-candidate-v1",
+    "head": "781fd93499dcba7bb76056f0febe19e372202af2",
+    "source_files": 2163,
+    "source_sha256": "648ae00f760c7c02312938cb1a007ded1164162c44e704548c1ec240d629e350",
+    "migration_files": 379,
+    "migration_sha256": "7ec84cbd1bce0c40d18c95bf5d15eeaa7175c873ecfd7df358658a83c87cdcd5"
+  },
+  "tests": {
+    "sqlite": {
+      "command": "python -m pytest tests/test_tax13_leases.py tests/test_tax14_basis.py tests/test_tax15_profit.py tests/test_tax_f_recovery.py -q --junitxml=../tmp_test/tax-f/tax-f-combined.xml",
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0,
+      "seconds": 16.25,
+      "junit": "tmp_test/tax-f/tax-f-combined.xml"
+    },
+    "postgres": [
+      {
+        "version": 17,
+        "passed": 3,
+        "failed": 0,
+        "seconds": 1.49,
+        "artifact": "tmp_test/ak05-pg-runs/661897ca08cb4a7fb27ab2379efd0eee"
+      },
+      {
+        "version": 16,
+        "passed": 3,
+        "failed": 0,
+        "seconds": 1.69,
+        "artifact": "tmp_test/ak05-pg-runs/7370b47722da414d894fb87ccaf9de7f"
+      }
+    ],
+    "browser": {
+      "command": "npx playwright test --config playwright.tax-f.config.ts",
+      "passed": 2,
+      "failed": 0,
+      "seconds": 21.8,
+      "viewports": [
+        1280,
+        390
+      ],
+      "screenshots": [
+        "tmp_test/tax-f-1280.png",
+        "tmp_test/tax-f-390.png"
+      ],
+      "business_success_mocked": false
+    },
+    "build": {
+      "typecheck": 0,
+      "index_kb": 565.54,
+      "index_gzip_kb": 175.18,
+      "css_kb": 99.72,
+      "css_gzip_kb": 20.27,
+      "panel_kb": 70.55,
+      "panel_gzip_kb": 21.38
+    }
+  },
+  "implemented": [
+    "lease contracts, monthly plans, business/receipt/invoice confirmations",
+    "lease revenue recognition drafts with available prepayment release",
+    "lease refund, amendment and termination with version checks",
+    "versioned tax basis policy, base, signed adjustments and manual evidence",
+    "independent review of tax basis with maker-checker separation",
+    "versioned profit line mapping and posted voucher-line contribution",
+    "profit drilldown to voucher lines and evidence references"
+  ],
+  "not_verified": [
+    "lease draft independent review/posting/export through browser",
+    "invoice management UI and lease-vs-fee duplicate confirmation",
+    "tax filing, payment, official receipt and tax-profile consistency",
+    "T+ closing exclusion and four-layer profit drilldown",
+    "PG target row-level restore",
+    "real customer contracts/invoices, tax authority, T+ import, real users/devices, remote CI",
+    "React 19 upgrade (batch M not enabled)"
+  ],
+  "environment": {
+    "committed": false,
+    "pushed": false,
+    "deployed": false,
+    "online_sql": false,
+    "real_model": false,
+    "real_notification": false,
+    "real_oa_tplus": false
+  }
+}

@@ -141,7 +141,16 @@ test('跨企业月度矩阵分页覆盖全部授权账套，精确下钻同企�
   expect((await request.post(`/api/books/${target.id}/suggestions`, { headers })).status()).toBe(
     200,
   );
+  await page.route('**/api/monthly/workbench**', async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    await route.continue();
+  });
   await page.goto('/workspace/monthly?period=2026-10');
+  await expect(page.locator('.monthly-skeleton-row')).toHaveCount(3);
+  const skeletonBox = await page.locator('.monthly-skeleton-row').first().boundingBox();
+  expect(skeletonBox?.height ?? 0).toBeGreaterThanOrEqual(100);
+  await expect(page.locator('.monthly-matrix-row:not(.monthly-skeleton-row)').first()).toBeVisible();
+  await page.unroute('**/api/monthly/workbench**');
   await page.getByLabel('搜索月度客户').fill(tag);
   await page.getByRole('button', { name: '查找', exact: true }).click();
   await expect(page.locator('.monthly-matrix-row')).toHaveCount(20);
@@ -152,9 +161,17 @@ test('跨企业月度矩阵分页覆盖全部授权账套，精确下钻同企�
   const row = page.locator(`[data-book="${target.id}"]`);
   await expect(row).toBeVisible();
   await expect(row).toContainText('尚未预检');
-  await expect(row).not.toContainText('已完成');
   await page.screenshot({ path: 'artifacts/stage17-monthly-matrix-desktop.png', fullPage: false });
   await row.getByText('查看各环节明细', { exact: true }).click();
+  await expect(row.getByRole('button', { name: '资料收集：1 份来源', exact: true })).toHaveClass(
+    /done/,
+  );
+  await expect(row.getByRole('button', { name: '会计复核：1 待审', exact: true })).toHaveAttribute(
+    'aria-current',
+    'step',
+  );
+  await row.locator('.monthly-stage-context').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: 'artifacts/stage17-monthly-six-stages-desktop.png', fullPage: false });
   await row.getByRole('button', { name: '会计复核：1 待审', exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`book=${target.id}`));
   await expect(page.getByLabel('复核企业')).toHaveValue(company.id);
@@ -169,14 +186,16 @@ test('跨企业月度矩阵分页覆盖全部授权账套，精确下钻同企�
   await expect(page.getByLabel('客户进度月份')).toHaveValue('2026-11');
   await expect(page.locator('.monthly-matrix-row').first()).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.screenshot({ path: 'artifacts/stage17-monthly-matrix-mobile.png', fullPage: false });
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(
-    true,
-  );
   await page
     .locator(`[data-book="${november.id}"]`)
     .getByText('查看各环节明细', { exact: true })
     .click();
+  await page.locator('.monthly-stage-context').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: 'artifacts/stage17-monthly-six-stages-mobile.png', fullPage: false });
+  await page.screenshot({ path: 'artifacts/stage17-monthly-matrix-mobile.png', fullPage: false });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(
+    true,
+  );
   await page
     .locator(`[data-book="${november.id}"]`)
     .getByRole('button', { name: '参考余额与差异', exact: true })

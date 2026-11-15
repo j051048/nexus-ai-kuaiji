@@ -1,0 +1,147 @@
+{
+  "schema": "taxi-batch-e-evidence-v1",
+  "generated_at": "2026-11-12T08:20:00+08:00",
+  "status": "partial_local_core",
+  "candidate": {
+    "schema": "release-candidate-v1",
+    "head": "781fd93499dcba7bb76056f0febe19e372202af2",
+    "source_files": 2163,
+    "source_sha256": "648ae00f760c7c02312938cb1a007ded1164162c44e704548c1ec240d629e350",
+    "migration_files": 379,
+    "migration_sha256": "7ec84cbd1bce0c40d18c95bf5d15eeaa7175c873ecfd7df358658a83c87cdcd5"
+  },
+  "workspace": {
+    "uncommitted_entries": 126,
+    "committed": false,
+    "pushed": false,
+    "deployed": false
+  },
+  "tax10": {
+    "status": "core_only",
+    "implemented": [
+      "repair source key equals invoice ref",
+      "coverage enum package/per_vehicle/actual",
+      "rate times quantity equals amount",
+      "same invoice same version different content rejected"
+    ],
+    "not_implemented": [
+      "package special item to per-vehicle switch point",
+      "package coverage range and duplicate actual repair",
+      "actual payment reversal once and repeated reversal",
+      "cross-period rate table and mid-month allocation"
+    ],
+    "local": {
+      "passed": 12,
+      "seconds": 16.03
+    },
+    "pg16": {
+      "passed": 5,
+      "seconds": 3.77,
+      "run": "217a46c1246e4288aa3dfa98a5e0a02d"
+    },
+    "pg17": {
+      "passed": 5,
+      "seconds": 3.77,
+      "run": "8945a6a3a46a47cd90d5c83ebc9603b1"
+    },
+    "browser": {
+      "passed": 2,
+      "seconds": 25.1,
+      "screenshots": [
+        "tmp_test/tax10-costs-1280.png",
+        "tmp_test/tax10-costs-390.png"
+      ]
+    }
+  },
+  "tax11": {
+    "status": "insurance_only",
+    "implemented": [
+      "policy number premium start/end total months",
+      "straight line with final month remainder",
+      "manual schedule totals premium",
+      "current period inside policy"
+    ],
+    "not_implemented": [
+      "vehicle and contract bound depreciation/amortization",
+      "cumulative base and prior posted checks",
+      "surrender/endorsement/disposal/catch-up/correction preview"
+    ]
+  },
+  "tax12": {
+    "status": "oa_only",
+    "implemented": [
+      "OA event id/version/approver/period",
+      "detail account lines unique and total equal",
+      "same event same version different content rejected"
+    ],
+    "not_implemented": [
+      "payroll summary equals detail",
+      "social insurance",
+      "interest accrual",
+      "approval withdrawal and cross-person leak cases"
+    ]
+  },
+  "combined": {
+    "path": "tmp_test/tax-e/tax-e-combined-final.xml",
+    "passed": 46,
+    "seconds": 55.78
+  },
+  "build": {
+    "typecheck": "passed",
+    "index_js_kb": 565.54,
+    "index_js_gzip_kb": 175.18,
+    "index_css_kb": 99.72,
+    "index_css_gzip_kb": 20.27,
+    "tax_workpaper_kb": 59.97,
+    "tax_workpaper_gzip_kb": 18.92
+  },
+  "recovery": {
+    "report": "tmp_test/tax-e/p01-final2/reports/summary.json",
+    "status": "passed",
+    "run": "9e35d5344d6a440d9c89f2cb2db6e2e0",
+    "environment": "8cf97847e94c4702ae41632cdbfbfc11",
+    "regression": {
+      "passed": 188,
+      "seconds": 149.964
+    },
+    "joint": {
+      "passed": 2,
+      "seconds": 89.255
+    },
+    "identity": {
+      "passed": 4,
+      "seconds": 55.903
+    },
+    "pg16": {
+      "version": "16.15",
+      "migrations": 221,
+      "schema_max": 233,
+      "checks": "all_true",
+      "originals": 4,
+      "users": 6,
+      "capability_grants": 987,
+      "column_grants": 55
+    },
+    "pg17": {
+      "version": "17.11",
+      "migrations": 221,
+      "schema_max": 233,
+      "checks": "all_true",
+      "originals": 4,
+      "users": 6,
+      "capability_grants": 987,
+      "column_grants": 55
+    },
+    "e_tables_source_and_target": true,
+    "e_cost_batch_rows_target": 0,
+    "e_row_level_restore_verified": false
+  },
+  "external": {
+    "real_oa": "not_authorized",
+    "real_insurance_algorithm": "not_available",
+    "real_payroll": "not_available",
+    "real_customer_data": "not_authorized",
+    "remote_ci": "not_run",
+    "production_release": "not_authorized"
+  }
+}

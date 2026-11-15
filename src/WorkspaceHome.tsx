@@ -407,8 +407,8 @@ export function WorkspaceHome({
     <section className="workspace-role-guide" aria-label="当前职责与授权范围">
       <details>
         <summary>
-          <span>岗位说明与权限</span>
-          <strong>{guide.label}</strong>
+          <span>岗位与权限</span>
+          <span className="sr-only">{guide.label}</span>
           <span>查看岗位与操作说明</span>
         </summary>
         <div className="workspace-role-guide-content">
@@ -507,7 +507,6 @@ export function WorkspaceHome({
           </div>
         </section>
       )}
-      {!employee && !professional && roleGuide}
       {profileError && (
         <p className="inline-error" role="alert">
           {profileError}
@@ -968,7 +967,7 @@ export function WorkspaceHome({
           </div>
         )}
       </section>
-      {(employee || professional) && roleGuide}
+      {roleGuide}
       {!!briefings.length && (
         <section aria-label="本月财税简报入口">
           <details className="workspace-supporting">

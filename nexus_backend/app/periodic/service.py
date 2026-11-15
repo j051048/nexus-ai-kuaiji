@@ -366,7 +366,7 @@ class PeriodicService:
                 fingerprint=_fingerprint({"asset": dict(asset), "period": book["period"]}),
             )
 
-    def _balances_without_closing(self, conn, book):
+    def _pl_balances_without_closing(self, conn, book, ledger_id):
         binding = conn.execute(
             "SELECT * FROM opening_bindings WHERE book_id=? AND status='active'", (book["id"],)
         ).fetchone()
@@ -381,30 +381,78 @@ class PeriodicService:
             )
         ]
         rows = conn.execute(
-            "SELECT l.account_id,SUM(l.debit_cents) AS debit,SUM(l.credit_cents) AS credit "
+            "SELECT l.account_id,l.category_snapshot AS category,l.aux_json,"
+            "SUM(l.debit_cents) AS debit,SUM(l.credit_cents) AS credit "
             "FROM voucher_lines l JOIN vouchers v ON v.id=l.voucher_id WHERE v.book_id=? "
             + (
                 "AND v.id NOT IN (" + ",".join("?" * len(closing_vouchers)) + ") "
                 if closing_vouchers
                 else ""
             )
-            + "GROUP BY l.account_id",
+            + "GROUP BY l.account_id,l.category_snapshot,l.aux_json",
             (book["id"], *closing_vouchers),
         ).fetchall()
-        opening = {
-            row[0]: int(row[1])
-            for row in conn.execute(
-                "SELECT account_id,SUM(opening_cents) FROM opening_lines WHERE package_version_id=? "
-                "GROUP BY account_id",
-                (binding["package_version_id"],),
-            )
-        }
-        balances = {account_id: opening.get(account_id, 0) for account_id in opening}
+        opening_rows = conn.execute(
+            "SELECT ol.account_id,v.category,ol.aux_json,SUM(ol.opening_cents) AS amount "
+            "FROM opening_lines ol JOIN ledger_account_versions v "
+            "ON v.account_id=ol.account_id AND v.version=ol.account_version "
+            "WHERE ol.package_version_id=? "
+            "GROUP BY ol.account_id,v.category,ol.aux_json",
+            (binding["package_version_id"],),
+        ).fetchall()
+
+        def aux_dict(raw):
+            try:
+                value = json.loads(raw or "{}")
+            except (TypeError, ValueError):
+                value = {}
+            return value if isinstance(value, dict) else {}
+
+        balances = {}
         for row in rows:
-            balances[row["account_id"]] = (
-                balances.get(row["account_id"], 0) + int(row["debit"]) - int(row["credit"])
+            aux_json = json.dumps(aux_dict(row["aux_json"]), ensure_ascii=False, sort_keys=True)
+            key = (row["account_id"], aux_json)
+            entry = balances.setdefault(
+                key,
+                {"account_id": row["account_id"], "aux": aux_dict(row["aux_json"]), "categories": set(), "balance": 0},
             )
-        return balances
+            entry["categories"].add(row["category"] or "")
+            entry["balance"] += int(row["debit"]) - int(row["credit"])
+        for row in opening_rows:
+            aux_json = json.dumps(aux_dict(row["aux_json"]), ensure_ascii=False, sort_keys=True)
+            key = (row["account_id"], aux_json)
+            entry = balances.setdefault(
+                key,
+                {"account_id": row["account_id"], "aux": aux_dict(row["aux_json"]), "categories": set(), "balance": 0},
+            )
+            entry["categories"].add(row["category"] or "")
+            entry["balance"] += int(row["amount"])
+        result = []
+        for entry in balances.values():
+            categories = {value for value in entry["categories"] if value}
+            if len(categories) > 1:
+                raise AccountingError("同一科目辅助余额存在多个分类版本，请先核对旧版本", 409)
+            if entry["balance"] == 0:
+                continue
+            result.append(
+                {
+                    "account_id": entry["account_id"],
+                    "aux": entry["aux"],
+                    "category": next(iter(categories), ""),
+                    "balance": entry["balance"],
+                }
+            )
+        result.sort(key=lambda value: (value["account_id"], json.dumps(value["aux"], ensure_ascii=False, sort_keys=True)))
+        return result
+
+    @staticmethod
+    def _closing_fingerprint(balances):
+        return _fingerprint({"balances": balances})
+
+    def _validate_closing_source(self, conn, book, ledger_id, run):
+        balances = self._pl_balances_without_closing(conn, book, ledger_id)
+        if run["input_fingerprint"] != self._closing_fingerprint(balances):
+            raise AccountingError("源损益余额已变化，请重新生成结转草稿", 409)
 
     def generate_closing(self, actor, request: ClosingGenerate):
         with self.db.transaction(write=True, actor=actor) as conn:
@@ -421,44 +469,62 @@ class PeriodicService:
             if profit["category"] != "equity":
                 raise AccountingError("本年利润目标必须是权益类科目", 422)
             key = f"closing:{book['id']}:{book['period']}"
+            balances = self._pl_balances_without_closing(conn, book, ledger_id)
+            source_fingerprint = self._closing_fingerprint(balances)
             prior = self._run(conn, book["id"], key)
             if prior:
-                return self._draft_view(conn, prior["draft_id"], replayed=True)
-            balances = self._balances_without_closing(conn, book)
-            categories = {
-                row[0]: row[1]
-                for row in conn.execute(
-                    "SELECT v.account_id,v.category FROM ledger_account_versions v "
-                    "JOIN ledger_accounts a ON a.id=v.account_id AND a.current_version=v.version "
-                    "WHERE a.ledger_id=?",
-                    (ledger_id,),
-                )
-            }
+                if prior["status"] != "posted" and prior["input_fingerprint"] != source_fingerprint:
+                    conn.execute(
+                        "UPDATE periodic_runs SET status='void',run_key=? WHERE id=?",
+                        (key + ":void:" + prior["id"], prior["id"]),
+                    )
+                    self._audit(
+                        conn,
+                        actor,
+                        book["id"],
+                        "periodic.closing.stale",
+                        prior["id"],
+                        {"reason": "source_balances_changed"},
+                    )
+                else:
+                    return self._draft_view(conn, prior["draft_id"], replayed=True)
             lines, profit_cents = [], 0
-            for account_id, balance in balances.items():
-                category = categories.get(account_id)
-                if category == "income" and balance < 0:
-                    amount = -balance
-                    lines.append(
-                        {
-                            "account_id": account_id,
-                            "account_version": 1,
-                            "debit_cents": amount,
-                            "credit_cents": 0,
-                        }
-                    )
-                    profit_cents += amount
-                elif category == "expense" and balance > 0:
-                    amount = balance
-                    lines.append(
-                        {
-                            "account_id": account_id,
-                            "account_version": 1,
-                            "debit_cents": 0,
-                            "credit_cents": amount,
-                        }
-                    )
-                    profit_cents -= amount
+            for entry in balances:
+                account_id, balance, aux = entry["account_id"], entry["balance"], entry["aux"]
+                current = conn.execute(
+                    "SELECT current_version FROM ledger_accounts WHERE id=? AND ledger_id=?",
+                    (account_id, ledger_id),
+                ).fetchone()
+                if not current:
+                    raise AccountingError("损益科目不属当前账套", 409)
+                current_account = self._account(
+                    conn, ledger_id, account_id, current["current_version"], book["period"]
+                )
+                category = entry["category"] or current_account["category"]
+                if category != current_account["category"]:
+                    raise AccountingError("损益科目分类已变化，请核对旧版本后再结转", 409)
+                line = {
+                    "account_id": account_id,
+                    "account_version": current_account["version"],
+                    "debit_cents": 0,
+                    "credit_cents": 0,
+                    "aux": aux,
+                }
+                if category == "income":
+                    if balance < 0:
+                        line["debit_cents"] = -balance
+                    else:
+                        line["credit_cents"] = balance
+                    profit_cents -= balance
+                elif category == "expense":
+                    if balance > 0:
+                        line["credit_cents"] = balance
+                    else:
+                        line["debit_cents"] = -balance
+                    profit_cents -= balance
+                else:
+                    continue
+                lines.append(line)
             if not lines:
                 raise AccountingError("没有可结转的损益余额", 409)
             if profit_cents > 0:
@@ -479,14 +545,6 @@ class PeriodicService:
                         "credit_cents": 0,
                     }
                 )
-            # Closing lines must use the account version actually used by the balance.
-            for line in lines:
-                if line["account_id"] != profit["account_id"]:
-                    row = conn.execute(
-                        "SELECT current_version FROM ledger_accounts WHERE id=?",
-                        (line["account_id"],),
-                    ).fetchone()
-                    line["account_version"] = row["current_version"]
             return self._insert_draft(
                 conn,
                 actor,
@@ -496,9 +554,7 @@ class PeriodicService:
                 asset_id=None,
                 description="期末损益结转",
                 lines=lines,
-                fingerprint=_fingerprint(
-                    {"book": book["id"], "period": book["period"], "lines": lines}
-                ),
+                fingerprint=source_fingerprint,
             )
 
     def _draft(self, conn, draft_id):
@@ -572,9 +628,12 @@ class PeriodicService:
     def approve(self, actor, draft_id, request: DraftCommand):
         with self.db.transaction(write=True, actor=actor) as conn:
             draft = self._draft(conn, draft_id)
-            book, _ = self._book(conn, actor, draft["book_id"], write=True)
+            book, ledger_id = self._book(conn, actor, draft["book_id"], write=True)
             if draft["status"] != "draft":
                 raise AccountingError("只有草稿状态可以复核", 409)
+            if draft["kind"] == "closing":
+                run = conn.execute("SELECT * FROM periodic_runs WHERE id=?", (draft["run_id"],)).fetchone()
+                self._validate_closing_source(conn, book, ledger_id, run)
             if int(draft["version"]) != request.expected_version:
                 raise AccountingError("期末草稿版本已变化", 409)
             if draft["created_by"] == actor.user_id:
@@ -604,13 +663,16 @@ class PeriodicService:
         # draft, and a second business key cannot create a second voucher.
         with self.db.transaction(write=True, actor=actor) as conn:
             draft = self._draft(conn, draft_id)
-            self._book(conn, actor, draft["book_id"], write=True)
+            book, ledger_id = self._book(conn, actor, draft["book_id"], write=True)
             if draft["status"] == "posted":
                 return self._draft_view(conn, draft_id, replayed=True)
             if draft["status"] != "approved":
                 raise AccountingError("期末草稿尚未复核", 409)
             if int(draft["version"]) != request.expected_version:
                 raise AccountingError("期末草稿版本已变化", 409)
+            if draft["kind"] == "closing":
+                run = conn.execute("SELECT * FROM periodic_runs WHERE id=?", (draft["run_id"],)).fetchone()
+                self._validate_closing_source(conn, book, ledger_id, run)
             self._validate_asset_draft(conn, actor, draft)
             lines = conn.execute(
                 "SELECT * FROM periodic_draft_lines WHERE draft_id=? ORDER BY line_no", (draft_id,)

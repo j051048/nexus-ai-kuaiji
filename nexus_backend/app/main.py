@@ -64,6 +64,8 @@ from .accounting.bank_imports import BankImportService
 from .accounting.bank_import_router import build_bank_import_router
 from .cases.service import CaseService
 from .cases.router import build_cases_router
+from .cases.oa_snapshots import OASnapshotService
+from .cases.oa_router import build_oa_router
 from .cases.middleware import CaseAttachmentBodyLimitMiddleware
 from .learning.service import LearningService
 from .learning.router import build_learning_router
@@ -73,6 +75,7 @@ from .reconciliation.service import ReconciliationService
 from .reconciliation.router import build_reconciliation_router
 from .delivery.service import DeliveryService
 from .delivery.monthly_package import MonthlyPackageService
+from .delivery.external_evidence import MonthlyExternalEvidenceService
 from .delivery.followups import DeliveryFollowupService
 from .delivery.followup_router import build_delivery_followup_router
 from .delivery.router import build_delivery_router
@@ -128,13 +131,23 @@ from .periodic.service import PeriodicService
 from .reports.router import build_report_router
 from .reports.service import ReportService
 from .tax.router import build_tax_router
+from .tax.sources import TaxSourceAdapter
 from .tax.workpaper import TaxWorkpaperService
+from .tax.fees import TaxFeeService
+from .tax.costs import TaxCostService
+from .tax.leases import LeaseService
+from .tax.basis import TaxBasisService
+from .reports.profit import ProfitDrilldownService
+from .reports.fleet import FleetMetricsService
+from .tax.pilot import PilotBoundaryService
 from .b04_close.router import build_close_router
 from .b04_close.service import CloseService
 from .integrations.service import FinancialBridgeService
 from .settlements.service import SettlementService
 from .settlements.router import build_settlement_router
 from .integrations.router import build_integrations_router
+from .integrations.sync_stub import SyncStubService
+from .integrations.sync_router import build_sync_stub_router
 from .integrations.middleware import BridgeBodyLimitMiddleware
 from .revisions.service import FactRevisionService
 from .revisions.router import build_revisions_router
@@ -329,9 +342,18 @@ def create_app(
             application.state.subledger = SubledgerService(database)
             application.state.periodic = PeriodicService(database)
             application.state.reports = ReportService(database)
+            application.state.profit = ProfitDrilldownService(database)
+            application.state.fleet = FleetMetricsService(database)
             application.state.tax = TaxWorkpaperService(database)
+            application.state.tax_pilot = PilotBoundaryService(database)
+            application.state.tax_sources = TaxSourceAdapter(database)
+            application.state.tax_fees = TaxFeeService(database)
+            application.state.tax_costs = TaxCostService(database)
+            application.state.tax_leases = LeaseService(database)
+            application.state.tax_basis = TaxBasisService(database)
             application.state.b04_close = CloseService(database)
             application.state.integrations = FinancialBridgeService(database)
+            application.state.sync_stub = SyncStubService(database)
             application.state.settlements = SettlementService(database)
             application.state.service.settlements = application.state.settlements
             application.state.service.ledgers = application.state.ledgers
@@ -351,6 +373,7 @@ def create_app(
             application.state.learning = LearningService(database)
             application.state.quality = QualityService(database)
             application.state.cases = CaseService(database, application.state.business)
+            application.state.oa_snapshots = OASnapshotService(database)
             application.state.service.learning = application.state.learning
             application.state.service.cases = application.state.cases
             application.state.review = ReviewService(database, application.state.service)
@@ -425,6 +448,7 @@ def create_app(
             application.state.monthly_packages = MonthlyPackageService(
                 database, application.state.service_plans
             )
+            application.state.external_evidence = MonthlyExternalEvidenceService(database)
             application.state.delivery_followups = DeliveryFollowupService(
                 database,
                 application.state.monthly_packages,
@@ -1145,6 +1169,7 @@ def create_app(
 
     app.include_router(build_legacy_review_router(actor))
     app.include_router(build_cases_router(actor))
+    app.include_router(build_oa_router(actor))
     app.include_router(build_learning_router(actor))
     app.include_router(build_quality_router(actor))
     app.include_router(build_bank_import_router(actor))
@@ -1161,6 +1186,7 @@ def create_app(
     app.include_router(build_tax_router(actor))
     app.include_router(build_close_router(actor))
     app.include_router(build_integrations_router(actor))
+    app.include_router(build_sync_stub_router(actor))
     app.include_router(build_settlement_router(actor))
     app.include_router(build_revisions_router(actor))
     app.include_router(build_dispositions_router(actor))

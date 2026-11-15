@@ -1,0 +1,111 @@
+{
+  "batch": "L",
+  "date": "2026-11-12",
+  "head": "781fd93499dcba7bb76056f0febe19e372202af2",
+  "status": "partial",
+  "candidate": {
+    "schema": "release-candidate-v1",
+    "head": "781fd93499dcba7bb76056f0febe19e372202af2",
+    "source_files": 2163,
+    "source_sha256": "648ae00f760c7c02312938cb1a007ded1164162c44e704548c1ec240d629e350",
+    "migration_files": 379,
+    "migration_sha256": "7ec84cbd1bce0c40d18c95bf5d15eeaa7175c873ecfd7df358658a83c87cdcd5"
+  },
+  "commands": [
+    {
+      "cmd": "npm run typecheck",
+      "status": "passed",
+      "exit_code": 0
+    },
+    {
+      "cmd": "npm test -- src/keyboard.test.ts src/tasks0712.test.ts src/monthly-stage-guide.test.ts",
+      "status": "passed",
+      "exit_code": 0,
+      "summary": "15 passed"
+    },
+    {
+      "cmd": "npm run lint",
+      "status": "passed",
+      "exit_code": 0,
+      "summary": "0 errors, 4 unused-disable warnings"
+    },
+    {
+      "cmd": "TEMP/TMP=tmp_test/esbuild-tmp npm run build",
+      "status": "passed",
+      "exit_code": 0,
+      "summary": "initial 565587/175218, css 99946; home 593142/185777"
+    },
+    {
+      "cmd": "npm run test:frontend-budget",
+      "status": "passed",
+      "exit_code": 0,
+      "summary": "6/6, artifact ba039757"
+    },
+    {
+      "cmd": "npx playwright test e2e/tax-i-shell.spec.ts --workers=1",
+      "status": "passed",
+      "exit_code": 0,
+      "summary": "5 passed / 27.9s"
+    },
+    {
+      "cmd": "npx playwright test --config playwright.tax05.config.ts",
+      "status": "passed",
+      "exit_code": 0,
+      "summary": "2 passed / 18.9s"
+    },
+    {
+      "cmd": "npx playwright test e2e/qa-accessibility.spec.ts --browser=firefox",
+      "status": "passed",
+      "exit_code": 0,
+      "summary": "3 passed / 15.9s"
+    },
+    {
+      "cmd": "npx playwright test e2e/qa-accessibility.spec.ts --browser=webkit",
+      "status": "passed",
+      "exit_code": 0,
+      "summary": "3 passed / 15.0s"
+    },
+    {
+      "cmd": "npx playwright test e2e/reduced-motion.spec.ts",
+      "status": "passed",
+      "exit_code": 0,
+      "summary": "1 passed / 10.4s; animation and transition 1e-05s, scroll auto"
+    },
+    {
+      "cmd": "npx playwright test e2e/dcp-r567-evidence.spec.ts --workers=1",
+      "status": "passed",
+      "exit_code": 0,
+      "summary": "2 passed / 14.3s; unknown stays unknown, no signed claim, one investigation POST"
+    },
+    {
+      "cmd": "npx playwright test e2e/stage17-monthly.spec.ts --grep 跨企业月度矩阵 --workers=1",
+      "status": "passed",
+      "exit_code": 0,
+      "summary": "1 passed / 17.4s; 3 skeleton rows >=100px before real rows"
+    },
+    {
+      "cmd": "npx playwright test e2e/stage15-global-assistant.spec.ts --grep 全局助手保存范围 --workers=1",
+      "status": "passed",
+      "exit_code": 0,
+      "summary": "1 passed / 15.5s; nested review Escape preserves assistant"
+    },
+    {
+      "cmd": "npx playwright test e2e/assistant-delivery-pages.spec.ts --workers=1",
+      "status": "passed",
+      "exit_code": 0,
+      "summary": "14 passed / 31.7s; stale/revoked/wrong-scope/late/mfa/server at 1440 and 390"
+    }
+  ],
+  "not_verified": [
+    "real 200% zoom",
+    "real iOS/WeChat",
+    "manual screen reader",
+    "L3 full same-candidate chain still missing J/K gaps"
+  ],
+  "external": {
+    "real_customer": "not_authorized",
+    "real_tplus": "not_authorized",
+    "real_device": "not_verified",
+    "remote_ci": "not_run"
+  }
+}

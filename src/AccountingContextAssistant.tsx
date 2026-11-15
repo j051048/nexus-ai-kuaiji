@@ -24,6 +24,7 @@ import {
   type AccountingContextEvidence,
 } from './accounting-context';
 import type { Session } from './types';
+import { isCompositionKey } from './keyboard';
 import './context-assistant.css';
 
 export type { AccountingContextAction, AccountingContextEvidence } from './accounting-context';
@@ -433,7 +434,7 @@ export function AccountingContextAssistant({
               setQuestion(event.target.value);
             }}
             onKeyDown={(event) => {
-              if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
+              if (event.key === 'Enter' && !event.shiftKey && !isCompositionKey(event)) {
                 event.preventDefault();
                 void ask(visibleQuestion);
               }

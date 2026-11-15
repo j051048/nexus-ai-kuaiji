@@ -324,3 +324,9 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+.tax-pilot { margin: 12px 0; border: 1px solid var(--line, #d9dfd2); border-radius: 10px; padding: 0 14px 12px; background: #fff; }
+.tax-pilot > summary { cursor: pointer; padding: 12px 0; font-weight: 700; }
+.tax-pilot-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.tax-pilot-table th, .tax-pilot-table td { text-align: left; border-bottom: 1px solid #edf0e9; padding: 5px 4px; vertical-align: top; }
+.tax-pilot-table select, .tax-pilot-table input, .tax-pilot > label select { width: 100%; min-height: 34px; }
+.tax-pilot-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }

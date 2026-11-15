@@ -77,7 +77,7 @@ test('员工报销经过独立审批与原件上传后交接指定账套、会�
   await create(page, description, '员工报销');
   await page.screenshot({ path: 'artifacts/business-intake-review.png', fullPage: true });
   await page.getByRole('button', { name: '提交审批', exact: true }).click();
-  await expect(page.getByRole('status')).toContainText('事项已提交');
+  await expect(page.locator('.business-notice')).toContainText('事项已提交');
   await expect(page.getByRole('button', { name: '部门审批通过', exact: true })).toHaveCount(0);
   await expect(page.getByRole('tab', { name: '企业财务', exact: true })).toHaveCount(0);
 
@@ -87,19 +87,19 @@ test('员工报销经过独立审批与原件上传后交接指定账套、会�
   await page.getByRole('button', { name: '下载附件 ' + receipt.name, exact: true }).click();
   expect(await readFile((await (await downloaded).path())!)).toEqual(receipt.buffer);
   await page.getByRole('button', { name: '部门审批通过', exact: true }).click();
-  await expect(page.getByRole('status')).toContainText('部门审批已通过');
+  await expect(page.locator('.business-notice')).toContainText('部门审批已通过');
 
   await persona(page, 'finance');
   await open(page, description, '企业财务');
   await page.getByRole('button', { name: '财务核验通过', exact: true }).click();
-  await expect(page.getByRole('status')).toContainText('财务核验已通过');
+  await expect(page.locator('.business-notice')).toContainText('财务核验已通过');
   await page.getByLabel('交接到账套', { exact: true }).selectOption({ index: 1 });
   const targetBookName = await page
     .getByLabel('交接到账套', { exact: true })
     .locator('option:checked')
     .textContent();
   await page.getByRole('button', { name: '生成凭证草稿', exact: true }).click();
-  await expect(page.getByRole('status')).toContainText('已交接并关联凭证草稿');
+  await expect(page.locator('.business-notice')).toContainText('已交接并关联凭证草稿');
   await expect(page.getByRole('button', { name: '提交审批', exact: true })).toHaveCount(0);
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({ path: 'artifacts/business-workbench.png', fullPage: true });
@@ -155,12 +155,12 @@ test('采购费用退回重提保留版本和原件', async ({ page }) => {
   const description = '第三阶段MVP采购补资料';
   await create(page, description, '采购 / 费用', '0.30');
   await page.getByRole('button', { name: '提交审批', exact: true }).click();
-  await expect(page.getByRole('status')).toContainText('事项已提交');
+  await expect(page.locator('.business-notice')).toContainText('事项已提交');
   await persona(page, 'department');
   await open(page, description, '部门审批');
   await page.getByLabel('退回原因', { exact: true }).fill('请补充采购用途');
   await page.getByRole('button', { name: /退回/ }).last().click();
-  await expect(page.getByRole('status')).toContainText('事项已退回');
+  await expect(page.locator('.business-notice')).toContainText('事项已退回');
   await persona(page, 'employee');
   await page
     .getByRole('button')
@@ -182,7 +182,7 @@ test('采购费用退回重提保留版本和原件', async ({ page }) => {
       .click();
   await page.getByRole('button', { name: '修改后重新提交', exact: true }).click();
   await expect(page.getByRole('dialog', { name: '修改业务事项' })).toHaveCount(0);
-  await expect(page.getByRole('status')).toContainText('事项修改已保存并重新提交');
+  await expect(page.locator('.business-notice')).toContainText('事项修改已保存并重新提交');
   await expect(page.getByText('采购办公室耗材，已经补充确认', { exact: true })).toBeVisible();
   await expect(
     page.getByRole('button', { name: '下载附件 ' + receipt.name, exact: true }),

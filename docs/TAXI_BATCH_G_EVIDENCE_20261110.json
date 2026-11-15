@@ -1,0 +1,53 @@
+{
+  "batch": "G",
+  "status": "partial",
+  "candidate": {
+    "schema": "release-candidate-v1",
+    "head": "781fd93499dcba7bb76056f0febe19e372202af2",
+    "source_files": 2163,
+    "source_sha256": "648ae00f760c7c02312938cb1a007ded1164162c44e704548c1ec240d629e350",
+    "migration_files": 379,
+    "migration_sha256": "7ec84cbd1bce0c40d18c95bf5d15eeaa7175c873ecfd7df358658a83c87cdcd5"
+  },
+  "g1": {
+    "sqlite": "23 passed/74.41s",
+    "pg17": "5 passed/14.06s",
+    "pg16": "5 passed/13.72s",
+    "browser": "2 passed/25.5s",
+    "screenshots": [
+      "tmp_test/tax-g1-evidence-1280.png",
+      "tmp_test/tax-g1-evidence-390.png"
+    ]
+  },
+  "g2": {
+    "unit": "3 passed",
+    "stage17": "1 passed/6.8s",
+    "workbench": "5 passed/22.1s",
+    "screenshots": [
+      "artifacts/stage17-monthly-six-stages-desktop.png",
+      "artifacts/stage17-monthly-six-stages-mobile.png"
+    ]
+  },
+  "g3": {
+    "status": "partial",
+    "two_period_books": "2 passed/19.5s",
+    "missing": [
+      "same-candidate full six-stage two-period chain",
+      "240 vehicles / hundreds of drivers",
+      "575-1001 line joint scenario",
+      "cross-year/template upgrade/revocation joint scenario",
+      "PG target row-level G1 recovery"
+    ]
+  },
+  "p01": {
+    "status": "passed",
+    "summary": "tmp_test/tax-g/p01-g/reports/summary.json",
+    "regression": "188/165.914s",
+    "joint": "2/94.524s",
+    "identity": "4/59.519s",
+    "migrations": 223,
+    "max_schema": 235,
+    "checks_all_true": true
+  },
+  "external": "not verified: real T+ template/import, real clients, device, CI, deployment"
+}

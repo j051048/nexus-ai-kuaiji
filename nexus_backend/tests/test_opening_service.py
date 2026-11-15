@@ -418,3 +418,42 @@ def test_mapping_and_cross_scope_permissions(business):
                 reason="跨账套映射",
             ),
         )
+
+
+def test_transport_opening_carries_receivables_assets_and_advances(business):
+    case = business
+    ledger_id = ledger_of(case, case.book["id"])
+    service = OpeningService(case.db)
+    created_policy = policy(service, case.manager, ledger_id)
+    accounts = [
+        account(service, case.manager, ledger_id, "1122", "应收账款"),
+        account(service, case.manager, ledger_id, "2203", "预收账款"),
+        account(service, case.manager, ledger_id, "1601", "固定资产"),
+        account(service, case.manager, ledger_id, "1602", "累计折旧"),
+        account(service, case.manager, ledger_id, "4001", "实收资本"),
+        account(service, case.manager, ledger_id, "4104", "利润分配"),
+    ]
+    by_code = {item["code"]: item for item in accounts}
+    lines = [
+        OpeningLineInput(account_id=by_code["1122"]["id"], account_version=1, year_opening="0.00",
+                         ytd_debit="5000.00", ytd_credit="0.00", opening="5000.00"),
+        OpeningLineInput(account_id=by_code["1601"]["id"], account_version=1, year_opening="0.00",
+                         ytd_debit="100000.00", ytd_credit="0.00", opening="100000.00"),
+        OpeningLineInput(account_id=by_code["1602"]["id"], account_version=1, year_opening="0.00",
+                         ytd_debit="0.00", ytd_credit="20000.00", opening="-20000.00"),
+        OpeningLineInput(account_id=by_code["2203"]["id"], account_version=1, year_opening="0.00",
+                         ytd_debit="0.00", ytd_credit="3000.00", opening="-3000.00"),
+        OpeningLineInput(account_id=by_code["4001"]["id"], account_version=1, year_opening="0.00",
+                         ytd_debit="0.00", ytd_credit="70000.00", opening="-70000.00"),
+        OpeningLineInput(account_id=by_code["4104"]["id"], account_version=1, year_opening="0.00",
+                         ytd_debit="0.00", ytd_credit="12000.00", opening="-12000.00"),
+    ]
+    request = OpeningImport(idempotency_key="transport-opening-001", reason="运输期初合成夹具", lines=lines)
+    package = service.create_package(
+        case.manager, OpeningPackageCreate(ledger_id=ledger_id, target_period="2026-10", policy_id=created_policy["id"]),
+    )
+    version = service.import_version(case.manager, package["package"]["id"], request)
+    validated = service.validate_version(case.manager, version["version"]["id"])
+    assert validated["version"]["status"] == "validated"
+    account_ids = {line["account_id"] for line in validated["lines"]}
+    assert {by_code[code]["id"] for code in ("1122", "2203", "1601", "1602")} <= account_ids

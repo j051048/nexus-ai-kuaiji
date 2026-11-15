@@ -177,3 +177,29 @@
   padding-left: 1.2em;
   font-size: var(--font-size-sm, 13px);
 }
+
+/* G1: external T+ report evidence is separate from package freezing. */
+.external-evidence { border: 1px solid #d9d2c2; background: #fffdf7; border-radius: 10px; padding: 14px; margin: 0 0 14px; }
+.external-evidence header { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+.external-evidence h3 { margin: 0; display: flex; align-items: center; gap: 6px; font-size: 17px; }
+.external-evidence p { margin: 6px 0 0; color: #625c50; font-size: 13px; line-height: 1.55; }
+.external-evidence-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
+.external-evidence-form label { display: flex; flex-direction: column; gap: 5px; font-size: 13px; color: #4d473d; }
+.external-evidence-form input, .external-evidence-form select, .external-evidence-form textarea { width: 100%; box-sizing: border-box; padding: 8px 9px; border: 1px solid #cfc7b6; border-radius: 6px; background: #fff; font: inherit; }
+.external-evidence-wide { grid-column: 1 / -1; }
+.external-evidence-ok { color: #1b6b45; }
+.external-evidence-error { color: #9a2f23; }
+.external-evidence-list { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 8px; }
+.external-evidence-list li { display: flex; justify-content: space-between; gap: 12px; border-top: 1px solid #ede7d9; padding-top: 9px; }
+.external-evidence-list strong { display: block; font-size: 14px; }
+.external-evidence-list small { display: block; color: #6a6458; font-size: 12px; margin-top: 3px; }
+.external-evidence-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+.external-evidence-status { font-size: 12px; border-radius: 999px; padding: 3px 8px; background: #eee9dc; }
+.external-evidence-status.is-verified { background: #dcefe2; color: #1b6b45; }
+.external-evidence-status.is-rejected { background: #f6ddd8; color: #8c2c20; }
+.external-evidence-empty { color: #6a6458; font-size: 13px; }
+@media (max-width: 720px) {
+  .external-evidence-form { grid-template-columns: 1fr; }
+  .external-evidence-list li { flex-direction: column; }
+  .external-evidence-actions { justify-content: flex-start; }
+}

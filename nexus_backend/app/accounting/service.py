@@ -347,6 +347,16 @@ class AccountingService:
         return list(dict.fromkeys(issues))
 
     def _issues(self, conn, source, lines, actor=None):
+        from ..tax.fee_guard import fee_context
+
+        accrual, fee_issues = fee_context(conn, source, lines)
+        if str(source["external_id"]).startswith("tax-cost:"):
+            # The caller-controlled bank ID alone is not proof of an accrual.
+            accrual = bool(conn.execute(
+                "SELECT 1 FROM tax_cost_batches b JOIN drafts d ON d.id=b.draft_id AND d.book_id=b.book_id "
+                "WHERE d.source_id=? AND b.book_id=? AND b.id=? AND b.batch_fingerprint=?",
+                (source["id"], source["book_id"], source["external_id"][9:], source["fingerprint"]),
+            ).fetchone())
         accounts = {
             x["code"]
             for x in conn.execute(
@@ -354,7 +364,8 @@ class AccountingService:
             )
         }
         return (
-            self._calculate_issues(source, lines, accounts, self._effective_evidence(conn, source))
+            self._calculate_issues(source, lines, accounts, self._effective_evidence(conn, source), accrual=accrual)
+            + fee_issues
             + self._guard_issues(conn, source, actor)
             + self._case_guard().blocking_issues_in_transaction(conn, actor, source)
             + self._bank_import_guard().blocking_issues_in_transaction(conn, actor, source)
@@ -401,7 +412,7 @@ class AccountingService:
         return self.delivery
 
     @staticmethod
-    def _calculate_issues(source, lines, accounts, evidence):
+    def _calculate_issues(source, lines, accounts, evidence, *, accrual=False):
         issues = []
         if not evidence.strip():
             issues.append("缺少凭证证据引用，请补充资料后审核")
@@ -424,7 +435,7 @@ class AccountingService:
             if source["direction"] == "income"
             else (0, source["amount_cents"])
         )
-        if source["source_kind"] == "bank" and (bank_debit, bank_credit) != expected:
+        if source["source_kind"] == "bank" and not accrual and (bank_debit, bank_credit) != expected:
             issues.append("银行存款分录的金额或方向与原始流水不符")
         return list(dict.fromkeys(issues))
 

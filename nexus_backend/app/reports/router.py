@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, Query, Request
 
 from .models import ReportCommand, ReportGenerate, ReportNote
+from .profit import ProfitMappingWrite
 
 
 def build_report_router(actor_dependency):
@@ -8,6 +9,48 @@ def build_report_router(actor_dependency):
 
     def service(request: Request):
         return request.app.state.reports
+
+    def profit(request: Request):
+        return request.app.state.profit
+
+    def fleet(request: Request):
+        return request.app.state.fleet
+
+    @router.get("/profit/mapping")
+    def profit_mapping(
+        book_id: str = Query(min_length=1, max_length=100),
+        current=Depends(actor_dependency),
+        profit=Depends(profit),
+    ):
+        return profit.mapping(current, book_id)
+
+    @router.put("/profit/mapping")
+    def save_profit_mapping(
+        payload: ProfitMappingWrite,
+        book_id: str = Query(min_length=1, max_length=100),
+        current=Depends(actor_dependency),
+        profit=Depends(profit),
+    ):
+        return profit.save_mapping(current, book_id, payload)
+
+    @router.get("/profit")
+    def profit_overview(
+        book_id: str = Query(min_length=1, max_length=100),
+        period: str = Query(min_length=7, max_length=7),
+        line_code: str = Query(default="", max_length=40),
+        current=Depends(actor_dependency),
+        profit=Depends(profit),
+    ):
+        return profit.overview(current, book_id, period, line_code)
+
+    @router.get("/fleet")
+    def fleet_overview(
+        book_id: str = Query(min_length=1, max_length=100),
+        period: str = Query(min_length=7, max_length=7),
+        current=Depends(actor_dependency),
+        fleet=Depends(fleet),
+    ):
+        return fleet.overview(current, book_id, period)
 
     @router.post("", status_code=201)
     def create(

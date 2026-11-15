@@ -3,7 +3,7 @@ import { DeliveryFollowupPanel } from './DeliveryFollowupPanel';
 import type { MonthlyDestination } from './monthly-workbench-types';
 import type { InboxProgress } from './workspace-progress';
 import { useMonthlyData } from './useMonthlyData';
-import { parseFirmInbox, type FirmItem as Item, type Bucket } from './firm-inbox-contract';
+import { parseFirmInbox, updateFirmSelection, type FirmItem as Item, type Bucket } from './firm-inbox-contract';
 import type { WorkspaceTask } from './workspace-types';
 import { Bell, CheckCircle2, RefreshCw, UserRoundCheck } from 'lucide-react';
 import { api, errorMessage } from './api';
@@ -62,7 +62,7 @@ export function FirmInbox({
     onBusyChange?.(panelBusy);
     return () => onBusyChange?.(false);
   }, [panelBusy, onBusyChange]);
-  const [selected, setSelected] = useState<string[]>([]);
+  const [selected, setSelected] = useState<{ key: string; kind: string; ref: string; title: string }[]>([]);
   const [assignee, setAssignee] = useState('');
   const [dueOn, setDueOn] = useState('');
   const [note, setNote] = useState('');
@@ -96,6 +96,7 @@ export function FirmInbox({
     actionError;
 
   const key = (item: Item) => `${item.kind}:${item.ref}`;
+  const selectedKeys = new Set(selected.map((item) => item.key));
   useEffect(() => {
     onProgress?.({ bucket, offset, deliveryPages });
   }, [bucket, offset, deliveryPages, onProgress]);
@@ -184,9 +185,7 @@ export function FirmInbox({
       if (stamp === epoch.current) setBusy('');
     }
   }
-  const selectedTasks = (data?.items ?? []).filter(
-    (item) => selected.includes(key(item)) && item.permissions.assign,
-  );
+  const selectedTasks = selected;
 
   async function assign() {
     if (!assignee || !selectedTasks.length) return;
@@ -306,7 +305,8 @@ export function FirmInbox({
       )}
       {selectedTasks.length > 0 && (
         <section className="firm-inbox-bulk">
-          <strong>已选 {selected.length} 项</strong>
+          <strong>已选 {selected.length} 项（跨页保留）</strong>
+          <p>提交时由服务端逐项重核资格，失效项会明确失败。</p>
           <label>
             指派给
             <select value={assignee} onChange={(event) => setAssignee(event.target.value)}>
@@ -443,12 +443,14 @@ export function FirmInbox({
                   type="checkbox"
                   disabled={!item.permissions.assign || !!busy}
                   aria-label={`选择 ${item.title}`}
-                  checked={selected.includes(key(item))}
+                  checked={selectedKeys.has(key(item))}
                   onChange={(event) =>
                     setSelected((current) =>
-                      event.target.checked
-                        ? [...current, key(item)]
-                        : current.filter((value) => value !== key(item)),
+                      updateFirmSelection(
+                        current,
+                        { key: key(item), kind: item.kind, ref: item.ref, title: item.title },
+                        event.target.checked,
+                      ),
                     )
                   }
                 />
@@ -503,7 +505,6 @@ export function FirmInbox({
             disabled={offset === 0 || !!busy}
             onClick={() => {
               setOffset(Math.max(0, offset - 20));
-              setSelected([]);
             }}
           >
             上一页
@@ -513,7 +514,6 @@ export function FirmInbox({
             disabled={!data.pagination.has_more || !!busy}
             onClick={() => {
               setOffset(offset + 20);
-              setSelected([]);
             }}
           >
             下一页

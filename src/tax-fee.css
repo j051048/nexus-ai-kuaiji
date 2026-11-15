@@ -1,0 +1,55 @@
+.tax-fee-panel{border:1px solid #d8ded8;border-radius:16px;background:#fff;padding:20px;margin:18px 0}
+.tax-fee-panel header{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+.tax-fee-panel h3{margin:2px 0 8px;font-size:20px}
+.tax-fee-kicker{margin:0;color:#66756b;font-size:12px;letter-spacing:.12em}
+.tax-fee-note{color:#4d5d53;font-size:13px;line-height:1.7;margin:0 0 12px}
+.tax-fee-form,.tax-fee-review{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:12px 0}
+.tax-fee-form label,.tax-fee-review label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:#5c6b61}
+.tax-fee-form input,.tax-fee-review input{min-height:38px;border:1px solid #cbd5cc;border-radius:8px;padding:4px 8px;font:inherit}
+.tax-fee-sources{display:flex;flex-wrap:wrap;gap:8px 16px;margin:10px 0;font-size:13px}
+.tax-fee-sources strong{width:100%}
+.tax-fee-sources label{display:flex;gap:6px;align-items:center}
+.tax-fee-primary,.tax-fee-panel button{border:1px solid #1f5c45;background:#1f5c45;color:#fff;border-radius:8px;min-height:38px;padding:0 14px;cursor:pointer}
+.tax-fee-panel button.secondary{background:#fff;color:#1f5c45}
+.tax-fee-panel button:disabled{opacity:.5;cursor:not-allowed}
+.tax-fee-error,.tax-fee-ok{margin:10px 0;padding:10px 12px;border-radius:8px;font-size:13px}
+.tax-fee-error{background:#fff1ee;color:#8f2d19;border:1px solid #e7b5a8}
+.tax-fee-ok{background:#edf6ef;color:#1f5c45;border:1px solid #bfd8c7}
+.tax-fee-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:14px 0}
+.tax-fee-summary span{display:block;font-size:11px;color:#66756b}
+.tax-fee-summary strong{font-size:18px}
+.tax-fee-fingerprint{font-size:11px;color:#6b7a70;word-break:break-all}
+.tax-fee-panel table{width:100%;border-collapse:collapse;font-size:12px}
+.tax-fee-panel th,.tax-fee-panel td{text-align:left;border-bottom:1px solid #e6ece7;padding:7px 5px;vertical-align:top}
+.tax-fee-history{display:flex;flex-direction:column;gap:6px;margin-top:14px}
+.tax-fee-history button{background:#f4f8f5;color:#264f3d;border-color:#d8e3db}
+@media(max-width:700px){.tax-fee-panel{padding:14px}.tax-fee-form,.tax-fee-review,.tax-fee-summary{grid-template-columns:1fr 1fr}.tax-fee-panel table{display:block;overflow-x:auto}.tax-fee-form input,.tax-fee-review input{font-size:16px}}
+
+.tax-fee-groups {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 10px 0;
+}
+.tax-fee-groups > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-soft);
+  font-size: 12px;
+}
+.tax-fee-groups strong {
+  width: 100%;
+  color: var(--ink);
+}
+.tax-fee-groups span {
+  color: var(--muted);
+}
+@media (max-width: 700px) {
+  .tax-fee-groups {
+    grid-template-columns: 1fr;
+  }
+}

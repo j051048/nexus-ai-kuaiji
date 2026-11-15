@@ -271,3 +271,61 @@ def test_pg_read_only_client_can_ack_despite_staff_only_service_plan_rls(package
         ),
     )
     assert ack["customer_receipt_status"] == "acknowledged"
+
+
+def test_pg_external_evidence_requires_a_second_reviewer(package_case):
+    from app.delivery.external_evidence import MonthlyExternalEvidenceService
+    from app.delivery.monthly_models import ExternalEvidenceCreate, ExternalEvidenceReview
+    from app.integrations.models import BridgeConfiguration
+    from app.integrations.service import FinancialBridgeService
+
+    c = package_case
+    FinancialBridgeService(c.db).configure(
+        c.manager,
+        c.book["id"],
+        BridgeConfiguration(
+            expected_version=0,
+            external_book_id="tplus-g1-pg",
+            accounts=[
+                {"local_code": "1002", "external_code": "100201"},
+                {"local_code": "6602.02", "external_code": "660202"},
+            ],
+            reason="G1 外部模式 PG 核验",
+            idempotency_key="g1-pg-bridge",
+        ),
+    )
+    with pytest.raises(AccountingError) as blocked:
+        c.monthly.create(c.reviewer, c.book["id"], c.request)
+    assert blocked.value.status == 409
+
+    evidence = MonthlyExternalEvidenceService(c.db)
+    record = evidence.create(
+        c.manager,
+        c.book["id"],
+        ExternalEvidenceCreate(
+            report_id=c.request.report_id,
+            expected_report_version=c.request.expected_report_version,
+            source_kind="tplus_report",
+            source_name="PG 合成 T+ 报表",
+            source_version="2026-10-v1",
+            content='{"period":"2026-10","balanced":true}',
+            note="PG 外部证据独立核验",
+        ),
+    )
+    with pytest.raises(AccountingError) as self_review:
+        evidence.review(
+            c.manager,
+            c.book["id"],
+            record["id"],
+            ExternalEvidenceReview(decision="verified", note="登记人自审不得通过"),
+        )
+    assert self_review.value.status == 403
+    evidence.review(
+        c.reviewer,
+        c.book["id"],
+        record["id"],
+        ExternalEvidenceReview(decision="verified", note="第二复核人核对报表期间与金额"),
+    )
+    package = c.monthly.create(c.reviewer, c.book["id"], c.request)
+    assert package["external_import_status"] == "verified_external_evidence"
+    assert package["external_evidence"]["sha256"] == record["sha256"]

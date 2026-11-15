@@ -1,0 +1,90 @@
+{
+  "schema": "taxi-batch-evidence-v1",
+  "batch": "H",
+  "tax": [
+    "TAX19",
+    "TAX20",
+    "TAX21",
+    "TAX22",
+    "TAX23",
+    "TAX24"
+  ],
+  "status": "partial",
+  "candidate": {
+    "schema": "release-candidate-v1",
+    "head": "781fd93499dcba7bb76056f0febe19e372202af2",
+    "source_files": 2163,
+    "source_sha256": "648ae00f760c7c02312938cb1a007ded1164162c44e704548c1ec240d629e350",
+    "migration_files": 379,
+    "migration_sha256": "7ec84cbd1bce0c40d18c95bf5d15eeaa7175c873ecfd7df358658a83c87cdcd5"
+  },
+  "results": {
+    "h1": {
+      "sqlite": "nexus_backend/tests/test_firm_observability.py 13 passed",
+      "postgres": "worker_health PG17 2 passed / PG16 2 passed",
+      "browser": "e2e/tasks0712.spec.ts 2 passed (1365/390)",
+      "screenshots": [
+        "tmp_test/tasks0712-20261107/screenshots/monitor-1365.png",
+        "tmp_test/tasks0712-20261107/screenshots/monitor-390.png"
+      ]
+    },
+    "h2": {
+      "http": {
+        "pg17": "tmp_test/h2-http-pg17",
+        "pg16": "tmp_test/h2-http-pg16",
+        "requests": 250,
+        "success": 250
+      },
+      "mixed": "tmp_test/h2-mixed-pg17/report.json"
+    },
+    "h3": {
+      "sqlite": "nexus_backend/tests/test_h3_fleet.py 1 passed",
+      "postgres": "test_tax06_fees_postgres.py PG17/16 each 4 passed (including fleet)",
+      "browser": "e2e/tax-f.spec.ts 2 passed (1280/390)"
+    },
+    "h4": {
+      "sqlite": "nexus_backend/tests/test_assistant_delivery_context.py 22 passed",
+      "browser": "e2e/assistant-delivery-pages.spec.ts 14 passed"
+    },
+    "h5": {
+      "chromium": "e2e/qa-accessibility.spec.ts 3 passed",
+      "firefox": "e2e/qa-accessibility.spec.ts 3 passed",
+      "webkit": "e2e/qa-accessibility.spec.ts 3 passed"
+    },
+    "h6": {
+      "sqlite": "nexus_backend/tests/test_h6_sync_stub.py 4 passed (including HTTP)",
+      "postgres": "test_tax_f_postgres.py PG17/16 each 4 passed (including signed sync)",
+      "external_posting": false
+    }
+  },
+  "external_gaps": [
+    "真实通知渠道未接",
+    "100 并发/慢存储/租约/断连/多节点未做",
+    "H3 有数据浏览器截图与并发专项未做",
+    "H4 独立 holdout 与真实模型未做",
+    "H5 IME/真机/人工屏幕阅读器未做",
+    "H6 真实上游协议未接",
+    "远端 CI、生产发布未执行"
+  ],
+  "p01": {
+    "status": "passed",
+    "summary": "tmp_test/tax-h/p01-h/reports/summary.json",
+    "run": "379caa1dfbdb462799f39f1e5447b1df",
+    "regression": "188/165.663s",
+    "joint": "2/94.641s",
+    "identity": "4/58.735s",
+    "pg16_migrations": 224,
+    "pg17_migrations": 224,
+    "checks": [
+      "database",
+      "originals",
+      "identity",
+      "permissions",
+      "hold",
+      "review_export",
+      "tax_delivery",
+      "no_replay",
+      "finance_resume"
+    ]
+  }
+}

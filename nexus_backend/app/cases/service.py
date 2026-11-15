@@ -455,6 +455,8 @@ class CaseService:
             if bool(book_id) != bool(draft_id) or not event and not book_id:
                 raise AccountingError("必须指定业务事项或同一账套的来源凭证", 422)
             book = self.access.book(conn, actor, book_id) if book_id else None
+            if oa_snapshot and oa_snapshot["period"] != book["period"]:
+                raise AccountingError("OA 审批快照期间与账套不一致", 409)
             draft = (
                 conn.execute(
                     "SELECT * FROM drafts WHERE id=? AND book_id=?", (draft_id, book_id)
@@ -465,7 +467,7 @@ class CaseService:
             if book and (not draft or event and book["company_id"] != event["company_id"]):
                 raise AccountingError("任务来源与企业不一致", 404)
             if payload.kind == "supplement" and not event:
-                raise AccountingError("员工补件须绑定原业务事项；流水异常请创建会计内部任务", 422)
+                raise AccountingError("员工补件须绑定原业务事项或已审批 OA 快照；流水异常请创建会计内部任务", 422)
             case_id = uuid4().hex
             row = {
                 "id": case_id,

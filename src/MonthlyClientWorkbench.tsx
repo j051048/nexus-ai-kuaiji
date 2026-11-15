@@ -14,7 +14,6 @@ import type { Session } from './types';
 import { durationLabel } from './efficiency-helpers';
 import { validMonthlyPeriod } from './monthly-helpers';
 import {
-  monthlyClosingLabel,
   monthlyCount,
   monthlyRowDestination,
   monthlyFocusLabels,
@@ -25,6 +24,7 @@ import type {
   MonthlyClientRow,
   MonthlyDestination,
 } from './monthly-workbench-types';
+import { monthlyStages } from './monthly-stage-guide';
 import { MonthlyBatchDialog } from './MonthlyBatchDialog';
 import { BatchOperationsDialog } from './BatchOperationsDialog';
 import { HandoffDialog } from './HandoffDialog';
@@ -285,10 +285,17 @@ export function MonthlyClientWorkbench({
         </p>
       )}
       {loading ? (
-        <p className="loading-block" role="status">
-          <LoaderCircle size={16} className="spinner" />
-          正在读取本月进度…
-        </p>
+        <div className="monthly-skeleton" role="status" aria-live="polite" aria-busy="true">
+          <span className="sr-only">正在读取本月进度…</span>
+          {[0, 1, 2].map((index) => (
+            <div className="monthly-matrix-row monthly-skeleton-row" aria-hidden="true" key={index}>
+              <span className="monthly-skeleton-block" />
+              {[0, 1, 2, 3, 4, 5].map((cell) => (
+                <span className="monthly-skeleton-block" key={cell} />
+              ))}
+            </div>
+          ))}
+        </div>
       ) : data ? (
         <>
           <section className="monthly-matrix" aria-label="企业月度进度矩阵">
@@ -405,70 +412,37 @@ export function MonthlyClientWorkbench({
                       </p>
                     )}
                   </div>
+                  <p className="monthly-stage-context">
+                    当前对象：{row.company_name} · {row.period} · {row.book_name ?? '未建账套'} ·
+                    服务单 v{row.service_plan?.version ?? '待建立'} · 打开后保留月份、筛选和返回位置
+                  </p>
                   <div className="monthly-detail-grid">
-                    <ProgressCell
-                      label="资料与草稿"
-                      primary={`${monthlyCount(row.materials.sources)} 份来源`}
-                      secondary={`待移交 ${monthlyCount(row.materials.business_pending)} · 待补资料 ${monthlyCount(row.materials.missing)}`}
-                      attention={(row.materials.missing ?? 0) > 0}
-                      onOpen={open(row, 'business')}
-                    />
-                    <ProgressCell
-                      label="会计复核"
-                      primary={`${monthlyCount(row.drafts.pending)} 待审`}
-                      secondary={`已审待导出 ${monthlyCount(row.drafts.approved)} · 已导出 ${monthlyCount(row.drafts.exported)}`}
-                      attention={(row.drafts.pending ?? 0) > 0}
-                      onOpen={open(row, 'review', 'pending')}
-                    />
-                    <ProgressCell
-                      label="异常与补件"
-                      primary={`${monthlyCount(row.exceptions.open)} 未结`}
-                      secondary={`待补件 ${monthlyCount(row.exceptions.awaiting_info)} · 逾期 ${monthlyCount(row.exceptions.overdue)}`}
-                      attention={(row.exceptions.open ?? 0) > 0}
-                      onOpen={open(row, 'cases')}
-                    />
-                    <ProgressCell
-                      label="交付核验"
-                      primary={`${monthlyCount(row.delivery.unverified)} 待核验`}
-                      secondary={`未知 ${monthlyCount(row.delivery.unknown)} · 差异 ${monthlyCount(row.delivery.differences)}`}
-                      attention={
-                        (row.delivery.unknown ?? 0) > 0 || (row.delivery.differences ?? 0) > 0
-                      }
-                      onOpen={open(row, 'delivery')}
-                    />
-                    <div className="monthly-close-cell">
-                      <ProgressCell
-                        label="月结"
-                        primary={monthlyClosingLabel(row.closing.state)}
-                        secondary={
-                          row.closing.state === 'closed'
-                            ? '依据已保存的锁期回执'
-                            : row.closing.last_check
-                              ? `历史预检 ${row.closing.last_check.issue_count} 项问题 · 需重新核对`
-                              : '尚无当前预检证据'
-                        }
-                        attention={row.closing.state === 'recheck'}
-                        onOpen={open(row, 'closing')}
-                      />
+                    {monthlyStages(row, (destination) => {
+                      if (!revoked) onOpen(destination);
+                    }).map((stage) => (
                       <button
-                        className="text-button"
-                        disabled={!open(row, 'balances')}
-                        onClick={open(row, 'balances')}
+                        key={stage.key}
+                        type="button"
+                        className={
+                          'monthly-progress-cell monthly-stage-cell' +
+                          (stage.attention ? ' attention' : '') +
+                          (stage.current ? ' current' : '') +
+                          (stage.done ? ' done' : '')
+                        }
+                        aria-current={stage.current ? 'step' : undefined}
+                        aria-label={`${stage.label}：${stage.primary}`}
+                        disabled={!stage.onOpen}
+                        onClick={stage.onOpen}
                       >
-                        参考余额与差异
-                        <ArrowUpRight size={12} />
+                        <span className="monthly-mobile-label">{stage.label}</span>
+                        <strong>{stage.primary}</strong>
+                        <small>{stage.secondary}</small>
+                        <span className="monthly-stage-state">
+                          {stage.current ? '当前任务' : stage.done ? '已完成' : stage.onOpen ? '待处理' : '未授权'}
+                        </span>
+                        {stage.onOpen && <ArrowUpRight size={13} aria-hidden="true" />}
                       </button>
-                      {row.closing.state === 'closed' && row.book_id && (
-                        <button
-                          className="text-button monthly-briefing-entry"
-                          disabled={!open(row, 'briefing')}
-                          onClick={open(row, 'briefing')}
-                        >
-                          <FileText size={12} />
-                          查看本月财税简报
-                        </button>
-                      )}
-                    </div>
+                    ))}
                     <ProgressCell
                       label="人工投入"
                       primary={
@@ -479,6 +453,26 @@ export function MonthlyClientWorkbench({
                       secondary={`${monthlyCount(row.efficiency.reviews)} 审核 · ${monthlyCount(row.efficiency.manual_actions)} 次记录操作`}
                       onOpen={open(row, 'efficiency')}
                     />
+                  </div>
+                  <div className="monthly-stage-actions">
+                    <button
+                      className="text-button"
+                      disabled={!open(row, 'balances')}
+                      onClick={open(row, 'balances')}
+                    >
+                      参考余额与差异
+                      <ArrowUpRight size={12} />
+                    </button>
+                    {row.closing.state === 'closed' && row.book_id && (
+                      <button
+                        className="text-button monthly-briefing-entry"
+                        disabled={!open(row, 'briefing')}
+                        onClick={open(row, 'briefing')}
+                      >
+                        <FileText size={12} />
+                        查看本月财税简报
+                      </button>
+                    )}
                   </div>
                 </details>
               </article>

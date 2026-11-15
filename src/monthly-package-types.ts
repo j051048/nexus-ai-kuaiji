@@ -17,7 +17,16 @@ export type MonthlyPackage = {
   can_acknowledge: boolean;
   customer_opening_status: 'not_opened' | 'opened';
   customer_receipt_status: 'not_recorded' | 'acknowledged';
-  external_import_status: 'separate_workflow';
+  external_import_status: 'separate_workflow' | 'verified_external_evidence';
+  external_evidence?: null | {
+    id: string;
+    source_kind: 'tplus_report' | 'import_result';
+    source_name: string;
+    source_version: string;
+    sha256: string;
+    verified_by: string;
+    verified_at: string;
+  };
   opening: null | { opened_at: string; opened_by: string };
   acknowledgement: null | { acknowledged_at: string; acknowledged_by: string; reason: string };
   files?: MonthlyPackageFile[];
@@ -44,6 +53,8 @@ export type MonthlyPackageOverview = {
     content_hash: string;
   }[];
   contact: { user_id: string | null; eligible: boolean; status: string };
+  external_mode?: boolean;
+  external_evidence?: unknown;
   permissions: { generate: boolean };
   packages: MonthlyPackage[];
 };
@@ -131,7 +142,7 @@ export function validatePackage(
         item.file_count > 0 &&
         (item.files === undefined || item.file_count === item.files.length))) &&
     ['not_recorded', 'acknowledged'].includes(item.customer_receipt_status) &&
-    item.external_import_status === 'separate_workflow' &&
+    ['separate_workflow', 'verified_external_evidence'].includes(item.external_import_status) &&
     (item.customer_receipt_status === 'not_recorded'
       ? item.acknowledgement === null
       : !!item.acknowledgement &&

@@ -62,6 +62,7 @@ import type {
   AssistantTurn,
 } from './assistant-types';
 import type { BookDetail, Company, Pagination, Session } from './types';
+import { isCompositionKey } from './keyboard';
 import './global-assistant.css';
 
 export interface GlobalAccountingAssistantProps {
@@ -1712,7 +1713,7 @@ export function GlobalAccountingAssistant({
                     }
                     onChange={(event) => setQuestion(event.target.value)}
                     onKeyDown={(event) => {
-                      if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+                      if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && !isCompositionKey(event)) {
                         event.preventDefault();
                         sendQuestion(question);
                       }

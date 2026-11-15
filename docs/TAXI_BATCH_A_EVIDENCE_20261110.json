@@ -1,0 +1,139 @@
+{
+  "schema": "taxi-batch-evidence-v1",
+  "batch": "A",
+  "executed_on": "2026-11-10",
+  "candidate": {
+    "schema": "release-candidate-v1",
+    "head": "781fd93499dcba7bb76056f0febe19e372202af2",
+    "source_files": 2163,
+    "source_sha256": "648ae00f760c7c02312938cb1a007ded1164162c44e704548c1ec240d629e350",
+    "migration_files": 379,
+    "migration_sha256": "7ec84cbd1bce0c40d18c95bf5d15eeaa7175c873ecfd7df358658a83c87cdcd5"
+  },
+  "worktree": {
+    "modified_tracked": 6,
+    "untracked_task_files": 18,
+    "untracked_input_prompts": 10,
+    "committed": false,
+    "pushed": false
+  },
+  "results": {
+    "tax01_sqlite_http": {
+      "command": ".venv/Scripts/python.exe -m pytest -q nexus_backend/tests/test_tax01_pilot.py",
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0
+    },
+    "tax02_sqlite": {
+      "command": ".venv/Scripts/python.exe -m pytest -q nexus_backend/tests/test_tax02_closing.py",
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0
+    },
+    "combined_backend": {
+      "command": ".venv/Scripts/python.exe -m pytest -q nexus_backend/tests/test_tax01_pilot.py nexus_backend/tests/test_tax02_closing.py --junitxml=tmp_test/tax-backend.xml",
+      "passed": 16,
+      "failed": 0,
+      "skipped": 0,
+      "duration_seconds": 31.47,
+      "junit": "tmp_test/tax-backend.xml"
+    },
+    "existing_close_and_tax_regression": {
+      "command": ".venv/Scripts/python.exe -m pytest -q nexus_backend/tests/test_b04_pilot.py nexus_backend/tests/test_tax_workpaper.py",
+      "passed": 12,
+      "failed": 0,
+      "skipped": 0,
+      "duration_seconds": 22.76
+    },
+    "tax01_postgres17": {
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "duration_seconds": 2.57,
+      "junit": "tmp_test/ak05-pg-runs/0371191696bc4dbcbc19b696aa6c4334/results.xml"
+    },
+    "tax01_postgres16": {
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "duration_seconds": 1.59,
+      "junit": "tmp_test/ak05-pg-runs/a087570bc5474b94950cb22fba67f6ff/results.xml"
+    },
+    "tax02_postgres17": {
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "duration_seconds": 108.34,
+      "junit": "tmp_test/ak05-pg-runs/bf2408e81f5e433095b68627d8bdf6e8/results.xml"
+    },
+    "tax02_postgres16": {
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "duration_seconds": 106.44,
+      "junit": "tmp_test/ak05-pg-runs/b2a3e2481115452cb9edc92a4e80d3cc/results.xml"
+    },
+    "tax01_browser": {
+      "command": "npx playwright test e2e/tax01-pilot.spec.ts --config=playwright.tax01.config.ts --reporter=line",
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "duration_seconds": 20.0,
+      "viewports": [
+        "1280x900",
+        "390x844"
+      ],
+      "screenshots": [
+        "tmp_test/tax01-pilot-1280.png",
+        "tmp_test/tax01-pilot-390.png"
+      ]
+    },
+    "tax02_browser": {
+      "command": "npx playwright test e2e/tax02-closing.spec.ts --config=playwright.config.ts --reporter=line",
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "duration_seconds": 15.4,
+      "viewports": [
+        "1365x900",
+        "390x844"
+      ],
+      "screenshots": [
+        "tmp_test/tax02-browser-1365.png",
+        "tmp_test/tax02-browser-390.png"
+      ]
+    },
+    "frontend_units": {
+      "command": "npx vitest run src/closing-command.test.ts src/finance-continuation.test.ts",
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0
+    },
+    "typecheck": {
+      "exit_code": 0
+    },
+    "build": {
+      "exit_code": 0
+    },
+    "frontend_budget": {
+      "status": "passed",
+      "initial_js_bytes": 565455,
+      "initial_gzip_bytes": 175163,
+      "home_js_bytes": 593019,
+      "home_gzip_bytes": 185750
+    }
+  },
+  "external_pending": [
+    "real customer confirmation for all 10 pilot dependencies",
+    "real T+ / OA / export-control adapter",
+    "real tax bureau filing or payment",
+    "real notification delivery",
+    "real device / screen reader / pilot accountant"
+  ],
+  "known_unrelated_failures": {
+    "test_stage13_migration_workflow.py": {
+      "result": "8 failed, 8 passed",
+      "relation": "pre-existing migration-workflow expectations; no file in this batch touches migration-workflow task routing"
+    }
+  }
+}
