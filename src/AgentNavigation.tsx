@@ -25,6 +25,7 @@ import {
 export type AgentNavigationView =
   | 'home'
   | 'firm'
+  | 'insights'
   | 'onboarding'
   | 'inbox'
   | 'observability'

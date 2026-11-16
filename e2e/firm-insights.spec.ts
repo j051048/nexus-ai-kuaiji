@@ -6,7 +6,13 @@ for (const viewport of [
 ]) {
   test(`firm insights overview is readable and traceable ${viewport.width}`, async ({ page }) => {
     await page.setViewportSize(viewport);
-    await page.goto('/workspace/insights');
+    if (viewport.width > 640) {
+      await page.goto('/workspace/accounting');
+      await page.getByRole('button', { name: '经营看板' }).click();
+      await expect(page).toHaveURL(/\/workspace\/insights/);
+    } else {
+      await page.goto('/workspace/insights');
+    }
     await expect(page.getByRole('heading', { name: '经营看板', exact: true })).toBeVisible();
     if (viewport.width > 640) await expect(page.getByRole('button', { name: /经营看板/ }).first()).toBeVisible();
     const main = page.locator('main[aria-label="经营看板"]');

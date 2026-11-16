@@ -774,6 +774,7 @@ export default function App() {
       [
         'home',
         'firm',
+        'insights',
         'onboarding',
         'inbox',
         'observability',

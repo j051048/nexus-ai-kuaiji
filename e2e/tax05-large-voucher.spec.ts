@@ -135,6 +135,17 @@ for (const viewport of [
     await drawer.getByLabel('凭证列宽').selectOption('account');
     await expect(drawer.locator('.journal-entry-grid')).toHaveClass(/width-account/);
     expect(await page.evaluate(() => localStorage.getItem('journal-grid-width'))).toBe('account');
+    const widen = drawer.getByRole('button', { name: '加宽会计科目列' });
+    await widen.click();
+    await widen.click();
+    await expect(drawer.locator('.journal-entry-grid')).toHaveClass(/has-custom-widths/);
+    const widths = await page.evaluate(() => JSON.parse(localStorage.getItem('journal-grid-columns') ?? '{}'));
+    expect(widths.account).toBe(340);
+    await drawer.getByRole('button', { name: '调窄会计科目列' }).click();
+    const narrowed = await page.evaluate(() => JSON.parse(localStorage.getItem('journal-grid-columns') ?? '{}'));
+    expect(narrowed.account).toBe(320);
+    await drawer.getByRole('button', { name: '重置列宽' }).click();
+    await expect(drawer.locator('.journal-entry-grid')).not.toHaveClass(/has-custom-widths/);
     await expect(drawer.getByRole('button', { name: '下一页分录', exact: true })).toBeDisabled();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(
       true,

@@ -35,7 +35,7 @@
 
 ## 验证
 
-- 后端：`cd nexus_backend && python -m pytest tests/test_firm_insights.py -q` → **4 passed/10.20s**。
+- 后端：`cd nexus_backend && python -m pytest tests/test_firm_insights.py tests/test_firm_insights_capacity.py -q` → **5 passed/14.76s**。
   - 企业画像只取已复核报表；应收/应付按科目前缀；员工 403。
   - 企业对比、时间线、企业画像均从真实 HTTP 路由读取。
 - 浏览器：`npx playwright test e2e/firm-insights.spec.ts --workers=1` → **4 passed/14.2s**。
@@ -53,7 +53,7 @@
 
 ## 未完成
 
-- 240 企业 p95<500ms 压测。
+- ~~240 企业 p95<500ms 压测~~：`test_firm_insights_capacity.py` 240 账套 p50 32.0ms、p95 62.3ms（SQLite 本地，不是生产网络/多进程）。
 - 同比/环比复杂计算器、多企业甘特拖拽、Excel（仅 CSV）。
 - 真实客户报表覆盖；当前种子报表覆盖为 0。
 - 真机、真实 T+、客户数据未验证。

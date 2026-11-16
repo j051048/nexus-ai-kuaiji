@@ -165,6 +165,7 @@ describe('第二批岗位主任务与设置归位', () => {
   });
   it.each([
     'firm',
+    'insights',
     'accounting',
     'monthly',
     'cases',
