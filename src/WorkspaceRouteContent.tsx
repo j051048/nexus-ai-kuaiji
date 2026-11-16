@@ -42,6 +42,9 @@ const ClientMessages = lazy(() =>
 const FirmInbox = lazy(() =>
   import('./FirmInbox').then((module) => ({ default: module.FirmInbox })),
 );
+const FirmInsights = lazy(() =>
+  import('./FirmInsights').then((module) => ({ default: module.FirmInsights })),
+);
 const FirmObservability = lazy(() =>
   import('./FirmObservability').then((module) => ({ default: module.FirmObservability })),
 );
@@ -458,6 +461,8 @@ export function WorkspaceRouteContent({
           initialProgress={progress.memory.getInbox()}
           onProgress={progress.saveInbox}
         />
+      ) : routeView === 'insights' ? (
+        <FirmInsights session={session} />
       ) : routeView === 'observability' ? (
         <FirmObservability session={session} />
       ) : routeView === 'ingestion' ? (

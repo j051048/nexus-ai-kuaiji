@@ -114,6 +114,8 @@ from .observability.router import build_observability_router
 from .observability.service import FirmObservabilityService
 from .observability.value import ValueBaselineService
 from .observability.closing import ClosingRadarService
+from .observability.insights import FirmInsightsService
+from .observability.insights_extra import FirmInsightsExtraService
 from .ingestion.middleware import IngestionBodyLimitMiddleware
 from .ingestion.router import build_ingestion_router
 from .ingestion.service import IngestionService
@@ -495,6 +497,8 @@ def create_app(
             )
             application.state.value_baseline = ValueBaselineService(database)
             application.state.closing_radar = ClosingRadarService(database)
+            application.state.firm_insights = FirmInsightsService(database)
+            application.state.firm_insights_extra = FirmInsightsExtraService(database)
             # Deliberately code-level off: the receive/consumer loop is not
             # complete. Enabling it requires a reviewed code change, not a
             # deployment-time environment variable.

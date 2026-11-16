@@ -1,6 +1,7 @@
 export const workspaceViews = [
   'home',
   'firm',
+  'insights',
   'onboarding',
   'inbox',
   'observability',
@@ -42,6 +43,7 @@ export function workspaceUsesBook(view: WorkspaceView): boolean {
   return ![
     'home',
     'firm',
+    'insights',
     'onboarding',
     'inbox',
     'observability',

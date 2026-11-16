@@ -133,8 +133,8 @@ describe('第二批岗位主任务与设置归位', () => {
     expect(html).not.toContain('aria-label="全所概览"');
     expect(html).toContain('资料清单');
   });
-  it('事务所负责人和管理员主导航聚焦四项业务，不含技术和管理后台', () => {
-    const ids = ['firm', 'accounting', 'monthly', 'cases'];
+  it('事务所负责人和管理员主导航聚焦业务，不含技术和管理后台', () => {
+    const ids = ['firm', 'insights', 'accounting', 'monthly', 'cases'];
     expect(primaryNav('firm_owner', capabilities).map((item) => item.id)).toEqual(ids);
     expect(primaryNav('admin', capabilities).map((item) => item.id)).toEqual(ids);
   });

@@ -22,6 +22,7 @@ type Definition = { label: string; hint: string; gate: Gate };
 const definitions = {
   home: { label: '我的待办', hint: '需要我处理的工作', gate: 'always' },
   firm: { label: '全所概览', hint: '交付进度与人员安排', gate: 'operations' },
+  insights: { label: '经营看板', hint: '全所财务与交付分析', gate: 'operations' },
   onboarding: { label: '客户开通', hint: '准备资料并完成检查', gate: 'operations' },
   inbox: { label: '异常收件箱', hint: '分派和催办', gate: 'operations' },
   accounting: { label: '会计工作台', hint: '账套与凭证', gate: 'accounting' },
@@ -54,8 +55,8 @@ const roleEntries: Record<PresentationRole, NavigationId[]> = {
   manager: ['home', 'business', 'materials', 'messages', 'briefing'],
   accountant: ['home', 'review', 'business', 'cases', 'monthly'],
   reviewer: ['review', 'cases', 'monthly', 'materials'],
-  firm_owner: ['firm', 'accounting', 'monthly', 'cases'],
-  admin: ['firm', 'accounting', 'monthly', 'cases'],
+  firm_owner: ['firm', 'insights', 'accounting', 'monthly', 'cases'],
+  admin: ['firm', 'insights', 'accounting', 'monthly', 'cases'],
   viewer: ['home', 'materials', 'briefing'],
 };
 
@@ -120,6 +121,7 @@ export function roleNavigation(role: PresentationRole): PresentationNavItem[] {
 export const navigationParents = {
   home: 'home',
   firm: 'firm',
+  insights: 'insights',
   onboarding: 'onboarding',
   inbox: 'inbox',
   observability: 'observability',
