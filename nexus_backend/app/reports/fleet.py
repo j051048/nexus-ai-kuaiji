@@ -51,6 +51,7 @@ class FleetMetricsService:
                     "active": bool(row["active"]),
                     "revenue_cents": 0,
                     "assigned_cost_cents": 0,
+                    "cost_kind_cents": {"repair": 0, "insurance": 0, "oa": 0},
                     "fee_batch_ids": set(),
                     "lease_contract_ids": set(),
                     "cost_batch_ids": set(),
@@ -106,6 +107,8 @@ class FleetMetricsService:
                 vehicle = by_external.get(external_id)
                 if vehicle:
                     vehicle["assigned_cost_cents"] += int(row["amount_cents"])
+                    if row["kind"] in vehicle["cost_kind_cents"]:
+                        vehicle["cost_kind_cents"][row["kind"]] += int(row["amount_cents"])
                     vehicle["cost_batch_ids"].add(row["batch_id"])
                     vehicle["cost_source_ids"].add(row["source_id"])
                 else:
@@ -121,13 +124,16 @@ class FleetMetricsService:
             lines = []
             for vehicle in sorted(vehicles.values(), key=lambda v: (v["name"], v["id"])):
                 lines.append({
-                    **vehicle,
+                    **{key: value for key, value in vehicle.items() if key != "cost_kind_cents"},
                     "fee_batch_ids": sorted(vehicle["fee_batch_ids"]),
                     "lease_contract_ids": sorted(vehicle["lease_contract_ids"]),
                     "cost_batch_ids": sorted(vehicle["cost_batch_ids"]),
                     "cost_source_ids": sorted(vehicle["cost_source_ids"]),
                     "revenue": _money(vehicle["revenue_cents"]),
                     "assigned_cost": _money(vehicle["assigned_cost_cents"]),
+                    "repair_cost_cents": vehicle["cost_kind_cents"]["repair"],
+                    "insurance_cost_cents": vehicle["cost_kind_cents"]["insurance"],
+                    "oa_cost_cents": vehicle["cost_kind_cents"]["oa"],
                     "contribution_cents": vehicle["revenue_cents"] - vehicle["assigned_cost_cents"],
                     "contribution": _money(vehicle["revenue_cents"] - vehicle["assigned_cost_cents"]),
                 })

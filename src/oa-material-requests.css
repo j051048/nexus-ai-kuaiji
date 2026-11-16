@@ -1,0 +1,18 @@
+.oa-material-requests { margin: 18px 0; padding: 18px 20px; border: 1px solid #e2ebe5; border-radius: 14px; background: #fff; }
+.oa-material-requests header { display: flex; justify-content: space-between; gap: 14px; align-items: flex-start; }
+.oa-material-requests h2 { margin: 0; font-size: 17px; color: #1f4d3e; }
+.oa-material-requests header p { margin: 4px 0 0; color: #64736c; font-size: 12px; }
+.oa-material-requests label { display: grid; gap: 4px; font-size: 12px; color: #64736c; }
+.oa-material-requests select { min-width: 230px; padding: 7px 9px; border: 1px solid #cfdcd5; border-radius: 8px; }
+.oa-material-list { display: grid; gap: 8px; margin-top: 12px; }
+.oa-material-list article { border: 1px solid #edf1ee; border-radius: 10px; padding: 10px 12px; display: grid; gap: 3px; }
+.oa-material-list strong { color: #1f4d3e; font-size: 13px; }
+.oa-material-list p { margin: 0; color: #52605a; font-size: 12px; }
+.oa-material-list span { color: #78847f; font-size: 11px; }
+.oa-material-empty { margin: 12px 0 0; color: #78847f; font-size: 12px; }
+.oa-material-error { margin: 10px 0 0; color: #9a3d32; font-size: 12px; }
+@media (max-width: 640px) {
+  .oa-material-requests { padding: 14px; }
+  .oa-material-requests header { flex-direction: column; }
+  .oa-material-requests select { width: 100%; min-width: 0; }
+}

@@ -29,6 +29,15 @@ def test_fde_adapter_catalog_is_read_only_and_manager_scoped(tmp_path):
         }
         assert all(item["live_external"] is False for item in value["adapters"])
         assert "不授予写入" in value["note"]
+        assert len(value["catalog_fingerprint"]) == 64
+        assert all(len(item["contract_sha256"]) == 64 for item in value["adapters"])
+        assert all(item["contract_version"] == "v1" for item in value["adapters"])
+        assert all(item["certification"] == "local_contract_only" for item in value["adapters"])
+        tplus = next(item for item in value["adapters"] if item["code"] == "tplus54_synthetic")
+        assert tplus["native_format"] is False
+        again = client.get(f"/api/firm/fde/adapters?company_id={body['company_id']}", headers=headers).json()
+        assert again["adapters"] == value["adapters"]
+        assert again["catalog_fingerprint"] == value["catalog_fingerprint"]
         employee = auth(client, "employee")
         denied = client.get(f"/api/firm/fde/adapters?company_id={body['company_id']}", headers=employee)
         assert denied.status_code in {403, 404}

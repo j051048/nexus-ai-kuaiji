@@ -12,7 +12,18 @@ from app.business.storage import MAX_REQUEST_BYTES
 @pytest.fixture
 def client(tmp_path):
     app = create_app(tmp_path / "workflow.db", seed=True, attachment_root=tmp_path / "private")
-    with TestClient(app, base_url="http://127.0.0.1", client=("127.0.0.1", 5678)) as client:
+    try:
+        factory = lambda: TestClient(
+            app, base_url="http://127.0.0.1", client=("127.0.0.1", 5678)
+        )
+        factory()
+    except TypeError:
+        @app.middleware("http")
+        async def _loopback_client(request, call_next):
+            request.scope["client"] = ("127.0.0.1", 5678)
+            return await call_next(request)
+        factory = lambda: TestClient(app, base_url="http://127.0.0.1")
+    with factory() as client:
         # Isolate deterministic approvals without OCR. AI-specific fixtures
         # explicitly enable processing when exercising recognition/model guards.
         with app.state.service.db.transaction(write=True) as conn:

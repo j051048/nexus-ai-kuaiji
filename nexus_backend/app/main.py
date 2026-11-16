@@ -138,7 +138,7 @@ from .tax.router import build_tax_router
 from .tax.sources import TaxSourceAdapter
 from .tax.workpaper import TaxWorkpaperService
 from .tax.fees import TaxFeeService
-from .tax.costs import TaxCostService
+from .tax.costs import RepairRateService, TaxCostService
 from .tax.leases import LeaseService
 from .tax.basis import TaxBasisService
 from .reports.profit import ProfitDrilldownService
@@ -355,6 +355,7 @@ def create_app(
             application.state.tax_sources = TaxSourceAdapter(database)
             application.state.tax_fees = TaxFeeService(database)
             application.state.tax_costs = TaxCostService(database)
+            application.state.repair_rates = RepairRateService(database)
             application.state.tax_leases = LeaseService(database)
             application.state.tax_basis = TaxBasisService(database)
             application.state.b04_close = CloseService(database)
@@ -1180,7 +1181,9 @@ def create_app(
 
     app.include_router(build_legacy_review_router(actor))
     app.include_router(build_cases_router(actor))
-    app.include_router(build_oa_router(actor))
+    oa_router, oa_accessible_router = build_oa_router(actor)
+    app.include_router(oa_router)
+    app.include_router(oa_accessible_router)
     app.include_router(build_learning_router(actor))
     app.include_router(build_quality_router(actor))
     app.include_router(build_bank_import_router(actor))

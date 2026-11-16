@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api, ApiError } from './api';
 import type { Session } from './types';
 import { FleetMetricsPanel } from './FleetMetricsPanel';
+import { InlineReviewDrawer } from './InlineReviewDrawer';
 import './tax-f.css';
 
 type LeasePlan = {
@@ -13,6 +14,8 @@ type LeasePlan = {
   advance_cents: number;
 };
 type LeaseConfirmation = { kind: string; period: string; amount_cents: number; reference: string };
+type LeaseEvent = { kind: string; period: string; amount_cents: number; reason: string; created_at: string };
+type InvoiceRed = { original_reference: string; red_reference: string; period: string; amount_cents: number; reason: string };
 type Lease = {
   id: string;
   customer_name: string;
@@ -22,8 +25,12 @@ type Lease = {
   monthly_cents: number;
   status: string;
   version: number;
+  approved_version: number;
+  stale_approval: boolean;
   plan: LeasePlan[];
   confirmations: LeaseConfirmation[];
+  events: LeaseEvent[];
+  invoice_reds: InvoiceRed[];
 };
 type Basis = {
   id: string;
@@ -84,6 +91,11 @@ const statusLabel: Record<string, string> = {
   invalidated: '已失效',
 };
 
+const LEASE_EVENT_LABELS: Record<string, string> = {
+  business: '业务确认', receipt: '收款确认', invoice: '发票确认', recognize: '确认收入', refund: '退款', amend: '合同改版', approve: '版本确认', terminate: '终止',
+};
+function eventLabel(kind: string) { return LEASE_EVENT_LABELS[kind] ?? kind; }
+
 export function TaxFPanel({
   session,
   bookId,
@@ -106,12 +118,17 @@ export function TaxFPanel({
   const [failure, setFailure] = useState('');
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
+  const [reviewDraft, setReviewDraft] = useState('');
+  const [exportingLease, setExportingLease] = useState<string | null>(null);
 
   const [customerName, setCustomerName] = useState('虚构租赁客户');
   const [vehicle, setVehicle] = useState('V-LEASE-UI');
   const [startPeriod, setStartPeriod] = useState(period);
   const [endPeriod, setEndPeriod] = useState(period);
   const [monthly, setMonthly] = useState('1000.00');
+  const [invoiceRef, setInvoiceRef] = useState('');
+  const [redRef, setRedRef] = useState('');
+  const [redReason, setRedReason] = useState('客户退租，原发票全额红冲');
   const [advanceAccount, setAdvanceAccount] = useState('2203');
   const [base, setBase] = useState('100000.00');
   const [rateBp, setRateBp] = useState('300');
@@ -177,20 +194,45 @@ export function TaxFPanel({
     }, '租赁合同已登记，收款与收入分别确认后才生成凭证。');
   }
 
-  async function confirmLease(kind: 'business' | 'receipt') {
+  async function redInvoice() {
     if (!current) return;
+    const invoice = current.confirmations.find((row) => row.kind === 'invoice');
+    if (!invoice) { setFailure('请先确认本期发票。'); return; }
+    if (!redRef.trim()) { setFailure('请填写红字发票号。'); return; }
+    await run(async () => {
+      await api(`${leasesUrl}/${encodeURIComponent(current.id)}/invoice-reds`, session, {
+        method: 'POST',
+        body: {
+          original_reference: invoice.reference,
+          red_reference: redRef.trim(),
+          period: invoice.period,
+          amount: (invoice.amount_cents / 100).toFixed(2),
+          reason: redReason.trim(),
+        },
+      });
+      setRedRef('');
+      await load();
+    }, '发票红冲事实已登记；原发票事实保留，不自动冲减收入。');
+  }
+
+  async function confirmLease(kind: 'business' | 'receipt' | 'invoice') {
+    if (!current) return;
+    if (kind === 'invoice' && !invoiceRef.trim()) {
+      setFailure('请填写发票号后再确认发票。');
+      return;
+    }
     await run(async () => {
       await api(`${leasesUrl}/${encodeURIComponent(current.id)}/confirm`, session, {
         method: 'POST',
         body: {
           kind,
           period,
-          amount: kind === 'receipt' ? monthly : monthly,
-          reference: `${kind === 'receipt' ? '收款' : '业务'}-${period}`,
+          amount: monthly,
+          reference: kind === 'invoice' ? invoiceRef.trim() : `${kind === 'receipt' ? '收款' : '业务'}-${period}`,
         },
       });
       await load();
-    }, kind === 'receipt' ? '收款事实已登记。' : '业务确认已登记。');
+    }, kind === 'receipt' ? '收款事实已登记。' : kind === 'invoice' ? '发票事实已登记。' : '业务确认已登记。');
   }
 
   async function recognizeLease() {
@@ -259,6 +301,49 @@ export function TaxFPanel({
     ? profit?.items.filter((row) => row.line_code === selectedLine) ?? []
     : [];
 
+  async function approveLease() {
+    if (!current) return;
+    setBusy(true);
+    setFailure('');
+    setNotice('');
+    try {
+      await api(`${leasesUrl}/${encodeURIComponent(current.id)}/approve`, session, {
+        method: 'POST',
+        body: { expected_version: current.version },
+      });
+      await load();
+      setNotice('租赁合同当前版本已确认。');
+    } catch (cause) {
+      setFailure(cause instanceof Error ? cause.message : '合同版本确认失败');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function exportLease(draftId: string) {
+    if (!session || exportingLease) return;
+    setExportingLease(draftId);
+    setNotice('');
+    try {
+      const result = await api<{ csv: string; filename: string }>(`/books/${bookId}/exports`, session, {
+        method: 'POST',
+        body: { draft_ids: [draftId], idempotency_key: `lease-export-${draftId}` },
+      });
+      const url = URL.createObjectURL(new Blob([result.csv], { type: 'text/csv;charset=utf-8' }));
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = result.filename;
+      anchor.click();
+      URL.revokeObjectURL(url);
+      setNotice('租赁凭证已导出。导出后仍需按台账版本留档。');
+      await load();
+    } catch (error) {
+      setNotice(error instanceof ApiError ? error.message : '租赁凭证导出失败');
+    } finally {
+      setExportingLease(null);
+    }
+  }
+
   return (
     <section className="tax-f-panel" aria-label="租赁、税费与利润下钻">
       <header className="tax-f-head">
@@ -321,6 +406,7 @@ export function TaxFPanel({
 
           {current ? (
             <div className="tax-f-detail">
+              {current.stale_approval ? <div className="tax-f-stale" role="alert"><p>合同已改版，当前版本 v{current.version} 尚未确认；确认前不能继续确认收入。</p><button type="button" onClick={() => void approveLease()} disabled={busy}>确认当前版本</button></div> : null}
               <div className="tax-f-actions">
                 <button type="button" onClick={() => void confirmLease('business')} disabled={busy}>
                   确认本期业务
@@ -332,9 +418,38 @@ export function TaxFPanel({
                   确认本期收入
                 </button>
               </div>
+              <div className="tax-f-invoice">
+                <label>发票号
+                  <input value={invoiceRef} onChange={(event) => setInvoiceRef(event.target.value)} placeholder="如 INV-2026-10-001" />
+                </label>
+                <button type="button" onClick={() => void confirmLease('invoice')} disabled={busy}>确认本期发票</button>
+              </div>
+              {current.confirmations.some((row) => row.kind === 'invoice') ? (
+                <div className="tax-f-invoice">
+                  <label>红字发票号
+                    <input value={redRef} onChange={(event) => setRedRef(event.target.value)} placeholder="如 RED-2026-10-001" />
+                  </label>
+                  <label>红冲原因
+                    <input value={redReason} onChange={(event) => setRedReason(event.target.value)} />
+                  </label>
+                  <button type="button" onClick={() => void redInvoice()} disabled={busy}>登记发票红冲</button>
+                </div>
+              ) : null}
               <p className="tax-f-hint">
                 已确认 {current.confirmations.length} 条事实；预收只在实际提供服务并确认后才转收入。
               </p>
+              {current.confirmations.length ? <ul className="tax-f-confirmations" aria-label="租赁确认事实">
+                {current.confirmations.map((row) => <li key={`${row.kind}-${row.period}-${row.reference}`}><span>{row.kind === 'business' ? '业务' : row.kind === 'receipt' ? '收款' : '发票'}</span><span>{row.period}</span><span>{money(row.amount_cents)}</span><span>{row.reference}</span></li>)}
+              </ul> : null}
+              {current.invoice_reds.length ? <ul className="tax-f-confirmations" aria-label="发票红冲事实">{current.invoice_reds.map((row) => <li key={row.red_reference}><span>红冲</span><span>{row.period}</span><span>{money(row.amount_cents)}</span><span>{row.original_reference} → {row.red_reference}</span></li>)}</ul> : null}
+              {current.events.length ? (
+                <details className="tax-f-events">
+                  <summary>合同版本记录 {current.events.length}</summary>
+                  <ul>
+                    {current.events.map((event) => <li key={`${event.kind}-${event.created_at}`}><strong>{eventLabel(event.kind)}</strong><span>{event.period || '—'}</span><span>{event.amount_cents ? money(event.amount_cents) : '—'}</span><span>{event.reason || '无说明'}</span><time>{event.created_at.slice(0, 16).replace('T', ' ')}</time></li>)}
+                  </ul>
+                </details>
+              ) : null}
               <div className="tax-f-table-wrap">
                 <table>
                   <caption>{current.customer_name} · {current.vehicle_external_id}</caption>
@@ -348,7 +463,7 @@ export function TaxFPanel({
                         <td>{money(row.amount_cents)}</td>
                         <td>{statusLabel[row.status] ?? row.status}</td>
                         <td>{money(row.advance_cents)}</td>
-                        <td>{row.draft_id ? '已生成' : '—'}</td>
+                        <td>{row.draft_id ? <div className="tax-f-inline"><button type="button" className="tax-f-link" onClick={() => setReviewDraft(row.draft_id!)}>复核租赁凭证</button><button type="button" className="tax-f-link" disabled={!!exportingLease || current.stale_approval} title={current.stale_approval ? '合同已改版，旧审批版本不能导出' : undefined} onClick={() => void exportLease(row.draft_id!)}>{exportingLease === row.draft_id ? '导出中…' : '导出租赁凭证'}</button></div> : '—'}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -483,6 +598,7 @@ export function TaxFPanel({
         ) : <p className="tax-f-empty">利润数据读取中。</p>}
       </article>
       <FleetMetricsPanel session={session} bookId={bookId} period={period} />
+      {reviewDraft ? <InlineReviewDrawer session={session} bookId={bookId} draftId={reviewDraft} onClose={() => setReviewDraft('')} onChanged={() => void load()} /> : null}
     </section>
   );
 }

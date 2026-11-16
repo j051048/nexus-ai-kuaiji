@@ -87,6 +87,19 @@ class LeaseConfirmation(InputModel):
         return value
 
 
+class LeaseInvoiceRed(InputModel):
+    original_reference: StrictStr = Field(min_length=1, max_length=200)
+    red_reference: StrictStr = Field(min_length=1, max_length=200)
+    period: StrictStr
+    amount: StrictStr
+    reason: StrictStr = Field(min_length=3, max_length=1000)
+
+    @field_validator("period")
+    @classmethod
+    def valid_period(cls, value):
+        return validate_period(value)
+
+
 class LeaseRecognition(InputModel):
     period: StrictStr
     policy: LeasePolicy
@@ -109,6 +122,10 @@ class LeaseRefund(InputModel):
     @classmethod
     def valid_period(cls, value):
         return validate_period(value)
+
+
+class LeaseApprove(InputModel):
+    expected_version: int = Field(strict=True, ge=1)
 
 
 class LeaseAmend(InputModel):
@@ -183,7 +200,7 @@ class LeaseService:
                 "INSERT INTO lease_contracts(id,firm_id,company_id,book_id,customer_name,"
                 "customer_external_id,vehicle_external_id,start_period,end_period,monthly_cents,"
                 "status,version,approved_version,source_fingerprint,created_by,created_at) "
-                "VALUES(?,?,?,?,?,?,?,?,?,?,'active',1,0,?,?,?)",
+                "VALUES(?,?,?,?,?,?,?,?,?,?,'active',1,1,?,?,?)",
                 (
                     contract_id, actor.firm_id, book["company_id"], book_id,
                     values["customer_name"], values["customer_external_id"],
@@ -245,6 +262,46 @@ class LeaseService:
                 raise
             return self._view(conn, contract)
 
+
+    def red_invoice(self, actor, book_id, contract_id, request: LeaseInvoiceRed):
+        amount = _positive(request.amount, "红冲金额")
+        with self.db.transaction(write=True, actor=actor) as conn:
+            self._book(conn, actor, book_id, write=True)
+            contract = conn.execute(
+                "SELECT * FROM lease_contracts WHERE id=? AND book_id=?", (contract_id, book_id)
+            ).fetchone()
+            if not contract:
+                raise AccountingError("租赁合同不存在或无权访问", 404)
+            if contract["status"] != "active":
+                raise AccountingError("只有生效合同可以登记发票红冲", 409)
+            invoice = conn.execute(
+                "SELECT * FROM lease_confirmations WHERE contract_id=? AND kind='invoice' AND reference=?",
+                (contract_id, request.original_reference.strip()),
+            ).fetchone()
+            if not invoice:
+                raise AccountingError("原发票确认不存在", 404)
+            if int(invoice["amount_cents"]) != amount:
+                raise AccountingError("红冲金额必须等于原发票金额", 409)
+            if _month_index(request.period) < _month_index(invoice["period"]):
+                raise AccountingError("红冲期间不能早于原发票期间", 422)
+            if conn.execute(
+                "SELECT 1 FROM lease_invoice_reds WHERE contract_id=? AND original_reference=?",
+                (contract_id, request.original_reference.strip()),
+            ).fetchone():
+                raise AccountingError("该发票已红冲", 409)
+            try:
+                conn.execute(
+                    "INSERT INTO lease_invoice_reds(id,contract_id,original_reference,red_reference,period,amount_cents,reason,created_by,created_at) "
+                    "VALUES(?,?,?,?,?,?,?,?,?)",
+                    (uuid4().hex, contract_id, request.original_reference.strip(), request.red_reference.strip(),
+                     request.period, amount, request.reason.strip(), actor.user_id, now()),
+                )
+            except Exception as exc:
+                if "UNIQUE" in str(exc) or "duplicate" in str(exc).lower():
+                    raise AccountingError("红字发票号已登记", 409) from None
+                raise
+            return self._view(conn, contract)
+
     def recognize(self, actor, book_id, contract_id, request: LeaseRecognition):
         with self.db.transaction(write=True, actor=actor) as conn:
             book = self._book(conn, actor, book_id, write=True)
@@ -254,6 +311,8 @@ class LeaseService:
             ).fetchone()
             if not contract or contract["status"] != "active":
                 raise AccountingError("租赁合同不存在或未生效", 404)
+            if int(contract["approved_version"]) != int(contract["version"]):
+                raise AccountingError("租赁合同已改版，请先确认当前版本", 409)
             plan = conn.execute(
                 "SELECT * FROM lease_plan_rows WHERE contract_id=? AND period=? AND kind='revenue'",
                 (contract_id, request.period),
@@ -417,6 +476,23 @@ class LeaseService:
             )
             return self._view(conn, conn.execute("SELECT * FROM lease_contracts WHERE id=?", (contract_id,)).fetchone())
 
+    def approve(self, actor, book_id, contract_id, expected_version):
+        with self.db.transaction(write=True, actor=actor) as conn:
+            book = self._book(conn, actor, book_id, write=True)
+            self.accounting._open(book)
+            contract = conn.execute(
+                "SELECT * FROM lease_contracts WHERE id=? AND book_id=?", (contract_id, book_id)
+            ).fetchone()
+            if not contract or contract["status"] != "active":
+                raise AccountingError("租赁合同不存在或未生效", 404)
+            if int(contract["version"]) != expected_version:
+                raise AccountingError("租赁合同版本已变化", 409)
+            conn.execute(
+                "UPDATE lease_contracts SET approved_version=? WHERE id=? AND version=?",
+                (expected_version, contract_id, expected_version),
+            )
+            return self._view(conn, conn.execute("SELECT * FROM lease_contracts WHERE id=?", (contract_id,)).fetchone())
+
     def terminate(self, actor, book_id, contract_id, reason):
         if not str(reason or "").strip():
             raise AccountingError("终止合同必须填写理由", 422)
@@ -446,6 +522,9 @@ class LeaseService:
         events = conn.execute(
             "SELECT * FROM lease_events WHERE contract_id=? ORDER BY created_at", (contract["id"],)
         ).fetchall()
+        invoice_reds = conn.execute(
+            "SELECT * FROM lease_invoice_reds WHERE contract_id=? ORDER BY created_at", (contract["id"],)
+        ).fetchall()
         received = sum(int(row["amount_cents"]) for row in confirmations if row["kind"] == "receipt")
         recognized = sum(int(row["amount_cents"]) for row in plan if row["kind"] == "revenue" and row["status"] == "recognized")
         refunded = sum(int(row["amount_cents"]) for row in plan if row["kind"] == "refund")
@@ -462,4 +541,5 @@ class LeaseService:
             "plan": [dict(row) for row in plan],
             "confirmations": [dict(row) for row in confirmations],
             "events": [dict(row) for row in events],
+            "invoice_reds": [dict(row) for row in invoice_reds],
         }

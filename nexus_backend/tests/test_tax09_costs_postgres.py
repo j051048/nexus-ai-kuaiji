@@ -18,6 +18,8 @@ from app.tax.costs import (
     TaxCostReview,
     TaxCostService,
     TaxCostSourceWrite,
+    RepairRateService,
+    RepairRateWrite,
 )
 from scripts.pg_suite_target import load_suite_target, verify_suite_target
 
@@ -155,3 +157,25 @@ def test_pg_source_upgrade_and_outsider_are_rejected(case):
     with pytest.raises(AccountingError) as hidden:
         TaxCostService(case.db).get_batch(outsider, case.book["id"], batch["id"])
     assert hidden.value.status == 404
+
+
+def test_pg_repair_rate_card_resolves_and_guards_amount(case):
+    rates = RepairRateService(case.db)
+    card = rates.add(case.manager, case.book["id"], RepairRateWrite(
+        vehicle_type="出租车", rate_cents=5000, valid_from="2026-10", valid_to="2026-12",
+        coverage_scope="基础保养（不含轮胎）", source_ref="合同/2026-费率",
+    ))
+    assert rates.resolve(case.manager, case.book["id"], "出租车", "2026-11")["id"] == card["id"]
+    with pytest.raises(AccountingError) as mismatch:
+        TaxCostService(case.db).add_source(
+            case.manager, case.book["id"], TaxCostSourceWrite(
+                kind="repair", source_key="FP-PG-RATE", source_version=1, period="2026-10",
+                subject_label="京A1", original_ref="原件/维修-RATE.pdf", sha256="b" * 64,
+                amount="310.00",
+                payload={
+                    "invoice_ref": "FP-PG-RATE", "vehicle_external_id": "V1", "vehicle_type": "出租车",
+                    "coverage": "per_vehicle", "quantity_milli": 6000, "rate_card_id": card["id"],
+                },
+            ),
+        )
+    assert mismatch.value.status == 409

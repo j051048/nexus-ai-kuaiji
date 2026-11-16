@@ -9,12 +9,12 @@ from uuid import uuid4
 import pytest
 
 from app.accounting.database import Database
-from app.accounting.domain import Actor
+from app.accounting.domain import AccountingError, Actor
 from app.accounting.models import BookCreate
 from app.accounting.service import AccountingService
 from app.reports.profit import ProfitDrilldownService, ProfitMappingItem, ProfitMappingWrite
 from app.tax.basis import TaxBasisGenerate, TaxBasisPolicy, TaxBasisReview, TaxBasisAdjustment, TaxBasisService
-from app.tax.leases import LeaseConfirmation, LeaseCreate, LeasePolicy, LeaseRecognition, LeaseService
+from app.tax.leases import LeaseConfirmation, LeaseCreate, LeaseInvoiceRed, LeasePolicy, LeaseRecognition, LeaseService
 from scripts.pg_suite_target import load_suite_target, verify_suite_target
 
 ADMIN_URL = os.getenv("ACCOUNTING_TEST_POSTGRES_URL")
@@ -211,3 +211,36 @@ def test_profit_variance_compares_two_books_without_claiming_a_cause(case):
     assert value["checks"]["causal_claim"] is False
     assert value["checks"]["line_count"] >= 1
     assert all(item["delta_cents"] == 0 for item in value["lines"])
+
+
+def test_lease_invoice_red_reversal_is_immutable_and_scoped(case):
+    service = LeaseService(case.db)
+    contract = service.create(
+        case.manager, case.book["id"],
+        LeaseCreate(
+            customer_name="虚构红冲客户", customer_external_id="C-RED", vehicle_external_id="V-RED",
+            start_period="2026-10", end_period="2026-10", monthly="1200.00",
+        ),
+    )
+    service.confirm(
+        case.manager, case.book["id"], contract["id"],
+        LeaseConfirmation(kind="invoice", period="2026-10", amount="1200.00", reference="INV-RED-1"),
+    )
+    view = service.red_invoice(
+        case.manager, case.book["id"], contract["id"],
+        LeaseInvoiceRed(
+            original_reference="INV-RED-1", red_reference="RED-1", period="2026-10",
+            amount="1200.00", reason="客户退租，原发票全额红冲",
+        ),
+    )
+    assert len(view["invoice_reds"]) == 1
+    assert view["invoice_reds"][0]["red_reference"] == "RED-1"
+    with pytest.raises(AccountingError) as exc:
+        service.red_invoice(
+            case.manager, case.book["id"], contract["id"],
+            LeaseInvoiceRed(
+                original_reference="INV-RED-1", red_reference="RED-2", period="2026-10",
+                amount="1200.00", reason="重复红冲",
+            ),
+        )
+    assert exc.value.status == 409

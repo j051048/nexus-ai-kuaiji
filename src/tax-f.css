@@ -151,3 +151,40 @@
   .tax-f-fields { grid-template-columns: 1fr; }
   .tax-f-basis { align-items: flex-start; flex-direction: column; }
 }
+.tax-f-link { border: 0; background: none; padding: 0; color: #1f6b4f; font: inherit; text-decoration: underline; cursor: pointer; }
+.tax-f-invoice { display: flex; gap: 8px; align-items: end; flex-wrap: wrap; margin: 8px 0; }
+.tax-f-invoice label { flex: 1 1 220px; }
+.tax-f-confirmations { list-style: none; padding: 0; margin: 8px 0; display: grid; gap: 4px; }
+.tax-f-confirmations li { display: grid; grid-template-columns: 44px 72px 90px 1fr; gap: 8px; font-size: 12px; color: #52605a; border-top: 1px solid #edf1ee; padding-top: 4px; }
+@media (max-width: 640px) { .tax-f-confirmations li { grid-template-columns: 40px 70px 1fr; } .tax-f-confirmations li span:last-child { grid-column: 1 / -1; } }
+
+.tax-f-inline { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.tax-f-stale {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  margin: 8px 0;
+  padding: 10px 12px;
+  border: 1px solid #e6c9a8;
+  border-radius: 8px;
+  background: #fff8ed;
+  color: #7a4a18;
+}
+.tax-f-stale p { margin: 0; font-size: 13px; }
+.tax-f-stale button { flex: none; }
+@media (max-width: 640px) {
+  .tax-f-stale { align-items: stretch; flex-direction: column; }
+  .tax-f-stale button { width: 100%; }
+}
+.tax-f-events { margin: 8px 0 10px; border-top: 1px dashed #e3e9e5; padding-top: 8px; }
+.tax-f-events summary { cursor: pointer; font-size: 12px; color: #52605a; }
+.tax-f-events ul { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
+.tax-f-events li { display: grid; grid-template-columns: 76px 66px 86px minmax(120px, 1fr) 128px; gap: 8px; font-size: 12px; color: #52605a; }
+.tax-f-events li strong { color: #1f4a3a; font-weight: 600; }
+@media (max-width: 640px) {
+  .tax-f-events li { grid-template-columns: 1fr 1fr; }
+  .tax-f-events li span:nth-child(4), .tax-f-events li time { grid-column: 1 / -1; }
+}
+.fleet-cost-split { display: block; margin-top: 2px; color: #78847f; font-size: 11px; line-height: 1.4; }

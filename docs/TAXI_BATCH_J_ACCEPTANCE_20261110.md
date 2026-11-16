@@ -82,3 +82,5 @@
 - 书级 reviewer：删除 `book_access` 并撤销 `staff_access_assignments` 后，读取大凭证 403/404；原制单人仍可读。`test_large_voucher.py` 6 passed/8.10s。
 - 浏览器 403 显示无权且不渲染任何草稿行；1 passed/3.3s。
 - 未验证：事务所级 reviewer 撤销后的完整浏览器链；单独撤 book member 不等于撤销事务所授权。
+
+- 2026-11-16：Firefox/WebKit 516 行专项各 3 passed/25.5s、29.4s（1280、390×844、390×500）；无头 C 列宽拖拽仅 Chromium 直接操作，Firefox/WebKit 通过预设/本地存储断言。

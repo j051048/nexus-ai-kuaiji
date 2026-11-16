@@ -48,6 +48,7 @@ import { presentationRole, roleHome } from './workspace-presentation';
 import { currentHomeTask } from './workspace-home-focus';
 import { taskPresentation, taskTitle } from './task-presentation';
 import { homeProgress, type HomeProgress } from './workspace-progress';
+import { OaMaterialRequestList } from './OaMaterialRequestList';
 import './workspace.css';
 import './workbench-focus.css';
 
@@ -1048,9 +1049,10 @@ export function WorkspaceHome({
                 <ArrowRight size={15} />
               </button>
             )}
-          </div>
+    </div>
         </details>
       )}
+      {employee ? <OaMaterialRequestList session={session} /> : null}
       <p className="workspace-boundary">
         <CircleDot size={12} />
         AI 在后台识别、核对与生成草稿；会计复核后导出。

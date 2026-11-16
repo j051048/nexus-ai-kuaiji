@@ -75,6 +75,7 @@ function ObservabilityWorkspace({ session }: { session: Session }) {
   const [companies, setCompanies] = useState<{ id: string; name: string }[]>([]);
   const [companyId, setCompanyId] = useState('');
   const [value, setValue] = useState<ValueBaseline | null>(null);
+  const [fde, setFde] = useState<{ adapters: { code: string; label: string; live_external: boolean; native_format?: boolean; contract_version: string; contract_sha256: string; certification: string }[]; catalog_fingerprint: string } | null>(null);
   const [valueLoading, setValueLoading] = useState(false);
   const [valueError, setValueError] = useState('');
   const [radar, setRadar] = useState<{
@@ -175,6 +176,21 @@ function ObservabilityWorkspace({ session }: { session: Session }) {
       });
     return () => controller.abort();
   }, [companyId, period, revision, session]);
+  useEffect(() => {
+    if (!companyId) {
+      setFde(null);
+      return;
+    }
+    const controller = new AbortController();
+    void api<NonNullable<typeof fde>>(
+      '/firm/fde/adapters?' + new URLSearchParams({ company_id: companyId }).toString(),
+      session,
+      { signal: controller.signal },
+    )
+      .then((raw) => setFde(raw))
+      .catch(() => setFde(null));
+    return () => controller.abort();
+  }, [companyId, revision, session]);
   useEffect(() => {
     const controller = new AbortController();
     void api<NonNullable<typeof radar>>(
@@ -420,6 +436,25 @@ function ObservabilityWorkspace({ session }: { session: Session }) {
               </div>
             </section>
           )}
+          <section className="observability-panel" aria-label="FDE 适配器契约">
+            <div className="observability-panel-head"><h2>FDE 适配器契约</h2><span>本地合成契约，不代表供应商认证</span></div>
+            {fde ? (
+              <>
+                <p className="fde-contract-fingerprint">目录指纹 <code>{fde.catalog_fingerprint.slice(0, 16)}</code></p>
+                <div className="fde-contract-list">
+                  {fde.adapters.map((adapter) => (
+                    <article key={adapter.code}>
+                      <strong>{adapter.label}</strong>
+                      <span>{adapter.code} · {adapter.contract_version} · local_contract_only</span>
+                      <code>{adapter.contract_sha256.slice(0, 12)}</code>
+                      <span>{adapter.live_external ? '已接外部' : '未接真实外部'}{adapter.native_format === false ? ' · 非原生格式' : ''}</span>
+                    </article>
+                  ))}
+                </div>
+              </>
+            ) : <p className="observability-empty">选择企业后读取适配器契约。</p>}
+            <p className="fde-contract-note">适配器可用不等于客户真实接口已接通，也不授予写入或过账权限。</p>
+          </section>
           {data.signals.length > 0 && (
             <section className="observability-panel" aria-label="运行异常下一步">
               <header>

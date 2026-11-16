@@ -16,6 +16,16 @@ type Source = {
   status: string;
   payload: Record<string, unknown>;
 };
+type Rate = {
+  id: string;
+  vehicle_type: string;
+  rate_cents: number;
+  rate: string;
+  valid_from: string;
+  valid_to: string;
+  coverage_scope: string;
+  source_ref: string;
+};
 type Row = {
   source_id: string;
   row_number: number;
@@ -124,16 +134,24 @@ export function TaxCostBatchPanel({
   const [notice, setNotice] = useState('');
   const [failure, setFailure] = useState('');
   const [busy, setBusy] = useState(false);
+  const [rates, setRates] = useState<Rate[]>([]);
+  const [vehicleType, setVehicleType] = useState('出租车');
+  const [rateCents, setRateCents] = useState('5000');
+  const [validFrom, setValidFrom] = useState(period);
+  const [validTo, setValidTo] = useState(period);
+  const [coverageScope, setCoverageScope] = useState('基础保养（不含轮胎）');
 
   async function load() {
     setFailure('');
     try {
-      const [sourceData, batchData] = await Promise.all([
+      const [sourceData, batchData, rateData] = await Promise.all([
         api<{ items: Source[] }>(`${base}/cost-sources`, session),
         api<{ items: Batch[] }>(url, session),
+        api<{ items: Rate[] }>(`${base}/repair-rates`, session),
       ]);
       setSources(sourceData.items.filter((item) => item.status === 'active'));
       setBatches(batchData.items);
+      setRates(rateData.items);
     } catch (error) {
       setFailure(error instanceof ApiError ? error.message : '成本批次读取失败。');
     }
@@ -275,6 +293,31 @@ export function TaxCostBatchPanel({
     );
   }
 
+  async function addRate() {
+    setBusy(true);
+    setFailure('');
+    setNotice('');
+    try {
+      await api<Rate>(`${base}/repair-rates`, session, {
+        method: 'POST',
+        body: {
+          vehicle_type: vehicleType,
+          rate_cents: Number(rateCents),
+          valid_from: validFrom,
+          valid_to: validTo,
+          coverage_scope: coverageScope,
+          source_ref: `客户核定费率/${vehicleType}/${validFrom}`,
+        },
+      });
+      setNotice('费率卡已登记；同车型有效期不能重叠。');
+      await load();
+    } catch (error) {
+      setFailure(error instanceof ApiError ? error.message : '费率卡登记失败。');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <section className="tax-cost-panel" aria-labelledby="tax-cost-title">
       <header>
@@ -290,6 +333,29 @@ export function TaxCostBatchPanel({
         只采用人工核定且有原件的来源；金额由确定性代码计算。生成草稿不代表复核；复核后版本冻结。
         包干、保险算法或工资明细缺失时，必须由客户书面核定，系统不会反推。
       </p>
+      <details className="tax-cost-rates">
+        <summary>按车型维修费率卡（{rates.length}）</summary>
+        <p>只登记客户核定的车型费率；实际维修引用费率卡时，金额必须与费率×数量一致。</p>
+        <div className="tax-cost-form">
+          <label>车型<input value={vehicleType} onChange={(event) => setVehicleType(event.target.value)} /></label>
+          <label>费率（分）<input value={rateCents} onChange={(event) => setRateCents(event.target.value)} /></label>
+          <label>生效月<input type="month" value={validFrom} onChange={(event) => setValidFrom(event.target.value)} /></label>
+          <label>结束月<input type="month" value={validTo} onChange={(event) => setValidTo(event.target.value)} /></label>
+          <label className="tax-cost-wide">覆盖范围<input value={coverageScope} onChange={(event) => setCoverageScope(event.target.value)} /></label>
+        </div>
+        <button type="button" disabled={busy} onClick={() => void addRate()}>登记费率卡</button>
+        {rates.length > 0 && (
+          <div className="tax-cost-lines">
+            {rates.map((rate) => (
+              <article key={rate.id}>
+                <strong>{rate.vehicle_type} · ¥{(rate.rate_cents / 100).toFixed(2)}</strong>
+                <span>{rate.valid_from} 至 {rate.valid_to} · {rate.coverage_scope}</span>
+                <small>{rate.source_ref}</small>
+              </article>
+            ))}
+          </div>
+        )}
+      </details>
       <div className="tax-cost-form">
         <label>
           类别

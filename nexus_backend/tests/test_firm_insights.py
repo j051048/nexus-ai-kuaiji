@@ -131,6 +131,24 @@ def test_phase_two_and_three_drilldowns_are_traceable(tmp_path):
                     "hash", user_id, "2026-10-31T00:00:00+00:00",
                 ),
             )
+            conn.execute(
+                "INSERT INTO books(id,firm_id,company_id,period,name) "
+                "SELECT ?,firm_id,company_id,'2026-09',name FROM books WHERE id=?",
+                ("insight-prev-book", book["id"]),
+            )
+            conn.execute(
+                "INSERT INTO report_runs(id,book_id,period,template_id,template_version,status,version,"
+                "inputs_fingerprint,content_json,content_hash,created_by,created_at) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+                (
+                    "insight-prev-report", "insight-prev-book", "2026-09", "synthetic", 1,
+                    "reviewed", 1, "input",
+                    '{"balance_sheet":{"assets":0,"liabilities":0,"equity":0,"items":[]},'
+                    '"profit_statement":{"revenue_cents":40000,"expense_cents":15000,"profit_cents":25000,'
+                    '"items":[]},"cash_flow":{"closing_cash_cents":0},"checks":{}}',
+                    "hash", user_id, "2026-09-30T00:00:00+00:00",
+                ),
+            )
             conn.commit()
         detail = client.get(
             "/api/firm/observability/insights/company",
@@ -150,6 +168,11 @@ def test_phase_two_and_three_drilldowns_are_traceable(tmp_path):
         assert comparison.status_code == 200, comparison.text
         rows = comparison.json()["rows"]
         assert any(row["book_id"] == book["id"] and row["assets_cents"] == 30000 for row in rows)
+        current = next(row for row in rows if row["book_id"] == book["id"])
+        assert comparison.json()["compare_period"] == "2026-09"
+        assert current["previous_known"] is True
+        assert current["revenue_delta_cents"] == 10000
+        assert current["profit_delta_cents"] == 5000
 
         timeline = client.get(
             "/api/firm/observability/insights/timeline",

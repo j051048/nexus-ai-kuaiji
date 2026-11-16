@@ -132,14 +132,21 @@ class TaxCostService:
                 raise AccountingError("维修来源必须绑定车辆", 422)
             rate = payload.get("rate_cents")
             quantity = payload.get("quantity_milli")
-            if rate is not None or quantity is not None:
+            if rate is not None:
                 rate = _positive_cents(rate, "费率")
                 quantity = _positive_cents(quantity, "数量")
                 computed = rate * quantity // 1000
                 if computed != amount_cents:
                     raise AccountingError("费率×数量与维修金额不一致，请按原件核定", 422)
-            if payload.get("coverage") not in {"package", "per_vehicle", "actual"}:
+            elif quantity is not None:
+                _positive_cents(quantity, "数量")
+                if not str(payload.get("rate_card_id") or "").strip():
+                    raise AccountingError("只给数量时必须引用有效费率卡", 422)
+            coverage = payload.get("coverage")
+            if coverage not in {"package", "per_vehicle", "actual"}:
                 raise AccountingError("维修覆盖方式必须显式选择包干、按车或实际结算", 422)
+            if coverage == "package" and not str(payload.get("coverage_scope") or "").strip():
+                raise AccountingError("包干维修必须写明覆盖范围，不能只写“包干”", 422)
         elif kind == "insurance":
             premium = _positive_cents(payload.get("premium_cents"), "保费")
             try:
@@ -203,6 +210,54 @@ class TaxCostService:
         else:
             raise AccountingError("不支持的成本类型", 422)
 
+    @staticmethod
+    def _repair_coverage_guard(conn, book_id, period, payload):
+        incoming = payload.get("coverage")
+        vehicle = str(payload.get("vehicle_external_id") or "").strip()
+        if incoming not in {"package", "actual"}:
+            return
+        rows = conn.execute(
+            "SELECT payload_json FROM tax_cost_sources "
+            "WHERE book_id=? AND kind='repair' AND period=? AND status='active'",
+            (book_id, period),
+        ).fetchall()
+        for row in rows:
+            try:
+                existing = json.loads(row["payload_json"] or "{}")
+            except (TypeError, ValueError):
+                continue
+            if str(existing.get("vehicle_external_id") or "").strip() != vehicle:
+                continue
+            previous = existing.get("coverage")
+            if previous == "package" and incoming == "actual":
+                reason = str(payload.get("package_exclusion_reason") or "").strip()
+                if len(reason) < 3:
+                    raise AccountingError("该车本期已有包干维修，实际结算必须注明包干未覆盖的项目和原因", 409)
+            if previous == "actual" and incoming == "package":
+                reason = str(payload.get("package_switch_reason") or "").strip()
+                if len(reason) < 3:
+                    raise AccountingError("该车本期已有实际维修，改用包干必须注明切换生效点和原因", 409)
+
+    @staticmethod
+    def _rate_card_guard(conn, book_id, period, payload, amount_cents):
+        rate_id = str(payload.get("rate_card_id") or "").strip()
+        if not rate_id:
+            return
+        vehicle_type = str(payload.get("vehicle_type") or "").strip()
+        quantity = payload.get("quantity_milli")
+        if not vehicle_type or not isinstance(quantity, int) or quantity <= 0:
+            raise AccountingError("引用费率卡时必须提供车型和数量", 422)
+        card = conn.execute(
+            "SELECT * FROM repair_rate_cards WHERE id=? AND book_id=? AND vehicle_type=? "
+            "AND valid_from<=? AND valid_to>=?",
+            (rate_id, book_id, vehicle_type, period, period),
+        ).fetchone()
+        if not card:
+            raise AccountingError("费率卡不存在、车型不符或不在本期间有效", 409)
+        expected = int(card["rate_cents"]) * quantity // 1000
+        if expected != amount_cents:
+            raise AccountingError("维修金额与费率卡×数量不一致", 409)
+
     def add_source(self, actor, book_id, request: TaxCostSourceWrite):
         amount = money_to_cents(request.amount)
         if amount <= 0:
@@ -231,6 +286,9 @@ class TaxCostService:
                 if existing["fingerprint"] != fingerprint:
                     raise AccountingError("同一来源版本的内容已变化，请提升版本", 409)
                 return self._source_view(existing, replayed=True)
+            if request.kind == "repair":
+                self._repair_coverage_guard(conn, book_id, request.period, request.payload)
+                self._rate_card_guard(conn, book_id, request.period, request.payload, amount)
             latest = conn.execute(
                 "SELECT MAX(source_version) FROM tax_cost_sources WHERE book_id=? AND kind=? AND source_key=?",
                 (book_id, request.kind, request.source_key),
@@ -619,3 +677,82 @@ class TaxCostService:
             )
             updated = conn.execute("SELECT * FROM tax_cost_batches WHERE id=?", (batch_id,)).fetchone()
             return self._batch_view(conn, actor, updated)
+
+
+class RepairRateWrite(InputModel):
+    vehicle_type: StrictStr = Field(min_length=1, max_length=40)
+    rate_cents: int = Field(gt=0)
+    valid_from: StrictStr
+    valid_to: StrictStr
+    coverage_scope: StrictStr = Field(min_length=3, max_length=120)
+    source_ref: StrictStr = Field(min_length=3, max_length=200)
+
+    @field_validator("valid_from", "valid_to")
+    @classmethod
+    def valid_period(cls, value):
+        return validate_period(value)
+
+
+class RepairRateService:
+    """Vehicle-type repair rate cards. Rates never apply themselves."""
+
+    def __init__(self, db):
+        self.db = db
+
+    def add(self, actor, book_id, request: RepairRateWrite):
+        if request.valid_from > request.valid_to:
+            raise AccountingError("费率生效起始月不能晚于结束月", 422)
+        with self.db.transaction(write=True, actor=actor) as conn:
+            self._book(conn, actor, book_id, write=True)
+            overlap = conn.execute(
+                "SELECT id FROM repair_rate_cards WHERE book_id=? AND vehicle_type=? "
+                "AND valid_from<=? AND valid_to>=? LIMIT 1",
+                (book_id, request.vehicle_type, request.valid_to, request.valid_from),
+            ).fetchone()
+            if overlap:
+                raise AccountingError("同车型费率有效期不能重叠", 409)
+            row_id = uuid4().hex
+            conn.execute(
+                "INSERT INTO repair_rate_cards(id,book_id,vehicle_type,rate_cents,valid_from,valid_to,"
+                "coverage_scope,source_ref,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
+                (row_id, book_id, request.vehicle_type, request.rate_cents, request.valid_from,
+                 request.valid_to, request.coverage_scope, request.source_ref,
+                 actor.user_id, now()),
+            )
+            return self._view(conn.execute("SELECT * FROM repair_rate_cards WHERE id=?", (row_id,)).fetchone())
+
+    def list(self, actor, book_id):
+        with self.db.transaction(actor=actor) as conn:
+            self._book(conn, actor, book_id)
+            rows = conn.execute(
+                "SELECT * FROM repair_rate_cards WHERE book_id=? ORDER BY vehicle_type,valid_from", (book_id,)
+            ).fetchall()
+            return {"items": [self._view(row) for row in rows]}
+
+    def resolve(self, actor, book_id, vehicle_type, period):
+        with self.db.transaction(actor=actor) as conn:
+            self._book(conn, actor, book_id)
+            row = self._resolve_row(conn, book_id, vehicle_type, period)
+            if not row:
+                raise AccountingError("本期间没有该车型的有效费率卡", 404)
+            return self._view(row)
+
+    def _book(self, conn, actor, book_id, write=False):
+        return TaxCostService(self.db)._book(conn, actor, book_id, write=write)
+
+    @staticmethod
+    def _resolve_row(conn, book_id, vehicle_type, period):
+        return conn.execute(
+            "SELECT * FROM repair_rate_cards WHERE book_id=? AND vehicle_type=? "
+            "AND valid_from<=? AND valid_to>=? ORDER BY valid_from DESC LIMIT 1",
+            (book_id, vehicle_type, period, period),
+        ).fetchone()
+
+    @staticmethod
+    def _view(row):
+        return {
+            "id": row["id"], "book_id": row["book_id"], "vehicle_type": row["vehicle_type"],
+            "rate_cents": int(row["rate_cents"]), "valid_from": row["valid_from"],
+            "valid_to": row["valid_to"], "coverage_scope": row["coverage_scope"],
+            "source_ref": row["source_ref"], "created_at": row["created_at"],
+        }

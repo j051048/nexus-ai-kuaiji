@@ -1363,6 +1363,19 @@ class AccountingService:
                     raise AccountingError(
                         "凭证当前校验失败，不能导出：" + "；".join(value["issues"]), 409
                     )
+                source = conn.execute(
+                    "SELECT external_id FROM sources WHERE id=? AND book_id=?",
+                    (draft["source_id"], book_id),
+                ).fetchone()
+                external_id = source["external_id"] if source else ""
+                if external_id.startswith("lease:"):
+                    contract_id = external_id.split(":", 2)[1]
+                    lease = conn.execute(
+                        "SELECT version,approved_version,status FROM lease_contracts WHERE id=? AND book_id=?",
+                        (contract_id, book_id),
+                    ).fetchone()
+                    if not lease or lease["status"] != "active" or lease["approved_version"] != lease["version"]:
+                        raise AccountingError("租赁合同已改版，旧审批版本的凭证不能导出，请确认当前版本后重新生成", 409)
                 selected.append(value)
             output = io.StringIO(newline="")
             writer = csv.writer(output, lineterminator="\r\n")

@@ -67,3 +67,30 @@
 
 - 只使用合成数据、本地身份、私有原件存储；未提交、未推送、未部署、未执行线上 SQL、未调用真实模型/通知/OA/T+。
 - 本轮未改历史迁移 checksum；新增迁移为 sqlite 149/postgres 232。
+
+## 车辆成本构成补充（2026-11-16）
+
+- `FleetMetricsService.overview` 增加每车 `repair_cost_cents` / `insurance_cost_cents` / `oa_cost_cents`，仅统计已复核 adopted 成本行，未分配成本仍单列。
+- `FleetMetricsPanel` 在“已归属成本”下显示维修/保险/OA 构成，不改变净利润未知口径。
+- 验证：`test_h3_fleet.py` 1 passed/6.35s；typecheck/build 通过。
+- 候选：HEAD `9517ddb4`；source 2213/`2f293a38e668f4ba32665a581c1a7d56f3968d4d478db9fb1621d43096933dfa`；migration 390。
+- 仍缺：包干特殊项目切换、按车型费率、退保/处置、固定资产卡片。
+
+## 包干/实际维修重叠守卫（2026-11-16）
+
+- 包干维修必须填写 `coverage_scope`，不能只写“包干”。
+- 同车同期间已有包干时，实际结算必须填写 `package_exclusion_reason`；已有实际结算改包干必须填写 `package_switch_reason`。
+- 缺少原因返回 409，避免包干与实际重复入账；合理备注仍可登记。
+- 验证：`test_tax09_costs.py` 12 passed/18.62s。
+- 仍缺：按车型费率表、包干合同额度累计、特殊项目清单的自动匹配。
+
+## 按车型维修费率卡（2026-11-16）
+
+- 迁移 sqlite 161 / postgres 245：`repair_rate_cards`，同书/车型/有效期，PG RLS。
+- `RepairRateService`：登记（manager）、列表、按期间解析；同车型有效期重叠 409。
+- 维修来源可引用 `rate_card_id`：必须提供车型与数量，费率卡须覆盖当前期间且车型一致，金额必须等于 `rate_cents × quantity_milli / 1000`，否则 409。
+- 不自动套用费率：未引用费率卡时仍按现有显式费率/数量校验。
+- 验证：`test_tax09_costs.py` 13 passed/20.31s。
+- PG16/17：`test_tax09_costs_postgres.py` 各 3 passed/1.93s、1.97s（费率卡登记/解析/金额不符 409）。
+- 前端 `TaxCostBatchPanel` 新增“按车型维修费率卡”折叠区：登记、列表、金额显示；浏览器 1280/390 `tax10-costs` 2 passed/33.0s（含金额显示 ¥50.00）。
+- 未做：费率卡变更后旧批次失效、费率卡停用/历史版本续期。

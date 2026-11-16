@@ -23,4 +23,10 @@ def build_oa_router(actor_dependency):
     def register_snapshot(book_id: str, body: OASnapshotWrite, request: Request, current: Actor = Depends(actor_dependency)):
         return request.app.state.oa_snapshots.register(current, book_id, body)
 
-    return router
+    accessible = APIRouter(prefix="/api/oa/material-requests", tags=["OA 审批快照"])
+
+    @accessible.get("")
+    def list_accessible_material_requests(request: Request, current: Actor = Depends(actor_dependency)):
+        return request.app.state.oa_snapshots.list_accessible_requests(current)
+
+    return router, accessible

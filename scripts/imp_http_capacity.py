@@ -29,7 +29,7 @@ def validate_rows(rows, expected):
         raise ValueError("HTTP capacity requests missing, duplicated or failed")
 
 
-def run(config, major, output):
+def run(config, major, output, concurrency=50, companies=50):
     import socket
     import httpx
     import uvicorn
@@ -46,10 +46,10 @@ def run(config, major, output):
         "status": "failed",
         "candidate": before,
         "postgres": major,
-        "concurrency": 50,
-        "companies": 50,
-        "reads": 200,
-        "writes": 50,
+        "concurrency": concurrency,
+        "companies": companies,
+        "reads": companies * 4,
+        "writes": companies,
         "model_calls": 0,
         "notification_calls": 0,
         "identity": "P02 local signed JWT fixture; live loopback API; restricted PG runtime",
@@ -81,7 +81,7 @@ def run(config, major, output):
                 base_url=base, trust_env=False, timeout=30, headers=headers
             ) as client:
                 books = []
-                for i in range(50):
+                for i in range(companies):
                     response = client.post(
                         "/api/companies", json={"name": f"IMP capacity {tag} {i}", "tax_id": ""}
                     )
@@ -100,7 +100,7 @@ def run(config, major, output):
 
                 def operation(i):
                     start = time.perf_counter()
-                    book = books[i % 50]
+                    book = books[i % companies]
                     try:
                         if i % 5 == 0:
                             response = client.post(
@@ -141,8 +141,8 @@ def run(config, major, output):
                             "ms": (time.perf_counter() - start) * 1000,
                         }
 
-                with ThreadPoolExecutor(max_workers=50) as pool:
-                    rows = list(pool.map(operation, range(250)))
+                with ThreadPoolExecutor(max_workers=concurrency) as pool:
+                    rows = list(pool.map(operation, range(concurrency * 5)))
             report.update(
                 http=summary(rows),
                 operations=rows,
@@ -150,7 +150,7 @@ def run(config, major, output):
                 transactions=session.db.metrics.snapshot(firm_id=session.ids["firm"]),
                 resources=process_usage(),
             )
-            validate_rows(rows, 250)
+            validate_rows(rows, concurrency * 5)
             if candidate_fingerprint(ROOT) != before:
                 raise RuntimeError("candidate_changed")
             report["status"] = "passed"
@@ -178,5 +178,7 @@ if __name__ == "__main__":
     parser.add_argument("--config", required=True)
     parser.add_argument("--major", type=int, choices=[16, 17], required=True)
     parser.add_argument("--out", required=True)
+    parser.add_argument("--concurrency", type=int, default=50)
+    parser.add_argument("--companies", type=int, default=50)
     args = parser.parse_args()
-    raise SystemExit(run(args.config, args.major, args.out))
+    raise SystemExit(run(args.config, args.major, args.out, args.concurrency, args.companies))

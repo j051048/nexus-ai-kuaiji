@@ -20,11 +20,15 @@ from .costs import (
     TaxCostReview,
     TaxCostService,
     TaxCostSourceWrite,
+    RepairRateService,
+    RepairRateWrite,
 )
 from .leases import (
     LeaseAmend,
+    LeaseApprove,
     LeaseConfirmation,
     LeaseCreate,
+    LeaseInvoiceRed,
     LeasePolicy,
     LeaseRecognition,
     LeaseRefund,
@@ -367,6 +371,9 @@ def build_tax_router(actor_dependency):
     def cost_service(request: Request) -> TaxCostService:
         return request.app.state.tax_costs
 
+    def rate_service(request: Request) -> RepairRateService:
+        return request.app.state.repair_rates
+
     def lease_service(request: Request) -> LeaseService:
         return request.app.state.tax_leases
 
@@ -396,6 +403,16 @@ def build_tax_router(actor_dependency):
     def recognize_lease(book_id: str, contract_id: str, payload: LeaseRecognition,
                         current=Depends(actor_dependency), leases=Depends(lease_service)):
         return leases.recognize(current, book_id, contract_id, payload)
+
+    @router.post("/books/{book_id}/leases/{contract_id}/approve")
+    def approve_lease(book_id: str, contract_id: str, payload: LeaseApprove,
+                      current=Depends(actor_dependency), leases=Depends(lease_service)):
+        return leases.approve(current, book_id, contract_id, payload.expected_version)
+
+    @router.post("/books/{book_id}/leases/{contract_id}/invoice-reds", status_code=201)
+    def red_lease_invoice(book_id: str, contract_id: str, payload: LeaseInvoiceRed,
+                          current=Depends(actor_dependency), leases=Depends(lease_service)):
+        return leases.red_invoice(current, book_id, contract_id, payload)
 
     @router.post("/books/{book_id}/leases/{contract_id}/refund", status_code=201)
     def refund_lease(book_id: str, contract_id: str, payload: LeaseRefund,
@@ -581,6 +598,21 @@ def build_tax_router(actor_dependency):
     def invalidate_fee_batch(book_id: str, batch_id: str, payload: TaxFeeInvalidateWrite,
                              current=Depends(actor_dependency), fees=Depends(fee_service)):
         return fees.invalidate(current, book_id, batch_id, expected_version=payload.expected_version, reason=payload.reason)
+
+    @router.post("/books/{book_id}/repair-rates", status_code=201)
+    def add_repair_rate(book_id: str, payload: RepairRateWrite,
+                        current=Depends(actor_dependency), rates=Depends(rate_service)):
+        return rates.add(current, book_id, payload)
+
+    @router.get("/books/{book_id}/repair-rates")
+    def list_repair_rates(book_id: str, current=Depends(actor_dependency),
+                          rates=Depends(rate_service)):
+        return rates.list(current, book_id)
+
+    @router.get("/books/{book_id}/repair-rates/resolve")
+    def resolve_repair_rate(book_id: str, vehicle_type: str, period: str,
+                            current=Depends(actor_dependency), rates=Depends(rate_service)):
+        return rates.resolve(current, book_id, vehicle_type, period)
 
     @router.post("/books/{book_id}/cost-sources", status_code=201)
     def add_cost_source(book_id: str, payload: TaxCostSourceWrite,

@@ -94,6 +94,12 @@ for (const width of [1365, 390]) {
     await expect(page.locator('section[aria-label="持续结账雷达"]')).toContainText('持续结账雷达');
     await expect(page.locator('section[aria-label="持续结账雷达"]')).toContainText('关账仍需人工判断');
     await expect(page.locator('section[aria-label="FDE 价值基线"]')).toContainText('系统耗时不是人工工时');
+    const contracts = page.locator('section[aria-label="FDE 适配器契约"]');
+    await expect(contracts).toContainText('本地合成契约');
+    await expect(contracts).toContainText('tax_xlsx');
+    await expect(contracts).toContainText('未接真实外部');
+    await expect(contracts).toContainText('非原生格式');
+    await expect(contracts).toContainText('不授予写入或过账权限');
     await expect(page.getByRole('link', { name: '打开待复核' })).toHaveAttribute(
       'href',
       '/workspace/monthly?focus=review',
@@ -124,6 +130,8 @@ for (const width of [1365, 390]) {
     await shot(page, `monitor-sla-${width}`);
     await page.unroute('**/api/firm/observability?*');
     await page.reload();
+    await expect(page.getByRole('heading', { name: '运行可观测性' })).toBeVisible();
+    await expect(page.getByRole('region', { name: 'FDE 适配器契约' })).toBeVisible();
     await expect(page.getByRole('alert')).toHaveCount(0);
     await shot(page, `monitor-${width}`);
     const month = await page.getByLabel('运行记录月份').inputValue();

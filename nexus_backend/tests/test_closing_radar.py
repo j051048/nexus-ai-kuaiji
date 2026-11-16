@@ -34,6 +34,13 @@ def test_closing_radar_lists_blockers_without_mutating_period(tmp_path):
         assert body["note"].startswith("只读雷达")
         assert all(item["period_status"] in {"open", "closed"} for item in body["books"])
         assert all("closable" in item and "blockers" in item for item in body["books"])
+        assert all(item["precheck"]["state"] in {"locked", "blocked", "precheck_passed"} for item in body["books"])
+        assert all(item["closable"] == (item["precheck"]["state"] == "precheck_passed") for item in body["books"])
+        # Seed books have no bank coverage / subledger control confirmation; zero draft/material counts alone must not be treated as closable.
+        first = body["books"][0]
+        assert first["precheck"]["authoritative"] is False
+        assert any(blocker["code"] in {"bank_accounts_missing", "bank_coverage_missing", "subledger_control_pending"} for blocker in first["blockers"])
+        assert first["closable"] is False
 
         employee = auth(client, "employee")
         denied = client.get(

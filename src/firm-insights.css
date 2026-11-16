@@ -296,3 +296,8 @@
   .firm-insights-gantt-row { grid-template-columns: 100px 1fr; }
 }
 .firm-insights-gantt-row i.is-unplanned { background: #c8d4ce; }
+.firm-insights-chart { position: relative; }
+.firm-insights-chart-toggle { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid #dfe7e2; border-radius: 7px; background: #f6f9f7; margin-bottom: 6px; }
+.firm-insights-chart-toggle button { border: 0; background: transparent; border-radius: 5px; padding: 3px 9px; font-size: 11px; color: #64736c; cursor: pointer; }
+.firm-insights-chart-toggle button.is-active { background: #fff; color: #1d4b3d; box-shadow: 0 1px 2px rgba(20, 50, 40, .12); }
+.firm-insights-legend-note { color: #78847f; font-size: 11px; margin-left: 4px; }

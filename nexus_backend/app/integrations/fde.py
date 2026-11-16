@@ -5,6 +5,9 @@ enable a live provider, write a mapping, or grant any accounting action.
 """
 from __future__ import annotations
 
+import hashlib
+import json
+
 from ..accounting.access_policy import AccessControl
 from ..accounting.service import now
 
@@ -17,6 +20,25 @@ ADAPTERS = [
     {"code": "tplus54_synthetic", "label": "T+ 54 列合成适配", "state": "available", "live_external": False, "native_format": False},
     {"code": "sync_stub", "label": "文件链同步替身", "state": "available", "live_external": False},
 ]
+
+
+def _contract(adapter: dict) -> dict:
+    descriptor = {
+        "code": adapter["code"],
+        "label": adapter["label"],
+        "live_external": bool(adapter.get("live_external")),
+        "native_format": bool(adapter.get("native_format", True)),
+        "contract_version": "v1",
+    }
+    digest = hashlib.sha256(
+        json.dumps(descriptor, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    return {
+        **adapter,
+        "contract_version": "v1",
+        "contract_sha256": digest,
+        "certification": "local_contract_only",
+    }
 
 
 class FdeAdapterService:
@@ -56,9 +78,19 @@ class FdeAdapterService:
                     actor.firm_id, company_id,
                 ),
             }
+            adapters = [_contract(item) for item in ADAPTERS]
+            fingerprint = hashlib.sha256(
+                json.dumps(
+                    [(item["code"], item["contract_sha256"]) for item in adapters],
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode("utf-8")
+            ).hexdigest()
             return {
                 "company_id": company_id,
-                "adapters": ADAPTERS,
+                "adapters": adapters,
+                "catalog_fingerprint": fingerprint,
                 "entity_tags": tags,
                 "live_external": False,
                 "note": "只读目录；适配器可用不等于客户真实接口已接通，也不授予写入或过账权限。",

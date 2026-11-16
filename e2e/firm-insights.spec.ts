@@ -21,6 +21,11 @@ for (const viewport of [
     await expect(main.getByText('财务已覆盖', { exact: true })).toBeVisible();
     await expect(main.getByText('交付阶段', { exact: true })).toBeVisible();
     await expect(main.getByText('近六个月趋势', { exact: true })).toBeVisible();
+    await main.getByRole('button', { name: '财务' }).click();
+    await expect(main.getByText('无已复核报表的月份不补 0', { exact: true })).toBeVisible();
+    await expect(main.getByRole('button', { name: '财务' })).toHaveAttribute('aria-pressed', 'true');
+    await page.screenshot({ path: `tmp_test/firm-insights-finance-${viewport.width}.png`, fullPage: false });
+    await main.getByRole('button', { name: '运营' }).click();
     await expect(main.getByText('风险与逾期', { exact: true })).toBeVisible();
     await expect(main.getByText('人员负载', { exact: true })).toBeVisible();
     await expect(main.locator('.firm-insights-note')).toContainText('只读');

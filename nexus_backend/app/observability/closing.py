@@ -4,6 +4,9 @@ The radar is a projection over existing service state. It never closes a
 period, approves a draft, or sends a request.
 """
 
+import hashlib
+from datetime import datetime, timezone
+
 from ..accounting.access import AccessControl
 from ..accounting.domain import AccountingError
 
@@ -44,6 +47,28 @@ class ClosingRadarService:
                     "SELECT count(*) FROM tax_basis_reviews WHERE book_id=? AND period=? AND status='draft'",
                     (book["id"], period),
                 ).fetchone()[0]
+                bank_accounts = conn.execute(
+                    "SELECT count(*) FROM bank_accounts WHERE book_id=? AND active=1",
+                    (book["id"],),
+                ).fetchone()[0]
+                bank_missing = conn.execute(
+                    "SELECT count(*) FROM bank_accounts a WHERE a.book_id=? AND a.active=1 "
+                    "AND NOT EXISTS (SELECT 1 FROM bank_statement_coverages c WHERE c.account_id=a.id AND c.period=?)",
+                    (book["id"], period),
+                ).fetchone()[0]
+                ledger = conn.execute(
+                    "SELECT l.id FROM ledgers l JOIN ledger_periods lp ON lp.ledger_id=l.id "
+                    "WHERE lp.book_id=? ORDER BY l.created_at DESC LIMIT 1",
+                    (book["id"],),
+                ).fetchone()
+                subledger_pending = 0
+                if ledger:
+                    setting = conn.execute(
+                        "SELECT status FROM subledger_control_settings WHERE ledger_id=?",
+                        (ledger["id"],),
+                    ).fetchone()
+                    if not setting or setting["status"] == "pending":
+                        subledger_pending = 1
                 blockers = []
                 if materials:
                     blockers.append(
@@ -75,6 +100,41 @@ class ClosingRadarService:
                             "next_action": "打开税务底稿，复核基数与人工依据",
                         }
                     )
+                if not bank_accounts:
+                    blockers.append(
+                        {
+                            "code": "bank_accounts_missing",
+                            "label": "银行账户未登记",
+                            "count": 1,
+                            "owner_role": "client_finance",
+                            "next_action": "打开账套设置登记银行账户与期间覆盖",
+                        }
+                    )
+                elif bank_missing:
+                    blockers.append(
+                        {
+                            "code": "bank_coverage_missing",
+                            "label": "银行流水覆盖未确认",
+                            "count": bank_missing,
+                            "owner_role": "client_finance",
+                            "next_action": "补齐本期银行账户覆盖并确认",
+                        }
+                    )
+                if subledger_pending:
+                    blockers.append(
+                        {
+                            "code": "subledger_control_pending",
+                            "label": "子账控制未配置/未确认",
+                            "count": 1,
+                            "owner_role": "accountant",
+                            "next_action": "打开子账控制设置确认适用性或控制科目",
+                        }
+                    )
+                authoritative = not blockers
+                state = "locked" if book["period_status"] == "closed" else ("blocked" if blockers else "precheck_passed")
+                fingerprint = hashlib.sha256(
+                    "|".join([book["id"], period, state] + [f"{b['code']}:{b['count']}" for b in blockers]).encode()
+                ).hexdigest()
                 items.append(
                     {
                         "book_id": book["id"],
@@ -82,7 +142,14 @@ class ClosingRadarService:
                         "company_name": book["company_name"],
                         "period": period,
                         "period_status": book["period_status"],
-                        "closable": not blockers and book["period_status"] == "open",
+                        "precheck": {
+                            "state": state,
+                            "check_version": 1,
+                            "checked_at": datetime.now(timezone.utc).isoformat(),
+                            "fingerprint": fingerprint,
+                            "authoritative": authoritative,
+                        },
+                        "closable": state == "precheck_passed",
                         "blockers": blockers,
                     }
                 )
@@ -93,6 +160,8 @@ class ClosingRadarService:
                 "books": len(items),
                 "blocked": sum(1 for item in items if item["blockers"]),
                 "closable": sum(1 for item in items if item["closable"]),
+                "precheck_passed": sum(1 for item in items if item["precheck"]["state"] == "precheck_passed"),
+                "not_checked": sum(1 for item in items if item["precheck"]["state"] == "not_checked"),
                 "closed": sum(1 for item in items if item["period_status"] == "closed"),
             },
             "note": "只读雷达：不自动关账、不自动复核、不替代项目经理判断。",

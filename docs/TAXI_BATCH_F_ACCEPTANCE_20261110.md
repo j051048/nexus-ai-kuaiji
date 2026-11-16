@@ -91,7 +91,7 @@ npx playwright test --config playwright.tax-f.config.ts
 - `tmp_test/tax-f-1280.png`
 - `tmp_test/tax-f-390.png`
 
-浏览器链路：登记租赁合同 → 业务确认 → 收款确认 → 收入草稿 → 生成税费核定 → 独立复核 → 利润项目读取 → 凭证行下钻。
+浏览器链路：登记租赁合同 → 业务确认 → 收款确认 → 发票号确认 → 收入草稿 → 复核会计打开同屏复核并确认“已审核，待导出” → 生成税费核定 → 独立复核 → 利润项目读取 → 凭证行下钻。租赁复核截图 `tmp_test/tax-f-lease-review-1280.png`。
 
 ### 构建
 
@@ -107,7 +107,7 @@ TEMP=tmp_test/esbuild-tmp TMP=tmp_test/esbuild-tmp npm run build
 
 ## 5. 未完成与不得宣称
 
-1. **租赁**：收入确认只生成草稿，未在浏览器完成独立复核/过账/导出；发票确认已存事实但无发票管理界面；合同变更后的旧审批失效未落到审批实体（`approved_version` 当前仍为 0）；未与规费批次做跨业务重复确认校验。
+1. **租赁**：收入确认草稿已在浏览器由独立复核会计确认（`tmp_test/tax-f-lease-review-1280.png`），但尚未正式过账/导出；发票号/金额/期间已与业务、收款分别确认并可核验，但尚无独立发票管理/红冲界面；合同变更后的旧审批失效未落到审批实体（`approved_version` 当前仍为 0）；未与规费批次做跨业务重复确认校验。租赁合成来源不进入普通分类学习，避免无业务映射导致复核 409。
 2. **税费**：未接真实发票、申报、缴款、官方回执；政策未与现有 `tax_profile` 强制一致；人工登记不等于税局核验；无申报表生成。
 3. **利润**：T+ 结转与内部结转的重复排除尚未实现；四层“确认方式→计算逻辑→基础资料→凭证/原件/T+”只实现到凭证行/来源证据层；年累计和所得税未知即 `null`；未做 406,349.10/411,349.10 的客户原账核回；混合凭证贡献标记仍为近似。
 4. **恢复**：SQLite 全库恢复通过；PG 目标表行级恢复未覆盖（当前 P01 只证明模式/基础数据）。
@@ -118,3 +118,39 @@ TEMP=tmp_test/esbuild-tmp TMP=tmp_test/esbuild-tmp npm run build
 
 - PG16/17 隔离集群 25496–25499 在测试期间使用；P01 bridge 未启动。
 - 未执行提交、推送、部署、线上迁移、真实模型/通知/OA/T+ 调用。
+
+- 2026-11-16：租赁合同改版后 `approved_version` 落后于 `version`，收入确认 409；负责人“确认当前版本”后方可继续。后端 3 passed/8.34s，浏览器 1280/390 通过。
+
+## 2026-11-16 租赁补强
+
+- 租赁计划新增“复核租赁凭证”与“导出租赁凭证”；复核走同一 `InlineReviewDrawer`，复核后由会计执行导出，不自动过账。
+- 新增发票号/金额/期间确认，业务、收款、发票三事实分别保存。
+- 合同改版后 `approved_version` 落后，`recognize` 返回 409；页面显示“合同已改版，当前版本 vN 尚未确认”，需显式“确认当前版本”后才能继续。
+- 折叠显示“合同版本记录”，含改版、确认、终止等事件。
+- 证据：SQLite `test_tax13_leases.py` 3 passed/8.29s；浏览器 1280/390 各 1 passed；截图 `tmp_test/tax-f-lease-stale-1280.png`。
+- 候选：HEAD `9517ddb4`；source 2211/`adf92aa0014e705be76e1e6e3679ea6e08d786ba865afa4e98134a9897b34994`；migration 388/`0f667fde…`。
+- 仍未完成：合同改版通知/旧审批版本导出隔离、发票红冲、税费申报/缴款、利润 T+ 结转去重。
+
+### 合同改版后旧凭证导出的服务端隔离
+
+- `AccountingService.export` 对 `lease:` 合成来源读取 `lease_contracts.version/approved_version/status`；合同改版未确认时返回 409，阻止旧草稿导出。
+- 页面同步禁用“导出租赁凭证”，提示“合同已改版，旧审批版本不能导出”；确认当前版本后恢复。
+- 测试：`test_tax13_leases.py` 4 passed/9.91s；浏览器 1280/390 各 1 passed（约 24s）。
+- 候选：HEAD `9517ddb4`；source 2211/`a676751273245fa383939d2f2e9bbc0502d3830e2b3ac55b5e68749031ca62e5`；migration 388/`0f667fde…`。
+
+### 发票红冲（2026-11-16）
+
+- 新增 `lease_invoice_reds`（sqlite 160 / postgres 244）：原发票号、红字发票号、期间、金额、原因，不可变、同一原发票只能全额红冲一次。
+- 服务端 `red_invoice` 校验原发票存在、金额相等、红冲期间不早于原发票；红冲不删除原发票确认，不自动冲减收入。
+- 页面在已确认发票后显示“红字发票号/红冲原因/登记发票红冲”，并列出红冲事实。
+- 测试：`test_tax13_leases.py` 5 passed/11.59s；浏览器 1280/390 均通过。
+- 未做：部分红冲、红字发票与申报/税务回执联动。
+- PG16/17 `test_tax_f_postgres.py` 各 **8 passed**（含红冲不可变/重复红冲 409）；sqlite 160 / postgres 244。
+- 最终候选：HEAD `9517ddb4`；source 2213/`f8905b6f4f5f02efe78167e7952b7fc1ad79c862ae2d62835145bfbd04e517c7`；migration 390/`1021bb67…`。
+
+## F2 税费办理证据复核（2026-11-16）
+
+- 复用既有 `nexus_backend/app/tax/filings.py`：`registration/correction/void` 追加历史、附件绑定、独立复核、人工登记标识。
+- `test_next05_filing_evidence.py + test_next_p0_boundaries.py` → **23 passed/13.38s**。
+- 已覆盖：申报/缴款/回执分层、作废追加、附件归属、无权限下载拒绝。
+- 仍为外部门槛：真实税务系统回执、真实客户申报数据、官方独立核验；手工登记不冒充官方验证。

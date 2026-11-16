@@ -77,3 +77,18 @@
 - 仍缺：OA 材料请求生成真实 `case_tasks` 待办（受既有 CHECK 限制，未伪造）、事务所级 reviewer 撤销浏览器全链、真实 OA。
 
 - 增加 `canManage` 只读门控：无 manage 权限不显示登记/生成按钮，避免前端展示构成授权假象；manager 浏览器用例仍通过。
+
+## K05 员工侧补件材料请求
+
+- 新增 `GET /api/oa/material-requests`：按员工所属企业过滤，不要求账套成员权限，不返回管理写入口。
+- `OaMaterialRequestList` 在员工我的工作台展示待补材料请求（标题、原因、企业/账套、版本），无按钮、不改状态。
+- 浏览器 `e2e/tax-k-oa-employee.spec.ts` **1 passed/3.3s**；截图 `tmp_test/tax-k-oa-employee.png`。
+- 仍未与 `case_tasks` 待办直接绑定；员工通过该只读列表获知补件，不在本页完成补件。
+
+## K05 收口判定（2026-11-16）
+
+- 员工侧补件入口已完成：`GET /api/oa/material-requests` 按员工可见企业返回 open 材料请求；`OaMaterialRequestList` 只读展示企业/账套/版本，无管理按钮。
+- 该列表就是员工侧“只补材料”的待办面：不新建员工提单，不重放 OA 审批，不允许员工自行关闭或改状态。
+- 未把它伪造绑定到 `case_tasks`：`case_tasks` 的既有 CHECK 要求真实 `event_id` 或 `source_id/draft_id`，OA 纯补材料没有这些来源；强塞假来源会破坏待办语义。
+- 验证：后端 `test_k05_oa_boundary.py` 4 passed；浏览器 `tax-k-oa-employee.spec.ts` 1 passed/3.3s；截图 `tmp_test/tax-k-oa-employee.png`。
+- 仍为外部门槛：真实 OA 审批源、真实员工账号、软键盘真机。

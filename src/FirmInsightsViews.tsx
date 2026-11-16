@@ -26,6 +26,8 @@ type ComparisonRow = {
   book_id: string; company_name: string; known: boolean; report_status: string;
   assets_cents: number; liabilities_cents: number; equity_cents: number;
   revenue_cents: number; expenses_cents: number; profit_cents: number;
+  previous_known: boolean; previous_revenue_cents: number | null; previous_profit_cents: number | null;
+  revenue_delta_cents: number | null; profit_delta_cents: number | null;
   cash_closing_cents: number; receivables_cents: number; payables_cents: number;
 };
 
@@ -97,7 +99,7 @@ export function CompanyComparison({ session, period }: { session: Session; perio
   }, [period, session]);
   const csv = useMemo(() => {
     const header = '企业,期间,报表状态,资产,负债,权益,收入,费用,利润,期末现金,应收,应付';
-    const lines = (rows ?? []).map((row) => [row.company_name, period, row.report_status, row.assets_cents, row.liabilities_cents, row.equity_cents, row.revenue_cents, row.expenses_cents, row.profit_cents, row.cash_closing_cents, row.receivables_cents, row.payables_cents].map((value) => `"${String(value).replace(/"/g, '""')}"`).join(','));
+    const lines = (rows ?? []).map((row) => [row.company_name, period, row.report_status, row.assets_cents, row.liabilities_cents, row.equity_cents, row.revenue_cents, row.expenses_cents, row.profit_cents, row.revenue_delta_cents ?? '—', row.profit_delta_cents ?? '—', row.cash_closing_cents, row.receivables_cents, row.payables_cents].map((value) => `"${String(value).replace(/"/g, '""')}"`).join(','));
     return [header, ...lines].join('\n');
   }, [period, rows]);
   function download() {
@@ -111,7 +113,7 @@ export function CompanyComparison({ session, period }: { session: Session; perio
   return (
     <section className="firm-insights-detail" aria-label="企业对比">
       <div className="firm-insights-detail-head"><div><span className="eyebrow">COMPANY COMPARISON</span><h2>企业对比</h2><p>{period} · 只列已复核报表；未复核企业保留在表中但不按 0 参与经营判断。</p></div><button type="button" onClick={download} disabled={!rows.length}>导出 CSV</button></div>
-      <div className="firm-insights-table-scroll"><table className="firm-insights-compare"><thead><tr><th>企业</th><th>状态</th><th>资产</th><th>负债</th><th>权益</th><th>收入</th><th>费用</th><th>利润</th><th>应收</th><th>应付</th></tr></thead><tbody>{rows.map((row) => <tr key={row.book_id}><td>{row.company_name}</td><td>{row.known ? '已复核' : '未复核'}</td><td>{row.known ? cny(row.assets_cents) : '—'}</td><td>{row.known ? cny(row.liabilities_cents) : '—'}</td><td>{row.known ? cny(row.equity_cents) : '—'}</td><td>{row.known ? cny(row.revenue_cents) : '—'}</td><td>{row.known ? cny(row.expenses_cents) : '—'}</td><td>{row.known ? cny(row.profit_cents) : '—'}</td><td>{row.known ? cny(row.receivables_cents) : '—'}</td><td>{row.known ? cny(row.payables_cents) : '—'}</td></tr>)}</tbody></table></div>
+      <div className="firm-insights-table-scroll"><table className="firm-insights-compare"><thead><tr><th>企业</th><th>状态</th><th>资产</th><th>负债</th><th>权益</th><th>收入</th><th>费用</th><th>利润</th><th>收入环比</th><th>利润环比</th><th>应收</th><th>应付</th></tr></thead><tbody>{rows.map((row) => <tr key={row.book_id}><td>{row.company_name}</td><td>{row.known ? '已复核' : '未复核'}</td><td>{row.known ? cny(row.assets_cents) : '—'}</td><td>{row.known ? cny(row.liabilities_cents) : '—'}</td><td>{row.known ? cny(row.equity_cents) : '—'}</td><td>{row.known ? cny(row.revenue_cents) : '—'}</td><td>{row.known ? cny(row.expenses_cents) : '—'}</td><td>{row.known ? cny(row.profit_cents) : '—'}</td><td>{row.known ? (row.previous_known && row.revenue_delta_cents !== null ? cny(row.revenue_delta_cents) : '—') : '—'}</td><td>{row.known ? (row.previous_known && row.profit_delta_cents !== null ? cny(row.profit_delta_cents) : '—') : '—'}</td><td>{row.known ? cny(row.receivables_cents) : '—'}</td><td>{row.known ? cny(row.payables_cents) : '—'}</td></tr>)}</tbody></table></div>
     </section>
   );
 }

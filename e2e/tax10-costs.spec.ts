@@ -90,6 +90,14 @@ for (const viewport of [
     await openTax(page, f);
     const panel = page.locator('section[aria-labelledby="tax-cost-title"]');
     await panel.scrollIntoViewIfNeeded();
+    await panel.getByText(/按车型维修费率卡/).click();
+    await panel.getByLabel('车型').fill('出租车');
+    await panel.getByLabel('费率（分）').fill('5000');
+    await panel.getByLabel('生效月').fill('2026-10');
+    await panel.getByLabel('结束月').fill('2026-12');
+    await panel.getByRole('button', { name: '登记费率卡' }).click();
+    await expect(panel.getByText('费率卡已登记；同车型有效期不能重叠。')).toBeVisible();
+    await expect(panel.getByText(/出租车 · ¥50.00/)).toBeVisible();
     await panel.getByRole('button', { name: '登记并采用来源' }).click();
     await expect(panel.getByText(/来源已登记并采用/)).toBeVisible();
     const after = await request.get(`/api/tax/books/${f.book.id}/cost-sources`, {

@@ -31,3 +31,8 @@
 ## 4. 结论
 
 本地可复现的安全回归证据已补齐，但不能表述为“已通过安全认证”或“生产安全验收完成”。
+
+## 上传绑定 HTTP 复核（2026-11-16）
+
+- `test_upload_binding_http.py` 6 passed/16.84s：事件、intake、case、material、银行导入、发票导入六类上传均绑定父记录并恰好消费一次。
+- 本机 Starlette 兼容层已由 `test_business_api.py::client` 的 TypeError 回退处理，不再记为环境阻断。

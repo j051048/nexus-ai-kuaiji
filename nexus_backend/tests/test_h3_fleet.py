@@ -87,6 +87,9 @@ def test_fleet_contribution_keeps_unallocated_cost_and_does_not_fake_net_profit(
     assert vehicles["V1"]["revenue_cents"] == 9000
     assert vehicles["V1"]["assigned_cost_cents"] == 3000
     assert vehicles["V1"]["contribution_cents"] == 6000
+    assert vehicles["V1"]["repair_cost_cents"] == 3000
+    assert vehicles["V1"]["insurance_cost_cents"] == 0
+    assert vehicles["V1"]["oa_cost_cents"] == 0
     assert vehicles["V2"]["revenue_cents"] == 13500
     assert vehicles["V2"]["assigned_cost_cents"] == 0
     assert result["totals"] == {

@@ -12,6 +12,8 @@ from app.tax.costs import (
     TaxCostReview,
     TaxCostService,
     TaxCostSourceWrite,
+    RepairRateService,
+    RepairRateWrite,
 )
 from test_business import business  # noqa: F401
 
@@ -266,3 +268,90 @@ def test_operator_cannot_register_cost_source(business):
             original_ref="x", sha256=SHA, amount="100.00",
             payload={"invoice_ref": "FP-OP", "vehicle_external_id": "V1", "coverage": "actual"},
         ))
+
+
+def test_package_repair_requires_scope_and_overlap_reason(business):
+    case = business
+    service = TaxCostService(case.db)
+    service.add_source(
+        case.manager,
+        case.book["id"],
+        TaxCostSourceWrite(
+            kind="repair", source_key="PKG-001", source_version=1, period="2026-10",
+            subject_label="京A1", original_ref="包干合同/2026.pdf", sha256="d" * 64,
+            amount="1000.00",
+            payload={
+                "invoice_ref": "PKG-001", "vehicle_external_id": "V1",
+                "coverage": "package", "coverage_scope": "全包（不含轮胎与事故）",
+            },
+        ),
+    )
+    with pytest.raises(AccountingError) as exc:
+        service.add_source(
+            case.manager,
+            case.book["id"],
+            TaxCostSourceWrite(
+                kind="repair", source_key="ACT-001", source_version=1, period="2026-10",
+                subject_label="京A1", original_ref="维修单/ACT-001.pdf", sha256="e" * 64,
+                amount="300.00",
+                payload={"invoice_ref": "ACT-001", "vehicle_external_id": "V1", "coverage": "actual"},
+            ),
+        )
+    assert exc.value.status == 409 and "包干" in exc.value.detail
+    accepted = service.add_source(
+        case.manager,
+        case.book["id"],
+        TaxCostSourceWrite(
+            kind="repair", source_key="ACT-002", source_version=1, period="2026-10",
+            subject_label="京A1", original_ref="维修单/ACT-002.pdf", sha256="f" * 64,
+            amount="300.00",
+            payload={
+                "invoice_ref": "ACT-002", "vehicle_external_id": "V1", "coverage": "actual",
+                "package_exclusion_reason": "包干范围不含轮胎更换，按实际结算",
+            },
+        ),
+    )
+    assert accepted["status"] == "active"
+
+
+def test_vehicle_type_rate_card_resolves_and_guards_amount(business):
+    case = business
+    rates = RepairRateService(case.db)
+    card = rates.add(case.manager, case.book["id"], RepairRateWrite(
+        vehicle_type="出租车", rate_cents=5000, valid_from="2026-10", valid_to="2026-12",
+        coverage_scope="基础保养（不含轮胎）", source_ref="合同/2026-费率",
+    ))
+    assert card["rate_cents"] == 5000
+    assert rates.resolve(case.manager, case.book["id"], "出租车", "2026-11")["id"] == card["id"]
+    with pytest.raises(AccountingError) as overlap:
+        rates.add(case.manager, case.book["id"], RepairRateWrite(
+            vehicle_type="出租车", rate_cents=6000, valid_from="2026-12", valid_to="2027-01",
+            coverage_scope="基础保养", source_ref="合同/2027-费率",
+        ))
+    assert overlap.value.status == 409
+    TaxCostService(case.db).add_source(
+        case.manager, case.book["id"], TaxCostSourceWrite(
+            kind="repair", source_key="FP-RATE", source_version=1, period="2026-10",
+            subject_label="京A1", original_ref="原件/维修-RATE.pdf", sha256="b" * 64,
+            amount="300.00",
+            payload={
+                "invoice_ref": "FP-RATE", "vehicle_external_id": "V1", "vehicle_type": "出租车",
+                "coverage": "per_vehicle", "quantity_milli": 6000, "rate_card_id": card["id"],
+            },
+        ),
+    )
+    with pytest.raises(AccountingError) as mismatch:
+        TaxCostService(case.db).add_source(
+            case.manager, case.book["id"], TaxCostSourceWrite(
+                kind="repair", source_key="FP-RATE-2", source_version=1, period="2026-10",
+                subject_label="京A1", original_ref="原件/维修-RATE2.pdf", sha256="c" * 64,
+                amount="310.00",
+                payload={
+                    "invoice_ref": "FP-RATE-2", "vehicle_external_id": "V1", "vehicle_type": "出租车",
+                    "coverage": "per_vehicle", "quantity_milli": 6000, "rate_card_id": card["id"],
+                },
+            ),
+        )
+    assert mismatch.value.status == 409 and "费率卡" in mismatch.value.detail
+    with pytest.raises(AccountingError):
+        rates.list(case.actors["employee"], case.book["id"])

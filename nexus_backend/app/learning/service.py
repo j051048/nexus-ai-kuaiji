@@ -232,6 +232,12 @@ class LearningService:
         ).fetchone()
         if source is None:
             raise AccountingError("审核样例缺少来源", 409)
+        if str(source["external_id"]).startswith("lease:"):
+            return {
+                "id": None,
+                "captured": False,
+                "reason": "租赁收入由合同计划确定性生成，不作为普通分类样例",
+            }
         if self._legacy_source_allocated(conn, actor, source):
             return {
                 "id": None,

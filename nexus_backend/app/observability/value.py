@@ -44,26 +44,35 @@ class ValueBaselineService:
                 (actor.firm_id, company_id, period),
             ).fetchone()[0]
             mapped = conn.execute(
-                "SELECT count(*) FROM business_mappings m JOIN business_events e ON e.id=m.event_id "
+                "SELECT count(DISTINCT m.draft_id) FROM business_mappings m JOIN business_events e ON e.id=m.event_id "
                 f"WHERE e.firm_id=? AND e.company_id=? AND {mapping_month}=?",
                 (actor.firm_id, company_id, period),
             ).fetchone()[0]
+            # Once approved, an exported draft must stay in the approved cohort.
             approved = conn.execute(
-                "SELECT count(*) FROM drafts d JOIN books b ON b.id=d.book_id "
-                f"WHERE b.firm_id=? AND b.company_id=? AND b.period=? AND d.status='approved' "
+                "SELECT count(DISTINCT d.id) FROM drafts d JOIN books b ON b.id=d.book_id "
+                f"WHERE b.firm_id=? AND b.company_id=? AND b.period=? "
                 f"AND d.approved_at IS NOT NULL AND {approved_month}=?",
                 (actor.firm_id, company_id, period, period),
             ).fetchone()[0]
             returned = conn.execute(
+                "SELECT count(DISTINCT e.id) FROM business_actions a JOIN business_events e ON e.id=a.event_id "
+                f"WHERE e.firm_id=? AND e.company_id=? AND a.decision='return' AND {action_month}=?",
+                (actor.firm_id, company_id, period),
+            ).fetchone()[0]
+            return_actions = conn.execute(
                 "SELECT count(*) FROM business_actions a JOIN business_events e ON e.id=a.event_id "
                 f"WHERE e.firm_id=? AND e.company_id=? AND a.decision='return' AND {action_month}=?",
                 (actor.firm_id, company_id, period),
             ).fetchone()[0]
-            cost = conn.execute(
-                "SELECT coalesce(sum(coalesce(c.confirmed_micro,c.estimated_micro,0)),0) "
+            cost_row = conn.execute(
+                "SELECT coalesce(sum(coalesce(c.confirmed_micro,c.estimated_micro,0)),0),"
+                "sum(CASE WHEN c.confirmed_micro IS NULL AND c.estimated_micro IS NULL THEN 1 ELSE 0 END) "
                 "FROM model_costs c WHERE c.firm_id=? AND c.company_id=? AND c.period=?",
                 (actor.firm_id, company_id, period),
-            ).fetchone()[0]
+            ).fetchone()
+            cost = cost_row[0]
+            cost_unknown_count = int(cost_row[1] or 0)
             elapsed_rows = conn.execute(
                 "SELECT m.created_at,d.approved_at FROM business_mappings m "
                 "JOIN business_events e ON e.id=m.event_id JOIN drafts d ON d.id=m.draft_id "
@@ -91,6 +100,7 @@ class ValueBaselineService:
                 "mapped_drafts": mapped,
                 "approved_drafts": approved,
                 "returned_events": returned,
+                "return_actions": return_actions,
             },
             "rates": {
                 "draft_mapping_rate": self._rate(mapped, submitted),
@@ -106,7 +116,8 @@ class ValueBaselineService:
             },
             "cost": {
                 "ai_model_cost_micro": cost,
-                "ai_cost_per_approved_micro": round(cost / approved) if approved else None,
+                "ai_cost_per_approved_micro": round(cost / approved) if approved and cost_unknown_count == 0 else None,
+                "cost_unknown_count": cost_unknown_count,
                 "scope": "ai_model_only",
                 "note": "仅为 AI 模型费用，不含人工、基础设施和客户费用。",
             },

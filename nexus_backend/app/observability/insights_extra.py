@@ -38,6 +38,13 @@ def _period(value: str) -> str:
         raise AccountingError("期间格式应为 YYYY-MM", 422)
     return value
 
+def _previous_period(period: str) -> str:
+    year, month = int(period[:4]), int(period[5:7])
+    month -= 1
+    if month == 0:
+        year, month = year - 1, 12
+    return f"{year:04d}-{month:02d}"
+
 
 class FirmInsightsExtraService:
     def __init__(self, db, access=None):
@@ -152,8 +159,21 @@ class FirmInsightsExtraService:
             "history": history,
         }
 
+    def _latest_for_company_period(self, conn, firm_id: str, company_id: str, period: str):
+        row = conn.execute(
+            "SELECT r.id,r.status,r.content_json,r.version FROM report_runs r "
+            "JOIN books b ON b.id=r.book_id WHERE b.firm_id=? AND b.company_id=? AND r.period=? "
+            "AND r.status IN ('reviewed','published') ORDER BY r.version DESC,r.created_at DESC LIMIT 1",
+            (firm_id, company_id, period),
+        ).fetchone()
+        if not row:
+            return None
+        content = _json(row["content_json"])
+        return {"id": row["id"], "status": row["status"], "version": row["version"], "content": content}
+
     def comparison(self, actor, period: str):
         period = _period(period)
+        previous_period = _previous_period(period)
         with self.db.transaction(actor=actor) as conn:
             self.access.require_manager(conn, actor)
             books = conn.execute(
@@ -170,12 +190,21 @@ class FirmInsightsExtraService:
                 profit = _json(content.get("profit_statement"))
                 cash = _json(content.get("cash_flow"))
                 items = balance.get("items") if isinstance(balance.get("items"), list) else []
+                previous_report = self._latest_for_company_period(conn, actor.firm_id, book["company_id"], previous_period)
+                previous_content = previous_report["content"] if previous_report else {}
+                previous_profit = _json(previous_content.get("profit_statement"))
+                previous_known = bool(previous_report)
                 rows.append({
                     "book_id": book["id"],
                     "company_id": book["company_id"],
                     "company_name": book["company_name"],
                     "known": bool(report),
                     "report_status": report["status"] if report else "missing",
+                    "previous_known": previous_known,
+                    "previous_revenue_cents": _int(previous_profit.get("revenue_cents")) if previous_known else None,
+                    "previous_profit_cents": _int(previous_profit.get("profit_cents")) if previous_known else None,
+                    "revenue_delta_cents": _int(profit.get("revenue_cents")) - _int(previous_profit.get("revenue_cents")) if previous_known and report else None,
+                    "profit_delta_cents": _int(profit.get("profit_cents")) - _int(previous_profit.get("profit_cents")) if previous_known and report else None,
                     "assets_cents": _int(balance.get("assets")),
                     "liabilities_cents": _int(balance.get("liabilities")),
                     "equity_cents": _int(balance.get("equity")),
@@ -186,7 +215,7 @@ class FirmInsightsExtraService:
                     "receivables_cents": sum(_int(item.get("amount_cents")) for item in items if str(item.get("code", "")).startswith(("1122", "1221"))),
                     "payables_cents": sum(_int(item.get("amount_cents")) for item in items if str(item.get("code", "")).startswith(("2202", "2241"))),
                 })
-        return {"period": period, "rows": rows}
+        return {"period": period, "compare_period": previous_period, "rows": rows}
 
     def timeline(self, actor, period: str):
         period = _period(period)

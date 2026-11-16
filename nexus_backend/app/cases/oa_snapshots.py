@@ -135,6 +135,35 @@ class OASnapshotService:
             ).fetchall()
             return {"items": [self._request_view(row) for row in rows]}
 
+
+    def list_accessible_requests(self, actor: Actor) -> dict:
+        with self.db.transaction(actor=actor) as conn:
+            rows = conn.execute(
+                """
+                SELECT r.*, b.company_id, c.name AS company_name, b.name AS book_name
+                FROM oa_material_requests r
+                JOIN books b ON b.id = r.book_id
+                JOIN companies c ON c.id = b.company_id
+                ORDER BY r.created_at, r.id
+                """
+            ).fetchall()
+            allowed: dict[str, bool] = {}
+            items = []
+            for row in rows:
+                company_id = row["company_id"]
+                if company_id not in allowed:
+                    try:
+                        self.access.company(conn, actor, company_id)
+                        allowed[company_id] = True
+                    except AccountingError:
+                        allowed[company_id] = False
+                if allowed[company_id]:
+                    item = self._request_view(row)
+                    item.update({"company_id": company_id, "company_name": row["company_name"],
+                                 "book_id": row["book_id"], "book_name": row["book_name"]})
+                    items.append(item)
+            return {"items": items}
+
     @staticmethod
     def _request_view(row) -> dict:
         return {"id": row["id"], "snapshot_id": row["snapshot_id"], "title": row["title"],

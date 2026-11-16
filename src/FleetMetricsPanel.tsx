@@ -10,6 +10,9 @@ type Vehicle = {
   revenue_cents: number;
   assigned_cost_cents: number;
   contribution_cents: number;
+  repair_cost_cents?: number;
+  insurance_cost_cents?: number;
+  oa_cost_cents?: number;
   fee_batch_ids: string[];
   lease_contract_ids: string[];
   cost_batch_ids: string[];
@@ -33,6 +36,9 @@ type Fleet = {
     revenue_cents: number;
     assigned_cost_cents: number;
     contribution_cents: number;
+  repair_cost_cents?: number;
+  insurance_cost_cents?: number;
+  oa_cost_cents?: number;
     unallocated_cost_cents: number;
     net_profit_cents: number | null;
     net_profit_known: boolean;
@@ -127,7 +133,7 @@ export function FleetMetricsPanel({
                   <tr key={vehicle.id}>
                     <th scope="row">{vehicle.name}<small>{vehicle.external_id}</small></th>
                     <td>{money(vehicle.revenue_cents)}</td>
-                    <td>{money(vehicle.assigned_cost_cents)}</td>
+                    <td>{money(vehicle.assigned_cost_cents)}<small className="fleet-cost-split">维修 {money(vehicle.repair_cost_cents ?? 0)} · 保险 {money(vehicle.insurance_cost_cents ?? 0)} · OA {money(vehicle.oa_cost_cents ?? 0)}</small></td>
                     <td>{money(vehicle.contribution_cents)}</td>
                     <td>
                       规费 {vehicle.fee_batch_ids.length} · 租赁 {vehicle.lease_contract_ids.length} · 成本 {vehicle.cost_batch_ids.length}

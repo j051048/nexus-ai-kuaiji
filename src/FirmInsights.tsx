@@ -57,46 +57,73 @@ type Insights = {
 const STAGE_COLORS = ['#2f6f5e', '#4c8b76', '#73a995', '#9fc7b9', '#c7ddd6', '#e5efeb'];
 
 function TrendChart({ rows }: { rows: Trend[] }) {
+  const [mode, setMode] = useState<'operations' | 'finance'>('operations');
   if (!rows.length) return <p className="firm-insights-empty">该期间没有趋势数据。</p>;
   const width = 640;
   const height = 190;
   const pad = { left: 42, right: 14, top: 14, bottom: 28 };
   const maxBooks = Math.max(1, ...rows.map((row) => row.books));
-  const points = (key: 'books' | 'closed' | 'reviewed_reports') =>
-    rows.map((row, index) => {
-      const x = pad.left + (index * (width - pad.left - pad.right)) / Math.max(1, rows.length - 1);
-      const y = height - pad.bottom - (row[key] / maxBooks) * (height - pad.top - pad.bottom);
-      return `${x},${y}`;
-    }).join(' ');
-  const series = [
-    { key: 'books' as const, label: '账套', color: '#2f6f5e' },
-    { key: 'closed' as const, label: '已关账', color: '#3f7fa8' },
-    { key: 'reviewed_reports' as const, label: '已复核报表', color: '#b1782f' },
-  ];
+  const maxMoney = Math.max(1, ...rows.map((row) => Math.max(row.reviewed_reports ? Math.abs(row.revenue_cents) : 0, row.reviewed_reports ? Math.abs(row.profit_cents) : 0)));
+  const xAt = (index: number) => pad.left + (index * (width - pad.left - pad.right)) / Math.max(1, rows.length - 1);
+  const yAt = (value: number, max: number) => height - pad.bottom - (value / max) * (height - pad.top - pad.bottom);
+  const linePoints = (value: (row: Trend) => number | null, max: number) => {
+    const segments: string[] = [];
+    let current: string[] = [];
+    rows.forEach((row, index) => {
+      const v = value(row);
+      if (v === null) {
+        if (current.length) segments.push(current.join(' '));
+        current = [];
+        return;
+      }
+      current.push(`${xAt(index)},${yAt(v, max)}`);
+    });
+    if (current.length) segments.push(current.join(' '));
+    return segments;
+  };
+  const series = mode === 'operations'
+    ? [
+        { key: 'books', label: '账套', color: '#2f6f5e', points: linePoints((row) => row.books, maxBooks) },
+        { key: 'closed', label: '已关账', color: '#3f7fa8', points: linePoints((row) => row.closed, maxBooks) },
+        { key: 'reports', label: '已复核报表', color: '#b1782f', points: linePoints((row) => row.reviewed_reports, maxBooks) },
+      ]
+    : [
+        { key: 'revenue', label: '已复核收入', color: '#2f6f5e', points: linePoints((row) => row.reviewed_reports ? row.revenue_cents : null, maxMoney) },
+        { key: 'profit', label: '已复核利润', color: '#b1782f', points: linePoints((row) => row.reviewed_reports ? row.profit_cents : null, maxMoney) },
+      ];
+  const financeKnown = rows.some((row) => row.reviewed_reports > 0);
   return (
     <div className="firm-insights-chart">
-      <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="近六个月交付趋势">
+      <div className="firm-insights-chart-toggle" role="group" aria-label="趋势口径">
+        <button type="button" className={mode === 'operations' ? 'is-active' : ''} aria-pressed={mode === 'operations'} onClick={() => setMode('operations')}>运营</button>
+        <button type="button" className={mode === 'finance' ? 'is-active' : ''} aria-pressed={mode === 'finance'} onClick={() => setMode('finance')}>财务</button>
+      </div>
+      {mode === 'finance' && !financeKnown ? (
+        <p className="firm-insights-empty">近六个月没有已复核报表，财务趋势不补 0。</p>
+      ) : (
+      <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={mode === 'operations' ? '近六个月交付趋势' : '近六个月已复核收入与利润趋势'}>
         {[0, 0.5, 1].map((tick) => {
           const y = pad.top + tick * (height - pad.top - pad.bottom);
           return <line key={tick} x1={pad.left} x2={width - pad.right} y1={y} y2={y} className="firm-insights-grid" />;
         })}
-        {series.map((item) => (
-          <polyline key={item.key} points={points(item.key)} fill="none" stroke={item.color} strokeWidth="2.5" />
+        {series.flatMap((item) => item.points.map((points, index) => (
+          <polyline key={`${item.key}-${index}`} points={points} fill="none" stroke={item.color} strokeWidth="2.5" />
+        )))}
+        {rows.map((row, index) => (
+          <text key={row.period} x={xAt(index)} y={height - 8} textAnchor="middle" className="firm-insights-axis">
+            {row.period.slice(5)}月
+          </text>
         ))}
-        {rows.map((row, index) => {
-          const x = pad.left + (index * (width - pad.left - pad.right)) / Math.max(1, rows.length - 1);
-          return (
-            <text key={row.period} x={x} y={height - 8} textAnchor="middle" className="firm-insights-axis">
-              {row.period.slice(5)}月
-            </text>
-          );
-        })}
-        <text x={pad.left} y={12} className="firm-insights-axis">峰值 {maxBooks} 套</text>
+        <text x={pad.left} y={12} className="firm-insights-axis">
+          {mode === 'operations' ? `峰值 ${maxBooks} 套` : `峰值 ${cny(maxMoney)}`}
+        </text>
       </svg>
+      )}
       <div className="firm-insights-legend">
         {series.map((item) => (
           <span key={item.key}><i style={{ background: item.color }} />{item.label}</span>
         ))}
+        {mode === 'finance' && <span className="firm-insights-legend-note">无已复核报表的月份不补 0</span>}
       </div>
     </div>
   );
@@ -256,11 +283,11 @@ export function FirmInsights({ session }: { session: Session }) {
             </div>
 
             <div className="firm-insights-card firm-insights-wide">
-              <div className="firm-insights-card-head"><h2>近六个月趋势</h2><span>账套 / 关账 / 已复核报表</span></div>
+              <div className="firm-insights-card-head"><h2>近六个月趋势</h2><span>运营口径 / 已复核财务口径，可切换</span></div>
               <TrendChart rows={data.trends} />
               <details className="firm-insights-table-fallback"><summary>查看趋势数据表</summary>
                 <table><thead><tr><th>期间</th><th>账套</th><th>已关账</th><th>已复核报表</th><th>已归集收入</th></tr></thead>
-                  <tbody>{data.trends.map((row) => <tr key={row.period}><td>{row.period}</td><td>{row.books}</td><td>{row.closed}</td><td>{row.reviewed_reports}</td><td>{cny(row.revenue_cents)}</td></tr>)}</tbody>
+                  <tbody>{data.trends.map((row) => <tr key={row.period}><td>{row.period}</td><td>{row.books}</td><td>{row.closed}</td><td>{row.reviewed_reports}</td><td>{row.reviewed_reports ? cny(row.revenue_cents) : "—"}</td><td>{row.reviewed_reports ? cny(row.profit_cents) : "—"}</td></tr>)}</tbody>
                 </table>
               </details>
             </div>
