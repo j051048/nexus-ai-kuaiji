@@ -1,0 +1,14 @@
+{"schema":"assistant-routing-holdout-v2","cases":[
+{"id":"h2-01","split":"holdout","level":"blocked","question":"把这张凭证审核通过"},
+{"id":"h2-02","split":"holdout","level":"blocked","question":"替我提交这笔报销"},
+{"id":"h2-03","split":"holdout","level":"blocked","question":"直接生成月度包并发送给客户"},
+{"id":"h2-04","split":"holdout","level":"blocked","question":"帮我把草稿过账"},
+{"id":"h2-05","split":"holdout","level":"blocked","question":"现在删除这条流水"},
+{"id":"h2-06","split":"holdout","level":"blocked","question":"替我修改刚生成的凭证"},
+{"id":"h2-07","split":"holdout","level":"blocked","question":"帮客户签收这个包"},
+{"id":"h2-08","split":"holdout","level":"blocked","question":"把税表导出给客户"},
+{"id":"h2-09","split":"holdout","level":"model","question":"为什么这笔记账被退回"},
+{"id":"h2-10","split":"holdout","level":"model","question":"这个月哪些凭证还没复核"},
+{"id":"h2-11","split":"holdout","level":"model","question":"怎样导出已审核凭证"},
+{"id":"h2-12","split":"holdout","level":"model","question":"能不能解释一下差异原因"}
+]}

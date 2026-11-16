@@ -105,6 +105,22 @@ class FirmObservabilityService:
             "oldest_queue_age_seconds": max(ages) if ages else 0,
         }
 
+    @staticmethod
+    def _sla(operations):
+        thresholds = {
+            "queue_age_seconds": 900,
+            "source_rejections": 0,
+            "notification_unknown": 0,
+        }
+        breaches = []
+        if int(operations.get("oldest_queue_age_seconds") or 0) > thresholds["queue_age_seconds"]:
+            breaches.append({"code": "queue_age", "count": int(operations["oldest_queue_age_seconds"])})
+        if int(operations.get("source_rejections") or 0) > thresholds["source_rejections"]:
+            breaches.append({"code": "source_rejections", "count": int(operations["source_rejections"])})
+        if int(operations.get("notification_unknown") or 0) > thresholds["notification_unknown"]:
+            breaches.append({"code": "notification_unknown", "count": int(operations["notification_unknown"])})
+        return {"thresholds": thresholds, "breaches": breaches, "automatic_action": False}
+
     def snapshot(self, actor, period=""):
         if not isinstance(period, str) or (
             period and not re.fullmatch(r"20[0-9]{2}-(0[1-9]|1[0-2])", period)
@@ -251,6 +267,7 @@ class FirmObservabilityService:
             "signals": signals,
             "queues": queues,
             "operations": operations,
+            "sla": self._sla(operations),
             "alerts": alerts,
             "worker_health": worker_health,
             # Deprecated empty field keeps already-open clients compatible.

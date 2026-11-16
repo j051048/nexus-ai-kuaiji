@@ -99,6 +99,9 @@ export function TaxFPanel({
   const [selectedLease, setSelectedLease] = useState('');
   const [basis, setBasis] = useState<Basis[]>([]);
   const [profit, setProfit] = useState<Profit | null>(null);
+  const [baselineBook, setBaselineBook] = useState('');
+  const [variance, setVariance] = useState<{ current_period: string; baseline_period: string; lines: { line_code: string; line_name: string; current_cents: number; baseline_cents: number; delta_cents: number }[]; note: string } | null>(null);
+  const [varianceError, setVarianceError] = useState('');
   const [selectedLine, setSelectedLine] = useState('');
   const [failure, setFailure] = useState('');
   const [notice, setNotice] = useState('');
@@ -393,6 +396,34 @@ export function TaxFPanel({
           </div>
         </article>
       </div>
+
+      <article className="tax-f-card tax-f-profit" aria-label="确定性账簿偏差">
+        <h4>04 确定性偏差归因</h4>
+        <p>只对比同一企业、同一事务所的另一账套；展示凭证/来源差异，不推断原因。</p>
+        <div className="tax-f-actions">
+          <input aria-label="对比账套 ID" placeholder="对比账套 ID" value={baselineBook} onChange={(event) => setBaselineBook(event.target.value)} />
+          <button type="button" className="secondary" disabled={!baselineBook.trim()} onClick={async () => {
+            setVarianceError('');
+            try {
+              const data = await api<{ current_period: string; baseline_period: string; lines: { line_code: string; line_name: string; current_cents: number; baseline_cents: number; delta_cents: number }[]; note: string }>(`/reports/profit/variance?book_id=${encodeURIComponent(bookId)}&baseline_book_id=${encodeURIComponent(baselineBook.trim())}`, session);
+              setVariance(data);
+            } catch (error) {
+              setVariance(null);
+              setVarianceError(error instanceof ApiError ? error.message : '偏差读取失败');
+            }
+          }}>对比账簿</button>
+        </div>
+        {varianceError ? <p className="inline-error" role="alert">{varianceError}</p> : null}
+        {variance ? (
+          <div className="tax-f-table-wrap" aria-label="偏差行">
+            <p>{variance.current_period} 对比 {variance.baseline_period}</p>
+            <table><thead><tr><th>项目</th><th>当前</th><th>对比</th><th>差异</th></tr></thead><tbody>
+              {variance.lines.slice(0, 12).map((row) => <tr key={row.line_code}><td>{row.line_name}</td><td>{money(row.current_cents)}</td><td>{money(row.baseline_cents)}</td><td>{money(row.delta_cents)}</td></tr>)}
+            </tbody></table>
+            <p className="tax-f-note">{variance.note}</p>
+          </div>
+        ) : null}
+      </article>
 
       <article className="tax-f-card tax-f-profit">
         <h4>03 利润项目与凭证行下钻</h4>

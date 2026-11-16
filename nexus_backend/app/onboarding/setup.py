@@ -201,11 +201,31 @@ def setup_checklist(service, actor, company_id, book_id, period):
                 period,
             ),
         ]
+        required = [step for step in steps if step["required"]]
+        blockers = [
+            {
+                "id": step["id"],
+                "title": step["title"],
+                "next_action": step["next_action"],
+                "action_target": step["action_target"],
+            }
+            for step in required
+            if not step["complete"]
+        ]
         return {
             "company_id": company_id,
             "book_id": book_id,
             "period": period,
-            "ready": all(step["complete"] for step in steps if step["required"]),
+            "ready": not blockers,
+            "score": {
+                "completed": len(required) - len(blockers),
+                "required": len(required),
+                "percent": round((len(required) - len(blockers)) * 100 / len(required))
+                if required
+                else 100,
+                "blocking": len(blockers),
+            },
+            "blockers": blockers,
             "steps": steps,
             "updated_at": now(),
             "note": "按当前有效账号、权限与已登记记录计算；开通向导不能证明本月资料齐全或外部软件已入账。",

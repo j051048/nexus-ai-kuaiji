@@ -68,8 +68,14 @@ def test_setup_archived_company_is_metadata_only_and_reads_do_not_write(month_ca
 
 
 def test_setup_http_rejects_invalid_month_and_employee_and_keeps_active_schema(tmp_path):
-    with TestClient(create_app(db_path=tmp_path / "setup.db", seed=True,
-                               queue_worker_enabled=False), base_url="http://127.0.0.1", client=("127.0.0.1", 5678)) as client:
+    app = create_app(db_path=tmp_path / "setup.db", seed=True, queue_worker_enabled=False)
+
+    @app.middleware("http")
+    async def _loopback(request, call_next):
+        request.scope["client"] = ("127.0.0.1", 5678)
+        return await call_next(request)
+
+    with TestClient(app, base_url="http://127.0.0.1") as client:
         owner = client.get("/api/session?persona=accountant").json()
         auth = {"Authorization": "Bearer " + owner["token"]}
         company = client.post("/api/companies", headers=auth,

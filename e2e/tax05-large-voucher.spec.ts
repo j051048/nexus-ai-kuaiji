@@ -211,3 +211,18 @@ test('TAX05 access denied never renders another scope draft rows', async ({ page
   await expect(drawer.getByText(/无权访问|权限|重新确认/)).toBeVisible();
   await expect(drawer.locator('.journal-grid tbody tr')).toHaveCount(0);
 });
+
+test('TAX05 firm-level revocation blocks approval and keeps rows read-only', async ({ page, request }) => {
+  test.setTimeout(90_000);
+  const { f, draftId } = await largeDraft(request);
+  const revoked = await request.delete('/api/firm/members/local-reviewer', { headers: f.headers });
+  expect(revoked.status(), await revoked.text()).toBe(200);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await pinReviewer(page);
+  await page.goto(
+    `/workspace/review?review_book=${encodeURIComponent(f.book.id)}&review_draft=${encodeURIComponent(draftId)}`,
+  );
+  await expect(page.getByRole('heading', { name: '尚未获得企业或事务所授权' })).toBeVisible();
+  await expect(page.getByText('已审核，待导出', { exact: true })).toHaveCount(0);
+  await expect(page.locator('.journal-grid tbody tr')).toHaveCount(0);
+});

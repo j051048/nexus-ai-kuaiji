@@ -132,3 +132,46 @@
     grid-template-columns: 1fr;
   }
 }
+
+.observability-value-picker {
+  display: grid;
+  gap: 6px;
+  max-width: 320px;
+  margin-bottom: 12px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.observability-value-picker select {
+  min-height: 38px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 0 10px;
+}
+
+.observability-value-note {
+  margin: 10px 0 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.observability-radar-books {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.observability-radar-books article {
+  display: grid;
+  gap: 3px;
+  border-left: 3px solid var(--warning);
+  background: var(--surface-subtle);
+  padding: 8px 10px;
+}
+
+.observability-radar-books article span,
+.observability-radar-books article small {
+  color: var(--text-muted);
+  font-size: 12px;
+}

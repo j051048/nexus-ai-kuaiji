@@ -938,3 +938,39 @@ def test_pg_budget_preflight_preserves_latest_history_and_cost_boundary(
         assert len(charges) == 1 and charges[0]["estimated_micro"] == 14
     assert c.chat_worker.run_once() is None
     assert raw(c, turn["id"])["attempt_count"] == 1
+
+
+def test_pg_routing_records_blocked_write_without_turn_and_model_turn(pg_delivery):
+    c = pg_delivery
+    actor = c.actors["accountant"]
+    conversation = c.chat_service.create(
+        actor,
+        ConversationCreate(
+            company_id=c.company["id"],
+            book_ids=[c.book["id"]],
+            idempotency_key=uuid4().hex,
+        ),
+    )["conversation"]
+    blocked = TurnCreate(
+        question="帮我直接记账并审核这张凭证",
+        expected_scope_version=1,
+        idempotency_key=uuid4().hex,
+    )
+    with pytest.raises(AccountingError, match="只读") as refused:
+        c.chat_service.enqueue(actor, conversation["id"], blocked)
+    assert refused.value.status == 409
+    with c.db.transaction(actor=actor) as conn:
+        assert conn.execute(
+            "SELECT count(*) FROM assistant_turns WHERE conversation_id=?",
+            (conversation["id"],),
+        ).fetchone()[0] == 0
+    decisions = c.chat_service.routing.list(actor, c.company["id"])["items"]
+    assert decisions[0]["level"] == "blocked"
+    assert decisions[0]["matched_rule"] == "read_only_guard"
+    assert decisions[0]["conversation_id"] == conversation["id"]
+    assert decisions[0]["turn_id"] is None
+    _, _, turn = enqueue(c, actor)
+    decisions = c.chat_service.routing.list(actor, c.company["id"])["items"]
+    assert decisions[0]["level"] == "model"
+    assert decisions[0]["turn_id"] == turn["id"]
+    assert decisions[0]["budget_state"] == "model_call_pending"

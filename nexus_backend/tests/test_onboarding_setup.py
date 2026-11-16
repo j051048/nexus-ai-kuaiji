@@ -7,7 +7,13 @@ from app.main import create_app
 
 def _factory(tmp_path, name):
     app = create_app(tmp_path / name, seed=True)
-    client = TestClient(app, base_url="http://127.0.0.1", client=("127.0.0.1", 45678))
+
+    @app.middleware("http")
+    async def _loopback(request, call_next):
+        request.scope["client"] = ("127.0.0.1", 45678)
+        return await call_next(request)
+
+    client = TestClient(app, base_url="http://127.0.0.1")
     return app, client
 
 
@@ -46,6 +52,16 @@ def test_setup_lists_the_seven_steps_and_starts_incomplete(tmp_path):
             "first",
         ]
         assert body["ready"] is False
+        assert body["score"] == {"completed": 1, "required": 7, "percent": 14, "blocking": 6}
+        assert [row["id"] for row in body["blockers"]] == [
+            "template",
+            "accounts",
+            "control",
+            "bank",
+            "opening",
+            "first",
+        ]
+        assert all(row["next_action"] for row in body["blockers"])
         # The seed staffs both an editor and a reviewer, so only that step is
         # already satisfied; everything else needs a real record.
         assert {step["id"] for step in body["steps"] if step["complete"]} == {"staffing"}

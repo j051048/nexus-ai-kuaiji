@@ -31,6 +31,9 @@ class AssistantService:
             provider,
         )
         self.intelligence = intelligence or getattr(accounting, "intelligence", None)
+        from .routing import AIRoutingService
+
+        self.routing = AIRoutingService(db, self.access)
 
     def _timestamp(self, conn):
         # Dispatch and leases use PostgreSQL's clock, not a possibly different
@@ -773,6 +776,33 @@ class AssistantService:
 
     def enqueue(self, actor, conversation_id, body: TurnCreate):
         request_fp = fingerprint(body.model_dump())
+        with self.db.transaction(actor=actor) as look:
+            preview = self._conversation(look, actor, conversation_id)
+            has_context = bool(
+                look.execute(
+                    "SELECT 1 FROM assistant_turns WHERE conversation_id=? LIMIT 1",
+                    (conversation_id,),
+                ).fetchone()
+            )
+        level, matched_rule, route_reason = self.routing.classify(
+            body.question, has_context=has_context
+        )
+        if level == "blocked":
+            # Commit the audit row before refusing: raising inside the turn
+            # transaction would roll the evidence back too.
+            with self.db.transaction(write=True, actor=actor) as audit:
+                conversation = self._conversation(audit, actor, conversation_id)
+                self.routing.record(
+                    audit,
+                    actor,
+                    company_id=conversation["company_id"],
+                    question=body.question,
+                    level=level,
+                    matched_rule=matched_rule,
+                    reason=route_reason,
+                    conversation_id=conversation_id,
+                )
+            raise AccountingError(route_reason, 409)
         with self.db.transaction(write=True, actor=actor) as conn:
             conversation = self._conversation(conn, actor, conversation_id)
             prior = conn.execute(
@@ -822,6 +852,18 @@ class AssistantService:
                     stamp,
                     stamp,
                 ),
+            )
+            self.routing.record(
+                conn,
+                actor,
+                company_id=conversation["company_id"],
+                question=body.question,
+                level=level,
+                matched_rule=matched_rule,
+                reason=route_reason,
+                conversation_id=conversation_id,
+                turn_id=identifier,
+                budget_state="model_call_pending",
             )
             conn.execute(
                 "INSERT INTO assistant_messages(id,conversation_id,turn_id,role,content_json,created_at) VALUES(?,?,?,'user',?,?)",

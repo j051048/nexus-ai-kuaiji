@@ -88,8 +88,12 @@ for (const width of [1365, 390]) {
     await expect(page.getByRole('heading', { name: '运行可观测性' })).toBeVisible();
     await expect(page.getByText('AI 已知费用小计', { exact: true })).toBeVisible();
     // The real API is used first; then inject one malformed tenant response.
-    await expect(page.locator('.observability-cards:not(.observability-operations)')).toBeVisible();
+    await expect(page.locator('.observability-cards:not(.observability-operations):not(.observability-value):not(.observability-radar-counts)')).toBeVisible();
     await expect(page.locator('section[aria-label="办理积压与队列年龄"]')).toContainText('待复核凭证');
+    await expect(page.locator('section[aria-label="FDE 价值基线"]')).toContainText('价值基线');
+    await expect(page.locator('section[aria-label="持续结账雷达"]')).toContainText('持续结账雷达');
+    await expect(page.locator('section[aria-label="持续结账雷达"]')).toContainText('关账仍需人工判断');
+    await expect(page.locator('section[aria-label="FDE 价值基线"]')).toContainText('系统耗时不是人工工时');
     await expect(page.getByRole('link', { name: '打开待复核' })).toHaveAttribute(
       'href',
       '/workspace/monthly?focus=review',
@@ -98,6 +102,29 @@ for (const width of [1365, 390]) {
       'href',
       '/workspace/accounting',
     );
+    await page.route('**/api/firm/observability?*', async (route) => {
+      const data = await (await route.fetch()).json();
+      await route.fulfill({
+        json: {
+          ...data,
+          sla: {
+            thresholds: {
+              queue_age_seconds: 900,
+              source_rejections: 0,
+              notification_unknown: 0,
+            },
+            breaches: [{ code: 'queue_age', count: 1200 }],
+            automatic_action: false,
+          },
+        },
+      });
+    });
+    await page.getByRole('button', { name: '刷新', exact: true }).click();
+    await expect(page.getByRole('alert')).toContainText('共享中心 SLA 超限');
+    await shot(page, `monitor-sla-${width}`);
+    await page.unroute('**/api/firm/observability?*');
+    await page.reload();
+    await expect(page.getByRole('alert')).toHaveCount(0);
     await shot(page, `monitor-${width}`);
     const month = await page.getByLabel('运行记录月份').inputValue();
     const value = await (

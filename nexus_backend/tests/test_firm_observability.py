@@ -34,3 +34,34 @@ def test_firm_observability_returns_queue_metrics_and_projection(business):
         assert "source_rejections" in codes
     if operations["notification_unknown"]:
         assert "notification_unknown" in codes
+
+
+def test_operations_sla_breaches_are_explicit():
+    sla = FirmObservabilityService._sla(
+        {
+            "materials_pending": 0,
+            "drafts_pending": 0,
+            "source_rejections": 1,
+            "notification_unknown": 2,
+            "oldest_queue_age_seconds": 901,
+        }
+    )
+    assert sla["automatic_action"] is False
+    assert sla["thresholds"] == {
+        "queue_age_seconds": 900,
+        "source_rejections": 0,
+        "notification_unknown": 0,
+    }
+    assert {item["code"] for item in sla["breaches"]} == {
+        "queue_age",
+        "source_rejections",
+        "notification_unknown",
+    }
+    clean = FirmObservabilityService._sla(
+        {
+            "source_rejections": 0,
+            "notification_unknown": 0,
+            "oldest_queue_age_seconds": 900,
+        }
+    )
+    assert clean["breaches"] == []

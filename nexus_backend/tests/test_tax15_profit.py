@@ -149,3 +149,41 @@ def test_profit_mapping_versions_and_permissions(business):
                 )
             ]),
         )
+
+
+def test_profit_variance_is_arithmetic_with_evidence_anchors(business, monkeypatch):
+    case = business
+    service = ProfitDrilldownService(case.db)
+    books = {
+        "current": {"id": "b-current", "company_id": "c1", "firm_id": "f1", "period": "2026-10"},
+        "baseline": {"id": "b-baseline", "company_id": "c1", "firm_id": "f1", "period": "2026-09"},
+    }
+    monkeypatch.setattr(service, "_book", lambda conn, actor, book_id: books[book_id])
+    monkeypatch.setattr(service, "_book_period", lambda actor, book_id: books[book_id]["period"])
+
+    def overview(actor, book_id, period, line_code=""):
+        amount = 150000 if book_id == "current" else 125000
+        anchor = "v-current" if book_id == "current" else "v-baseline"
+        return {
+            "book_id": book_id,
+            "period": period,
+            "lines": [
+                {"line_code": "revenue", "line_name": "营业收入", "line_kind": "revenue", "amount_cents": amount}
+            ],
+            "items": [
+                {
+                    "line_code": "revenue", "voucher_id": anchor, "voucher_no": 1,
+                    "voucher_date": period + "-10", "description": "测试", "line_no": 1,
+                    "account_code": "6001", "account_name": "收入", "debit_cents": 0,
+                    "credit_cents": amount, "net_cents": amount,
+                    "source_ref": "s-" + anchor, "evidence_ref": "e-" + anchor,
+                }
+            ],
+        }
+
+    monkeypatch.setattr(service, "overview", overview)
+    result = service.variance(case.manager, "current", "baseline", "revenue")
+    assert result["lines"][0]["delta_cents"] == 25000
+    assert result["checks"]["causal_claim"] is False
+    assert result["contributors"]["revenue"]["current"][0]["evidence_ref"] == "e-v-current"
+    assert result["contributors"]["revenue"]["baseline"][0]["voucher_id"] == "v-baseline"

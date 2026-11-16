@@ -272,4 +272,13 @@ def build_assistant_router(actor_dependency):
     ):
         return action_service.receipt(current, conversation_id, plan_id)
 
+    @router.get("/routing/decisions")
+    def routing_decisions(
+        company_id: str = Query(min_length=1, max_length=100),
+        limit: int = Query(default=50, ge=1, le=200),
+        current=Depends(actor_dependency),
+        assistant=Depends(service),
+    ):
+        return assistant.routing.list(current, company_id, limit)
+
     return router

@@ -13,9 +13,11 @@ import json
 from uuid import uuid4
 
 from ..accounting.domain import AccountingError
+from ..accounting.catalog import CatalogService
 from ..accounting.models import ApprovalRequest
 from ..accounting.service import AccountingService, now
 from ..ledgers.service import LedgersService
+from .fee_guard import transport_issues, transport_snapshot
 
 MAX_LINES = 2400
 
@@ -105,15 +107,9 @@ class TaxFeeService:
                     raise AccountingError(f"规费科目 {code} 的核算类别或余额方向不适用", 409)
                 accounts[code] = row["code"]
             source_fingerprint = _digest(sorted((s["id"], s["fingerprint"]) for s in sources))
-            batch_fingerprint = _digest({"period": period, "sources": source_fingerprint, "policy": policy})
-            existing = conn.execute(
-                "SELECT * FROM tax_fee_batches WHERE book_id=? AND batch_fingerprint=?",
-                (book_id, batch_fingerprint),
-            ).fetchone()
-            if existing:
-                return self._view(conn, existing)
             batch_id = uuid4().hex
             batch_rows, lines, seen = [], [], set()
+            identities, transport_cache = {}, {}
             for source in sources:
                 rows = json.loads(source["rows_json"])
                 for row in rows:
@@ -153,6 +149,21 @@ class TaxFeeService:
                         (actor.firm_id, book["company_id"], vehicle["id"], driver["id"], day, day),
                     ).fetchone():
                         reason = "当日无有效的车辆-驾驶员班次核定"
+                    if not reason:
+                        key = (day, vehicle_ext, driver_ext)
+                        try:
+                            if key not in transport_cache:
+                                transport_cache[key] = self.ledgers.resolve_transport_in_transaction(
+                                    conn, actor, book_id, day,
+                                    vehicle_external_id=vehicle_ext, driver_external_id=driver_ext,
+                                )
+                            identity = transport_snapshot(transport_cache[key], source["id"], row_number)
+                        except AccountingError:
+                            identity = None
+                        if identity is None:
+                            reason = "驾驶员往来主体或车辆项目缺少当日有效核定映射"
+                        else:
+                            identities[(source["id"], row_number)] = identity
                     gross = int(row.get("amount_cents") or 0)
                     try:
                         discount = _cents(_raw(row, "discount", "优惠减免"), field="优惠减免")
@@ -190,6 +201,18 @@ class TaxFeeService:
                 raise AccountingError("批次没有可生成的非零净额，未创建凭证", 409)
             if len(adopted) * 2 > MAX_LINES:
                 raise AccountingError(f"单张受控大凭证最多 {MAX_LINES} 行，请拆分批次", 413)
+            transport_facts = sorted(
+                (identities[(item["source_file_id"], item["source_row_number"])] for item in adopted),
+                key=lambda item: (item["source_file_id"], item["source_row_number"]),
+            )
+            batch_fingerprint = _digest({"period": period, "sources": source_fingerprint,
+                                         "policy": policy, "transport": transport_facts})
+            existing = conn.execute(
+                "SELECT * FROM tax_fee_batches WHERE book_id=? AND batch_fingerprint=?",
+                (book_id, batch_fingerprint),
+            ).fetchone()
+            if existing:
+                return self._view(conn, existing)
             stamp = now()
             source_id, draft_id = uuid4().hex, uuid4().hex
             conn.execute(
@@ -206,6 +229,7 @@ class TaxFeeService:
             )
             ordinal = 0
             ordinal_by_row = {}
+            auxiliaries = []
             for item in adopted:
                 for role in ("receivable", "revenue"):
                     code = policy["driver_receivable_account"] if role == "receivable" else policy["vehicle_revenue_account"]
@@ -217,13 +241,19 @@ class TaxFeeService:
                          item["driver_id"], item["vehicle_id"], role, item["net_cents"]),
                     )
                     ordinal_by_row.setdefault(item["id"], ordinal)
+                    dimension = "counterparty" if role == "receivable" else "project"
+                    auxiliaries.append({dimension: identities[(item["source_file_id"], item["source_row_number"])][dimension]["id"]})
                     ordinal += 1
+            CatalogService(self.db).save_auxiliaries_in_transaction(
+                conn, actor, book_id, draft_id, auxiliaries,
+            )
             conn.execute(
-                "INSERT INTO tax_fee_batches(id,firm_id,company_id,book_id,period,version,draft_id,policy_json,policy_fingerprint,source_fingerprint,batch_fingerprint,total_cents,row_count,skipped_count,created_by,created_at) "
-                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO tax_fee_batches(id,firm_id,company_id,book_id,period,version,draft_id,policy_json,policy_fingerprint,source_fingerprint,batch_fingerprint,total_cents,row_count,skipped_count,created_by,created_at,transport_snapshot_json) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (batch_id, actor.firm_id, book["company_id"], book_id, period, 1, draft_id,
                  json.dumps(policy, ensure_ascii=False, sort_keys=True), _digest(policy), source_fingerprint,
-                 batch_fingerprint, total, len(batch_rows), sum(1 for r in batch_rows if r["status"] != "adopted"), actor.user_id, stamp),
+                 batch_fingerprint, total, len(batch_rows), sum(1 for r in batch_rows if r["status"] != "adopted"), actor.user_id, stamp,
+                 json.dumps(transport_facts, ensure_ascii=False, sort_keys=True)),
             )
             for item in batch_rows:
                 conn.execute(
@@ -264,6 +294,9 @@ class TaxFeeService:
                 raise AccountingError("规费批次已复核、失效或版本已变化", 409)
             if batch["created_by"] == actor.user_id:
                 raise AccountingError("制单人与复核人必须不同，复核未执行", 409)
+            identity_issues = transport_issues(conn, batch)
+            if identity_issues:
+                raise AccountingError(identity_issues[0], 409)
             used = self._snapshot_sources(batch)
             current = []
             for item in used:
@@ -293,6 +326,9 @@ class TaxFeeService:
                 raise AccountingError("规费批次不存在", 404)
             if batch["status"] == "invalidated":
                 raise AccountingError("规费批次已失效", 409)
+            identity_issues = transport_issues(conn, batch)
+            if identity_issues:
+                raise AccountingError(identity_issues[0], 409)
             used = self._snapshot_sources(batch)
             current = []
             for item in used:
@@ -337,7 +373,8 @@ class TaxFeeService:
                 current = None
                 break
             current.append((item["source_file_id"], source["fingerprint"]))
-        stale = current is None or _digest(sorted(current)) != batch["source_fingerprint"]
+        identity_issues = transport_issues(conn, batch)
+        stale = current is None or _digest(sorted(current)) != batch["source_fingerprint"] or bool(identity_issues)
         source_files = []
         for item in used:
             source = conn.execute(
@@ -373,7 +410,7 @@ class TaxFeeService:
             "policy": json.loads(batch["policy_json"]), "policy_fingerprint": batch["policy_fingerprint"],
             "source_fingerprint": batch["source_fingerprint"], "batch_fingerprint": batch["batch_fingerprint"],
             "stale": stale,
-            "stale_reason": "来源已更新或过期，旧审批与导出已失效，请失效后重新生成。" if stale else "",
+            "stale_reason": (identity_issues[0] if identity_issues else "来源已更新或过期，旧审批与导出已失效，请失效后重新生成。") if stale else "",
             "source_files": source_files,
             "rows": [dict(r) for r in rows], "exceptions": [dict(r) for r in rows if r["status"] != "adopted"],
             "by_driver": grouped("driver_id"), "by_vehicle": grouped("vehicle_id"),

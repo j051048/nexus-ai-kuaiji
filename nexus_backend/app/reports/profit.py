@@ -234,6 +234,7 @@ class ProfitDrilldownService:
                 group["amount_cents"] += amount
                 group["items_count"] += 1
                 item = {
+                    "line_code": mapping["line_code"],
                     "voucher_id": row["voucher_id"], "voucher_no": int(row["voucher_no"]),
                     "voucher_date": row["voucher_date"], "description": row["description"],
                     "line_no": int(row["line_no"]), "account_code": row["account_code"],
@@ -278,3 +279,60 @@ class ProfitDrilldownService:
                     "net_profit_known": income_tax is not None,
                 },
             }
+
+    def variance(self, actor, book_id, baseline_book_id, line_code=""):
+        """Deterministic two-book variance; it never claims a cause."""
+        current = self.overview(actor, book_id, self._book_period(actor, book_id), line_code)
+        baseline = self.overview(
+            actor, baseline_book_id, self._book_period(actor, baseline_book_id), line_code
+        )
+        if current["book_id"] == baseline["book_id"]:
+            raise AccountingError("对比账簿不能是同一账套", 422)
+        with self.db.transaction(actor=actor) as conn:
+            current_book = self._book(conn, actor, book_id)
+            baseline_book = self._book(conn, actor, baseline_book_id)
+        if (current_book["company_id"], current_book["firm_id"]) != (
+            baseline_book["company_id"], baseline_book["firm_id"]
+        ):
+            raise AccountingError("只能对比同一企业、同一事务所的账簿", 422)
+        current_lines = {item["line_code"]: item for item in current["lines"]}
+        baseline_lines = {item["line_code"]: item for item in baseline["lines"]}
+        contributors = {}
+        lines = []
+        for code in sorted(set(current_lines) | set(baseline_lines)):
+            now = int(current_lines.get(code, {}).get("amount_cents", 0))
+            before = int(baseline_lines.get(code, {}).get("amount_cents", 0))
+            lines.append(
+                {
+                    "line_code": code,
+                    "line_name": (current_lines.get(code) or baseline_lines.get(code))["line_name"],
+                    "line_kind": (current_lines.get(code) or baseline_lines.get(code))["line_kind"],
+                    "current_cents": now,
+                    "baseline_cents": before,
+                    "delta_cents": now - before,
+                }
+            )
+            contributors[code] = {
+                "current": [item for item in current["items"] if item["line_code"] == code][:10],
+                "baseline": [item for item in baseline["items"] if item["line_code"] == code][:10],
+            }
+        return {
+            "current_book_id": book_id,
+            "baseline_book_id": baseline_book_id,
+            "current_period": current["period"],
+            "baseline_period": baseline["period"],
+            "lines": lines,
+            "contributors": contributors,
+            "checks": {
+                "line_count": len(lines),
+                "delta_total_cents": sum(item["delta_cents"] for item in lines),
+                "same_company": True,
+                "causal_claim": False,
+            },
+            "note": "仅按同一映射版本做确定性算术对比；贡献行是证据锚点，不推断业务原因。",
+        }
+
+    def _book_period(self, actor, book_id):
+        with self.db.transaction(actor=actor) as conn:
+            book = self._book(conn, actor, book_id)
+        return book["period"]

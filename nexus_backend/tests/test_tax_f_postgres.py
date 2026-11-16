@@ -72,13 +72,18 @@ def case(pg):
             "INSERT INTO accounting.memberships(firm_id,user_id,role) VALUES(%s,%s,'reviewer')",
             (firm, reviewer.user_id),
         )
-    book = AccountingService(db).create_book(maker, BookCreate(name="虚构TAXF账套", period="2026-10"))
+    accounting = AccountingService(db)
+    book = accounting.create_book(maker, BookCreate(name="虚构TAXF账套", period="2026-10"))
+    baseline_book = accounting.create_book(
+        maker,
+        BookCreate(name="虚构TAXF对比账套", period="2026-10", company_id=book["company_id"]),
+    )
     with psycopg.connect(ADMIN_URL) as conn:
         conn.execute(
             "INSERT INTO accounting.book_access(book_id,firm_id,user_id,role) VALUES(%s,%s,%s,'reviewer')",
             (book["id"], firm, reviewer.user_id),
         )
-    return SimpleNamespace(db=db, manager=maker, reviewer=reviewer, book=book)
+    return SimpleNamespace(db=db, manager=maker, reviewer=reviewer, book=book, baseline_book=baseline_book)
 
 
 def test_lease_recognizes_prepaid_income_after_business_confirmation(case):
@@ -172,3 +177,37 @@ def test_sync_stub_pg_signed_event_and_cursor(case, monkeypatch):
     assert service.list_events(
         case.manager, case.book["id"], source_id="pg-file-link"
     )["items"][0]["external_id"] == "PG-1"
+
+
+def test_value_baseline_is_empty_and_never_claims_labour_time(case):
+    from app.observability.value import ValueBaselineService
+
+    result = ValueBaselineService(case.db).overview(
+        case.reviewer, case.book["company_id"], "2026-10"
+    )
+    assert result["counts"]["approved_drafts"] == 0
+    assert result["rates"]["first_pass_rate"] is None
+    assert result["elapsed"]["labour_time_verified"] is False
+    assert result["cost"]["scope"] == "ai_model_only"
+
+
+def test_closing_radar_is_read_only_and_lists_blockers(case):
+    from app.observability.closing import ClosingRadarService
+
+    result = ClosingRadarService(case.db).radar(case.manager, "2026-10")
+    assert result["counts"]["books"] >= 1
+    assert result["counts"]["blocked"] == sum(
+        1 for item in result["books"] if item["blockers"]
+    )
+    assert result["note"].startswith("只读雷达")
+    assert all(item["period_status"] in {"open", "closed"} for item in result["books"])
+
+
+def test_profit_variance_compares_two_books_without_claiming_a_cause(case):
+    service = ProfitDrilldownService(case.db)
+    value = service.variance(case.manager, case.book["id"], case.baseline_book["id"])
+    assert value["current_book_id"] == case.book["id"]
+    assert value["baseline_book_id"] == case.baseline_book["id"]
+    assert value["checks"]["causal_claim"] is False
+    assert value["checks"]["line_count"] >= 1
+    assert all(item["delta_cents"] == 0 for item in value["lines"])

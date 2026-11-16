@@ -37,6 +37,29 @@ async function prepare(request: Parameters<typeof taxFullFixture>[0], f: FormalF
       }),
     );
     subjects[external] = created;
+    const auxiliary = await checked(
+      await request.post(`/api/books/${f.book.id}/ledger/entities`, {
+        headers: f.headers,
+        data: {
+          kind: kind === 'driver' ? 'counterparty' : 'project',
+          code: `FEE-${external}`,
+          name: `规费辅助-${name}`,
+        },
+      }),
+    );
+    await checked(
+      await request.post(`/api/books/${f.book.id}/ledger/transport/relations`, {
+        headers: f.headers,
+        data: {
+          subject_id: created.id,
+          target_id: auxiliary.id,
+          contract_external_id: 'C1',
+          operating_right: '虚构试点规费辅助映射',
+          valid_from: '2026-10-01',
+          valid_to: null,
+        },
+      }),
+    );
   }
   for (const [driver, vehicle] of [
     ['D1', 'V1'],

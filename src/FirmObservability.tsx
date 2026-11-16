@@ -5,6 +5,7 @@ import { Spinner } from './AppPrimitives';
 import type { Session } from './types';
 import './firm-observability.css';
 import { readFirmSnapshot } from './firm-observability-contract';
+import { cny, percent, readValueBaseline, type ValueBaseline } from './value-baseline';
 
 export type Snapshot = {
   firm_id: string;
@@ -29,6 +30,11 @@ export type Snapshot = {
     source_rejections: number;
     notification_unknown: number;
     oldest_queue_age_seconds: number;
+  };
+  sla?: {
+    thresholds: { queue_age_seconds: number; source_rejections: number; notification_unknown: number };
+    breaches: { code: string; count: number }[];
+    automatic_action: false;
   };
   alerts: Record<string, { open: number; critical: number }>;
   worker_health?: {
@@ -66,6 +72,23 @@ function ObservabilityWorkspace({ session }: { session: Session }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [revision, setRevision] = useState(0);
+  const [companies, setCompanies] = useState<{ id: string; name: string }[]>([]);
+  const [companyId, setCompanyId] = useState('');
+  const [value, setValue] = useState<ValueBaseline | null>(null);
+  const [valueLoading, setValueLoading] = useState(false);
+  const [valueError, setValueError] = useState('');
+  const [radar, setRadar] = useState<{
+    period: string;
+    books: {
+      book_id: string;
+      company_name: string;
+      closable: boolean;
+      period_status: string;
+      blockers: { code: string; label: string; count: number; next_action: string }[];
+    }[];
+    counts: { books: number; blocked: number; closable: number; closed: number };
+    note: string;
+  } | null>(null);
   const epoch = useRef(0);
   const active = useRef(true);
   useEffect(() => {
@@ -113,6 +136,56 @@ function ObservabilityWorkspace({ session }: { session: Session }) {
       });
     return () => controller.abort();
   }, [session, period, revision]);
+  useEffect(() => {
+    const controller = new AbortController();
+    void api<{ books: { company_id: string; company_name: string }[] }>('/workbench', session, {
+      signal: controller.signal,
+    })
+      .then((result) => {
+        const unique = new Map<string, string>();
+        for (const book of result.books) unique.set(book.company_id, book.company_name);
+        const items = [...unique].map(([id, name]) => ({ id, name }));
+        setCompanies(items);
+        setCompanyId((current) => current || items[0]?.id || '');
+      })
+      .catch(() => setCompanies([]));
+    return () => controller.abort();
+  }, [session]);
+  useEffect(() => {
+    if (!companyId) {
+      setValue(null);
+      return;
+    }
+    const controller = new AbortController();
+    setValueLoading(true);
+    setValueError('');
+    void api<ValueBaseline>(
+      '/firm/observability/value?' +
+        new URLSearchParams({ company_id: companyId, period }).toString(),
+      session,
+      { signal: controller.signal },
+    )
+      .then((raw) => setValue(readValueBaseline(raw)))
+      .catch((failure) => {
+        setValue(null);
+        setValueError(errorMessage(failure));
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setValueLoading(false);
+      });
+    return () => controller.abort();
+  }, [companyId, period, revision, session]);
+  useEffect(() => {
+    const controller = new AbortController();
+    void api<NonNullable<typeof radar>>(
+      '/firm/observability/closing-radar?' + new URLSearchParams({ period }).toString(),
+      session,
+      { signal: controller.signal },
+    )
+      .then(setRadar)
+      .catch(() => setRadar(null));
+    return () => controller.abort();
+  }, [period, revision, session]);
   const queueLabels: Record<string, string> = {
     ocr: '票据识别',
     proposal: '分录生成',
@@ -218,6 +291,11 @@ function ObservabilityWorkspace({ session }: { session: Session }) {
               <h2>办理积压</h2>
               <span className="field-help">仅聚合当前事务所；每项打开原办理对象，不自动处理。</span>
             </header>
+            {data.sla?.breaches.length ? (
+              <p className="form-error" role="alert">
+                共享中心 SLA 超限：{data.sla.breaches.map((item) => `${item.code} ${item.count}`).join('；')}；需人工核查，不自动重试。
+              </p>
+            ) : null}
             <div className="observability-cards observability-operations">
               <article>
                 <span>资料待验收</span>
@@ -260,6 +338,88 @@ function ObservabilityWorkspace({ session }: { session: Session }) {
               </article>
             </div>
           </section>
+          <section className="observability-panel" aria-label="FDE 价值基线">
+            <header>
+              <h2>价值基线</h2>
+              <span className="field-help">只统计系统可观测结果；系统耗时不是人工工时。</span>
+            </header>
+            {companies.length > 1 && (
+              <label className="observability-value-picker">
+                企业
+                <select value={companyId} onChange={(event) => setCompanyId(event.target.value)}>
+                  {companies.map((company) => (
+                    <option key={company.id} value={company.id}>
+                      {company.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {valueError ? (
+              <p className="inline-error">{valueError}</p>
+            ) : valueLoading ? (
+              <p className="field-help">正在读取价值基线…</p>
+            ) : value ? (
+              <>
+                <div className="observability-cards observability-value">
+                  <article>
+                    <span>自动映射率</span>
+                    <strong>{percent(value.rates.draft_mapping_rate)}</strong>
+                    <small>{value.counts.mapped_drafts} 张映射 / {value.counts.submitted_events} 笔提交</small>
+                  </article>
+                  <article>
+                    <span>首次通过率</span>
+                    <strong>{percent(value.rates.first_pass_rate)}</strong>
+                    <small>{value.counts.returned_events} 笔退回</small>
+                  </article>
+                  <article>
+                    <span>例外率</span>
+                    <strong>{percent(value.rates.exception_rate)}</strong>
+                    <small>以提交事件为分母</small>
+                  </article>
+                  <article>
+                    <span>复核转化率</span>
+                    <strong>{percent(value.rates.review_conversion_rate)}</strong>
+                    <small>{value.counts.approved_drafts} 张已复核</small>
+                  </article>
+                  <article>
+                    <span>AI 单笔已通过成本</span>
+                    <strong>{cny(value.cost.ai_cost_per_approved_micro)}</strong>
+                    <small>仅 AI 模型费用，不含人工与基础设施</small>
+                  </article>
+                </div>
+                <p className="observability-value-note">{value.elapsed.note}</p>
+              </>
+            ) : (
+              <p className="field-help">选择企业后读取价值基线。</p>
+            )}
+          </section>
+          {radar && (
+            <section className="observability-panel" aria-label="持续结账雷达">
+              <header>
+                <h2>持续结账雷达</h2>
+                <span className="field-help">{radar.note}</span>
+              </header>
+              <div className="observability-cards observability-radar-counts">
+                <article><span>账套</span><strong>{radar.counts.books}</strong><small>{radar.period} 范围</small></article>
+                <article><span>有阻断</span><strong>{radar.counts.blocked}</strong><small>需项目经理处理</small></article>
+                <article><span>可关账</span><strong>{radar.counts.closable}</strong><small>仍需人工确认</small></article>
+                <article><span>已关账</span><strong>{radar.counts.closed}</strong><small>只读投影</small></article>
+              </div>
+              <div className="observability-radar-books">
+                {radar.books.filter((book) => book.blockers.length > 0).slice(0, 8).map((book) => (
+                  <article key={book.book_id}>
+                    <strong>{book.company_name}</strong>
+                    <span>{book.period_status} · {book.blockers.map((item) => `${item.label} ${item.count}`).join(' / ')}</span>
+                    <small>{book.blockers[0]?.next_action}</small>
+                  </article>
+                ))}
+                {radar.books.every((book) => book.blockers.length === 0) && (
+                  <p className="field-help">当前期间没有登记阻断；关账仍需人工判断。</p>
+                )}
+              </div>
+            </section>
+          )}
           {data.signals.length > 0 && (
             <section className="observability-panel" aria-label="运行异常下一步">
               <header>

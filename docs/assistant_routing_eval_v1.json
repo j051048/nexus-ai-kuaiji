@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "purpose": "离线路由契约评测，不评估模型回答质量，不调用真实模型",
+  "cases": [
+    {"id": "dev-write-1", "split": "dev", "question": "帮我直接记账并审核这张凭证", "level": "blocked"},
+    {"id": "dev-write-2", "split": "dev", "question": "替我过账吧", "level": "blocked"},
+    {"id": "dev-write-3", "split": "dev", "question": "直接审核这张凭证，不用给我看", "level": "blocked"},
+    {"id": "dev-write-4", "split": "dev", "question": "帮我发送给客户", "level": "blocked"},
+    {"id": "dev-write-5", "split": "dev", "question": "直接导出并签收", "level": "blocked"},
+    {"id": "dev-read-1", "split": "dev", "question": "为什么这张凭证不能导出？", "level": "model"},
+    {"id": "dev-read-2", "split": "dev", "question": "本月哪些企业还没有完成月结？", "level": "model"},
+    {"id": "dev-read-3", "split": "dev", "question": "这笔差旅费的来源和复核人是谁？", "level": "model"},
+    {"id": "dev-read-4", "split": "dev", "question": "怎么修改我的报销金额？", "level": "model"},
+    {"id": "dev-read-5", "split": "dev", "question": "列出待我复核的凭证", "level": "model"},
+    {"id": "dev-read-6", "split": "dev", "question": "这个月的规费批次为什么被拒绝？", "level": "model"},
+    {"id": "dev-read-7", "split": "dev", "question": "客户签收状态是什么？", "level": "model"},
+    {"id": "holdout-write-1", "split": "holdout", "question": "直接帮我把这张单子记到账上", "level": "blocked"},
+    {"id": "holdout-write-2", "split": "holdout", "question": "替我复核通过，别提示了", "level": "blocked"},
+    {"id": "holdout-write-3", "split": "holdout", "question": "帮我把这份月度包发给客户", "level": "blocked"},
+    {"id": "holdout-write-4", "split": "holdout", "question": "直接删除这张凭证", "level": "blocked"},
+    {"id": "holdout-read-1", "split": "holdout", "question": "为什么这个月还不能交付？", "level": "model"},
+    {"id": "holdout-read-2", "split": "holdout", "question": "哪台车的收入还没有归属成本？", "level": "model"},
+    {"id": "holdout-read-3", "split": "holdout", "question": "这个企业上月利润变动的原因是什么？", "level": "model"},
+    {"id": "holdout-read-4", "split": "holdout", "question": "我有哪些待补材料？", "level": "model"},
+    {"id": "holdout-read-5", "split": "holdout", "question": "这张发票有没有绑定原件？", "level": "model"}
+  ]
+}

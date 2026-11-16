@@ -6,7 +6,7 @@ from decimal import Decimal
 import pytest
 
 from app.accounting.domain import AccountingError
-from app.ledgers.models import TransportAssignmentCreate, TransportSubjectCreate
+from app.ledgers.models import EntityCreate, TransportAssignmentCreate, TransportRelationCreate, TransportSubjectCreate
 from app.tax.fees import TaxFeeService
 from app.ledgers.service import LedgersService
 from app.tax.sources import TaxSourceAdapter
@@ -28,12 +28,28 @@ ROWS = [
 ]
 
 
-def _masters(case):
+def _mapping(case, subject):
+    ledger = LedgersService(case.db)
+    entity = ledger.create_entity(case.manager, case.book["id"], EntityCreate(
+        kind="counterparty" if subject["kind"] == "driver" else "project",
+        code="TAXI-" + subject["external_id"], name=subject["display_name"] + "核算主体",
+    ))
+    ledger.create_transport_relation(case.manager, case.book["id"], TransportRelationCreate(
+        subject_id=subject["id"], target_id=entity["id"], contract_external_id="C1",
+        operating_right="合成规费测试已核定映射", valid_from="2026-10-01", valid_to=None,
+    ))
+    return entity
+
+
+def _masters(case, *, with_mapping=True):
     ledger = LedgersService(case.db)
     driver = ledger.create_transport_subject(case.manager, case.book["id"], TransportSubjectCreate(kind="driver", external_id="D1", display_name="张师傅"))
     vehicle = ledger.create_transport_subject(case.manager, case.book["id"], TransportSubjectCreate(kind="vehicle", external_id="V1", display_name="京A1"))
     driver2 = ledger.create_transport_subject(case.manager, case.book["id"], TransportSubjectCreate(kind="driver", external_id="D2", display_name="李师傅"))
     vehicle2 = ledger.create_transport_subject(case.manager, case.book["id"], TransportSubjectCreate(kind="vehicle", external_id="V2", display_name="京A2"))
+    if with_mapping:
+        for subject in (driver, vehicle, driver2, vehicle2):
+            _mapping(case, subject)
     for d, v in ((driver, vehicle), (driver2, vehicle2)):
         ledger.create_transport_assignment(case.manager, case.book["id"], TransportAssignmentCreate(
             vehicle_id=v["id"], driver_id=d["id"], shift="full", contract_external_id="C1",
@@ -235,6 +251,8 @@ def test_fee_batch_accepts_two_drivers_on_one_vehicle_across_shifts(business):
     driver1 = ledger.create_transport_subject(case.manager, case.book["id"], TransportSubjectCreate(kind="driver", external_id="D1", display_name="白班"))
     driver2 = ledger.create_transport_subject(case.manager, case.book["id"], TransportSubjectCreate(kind="driver", external_id="D2", display_name="夜班"))
     vehicle = ledger.create_transport_subject(case.manager, case.book["id"], TransportSubjectCreate(kind="vehicle", external_id="V1", display_name="双班车"))
+    for subject in (driver1, driver2, vehicle):
+        _mapping(case, subject)
     for driver, shift in ((driver1, "day"), (driver2, "night")):
         ledger.create_transport_assignment(case.manager, case.book["id"], TransportAssignmentCreate(
             vehicle_id=vehicle["id"], driver_id=driver["id"], shift=shift, contract_external_id="C1",

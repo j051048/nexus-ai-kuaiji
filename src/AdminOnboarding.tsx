@@ -11,12 +11,25 @@ export type OnboardingStep = {
   required: boolean;
   detail: string;
   tab: 'company' | 'members' | 'departments' | 'books' | 'work' | 'ai';
+  action_target: { kind: string; book_id: string; period: string };
 };
 export type CompanyOnboarding = {
   company_id: string;
   period: string;
   active: boolean;
   ready: boolean;
+  score: {
+    completed: number;
+    required: number;
+    percent: number;
+    blocking: number;
+  };
+  blockers: Array<{
+    id: string;
+    title: string;
+    next_action: string;
+    action_target: OnboardingStep['action_target'];
+  }>;
   steps: OnboardingStep[];
   updated_at: string;
   note: string;
@@ -137,7 +150,7 @@ export default function AdminOnboarding({
                   ? '恢复企业服务后，重新检查开通条件。'
                   : visible.ready
                     ? '仍需逐月确认资料、权限与交付。'
-                    : '完成配置后，使用明确标记的资料验证一笔完整流程。'}
+                    : `仍有 ${visible.score.blocking} 项必要检查阻断；下一项：${visible.blockers[0]?.title ?? '—'}。`}
               </span>
             </div>
             <ol className="onboarding-steps" aria-label="企业开通清单">

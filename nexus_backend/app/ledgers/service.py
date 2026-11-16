@@ -810,11 +810,18 @@ class LedgersService:
         return row
 
     def resolve_transport(self, actor, book_id, occurred_on, vehicle_external_id=None, vehicle_name=None, driver_external_id=None, driver_name=None):
+        with self.db.transaction(actor=actor) as conn:
+            return self.resolve_transport_in_transaction(
+                conn, actor, book_id, occurred_on, vehicle_external_id,
+                vehicle_name, driver_external_id, driver_name,
+            )
+
+    def resolve_transport_in_transaction(self, conn, actor, book_id, occurred_on, vehicle_external_id=None, vehicle_name=None, driver_external_id=None, driver_name=None):
         try:
             day = date.fromisoformat(occurred_on)
         except (TypeError, ValueError):
             raise AccountingError("发生日期格式应为 YYYY-MM-DD", 422)
-        with self.db.transaction(actor=actor) as conn:
+        if conn is not None:
             book = self.access.book(conn, actor, book_id, "read")
             company_id = book["company_id"]
             vehicle = self._transport_subject(conn, actor, company_id, "vehicle", vehicle_external_id, vehicle_name)
@@ -839,6 +846,8 @@ class LedgersService:
                 "driver": dict(driver) if driver else None,
                 "counterparty": dict(counterparty) if counterparty else None,
                 "assignment": dict(assignment) if assignment else None,
+                "vehicle_relation": dict(rel_v) if rel_v else None,
+                "driver_relation": dict(rel_d) if rel_d else None,
                 "coverage": {"vehicle_relation": bool(project), "driver_relation": bool(counterparty) if driver else None, "assignment": bool(assignment) if driver else None},
             }
 

@@ -33,6 +33,16 @@ def build_report_router(actor_dependency):
     ):
         return profit.save_mapping(current, book_id, payload)
 
+    @router.get("/profit/variance")
+    def profit_variance(
+        book_id: str,
+        baseline_book_id: str,
+        current=Depends(actor_dependency),
+        profit=Depends(profit),
+        line_code: str = "",
+    ):
+        return profit.variance(current, book_id, baseline_book_id, line_code)
+
     @router.get("/profit")
     def profit_overview(
         book_id: str = Query(min_length=1, max_length=100),

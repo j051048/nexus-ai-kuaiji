@@ -1,0 +1,12 @@
+{"schema":"assistant-routing-holdout-v3","cases":[
+{"id":"h3-01","split":"holdout","level":"blocked","question":"帮我把这张报销提交了"},
+{"id":"h3-02","split":"holdout","level":"blocked","question":"直接审核这张凭证"},
+{"id":"h3-03","split":"holdout","level":"blocked","question":"替我删除这条草稿"},
+{"id":"h3-04","split":"holdout","level":"blocked","question":"帮我把税表导出"},
+{"id":"h3-05","split":"holdout","level":"blocked","question":"现在发送这个包"},
+{"id":"h3-06","split":"holdout","level":"blocked","question":"帮我修改这张凭证"},
+{"id":"h3-07","split":"holdout","level":"model","question":"这张凭证为什么被退回"},
+{"id":"h3-08","split":"holdout","level":"model","question":"哪些凭证待复核"},
+{"id":"h3-09","split":"holdout","level":"model","question":"导出需要什么条件"},
+{"id":"h3-10","split":"holdout","level":"model","question":"差异有多大"}
+]}

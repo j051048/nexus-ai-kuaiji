@@ -10,13 +10,22 @@ from test_business_api import auth, create as create_event
 from test_stage15_conversations import SyntheticChatProvider
 
 
+def local_client(app):
+    @app.middleware("http")
+    async def loopback(request, call_next):
+        request.scope["client"] = ("127.0.0.1", 7788)
+        return await call_next(request)
+
+    return TestClient(app, base_url="http://127.0.0.1")
+
+
 def application(tmp_path, provider, seed=True):
     return create_app(tmp_path / "assistant-http.db", seed=seed, attachment_root=tmp_path / "originals", queue_worker_enabled=False, assistant_provider=provider)
 
 
 def test_real_login_close_browser_restart_and_private_messages(tmp_path):
     provider = SyntheticChatProvider(); app = application(tmp_path, provider)
-    with TestClient(app, base_url="http://127.0.0.1", client=("127.0.0.1", 7788)) as client:
+    with local_client(app) as client:
         accountant, employee = auth(client, "accountant"), auth(client, "employee")
         book = client.get("/api/workbench", headers=accountant).json()["books"][0]
         company = book["company_id"]
@@ -38,7 +47,7 @@ def test_real_login_close_browser_restart_and_private_messages(tmp_path):
         assert client.post(f"/api/assistant/conversations/{identifier}/turns", headers=accountant, json={**body, "execute_sql": "SELECT *"}).status_code == 422
     # No browser session or original server object is necessary to complete.
     restarted = application(tmp_path, provider, seed=False)
-    with TestClient(restarted, base_url="http://127.0.0.1", client=("127.0.0.1", 7788)) as client:
+    with local_client(restarted) as client:
         accountant = auth(client, "accountant")
         worker = AssistantWorker(restarted.state.assistant, provider, AssistantMeter(restarted.state.assistant.db, restarted.state.meter))
         assert worker.run_once() == turn["id"]
@@ -51,7 +60,7 @@ def test_real_login_close_browser_restart_and_private_messages(tmp_path):
 
 def test_employee_http_event_scope_and_company_switch_never_reuses_private_thread(tmp_path):
     app = application(tmp_path, SyntheticChatProvider())
-    with TestClient(app, base_url="http://127.0.0.1", client=("127.0.0.1", 7789)) as client:
+    with local_client(app) as client:
         employee, accountant = auth(client, "employee"), auth(client, "accountant")
         event = create_event(client, employee)
         created = client.post("/api/assistant/conversations", headers=employee, json={"company_id": event["company_id"], "event_ids": [event["id"]], "idempotency_key": uuid4().hex})
@@ -75,3 +84,68 @@ def test_employee_http_event_scope_and_company_switch_never_reuses_private_threa
         rejected = client.post(f"/api/assistant/conversations/{thread['id']}/turns", headers=employee, json={"question": "解释事项", "expected_scope_version": 1, "idempotency_key": uuid4().hex})
         assert rejected.status_code == 409
         assert "管理员已暂停" in rejected.json()["detail"]
+
+
+def test_http_routing_audits_blocked_write_and_model_turn(tmp_path):
+    provider = SyntheticChatProvider()
+    app = application(tmp_path, provider)
+    with local_client(app) as client:
+        accountant = auth(client, "accountant")
+        book = client.get("/api/workbench", headers=accountant).json()["books"][0]
+        company = book["company_id"]
+        client.put(
+            f"/api/companies/{company}/intelligence/settings",
+            headers=accountant,
+            json={"enabled": True},
+        )
+        created = client.post(
+            "/api/assistant/conversations",
+            headers=accountant,
+            json={"company_id": company, "book_ids": [book["id"]], "idempotency_key": uuid4().hex},
+        )
+        assert created.status_code == 201, created.text
+        identifier = created.json()["conversation"]["id"]
+        blocked = client.post(
+            f"/api/assistant/conversations/{identifier}/turns",
+            headers=accountant,
+            json={
+                "question": "帮我直接记账并审核这张凭证",
+                "expected_scope_version": 1,
+                "idempotency_key": uuid4().hex,
+            },
+        )
+        assert blocked.status_code == 409, blocked.text
+        decisions = client.get(
+            "/api/assistant/routing/decisions",
+            headers=accountant,
+            params={"company_id": company},
+        )
+        assert decisions.status_code == 200, decisions.text
+        first = decisions.json()["items"][0]
+        assert first["level"] == "blocked"
+        assert first["matched_rule"] == "read_only_guard"
+        assert first["turn_id"] is None
+        readonly = client.post(
+            f"/api/assistant/conversations/{identifier}/turns",
+            headers=accountant,
+            json={
+                "question": "核对保存的账套资料",
+                "expected_scope_version": 1,
+                "idempotency_key": uuid4().hex,
+            },
+        )
+        assert readonly.status_code == 202, readonly.text
+        decisions = client.get(
+            "/api/assistant/routing/decisions",
+            headers=accountant,
+            params={"company_id": company},
+        )
+        latest = decisions.json()["items"][0]
+        assert latest["level"] == "model"
+        assert latest["turn_id"] == readonly.json()["turn"]["id"]
+        employee = auth(client, "employee")
+        assert client.get(
+            "/api/assistant/routing/decisions",
+            headers=employee,
+            params={"company_id": company},
+        ).status_code == 200

@@ -112,6 +112,8 @@ from .onboarding.router import build_onboarding_router
 from .onboarding.service import OnboardingService
 from .observability.router import build_observability_router
 from .observability.service import FirmObservabilityService
+from .observability.value import ValueBaselineService
+from .observability.closing import ClosingRadarService
 from .ingestion.middleware import IngestionBodyLimitMiddleware
 from .ingestion.router import build_ingestion_router
 from .ingestion.service import IngestionService
@@ -147,6 +149,8 @@ from .settlements.service import SettlementService
 from .settlements.router import build_settlement_router
 from .integrations.router import build_integrations_router
 from .integrations.sync_stub import SyncStubService
+from .integrations.fde import FdeAdapterService
+from .integrations.fde_router import build_fde_router
 from .integrations.sync_router import build_sync_stub_router
 from .integrations.middleware import BridgeBodyLimitMiddleware
 from .revisions.service import FactRevisionService
@@ -354,6 +358,7 @@ def create_app(
             application.state.b04_close = CloseService(database)
             application.state.integrations = FinancialBridgeService(database)
             application.state.sync_stub = SyncStubService(database)
+            application.state.fde_adapters = FdeAdapterService(database)
             application.state.settlements = SettlementService(database)
             application.state.service.settlements = application.state.settlements
             application.state.service.ledgers = application.state.ledgers
@@ -488,6 +493,8 @@ def create_app(
             application.state.firm_observability = FirmObservabilityService(
                 database, application.state.service
             )
+            application.state.value_baseline = ValueBaselineService(database)
+            application.state.closing_radar = ClosingRadarService(database)
             # Deliberately code-level off: the receive/consumer loop is not
             # complete. Enabling it requires a reviewed code change, not a
             # deployment-time environment variable.
@@ -1187,6 +1194,7 @@ def create_app(
     app.include_router(build_close_router(actor))
     app.include_router(build_integrations_router(actor))
     app.include_router(build_sync_stub_router(actor))
+    app.include_router(build_fde_router(actor))
     app.include_router(build_settlement_router(actor))
     app.include_router(build_revisions_router(actor))
     app.include_router(build_dispositions_router(actor))

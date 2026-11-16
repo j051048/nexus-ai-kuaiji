@@ -102,3 +102,40 @@ def test_book_only_reviewer_revocation_blocks_large_draft(service, book):
         service.get_draft(reviewer, book, draft["id"])
     assert denied.value.status in (403, 404)
     assert service.get_draft(LOCAL_ACTOR, book, draft["id"])["id"] == draft["id"]
+
+
+def test_revoked_firm_reviewer_cannot_approve_large_draft(service, book):
+    from app.accounting.directory import DirectoryService
+    from app.accounting.models import ApprovalRequest, BookMemberGrant
+
+    directory = DirectoryService(service.db)
+    members = directory.list_firm_members(LOCAL_ACTOR)["members"]
+    reviewer = next(
+        (row for row in members if row["role"] == "reviewer" and row["user_id"] != LOCAL_ACTOR.user_id),
+        None,
+    )
+    assert reviewer is not None, "seed must provide a non-owner reviewer member"
+    directory.grant_book_member(
+        LOCAL_ACTOR, book, reviewer["user_id"], BookMemberGrant(role="reviewer")
+    )
+
+    service.import_sources(LOCAL_ACTOR, book, ImportRequest(source_name="revoke-large", rows=[SourceRow(
+        external_id="revoke-large", date="2026-10-01", description="撤权大凭证",
+        counterparty="合成批次", amount="1001.00", direction="expense", evidence_ref="合成证据",
+    )]))
+    service.suggestions(LOCAL_ACTOR, book)
+    draft = service.get_book(LOCAL_ACTOR, book)["drafts"][0]
+    updated = service.update_draft(LOCAL_ACTOR, book, draft["id"], DraftUpdate(
+        expected_version=draft["version"], description="撤权大凭证",
+        lines=[
+            {"account_code": "6602.02", "debit": "1001.00", "credit": "0"},
+            {"account_code": "1002", "debit": "0", "credit": "1001.00"},
+        ],
+    ))
+    from app.accounting.domain import Actor
+    actor = Actor(reviewer["user_id"], LOCAL_ACTOR.firm_id)
+    assert service.get_draft(actor, book, updated["id"])["id"] == updated["id"]
+
+    directory.revoke_firm_member(LOCAL_ACTOR, reviewer["user_id"])
+    with __import__("pytest").raises(Exception):
+        service.approve(actor, book, updated["id"], ApprovalRequest(expected_version=updated["version"]))
