@@ -116,6 +116,15 @@ from .observability.value import ValueBaselineService
 from .observability.closing import ClosingRadarService
 from .observability.insights import FirmInsightsService
 from .observability.insights_extra import FirmInsightsExtraService
+from .fsc.organization import FscOrganizationService
+from .fsc.profiles import FscProfileService
+from .fsc.contracts import FscContractService
+from .scheduler.service import SchedulerService
+from .fsc.advertising import AdvertisingRevenueService
+from .fsc.imports import FscImportService
+from .fsc.evidence import FscEvidenceService
+from .fsc.router import build_fsc_router
+from .scheduler.router import build_scheduler_router
 from .ingestion.middleware import IngestionBodyLimitMiddleware
 from .ingestion.router import build_ingestion_router
 from .ingestion.service import IngestionService
@@ -131,6 +140,8 @@ from .posting.service import PostingService
 from .subledger.router import build_subledger_router
 from .subledger.service import SubledgerService
 from .periodic.router import build_periodic_router
+from .periodic.authority import ClosingAuthorityService
+from .periodic.links import AssetVehicleLinkService
 from .periodic.service import PeriodicService
 from .reports.router import build_report_router
 from .reports.service import ReportService
@@ -139,6 +150,7 @@ from .tax.sources import TaxSourceAdapter
 from .tax.workpaper import TaxWorkpaperService
 from .tax.fees import TaxFeeService
 from .tax.costs import RepairRateService, TaxCostService
+from .tax.packages import RepairPackageService
 from .tax.leases import LeaseService
 from .tax.basis import TaxBasisService
 from .reports.profit import ProfitDrilldownService
@@ -347,6 +359,8 @@ def create_app(
             application.state.ai_policy = AIEndpointPolicyService(database)
             application.state.subledger = SubledgerService(database)
             application.state.periodic = PeriodicService(database)
+            application.state.closing_authority = ClosingAuthorityService(database)
+            application.state.asset_vehicle_links = AssetVehicleLinkService(database)
             application.state.reports = ReportService(database)
             application.state.profit = ProfitDrilldownService(database)
             application.state.fleet = FleetMetricsService(database)
@@ -356,6 +370,7 @@ def create_app(
             application.state.tax_fees = TaxFeeService(database)
             application.state.tax_costs = TaxCostService(database)
             application.state.repair_rates = RepairRateService(database)
+            application.state.repair_packages = RepairPackageService(database)
             application.state.tax_leases = LeaseService(database)
             application.state.tax_basis = TaxBasisService(database)
             application.state.b04_close = CloseService(database)
@@ -500,6 +515,13 @@ def create_app(
             application.state.closing_radar = ClosingRadarService(database)
             application.state.firm_insights = FirmInsightsService(database)
             application.state.firm_insights_extra = FirmInsightsExtraService(database)
+            application.state.fsc_profiles = FscProfileService(database)
+            application.state.fsc_organization = FscOrganizationService(database)
+            application.state.fsc_contracts = FscContractService(database)
+            application.state.fsc_imports = FscImportService(database)
+            application.state.fsc_evidence = FscEvidenceService(database)
+            application.state.fsc_advertising = AdvertisingRevenueService(database)
+            application.state.scheduler = SchedulerService(database)
             # Deliberately code-level off: the receive/consumer loop is not
             # complete. Enabling it requires a reviewed code change, not a
             # deployment-time environment variable.
@@ -1171,6 +1193,8 @@ def create_app(
     app.include_router(build_cockpit_router(actor))
     app.include_router(build_firm_tasks_router(actor))
     app.include_router(build_observability_router(actor))
+    app.include_router(build_fsc_router(actor))
+    app.include_router(build_scheduler_router(actor))
     app.include_router(build_ingestion_router(actor))
     app.include_router(build_onboarding_router(actor))
     app.include_router(build_operations_router(actor))

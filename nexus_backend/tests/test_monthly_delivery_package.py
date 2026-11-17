@@ -89,6 +89,13 @@ def test_frozen_zip_hashes_scope_and_restart(ready_case):
     assert package["external_import_status"] == "separate_workflow"
     raw = c.packages.download(c.actors["finance"], c.book["id"], package["id"])
     assert raw == MonthlyPackageService(c.db).download(c.manager, c.book["id"], package["id"])
+    with c.db.transaction(actor=c.manager) as conn:
+        rows = conn.execute(
+            "SELECT object_id,details FROM audit_events WHERE action='export.download' ORDER BY id"
+        ).fetchall()
+    assert len(rows) == 2
+    assert all(row["object_id"] == package["id"] for row in rows)
+    assert all("sha256" in row["details"] and "size_bytes" in row["details"] for row in rows)
     with ZipFile(io.BytesIO(raw)) as archive:
         manifest_bytes = archive.read("manifest.json")
         assert hashlib.sha256(manifest_bytes).hexdigest() == package["manifest_sha256"]

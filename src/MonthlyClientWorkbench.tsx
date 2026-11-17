@@ -438,7 +438,13 @@ export function MonthlyClientWorkbench({
                         <strong>{stage.primary}</strong>
                         <small>{stage.secondary}</small>
                         <span className="monthly-stage-state">
-                          {stage.current ? '当前任务' : stage.done ? '已完成' : stage.onOpen ? '待处理' : '未授权'}
+                          {stage.current
+                            ? '当前任务'
+                            : stage.done
+                              ? '已完成'
+                              : stage.onOpen
+                                ? '待处理'
+                                : '未授权'}
                         </span>
                         {stage.onOpen && <ArrowUpRight size={13} aria-hidden="true" />}
                       </button>

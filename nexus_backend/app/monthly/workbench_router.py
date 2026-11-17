@@ -1,5 +1,7 @@
 from fastapi import APIRouter, Depends, Query, Request
 
+from ..accounting.service import fingerprint
+from ..batch_ops.models import CreateMonthlyOpenBatch
 from .batch import BatchOpen
 
 
@@ -9,8 +11,8 @@ def build_monthly_workbench_router(actor_dependency):
     def service(request: Request):
         return request.app.state.monthly_workbench
 
-    def batch(request: Request):
-        return request.app.state.monthly_batch
+    def batch_ops(request: Request):
+        return request.app.state.batch_operations
 
     def briefing(request: Request):
         return request.app.state.monthly_briefing
@@ -27,13 +29,17 @@ def build_monthly_workbench_router(actor_dependency):
     ):
         return monthly.list(current, period, search, limit, offset, focus)
 
-    @router.post("/batch/open")
+    @router.post("/batch/open", status_code=202)
     def batch_open(
         payload: BatchOpen,
         current=Depends(actor_dependency),
-        monthly=Depends(batch),
+        batches=Depends(batch_ops),
     ):
-        return monthly.open_month(current, payload)
+        key = "monthly-open:" + fingerprint(payload.model_dump(mode="json"))
+        return batches.create_monthly_open(
+            current,
+            CreateMonthlyOpenBatch(**payload.model_dump(), idempotency_key=key),
+        )
 
     @router.get("/books/{book_id}/briefing")
     def book_briefing(

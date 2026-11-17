@@ -21,12 +21,16 @@ def test_monthly_open_partial_failure_retries_only_failed_item(monthly_batch):
         ),
     )
     calls = {"count": 0}
+    real_execute = service.execute
+
     def execute(item):
         calls["count"] += 1
         if calls["count"] == 1:
             return {"status": "created", "book_id": "synthetic-book"}
         from app.accounting.domain import AccountingError
+
         raise AccountingError("合成第二户被阻断", 409)
+
     service.execute = execute
     worker = BatchWorker(service, worker_id="batch-partial")
     assert worker.run_once() and worker.run_once()
@@ -38,6 +42,19 @@ def test_monthly_open_partial_failure_retries_only_failed_item(monthly_batch):
     retry = service.retry(c.manager, created["id"])
     assert retry["failed"] == 1
     assert sum(1 for item in retry["items"] if item["status"] == "queued") == 1
+
+    service.execute = real_execute
+    assert worker.run_once() is True
+    finished = service.get(c.manager, created["id"])
+    assert finished["status"] == "completed"
+    assert (finished["succeeded"], finished["failed"]) == (2, 0)
+    with c.db.transaction(actor=c.manager) as conn:
+        duplicates = conn.execute(
+            "SELECT company_id,COUNT(*) AS n FROM books "
+            "WHERE firm_id=? AND period=? GROUP BY company_id HAVING COUNT(*)>1",
+            (c.manager.firm_id, "2026-11"),
+        ).fetchall()
+    assert duplicates == []
 
 
 def test_monthly_open_batch_is_durable_idempotent_and_retryable(monthly_batch):

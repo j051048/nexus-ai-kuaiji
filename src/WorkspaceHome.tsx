@@ -1049,7 +1049,7 @@ export function WorkspaceHome({
                 <ArrowRight size={15} />
               </button>
             )}
-    </div>
+          </div>
         </details>
       )}
       {employee ? <OaMaterialRequestList session={session} /> : null}

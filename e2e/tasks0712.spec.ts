@@ -94,6 +94,14 @@ for (const width of [1365, 390]) {
     await expect(page.locator('section[aria-label="持续结账雷达"]')).toContainText('持续结账雷达');
     await expect(page.locator('section[aria-label="持续结账雷达"]')).toContainText('关账仍需人工判断');
     await expect(page.locator('section[aria-label="FDE 价值基线"]')).toContainText('系统耗时不是人工工时');
+    const fsc = page.locator('section[aria-label="五行业档案矩阵"]');
+    await expect(fsc).toContainText('已确认');
+    await expect(fsc).toContainText('未知不等于不适用');
+    const organization = page.locator('section[aria-label="组织与分工投影"]');
+    await expect(organization).toContainText('组织与分工');
+    await expect(organization).toContainText('只读投影');
+    await expect(organization).toContainText('指派不会授予权限');
+    await expect(organization).toContainText('家企业');
     const contracts = page.locator('section[aria-label="FDE 适配器契约"]');
     await expect(contracts).toContainText('本地合成契约');
     await expect(contracts).toContainText('tax_xlsx');
@@ -132,6 +140,13 @@ for (const width of [1365, 390]) {
     await page.reload();
     await expect(page.getByRole('heading', { name: '运行可观测性' })).toBeVisible();
     await expect(page.getByRole('region', { name: 'FDE 适配器契约' })).toBeVisible();
+    await expect(page.locator('section[aria-label="五行业档案矩阵"]')).toContainText('已确认');
+    await expect(page.locator('section[aria-label="组织与分工投影"]')).toContainText('只读投影');
+    await expect(page.getByRole('region', { name: '导入信封' })).toContainText('尚无导入信封');
+    await expect(page.getByRole('region', { name: '证据政策' })).toContainText('尚无生效证据政策');
+    await expect(page.getByLabel('五行业能力矩阵')).toContainText('未启用');
+    await expect(page.locator('section[aria-label="行业契约"]')).toContainText('份生效契约');
+    await expect(page.locator('section[aria-label="行业契约"]')).toContainText('契约是配置证据');
     await expect(page.getByRole('alert')).toHaveCount(0);
     await shot(page, `monitor-${width}`);
     const month = await page.getByLabel('运行记录月份').inputValue();

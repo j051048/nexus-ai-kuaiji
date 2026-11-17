@@ -60,6 +60,7 @@ describe('V09 navigation regression', () => {
     const caps = projectNavigationCapabilities(managerOnly, { ...context, operations: true });
     expect(primaryNav('firm_owner', caps).map((item) => item.id)).toEqual([
       'firm',
+      'insights',
       'monthly',
       'cases',
     ]);
@@ -119,6 +120,7 @@ describe('V09 navigation regression', () => {
     });
     expect(primaryNav('firm_owner', caps).map((item) => item.id)).toEqual([
       'firm',
+      'insights',
       'accounting',
       'monthly',
       'cases',

@@ -280,7 +280,10 @@ export function IntegrationWorkbench({
   }
   async function loadArtifact(outboxId: string) {
     await run(async () => {
-      const value = await api<{ artifacts: Artifact[] }>(`${base}/outbox/${outboxId}/artifacts`, session);
+      const value = await api<{ artifacts: Artifact[] }>(
+        `${base}/outbox/${outboxId}/artifacts`,
+        session,
+      );
       if (!live.current) return;
       setArtifact(value.artifacts[0] ?? null);
       setReceipts([]);
@@ -697,8 +700,8 @@ export function IntegrationWorkbench({
             </div>
             <p>
               仅从已复核冻结的交付包生成；54 列为合成协议，不是客户 T+
-              原生模板。下载文件交给客户软件导入后，再逐行登记回执；“回执一致”不代表
-              T+ 已独立过账，外发仍关闭。
+              原生模板。下载文件交给客户软件导入后，再逐行登记回执；“回执一致”不代表 T+
+              已独立过账，外发仍关闭。
             </p>
             {!artifact ? (
               <p>从上方交付意图选择“生成 54 列”或“查看适配文件”。</p>
@@ -755,8 +758,9 @@ export function IntegrationWorkbench({
                     {receipts.map((row) => (
                       <div className="integration-history" key={row.id}>
                         <span>
-                          {row.receipt_code} · {row.result_status} · 接受 {row.accepted_count} / 拒绝{' '}
-                          {row.rejected_count} / 重复 {row.duplicate_count} / 未知 {row.unknown_count}
+                          {row.receipt_code} · {row.result_status} · 接受 {row.accepted_count} /
+                          拒绝 {row.rejected_count} / 重复 {row.duplicate_count} / 未知{' '}
+                          {row.unknown_count}
                         </span>
                         <span className="integration-offline">
                           <FileCheck2 size={14} /> 外部过账未确认

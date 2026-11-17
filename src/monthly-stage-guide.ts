@@ -6,7 +6,8 @@ import {
   type MonthlyDestination,
 } from './monthly-workbench-types';
 
-export type MonthlyStageKey = 'intake' | 'reconcile' | 'prepare' | 'review' | 'delivery' | 'archive';
+export type MonthlyStageKey =
+  'intake' | 'reconcile' | 'prepare' | 'review' | 'delivery' | 'archive';
 
 export interface MonthlyStage {
   key: MonthlyStageKey;
@@ -80,7 +81,9 @@ export function monthlyStages(
       primary: `${monthlyCount(delivery.unverified)} 待核验`,
       secondary: `未知 ${monthlyCount(delivery.unknown)} · 差异 ${monthlyCount(delivery.differences)}`,
       attention:
-        positive(delivery.unverified) || positive(delivery.unknown) || positive(delivery.differences),
+        positive(delivery.unverified) ||
+        positive(delivery.unknown) ||
+        positive(delivery.differences),
       done:
         zero(delivery.unverified) &&
         zero(delivery.unknown) &&
@@ -109,15 +112,17 @@ export function monthlyStages(
     stages.find((stage) => stage.attention)?.key ??
     stages.find((stage) => !stage.done)?.key ??
     'archive';
-  const destinations: Record<MonthlyStageKey, [MonthlyDestination['view'], MonthlyDestination['filter']?]> =
-    {
-      intake: ['business'],
-      reconcile: ['cases'],
-      prepare: ['business'],
-      review: ['review', 'pending'],
-      delivery: ['delivery'],
-      archive: ['closing'],
-    };
+  const destinations: Record<
+    MonthlyStageKey,
+    [MonthlyDestination['view'], MonthlyDestination['filter']?]
+  > = {
+    intake: ['business'],
+    reconcile: ['cases'],
+    prepare: ['business'],
+    review: ['review', 'pending'],
+    delivery: ['delivery'],
+    archive: ['closing'],
+  };
   return stages.map((stage) => {
     const [view, filter] = destinations[stage.key];
     const destination = monthlyRowDestination(row, view, filter);

@@ -378,3 +378,23 @@ def test_batch_import_continues_after_one_file_fails(business):
     assert result["items"][1]["retryable"] is True
     sources = adapter.list_sources(business.manager, business.book["id"])["items"]
     assert [item["external_id"] for item in sources] == ["S-BATCH-GOOD"]
+
+
+
+def test_source_row_receipt_is_stable_and_changes_with_review(business):
+    case = business
+    source = _import(case)
+    adapter = TaxSourceAdapter(case.db)
+    first = adapter.row_receipt(case.manager, case.book["id"], source["id"], 2)
+    again = adapter.row_receipt(case.manager, case.book["id"], source["id"], 2)
+    assert first["receipt_fingerprint"] == again["receipt_fingerprint"]
+    assert first["source_sha256"] == source["sha256"]
+    assert first["row_external_id"] == "L1"
+    adapter.review_row(case.manager, case.book["id"], source["id"], 2,
+                       status="excluded", reason="客户确认不计入本期")
+    changed = adapter.row_receipt(case.manager, case.book["id"], source["id"], 2)
+    assert changed["receipt_fingerprint"] != first["receipt_fingerprint"]
+    assert changed["row_status"] == "excluded"
+    with pytest.raises(AccountingError) as missing:
+        adapter.row_receipt(case.manager, case.book["id"], source["id"], 999)
+    assert missing.value.status == 404

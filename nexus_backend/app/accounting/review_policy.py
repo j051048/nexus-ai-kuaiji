@@ -20,6 +20,105 @@ def mode_label(mode):
     return "独立复核" if mode == "independent" else "单人办理，非独立复核"
 
 
+class FirmReviewControlService:
+    """Firm-level prohibition of single-operator review (OPT06-A)."""
+
+    def __init__(self, db):
+        self.db = db
+        self.access = AccessControl()
+
+    @staticmethod
+    def get_in_transaction(conn, firm_id):
+        row = conn.execute(
+            "SELECT * FROM firm_review_controls WHERE firm_id=?", (firm_id,)
+        ).fetchone()
+        if not row:
+            return {
+                "firm_id": firm_id,
+                "single_operator_disabled": False,
+                "management_review_separation": False,
+                "version": 0,
+                "reason": "",
+                "updated_by": None,
+                "updated_at": None,
+            }
+        value = dict(row)
+        value["single_operator_disabled"] = bool(value["single_operator_disabled"])
+        value["management_review_separation"] = bool(value["management_review_separation"])
+        return value
+
+    @staticmethod
+    def books_without_non_manager_reviewer(conn, firm_id):
+        return conn.execute(
+            """SELECT b.id,b.name FROM books b WHERE b.firm_id=?
+            AND NOT EXISTS(
+              SELECT 1 FROM book_access a
+              JOIN memberships m ON m.user_id=a.user_id AND m.firm_id=a.firm_id
+              JOIN users u ON u.id=a.user_id AND u.active=1
+              WHERE a.book_id=b.id AND a.role='reviewer' AND m.role='reviewer'
+            ) ORDER BY b.name""",
+            (firm_id,),
+        ).fetchall()
+
+    def get(self, actor):
+        with self.db.transaction(actor=actor) as conn:
+            if not self.access.firm_role(conn, actor):
+                raise AccountingError("只有事务所成员可以查看复核控制", 403)
+            return self.get_in_transaction(conn, actor.firm_id)
+
+    def configure(self, actor, request, *, mfa_verified):
+        if not mfa_verified:
+            raise AccountingError("修改事务所复核控制需要多因素认证", 403)
+        reason = request.reason.strip()
+        if len(reason) < 10:
+            raise AccountingError("修改事务所复核控制须填写至少 10 个字的理由", 422)
+        with self.db.transaction(write=True, actor=actor) as conn:
+            self.access.require_manager(conn, actor)
+            current = self.get_in_transaction(conn, actor.firm_id)
+            if current["version"] != request.expected_version:
+                raise AccountingError("事务所复核控制版本已变化，请刷新后重试", 409)
+            if request.management_review_separation:
+                missing = self.books_without_non_manager_reviewer(conn, actor.firm_id)
+                if missing:
+                    raise AccountingError(
+                        "以下账套没有非管理员复核人，不能开启管理与复核分离："
+                        + "、".join(row["name"] for row in missing),
+                        409,
+                    )
+            version = current["version"] + 1
+            conn.execute(
+                "INSERT INTO firm_review_controls(firm_id,single_operator_disabled,management_review_separation,version,reason,updated_by,updated_at) "
+                "VALUES(?,?,?,?,?,?,?) ON CONFLICT(firm_id) DO UPDATE SET "
+                "single_operator_disabled=excluded.single_operator_disabled,version=excluded.version,"
+                "management_review_separation=excluded.management_review_separation,"
+                "reason=excluded.reason,updated_by=excluded.updated_by,updated_at=excluded.updated_at",
+                (
+                    actor.firm_id,
+                    1 if request.single_operator_disabled else 0,
+                    1 if request.management_review_separation else 0,
+                    version,
+                    reason,
+                    actor.user_id,
+                    stamp(),
+                ),
+            )
+            ReviewPolicyService.audit(
+                conn,
+                actor,
+                None,
+                "firm.review_control.configure",
+                actor.firm_id,
+                {
+                    "single_operator_disabled": request.single_operator_disabled,
+                    "management_review_separation": request.management_review_separation,
+                    "version": version,
+                    "previous_version": current["version"],
+                    "reason": reason,
+                },
+            )
+            return self.get_in_transaction(conn, actor.firm_id)
+
+
 class ReviewPolicyService:
     def __init__(self, db):
         self.db = db
@@ -58,6 +157,7 @@ class ReviewPolicyService:
             "ledger_id": policy["ledger_id"],
             "policy": policy,
             "review_summary": self.review_summary(conn, book["id"]),
+            "firm_control": FirmReviewControlService.get_in_transaction(conn, book["firm_id"]),
             "can_manage": self.access.firm_role(conn, actor) in FIRM_MANAGERS
             and book["permissions"]["manage"],
         }
@@ -105,7 +205,21 @@ class ReviewPolicyService:
 
     def configure(self, actor, book_id, request):
         with self.db.transaction(actor=actor) as conn:
-            company_id = self.access.book(conn, actor, book_id, "manage")["company_id"]
+            book = self.access.book(conn, actor, book_id, "manage")
+            company_id = book["company_id"]
+            control = FirmReviewControlService.get_in_transaction(conn, book["firm_id"])
+            ledger_id = self.policy_in_transaction(conn, book_id)["ledger_id"]
+        if request.mode == "single_operator" and control["single_operator_disabled"]:
+            with self.db.transaction(write=True, actor=actor) as conn:
+                self.audit(
+                    conn,
+                    actor,
+                    book_id,
+                    "review.policy.rejected",
+                    ledger_id,
+                    {"reason": "single_operator disabled by firm policy", "mode": request.mode},
+                )
+            raise AccountingError("事务所已禁止单人办理，不能切换到单人模式", 403)
         with self.db.transaction(
             write=True, actor=actor, company_id=company_id, write_scope="company"
         ) as conn:
@@ -209,6 +323,17 @@ class ReviewPolicyService:
                 reason = "制单责任人不能独立复核本人待审版本，请交另一位有权限的会计"
             if (
                 not reason
+                and mode == "single_operator"
+                and FirmReviewControlService.get_in_transaction(
+                    conn,
+                    draft["firm_id"]
+                    if "firm_id" in draft.keys()
+                    else self._firm_for_book(conn, draft["book_id"]),
+                )["single_operator_disabled"]
+            ):
+                reason = "事务所已禁止单人办理，当前版本必须交另一位有复核权限的会计"
+            if (
+                not reason
                 and conn.execute(
                     "SELECT 1 FROM business_mappings m JOIN business_events e "
                     "ON e.id=m.event_id AND e.firm_id=m.firm_id AND e.company_id=m.company_id "
@@ -245,6 +370,11 @@ class ReviewPolicyService:
             "reviewer_name": self._name(conn, reviewer),
             "reviewed_version": receipt["reviewed_version"] if complete and receipt else None,
         }
+
+    @staticmethod
+    def _firm_for_book(conn, book_id):
+        row = conn.execute("SELECT firm_id FROM books WHERE id=?", (book_id,)).fetchone()
+        return row["firm_id"] if row else ""
 
     def validate_review(self, conn, actor, draft, expected_policy_version=None, review_reason=""):
         value = self.responsibility_in_transaction(conn, actor, draft)

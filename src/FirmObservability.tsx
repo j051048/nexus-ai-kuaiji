@@ -6,6 +6,11 @@ import type { Session } from './types';
 import './firm-observability.css';
 import { readFirmSnapshot } from './firm-observability-contract';
 import { cny, percent, readValueBaseline, type ValueBaseline } from './value-baseline';
+import { FscOrganizationPanel } from './FscOrganizationPanel';
+import { FscContractPanel } from './FscContractPanel';
+import { FscImportPanel } from './FscImportPanel';
+import { FscEvidencePanel } from './FscEvidencePanel';
+import { FscProfilesPanel } from './FscProfilesPanel';
 
 export type Snapshot = {
   firm_id: string;
@@ -32,7 +37,11 @@ export type Snapshot = {
     oldest_queue_age_seconds: number;
   };
   sla?: {
-    thresholds: { queue_age_seconds: number; source_rejections: number; notification_unknown: number };
+    thresholds: {
+      queue_age_seconds: number;
+      source_rejections: number;
+      notification_unknown: number;
+    };
     breaches: { code: string; count: number }[];
     automatic_action: false;
   };
@@ -75,7 +84,18 @@ function ObservabilityWorkspace({ session }: { session: Session }) {
   const [companies, setCompanies] = useState<{ id: string; name: string }[]>([]);
   const [companyId, setCompanyId] = useState('');
   const [value, setValue] = useState<ValueBaseline | null>(null);
-  const [fde, setFde] = useState<{ adapters: { code: string; label: string; live_external: boolean; native_format?: boolean; contract_version: string; contract_sha256: string; certification: string }[]; catalog_fingerprint: string } | null>(null);
+  const [fde, setFde] = useState<{
+    adapters: {
+      code: string;
+      label: string;
+      live_external: boolean;
+      native_format?: boolean;
+      contract_version: string;
+      contract_sha256: string;
+      certification: string;
+    }[];
+    catalog_fingerprint: string;
+  } | null>(null);
   const [valueLoading, setValueLoading] = useState(false);
   const [valueError, setValueError] = useState('');
   const [radar, setRadar] = useState<{
@@ -309,7 +329,9 @@ function ObservabilityWorkspace({ session }: { session: Session }) {
             </header>
             {data.sla?.breaches.length ? (
               <p className="form-error" role="alert">
-                共享中心 SLA 超限：{data.sla.breaches.map((item) => `${item.code} ${item.count}`).join('；')}；需人工核查，不自动重试。
+                共享中心 SLA 超限：
+                {data.sla.breaches.map((item) => `${item.code} ${item.count}`).join('；')}
+                ；需人工核查，不自动重试。
               </p>
             ) : null}
             <div className="observability-cards observability-operations">
@@ -381,7 +403,9 @@ function ObservabilityWorkspace({ session }: { session: Session }) {
                   <article>
                     <span>自动映射率</span>
                     <strong>{percent(value.rates.draft_mapping_rate)}</strong>
-                    <small>{value.counts.mapped_drafts} 张映射 / {value.counts.submitted_events} 笔提交</small>
+                    <small>
+                      {value.counts.mapped_drafts} 张映射 / {value.counts.submitted_events} 笔提交
+                    </small>
                   </article>
                   <article>
                     <span>首次通过率</span>
@@ -417,43 +441,84 @@ function ObservabilityWorkspace({ session }: { session: Session }) {
                 <span className="field-help">{radar.note}</span>
               </header>
               <div className="observability-cards observability-radar-counts">
-                <article><span>账套</span><strong>{radar.counts.books}</strong><small>{radar.period} 范围</small></article>
-                <article><span>有阻断</span><strong>{radar.counts.blocked}</strong><small>需项目经理处理</small></article>
-                <article><span>可关账</span><strong>{radar.counts.closable}</strong><small>仍需人工确认</small></article>
-                <article><span>已关账</span><strong>{radar.counts.closed}</strong><small>只读投影</small></article>
+                <article>
+                  <span>账套</span>
+                  <strong>{radar.counts.books}</strong>
+                  <small>{radar.period} 范围</small>
+                </article>
+                <article>
+                  <span>有阻断</span>
+                  <strong>{radar.counts.blocked}</strong>
+                  <small>需项目经理处理</small>
+                </article>
+                <article>
+                  <span>可关账</span>
+                  <strong>{radar.counts.closable}</strong>
+                  <small>仍需人工确认</small>
+                </article>
+                <article>
+                  <span>已关账</span>
+                  <strong>{radar.counts.closed}</strong>
+                  <small>只读投影</small>
+                </article>
               </div>
               <div className="observability-radar-books">
-                {radar.books.filter((book) => book.blockers.length > 0).slice(0, 8).map((book) => (
-                  <article key={book.book_id}>
-                    <strong>{book.company_name}</strong>
-                    <span>{book.period_status} · {book.blockers.map((item) => `${item.label} ${item.count}`).join(' / ')}</span>
-                    <small>{book.blockers[0]?.next_action}</small>
-                  </article>
-                ))}
+                {radar.books
+                  .filter((book) => book.blockers.length > 0)
+                  .slice(0, 8)
+                  .map((book) => (
+                    <article key={book.book_id}>
+                      <strong>{book.company_name}</strong>
+                      <span>
+                        {book.period_status} ·{' '}
+                        {book.blockers.map((item) => `${item.label} ${item.count}`).join(' / ')}
+                      </span>
+                      <small>{book.blockers[0]?.next_action}</small>
+                    </article>
+                  ))}
                 {radar.books.every((book) => book.blockers.length === 0) && (
                   <p className="field-help">当前期间没有登记阻断；关账仍需人工判断。</p>
                 )}
               </div>
             </section>
           )}
+          <FscProfilesPanel session={session} />
+          <FscOrganizationPanel session={session} />
+          <FscContractPanel session={session} />
+          <FscImportPanel session={session} />
+          <FscEvidencePanel session={session} />
           <section className="observability-panel" aria-label="FDE 适配器契约">
-            <div className="observability-panel-head"><h2>FDE 适配器契约</h2><span>本地合成契约，不代表供应商认证</span></div>
+            <div className="observability-panel-head">
+              <h2>FDE 适配器契约</h2>
+              <span>本地合成契约，不代表供应商认证</span>
+            </div>
             {fde ? (
               <>
-                <p className="fde-contract-fingerprint">目录指纹 <code>{fde.catalog_fingerprint.slice(0, 16)}</code></p>
+                <p className="fde-contract-fingerprint">
+                  目录指纹 <code>{fde.catalog_fingerprint.slice(0, 16)}</code>
+                </p>
                 <div className="fde-contract-list">
                   {fde.adapters.map((adapter) => (
                     <article key={adapter.code}>
                       <strong>{adapter.label}</strong>
-                      <span>{adapter.code} · {adapter.contract_version} · local_contract_only</span>
+                      <span>
+                        {adapter.code} · {adapter.contract_version} · local_contract_only
+                      </span>
                       <code>{adapter.contract_sha256.slice(0, 12)}</code>
-                      <span>{adapter.live_external ? '已接外部' : '未接真实外部'}{adapter.native_format === false ? ' · 非原生格式' : ''}</span>
+                      <span>
+                        {adapter.live_external ? '已接外部' : '未接真实外部'}
+                        {adapter.native_format === false ? ' · 非原生格式' : ''}
+                      </span>
                     </article>
                   ))}
                 </div>
               </>
-            ) : <p className="observability-empty">选择企业后读取适配器契约。</p>}
-            <p className="fde-contract-note">适配器可用不等于客户真实接口已接通，也不授予写入或过账权限。</p>
+            ) : (
+              <p className="observability-empty">选择企业后读取适配器契约。</p>
+            )}
+            <p className="fde-contract-note">
+              适配器可用不等于客户真实接口已接通，也不授予写入或过账权限。
+            </p>
           </section>
           {data.signals.length > 0 && (
             <section className="observability-panel" aria-label="运行异常下一步">

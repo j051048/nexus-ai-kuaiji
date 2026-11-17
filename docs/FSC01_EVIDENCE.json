@@ -1,0 +1,45 @@
+{
+  "batch": "FSC01",
+  "status": "local_pg_browser_passed",
+  "head": "767f7cdf7c717c98d3516a0e31b53bd8cd9ae1a9",
+  "candidate": {
+    "source_files": 2222,
+    "source_sha256": "bdfdd02a8010c92183567b9eb554fca8a59cd3747afe123c7de10da4e1399c9f",
+    "migration_files": 394,
+    "migration_sha256": "b5ea389468e7f86768607f8201507dd8606b75316f0870118ce6d870f93dd5cc"
+  },
+  "tests": [
+    {
+      "command": "cd nexus_backend && python -m pytest tests/test_fsc01_profiles.py tests/test_value_baseline.py tests/test_closing_radar.py -q",
+      "result": "4 passed",
+      "duration_s": 11.47
+    },
+    {
+      "command": "npx playwright test e2e/tasks0712.spec.ts --grep \"运行记录\" --workers=1",
+      "result": "2 passed",
+      "duration_s": 21.3
+    },
+    {
+      "command": "PYTHONPATH=.. python ../scripts/test_accounting_postgres_isolated.py --config ../tmp_test/tax-e-pg17.json tests/test_tax_f_postgres.py -q -k fsc_company_profile",
+      "result": "1 passed",
+      "duration_s": 1.0,
+      "database": "postgres17"
+    },
+    {
+      "command": "PYTHONPATH=.. python ../scripts/test_accounting_postgres_isolated.py --config ../tmp_test/tax-e-pg16.json tests/test_tax_f_postgres.py -q -k fsc_company_profile",
+      "result": "1 passed",
+      "duration_s": 1.29,
+      "database": "postgres16"
+    }
+  ],
+  "screenshots": [
+    "tmp_test/tasks0712-20261107/screenshots/monitor-1365.png"
+  ],
+  "not_run": [],
+  "external_unverified": [
+    "客户五行业档案确认",
+    "真实工时/质量/业务量",
+    "共享中心 5 人运营能力",
+    "真实 T+/OA/HIS/银行/税务"
+  ]
+}

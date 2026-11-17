@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api, ApiError } from './api';
 import type { Session } from './types';
 import './tax-cost.css';
@@ -25,6 +25,43 @@ type Rate = {
   valid_to: string;
   coverage_scope: string;
   source_ref: string;
+  version: number;
+  status: string;
+  confirmed_by: string | null;
+  activated_at: string | null;
+  superseded_at: string | null;
+  reason: string | null;
+  unit: string;
+  currency: string;
+  tax_included: boolean;
+  logical_id: string;
+};
+type PackageContract = {
+  id: string;
+  contract_no: string;
+  version: number;
+  status: string;
+  coverage_scope: string;
+  vehicle_external_ids: string[];
+  valid_from: string;
+  valid_to: string;
+  limit_cents: number;
+  policy: string;
+  reason: string;
+};
+type PackageSummary = {
+  contract: PackageContract;
+  limit_cents: number;
+  consumed_cents: number;
+  remaining_cents: number;
+  usage: {
+    id: string;
+    kind: string;
+    amount_cents: number;
+    source_key: string;
+    period: string;
+    release_of: string | null;
+  }[];
 };
 type Row = {
   source_id: string;
@@ -135,23 +172,46 @@ export function TaxCostBatchPanel({
   const [failure, setFailure] = useState('');
   const [busy, setBusy] = useState(false);
   const [rates, setRates] = useState<Rate[]>([]);
+  const [packages, setPackages] = useState<PackageContract[]>([]);
+  const [packageNo, setPackageNo] = useState('PKG-2026-001');
+  const [packageLimit, setPackageLimit] = useState('10000');
+  const [packageVehicles, setPackageVehicles] = useState('V1,V2');
+  const [packageFrom, setPackageFrom] = useState(period);
+  const [packageTo, setPackageTo] = useState(period);
+  const [packageReason, setPackageReason] = useState('客户核定年度包干合同');
+  const [packageSummary, setPackageSummary] = useState<PackageSummary | null>(null);
+  const [usageContract, setUsageContract] = useState('');
+  const [usageSource, setUsageSource] = useState('FP-PKG-001');
+  const [usagePeriod, setUsagePeriod] = useState(period);
+  const [usageVehicle, setUsageVehicle] = useState('V1');
+  const [usageAmount, setUsageAmount] = useState('50.00');
+  const [releaseTarget, setReleaseTarget] = useState('');
+  const [releaseAmount, setReleaseAmount] = useState('');
+  const [releaseReason, setReleaseReason] = useState('客户退回包干维修');
   const [vehicleType, setVehicleType] = useState('出租车');
   const [rateCents, setRateCents] = useState('5000');
   const [validFrom, setValidFrom] = useState(period);
   const [validTo, setValidTo] = useState(period);
   const [coverageScope, setCoverageScope] = useState('基础保养（不含轮胎）');
+  const [rateReason, setRateReason] = useState('客户核定车型费率版本');
+  const [rateTaxIncluded, setRateTaxIncluded] = useState(false);
+  const loadSequence = useRef(0);
 
   async function load() {
+    const sequence = ++loadSequence.current;
     setFailure('');
     try {
-      const [sourceData, batchData, rateData] = await Promise.all([
+      const [sourceData, batchData, rateData, packageData] = await Promise.all([
         api<{ items: Source[] }>(`${base}/cost-sources`, session),
         api<{ items: Batch[] }>(url, session),
         api<{ items: Rate[] }>(`${base}/repair-rates`, session),
+        api<{ items: PackageContract[] }>(`${base}/repair-packages`, session),
       ]);
+      if (sequence !== loadSequence.current) return;
       setSources(sourceData.items.filter((item) => item.status === 'active'));
       setBatches(batchData.items);
       setRates(rateData.items);
+      setPackages(packageData.items);
     } catch (error) {
       setFailure(error instanceof ApiError ? error.message : '成本批次读取失败。');
     }
@@ -298,7 +358,7 @@ export function TaxCostBatchPanel({
     setFailure('');
     setNotice('');
     try {
-      await api<Rate>(`${base}/repair-rates`, session, {
+      const created = await api<Rate>(`${base}/repair-rates/drafts`, session, {
         method: 'POST',
         body: {
           vehicle_type: vehicleType,
@@ -307,12 +367,241 @@ export function TaxCostBatchPanel({
           valid_to: validTo,
           coverage_scope: coverageScope,
           source_ref: `客户核定费率/${vehicleType}/${validFrom}`,
+          unit: 'per_vehicle',
+          currency: 'CNY',
+          tax_included: rateTaxIncluded,
+          reason: rateReason,
         },
       });
-      setNotice('费率卡已登记；同车型有效期不能重叠。');
+      setNotice(`费率草稿 v${created.version} 已建立；需另一名有权限人员独立确认后才能生效。`);
       await load();
     } catch (error) {
-      setFailure(error instanceof ApiError ? error.message : '费率卡登记失败。');
+      setFailure(error instanceof ApiError ? error.message : '费率草稿登记失败。');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function rateCommand(rate: Rate, action: 'confirm' | 'activate' | 'deactivate') {
+    setBusy(true);
+    setFailure('');
+    setNotice('');
+    try {
+      const body =
+        action === 'deactivate'
+          ? { expected_version: rate.version, reason: rateReason }
+          : { expected_version: rate.version };
+      const updated = await api<Rate>(`${base}/repair-rates/${rate.id}/${action}`, session, {
+        method: 'POST',
+        body,
+      });
+      setNotice(
+        action === 'confirm'
+          ? `费率 v${updated.version} 已独立确认，仍需生效。`
+          : action === 'activate'
+            ? `费率 v${updated.version} 已生效；历史版本保留。`
+            : `费率 v${updated.version} 已停用；历史批次与凭证不删除。`,
+      );
+      await load();
+    } catch (error) {
+      setFailure(
+        error instanceof ApiError ? `${error.message}（${error.status}）` : '费率操作失败。',
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function renewRate(rate: Rate) {
+    setBusy(true);
+    setFailure('');
+    setNotice('');
+    try {
+      const created = await api<Rate>(`${base}/repair-rates/${rate.id}/renew`, session, {
+        method: 'POST',
+        body: {
+          vehicle_type: rate.vehicle_type,
+          rate_cents: Number(rateCents),
+          valid_from: validFrom,
+          valid_to: validTo,
+          coverage_scope: coverageScope,
+          source_ref: `客户核定费率/${rate.vehicle_type}/${validFrom}`,
+          unit: 'per_vehicle',
+          currency: 'CNY',
+          tax_included: rateTaxIncluded,
+          reason: rateReason,
+        },
+      });
+      setNotice(`续期草稿 v${created.version} 已建立；未确认前旧版本仍有效。`);
+      await load();
+    } catch (error) {
+      setFailure(error instanceof ApiError ? error.message : '费率续期失败。');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function rateImpact(rate: Rate) {
+    setBusy(true);
+    setFailure('');
+    setNotice('');
+    try {
+      const impact = await api<{ items: { source_key: string; status: string }[]; note: string }>(
+        `${base}/repair-rates/${rate.id}/impact`,
+        session,
+      );
+      setNotice(
+        impact.items.length
+          ? `影响 ${impact.items.length} 条维修来源：${impact.items.map((row) => `${row.source_key}（${row.status}）`).join('、')}。${impact.note}`
+          : `当前没有维修来源引用该费率。${impact.note}`,
+      );
+    } catch (error) {
+      setFailure(error instanceof ApiError ? error.message : '影响预览读取失败。');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function addPackage() {
+    setBusy(true);
+    setFailure('');
+    setNotice('');
+    try {
+      await api<PackageContract>(`${base}/repair-packages/drafts`, session, {
+        method: 'POST',
+        body: {
+          contract_no: packageNo,
+          coverage_scope: '出租车基础保养包干（不含轮胎与事故维修）',
+          vehicle_external_ids: packageVehicles
+            .split(',')
+            .map((item) => item.trim())
+            .filter(Boolean),
+          valid_from: packageFrom,
+          valid_to: packageTo,
+          limit_cents: Number(packageLimit),
+          policy: 'contract_cumulative',
+          reason: packageReason,
+        },
+      });
+      setNotice('包干合同草稿已建；须由另一名有复核权的人员确认后才能占用额度。');
+      await load();
+    } catch (error) {
+      setFailure(
+        error instanceof ApiError ? `${error.message}（${error.status}）` : '包干合同创建失败。',
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function packageCommand(contract: PackageContract, action: 'confirm' | 'activate') {
+    setBusy(true);
+    setFailure('');
+    setNotice('');
+    try {
+      await api<PackageContract>(
+        `${base}/repair-packages/${encodeURIComponent(contract.id)}/${action}`,
+        session,
+        {
+          method: 'POST',
+          body: { expected_version: contract.version },
+        },
+      );
+      setNotice(action === 'confirm' ? '包干合同已独立确认。' : '包干合同已生效，可登记占用。');
+      await load();
+    } catch (error) {
+      setFailure(
+        error instanceof ApiError ? `${error.message}（${error.status}）` : '包干合同操作失败。',
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function showPackageSummary(contract: PackageContract) {
+    setFailure('');
+    try {
+      setPackageSummary(
+        await api<PackageSummary>(
+          `${base}/repair-packages/${encodeURIComponent(contract.id)}/summary`,
+          session,
+        ),
+      );
+    } catch (error) {
+      setFailure(
+        error instanceof ApiError ? `${error.message}（${error.status}）` : '包干额度读取失败。',
+      );
+    }
+  }
+
+  async function consumePackage(contract: PackageContract) {
+    const cents = Math.round(Number(usageAmount) * 100);
+    if (!Number.isFinite(cents) || cents <= 0) {
+      setFailure('包干占用金额必须大于 0。');
+      return;
+    }
+    setBusy(true);
+    setFailure('');
+    setNotice('');
+    try {
+      await api(
+        `${base}/repair-packages/${encodeURIComponent(contract.id)}/consumptions`,
+        session,
+        {
+          method: 'POST',
+          body: {
+            source_key: usageSource,
+            source_version: 1,
+            period: usagePeriod,
+            amount_cents: cents,
+            vehicle_external_id: usageVehicle || null,
+            idempotency_key: `pkg-consume-${contract.id}-${Date.now()}`,
+          },
+        },
+      );
+      setNotice('包干占用已登记；不生成费用凭证，也不改变实际成本。');
+      setUsageContract('');
+      await showPackageSummary(contract);
+    } catch (error) {
+      setFailure(
+        error instanceof ApiError ? `${error.message}（${error.status}）` : '包干占用登记失败。',
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function releasePackage(usageId: string) {
+    const cents = Math.round(Number(releaseAmount) * 100);
+    if (!Number.isFinite(cents) || cents <= 0) {
+      setFailure('释放金额必须大于 0。');
+      return;
+    }
+    setBusy(true);
+    setFailure('');
+    setNotice('');
+    try {
+      await api(
+        `${base}/repair-packages/consumptions/${encodeURIComponent(usageId)}/releases`,
+        session,
+        {
+          method: 'POST',
+          body: {
+            amount_cents: cents,
+            reason: releaseReason,
+            idempotency_key: `pkg-release-${usageId}-${Date.now()}`,
+          },
+        },
+      );
+      setNotice('包干占用已释放；原占用与释放历史均保留。');
+      setReleaseTarget('');
+      if (packageSummary) {
+        await showPackageSummary(packageSummary.contract);
+      }
+    } catch (error) {
+      setFailure(
+        error instanceof ApiError ? `${error.message}（${error.status}）` : '包干释放失败。',
+      );
     } finally {
       setBusy(false);
     }
@@ -333,24 +622,344 @@ export function TaxCostBatchPanel({
         只采用人工核定且有原件的来源；金额由确定性代码计算。生成草稿不代表复核；复核后版本冻结。
         包干、保险算法或工资明细缺失时，必须由客户书面核定，系统不会反推。
       </p>
+
+      <details className="tax-cost-rates" open>
+        <summary>维修包干合同与额度（{packages.length}）</summary>
+        <p>包干合同须独立确认后生效；额度按合同累计，占用/释放原子登记，不把合同额度当实际费用。</p>
+        <div className="tax-cost-form">
+          <label>
+            合同号
+            <input value={packageNo} onChange={(event) => setPackageNo(event.target.value)} />
+          </label>
+          <label>
+            合同额度（分）
+            <input value={packageLimit} onChange={(event) => setPackageLimit(event.target.value)} />
+          </label>
+          <label className="tax-cost-wide">
+            覆盖车辆（逗号分隔）
+            <input
+              value={packageVehicles}
+              onChange={(event) => setPackageVehicles(event.target.value)}
+            />
+          </label>
+          <label>
+            开始月
+            <input
+              type="month"
+              value={packageFrom}
+              onChange={(event) => setPackageFrom(event.target.value)}
+            />
+          </label>
+          <label>
+            结束月
+            <input
+              type="month"
+              value={packageTo}
+              onChange={(event) => setPackageTo(event.target.value)}
+            />
+          </label>
+          <label className="tax-cost-wide">
+            客户依据
+            <input
+              value={packageReason}
+              onChange={(event) => setPackageReason(event.target.value)}
+            />
+          </label>
+        </div>
+        <button type="button" disabled={busy} onClick={() => void addPackage()}>
+          新建包干合同草稿
+        </button>
+        {packages.length > 0 && (
+          <div className="tax-cost-lines">
+            {packages.map((contract) => (
+              <article key={contract.id}>
+                <strong>
+                  {contract.contract_no} · ¥{(contract.limit_cents / 100).toFixed(2)}
+                  <span className="tax-rate-status">
+                    {contract.status === 'active'
+                      ? '已生效'
+                      : contract.status === 'draft'
+                        ? '待确认'
+                        : contract.status === 'confirmed'
+                          ? '已确认待生效'
+                          : contract.status === 'superseded'
+                            ? '已被替代'
+                            : '已停用'}{' '}
+                    · v{contract.version}
+                  </span>
+                </strong>
+                <span>
+                  {contract.valid_from} 至 {contract.valid_to} · {contract.coverage_scope}
+                </span>
+                <small>
+                  {contract.vehicle_external_ids.join('、')} ·{' '}
+                  {contract.policy === 'contract_cumulative' ? '合同累计' : '按月重置'}
+                </small>
+                <div className="tax-rate-actions">
+                  {contract.status === 'draft' && (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void packageCommand(contract, 'confirm')}
+                    >
+                      独立确认
+                    </button>
+                  )}
+                  {contract.status === 'confirmed' && (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void packageCommand(contract, 'activate')}
+                    >
+                      生效
+                    </button>
+                  )}
+                  {contract.status === 'active' && (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() =>
+                        setUsageContract(usageContract === contract.id ? '' : contract.id)
+                      }
+                    >
+                      登记占用
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void showPackageSummary(contract)}
+                  >
+                    查看额度
+                  </button>
+                </div>
+                {usageContract === contract.id && (
+                  <div className="tax-cost-form">
+                    <label>
+                      来源键
+                      <input
+                        value={usageSource}
+                        onChange={(event) => setUsageSource(event.target.value)}
+                      />
+                    </label>
+                    <label>
+                      期间
+                      <input
+                        type="month"
+                        value={usagePeriod}
+                        onChange={(event) => setUsagePeriod(event.target.value)}
+                      />
+                    </label>
+                    <label>
+                      车辆
+                      <input
+                        value={usageVehicle}
+                        onChange={(event) => setUsageVehicle(event.target.value)}
+                      />
+                    </label>
+                    <label>
+                      占用金额（元）
+                      <input
+                        value={usageAmount}
+                        onChange={(event) => setUsageAmount(event.target.value)}
+                      />
+                    </label>
+                    <div className="tax-rate-actions">
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void consumePackage(contract)}
+                      >
+                        确认占用
+                      </button>
+                      <button type="button" disabled={busy} onClick={() => setUsageContract('')}>
+                        取消
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </article>
+            ))}
+          </div>
+        )}
+        {packageSummary && (
+          <div className="tax-cost-note">
+            <p>
+              {packageSummary.contract.contract_no}：额度 ¥
+              {(packageSummary.limit_cents / 100).toFixed(2)}，已占用 ¥
+              {(packageSummary.consumed_cents / 100).toFixed(2)}，剩余 ¥
+              {(packageSummary.remaining_cents / 100).toFixed(2)}，记录{' '}
+              {packageSummary.usage.length} 条。
+            </p>
+            <ul className="tax-package-usage">
+              {packageSummary.usage.map((usage) => (
+                <li key={usage.id}>
+                  <span>
+                    {usage.kind === 'consume' ? '占用' : '释放'} · {usage.source_key} ·{' '}
+                    {usage.period} · ¥{(usage.amount_cents / 100).toFixed(2)}
+                  </span>
+                  {usage.kind === 'consume' && (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => {
+                        setReleaseTarget(releaseTarget === usage.id ? '' : usage.id);
+                        setReleaseAmount((usage.amount_cents / 100).toFixed(2));
+                      }}
+                    >
+                      释放
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+            {releaseTarget && (
+              <div className="tax-cost-form">
+                <label>
+                  释放金额（元）
+                  <input
+                    value={releaseAmount}
+                    onChange={(event) => setReleaseAmount(event.target.value)}
+                  />
+                </label>
+                <label className="tax-cost-wide">
+                  释放原因
+                  <input
+                    value={releaseReason}
+                    onChange={(event) => setReleaseReason(event.target.value)}
+                  />
+                </label>
+                <div className="tax-rate-actions">
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void releasePackage(releaseTarget)}
+                  >
+                    确认释放
+                  </button>
+                  <button type="button" disabled={busy} onClick={() => setReleaseTarget('')}>
+                    取消
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </details>
       <details className="tax-cost-rates">
         <summary>按车型维修费率卡（{rates.length}）</summary>
         <p>只登记客户核定的车型费率；实际维修引用费率卡时，金额必须与费率×数量一致。</p>
         <div className="tax-cost-form">
-          <label>车型<input value={vehicleType} onChange={(event) => setVehicleType(event.target.value)} /></label>
-          <label>费率（分）<input value={rateCents} onChange={(event) => setRateCents(event.target.value)} /></label>
-          <label>生效月<input type="month" value={validFrom} onChange={(event) => setValidFrom(event.target.value)} /></label>
-          <label>结束月<input type="month" value={validTo} onChange={(event) => setValidTo(event.target.value)} /></label>
-          <label className="tax-cost-wide">覆盖范围<input value={coverageScope} onChange={(event) => setCoverageScope(event.target.value)} /></label>
+          <label>
+            车型
+            <input value={vehicleType} onChange={(event) => setVehicleType(event.target.value)} />
+          </label>
+          <label>
+            费率（分）
+            <input value={rateCents} onChange={(event) => setRateCents(event.target.value)} />
+          </label>
+          <label>
+            生效月
+            <input
+              type="month"
+              value={validFrom}
+              onChange={(event) => setValidFrom(event.target.value)}
+            />
+          </label>
+          <label>
+            结束月
+            <input
+              type="month"
+              value={validTo}
+              onChange={(event) => setValidTo(event.target.value)}
+            />
+          </label>
+          <label className="tax-cost-wide">
+            覆盖范围
+            <input
+              value={coverageScope}
+              onChange={(event) => setCoverageScope(event.target.value)}
+            />
+          </label>
+          <label className="tax-cost-wide">
+            版本依据
+            <input value={rateReason} onChange={(event) => setRateReason(event.target.value)} />
+          </label>
+          <label>
+            <input
+              type="checkbox"
+              checked={rateTaxIncluded}
+              onChange={(event) => setRateTaxIncluded(event.target.checked)}
+            />
+            费率含税
+          </label>
         </div>
-        <button type="button" disabled={busy} onClick={() => void addRate()}>登记费率卡</button>
+        <button type="button" disabled={busy} onClick={() => void addRate()}>
+          新建费率草稿
+        </button>
         {rates.length > 0 && (
           <div className="tax-cost-lines">
             {rates.map((rate) => (
               <article key={rate.id}>
-                <strong>{rate.vehicle_type} · ¥{(rate.rate_cents / 100).toFixed(2)}</strong>
-                <span>{rate.valid_from} 至 {rate.valid_to} · {rate.coverage_scope}</span>
-                <small>{rate.source_ref}</small>
+                <strong>
+                  {rate.vehicle_type} · ¥{(rate.rate_cents / 100).toFixed(2)}
+                  <span className="tax-rate-status">
+                    {rate.status === 'active'
+                      ? '已生效'
+                      : rate.status === 'draft'
+                        ? '待确认'
+                        : rate.status === 'confirmed'
+                          ? '已确认待生效'
+                          : rate.status === 'superseded'
+                            ? '已被后续版本替代'
+                            : '已停用'}{' '}
+                    · v{rate.version}
+                  </span>
+                </strong>
+                <span>
+                  {rate.valid_from} 至 {rate.valid_to} · {rate.coverage_scope}
+                </span>
+                <small>
+                  {rate.source_ref} · {rate.unit === 'per_vehicle' ? '按车辆' : rate.unit} ·{' '}
+                  {rate.currency} · {rate.tax_included ? '含税' : '未税'}
+                </small>
+                <div className="tax-rate-actions">
+                  {rate.status === 'draft' && (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void rateCommand(rate, 'confirm')}
+                    >
+                      独立确认
+                    </button>
+                  )}
+                  {rate.status === 'confirmed' && (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void rateCommand(rate, 'activate')}
+                    >
+                      生效
+                    </button>
+                  )}
+                  {rate.status === 'active' && (
+                    <>
+                      <button type="button" disabled={busy} onClick={() => void renewRate(rate)}>
+                        按表单续期
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void rateCommand(rate, 'deactivate')}
+                      >
+                        停用
+                      </button>
+                    </>
+                  )}
+                  <button type="button" disabled={busy} onClick={() => void rateImpact(rate)}>
+                    影响
+                  </button>
+                </div>
               </article>
             ))}
           </div>
@@ -383,11 +992,7 @@ export function TaxCostBatchPanel({
         </label>
         <label className="tax-cost-wide">
           核定依据（JSON）
-          <textarea
-            rows={7}
-            value={payload}
-            onChange={(event) => setPayload(event.target.value)}
-          />
+          <textarea rows={7} value={payload} onChange={(event) => setPayload(event.target.value)} />
         </label>
       </div>
       <button type="button" disabled={busy} onClick={() => void addSource()}>
@@ -431,7 +1036,12 @@ export function TaxCostBatchPanel({
             ))
         )}
       </div>
-      <button type="button" className="tax-cost-primary" disabled={busy} onClick={() => void generate()}>
+      <button
+        type="button"
+        className="tax-cost-primary"
+        disabled={busy}
+        onClick={() => void generate()}
+      >
         生成成本批次草稿
       </button>
       {(notice || failure) && (
@@ -486,7 +1096,12 @@ export function TaxCostBatchPanel({
           </div>
           {batch.status === 'draft' && (
             <div className="tax-cost-actions">
-              <button type="button" className="tax-cost-primary" disabled={busy} onClick={() => void review()}>
+              <button
+                type="button"
+                className="tax-cost-primary"
+                disabled={busy}
+                onClick={() => void review()}
+              >
                 独立复核并冻结
               </button>
               <button type="button" disabled={busy} onClick={() => void invalidate()}>
@@ -496,7 +1111,8 @@ export function TaxCostBatchPanel({
           )}
           {batch.draft_id && (
             <p className="tax-cost-draft">
-              草稿 {batch.draft_id.slice(0, 12)}… · {batch.draft_status} · 复核后在“审核与导出”按版本导出。
+              草稿 {batch.draft_id.slice(0, 12)}… · {batch.draft_status} ·
+              复核后在“审核与导出”按版本导出。
             </p>
           )}
           <details className="tax-cost-history">

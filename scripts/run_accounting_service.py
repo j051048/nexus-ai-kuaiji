@@ -15,10 +15,12 @@ from urllib.parse import parse_qs, urlsplit
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "nexus_backend"))
 
-ROLES = ("api", "worker", "assistant", "migration", "maintenance")
+ROLES = ("api", "worker", "assistant", "batch", "scheduler", "migration", "maintenance")
 WORKER_MODULES = {
     "worker": "app.jobs.worker",
     "assistant": "run_accounting_assistant",
+    "batch": "run_accounting_batch",
+    "scheduler": "run_accounting_scheduler",
     "migration": "app.legacy_migration.worker",
     "maintenance": "app.maintenance_worker",
 }
@@ -80,7 +82,7 @@ def validate_runtime(role: str, env: Mapping[str, str]) -> int:
     """Fail closed on deployment mistakes; errors contain names, never values."""
     if role not in ROLES:
         raise ValueError(
-            "ACCOUNTING_SERVICE_ROLE 必须为 api、worker、assistant、migration 或 maintenance"
+            "ACCOUNTING_SERVICE_ROLE 必须为 api、worker、assistant、batch、scheduler、migration 或 maintenance"
         )
     if env.get("ACCOUNTING_ADMIN_DATABASE_URL", "").strip():
         raise ValueError("运行容器禁止配置 ACCOUNTING_ADMIN_DATABASE_URL；迁移只在独立维护步骤执行")
@@ -93,6 +95,8 @@ def validate_runtime(role: str, env: Mapping[str, str]) -> int:
     key = (
         "ACCOUNTING_DATABASE_URL"
         if role == "api"
+        else "ACCOUNTING_SCHEDULER_DATABASE_URL"
+        if role == "scheduler"
         else "ACCOUNTING_MAINTENANCE_DATABASE_URL"
         if role == "maintenance" and env.get("ACCOUNTING_MAINTENANCE_DATABASE_URL", "").strip()
         else "ACCOUNTING_WORKER_DATABASE_URL"

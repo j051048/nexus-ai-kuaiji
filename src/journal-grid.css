@@ -291,9 +291,15 @@
 .journal-entry-grid.width-amount .journal-grid-amount {
   width: 22%;
 }
-.journal-entry-grid.has-custom-widths { table-layout: fixed; }
-.journal-grid-col-index { width: 52px; }
-.journal-grid-col-action { width: 52px; }
+.journal-entry-grid.has-custom-widths {
+  table-layout: fixed;
+}
+.journal-grid-col-index {
+  width: 52px;
+}
+.journal-grid-col-action {
+  width: 52px;
+}
 .journal-grid-resize {
   width: 8px;
   height: 18px;
@@ -302,15 +308,44 @@
   border: 0;
   border-left: 2px solid transparent;
   border-right: 2px solid transparent;
-  background: linear-gradient(to right, #c8d4ce 0 1px, transparent 1px 3px, #c8d4ce 3px 4px, transparent 4px);
+  background: linear-gradient(
+    to right,
+    #c8d4ce 0 1px,
+    transparent 1px 3px,
+    #c8d4ce 3px 4px,
+    transparent 4px
+  );
   cursor: col-resize;
   vertical-align: middle;
 }
-.journal-grid-resize:hover, .journal-grid-resize:focus-visible { border-color: #2f6f57; background: #e8f3ec; }
-@media (max-width: 640px) {
-  .journal-grid-resize { display: none; }
-  .journal-entry-grid.has-custom-widths { table-layout: auto; }
+.journal-grid-resize:hover,
+.journal-grid-resize:focus-visible {
+  border-color: #2f6f57;
+  background: #e8f3ec;
 }
-.journal-grid-width-buttons { display: inline-flex; gap: 4px; flex-wrap: wrap; }
-.journal-grid-width-buttons button { border: 1px solid var(--line); background: var(--surface); border-radius: 6px; padding: 2px 6px; font-size: 11px; color: var(--muted); cursor: pointer; }
-.journal-grid-width-buttons button:hover { border-color: #2f6f57; color: #2f6f57; }
+@media (max-width: 640px) {
+  .journal-grid-resize {
+    display: none;
+  }
+  .journal-entry-grid.has-custom-widths {
+    table-layout: auto;
+  }
+}
+.journal-grid-width-buttons {
+  display: inline-flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.journal-grid-width-buttons button {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  border-radius: 6px;
+  padding: 2px 6px;
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.journal-grid-width-buttons button:hover {
+  border-color: #2f6f57;
+  color: #2f6f57;
+}

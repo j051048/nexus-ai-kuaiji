@@ -5,7 +5,7 @@ access to an old month. Inherited rules contain formulas only, never samples.
 """
 
 import json
-from datetime import date
+from datetime import date, datetime
 from uuid import uuid4
 
 from ..accounting.access import AccessControl
@@ -15,8 +15,14 @@ from ..learning.models import RuleDefinition
 from ..learning.service import LearningService
 
 
+def _json_default(value):
+    if isinstance(value, (date, datetime)):
+        return value.isoformat()
+    return str(value)
+
+
 def encode(value):
-    return json.dumps(value, ensure_ascii=False, sort_keys=True)
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, default=_json_default)
 
 
 class LedgersService:
@@ -648,13 +654,17 @@ class LedgersService:
         return start.isoformat(), end.isoformat() if end else None
 
     @staticmethod
-    def _transport_overlap(conn, table, subject_column, subject_id, start, end, extra="", params=()):
+    def _transport_overlap(
+        conn, table, subject_column, subject_id, start, end, extra="", params=()
+    ):
         clause = f"{subject_column}=? AND valid_from<=? AND (valid_to IS NULL OR valid_to>=?)"
         args = [subject_id, end or "9999-12-31", start]
         if extra:
             clause += " AND " + extra
             args.extend(params)
-        return conn.execute(f"SELECT * FROM {table} WHERE {clause} ORDER BY valid_from", args).fetchone()
+        return conn.execute(
+            f"SELECT * FROM {table} WHERE {clause} ORDER BY valid_from", args
+        ).fetchone()
 
     def create_transport_subject(self, actor, book_id, request):
         with self.db.transaction(write=True, actor=actor) as conn:
@@ -668,9 +678,20 @@ class LedgersService:
             subject_id = uuid4().hex
             conn.execute(
                 "INSERT INTO transport_subjects(id,firm_id,company_id,kind,external_id,display_name,created_by,created_at) VALUES(?,?,?,?,?,?,?,?)",
-                (subject_id, actor.firm_id, book["company_id"], request.kind, request.external_id, request.display_name, actor.user_id, now()),
+                (
+                    subject_id,
+                    actor.firm_id,
+                    book["company_id"],
+                    request.kind,
+                    request.external_id,
+                    request.display_name,
+                    actor.user_id,
+                    now(),
+                ),
             )
-            self._history(conn, actor, book, subject_id, "transport.subject.create", request.model_dump())
+            self._history(
+                conn, actor, book, subject_id, "transport.subject.create", request.model_dump()
+            )
             return {"id": subject_id, "version": 1, **request.model_dump()}
 
     def update_transport_subject(self, actor, book_id, subject_id, request):
@@ -686,32 +707,57 @@ class LedgersService:
                 raise AccountingError("运输主数据版本已变化", 409)
             conn.execute(
                 "UPDATE transport_subjects SET display_name=?,active=?,version=version+1 WHERE id=? AND version=?",
-                (request.display_name, int(request.active), subject_id, request.expected_version),
+                (request.display_name, bool(request.active), subject_id, request.expected_version),
             )
-            self._history(conn, actor, book, subject_id, "transport.subject.update", {"before": dict(row), "after": request.model_dump()})
+            self._history(
+                conn,
+                actor,
+                book,
+                subject_id,
+                "transport.subject.update",
+                {"before": dict(row), "after": request.model_dump()},
+            )
             return {"id": subject_id, "version": row["version"] + 1}
 
     def transport_overview(self, actor, book_id):
         with self.db.transaction(actor=actor) as conn:
             book = self.access.book(conn, actor, book_id, "read")
             company_id = book["company_id"]
-            subjects = [dict(row) for row in conn.execute(
-                "SELECT id,kind,external_id,display_name,active,version FROM transport_subjects WHERE firm_id=? AND company_id=? ORDER BY kind,external_id",
-                (actor.firm_id, company_id),
-            ).fetchall()]
-            relations = [dict(row) for row in conn.execute(
-                "SELECT r.id,r.subject_id,r.subject_kind,r.target_kind,r.target_id,r.contract_external_id,r.operating_right,r.valid_from,r.valid_to,r.status,t.name AS target_name FROM transport_relations r LEFT JOIN company_master_entities t ON t.id=r.target_id WHERE r.firm_id=? AND r.company_id=? ORDER BY r.valid_from DESC",
-                (actor.firm_id, company_id),
-            ).fetchall()]
-            assignments = [dict(row) for row in conn.execute(
-                "SELECT id,vehicle_id,driver_id,shift,contract_external_id,valid_from,valid_to FROM transport_assignments WHERE firm_id=? AND company_id=? ORDER BY valid_from DESC",
-                (actor.firm_id, company_id),
-            ).fetchall()]
-            aliases = [dict(row) for row in conn.execute(
-                "SELECT id,subject_id,alias,source,status FROM transport_aliases WHERE firm_id=? AND company_id=? ORDER BY alias",
-                (actor.firm_id, company_id),
-            ).fetchall()]
-            return {"subjects": subjects, "relations": relations, "assignments": assignments, "aliases": aliases, "can_manage": True}
+            subjects = [
+                dict(row)
+                for row in conn.execute(
+                    "SELECT id,kind,external_id,display_name,active,version FROM transport_subjects WHERE firm_id=? AND company_id=? ORDER BY kind,external_id",
+                    (actor.firm_id, company_id),
+                ).fetchall()
+            ]
+            relations = [
+                dict(row)
+                for row in conn.execute(
+                    "SELECT r.id,r.subject_id,r.subject_kind,r.target_kind,r.target_id,r.contract_external_id,r.operating_right,r.valid_from,r.valid_to,r.status,t.name AS target_name FROM transport_relations r LEFT JOIN company_master_entities t ON t.id=r.target_id WHERE r.firm_id=? AND r.company_id=? ORDER BY r.valid_from DESC",
+                    (actor.firm_id, company_id),
+                ).fetchall()
+            ]
+            assignments = [
+                dict(row)
+                for row in conn.execute(
+                    "SELECT id,vehicle_id,driver_id,shift,contract_external_id,valid_from,valid_to FROM transport_assignments WHERE firm_id=? AND company_id=? ORDER BY valid_from DESC",
+                    (actor.firm_id, company_id),
+                ).fetchall()
+            ]
+            aliases = [
+                dict(row)
+                for row in conn.execute(
+                    "SELECT id,subject_id,alias,source,status FROM transport_aliases WHERE firm_id=? AND company_id=? ORDER BY alias",
+                    (actor.firm_id, company_id),
+                ).fetchall()
+            ]
+            return {
+                "subjects": subjects,
+                "relations": relations,
+                "assignments": assignments,
+                "aliases": aliases,
+                "can_manage": True,
+            }
 
     def add_transport_alias(self, actor, book_id, request):
         with self.db.transaction(write=True, actor=actor) as conn:
@@ -734,9 +780,20 @@ class LedgersService:
             alias_id = uuid4().hex
             conn.execute(
                 "INSERT INTO transport_aliases(id,firm_id,company_id,subject_id,alias,source,created_by,created_at) VALUES(?,?,?,?,?,?,?,?)",
-                (alias_id, actor.firm_id, book["company_id"], request.subject_id, request.alias, request.source, actor.user_id, now()),
+                (
+                    alias_id,
+                    actor.firm_id,
+                    book["company_id"],
+                    request.subject_id,
+                    request.alias,
+                    request.source,
+                    actor.user_id,
+                    now(),
+                ),
             )
-            self._history(conn, actor, book, alias_id, "transport.alias.create", request.model_dump())
+            self._history(
+                conn, actor, book, alias_id, "transport.alias.create", request.model_dump()
+            )
             return {"id": alias_id, "status": "approved"}
 
     def create_transport_relation(self, actor, book_id, request):
@@ -757,66 +814,168 @@ class LedgersService:
                 raise AccountingError("车辆/驾驶员或对应项目/往来主体不存在", 404)
             if not subject["active"] or not target["active"]:
                 raise AccountingError("车辆/驾驶员或对应项目/往来主体已停用，不能新增有效关系", 409)
-            existing = self._transport_overlap(conn, "transport_relations", "subject_id", subject["id"], start, end)
+            existing = self._transport_overlap(
+                conn, "transport_relations", "subject_id", subject["id"], start, end
+            )
             if existing:
                 raise AccountingError("同一运输主体的有效关系重叠，请先结束旧关系", 409)
             relation_id = uuid4().hex
             conn.execute(
                 "INSERT INTO transport_relations(id,firm_id,company_id,subject_id,subject_kind,target_kind,target_id,contract_external_id,operating_right,valid_from,valid_to,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                (relation_id, actor.firm_id, book["company_id"], subject["id"], subject["kind"], target_kind, target["id"], request.contract_external_id, request.operating_right, start, end, actor.user_id, now()),
+                (
+                    relation_id,
+                    actor.firm_id,
+                    book["company_id"],
+                    subject["id"],
+                    subject["kind"],
+                    target_kind,
+                    target["id"],
+                    request.contract_external_id,
+                    request.operating_right,
+                    start,
+                    end,
+                    actor.user_id,
+                    now(),
+                ),
             )
-            self._history(conn, actor, book, relation_id, "transport.relation.create", request.model_dump())
-            return {"id": relation_id, "valid_from": start, "valid_to": end, "target_kind": target_kind}
+            self._history(
+                conn, actor, book, relation_id, "transport.relation.create", request.model_dump()
+            )
+            return {
+                "id": relation_id,
+                "valid_from": start,
+                "valid_to": end,
+                "target_kind": target_kind,
+            }
 
     def create_transport_assignment(self, actor, book_id, request):
         start, end = self._transport_range(request.valid_from, request.valid_to)
         with self.db.transaction(write=True, actor=actor) as conn:
             book = self.access.book(conn, actor, book_id, "review")
             self.access.company(conn, actor, book["company_id"], manage=True)
-            vehicle = conn.execute("SELECT * FROM transport_subjects WHERE id=? AND firm_id=? AND company_id=? AND kind='vehicle'", (request.vehicle_id, actor.firm_id, book["company_id"])).fetchone()
-            driver = conn.execute("SELECT * FROM transport_subjects WHERE id=? AND firm_id=? AND company_id=? AND kind='driver'", (request.driver_id, actor.firm_id, book["company_id"])).fetchone()
+            vehicle = conn.execute(
+                "SELECT * FROM transport_subjects WHERE id=? AND firm_id=? AND company_id=? AND kind='vehicle'",
+                (request.vehicle_id, actor.firm_id, book["company_id"]),
+            ).fetchone()
+            driver = conn.execute(
+                "SELECT * FROM transport_subjects WHERE id=? AND firm_id=? AND company_id=? AND kind='driver'",
+                (request.driver_id, actor.firm_id, book["company_id"]),
+            ).fetchone()
             if not vehicle or not driver:
                 raise AccountingError("车辆或驾驶员不存在", 404)
             if not vehicle["active"] or not driver["active"]:
                 raise AccountingError("车辆或驾驶员已停用，不能安排任务", 409)
-            if self._transport_overlap(conn, "transport_assignments", "driver_id", driver["id"], start, end):
+            if self._transport_overlap(
+                conn, "transport_assignments", "driver_id", driver["id"], start, end
+            ):
                 raise AccountingError("驾驶员在有效期内已有车辆任务，不能同时更换车辆", 409)
-            if request.shift in {"full", "day"} and self._transport_overlap(conn, "transport_assignments", "vehicle_id", vehicle["id"], start, end, "shift IN ('full','day')"):
+            if request.shift in {"full", "day"} and self._transport_overlap(
+                conn,
+                "transport_assignments",
+                "vehicle_id",
+                vehicle["id"],
+                start,
+                end,
+                "shift IN ('full','day')",
+            ):
                 raise AccountingError("车辆白班已安排", 409)
-            if request.shift in {"full", "night"} and self._transport_overlap(conn, "transport_assignments", "vehicle_id", vehicle["id"], start, end, "shift IN ('full','night')"):
+            if request.shift in {"full", "night"} and self._transport_overlap(
+                conn,
+                "transport_assignments",
+                "vehicle_id",
+                vehicle["id"],
+                start,
+                end,
+                "shift IN ('full','night')",
+            ):
                 raise AccountingError("车辆夜班已安排", 409)
             assignment_id = uuid4().hex
             conn.execute(
                 "INSERT INTO transport_assignments(id,firm_id,company_id,vehicle_id,driver_id,shift,contract_external_id,valid_from,valid_to,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
-                (assignment_id, actor.firm_id, book["company_id"], vehicle["id"], driver["id"], request.shift, request.contract_external_id, start, end, actor.user_id, now()),
+                (
+                    assignment_id,
+                    actor.firm_id,
+                    book["company_id"],
+                    vehicle["id"],
+                    driver["id"],
+                    request.shift,
+                    request.contract_external_id,
+                    start,
+                    end,
+                    actor.user_id,
+                    now(),
+                ),
             )
-            self._history(conn, actor, book, assignment_id, "transport.assignment.create", request.model_dump())
+            self._history(
+                conn,
+                actor,
+                book,
+                assignment_id,
+                "transport.assignment.create",
+                request.model_dump(),
+            )
             return {"id": assignment_id, "valid_from": start, "valid_to": end}
 
     def _transport_subject(self, conn, actor, company_id, kind, external_id, display_name):
         if not external_id and not display_name:
             raise AccountingError("必须提供稳定外部 ID 或历史名称", 422)
         if external_id:
-            row = conn.execute("SELECT * FROM transport_subjects WHERE firm_id=? AND company_id=? AND kind=? AND external_id=?", (actor.firm_id, company_id, kind, external_id)).fetchone()
+            row = conn.execute(
+                "SELECT * FROM transport_subjects WHERE firm_id=? AND company_id=? AND kind=? AND external_id=?",
+                (actor.firm_id, company_id, kind, external_id),
+            ).fetchone()
         else:
-            rows = conn.execute("SELECT * FROM transport_subjects WHERE firm_id=? AND company_id=? AND kind=? AND display_name=?", (actor.firm_id, company_id, kind, display_name)).fetchall()
+            rows = conn.execute(
+                "SELECT * FROM transport_subjects WHERE firm_id=? AND company_id=? AND kind=? AND display_name=?",
+                (actor.firm_id, company_id, kind, display_name),
+            ).fetchall()
             if not rows:
-                rows = conn.execute("SELECT s.* FROM transport_subjects s JOIN transport_aliases a ON a.subject_id=s.id AND a.firm_id=s.firm_id AND a.company_id=s.company_id WHERE a.firm_id=? AND a.company_id=? AND s.kind=? AND a.alias=?", (actor.firm_id, company_id, kind, display_name)).fetchall()
+                rows = conn.execute(
+                    "SELECT s.* FROM transport_subjects s JOIN transport_aliases a ON a.subject_id=s.id AND a.firm_id=s.firm_id AND a.company_id=s.company_id WHERE a.firm_id=? AND a.company_id=? AND s.kind=? AND a.alias=?",
+                    (actor.firm_id, company_id, kind, display_name),
+                ).fetchall()
             if len(rows) != 1:
-                raise AccountingError("历史名称无法唯一匹配，请提供稳定外部 ID", 409 if rows else 422)
+                raise AccountingError(
+                    "历史名称无法唯一匹配，请提供稳定外部 ID", 409 if rows else 422
+                )
             row = rows[0]
         if not row:
             raise AccountingError("运输主数据不存在", 422)
         return row
 
-    def resolve_transport(self, actor, book_id, occurred_on, vehicle_external_id=None, vehicle_name=None, driver_external_id=None, driver_name=None):
+    def resolve_transport(
+        self,
+        actor,
+        book_id,
+        occurred_on,
+        vehicle_external_id=None,
+        vehicle_name=None,
+        driver_external_id=None,
+        driver_name=None,
+    ):
         with self.db.transaction(actor=actor) as conn:
             return self.resolve_transport_in_transaction(
-                conn, actor, book_id, occurred_on, vehicle_external_id,
-                vehicle_name, driver_external_id, driver_name,
+                conn,
+                actor,
+                book_id,
+                occurred_on,
+                vehicle_external_id,
+                vehicle_name,
+                driver_external_id,
+                driver_name,
             )
 
-    def resolve_transport_in_transaction(self, conn, actor, book_id, occurred_on, vehicle_external_id=None, vehicle_name=None, driver_external_id=None, driver_name=None):
+    def resolve_transport_in_transaction(
+        self,
+        conn,
+        actor,
+        book_id,
+        occurred_on,
+        vehicle_external_id=None,
+        vehicle_name=None,
+        driver_external_id=None,
+        driver_name=None,
+    ):
         try:
             day = date.fromisoformat(occurred_on)
         except (TypeError, ValueError):
@@ -824,18 +983,54 @@ class LedgersService:
         if conn is not None:
             book = self.access.book(conn, actor, book_id, "read")
             company_id = book["company_id"]
-            vehicle = self._transport_subject(conn, actor, company_id, "vehicle", vehicle_external_id, vehicle_name)
-            driver = self._transport_subject(conn, actor, company_id, "driver", driver_external_id, driver_name) if (driver_external_id or driver_name) else None
-            rel_v = conn.execute("SELECT * FROM transport_relations WHERE firm_id=? AND company_id=? AND subject_id=? AND valid_from<=? AND (valid_to IS NULL OR valid_to>=?) AND status='active' ORDER BY valid_from DESC", (actor.firm_id, company_id, vehicle["id"], day.isoformat(), day.isoformat())).fetchone()
-            project = conn.execute("SELECT * FROM company_master_entities WHERE id=?", (rel_v["target_id"],)).fetchone() if rel_v else None
+            vehicle = self._transport_subject(
+                conn, actor, company_id, "vehicle", vehicle_external_id, vehicle_name
+            )
+            driver = (
+                self._transport_subject(
+                    conn, actor, company_id, "driver", driver_external_id, driver_name
+                )
+                if (driver_external_id or driver_name)
+                else None
+            )
+            rel_v = conn.execute(
+                "SELECT * FROM transport_relations WHERE firm_id=? AND company_id=? AND subject_id=? AND valid_from<=? AND (valid_to IS NULL OR valid_to>=?) AND status='active' ORDER BY valid_from DESC",
+                (actor.firm_id, company_id, vehicle["id"], day.isoformat(), day.isoformat()),
+            ).fetchone()
+            project = (
+                conn.execute(
+                    "SELECT * FROM company_master_entities WHERE id=?", (rel_v["target_id"],)
+                ).fetchone()
+                if rel_v
+                else None
+            )
             counterparty = None
             rel_d = None
             if driver:
-                rel_d = conn.execute("SELECT * FROM transport_relations WHERE firm_id=? AND company_id=? AND subject_id=? AND valid_from<=? AND (valid_to IS NULL OR valid_to>=?) AND status='active' ORDER BY valid_from DESC", (actor.firm_id, company_id, driver["id"], day.isoformat(), day.isoformat())).fetchone()
-                counterparty = conn.execute("SELECT * FROM company_master_entities WHERE id=?", (rel_d["target_id"],)).fetchone() if rel_d else None
+                rel_d = conn.execute(
+                    "SELECT * FROM transport_relations WHERE firm_id=? AND company_id=? AND subject_id=? AND valid_from<=? AND (valid_to IS NULL OR valid_to>=?) AND status='active' ORDER BY valid_from DESC",
+                    (actor.firm_id, company_id, driver["id"], day.isoformat(), day.isoformat()),
+                ).fetchone()
+                counterparty = (
+                    conn.execute(
+                        "SELECT * FROM company_master_entities WHERE id=?", (rel_d["target_id"],)
+                    ).fetchone()
+                    if rel_d
+                    else None
+                )
             assignment = None
             if driver:
-                assignments = conn.execute("SELECT * FROM transport_assignments WHERE firm_id=? AND company_id=? AND vehicle_id=? AND driver_id=? AND valid_from<=? AND (valid_to IS NULL OR valid_to>=?) ORDER BY valid_from DESC", (actor.firm_id, company_id, vehicle["id"], driver["id"], day.isoformat(), day.isoformat())).fetchall()
+                assignments = conn.execute(
+                    "SELECT * FROM transport_assignments WHERE firm_id=? AND company_id=? AND vehicle_id=? AND driver_id=? AND valid_from<=? AND (valid_to IS NULL OR valid_to>=?) ORDER BY valid_from DESC",
+                    (
+                        actor.firm_id,
+                        company_id,
+                        vehicle["id"],
+                        driver["id"],
+                        day.isoformat(),
+                        day.isoformat(),
+                    ),
+                ).fetchall()
                 if len(assignments) > 1:
                     raise AccountingError("车辆与驾驶员在该日存在多个班次，请补充班次", 409)
                 assignment = assignments[0] if assignments else None
@@ -848,7 +1043,11 @@ class LedgersService:
                 "assignment": dict(assignment) if assignment else None,
                 "vehicle_relation": dict(rel_v) if rel_v else None,
                 "driver_relation": dict(rel_d) if rel_d else None,
-                "coverage": {"vehicle_relation": bool(project), "driver_relation": bool(counterparty) if driver else None, "assignment": bool(assignment) if driver else None},
+                "coverage": {
+                    "vehicle_relation": bool(project),
+                    "driver_relation": bool(counterparty) if driver else None,
+                    "assignment": bool(assignment) if driver else None,
+                },
             }
 
     def resolve_in_transaction(self, conn, actor, company_id, kind, original, book_id=None):

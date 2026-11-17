@@ -213,6 +213,8 @@ def verify_database(env: Mapping[str, str], role: str) -> None:
     key = (
         "ACCOUNTING_DATABASE_URL"
         if role == "api"
+        else "ACCOUNTING_SCHEDULER_DATABASE_URL"
+        if role == "scheduler"
         else "ACCOUNTING_MAINTENANCE_DATABASE_URL"
         if role == "maintenance" and env.get("ACCOUNTING_MAINTENANCE_DATABASE_URL", "").strip()
         else "ACCOUNTING_WORKER_DATABASE_URL"
@@ -242,7 +244,7 @@ def verify_database(env: Mapping[str, str], role: str) -> None:
             actual = {row["rolname"] for row in memberships}
             expected = {
                 "accounting_app",
-                "accounting_system" if role in {"api", "maintenance"} else "accounting_worker",
+                "accounting_system" if role in {"api", "maintenance", "scheduler"} else "accounting_worker",
             }
             _require(actual == expected)
             dangerous = conn.execute(
@@ -326,7 +328,7 @@ def inspect_online(env: Mapping[str, str], role: str) -> list[Check]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="部署只读自检，不迁移、不调用模型、不更改客户数据")
     parser.add_argument(
-        "--role", choices=("api", "worker", "assistant", "migration", "maintenance")
+        "--role", choices=("api", "worker", "assistant", "batch", "scheduler", "migration", "maintenance")
     )
     parser.add_argument("--env-file", help="显式加载该私密文件，不自动读取 .env")
     parser.add_argument(
@@ -343,7 +345,7 @@ def main(argv: list[str] | None = None) -> int:
 
         load_dotenv(path, override=False)
     role = args.role or os.getenv("ACCOUNTING_SERVICE_ROLE", "api").strip().lower()
-    if role not in {"api", "worker", "assistant", "migration", "maintenance"}:
+    if role not in {"api", "worker", "assistant", "batch", "scheduler", "migration", "maintenance"}:
         parser.error("ACCOUNTING_SERVICE_ROLE 无效")
     checks = inspect_configuration(os.environ, role, require_ai=args.require_ai)
     if args.online:

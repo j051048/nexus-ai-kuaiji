@@ -3,7 +3,7 @@
 import hashlib
 from calendar import monthrange
 import json
-from datetime import date, timedelta
+from datetime import date
 from uuid import uuid4
 
 from ..accounting.domain import AccountingError

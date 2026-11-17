@@ -1,0 +1,117 @@
+{
+  "schema": "fsc-company-profiles-offline-v1",
+  "generated_at": "2026-11-16",
+  "confirmation_note": "离线合成档案，仅用于 FSC01 契约与阻断测试；12 栏均为未知，等待客户责任人提供依据，不伪造确认。",
+  "companies": [
+    {
+      "key": "taxi",
+      "name": "出租汽车运营（合成）",
+      "industry": "taxi",
+      "status": "unconfirmed",
+      "payload": {
+        "entity": null,
+        "accounting_authority": null,
+        "accounting_standard": null,
+        "period_control": null,
+        "tax_boundary": null,
+        "source_systems": null,
+        "document_volume": null,
+        "contracts_originals": null,
+        "roles": null,
+        "sensitive_data": null,
+        "deployment": null,
+        "retention": null
+      },
+      "unknown": ["全部 12 栏"],
+      "missing_customer_input": ["主体与集团关系", "T+ 法定账责任", "车辆/驾驶员来源", "月度单据峰值"]
+    },
+    {
+      "key": "hospital",
+      "name": "内部医院（合成）",
+      "industry": "hospital",
+      "status": "unconfirmed",
+      "payload": {
+        "entity": null,
+        "accounting_authority": null,
+        "accounting_standard": null,
+        "period_control": null,
+        "tax_boundary": null,
+        "source_systems": null,
+        "document_volume": null,
+        "contracts_originals": null,
+        "roles": null,
+        "sensitive_data": null,
+        "deployment": null,
+        "retention": null
+      },
+      "unknown": ["全部 12 栏"],
+      "missing_customer_input": ["HIS/财务接口", "医疗收入与医保结算边界", "敏感数据分级", "留存期限"]
+    },
+    {
+      "key": "property",
+      "name": "物业与食材采购（合成）",
+      "industry": "property",
+      "status": "unconfirmed",
+      "payload": {
+        "entity": null,
+        "accounting_authority": null,
+        "accounting_standard": null,
+        "period_control": null,
+        "tax_boundary": null,
+        "source_systems": null,
+        "document_volume": null,
+        "contracts_originals": null,
+        "roles": null,
+        "sensitive_data": null,
+        "deployment": null,
+        "retention": null
+      },
+      "unknown": ["全部 12 栏"],
+      "missing_customer_input": ["物业项目/合同", "食材采购与库存", "供应商对账", "进项税边界"]
+    },
+    {
+      "key": "advertising",
+      "name": "广告传媒（合成）",
+      "industry": "advertising",
+      "status": "unconfirmed",
+      "payload": {
+        "entity": null,
+        "accounting_authority": null,
+        "accounting_standard": null,
+        "period_control": null,
+        "tax_boundary": null,
+        "source_systems": null,
+        "document_volume": null,
+        "contracts_originals": null,
+        "roles": null,
+        "sensitive_data": null,
+        "deployment": null,
+        "retention": null
+      },
+      "unknown": ["全部 12 栏"],
+      "missing_customer_input": ["媒体合同与排期", "收入确认依据", "渠道返点", "发票与收款对应"]
+    },
+    {
+      "key": "trade",
+      "name": "贸易（合成）",
+      "industry": "trade",
+      "status": "unconfirmed",
+      "payload": {
+        "entity": null,
+        "accounting_authority": null,
+        "accounting_standard": null,
+        "period_control": null,
+        "tax_boundary": null,
+        "source_systems": null,
+        "document_volume": null,
+        "contracts_originals": null,
+        "roles": null,
+        "sensitive_data": null,
+        "deployment": null,
+        "retention": null
+      },
+      "unknown": ["全部 12 栏"],
+      "missing_customer_input": ["购销合同/订单", "库存与成本计价", "进出口/税率", "应收账龄"]
+    }
+  ]
+}

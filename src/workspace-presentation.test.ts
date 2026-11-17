@@ -223,6 +223,7 @@ describe('UX01 role presentation contract', () => {
     });
     expect(primaryNav('firm_owner', capabilities(owner)).map((item) => item.id)).toEqual([
       'firm',
+      'insights',
       'monthly',
       'cases',
     ]);

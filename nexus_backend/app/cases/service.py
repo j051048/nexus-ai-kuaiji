@@ -465,7 +465,9 @@ class CaseService:
             if book and (not draft or event and book["company_id"] != event["company_id"]):
                 raise AccountingError("任务来源与企业不一致", 404)
             if payload.kind == "supplement" and not event:
-                raise AccountingError("员工补件须绑定原业务事项或已审批 OA 快照；流水异常请创建会计内部任务", 422)
+                raise AccountingError(
+                    "员工补件须绑定原业务事项或已审批 OA 快照；流水异常请创建会计内部任务", 422
+                )
             case_id = uuid4().hex
             row = {
                 "id": case_id,

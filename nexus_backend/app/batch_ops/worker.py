@@ -8,16 +8,37 @@ logger = logging.getLogger(__name__)
 
 
 class BatchWorker:
-    def __init__(self, service, worker_id=None):
+    def __init__(self, service, worker_id=None, lease_seconds=120, renew_interval=None):
         self.service = service
         self.worker_id = worker_id or "batch-" + uuid4().hex
+        self.lease_seconds = lease_seconds
+        self.renew_interval = renew_interval or min(15, max(1, lease_seconds / 3))
         self.started = False
         self._stop = threading.Event()
         self._thread = None
 
     def process(self, item):
+        lost = threading.Event()
+        stop_renewal = threading.Event()
+
+        def renew_loop():
+            while not stop_renewal.wait(self.renew_interval):
+                try:
+                    if not self.service.renew(item, self.lease_seconds):
+                        lost.set()
+                        return
+                except Exception:
+                    logger.warning("批量任务续租失败，旧执行器停止提交结果")
+                    lost.set()
+                    return
+
+        renewal = threading.Thread(target=renew_loop, name="batch-lease-renewal", daemon=True)
+        renewal.start()
         try:
             row = self.service.execute(item)
+            if lost.is_set():
+                logger.warning("批量任务租约已失去，结果未提交")
+                return
             status = {
                 "created": "succeeded",
                 "skipped": "skipped",
@@ -31,6 +52,9 @@ class BatchWorker:
                 error_detail=row.get("message", "") if status == "failed" else "",
             )
         except AccountingError as error:
+            if lost.is_set():
+                logger.warning("批量任务租约已失去，失败结果未提交")
+                return
             self.service.finish(
                 item,
                 "failed",
@@ -38,6 +62,9 @@ class BatchWorker:
                 error_detail=str(error),
             )
         except Exception:
+            if lost.is_set():
+                logger.warning("批量任务租约已失去，失败结果未提交")
+                return
             exhausted = int(item.get("attempt", 0)) >= int(item.get("max_attempts", 0))
             self.service.finish(
                 item,
@@ -50,6 +77,9 @@ class BatchWorker:
                 ),
                 retry_seconds=30,
             )
+        finally:
+            stop_renewal.set()
+            renewal.join(timeout=5)
 
     def run_once(self):
         if self._stop.is_set():
@@ -58,7 +88,7 @@ class BatchWorker:
         self.service.recover()
         if self._stop.is_set():
             return False
-        item = self.service.claim(self.worker_id)
+        item = self.service.claim(self.worker_id, self.lease_seconds)
         if not item:
             return False
         self.process(item)

@@ -1,6 +1,5 @@
 """B03 formal voucher and posting contracts; no reporting or month-end engine."""
 
-import re
 from datetime import date
 from typing import Literal
 

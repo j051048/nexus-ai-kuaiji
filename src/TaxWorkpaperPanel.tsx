@@ -5,6 +5,7 @@ import { TaxReadinessList } from './TaxReadinessList';
 import { TaxFilingRecords } from './TaxFilingRecords';
 import { PilotBoundaryPanel } from './PilotBoundaryPanel';
 import { TaxSourcePanel } from './TaxSourcePanel';
+import { ClosingAuthorityPanel } from './ClosingAuthorityPanel';
 import { TaxFeeBatchPanel } from './TaxFeeBatchPanel';
 import { TaxCostBatchPanel } from './TaxCostBatchPanel';
 import { OaSnapshotPanel } from './OaSnapshotPanel';
@@ -310,9 +311,15 @@ function TaxContent({ session, bookId, companyId, period, onBusyChange, focusSou
       <TaxReadinessList data={readiness} />
       <PilotBoundaryPanel session={session} companyId={companyId} />
       <TaxSourcePanel session={session} bookId={bookId} />
+      <ClosingAuthorityPanel session={session} bookId={bookId} />
       <TaxFeeBatchPanel session={session} bookId={bookId} period={period} />
       <TaxCostBatchPanel session={session} bookId={bookId} period={period} />
-      <OaSnapshotPanel session={session} bookId={bookId} period={period} canManage={!!context?.permissions.manage} />
+      <OaSnapshotPanel
+        session={session}
+        bookId={bookId}
+        period={period}
+        canManage={!!context?.permissions.manage}
+      />
       <TaxFPanel session={session} bookId={bookId} period={period} />
       <TaxFilingRecords
         session={session}

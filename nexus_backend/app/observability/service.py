@@ -62,9 +62,7 @@ class FirmObservabilityService:
             ("batch_operation_items", ("queued", "retry_wait", "failed")),
         ):
             row = conn.execute(
-                age_sql.format(
-                    table=table, statuses=",".join("?" for _ in statuses)
-                ),
+                age_sql.format(table=table, statuses=",".join("?" for _ in statuses)),
                 (firm_id, *statuses),
             ).fetchone()
             if row and row[0] is not None:
@@ -114,11 +112,17 @@ class FirmObservabilityService:
         }
         breaches = []
         if int(operations.get("oldest_queue_age_seconds") or 0) > thresholds["queue_age_seconds"]:
-            breaches.append({"code": "queue_age", "count": int(operations["oldest_queue_age_seconds"])})
+            breaches.append(
+                {"code": "queue_age", "count": int(operations["oldest_queue_age_seconds"])}
+            )
         if int(operations.get("source_rejections") or 0) > thresholds["source_rejections"]:
-            breaches.append({"code": "source_rejections", "count": int(operations["source_rejections"])})
+            breaches.append(
+                {"code": "source_rejections", "count": int(operations["source_rejections"])}
+            )
         if int(operations.get("notification_unknown") or 0) > thresholds["notification_unknown"]:
-            breaches.append({"code": "notification_unknown", "count": int(operations["notification_unknown"])})
+            breaches.append(
+                {"code": "notification_unknown", "count": int(operations["notification_unknown"])}
+            )
         return {"thresholds": thresholds, "breaches": breaches, "automatic_action": False}
 
     def snapshot(self, actor, period=""):

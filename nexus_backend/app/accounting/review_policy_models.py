@@ -31,3 +31,10 @@ class ManualReviewPost(InputModel):
 
 class ManualReviewWithdrawal(PreparationClaim):
     """Withdraw an unreviewed version without deleting its original content."""
+
+
+class FirmReviewControlWrite(InputModel):
+    expected_version: int = Field(strict=True, ge=0)
+    single_operator_disabled: bool
+    management_review_separation: bool = False
+    reason: StrictStr = Field(min_length=10, max_length=1000)

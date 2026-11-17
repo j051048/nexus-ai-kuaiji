@@ -13,7 +13,11 @@ from uuid import uuid4
 from pydantic import Field, StrictStr, field_validator
 
 from ..accounting.domain import AccountingError
-from ..accounting.invariants import cents_to_money, money_to_cents, validate_period
+from ..accounting.invariants import (
+    money_to_cents,
+    scale_by_basis_points,
+    validate_period,
+)
 from ..accounting.models import InputModel
 from ..accounting.service import AccountingService, now
 
@@ -100,7 +104,11 @@ class TaxBasisService:
     def generate(self, actor, book_id, request: TaxBasisGenerate):
         if request.policy.effective_from > request.period:
             raise AccountingError("计税政策尚未在所选期间生效", 422)
-        if request.policy.taxpayer_type == "general" and request.manual and not request.manual_evidence.strip():
+        if (
+            request.policy.taxpayer_type == "general"
+            and request.manual
+            and not request.manual_evidence.strip()
+        ):
             raise AccountingError("一般纳税人人工核定必须保留依据原件或说明", 422)
         if request.manual and not request.manual_evidence.strip():
             raise AccountingError("人工核定必须填写证据说明，不能把未知金额当作零", 422)
@@ -113,10 +121,14 @@ class TaxBasisService:
         for item in request.adjustments:
             amount = _signed_cents(item.amount)
             adjustment_total += amount
-        tax = base * request.policy.rate_bp // 10000
-        tax += tax * request.policy.surtax_bp // 10000
+        tax = scale_by_basis_points(base, request.policy.rate_bp)
+        tax += scale_by_basis_points(tax, request.policy.surtax_bp)
         tax += adjustment_total
-        with self.db.transaction(write=True, actor=actor) as conn:
+        with self.db.transaction(actor=actor) as conn:
+            company_id = self._book(conn, actor, book_id, write=True)["company_id"]
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             book = self._book(conn, actor, book_id, write=True)
             self.accounting._open(book)
             if request.period != book["period"]:
@@ -143,18 +155,33 @@ class TaxBasisService:
                 "source_refs_json,tax_cents,source_fingerprint,created_by,created_at) "
                 "VALUES(?,?,?,?,?,?,'draft',?,?,?,?,?,?,?,?,?,?,?)",
                 (
-                    review_id, actor.firm_id, book["company_id"], book_id, request.period, version,
+                    review_id,
+                    actor.firm_id,
+                    book["company_id"],
+                    book_id,
+                    request.period,
+                    version,
                     request.workpaper_id or None,
                     json.dumps(request.policy.model_dump(), ensure_ascii=False, sort_keys=True),
                     _fingerprint(request.policy.model_dump()),
                     base,
-                    json.dumps([item.model_dump() for item in request.adjustments], ensure_ascii=False, sort_keys=True),
+                    json.dumps(
+                        [item.model_dump() for item in request.adjustments],
+                        ensure_ascii=False,
+                        sort_keys=True,
+                    ),
                     request.manual_evidence.strip(),
                     json.dumps(request.source_refs, ensure_ascii=False),
-                    tax, fp, actor.user_id, now(),
+                    tax,
+                    fp,
+                    actor.user_id,
+                    now(),
                 ),
             )
-            return self._view(conn, conn.execute("SELECT * FROM tax_basis_reviews WHERE id=?", (review_id,)).fetchone())
+            return self._view(
+                conn,
+                conn.execute("SELECT * FROM tax_basis_reviews WHERE id=?", (review_id,)).fetchone(),
+            )
 
     def list(self, actor, book_id, period=None):
         with self.db.transaction(actor=actor) as conn:
@@ -165,7 +192,9 @@ class TaxBasisService:
                 sql += " AND period=?"
                 params.append(validate_period(period))
             sql += " ORDER BY period DESC,version DESC"
-            return {"items": [self._view(conn, row) for row in conn.execute(sql, params).fetchall()]}
+            return {
+                "items": [self._view(conn, row) for row in conn.execute(sql, params).fetchall()]
+            }
 
     def get(self, actor, book_id, review_id):
         with self.db.transaction(actor=actor) as conn:
@@ -178,7 +207,11 @@ class TaxBasisService:
             return self._view(conn, row)
 
     def review(self, actor, book_id, review_id, request: TaxBasisReview):
-        with self.db.transaction(write=True, actor=actor) as conn:
+        with self.db.transaction(actor=actor) as conn:
+            company_id = self._book(conn, actor, book_id, write=True)["company_id"]
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             self._book(conn, actor, book_id, write=True)
             row = conn.execute(
                 "SELECT * FROM tax_basis_reviews WHERE id=? AND book_id=?", (review_id, book_id)
@@ -195,7 +228,10 @@ class TaxBasisService:
                 "UPDATE tax_basis_reviews SET status='reviewed',reviewed_by=?,reviewed_at=? WHERE id=?",
                 (actor.user_id, now(), review_id),
             )
-            return self._view(conn, conn.execute("SELECT * FROM tax_basis_reviews WHERE id=?", (review_id,)).fetchone())
+            return self._view(
+                conn,
+                conn.execute("SELECT * FROM tax_basis_reviews WHERE id=?", (review_id,)).fetchone(),
+            )
 
     def _view(self, conn, row):
         workpaper = None
@@ -205,8 +241,11 @@ class TaxBasisService:
                 (row["workpaper_id"],),
             ).fetchone()
         return {
-            "id": row["id"], "book_id": row["book_id"], "period": row["period"],
-            "version": int(row["version"]), "status": row["status"],
+            "id": row["id"],
+            "book_id": row["book_id"],
+            "period": row["period"],
+            "version": int(row["version"]),
+            "status": row["status"],
             "policy": json.loads(row["policy_json"]),
             "policy_fingerprint": row["policy_fingerprint"],
             "base_cents": int(row["base_cents"]),
@@ -216,5 +255,6 @@ class TaxBasisService:
             "tax_cents": int(row["tax_cents"]),
             "source_fingerprint": row["source_fingerprint"],
             "workpaper": dict(workpaper) if workpaper else None,
-            "created_by": row["created_by"], "reviewed_by": row["reviewed_by"],
+            "created_by": row["created_by"],
+            "reviewed_by": row["reviewed_by"],
         }

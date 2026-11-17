@@ -778,6 +778,27 @@ class BatchOperationsService:
                 "lease_token": token,
             }
 
+    def renew(self, item, lease_seconds=120):
+        """Extend a live claim; stale or expired tokens never regain ownership."""
+        token = (item or {}).get("lease_token")
+        if not token:
+            return False
+        with self.worker_transaction() as conn:
+            if self.db.is_postgres:
+                return bool(
+                    conn.execute(
+                        "SELECT accounting.worker_renew_batch_item(?,?,?)",
+                        (item["item_id"], token, lease_seconds),
+                    ).fetchone()[0]
+                )
+            stamp, lease = timestamp(), timestamp(lease_seconds)
+            changed = conn.execute(
+                "UPDATE batch_operation_items SET lease_until=?,updated_at=? "
+                "WHERE id=? AND lease_token=? AND status='running' AND lease_until>?",
+                (lease, stamp, item["item_id"], token, stamp),
+            ).rowcount
+            return bool(changed)
+
     def _cancel_intent(self, item):
         """Return the cancel reason written by cancel_item, if any."""
         actor = Actor(item["created_by"], item["firm_id"])

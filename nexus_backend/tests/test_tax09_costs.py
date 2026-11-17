@@ -17,7 +17,9 @@ from app.tax.costs import (
 )
 from test_business import business  # noqa: F401
 
-POLICY = TaxCostPolicyWrite(version="cost-v1", expense_account_code="6602.03", credit_account_code="2202")
+POLICY = TaxCostPolicyWrite(
+    version="cost-v1", expense_account_code="6602.03", credit_account_code="2202"
+)
 SHA = "a" * 64
 
 
@@ -26,12 +28,20 @@ def _repair(case, key="FP-001", version=1, amount="100.00"):
         case.manager,
         case.book["id"],
         TaxCostSourceWrite(
-            kind="repair", source_key=key, source_version=version, period="2026-10",
-            subject_label="京A1", original_ref="原件/维修-R-1.pdf", sha256=SHA,
+            kind="repair",
+            source_key=key,
+            source_version=version,
+            period="2026-10",
+            subject_label="京A1",
+            original_ref="原件/维修-R-1.pdf",
+            sha256=SHA,
             amount=amount,
             payload={
-                "invoice_ref": key, "vehicle_external_id": "V1", "coverage": "per_vehicle",
-                "rate_cents": 5000, "quantity_milli": 2000,
+                "invoice_ref": key,
+                "vehicle_external_id": "V1",
+                "coverage": "per_vehicle",
+                "rate_cents": 5000,
+                "quantity_milli": 2000,
             },
         ),
     )
@@ -42,12 +52,20 @@ def _insurance(case, key="P-1", version=1):
         case.manager,
         case.book["id"],
         TaxCostSourceWrite(
-            kind="insurance", source_key=key, source_version=version, period="2026-10",
-            subject_label="京A1", original_ref="原件/保单-P-1.pdf", sha256="b" * 64,
+            kind="insurance",
+            source_key=key,
+            source_version=version,
+            period="2026-10",
+            subject_label="京A1",
+            original_ref="原件/保单-P-1.pdf",
+            sha256="b" * 64,
             amount="100.00",
             payload={
-                "policy_no": "P-2026-01", "premium_cents": 120000,
-                "start_period": "2026-01", "end_period": "2026-12", "total_months": 12,
+                "policy_no": "P-2026-01",
+                "premium_cents": 120000,
+                "start_period": "2026-01",
+                "end_period": "2026-12",
+                "total_months": 12,
                 "algorithm": "straight_line",
             },
         ),
@@ -59,11 +77,18 @@ def _oa(case, key="OA-2026-10-1"):
         case.manager,
         case.book["id"],
         TaxCostSourceWrite(
-            kind="oa", source_key=key, source_version=3, period="2026-10",
-            subject_label="车队费用", original_ref="OA/审批快照-1.json", sha256="c" * 64,
+            kind="oa",
+            source_key=key,
+            source_version=3,
+            period="2026-10",
+            subject_label="车队费用",
+            original_ref="OA/审批快照-1.json",
+            sha256="c" * 64,
             amount="100.00",
             payload={
-                "oa_event_id": key, "oa_version": 3, "approved_by": "部门负责人",
+                "oa_event_id": key,
+                "oa_version": 3,
+                "approved_by": "部门负责人",
                 "approved_period": "2026-10",
                 "lines": [
                     {"account_code": "6602.03", "amount_cents": 6000},
@@ -79,8 +104,11 @@ def _generate(case, sources, kind):
         case.manager,
         case.book["id"],
         TaxCostGenerate(
-            period="2026-10", kind=kind, source_ids=[source["id"] for source in sources],
-            policy=POLICY, reason="按核定来源生成成本批次",
+            period="2026-10",
+            kind=kind,
+            source_ids=[source["id"] for source in sources],
+            policy=POLICY,
+            reason="按核定来源生成成本批次",
         ),
     )
 
@@ -91,12 +119,20 @@ def test_insurance_manual_allocation_is_explicit_and_complete(business):
         case.manager,
         case.book["id"],
         TaxCostSourceWrite(
-            kind="insurance", source_key="P-MANUAL", source_version=1, period="2026-10",
-            subject_label="京A1", original_ref="原件/保单-P-MANUAL.pdf", sha256="d" * 64,
+            kind="insurance",
+            source_key="P-MANUAL",
+            source_version=1,
+            period="2026-10",
+            subject_label="京A1",
+            original_ref="原件/保单-P-MANUAL.pdf",
+            sha256="d" * 64,
             amount="30.00",
             payload={
-                "policy_no": "P-MANUAL", "premium_cents": 10000,
-                "start_period": "2026-10", "end_period": "2026-12", "total_months": 3,
+                "policy_no": "P-MANUAL",
+                "premium_cents": 10000,
+                "start_period": "2026-10",
+                "end_period": "2026-12",
+                "total_months": 3,
                 "algorithm": "manual",
                 "allocation_cents": {"2026-10": 3000, "2026-11": 3000, "2026-12": 4000},
             },
@@ -108,12 +144,20 @@ def test_insurance_manual_allocation_is_explicit_and_complete(business):
             case.manager,
             case.book["id"],
             TaxCostSourceWrite(
-                kind="insurance", source_key="P-MANUAL", source_version=2, period="2026-10",
-                subject_label="京A1", original_ref="原件/保单-P-MANUAL.pdf", sha256="d" * 64,
+                kind="insurance",
+                source_key="P-MANUAL",
+                source_version=2,
+                period="2026-10",
+                subject_label="京A1",
+                original_ref="原件/保单-P-MANUAL.pdf",
+                sha256="d" * 64,
                 amount="35.00",
                 payload={
-                    "policy_no": "P-MANUAL", "premium_cents": 10000,
-                    "start_period": "2026-10", "end_period": "2026-12", "total_months": 3,
+                    "policy_no": "P-MANUAL",
+                    "premium_cents": 10000,
+                    "start_period": "2026-10",
+                    "end_period": "2026-12",
+                    "total_months": 3,
                     "algorithm": "manual",
                     "allocation_cents": {"2026-10": 3000, "2026-11": 3000, "2026-12": 4000},
                 },
@@ -127,8 +171,11 @@ def test_insurance_straight_line_tail_is_explicit_at_policy_end():
         "2026-12",
         838,
         {
-            "policy_no": "P-TAIL", "premium_cents": 10001,
-            "start_period": "2026-01", "end_period": "2026-12", "total_months": 12,
+            "policy_no": "P-TAIL",
+            "premium_cents": 10001,
+            "start_period": "2026-01",
+            "end_period": "2026-12",
+            "total_months": 12,
             "algorithm": "straight_line",
         },
     )
@@ -160,10 +207,18 @@ def test_repair_batch_is_balanced_and_needs_independent_review(business):
     assert draft["issues"] == []
     service = TaxCostService(case.db)
     with pytest.raises(AccountingError):
-        service.review(case.manager, case.book["id"], batch["id"],
-                       TaxCostReview(expected_version=1, review_reason="本人复核"))
-    reviewed = service.review(case.actors["accountant"], case.book["id"], batch["id"],
-                              TaxCostReview(expected_version=1, review_reason="独立复核"))
+        service.review(
+            case.manager,
+            case.book["id"],
+            batch["id"],
+            TaxCostReview(expected_version=1, review_reason="本人复核"),
+        )
+    reviewed = service.review(
+        case.actors["accountant"],
+        case.book["id"],
+        batch["id"],
+        TaxCostReview(expected_version=1, review_reason="独立复核"),
+    )
     assert reviewed["status"] == "reviewed"
     assert reviewed["draft_status"] == "approved"
 
@@ -195,19 +250,48 @@ def test_invalid_repair_quantity_and_insurance_period_are_rejected(business):
     case = business
     service = TaxCostService(case.db)
     with pytest.raises(AccountingError):
-        service.add_source(case.manager, case.book["id"], TaxCostSourceWrite(
-            kind="repair", source_key="R-bad", source_version=1, period="2026-10",
-            original_ref="x", sha256=SHA, amount="99.00",
-            payload={"invoice_ref": "F", "vehicle_external_id": "V1", "coverage": "per_vehicle",
-                     "rate_cents": 5000, "quantity_milli": 2000},
-        ))
+        service.add_source(
+            case.manager,
+            case.book["id"],
+            TaxCostSourceWrite(
+                kind="repair",
+                source_key="R-bad",
+                source_version=1,
+                period="2026-10",
+                original_ref="x",
+                sha256=SHA,
+                amount="99.00",
+                payload={
+                    "invoice_ref": "F",
+                    "vehicle_external_id": "V1",
+                    "coverage": "per_vehicle",
+                    "rate_cents": 5000,
+                    "quantity_milli": 2000,
+                },
+            ),
+        )
     with pytest.raises(AccountingError):
-        service.add_source(case.manager, case.book["id"], TaxCostSourceWrite(
-            kind="insurance", source_key="P-bad", source_version=1, period="2026-10",
-            original_ref="x", sha256="b" * 64, amount="100.00",
-            payload={"policy_no": "P", "premium_cents": 120000, "start_period": "2026-01",
-                     "end_period": "2026-12", "total_months": 11, "algorithm": "straight_line"},
-        ))
+        service.add_source(
+            case.manager,
+            case.book["id"],
+            TaxCostSourceWrite(
+                kind="insurance",
+                source_key="P-bad",
+                source_version=1,
+                period="2026-10",
+                original_ref="x",
+                sha256="b" * 64,
+                amount="100.00",
+                payload={
+                    "policy_no": "P",
+                    "premium_cents": 120000,
+                    "start_period": "2026-01",
+                    "end_period": "2026-12",
+                    "total_months": 11,
+                    "algorithm": "straight_line",
+                },
+            ),
+        )
 
 
 def test_source_upgrade_makes_batch_stale_and_cannot_be_reviewed(business):
@@ -222,8 +306,12 @@ def test_source_upgrade_makes_batch_stale_and_cannot_be_reviewed(business):
         service.validate(case.manager, case.book["id"], batch["id"])
     assert error.value.status == 409
     with pytest.raises(AccountingError):
-        service.review(case.actors["accountant"], case.book["id"], batch["id"],
-                       TaxCostReview(expected_version=1, review_reason="来源已升级"))
+        service.review(
+            case.actors["accountant"],
+            case.book["id"],
+            batch["id"],
+            TaxCostReview(expected_version=1, review_reason="来源已升级"),
+        )
 
 
 def test_invalidate_keeps_history_and_review_rejects_invalidated(business):
@@ -231,12 +319,20 @@ def test_invalidate_keeps_history_and_review_rejects_invalidated(business):
     source = _repair(case)
     batch = _generate(case, [source], "repair")
     service = TaxCostService(case.db)
-    invalid = service.invalidate(case.manager, case.book["id"], batch["id"],
-                                 TaxCostInvalidate(expected_version=1, reason="来源更正"))
+    invalid = service.invalidate(
+        case.manager,
+        case.book["id"],
+        batch["id"],
+        TaxCostInvalidate(expected_version=1, reason="来源更正"),
+    )
     assert invalid["status"] == "invalidated"
     with pytest.raises(AccountingError):
-        service.review(case.actors["accountant"], case.book["id"], batch["id"],
-                       TaxCostReview(expected_version=2, review_reason="失效后复核"))
+        service.review(
+            case.actors["accountant"],
+            case.book["id"],
+            batch["id"],
+            TaxCostReview(expected_version=2, review_reason="失效后复核"),
+        )
 
 
 def test_duplicate_invoice_and_oa_version_cannot_be_reused(business):
@@ -244,30 +340,65 @@ def test_duplicate_invoice_and_oa_version_cannot_be_reused(business):
     service = TaxCostService(case.db)
     _repair(case)
     with pytest.raises(AccountingError):
-        service.add_source(case.manager, case.book["id"], TaxCostSourceWrite(
-            kind="repair", source_key="FP-001", source_version=1, period="2026-10",
-            original_ref="x", sha256=SHA, amount="90.00",
-            payload={"invoice_ref": "FP-001", "vehicle_external_id": "V1", "coverage": "actual"},
-        ))
+        service.add_source(
+            case.manager,
+            case.book["id"],
+            TaxCostSourceWrite(
+                kind="repair",
+                source_key="FP-001",
+                source_version=1,
+                period="2026-10",
+                original_ref="x",
+                sha256=SHA,
+                amount="90.00",
+                payload={
+                    "invoice_ref": "FP-001",
+                    "vehicle_external_id": "V1",
+                    "coverage": "actual",
+                },
+            ),
+        )
     _oa(case)
     with pytest.raises(AccountingError):
-        service.add_source(case.manager, case.book["id"], TaxCostSourceWrite(
-            kind="oa", source_key="OA-2026-10-1", source_version=2, period="2026-10",
-            original_ref="x", sha256="c" * 64, amount="100.00",
-            payload={"oa_event_id": "OA-2026-10-1", "oa_version": 2, "approved_by": "负责人",
-                     "approved_period": "2026-10",
-                     "lines": [{"account_code": "6602.03", "amount_cents": 10000}]},
-        ))
+        service.add_source(
+            case.manager,
+            case.book["id"],
+            TaxCostSourceWrite(
+                kind="oa",
+                source_key="OA-2026-10-1",
+                source_version=2,
+                period="2026-10",
+                original_ref="x",
+                sha256="c" * 64,
+                amount="100.00",
+                payload={
+                    "oa_event_id": "OA-2026-10-1",
+                    "oa_version": 2,
+                    "approved_by": "负责人",
+                    "approved_period": "2026-10",
+                    "lines": [{"account_code": "6602.03", "amount_cents": 10000}],
+                },
+            ),
+        )
 
 
 def test_operator_cannot_register_cost_source(business):
     case = business
     with pytest.raises(AccountingError):
-        TaxCostService(case.db).add_source(Actor(user_id="outsider", firm_id=case.manager.firm_id), case.book["id"], TaxCostSourceWrite(
-            kind="repair", source_key="FP-OP", source_version=1, period="2026-10",
-            original_ref="x", sha256=SHA, amount="100.00",
-            payload={"invoice_ref": "FP-OP", "vehicle_external_id": "V1", "coverage": "actual"},
-        ))
+        TaxCostService(case.db).add_source(
+            Actor(user_id="outsider", firm_id=case.manager.firm_id),
+            case.book["id"],
+            TaxCostSourceWrite(
+                kind="repair",
+                source_key="FP-OP",
+                source_version=1,
+                period="2026-10",
+                original_ref="x",
+                sha256=SHA,
+                amount="100.00",
+                payload={"invoice_ref": "FP-OP", "vehicle_external_id": "V1", "coverage": "actual"},
+            ),
+        )
 
 
 def test_package_repair_requires_scope_and_overlap_reason(business):
@@ -277,12 +408,19 @@ def test_package_repair_requires_scope_and_overlap_reason(business):
         case.manager,
         case.book["id"],
         TaxCostSourceWrite(
-            kind="repair", source_key="PKG-001", source_version=1, period="2026-10",
-            subject_label="京A1", original_ref="包干合同/2026.pdf", sha256="d" * 64,
+            kind="repair",
+            source_key="PKG-001",
+            source_version=1,
+            period="2026-10",
+            subject_label="京A1",
+            original_ref="包干合同/2026.pdf",
+            sha256="d" * 64,
             amount="1000.00",
             payload={
-                "invoice_ref": "PKG-001", "vehicle_external_id": "V1",
-                "coverage": "package", "coverage_scope": "全包（不含轮胎与事故）",
+                "invoice_ref": "PKG-001",
+                "vehicle_external_id": "V1",
+                "coverage": "package",
+                "coverage_scope": "全包（不含轮胎与事故）",
             },
         ),
     )
@@ -291,10 +429,19 @@ def test_package_repair_requires_scope_and_overlap_reason(business):
             case.manager,
             case.book["id"],
             TaxCostSourceWrite(
-                kind="repair", source_key="ACT-001", source_version=1, period="2026-10",
-                subject_label="京A1", original_ref="维修单/ACT-001.pdf", sha256="e" * 64,
+                kind="repair",
+                source_key="ACT-001",
+                source_version=1,
+                period="2026-10",
+                subject_label="京A1",
+                original_ref="维修单/ACT-001.pdf",
+                sha256="e" * 64,
                 amount="300.00",
-                payload={"invoice_ref": "ACT-001", "vehicle_external_id": "V1", "coverage": "actual"},
+                payload={
+                    "invoice_ref": "ACT-001",
+                    "vehicle_external_id": "V1",
+                    "coverage": "actual",
+                },
             ),
         )
     assert exc.value.status == 409 and "包干" in exc.value.detail
@@ -302,11 +449,18 @@ def test_package_repair_requires_scope_and_overlap_reason(business):
         case.manager,
         case.book["id"],
         TaxCostSourceWrite(
-            kind="repair", source_key="ACT-002", source_version=1, period="2026-10",
-            subject_label="京A1", original_ref="维修单/ACT-002.pdf", sha256="f" * 64,
+            kind="repair",
+            source_key="ACT-002",
+            source_version=1,
+            period="2026-10",
+            subject_label="京A1",
+            original_ref="维修单/ACT-002.pdf",
+            sha256="f" * 64,
             amount="300.00",
             payload={
-                "invoice_ref": "ACT-002", "vehicle_external_id": "V1", "coverage": "actual",
+                "invoice_ref": "ACT-002",
+                "vehicle_external_id": "V1",
+                "coverage": "actual",
                 "package_exclusion_reason": "包干范围不含轮胎更换，按实际结算",
             },
         ),
@@ -317,41 +471,88 @@ def test_package_repair_requires_scope_and_overlap_reason(business):
 def test_vehicle_type_rate_card_resolves_and_guards_amount(business):
     case = business
     rates = RepairRateService(case.db)
-    card = rates.add(case.manager, case.book["id"], RepairRateWrite(
-        vehicle_type="出租车", rate_cents=5000, valid_from="2026-10", valid_to="2026-12",
-        coverage_scope="基础保养（不含轮胎）", source_ref="合同/2026-费率",
-    ))
+    card = rates.add(
+        case.manager,
+        case.book["id"],
+        RepairRateWrite(
+            vehicle_type="出租车",
+            rate_cents=5000,
+            valid_from="2026-10",
+            valid_to="2026-12",
+            coverage_scope="基础保养（不含轮胎）",
+            source_ref="合同/2026-费率",
+        ),
+    )
     assert card["rate_cents"] == 5000
     assert rates.resolve(case.manager, case.book["id"], "出租车", "2026-11")["id"] == card["id"]
     with pytest.raises(AccountingError) as overlap:
-        rates.add(case.manager, case.book["id"], RepairRateWrite(
-            vehicle_type="出租车", rate_cents=6000, valid_from="2026-12", valid_to="2027-01",
-            coverage_scope="基础保养", source_ref="合同/2027-费率",
-        ))
+        rates.add(
+            case.manager,
+            case.book["id"],
+            RepairRateWrite(
+                vehicle_type="出租车",
+                rate_cents=6000,
+                valid_from="2026-12",
+                valid_to="2027-01",
+                coverage_scope="基础保养",
+                source_ref="合同/2027-费率",
+            ),
+        )
     assert overlap.value.status == 409
     TaxCostService(case.db).add_source(
-        case.manager, case.book["id"], TaxCostSourceWrite(
-            kind="repair", source_key="FP-RATE", source_version=1, period="2026-10",
-            subject_label="京A1", original_ref="原件/维修-RATE.pdf", sha256="b" * 64,
+        case.manager,
+        case.book["id"],
+        TaxCostSourceWrite(
+            kind="repair",
+            source_key="FP-RATE",
+            source_version=1,
+            period="2026-10",
+            subject_label="京A1",
+            original_ref="原件/维修-RATE.pdf",
+            sha256="b" * 64,
             amount="300.00",
             payload={
-                "invoice_ref": "FP-RATE", "vehicle_external_id": "V1", "vehicle_type": "出租车",
-                "coverage": "per_vehicle", "quantity_milli": 6000, "rate_card_id": card["id"],
+                "invoice_ref": "FP-RATE",
+                "vehicle_external_id": "V1",
+                "vehicle_type": "出租车",
+                "coverage": "per_vehicle",
+                "quantity_milli": 6000,
+                "rate_card_id": card["id"],
             },
         ),
     )
     with pytest.raises(AccountingError) as mismatch:
         TaxCostService(case.db).add_source(
-            case.manager, case.book["id"], TaxCostSourceWrite(
-                kind="repair", source_key="FP-RATE-2", source_version=1, period="2026-10",
-                subject_label="京A1", original_ref="原件/维修-RATE2.pdf", sha256="c" * 64,
+            case.manager,
+            case.book["id"],
+            TaxCostSourceWrite(
+                kind="repair",
+                source_key="FP-RATE-2",
+                source_version=1,
+                period="2026-10",
+                subject_label="京A1",
+                original_ref="原件/维修-RATE2.pdf",
+                sha256="c" * 64,
                 amount="310.00",
                 payload={
-                    "invoice_ref": "FP-RATE-2", "vehicle_external_id": "V1", "vehicle_type": "出租车",
-                    "coverage": "per_vehicle", "quantity_milli": 6000, "rate_card_id": card["id"],
+                    "invoice_ref": "FP-RATE-2",
+                    "vehicle_external_id": "V1",
+                    "vehicle_type": "出租车",
+                    "coverage": "per_vehicle",
+                    "quantity_milli": 6000,
+                    "rate_card_id": card["id"],
                 },
             ),
         )
     assert mismatch.value.status == 409 and "费率卡" in mismatch.value.detail
     with pytest.raises(AccountingError):
         rates.list(case.actors["employee"], case.book["id"])
+
+
+def test_same_insurance_policy_and_period_cannot_be_recorded_twice(business):
+    case = business
+    _insurance(case, key="P-1")
+    with pytest.raises(AccountingError) as exc:
+        _insurance(case, key="P-2")
+    assert exc.value.status == 409
+    assert "同一保单" in exc.value.detail

@@ -13,6 +13,7 @@ from uuid import uuid4
 from zipfile import ZipFile, ZipInfo, ZIP_STORED
 
 from ..accounting.access import AccessControl
+from ..accounting.audit import write_download_audit
 from ..accounting.domain import AccountingError, Actor
 from ..accounting.service import AccountingService, now, safe_csv_text
 from ..business.service import BusinessService
@@ -218,7 +219,6 @@ class MonthlyPackageService:
 
     def _can_review(self, conn, book, user_id):
         """Ask the same membership rules whether this person could generate the package."""
-        from ..accounting.domain import Actor
 
         try:
             permissions = self.access.book(conn, Actor(user_id, book["firm_id"]), book["id"])[
@@ -809,6 +809,7 @@ class MonthlyPackageService:
         with self.db.transaction(actor=actor) as conn:
             _, row = self._package(conn, actor, book_id, package_id)
             snapshot = self._snapshot(row)
+            company_id = row["company_id"]
         stream = io.BytesIO()
         with ZipFile(stream, "w", compression=ZIP_STORED) as archive:
             for name, data in sorted(
@@ -817,7 +818,27 @@ class MonthlyPackageService:
                 entry = ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
                 entry.external_attr = 0o600 << 16
                 archive.writestr(entry, data.encode("utf-8"))
-        return stream.getvalue()
+        content = stream.getvalue()
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
+            # Re-authorize in the same transaction that records the download.
+            _, current = self._package(conn, actor, book_id, package_id)
+            write_download_audit(
+                conn,
+                actor,
+                action="export.download",
+                object_id=package_id,
+                company_id=company_id,
+                book_id=book_id,
+                details={
+                    "kind": "monthly_package",
+                    "version": current["version"],
+                    "sha256": hashlib.sha256(content).hexdigest(),
+                    "size_bytes": len(content),
+                },
+            )
+        return content
 
     def acknowledge(self, actor, book_id, package_id, request):
         with self.db.transaction(actor=actor) as conn:

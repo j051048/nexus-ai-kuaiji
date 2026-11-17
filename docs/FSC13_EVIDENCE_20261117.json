@@ -1,0 +1,70 @@
+{
+  "schema": "fsc13-evidence-v1",
+  "generated_on": "2026-11-17",
+  "head": "767f7cdf7c717c98d3516a0e31b53bd8cd9ae1a9",
+  "candidate": {
+    "source_files": 2336,
+    "source_sha256": "b8b7b4501553050508ef21c89cfb3affde1043b14269e06f090a2e45acc60c0c",
+    "migration_files": 459,
+    "migration_sha256": "7543a5d92df4776ea4beccde8afdd4a557c29ed8e675f9da9c797e482bb0db3a"
+  },
+  "commands": [
+    {
+      "command": "PYTHONPATH=..:. pytest -q tests/test_fsc13_closing_authority.py",
+      "result": "5 passed / 15.25s"
+    },
+    {
+      "command": "PYTHONPATH=..:. pytest -q tests/test_tax02_closing.py tests/test_fsc13_closing_authority.py",
+      "result": "13 passed / 36.95s"
+    },
+    {
+      "command": "PYTHONPATH=..:. pytest -q tests/test_fsc13_closing_authority.py tests/test_tax02_closing.py tests/test_tax04_recovery.py",
+      "result": "18 passed / 47.79s"
+    },
+    {
+      "command": "test_fsc13_closing_authority_postgres.py (PG17)",
+      "result": "1 passed / 0.97s",
+      "artifact": "tmp_test/ak05-pg-runs/84f73f284e884ef8a715874acd6ad47a"
+    },
+    {
+      "command": "test_fsc13_closing_authority_postgres.py (PG16)",
+      "result": "1 passed / 0.98s",
+      "artifact": "tmp_test/ak05-pg-runs/32adfcb488134f078f248907f9607fd7"
+    },
+    {
+      "command": "npx playwright test e2e/fsc13-closing.spec.ts",
+      "result": "2 passed / 38.2s"
+    },
+    {
+      "command": "npm run typecheck",
+      "result": "exit 0"
+    },
+    {
+      "command": "TMP=tmp_test/tmp-build TEMP=tmp_test/tmp-build npm run build",
+      "result": "success; index 566.42 kB/gzip 175.47 kB"
+    }
+  ],
+  "screenshots": [
+    "tmp_test/fsc13-closing-1280.png",
+    "tmp_test/fsc13-closing-390.png"
+  ],
+  "covered": [
+    "unconfirmed authority rejected",
+    "internal evidence_only and idempotency",
+    "same source different content conflict",
+    "external authority blocks internal closing",
+    "posted internal closing plus external evidence remains conflict",
+    "authority mode change invalidates prior draft review",
+    "cross-firm evidence hidden",
+    "restore preserves profile evidence fingerprint"
+  ],
+  "not_verified": [
+    "real T+ closing voucher",
+    "hybrid automatic merge",
+    "full backend and full browser suites",
+    "real customer or production identity"
+  ],
+  "not_committed": true,
+  "not_pushed": true,
+  "not_deployed": true
+}

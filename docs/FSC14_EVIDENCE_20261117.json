@@ -1,0 +1,40 @@
+{
+  "batch": "FSC14",
+  "date": "2026-11-17",
+  "status": "partial",
+  "head": "767f7cdf7c717c98d3516a0e31b53bd8cd9ae1a9",
+  "source_files": 2341,
+  "source_sha256": "50398a5359705a455b225e1f10ba821bfc21fc861531b51b79a35ec153da34e9",
+  "migration_files": 463,
+  "migration_sha256": "f86c74070ad99be7616646fb713783fdc3901e2f3c42de0e3008215c97482494",
+  "implemented": [
+    "lease_draft_bindings (SQLite 195 / PostgreSQL 280)",
+    "guard on approve/post/export compares binding version with active approved contract",
+    "PG datetime fingerprint fix and 281 DELETE grant",
+    "frontend duplicate action fix and optimistic lease create",
+    "browser chain: contract facts, independent review, export, red invoice, stale export rejection"
+  ],
+  "verified": {
+    "sqlite": "13 passed / 32.07s",
+    "postgres16": {
+      "stale_test": "1 passed / 1.24s",
+      "artifact": "tmp_test/ak05-pg-runs/8895ca350fe5459183b374989a640878",
+      "lease_subset": "3 passed / 2.16s"
+    },
+    "postgres17": {
+      "stale_test": "1 passed / 1.34s",
+      "artifact": "tmp_test/ak05-pg-runs/88de63c4098c49e886300be18a29b71d",
+      "lease_subset": "3 passed / 2.14s"
+    },
+    "browser": "2 passed / 1.5m",
+    "typecheck": "passed"
+  },
+  "not_verified": [
+    "external T+ preparation/receipt/archive",
+    "two enterprises and consecutive cross-year browser chain",
+    "PG concurrent/revocation/period-lock FSC14 cases",
+    "FSC14 non-empty recovery",
+    "real customer contracts, users and devices"
+  ],
+  "not_complete_reason": "external receipt and archive package, multi-enterprise chain and FSC14 recovery remain unimplemented"
+}

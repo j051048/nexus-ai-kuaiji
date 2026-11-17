@@ -19,7 +19,7 @@
   margin: 0;
   color: #6d756b;
   font-size: 11px;
-  letter-spacing: .12em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
 }
 .tax-cost-note {
@@ -66,7 +66,7 @@
   font: inherit;
 }
 .tax-cost-panel button:disabled {
-  opacity: .45;
+  opacity: 0.45;
   cursor: not-allowed;
 }
 .tax-cost-panel .tax-cost-primary {
@@ -195,6 +195,36 @@
     grid-column: span 1;
   }
 }
-.tax-cost-rates { margin: 12px 0; border: 1px solid #e5ece8; border-radius: 10px; padding: 10px 12px; }
-.tax-cost-rates summary { cursor: pointer; font-weight: 700; color: #243c32; }
-.tax-cost-rates p { margin: 8px 0; color: #607069; font-size: 12px; }
+.tax-cost-rates {
+  margin: 12px 0;
+  border: 1px solid #e5ece8;
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+.tax-cost-rates summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: #243c32;
+}
+.tax-cost-rates p {
+  margin: 8px 0;
+  color: #607069;
+  font-size: 12px;
+}
+
+.tax-rate-status {
+  margin-left: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #5f6e68;
+}
+.tax-rate-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+.tax-rate-actions button {
+  padding: 5px 10px;
+  font-size: 12px;
+}

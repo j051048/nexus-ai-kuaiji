@@ -3,7 +3,6 @@
 import json
 
 from ..accounting.service import fingerprint, now
-from ..business.service import encode
 from .provider import effective_settings
 from .ocr import engine_enabled, prompt_version, stored_extraction, source_binding, valid_source
 

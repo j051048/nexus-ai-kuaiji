@@ -70,8 +70,10 @@ class AccessControl:
     def book(self, conn, actor: Actor, book_id, capability="read"):
         book = conn.execute(
             "SELECT b.*,m.role AS _access_firm_role,a.role AS _access_book_role,"
-            "cm.role AS _access_company_role FROM users u "
+            "cm.role AS _access_company_role,"
+            "frc.management_review_separation AS _access_separation FROM users u "
             "LEFT JOIN memberships m ON m.user_id=u.id AND m.firm_id=? "
+            "LEFT JOIN firm_review_controls frc ON frc.firm_id=m.firm_id "
             "LEFT JOIN (SELECT b.*,c.name AS company_name,p.status AS period_status FROM books b "
             "JOIN companies c ON c.id=b.company_id JOIN firm_clients fc ON fc.company_id=b.company_id AND fc.firm_id=b.firm_id "
             "JOIN periods p ON p.book_id=b.id AND p.period=b.period "
@@ -86,7 +88,10 @@ class AccessControl:
         if not book["id"]:
             raise AccountingError("账套不存在或无权访问", 404)
         permissions = self.permissions(
-            book["_access_firm_role"], book["_access_book_role"], book["_access_company_role"]
+            book["_access_firm_role"],
+            book["_access_book_role"],
+            book["_access_company_role"],
+            management_review_separation=bool(book["_access_separation"]),
         )
         if not permissions[capability]:
             if not permissions["read"] and capability != "manage":
@@ -99,11 +104,20 @@ class AccessControl:
         }
 
     @staticmethod
-    def permissions(firm_role, book_role, company_role):
+    def separation_required(conn, firm_id):
+        row = conn.execute(
+            "SELECT management_review_separation FROM firm_review_controls WHERE firm_id=?",
+            (firm_id,),
+        ).fetchone()
+        return bool(row and row[0])
+
+    @staticmethod
+    def permissions(firm_role, book_role, company_role, *, management_review_separation=False):
         manager = firm_role in FIRM_MANAGERS
+        auto_manage = manager and not management_review_separation
         principal = bool(firm_role) or company_role in COMPANY_LEDGER_ROLES
         read = manager or (principal and book_role is not None)
-        edit = manager or (
+        edit = auto_manage or (
             read
             and book_role in {"editor", "reviewer"}
             and (
@@ -111,7 +125,12 @@ class AccessControl:
                 or (not firm_role and company_role in COMPANY_LEDGER_ROLES)
             )
         )
-        review = manager or (read and book_role == "reviewer" and firm_role in FIRM_REVIEWERS)
+        review = auto_manage or (
+            read
+            and book_role == "reviewer"
+            and firm_role in FIRM_REVIEWERS
+            and not (manager and management_review_separation)
+        )
         return {
             "read": read,
             "edit": edit,

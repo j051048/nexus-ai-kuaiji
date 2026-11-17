@@ -91,6 +91,18 @@ function ReviewPolicyContent({
             <strong>{reviewModeLabel(data.policy.mode)}</strong> · 政策版本 {data.policy.version}
           </p>
           <p>设置说明：{data.policy.reason || '默认独立复核政策'}</p>
+          {data.firm_control.management_review_separation && (
+            <p className="form-warning" role="status">
+              事务所已开启“管理与复核分离”（控制版本 {data.firm_control.version}）。
+              管理员不再自动获得编辑、复核或导出权限，也不能以管理员身份复核凭证、关账或税务底稿。
+            </p>
+          )}
+          {data.firm_control.single_operator_disabled && (
+            <p className="form-warning" role="status">
+              事务所已禁止单人办理（控制版本 {data.firm_control.version}
+              ）。本账套不能切换到单人模式； 已处于单人模式的历史审核保留，但新的自我复核会被拒绝。
+            </p>
+          )}
           {data.review_summary ? (
             <section aria-label="本账套复核分类">
               <p>
@@ -120,7 +132,8 @@ function ReviewPolicyContent({
                   locked.current ||
                   reason.trim().length < 3 ||
                   mode === data.policy.mode ||
-                  (mode === 'single_operator' && !acknowledged)
+                  (mode === 'single_operator' &&
+                    (!acknowledged || data.firm_control.single_operator_disabled))
                 )
                   return;
                 locked.current = true;
@@ -163,7 +176,12 @@ function ReviewPolicyContent({
                   }}
                 >
                   <option value="independent">独立复核：制单与复核由不同人员负责</option>
-                  <option value="single_operator">单人办理（非独立复核）</option>
+                  <option
+                    value="single_operator"
+                    disabled={data.firm_control.single_operator_disabled}
+                  >
+                    单人办理（非独立复核）
+                  </option>
                 </select>
               </label>
               {mode === 'single_operator' && mode !== data.policy.mode && (
@@ -193,7 +211,8 @@ function ReviewPolicyContent({
                   busy ||
                   mode === data.policy.mode ||
                   reason.trim().length < 3 ||
-                  (mode === 'single_operator' && !acknowledged)
+                  (mode === 'single_operator' &&
+                    (!acknowledged || data.firm_control.single_operator_disabled))
                 }
               >
                 {busy ? '正在保存…' : '保存复核政策'}

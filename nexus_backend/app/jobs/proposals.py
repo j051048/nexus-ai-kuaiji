@@ -1,6 +1,5 @@
 """Durable automatic candidates. Authorization and adoption remain deterministic."""
 
-import json
 from datetime import datetime, timedelta
 from uuid import uuid4
 

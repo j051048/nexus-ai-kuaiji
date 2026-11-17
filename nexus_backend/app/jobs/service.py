@@ -6,7 +6,6 @@ import json
 from time import perf_counter
 from uuid import uuid4
 
-from ..concurrency.settings import SchedulingSettings
 from ..accounting.domain import AccountingError
 from ..accounting.service import fingerprint
 from ..intelligence.provider import EXTRACTION_PROMPT_VERSION, ProviderError, effective_settings

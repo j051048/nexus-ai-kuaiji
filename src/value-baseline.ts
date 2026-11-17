@@ -39,8 +39,8 @@ export function readValueBaseline(value: unknown): ValueBaseline {
   const counts = row.counts;
   if (
     !counts ||
-    !['submitted_events', 'mapped_drafts', 'approved_drafts', 'returned_events'].every(
-      (key) => integer(counts[key as keyof typeof counts]),
+    !['submitted_events', 'mapped_drafts', 'approved_drafts', 'returned_events'].every((key) =>
+      integer(counts[key as keyof typeof counts]),
     )
   ) {
     throw new Error('价值基线计数无效');

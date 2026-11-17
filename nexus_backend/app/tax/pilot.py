@@ -180,7 +180,9 @@ class PilotBoundaryService:
                     "authority_mode": "",
                     "active_profile_id": None,
                     "draft_profile_id": None,
-                    "blockers": [{"code": code, "label": DEPENDENCY_LABELS[code]} for code in REQUIRED_CODES],
+                    "blockers": [
+                        {"code": code, "label": DEPENDENCY_LABELS[code]} for code in REQUIRED_CODES
+                    ],
                     "dependencies": [],
                     "next_action": "登记客户边界、来源与资料依赖",
                 }
@@ -196,7 +198,9 @@ class PilotBoundaryService:
                 "authority_mode": target["authority_mode"],
                 "active_profile_id": confirmed["id"] if confirmed else None,
                 "draft_profile_id": draft["id"] if draft else None,
-                "target": _present_profile(target, deps, self._events(conn, target["id"]), confirmed),
+                "target": _present_profile(
+                    target, deps, self._events(conn, target["id"]), confirmed
+                ),
                 "blockers": blockers,
                 "next_action": "补齐客户资料并确认试点配置" if blockers else "可确认试点配置",
             }
@@ -212,7 +216,9 @@ class PilotBoundaryService:
                 raise AccountingError("试点配置版本已变化，请刷新后重试", 409)
             version = current + 1
             if latest and latest["status"] == "draft":
-                conn.execute("UPDATE tax_pilot_profiles SET status='superseded' WHERE id=?", (latest["id"],))
+                conn.execute(
+                    "UPDATE tax_pilot_profiles SET status='superseded' WHERE id=?", (latest["id"],)
+                )
             conn.execute(
                 "UPDATE tax_pilot_previews SET invalidated_at=? WHERE invalidated_at IS NULL "
                 "AND profile_id IN (SELECT id FROM tax_pilot_profiles WHERE company_id=?)",
@@ -265,11 +271,15 @@ class PilotBoundaryService:
                     actor.user_id,
                     "tax.pilot.draft",
                     profile_id,
-                    _canonical({"company_id": company_id, "version": version, "fingerprint": fingerprint}),
+                    _canonical(
+                        {"company_id": company_id, "version": version, "fingerprint": fingerprint}
+                    ),
                     now(),
                 ),
             )
-            profile = conn.execute("SELECT * FROM tax_pilot_profiles WHERE id=?", (profile_id,)).fetchone()
+            profile = conn.execute(
+                "SELECT * FROM tax_pilot_profiles WHERE id=?", (profile_id,)
+            ).fetchone()
             return _present_profile(profile, list(deps.values()), [], None)
 
     def confirm(self, actor, company_id, expected_version):
@@ -279,7 +289,9 @@ class PilotBoundaryService:
             if not draft or int(draft["version"]) != expected_version:
                 raise AccountingError("试点配置版本已变化，请刷新后重试", 409)
             deps = self._deps(conn, draft["id"])
-            blockers = [item for item in deps if item["required"] and item["status"] == "unresolved"]
+            blockers = [
+                item for item in deps if item["required"] and item["status"] == "unresolved"
+            ]
             if blockers:
                 raise AccountingError(
                     "仍有未确认的客户资料: " + "、".join(item["label"] for item in blockers), 409
@@ -289,7 +301,9 @@ class PilotBoundaryService:
                 raise AccountingError("必须确认业务权威边界", 409)
             active = self._latest(conn, company_id, "confirmed")
             if active:
-                conn.execute("UPDATE tax_pilot_profiles SET status='superseded' WHERE id=?", (active["id"],))
+                conn.execute(
+                    "UPDATE tax_pilot_profiles SET status='superseded' WHERE id=?", (active["id"],)
+                )
                 conn.execute(
                     "UPDATE tax_pilot_previews SET invalidated_at=? WHERE profile_id=? AND invalidated_at IS NULL",
                     (now(), active["id"]),
@@ -311,7 +325,9 @@ class PilotBoundaryService:
                     now(),
                 ),
             )
-            confirmed = conn.execute("SELECT * FROM tax_pilot_profiles WHERE id=?", (draft["id"],)).fetchone()
+            confirmed = conn.execute(
+                "SELECT * FROM tax_pilot_profiles WHERE id=?", (draft["id"],)
+            ).fetchone()
             return _present_profile(confirmed, deps, [], confirmed)
 
     def preview(self, actor, company_id, purpose="tax_preview"):
@@ -341,13 +357,20 @@ class PilotBoundaryService:
         with self.db.transaction(actor=actor) as conn:
             self._company(conn, actor, company_id)
             preview = conn.execute(
-                "SELECT * FROM tax_pilot_previews WHERE id=? AND invalidated_at IS NULL", (preview_id,)
+                "SELECT * FROM tax_pilot_previews WHERE id=? AND invalidated_at IS NULL",
+                (preview_id,),
             ).fetchone()
             if not preview:
                 raise AccountingError("预览已失效，请按当前已确认规则重新生成", 409)
             active = self._latest(conn, company_id, "confirmed")
-            if not active or active["id"] != preview["profile_id"] or active["fingerprint"] != preview["fingerprint"]:
-                conn.execute("UPDATE tax_pilot_previews SET invalidated_at=? WHERE id=?", (now(), preview_id))
+            if (
+                not active
+                or active["id"] != preview["profile_id"]
+                or active["fingerprint"] != preview["fingerprint"]
+            ):
+                conn.execute(
+                    "UPDATE tax_pilot_previews SET invalidated_at=? WHERE id=?", (now(), preview_id)
+                )
                 raise AccountingError("规则版本已变化，预览已失效", 409)
             return {
                 "valid": True,

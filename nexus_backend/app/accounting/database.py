@@ -10,7 +10,7 @@ from contextlib import closing, contextmanager
 from decimal import Decimal
 from pathlib import Path
 from time import perf_counter
-from threading import Lock
+from threading import Lock, local
 from .time_budget import remaining as remaining_db_budget
 
 from .telemetry import (
@@ -267,6 +267,10 @@ class Database:
         self._pool = None
         self._pool_lock = Lock()
         self._closed = False
+        self._sqlite_read_state = local()
+        self._sqlite_read_connections = set()
+        self._sqlite_read_lock = Lock()
+        self._sqlite_read_reuse = os.getenv("ACCOUNTING_SQLITE_READ_REUSE", "0") == "1"
         self.metrics = TransactionMetrics()
         self.shared_metrics = SharedTransactionMetrics(self)
         self.path = str(
@@ -291,7 +295,28 @@ class Database:
         if self.is_postgres:
             self.shared_metrics.start()
 
-    def connect(self):
+    def _sqlite_read_connection(self):
+        """Reuse one read-only connection per thread when explicitly enabled.
+
+        SQLite recompiles schema/authorizer state for the first statement on a
+        fresh connection. Reusing a thread-local connection removes that cost
+        from read-heavy API paths; transactions still commit or roll back so
+        each request sees a fresh snapshot.
+        """
+        existing = getattr(self._sqlite_read_state, "connection", None)
+        if existing is not None:
+            try:
+                existing.execute("SELECT 1")
+                return existing
+            except sqlite3.ProgrammingError:
+                pass
+        conn = self.connect(check_same_thread=False)
+        self._sqlite_read_state.connection = conn
+        with self._sqlite_read_lock:
+            self._sqlite_read_connections.add(conn)
+        return conn
+
+    def connect(self, *, check_same_thread: bool = True):
         if self._closed:
             raise RuntimeError("数据库已关闭")
         budget = remaining_db_budget()
@@ -328,6 +353,7 @@ class Database:
             self.path,
             timeout=min(15, budget) if budget is not None else 15,
             factory=AccountingSQLiteConnection,
+            check_same_thread=check_same_thread,
         )
         # Savepoint statement journals otherwise depend on the process temp
         # directory; keep SQLite's small demo/test temp store in memory.
@@ -521,6 +547,10 @@ class Database:
         with self._pool_lock:
             if self._pool:
                 self._pool.close(timeout=5)
+        with self._sqlite_read_lock:
+            for conn in self._sqlite_read_connections:
+                conn.close()
+            self._sqlite_read_connections.clear()
 
     def persist_transaction_bucket(self, actor, payload):
         """Independent diagnostic write, never invoked inside a read transaction.
@@ -734,8 +764,14 @@ class Database:
         if actor is not None and privileged:
             raise ValueError("actor 与 system/projection 身份事务不能混用")
         started = perf_counter()
+        reuse_sqlite_read = bool(
+            self._sqlite_read_reuse
+            and not self.is_postgres
+            and not write
+            and not privileged
+        )
         try:
-            conn = self.connect()
+            conn = self._sqlite_read_connection() if reuse_sqlite_read else self.connect()
         except Exception:
             self.metrics.record(
                 firm_id=getattr(actor, "firm_id", None),
@@ -807,7 +843,8 @@ class Database:
             metric_actor = transaction_actor.get()
             transaction_scope.reset(metric_token)
             transaction_actor.reset(actor_token)
-            conn.close()
+            if not reuse_sqlite_read:
+                conn.close()
             self.metrics.record(
                 firm_id=getattr(metric_actor, "firm_id", None),
                 company_id=next(iter(companies)) if len(companies) == 1 else None,

@@ -63,7 +63,6 @@ it('拒绝缺少权限、重复事项与错页', () => {
   expect(parse({ ...v, pagination: { ...v.pagination, offset: 20 } })).toBeNull();
 });
 
-
 describe('跨页待办选择', () => {
   it('跨页保留稳定 kind/ref，重复勾选不产生重复项', () => {
     const first = { key: 'review:draft-1', kind: 'review', ref: 'draft-1', title: '第一页' };

@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "od-design-system-project/v1",
+  "id": "hengzhang",
+  "name": "衡账",
+  "category": "Finance & Operations",
+  "description": "面向小微企业和共享财务中心的中文财务工作台设计规范",
+  "source": {
+    "type": "bundled",
+    "origin": "Original Hengzhang preview system, adapted from the Nexus application visual baseline."
+  },
+  "files": {
+    "design": "DESIGN.md",
+    "tokens": "tokens.css"
+  }
+}

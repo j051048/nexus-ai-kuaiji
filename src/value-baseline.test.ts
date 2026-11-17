@@ -35,9 +35,9 @@ describe('value baseline contract', () => {
   });
 
   it('rejects rates outside 0..1 and a labour-time claim', () => {
-    expect(() => readValueBaseline({ ...sample, rates: { ...sample.rates, first_pass_rate: 1.2 } })).toThrow(
-      '价值基线比率无效',
-    );
+    expect(() =>
+      readValueBaseline({ ...sample, rates: { ...sample.rates, first_pass_rate: 1.2 } }),
+    ).toThrow('价值基线比率无效');
     expect(() =>
       readValueBaseline({ ...sample, elapsed: { ...sample.elapsed, labour_time_verified: true } }),
     ).toThrow('价值基线口径无效');

@@ -568,3 +568,54 @@ def test_rejected_posting_does_not_consume_number(business):
     journal = posting.daily_journal(case.manager, case.book["id"])
     assert journal[-1]["code_snapshot"] == "1002"
     assert journal[-1]["balance_cents"] == 990000
+
+
+def test_voucher_sources_are_unique_per_logical_source(business):
+    case = business
+    opening = frozen_opening(case)
+    posting = PostingService(case.db)
+    posting.bind_opening(
+        case.manager,
+        OpeningBind(
+            book_id=case.book["id"], package_version_id=opening["version_id"], reason="唯一来源"
+        ),
+    )
+    manual = post_reviewed_manual(
+        posting,
+        case.manager,
+        ManualVoucher(
+            command_key="manual-source-unique",
+            book_id=case.book["id"],
+            voucher_date="2026-10-18",
+            description="来源唯一性",
+            lines=[
+                ManualLine(
+                    account_id=opening["expense"]["id"],
+                    account_version=1,
+                    debit="10.00",
+                    credit="0.00",
+                ),
+                ManualLine(
+                    account_id=opening["bank"]["id"],
+                    account_version=1,
+                    debit="0.00",
+                    credit="10.00",
+                ),
+            ],
+        ),
+    )
+    voucher_id = manual["voucher"]["id"]
+    with case.db.transaction(write=True) as conn:
+        conn.execute(
+            "INSERT INTO voucher_sources(id,voucher_id,source_kind,source_id,source_version,amount_cents,evidence_ref) VALUES(?,?,?,?,?,?,?)",
+            ("vs-one", voucher_id, "draft", "draft-unique", 1, 1000, "draft-1"),
+        )
+        with pytest.raises(sqlite3.IntegrityError):
+            conn.execute(
+                "INSERT INTO voucher_sources(id,voucher_id,source_kind,source_id,source_version,amount_cents,evidence_ref) VALUES(?,?,?,?,?,?,?)",
+                ("vs-two", voucher_id, "draft", "draft-unique", 2, 1000, "draft-2"),
+            )
+        conn.execute(
+            "INSERT INTO voucher_sources(id,voucher_id,source_kind,source_id,source_version,amount_cents,evidence_ref) VALUES(?,?,?,?,?,?,?)",
+            ("vs-other", voucher_id, "source", "source-other", 1, 1000, "source-1"),
+        )

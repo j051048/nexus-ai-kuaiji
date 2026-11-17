@@ -3,7 +3,12 @@ import { DeliveryFollowupPanel } from './DeliveryFollowupPanel';
 import type { MonthlyDestination } from './monthly-workbench-types';
 import type { InboxProgress } from './workspace-progress';
 import { useMonthlyData } from './useMonthlyData';
-import { parseFirmInbox, updateFirmSelection, type FirmItem as Item, type Bucket } from './firm-inbox-contract';
+import {
+  parseFirmInbox,
+  updateFirmSelection,
+  type FirmItem as Item,
+  type Bucket,
+} from './firm-inbox-contract';
 import type { WorkspaceTask } from './workspace-types';
 import { Bell, CheckCircle2, RefreshCw, UserRoundCheck } from 'lucide-react';
 import { api, errorMessage } from './api';
@@ -62,7 +67,9 @@ export function FirmInbox({
     onBusyChange?.(panelBusy);
     return () => onBusyChange?.(false);
   }, [panelBusy, onBusyChange]);
-  const [selected, setSelected] = useState<{ key: string; kind: string; ref: string; title: string }[]>([]);
+  const [selected, setSelected] = useState<
+    { key: string; kind: string; ref: string; title: string }[]
+  >([]);
   const [assignee, setAssignee] = useState('');
   const [dueOn, setDueOn] = useState('');
   const [note, setNote] = useState('');

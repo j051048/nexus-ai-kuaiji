@@ -53,22 +53,29 @@ export function JournalEntryGrid({
   const [page, setPage] = useState(0),
     [jump, setJump] = useState(''),
     [density, setDensity] = useState<'comfortable' | 'compact'>(() =>
-      typeof localStorage !== 'undefined' && localStorage.getItem('journal-grid-density') === 'compact'
+      typeof localStorage !== 'undefined' &&
+      localStorage.getItem('journal-grid-density') === 'compact'
         ? 'compact'
         : 'comfortable',
     ),
     [widthMode, setWidthMode] = useState<'standard' | 'account' | 'amount'>(() => {
-      const saved = typeof localStorage !== 'undefined' ? localStorage.getItem('journal-grid-width') : null;
+      const saved =
+        typeof localStorage !== 'undefined' ? localStorage.getItem('journal-grid-width') : null;
       return saved === 'account' || saved === 'amount' ? saved : 'standard';
     });
   type ColumnKey = 'account' | 'debit' | 'credit';
   const defaultWidths: Record<ColumnKey, number> = { account: 300, debit: 150, credit: 150 };
   const [columnWidths, setColumnWidths] = useState<Record<ColumnKey, number> | null>(() => {
     try {
-      const saved = typeof localStorage !== 'undefined' ? localStorage.getItem('journal-grid-columns') : null;
+      const saved =
+        typeof localStorage !== 'undefined' ? localStorage.getItem('journal-grid-columns') : null;
       if (!saved) return null;
       const parsed = JSON.parse(saved) as Partial<Record<ColumnKey, number>>;
-      if (!parsed || (['account', 'debit', 'credit'] as ColumnKey[]).some((key) => !Number.isFinite(parsed[key]))) return null;
+      if (
+        !parsed ||
+        (['account', 'debit', 'credit'] as ColumnKey[]).some((key) => !Number.isFinite(parsed[key]))
+      )
+        return null;
       return {
         account: Math.min(640, Math.max(160, Number(parsed.account))),
         debit: Math.min(320, Math.max(100, Number(parsed.debit))),
@@ -91,7 +98,10 @@ export function JournalEntryGrid({
   function adjustWidth(key: ColumnKey, delta: number) {
     setColumnWidths((current) => {
       const next = { ...(current ?? defaultWidths) };
-      next[key] = Math.min(key === 'account' ? 640 : 320, Math.max(key === 'account' ? 160 : 100, next[key] + delta));
+      next[key] = Math.min(
+        key === 'account' ? 640 : 320,
+        Math.max(key === 'account' ? 160 : 100, next[key] + delta),
+      );
       return next;
     });
   }
@@ -103,7 +113,10 @@ export function JournalEntryGrid({
       const delta = move.clientX - startX;
       setColumnWidths((current) => {
         const next = { ...(current ?? defaultWidths) };
-        next[key] = Math.min(key === 'account' ? 640 : 320, Math.max(key === 'account' ? 160 : 100, startWidth + delta));
+        next[key] = Math.min(
+          key === 'account' ? 640 : 320,
+          Math.max(key === 'account' ? 160 : 100, startWidth + delta),
+        );
         return next;
       });
     };
@@ -174,21 +187,50 @@ export function JournalEntryGrid({
   return (
     <div className={'journal-grid-wrap' + (readonly ? ' journal-grid-readonly' : '')}>
       <div className="journal-grid-toolbar">
-        <span>每页 {size} 行，当前第 {current + 1} / {pageCount} 页</span>
+        <span>
+          每页 {size} 行，当前第 {current + 1} / {pageCount} 页
+        </span>
         <label className="journal-grid-width">
           列宽
           <select
             aria-label="凭证列宽"
             value={widthMode}
-            onChange={(event) => setWidthMode(event.target.value as 'standard' | 'account' | 'amount')}
+            onChange={(event) =>
+              setWidthMode(event.target.value as 'standard' | 'account' | 'amount')
+            }
           >
             <option value="standard">标准</option>
             <option value="account">宽科目</option>
             <option value="amount">宽金额</option>
           </select>
         </label>
-        <span className="journal-grid-width-buttons"><button type="button" aria-label="调窄会计科目列" onClick={() => adjustWidth('account', -20)}>科目−</button><button type="button" aria-label="加宽会计科目列" onClick={() => adjustWidth('account', 20)}>科目＋</button><button type="button" aria-label="调窄借方列" onClick={() => adjustWidth('debit', -20)}>借方−</button><button type="button" aria-label="加宽借方列" onClick={() => adjustWidth('debit', 20)}>借方＋</button></span>
-        {columnWidths ? <button type="button" className="text-button" onClick={() => setColumnWidths(null)}>重置列宽</button> : null}
+        <span className="journal-grid-width-buttons">
+          <button
+            type="button"
+            aria-label="调窄会计科目列"
+            onClick={() => adjustWidth('account', -20)}
+          >
+            科目−
+          </button>
+          <button
+            type="button"
+            aria-label="加宽会计科目列"
+            onClick={() => adjustWidth('account', 20)}
+          >
+            科目＋
+          </button>
+          <button type="button" aria-label="调窄借方列" onClick={() => adjustWidth('debit', -20)}>
+            借方−
+          </button>
+          <button type="button" aria-label="加宽借方列" onClick={() => adjustWidth('debit', 20)}>
+            借方＋
+          </button>
+        </span>
+        {columnWidths ? (
+          <button type="button" className="text-button" onClick={() => setColumnWidths(null)}>
+            重置列宽
+          </button>
+        ) : null}
         <button
           type="button"
           className="text-button"
@@ -203,22 +245,74 @@ export function JournalEntryGrid({
         className={`journal-entry-grid density-${density} width-${widthMode}${columnWidths ? ' has-custom-widths' : ''}`}
         aria-label={mode === 'inline' ? '同屏凭证分录表' : '凭证分录表'}
       >
-        <colgroup><col className="journal-grid-col-index" />{columnWidths ? <><col style={{ width: columnStyle.account }} /><col style={{ width: columnStyle.debit }} /><col style={{ width: columnStyle.credit }} /></> : <><col /><col /><col /></>}<col className="journal-grid-col-action" /></colgroup>
+        <colgroup>
+          <col className="journal-grid-col-index" />
+          {columnWidths ? (
+            <>
+              <col style={{ width: columnStyle.account }} />
+              <col style={{ width: columnStyle.debit }} />
+              <col style={{ width: columnStyle.credit }} />
+            </>
+          ) : (
+            <>
+              <col />
+              <col />
+              <col />
+            </>
+          )}
+          <col className="journal-grid-col-action" />
+        </colgroup>
         <thead>
           <tr>
             <th scope="col" className="journal-grid-index">
               行
             </th>
-            <th scope="col">会计科目<button type="button" className="journal-grid-resize" aria-label="调整会计科目列宽" onPointerDown={(event) => beginResize('account', event)} onKeyDown={(event) => { if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') { event.preventDefault(); adjustWidth('account', event.key === 'ArrowRight' ? 10 : -10); } }} /></th>
+            <th scope="col">
+              会计科目
+              <button
+                type="button"
+                className="journal-grid-resize"
+                aria-label="调整会计科目列宽"
+                onPointerDown={(event) => beginResize('account', event)}
+                onKeyDown={(event) => {
+                  if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+                    event.preventDefault();
+                    adjustWidth('account', event.key === 'ArrowRight' ? 10 : -10);
+                  }
+                }}
+              />
+            </th>
             <th scope="col" className="journal-grid-amount">
               借方
               <span className="journal-grid-unit">（元）</span>
-              <button type="button" className="journal-grid-resize" aria-label="调整借方列宽" onPointerDown={(event) => beginResize('debit', event)} onKeyDown={(event) => { if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') { event.preventDefault(); adjustWidth('debit', event.key === 'ArrowRight' ? 10 : -10); } }} />
+              <button
+                type="button"
+                className="journal-grid-resize"
+                aria-label="调整借方列宽"
+                onPointerDown={(event) => beginResize('debit', event)}
+                onKeyDown={(event) => {
+                  if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+                    event.preventDefault();
+                    adjustWidth('debit', event.key === 'ArrowRight' ? 10 : -10);
+                  }
+                }}
+              />
             </th>
             <th scope="col" className="journal-grid-amount">
               贷方
               <span className="journal-grid-unit">（元）</span>
-              <button type="button" className="journal-grid-resize" aria-label="调整贷方列宽" onPointerDown={(event) => beginResize('credit', event)} onKeyDown={(event) => { if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') { event.preventDefault(); adjustWidth('credit', event.key === 'ArrowRight' ? 10 : -10); } }} />
+              <button
+                type="button"
+                className="journal-grid-resize"
+                aria-label="调整贷方列宽"
+                onPointerDown={(event) => beginResize('credit', event)}
+                onKeyDown={(event) => {
+                  if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+                    event.preventDefault();
+                    adjustWidth('credit', event.key === 'ArrowRight' ? 10 : -10);
+                  }
+                }}
+              />
             </th>
             <th scope="col" className="journal-grid-action">
               <span className="sr-only">操作</span>
@@ -315,8 +409,12 @@ export function JournalEntryGrid({
         </tbody>
       </table>
       <div className="journal-grid-totals" data-testid="journal-totals">
-        <span>本页 借 ¥{money(pageDebit)} · 贷 ¥{money(pageCredit)}</span>
-        <span>全量 借 ¥{money(allDebit)} · 贷 ¥{money(allCredit)}</span>
+        <span>
+          本页 借 ¥{money(pageDebit)} · 贷 ¥{money(pageCredit)}
+        </span>
+        <span>
+          全量 借 ¥{money(allDebit)} · 贷 ¥{money(allCredit)}
+        </span>
       </div>
       {pageCount > 1 && (
         <div className="journal-grid-pager" role="group" aria-label="凭证分录分页">

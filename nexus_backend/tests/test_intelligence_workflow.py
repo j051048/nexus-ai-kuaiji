@@ -368,6 +368,12 @@ def test_same_customer_invoice_export_delivery_and_close(ai_case):
     body = json.loads(delivery.template(
         ai_case.actors["accountant"], ai_case.book["id"], export["id"]
     ))
+    with ai_case.db.transaction(actor=ai_case.manager) as conn:
+        audit = conn.execute(
+            "SELECT details FROM audit_events WHERE action='export.download' AND object_id=?",
+            (export["id"],),
+        ).fetchall()
+    assert len(audit) == 1 and "receipt_template" in audit[0]["details"]
     for item in body["items"]:
         item.update(status="accepted", external_voucher_id="客户凭证-001")
     created = delivery.create_receipt(

@@ -52,7 +52,12 @@ class FscProfileService:
     @staticmethod
     def _fingerprint(industry, payload, confirmations, version):
         raw = json.dumps(
-            {"industry": industry, "payload": payload, "confirmations": confirmations, "version": version},
+            {
+                "industry": industry,
+                "payload": payload,
+                "confirmations": confirmations,
+                "version": version,
+            },
             ensure_ascii=False,
             sort_keys=True,
             separators=(",", ":"),
@@ -67,7 +72,9 @@ class FscProfileService:
             "version": int(row["version"]),
             "status": row["status"],
             "industry": row["industry"],
-            "payload": json.loads(row["payload_json"]) if isinstance(row["payload_json"], str) else row["payload_json"],
+            "payload": json.loads(row["payload_json"])
+            if isinstance(row["payload_json"], str)
+            else row["payload_json"],
             "confirmations": json.loads(row["confirmations_json"])
             if isinstance(row["confirmations_json"], str)
             else row["confirmations_json"],
@@ -90,20 +97,24 @@ class FscProfileService:
         return row
 
     def create_draft(self, actor, company_id, request: ProfileWrite):
-        with self.db.transaction(actor=actor, write=True) as conn:
+        with self.db.transaction(
+            actor=actor, write=True, company_id=company_id, write_scope="company"
+        ) as conn:
             self.access.company(conn, actor, company_id, manage=True)
             payload = request.payload
             missing = [key for key in REQUIRED if key not in payload]
             if missing:
-                raise AccountingError("档案缺少栏目：" + "、".join(SECTIONS[key] for key in missing), 422)
+                raise AccountingError(
+                    "档案缺少栏目：" + "、".join(SECTIONS[key] for key in missing), 422
+                )
             latest = conn.execute(
-                "SELECT COALESCE(MAX(version),0) FROM fsc_company_profiles WHERE company_id=?",
-                (company_id,),
+                "SELECT COALESCE(MAX(version),0) FROM fsc_company_profiles WHERE firm_id=? AND company_id=?",
+                (actor.firm_id, company_id),
             ).fetchone()[0]
             version = int(latest) + 1
             conn.execute(
-                "UPDATE fsc_company_profiles SET status='superseded' WHERE company_id=? AND status='draft'",
-                (company_id,),
+                "UPDATE fsc_company_profiles SET status='superseded' WHERE firm_id=? AND company_id=? AND status='draft'",
+                (actor.firm_id, company_id),
             )
             profile_id = uuid4().hex
             fingerprint = self._fingerprint(request.industry, payload, {}, version)
@@ -126,18 +137,27 @@ class FscProfileService:
             return self._view(self._row(conn, actor, profile_id))
 
     def confirm(self, actor, profile_id, request: ProfileConfirm):
-        with self.db.transaction(actor=actor, write=True) as conn:
+        with self.db.transaction(actor=actor) as conn:
+            company_id = self._row(conn, actor, profile_id)["company_id"]
+        with self.db.transaction(
+            actor=actor, write=True, company_id=company_id, write_scope="company"
+        ) as conn:
             row = self._row(conn, actor, profile_id)
             self.access.company(conn, actor, row["company_id"], manage=True)
             if row["status"] != "draft":
                 raise AccountingError("只有草稿档案可以确认", 409)
             if int(row["version"]) != request.expected_version:
                 raise AccountingError("档案版本已变化，请刷新后重新确认", 409)
-            payload = json.loads(row["payload_json"])
+            raw_payload = row["payload_json"]
+            payload = json.loads(raw_payload) if isinstance(raw_payload, str) else raw_payload
             confirmations = {}
             unresolved = []
             for key in REQUIRED:
-                item = payload.get("_confirmations", {}).get(key) if isinstance(payload, dict) else None
+                item = (
+                    payload.get("_confirmations", {}).get(key)
+                    if isinstance(payload, dict)
+                    else None
+                )
                 if not item:
                     unresolved.append(SECTIONS[key])
                     continue
@@ -145,7 +165,10 @@ class FscProfileService:
                 if status not in {"confirmed", "not_applicable"}:
                     unresolved.append(SECTIONS[key])
                     continue
-                if not str(item.get("owner", "")).strip() or not str(item.get("evidence_ref", "")).strip():
+                if (
+                    not str(item.get("owner", "")).strip()
+                    or not str(item.get("evidence_ref", "")).strip()
+                ):
                     unresolved.append(SECTIONS[key] + "（缺责任人或依据）")
                     continue
                 try:
@@ -163,8 +186,8 @@ class FscProfileService:
                 raise AccountingError("仍有未确认栏目：" + "、".join(unresolved), 422)
 
             conn.execute(
-                "UPDATE fsc_company_profiles SET status='superseded' WHERE company_id=? AND status='confirmed'",
-                (row["company_id"],),
+                "UPDATE fsc_company_profiles SET status='superseded' WHERE firm_id=? AND company_id=? AND status='confirmed'",
+                (actor.firm_id, row["company_id"]),
             )
             fingerprint = self._fingerprint(row["industry"], payload, confirmations, row["version"])
             conn.execute(
@@ -204,13 +227,13 @@ class FscProfileService:
             self.access.require_manager(conn, actor)
             rows = conn.execute(
                 "SELECT fc.company_id,c.name AS company_name,"
-                "(SELECT p.industry FROM fsc_company_profiles p WHERE p.company_id=fc.company_id AND p.status='confirmed' "
+                "(SELECT p.industry FROM fsc_company_profiles p WHERE p.firm_id=fc.firm_id AND p.company_id=fc.company_id AND p.status='confirmed' "
                 " ORDER BY p.version DESC LIMIT 1) AS industry,"
-                "(SELECT p.status FROM fsc_company_profiles p WHERE p.company_id=fc.company_id "
+                "(SELECT p.status FROM fsc_company_profiles p WHERE p.firm_id=fc.firm_id AND p.company_id=fc.company_id "
                 " ORDER BY p.version DESC LIMIT 1) AS status,"
-                "(SELECT p.version FROM fsc_company_profiles p WHERE p.company_id=fc.company_id "
+                "(SELECT p.version FROM fsc_company_profiles p WHERE p.firm_id=fc.firm_id AND p.company_id=fc.company_id "
                 " ORDER BY p.version DESC LIMIT 1) AS version,"
-                "(SELECT p.confirmations_json FROM fsc_company_profiles p WHERE p.company_id=fc.company_id AND p.status='confirmed' "
+                "(SELECT p.confirmations_json FROM fsc_company_profiles p WHERE p.firm_id=fc.firm_id AND p.company_id=fc.company_id AND p.status='confirmed' "
                 " ORDER BY p.version DESC LIMIT 1) AS confirmations_json "
                 "FROM firm_clients fc JOIN companies c ON c.id=fc.company_id "
                 "WHERE fc.firm_id=? AND fc.status='active' ORDER BY c.name",
@@ -218,7 +241,9 @@ class FscProfileService:
             ).fetchall()
             items = []
             for row in rows:
-                confirmations = json.loads(row["confirmations_json"]) if row["confirmations_json"] else {}
+                confirmations = (
+                    json.loads(row["confirmations_json"]) if row["confirmations_json"] else {}
+                )
                 items.append(
                     {
                         "company_id": row["company_id"],
@@ -226,7 +251,14 @@ class FscProfileService:
                         "industry": row["industry"],
                         "status": row["status"] or "missing",
                         "version": row["version"],
-                        "unresolved": [SECTIONS[key] for key in REQUIRED if key not in confirmations],
+                        "unresolved": [
+                            SECTIONS[key] for key in REQUIRED if key not in confirmations
+                        ],
                     }
                 )
-            return {"items": items}
+            return {
+                "items": items,
+                "total": len(items),
+                "confirmed": sum(1 for item in items if item["status"] == "confirmed"),
+                "unresolved": sum(1 for item in items if item["status"] != "confirmed"),
+            }

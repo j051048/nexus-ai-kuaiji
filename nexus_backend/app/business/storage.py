@@ -11,7 +11,7 @@ from PIL import Image, UnidentifiedImageError
 from starlette.exceptions import HTTPException
 
 from ..accounting.domain import AccountingError
-from ..storage.local import KEY_PATTERN, LocalBlobBackend, check_key
+from ..storage.local import LocalBlobBackend, check_key
 
 MAX_FILE_BYTES = 10 * 1024 * 1024
 MAX_REQUEST_BYTES = MAX_FILE_BYTES + 128 * 1024

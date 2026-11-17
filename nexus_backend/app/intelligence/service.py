@@ -6,7 +6,7 @@ from datetime import datetime, timezone, timedelta, date
 from urllib.parse import urlsplit
 from uuid import uuid4
 
-from ..accounting.domain import Actor, AccountingError
+from ..accounting.domain import AccountingError
 from ..accounting.models import DraftUpdate, money_to_cents
 from ..accounting.queries import inactive_source_sql
 from ..accounting.service import AccountingService, fingerprint, now
@@ -14,7 +14,7 @@ from ..business.service import BusinessService, encode
 from ..execution.records import can_diagnose, execution_record
 from .checks import reconcile_checks, finding, normalized, invoice_key, extraction_findings
 from .documents import prepare_document
-from .models import InvoiceExtraction, JournalSuggestion, ProviderResult, usage_payload
+from .models import JournalSuggestion, ProviderResult, usage_payload
 from .cache import config_key, read_cache, store_cache
 from .ocr import engine_enabled, prompt_version, source_binding, valid_source
 from .structured import (

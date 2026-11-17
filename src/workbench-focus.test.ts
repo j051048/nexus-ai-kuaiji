@@ -144,7 +144,8 @@ describe('工作台 4–8 的信息层级', () => {
     const visible = view.slice(0, view.indexOf('class="monthly-row-details"'));
     expect(visible).toContain('王复核');
     expect(visible).toContain('须核对当前版本制单责任');
-    expect(view.match(/虚构客户/g)).toHaveLength(1);
+    expect(visible.match(/虚构客户/g)).toHaveLength(1);
+    expect(collapsed).toContain('当前对象：虚构客户');
     expect(view).not.toMatch(/<details[^>]*\bopen/);
   });
   it('摘要动作也遵守原有权限，不出现能点击却无响应的复核按钮', () => {

@@ -1,0 +1,139 @@
+{
+  "batch": "FSC12",
+  "status": "partial",
+  "as_of": "2026-11-17T18:31:38+08:00",
+  "candidate": {
+    "head": "767f7cdf7c717c98d3516a0e31b53bd8cd9ae1a9",
+    "source_files": 2360,
+    "source_sha256": "ce958c8b0605ff66b834203527b39bc5e6d70dea6265ee5f26a29ff8dc9c0bf5",
+    "migration_files": 469,
+    "migration_sha256": "d266a53a73a5a3237cfe6e3676497acc43294ddb6d25466dbf88fb5b5fefb6d7"
+  },
+  "passed": {
+    "sqlite": {
+      "command": "pytest tests/test_fsc01_profiles.py tests/test_fsc03_organization.py tests/test_fsc04_contracts.py tests/test_fsc04_imports.py tests/test_fsc04_advertising.py tests/test_fsc05_evidence.py tests/test_fsc13_closing_authority.py tests/test_tax13_leases.py tests/test_fsc15_rate_lifecycle.py tests/test_fsc16_packages.py tests/test_fsc17_links.py tests/test_tax09_costs.py (4 FSC recovery tests) tests/test_business.py::test_fsc12_five_person_two_tasks_are_reviewed_and_posted_without_duplication",
+      "result": "52 passed",
+      "duration_seconds": 82.68
+    },
+    "pg17": {
+      "command": "test_accounting_postgres_isolated.py --config tmp_test/fsc02-pg/env17/unified.json (FSC13-17 + cross-year lease)",
+      "result": "20 passed",
+      "duration_seconds": 11.27,
+      "artifact": "tmp_test/ak05-pg-runs/b923332bd97e45bdb745dcf3ffdb7aed"
+    },
+    "pg16": {
+      "command": "test_accounting_postgres_isolated.py --config tmp_test/fsc02-pg/env16/unified.json (FSC13-17 + cross-year lease)",
+      "result": "20 passed",
+      "duration_seconds": 10.61,
+      "artifact": "tmp_test/ak05-pg-runs/2ae866b31f2f47b996db2ffad9c9e07e"
+    },
+    "browser": {
+      "command": "npx playwright test e2e/fsc13-closing.spec.ts e2e/tax-f.spec.ts e2e/fsc15-rates.spec.ts e2e/fsc16-packages.spec.ts e2e/finance-operations.spec.ts --reporter=line",
+      "result": "12 passed",
+      "duration_seconds": 210,
+      "viewports": [
+        1365,
+        1280,
+        390
+      ]
+    },
+    "frontend": {
+      "command": "npm test -- --run",
+      "files": 152,
+      "tests": 1403,
+      "result": "passed"
+    },
+    "typecheck": "passed",
+    "build": {
+      "result": "passed",
+      "index_gzip_kb": 175.55,
+      "css_gzip_kb": 20.32
+    },
+    "two_company_cross_year_lease": {
+      "pg17": "1 passed/1.98s artifact 8b20b543506b42dc97d21c6a795a596d",
+      "pg16": "1 passed/1.97s artifact 08d66671566148d5b9043d9c4489ce90",
+      "scope": "two companies, 2026-12 and 2027-01, isolated drafts and amounts"
+    },
+    "five_person_independent_review": {
+      "command": "pytest tests/test_business.py::test_fsc12_five_person_two_tasks_are_independently_reviewed_without_duplication",
+      "result": "1 passed",
+      "duration_seconds": 9.08,
+      "scope": "employee/approver/finance/handoff/manager/accountant distinct identities; two tasks, two drafts, concurrent independent review; no duplicate draft"
+    }
+  },
+  "not_verified": [
+    "five-person formal posting within the same fixture (fixture has no frozen opening chain; posting is covered separately)",
+    "five-person real productivity/timing",
+    "full database+object storage restore to fresh isolated environment",
+    "capacity/100 concurrency/slow storage in this candidate",
+    "real T+/OA/insurance policy/customer documents",
+    "real devices/manual screen reader",
+    "two-company full business chain beyond lease drafts (bank/refund/template/receipt)"
+  ],
+  "external_verification": "not_authorized_or_missing_environment",
+  "committed": false,
+  "pushed": false,
+  "deployed": false,
+  "recovery_attempt": {
+    "command": "C01_FULL_RECOVERY_ACCEPT=1 P01_CONFIG_DIR=.codex/c01-final-pg python -m pytest -q nexus_backend/tests/test_c01_full_recovery_postgres.py --maxfail=1",
+    "result": "blocked",
+    "reason": "local source config credential rejected: password authentication failed for user p01_admin; restore never started",
+    "artifact": "pytest output, no successful restore evidence"
+  },
+  "five_person": {
+    "test": "test_fsc12_five_person_two_tasks_are_reviewed_and_posted_without_duplication",
+    "result": "1 passed/8.56s",
+    "coverage": "员工、部门、财务、经理、会计五身份；两笔事项、两张草稿、并发复核、冻结期初与科目映射后正式过账；未重复"
+  },
+  "joint_sqlite": {
+    "passed": 52,
+    "seconds": 82.68
+  },
+  "postgres": {
+    "pg17": {
+      "passed": 21,
+      "seconds": 10.14,
+      "artifact": "tmp_test/ak05-pg-runs/42881745e44f43199d51e3c11fb93350"
+    },
+    "pg16": {
+      "passed": 21,
+      "seconds": 10.07,
+      "artifact": "tmp_test/ak05-pg-runs/a8fe5344140e4555ba9c3039ae5d0ffb"
+    }
+  },
+  "capacity": {
+    "status": "failed",
+    "environment": "isolated SQLite API, single uvicorn process, embedded queue worker disabled, opt-in SQLite read connection reuse, UI-shaped GET /api/books/{id}?summaries=true&limit=100",
+    "read_50": {
+      "p50_ms": 588.94,
+      "p95_ms": 4716.32,
+      "p99_ms": 4934.94,
+      "ok": 200,
+      "total": 200
+    },
+    "read_100": {
+      "p50_ms": 1175.77,
+      "p95_ms": 5418.26,
+      "p99_ms": 5917.37,
+      "ok": 300,
+      "total": 300
+    },
+    "write_50": {
+      "p50_ms": 1053.12,
+      "p95_ms": 2651.31,
+      "p99_ms": 2867.34,
+      "ok": 50
+    },
+    "write_100": {
+      "p50_ms": 2054.12,
+      "p95_ms": 3805.74,
+      "p99_ms": 4050.13,
+      "ok": 100
+    },
+    "reports": [
+      "tmp_test/fsc12-capacity/reuse-final-50.json",
+      "tmp_test/fsc12-capacity/reuse-onequery-100.json"
+    ],
+    "note": "Read reuse reduced p95 from 16.5s/29.1s to 4.7s/5.4s, but still misses the QA05 PG baseline (~1.6s at 100 concurrency); single-process SQLite result is not production capacity."
+  }
+}

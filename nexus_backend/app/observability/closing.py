@@ -17,7 +17,12 @@ class ClosingRadarService:
         self.access = access or AccessControl()
 
     def radar(self, actor, period):
-        if len(period) != 7 or period[4] != "-" or not period[:4].isdigit() or not period[5:].isdigit():
+        if (
+            len(period) != 7
+            or period[4] != "-"
+            or not period[:4].isdigit()
+            or not period[5:].isdigit()
+        ):
             raise AccountingError("期间格式应为 YYYY-MM", 422)
         if not 1 <= int(period[5:]) <= 12:
             raise AccountingError("期间月份无效", 422)
@@ -48,11 +53,11 @@ class ClosingRadarService:
                     (book["id"], period),
                 ).fetchone()[0]
                 bank_accounts = conn.execute(
-                    "SELECT count(*) FROM bank_accounts WHERE book_id=? AND active=1",
+                    "SELECT count(*) FROM bank_accounts WHERE book_id=? AND active=TRUE",
                     (book["id"],),
                 ).fetchone()[0]
                 bank_missing = conn.execute(
-                    "SELECT count(*) FROM bank_accounts a WHERE a.book_id=? AND a.active=1 "
+                    "SELECT count(*) FROM bank_accounts a WHERE a.book_id=? AND a.active=TRUE "
                     "AND NOT EXISTS (SELECT 1 FROM bank_statement_coverages c WHERE c.account_id=a.id AND c.period=?)",
                     (book["id"], period),
                 ).fetchone()[0]
@@ -131,9 +136,16 @@ class ClosingRadarService:
                         }
                     )
                 authoritative = not blockers
-                state = "locked" if book["period_status"] == "closed" else ("blocked" if blockers else "precheck_passed")
+                state = (
+                    "locked"
+                    if book["period_status"] == "closed"
+                    else ("blocked" if blockers else "precheck_passed")
+                )
                 fingerprint = hashlib.sha256(
-                    "|".join([book["id"], period, state] + [f"{b['code']}:{b['count']}" for b in blockers]).encode()
+                    "|".join(
+                        [book["id"], period, state]
+                        + [f"{b['code']}:{b['count']}" for b in blockers]
+                    ).encode()
                 ).hexdigest()
                 items.append(
                     {
@@ -160,8 +172,12 @@ class ClosingRadarService:
                 "books": len(items),
                 "blocked": sum(1 for item in items if item["blockers"]),
                 "closable": sum(1 for item in items if item["closable"]),
-                "precheck_passed": sum(1 for item in items if item["precheck"]["state"] == "precheck_passed"),
-                "not_checked": sum(1 for item in items if item["precheck"]["state"] == "not_checked"),
+                "precheck_passed": sum(
+                    1 for item in items if item["precheck"]["state"] == "precheck_passed"
+                ),
+                "not_checked": sum(
+                    1 for item in items if item["precheck"]["state"] == "not_checked"
+                ),
                 "closed": sum(1 for item in items if item["period_status"] == "closed"),
             },
             "note": "只读雷达：不自动关账、不自动复核、不替代项目经理判断。",

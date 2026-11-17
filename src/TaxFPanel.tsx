@@ -14,8 +14,20 @@ type LeasePlan = {
   advance_cents: number;
 };
 type LeaseConfirmation = { kind: string; period: string; amount_cents: number; reference: string };
-type LeaseEvent = { kind: string; period: string; amount_cents: number; reason: string; created_at: string };
-type InvoiceRed = { original_reference: string; red_reference: string; period: string; amount_cents: number; reason: string };
+type LeaseEvent = {
+  kind: string;
+  period: string;
+  amount_cents: number;
+  reason: string;
+  created_at: string;
+};
+type InvoiceRed = {
+  original_reference: string;
+  red_reference: string;
+  period: string;
+  amount_cents: number;
+  reason: string;
+};
 type Lease = {
   id: string;
   customer_name: string;
@@ -92,9 +104,18 @@ const statusLabel: Record<string, string> = {
 };
 
 const LEASE_EVENT_LABELS: Record<string, string> = {
-  business: '业务确认', receipt: '收款确认', invoice: '发票确认', recognize: '确认收入', refund: '退款', amend: '合同改版', approve: '版本确认', terminate: '终止',
+  business: '业务确认',
+  receipt: '收款确认',
+  invoice: '发票确认',
+  recognize: '确认收入',
+  refund: '退款',
+  amend: '合同改版',
+  approve: '版本确认',
+  terminate: '终止',
 };
-function eventLabel(kind: string) { return LEASE_EVENT_LABELS[kind] ?? kind; }
+function eventLabel(kind: string) {
+  return LEASE_EVENT_LABELS[kind] ?? kind;
+}
 
 export function TaxFPanel({
   session,
@@ -112,7 +133,18 @@ export function TaxFPanel({
   const [basis, setBasis] = useState<Basis[]>([]);
   const [profit, setProfit] = useState<Profit | null>(null);
   const [baselineBook, setBaselineBook] = useState('');
-  const [variance, setVariance] = useState<{ current_period: string; baseline_period: string; lines: { line_code: string; line_name: string; current_cents: number; baseline_cents: number; delta_cents: number }[]; note: string } | null>(null);
+  const [variance, setVariance] = useState<{
+    current_period: string;
+    baseline_period: string;
+    lines: {
+      line_code: string;
+      line_name: string;
+      current_cents: number;
+      baseline_cents: number;
+      delta_cents: number;
+    }[];
+    note: string;
+  } | null>(null);
   const [varianceError, setVarianceError] = useState('');
   const [selectedLine, setSelectedLine] = useState('');
   const [failure, setFailure] = useState('');
@@ -133,9 +165,7 @@ export function TaxFPanel({
   const [base, setBase] = useState('100000.00');
   const [rateBp, setRateBp] = useState('300');
   const [surtaxBp, setSurtaxBp] = useState('200');
-  const [manualEvidence, setManualEvidence] = useState(
-    '客户申报表与完税凭证复印件，专员人工核定',
-  );
+  const [manualEvidence, setManualEvidence] = useState('客户申报表与完税凭证复印件，专员人工核定');
 
   const current = leases.find((row) => row.id === selectedLease) ?? null;
 
@@ -190,15 +220,22 @@ export function TaxFPanel({
         },
       });
       setSelectedLease(created.id);
-      await load();
+      setLeases((rows) => [created, ...rows.filter((row) => row.id !== created.id)]);
+      void load();
     }, '租赁合同已登记，收款与收入分别确认后才生成凭证。');
   }
 
   async function redInvoice() {
     if (!current) return;
     const invoice = current.confirmations.find((row) => row.kind === 'invoice');
-    if (!invoice) { setFailure('请先确认本期发票。'); return; }
-    if (!redRef.trim()) { setFailure('请填写红字发票号。'); return; }
+    if (!invoice) {
+      setFailure('请先确认本期发票。');
+      return;
+    }
+    if (!redRef.trim()) {
+      setFailure('请填写红字发票号。');
+      return;
+    }
     await run(async () => {
       await api(`${leasesUrl}/${encodeURIComponent(current.id)}/invoice-reds`, session, {
         method: 'POST',
@@ -221,18 +258,28 @@ export function TaxFPanel({
       setFailure('请填写发票号后再确认发票。');
       return;
     }
-    await run(async () => {
-      await api(`${leasesUrl}/${encodeURIComponent(current.id)}/confirm`, session, {
-        method: 'POST',
-        body: {
-          kind,
-          period,
-          amount: monthly,
-          reference: kind === 'invoice' ? invoiceRef.trim() : `${kind === 'receipt' ? '收款' : '业务'}-${period}`,
-        },
-      });
-      await load();
-    }, kind === 'receipt' ? '收款事实已登记。' : kind === 'invoice' ? '发票事实已登记。' : '业务确认已登记。');
+    await run(
+      async () => {
+        await api(`${leasesUrl}/${encodeURIComponent(current.id)}/confirm`, session, {
+          method: 'POST',
+          body: {
+            kind,
+            period,
+            amount: monthly,
+            reference:
+              kind === 'invoice'
+                ? invoiceRef.trim()
+                : `${kind === 'receipt' ? '收款' : '业务'}-${period}`,
+          },
+        });
+        await load();
+      },
+      kind === 'receipt'
+        ? '收款事实已登记。'
+        : kind === 'invoice'
+          ? '发票事实已登记。'
+          : '业务确认已登记。',
+    );
   }
 
   async function recognizeLease() {
@@ -298,7 +345,7 @@ export function TaxFPanel({
   }
 
   const drillItems = selectedLine
-    ? profit?.items.filter((row) => row.line_code === selectedLine) ?? []
+    ? (profit?.items.filter((row) => row.line_code === selectedLine) ?? [])
     : [];
 
   async function approveLease() {
@@ -325,10 +372,14 @@ export function TaxFPanel({
     setExportingLease(draftId);
     setNotice('');
     try {
-      const result = await api<{ csv: string; filename: string }>(`/books/${bookId}/exports`, session, {
-        method: 'POST',
-        body: { draft_ids: [draftId], idempotency_key: `lease-export-${draftId}` },
-      });
+      const result = await api<{ csv: string; filename: string }>(
+        `/books/${bookId}/exports`,
+        session,
+        {
+          method: 'POST',
+          body: { draft_ids: [draftId], idempotency_key: `lease-export-${draftId}` },
+        },
+      );
       const url = URL.createObjectURL(new Blob([result.csv], { type: 'text/csv;charset=utf-8' }));
       const anchor = document.createElement('a');
       anchor.href = url;
@@ -350,37 +401,71 @@ export function TaxFPanel({
         <div>
           <p className="tax-f-eyebrow">TAX13–15 · 合同、计税与利润</p>
           <h3>租赁、税费与利润下钻</h3>
-          <p>业务确认、收款、发票和收入确认分开保存；税费政策、基数与人工核定留痕；利润按凭证行下钻。</p>
+          <p>
+            业务确认、收款、发票和收入确认分开保存；税费政策、基数与人工核定留痕；利润按凭证行下钻。
+          </p>
         </div>
         <button type="button" className="tax-f-ghost" onClick={() => void load()} disabled={busy}>
           刷新
         </button>
       </header>
 
-      {notice ? <p className="tax-f-notice" role="status">{notice}</p> : null}
-      {failure ? <p className="tax-f-failure" role="alert">{failure}</p> : null}
+      {notice ? (
+        <p className="tax-f-notice" role="status">
+          {notice}
+        </p>
+      ) : null}
+      {failure ? (
+        <p className="tax-f-failure" role="alert">
+          {failure}
+        </p>
+      ) : null}
 
       <div className="tax-f-grid">
         <article className="tax-f-card">
           <h4>01 租赁合同与收入计划</h4>
           <div className="tax-f-fields">
-            <label>客户
-              <input value={customerName} onChange={(event) => setCustomerName(event.target.value)} />
+            <label>
+              客户
+              <input
+                value={customerName}
+                onChange={(event) => setCustomerName(event.target.value)}
+              />
             </label>
-            <label>车辆外部编号
+            <label>
+              车辆外部编号
               <input value={vehicle} onChange={(event) => setVehicle(event.target.value)} />
             </label>
-            <label>开始月
-              <input type="month" value={startPeriod} onChange={(event) => setStartPeriod(event.target.value)} />
+            <label>
+              开始月
+              <input
+                type="month"
+                value={startPeriod}
+                onChange={(event) => setStartPeriod(event.target.value)}
+              />
             </label>
-            <label>结束月
-              <input type="month" value={endPeriod} onChange={(event) => setEndPeriod(event.target.value)} />
+            <label>
+              结束月
+              <input
+                type="month"
+                value={endPeriod}
+                onChange={(event) => setEndPeriod(event.target.value)}
+              />
             </label>
-            <label>月租
-              <input value={monthly} onChange={(event) => setMonthly(event.target.value)} inputMode="decimal" />
+            <label>
+              月租
+              <input
+                value={monthly}
+                onChange={(event) => setMonthly(event.target.value)}
+                inputMode="decimal"
+              />
             </label>
-            <label>预收科目
-              <input value={advanceAccount} onChange={(event) => setAdvanceAccount(event.target.value)} />
+            <label>
+              预收科目
+              <input
+                value={advanceAccount}
+                onChange={(event) => setAdvanceAccount(event.target.value)}
+              />
             </label>
           </div>
           <button type="button" onClick={() => void createLease()} disabled={busy}>
@@ -397,16 +482,28 @@ export function TaxFPanel({
                   onClick={() => setSelectedLease(row.id)}
                 >
                   <strong>{row.customer_name}</strong>
-                  <span>{row.start_period}–{row.end_period} · v{row.version} · {statusLabel[row.status] ?? row.status}</span>
+                  <span>
+                    {row.start_period}–{row.end_period} · v{row.version} ·{' '}
+                    {statusLabel[row.status] ?? row.status}
+                  </span>
                   <em>{money(row.monthly_cents)}/月</em>
                 </button>
               ))}
             </div>
-          ) : <p className="tax-f-empty">尚未登记租赁合同。</p>}
+          ) : (
+            <p className="tax-f-empty">尚未登记租赁合同。</p>
+          )}
 
           {current ? (
             <div className="tax-f-detail">
-              {current.stale_approval ? <div className="tax-f-stale" role="alert"><p>合同已改版，当前版本 v{current.version} 尚未确认；确认前不能继续确认收入。</p><button type="button" onClick={() => void approveLease()} disabled={busy}>确认当前版本</button></div> : null}
+              {current.stale_approval ? (
+                <div className="tax-f-stale" role="alert">
+                  <p>合同已改版，当前版本 v{current.version} 尚未确认；确认前不能继续确认收入。</p>
+                  <button type="button" onClick={() => void approveLease()} disabled={busy}>
+                    确认当前版本
+                  </button>
+                </div>
+              ) : null}
               <div className="tax-f-actions">
                 <button type="button" onClick={() => void confirmLease('business')} disabled={busy}>
                   确认本期业务
@@ -419,42 +516,104 @@ export function TaxFPanel({
                 </button>
               </div>
               <div className="tax-f-invoice">
-                <label>发票号
-                  <input value={invoiceRef} onChange={(event) => setInvoiceRef(event.target.value)} placeholder="如 INV-2026-10-001" />
+                <label>
+                  发票号
+                  <input
+                    value={invoiceRef}
+                    onChange={(event) => setInvoiceRef(event.target.value)}
+                    placeholder="如 INV-2026-10-001"
+                  />
                 </label>
-                <button type="button" onClick={() => void confirmLease('invoice')} disabled={busy}>确认本期发票</button>
+                <button type="button" onClick={() => void confirmLease('invoice')} disabled={busy}>
+                  确认本期发票
+                </button>
               </div>
               {current.confirmations.some((row) => row.kind === 'invoice') ? (
                 <div className="tax-f-invoice">
-                  <label>红字发票号
-                    <input value={redRef} onChange={(event) => setRedRef(event.target.value)} placeholder="如 RED-2026-10-001" />
+                  <label>
+                    红字发票号
+                    <input
+                      value={redRef}
+                      onChange={(event) => setRedRef(event.target.value)}
+                      placeholder="如 RED-2026-10-001"
+                    />
                   </label>
-                  <label>红冲原因
-                    <input value={redReason} onChange={(event) => setRedReason(event.target.value)} />
+                  <label>
+                    红冲原因
+                    <input
+                      value={redReason}
+                      onChange={(event) => setRedReason(event.target.value)}
+                    />
                   </label>
-                  <button type="button" onClick={() => void redInvoice()} disabled={busy}>登记发票红冲</button>
+                  <button type="button" onClick={() => void redInvoice()} disabled={busy}>
+                    登记发票红冲
+                  </button>
                 </div>
               ) : null}
               <p className="tax-f-hint">
                 已确认 {current.confirmations.length} 条事实；预收只在实际提供服务并确认后才转收入。
               </p>
-              {current.confirmations.length ? <ul className="tax-f-confirmations" aria-label="租赁确认事实">
-                {current.confirmations.map((row) => <li key={`${row.kind}-${row.period}-${row.reference}`}><span>{row.kind === 'business' ? '业务' : row.kind === 'receipt' ? '收款' : '发票'}</span><span>{row.period}</span><span>{money(row.amount_cents)}</span><span>{row.reference}</span></li>)}
-              </ul> : null}
-              {current.invoice_reds.length ? <ul className="tax-f-confirmations" aria-label="发票红冲事实">{current.invoice_reds.map((row) => <li key={row.red_reference}><span>红冲</span><span>{row.period}</span><span>{money(row.amount_cents)}</span><span>{row.original_reference} → {row.red_reference}</span></li>)}</ul> : null}
+              {current.confirmations.length ? (
+                <ul className="tax-f-confirmations" aria-label="租赁确认事实">
+                  {current.confirmations.map((row) => (
+                    <li key={`${row.kind}-${row.period}-${row.reference}`}>
+                      <span>
+                        {row.kind === 'business'
+                          ? '业务'
+                          : row.kind === 'receipt'
+                            ? '收款'
+                            : '发票'}
+                      </span>
+                      <span>{row.period}</span>
+                      <span>{money(row.amount_cents)}</span>
+                      <span>{row.reference}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              {current.invoice_reds.length ? (
+                <ul className="tax-f-confirmations" aria-label="发票红冲事实">
+                  {current.invoice_reds.map((row) => (
+                    <li key={row.red_reference}>
+                      <span>红冲</span>
+                      <span>{row.period}</span>
+                      <span>{money(row.amount_cents)}</span>
+                      <span>
+                        {row.original_reference} → {row.red_reference}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
               {current.events.length ? (
                 <details className="tax-f-events">
                   <summary>合同版本记录 {current.events.length}</summary>
                   <ul>
-                    {current.events.map((event) => <li key={`${event.kind}-${event.created_at}`}><strong>{eventLabel(event.kind)}</strong><span>{event.period || '—'}</span><span>{event.amount_cents ? money(event.amount_cents) : '—'}</span><span>{event.reason || '无说明'}</span><time>{event.created_at.slice(0, 16).replace('T', ' ')}</time></li>)}
+                    {current.events.map((event) => (
+                      <li key={`${event.kind}-${event.created_at}`}>
+                        <strong>{eventLabel(event.kind)}</strong>
+                        <span>{event.period || '—'}</span>
+                        <span>{event.amount_cents ? money(event.amount_cents) : '—'}</span>
+                        <span>{event.reason || '无说明'}</span>
+                        <time>{event.created_at.slice(0, 16).replace('T', ' ')}</time>
+                      </li>
+                    ))}
                   </ul>
                 </details>
               ) : null}
               <div className="tax-f-table-wrap">
                 <table>
-                  <caption>{current.customer_name} · {current.vehicle_external_id}</caption>
+                  <caption>
+                    {current.customer_name} · {current.vehicle_external_id}
+                  </caption>
                   <thead>
-                    <tr><th>月份</th><th>计划</th><th>状态</th><th>已用预收</th><th>草稿</th></tr>
+                    <tr>
+                      <th>月份</th>
+                      <th>计划</th>
+                      <th>状态</th>
+                      <th>已用预收</th>
+                      <th>草稿</th>
+                    </tr>
                   </thead>
                   <tbody>
                     {current.plan.map((row) => (
@@ -463,7 +622,34 @@ export function TaxFPanel({
                         <td>{money(row.amount_cents)}</td>
                         <td>{statusLabel[row.status] ?? row.status}</td>
                         <td>{money(row.advance_cents)}</td>
-                        <td>{row.draft_id ? <div className="tax-f-inline"><button type="button" className="tax-f-link" onClick={() => setReviewDraft(row.draft_id!)}>复核租赁凭证</button><button type="button" className="tax-f-link" disabled={!!exportingLease || current.stale_approval} title={current.stale_approval ? '合同已改版，旧审批版本不能导出' : undefined} onClick={() => void exportLease(row.draft_id!)}>{exportingLease === row.draft_id ? '导出中…' : '导出租赁凭证'}</button></div> : '—'}</td>
+                        <td>
+                          {row.draft_id ? (
+                            <div className="tax-f-inline">
+                              <button
+                                type="button"
+                                className="tax-f-link"
+                                onClick={() => setReviewDraft(row.draft_id!)}
+                              >
+                                复核租赁凭证
+                              </button>
+                              <button
+                                type="button"
+                                className="tax-f-link"
+                                disabled={!!exportingLease || current.stale_approval}
+                                title={
+                                  current.stale_approval
+                                    ? '合同已改版，旧审批版本不能导出'
+                                    : undefined
+                                }
+                                onClick={() => void exportLease(row.draft_id!)}
+                              >
+                                {exportingLease === row.draft_id ? '导出中…' : '导出租赁凭证'}
+                              </button>
+                            </div>
+                          ) : (
+                            '—'
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -476,18 +662,38 @@ export function TaxFPanel({
         <article className="tax-f-card">
           <h4>02 税费政策、基数与人工核定</h4>
           <div className="tax-f-fields">
-            <label>基数
-              <input value={base} onChange={(event) => setBase(event.target.value)} inputMode="decimal" />
+            <label>
+              基数
+              <input
+                value={base}
+                onChange={(event) => setBase(event.target.value)}
+                inputMode="decimal"
+              />
             </label>
-            <label>税率（bp）
-              <input value={rateBp} onChange={(event) => setRateBp(event.target.value)} inputMode="numeric" />
+            <label>
+              税率（bp）
+              <input
+                value={rateBp}
+                onChange={(event) => setRateBp(event.target.value)}
+                inputMode="numeric"
+              />
             </label>
-            <label>附加（bp）
-              <input value={surtaxBp} onChange={(event) => setSurtaxBp(event.target.value)} inputMode="numeric" />
+            <label>
+              附加（bp）
+              <input
+                value={surtaxBp}
+                onChange={(event) => setSurtaxBp(event.target.value)}
+                inputMode="numeric"
+              />
             </label>
           </div>
-          <label className="tax-f-wide">人工核定依据
-            <textarea value={manualEvidence} onChange={(event) => setManualEvidence(event.target.value)} rows={2} />
+          <label className="tax-f-wide">
+            人工核定依据
+            <textarea
+              value={manualEvidence}
+              onChange={(event) => setManualEvidence(event.target.value)}
+              rows={2}
+            />
           </label>
           <button type="button" onClick={() => void generateBasis()} disabled={busy}>
             生成税费核定草稿
@@ -496,9 +702,16 @@ export function TaxFPanel({
             {basis.map((row) => (
               <div className="tax-f-basis" key={row.id}>
                 <div>
-                  <strong>{row.period} · v{row.version} · {statusLabel[row.status] ?? row.status}</strong>
-                  <span>基数 {money(row.base_cents)} · 税额 {money(row.tax_cents)}</span>
-                  <small>{row.policy.version} · {row.policy.rate_bp}bp + {row.policy.surtax_bp}bp · {row.manual_evidence}</small>
+                  <strong>
+                    {row.period} · v{row.version} · {statusLabel[row.status] ?? row.status}
+                  </strong>
+                  <span>
+                    基数 {money(row.base_cents)} · 税额 {money(row.tax_cents)}
+                  </span>
+                  <small>
+                    {row.policy.version} · {row.policy.rate_bp}bp + {row.policy.surtax_bp}bp ·{' '}
+                    {row.manual_evidence}
+                  </small>
                 </div>
                 {row.status === 'draft' ? (
                   <button type="button" onClick={() => void reviewBasis(row)} disabled={busy}>
@@ -516,25 +729,74 @@ export function TaxFPanel({
         <h4>04 确定性偏差归因</h4>
         <p>只对比同一企业、同一事务所的另一账套；展示凭证/来源差异，不推断原因。</p>
         <div className="tax-f-actions">
-          <input aria-label="对比账套 ID" placeholder="对比账套 ID" value={baselineBook} onChange={(event) => setBaselineBook(event.target.value)} />
-          <button type="button" className="secondary" disabled={!baselineBook.trim()} onClick={async () => {
-            setVarianceError('');
-            try {
-              const data = await api<{ current_period: string; baseline_period: string; lines: { line_code: string; line_name: string; current_cents: number; baseline_cents: number; delta_cents: number }[]; note: string }>(`/reports/profit/variance?book_id=${encodeURIComponent(bookId)}&baseline_book_id=${encodeURIComponent(baselineBook.trim())}`, session);
-              setVariance(data);
-            } catch (error) {
-              setVariance(null);
-              setVarianceError(error instanceof ApiError ? error.message : '偏差读取失败');
-            }
-          }}>对比账簿</button>
+          <input
+            aria-label="对比账套 ID"
+            placeholder="对比账套 ID"
+            value={baselineBook}
+            onChange={(event) => setBaselineBook(event.target.value)}
+          />
+          <button
+            type="button"
+            className="secondary"
+            disabled={!baselineBook.trim()}
+            onClick={async () => {
+              setVarianceError('');
+              try {
+                const data = await api<{
+                  current_period: string;
+                  baseline_period: string;
+                  lines: {
+                    line_code: string;
+                    line_name: string;
+                    current_cents: number;
+                    baseline_cents: number;
+                    delta_cents: number;
+                  }[];
+                  note: string;
+                }>(
+                  `/reports/profit/variance?book_id=${encodeURIComponent(bookId)}&baseline_book_id=${encodeURIComponent(baselineBook.trim())}`,
+                  session,
+                );
+                setVariance(data);
+              } catch (error) {
+                setVariance(null);
+                setVarianceError(error instanceof ApiError ? error.message : '偏差读取失败');
+              }
+            }}
+          >
+            对比账簿
+          </button>
         </div>
-        {varianceError ? <p className="inline-error" role="alert">{varianceError}</p> : null}
+        {varianceError ? (
+          <p className="inline-error" role="alert">
+            {varianceError}
+          </p>
+        ) : null}
         {variance ? (
           <div className="tax-f-table-wrap" aria-label="偏差行">
-            <p>{variance.current_period} 对比 {variance.baseline_period}</p>
-            <table><thead><tr><th>项目</th><th>当前</th><th>对比</th><th>差异</th></tr></thead><tbody>
-              {variance.lines.slice(0, 12).map((row) => <tr key={row.line_code}><td>{row.line_name}</td><td>{money(row.current_cents)}</td><td>{money(row.baseline_cents)}</td><td>{money(row.delta_cents)}</td></tr>)}
-            </tbody></table>
+            <p>
+              {variance.current_period} 对比 {variance.baseline_period}
+            </p>
+            <table>
+              <thead>
+                <tr>
+                  <th>项目</th>
+                  <th>当前</th>
+                  <th>对比</th>
+                  <th>差异</th>
+                </tr>
+              </thead>
+              <tbody>
+                {variance.lines.slice(0, 12).map((row) => (
+                  <tr key={row.line_code}>
+                    <td>{row.line_name}</td>
+                    <td>{money(row.current_cents)}</td>
+                    <td>{money(row.baseline_cents)}</td>
+                    <td>{money(row.delta_cents)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
             <p className="tax-f-note">{variance.note}</p>
           </div>
         ) : null}
@@ -545,18 +807,37 @@ export function TaxFPanel({
         {profit ? (
           <>
             <div className="tax-f-totals">
-              <span>营业收入 <strong>{money(profit.totals.revenue_cents)}</strong></span>
-              <span>成本费用 <strong>{money(profit.totals.cost_and_expense_cents)}</strong></span>
-              <span>营业利润 <strong>{money(profit.totals.operating_profit_cents)}</strong></span>
-              <span>所得税 <strong>{money(profit.totals.income_tax_cents)}</strong></span>
-              <span>净利润 <strong>{money(profit.totals.net_profit_cents)}</strong></span>
-              <span>映射 <strong>v{profit.mapping_version}</strong></span>
+              <span>
+                营业收入 <strong>{money(profit.totals.revenue_cents)}</strong>
+              </span>
+              <span>
+                成本费用 <strong>{money(profit.totals.cost_and_expense_cents)}</strong>
+              </span>
+              <span>
+                营业利润 <strong>{money(profit.totals.operating_profit_cents)}</strong>
+              </span>
+              <span>
+                所得税 <strong>{money(profit.totals.income_tax_cents)}</strong>
+              </span>
+              <span>
+                净利润 <strong>{money(profit.totals.net_profit_cents)}</strong>
+              </span>
+              <span>
+                映射 <strong>v{profit.mapping_version}</strong>
+              </span>
             </div>
             <div className="tax-f-profit-grid">
               <div className="tax-f-table-wrap">
                 <table>
                   <caption>利润项目（{profit.period}）</caption>
-                  <thead><tr><th>项目</th><th>金额</th><th>凭证行</th><th>下钻</th></tr></thead>
+                  <thead>
+                    <tr>
+                      <th>项目</th>
+                      <th>金额</th>
+                      <th>凭证行</th>
+                      <th>下钻</th>
+                    </tr>
+                  </thead>
                   <tbody>
                     {profit.lines.map((row) => (
                       <tr key={row.line_code}>
@@ -575,13 +856,24 @@ export function TaxFPanel({
               </div>
               <div className="tax-f-table-wrap" aria-label="利润下钻凭证行">
                 <table>
-                  <caption>{selectedLine ? `下钻：${selectedLine}` : '选择左侧项目查看凭证行'}</caption>
-                  <thead><tr><th>凭证</th><th>科目</th><th>净额</th><th>来源</th></tr></thead>
+                  <caption>
+                    {selectedLine ? `下钻：${selectedLine}` : '选择左侧项目查看凭证行'}
+                  </caption>
+                  <thead>
+                    <tr>
+                      <th>凭证</th>
+                      <th>科目</th>
+                      <th>净额</th>
+                      <th>来源</th>
+                    </tr>
+                  </thead>
                   <tbody>
                     {drillItems.map((row) => (
                       <tr key={`${row.voucher_no}-${row.account_code}-${row.net_cents}`}>
                         <td>{row.voucher_no ?? '—'}</td>
-                        <td>{row.account_code} {row.account_name}</td>
+                        <td>
+                          {row.account_code} {row.account_name}
+                        </td>
                         <td>{money(row.net_cents)}</td>
                         <td>{row.evidence_ref || '—'}</td>
                       </tr>
@@ -591,14 +883,24 @@ export function TaxFPanel({
               </div>
             </div>
             <p className="tax-f-hint" role="note">
-              未映射 {profit.checks.unmapped_count} 行；混合凭证 {profit.checks.mixed_voucher_count} 张；
-              所得税和净利润未知时显示“未知”，不补零。年累计尚不完整。
+              未映射 {profit.checks.unmapped_count} 行；混合凭证 {profit.checks.mixed_voucher_count}{' '}
+              张； 所得税和净利润未知时显示“未知”，不补零。年累计尚不完整。
             </p>
           </>
-        ) : <p className="tax-f-empty">利润数据读取中。</p>}
+        ) : (
+          <p className="tax-f-empty">利润数据读取中。</p>
+        )}
       </article>
       <FleetMetricsPanel session={session} bookId={bookId} period={period} />
-      {reviewDraft ? <InlineReviewDrawer session={session} bookId={bookId} draftId={reviewDraft} onClose={() => setReviewDraft('')} onChanged={() => void load()} /> : null}
+      {reviewDraft ? (
+        <InlineReviewDrawer
+          session={session}
+          bookId={bookId}
+          draftId={reviewDraft}
+          onClose={() => setReviewDraft('')}
+          onChanged={() => void load()}
+        />
+      ) : null}
     </section>
   );
 }

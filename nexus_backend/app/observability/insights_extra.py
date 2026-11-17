@@ -31,12 +31,16 @@ def _int(value: Any) -> int:
 
 def _period(value: str) -> str:
     if (
-        not isinstance(value, str) or len(value) != 7 or value[4] != "-"
-        or not value[:4].isdigit() or not value[5:].isdigit()
+        not isinstance(value, str)
+        or len(value) != 7
+        or value[4] != "-"
+        or not value[:4].isdigit()
+        or not value[5:].isdigit()
         or not 1 <= int(value[5:]) <= 12
     ):
         raise AccountingError("期间格式应为 YYYY-MM", 422)
     return value
+
 
 def _previous_period(period: str) -> str:
     year, month = int(period[:4]), int(period[5:7])
@@ -62,7 +66,11 @@ class FirmInsightsExtraService:
         ).fetchone()
         if not row:
             return None
-        return {"version": row["version"], "status": row["status"], "content": _json(row["content_json"])}
+        return {
+            "version": row["version"],
+            "status": row["status"],
+            "content": _json(row["content_json"]),
+        }
 
     def company(self, actor, book_id: str):
         with self.db.transaction(actor=actor) as conn:
@@ -92,12 +100,14 @@ class FirmInsightsExtraService:
             for row in reversed(history_books):
                 entry = self._latest(conn, actor.firm_id, row["id"], row["period"])
                 profit = _json(entry["content"].get("profit_statement")) if entry else {}
-                history.append({
-                    "period": row["period"],
-                    "known": bool(entry),
-                    "revenue_cents": _int(profit.get("revenue_cents")),
-                    "profit_cents": _int(profit.get("profit_cents")),
-                })
+                history.append(
+                    {
+                        "period": row["period"],
+                        "known": bool(entry),
+                        "revenue_cents": _int(profit.get("revenue_cents")),
+                        "profit_cents": _int(profit.get("profit_cents")),
+                    }
+                )
 
         content = report["content"] if report else {}
         balance = _json(content.get("balance_sheet"))
@@ -118,12 +128,14 @@ class FirmInsightsExtraService:
                 age = 0
             bucket = "90+" if age > 90 else "61-90" if age > 60 else "31-60" if age > 30 else "0-30"
             buckets[bucket] += open_cents
-            aging_items.append({
-                "counterparty": row["counterparty_original"],
-                "amount_cents": open_cents,
-                "age_days": age,
-                "bucket": bucket,
-            })
+            aging_items.append(
+                {
+                    "counterparty": row["counterparty_original"],
+                    "amount_cents": open_cents,
+                    "age_days": age,
+                    "bucket": bucket,
+                }
+            )
         return {
             "book_id": book["id"],
             "company_id": book["company_id"],
@@ -149,11 +161,21 @@ class FirmInsightsExtraService:
                 "closing_cash_cents": _int(cash.get("closing_cash_cents")),
                 "opening_cash_cents": _int(cash.get("opening_cash_cents")),
                 "net_change_cents": _int(cash.get("net_change_cents")),
-                "unclassified_cents": _int(checks.get("unclassified_cash_cents", cash.get("unclassified_cents"))),
+                "unclassified_cents": _int(
+                    checks.get("unclassified_cash_cents", cash.get("unclassified_cents"))
+                ),
             },
             "working_capital": {
-                "receivables_cents": sum(_int(item.get("amount_cents")) for item in items if str(item.get("code", "")).startswith(("1122", "1221"))),
-                "payables_cents": sum(_int(item.get("amount_cents")) for item in items if str(item.get("code", "")).startswith(("2202", "2241"))),
+                "receivables_cents": sum(
+                    _int(item.get("amount_cents"))
+                    for item in items
+                    if str(item.get("code", "")).startswith(("1122", "1221"))
+                ),
+                "payables_cents": sum(
+                    _int(item.get("amount_cents"))
+                    for item in items
+                    if str(item.get("code", "")).startswith(("2202", "2241"))
+                ),
             },
             "aging": {"known": bool(aging_rows), "buckets": buckets, "items": aging_items},
             "history": history,
@@ -169,7 +191,12 @@ class FirmInsightsExtraService:
         if not row:
             return None
         content = _json(row["content_json"])
-        return {"id": row["id"], "status": row["status"], "version": row["version"], "content": content}
+        return {
+            "id": row["id"],
+            "status": row["status"],
+            "version": row["version"],
+            "content": content,
+        }
 
     def comparison(self, actor, period: str):
         period = _period(period)
@@ -190,31 +217,53 @@ class FirmInsightsExtraService:
                 profit = _json(content.get("profit_statement"))
                 cash = _json(content.get("cash_flow"))
                 items = balance.get("items") if isinstance(balance.get("items"), list) else []
-                previous_report = self._latest_for_company_period(conn, actor.firm_id, book["company_id"], previous_period)
+                previous_report = self._latest_for_company_period(
+                    conn, actor.firm_id, book["company_id"], previous_period
+                )
                 previous_content = previous_report["content"] if previous_report else {}
                 previous_profit = _json(previous_content.get("profit_statement"))
                 previous_known = bool(previous_report)
-                rows.append({
-                    "book_id": book["id"],
-                    "company_id": book["company_id"],
-                    "company_name": book["company_name"],
-                    "known": bool(report),
-                    "report_status": report["status"] if report else "missing",
-                    "previous_known": previous_known,
-                    "previous_revenue_cents": _int(previous_profit.get("revenue_cents")) if previous_known else None,
-                    "previous_profit_cents": _int(previous_profit.get("profit_cents")) if previous_known else None,
-                    "revenue_delta_cents": _int(profit.get("revenue_cents")) - _int(previous_profit.get("revenue_cents")) if previous_known and report else None,
-                    "profit_delta_cents": _int(profit.get("profit_cents")) - _int(previous_profit.get("profit_cents")) if previous_known and report else None,
-                    "assets_cents": _int(balance.get("assets")),
-                    "liabilities_cents": _int(balance.get("liabilities")),
-                    "equity_cents": _int(balance.get("equity")),
-                    "revenue_cents": _int(profit.get("revenue_cents")),
-                    "expenses_cents": _int(profit.get("expense_cents")),
-                    "profit_cents": _int(profit.get("profit_cents")),
-                    "cash_closing_cents": _int(cash.get("closing_cash_cents")),
-                    "receivables_cents": sum(_int(item.get("amount_cents")) for item in items if str(item.get("code", "")).startswith(("1122", "1221"))),
-                    "payables_cents": sum(_int(item.get("amount_cents")) for item in items if str(item.get("code", "")).startswith(("2202", "2241"))),
-                })
+                rows.append(
+                    {
+                        "book_id": book["id"],
+                        "company_id": book["company_id"],
+                        "company_name": book["company_name"],
+                        "known": bool(report),
+                        "report_status": report["status"] if report else "missing",
+                        "previous_known": previous_known,
+                        "previous_revenue_cents": _int(previous_profit.get("revenue_cents"))
+                        if previous_known
+                        else None,
+                        "previous_profit_cents": _int(previous_profit.get("profit_cents"))
+                        if previous_known
+                        else None,
+                        "revenue_delta_cents": _int(profit.get("revenue_cents"))
+                        - _int(previous_profit.get("revenue_cents"))
+                        if previous_known and report
+                        else None,
+                        "profit_delta_cents": _int(profit.get("profit_cents"))
+                        - _int(previous_profit.get("profit_cents"))
+                        if previous_known and report
+                        else None,
+                        "assets_cents": _int(balance.get("assets")),
+                        "liabilities_cents": _int(balance.get("liabilities")),
+                        "equity_cents": _int(balance.get("equity")),
+                        "revenue_cents": _int(profit.get("revenue_cents")),
+                        "expenses_cents": _int(profit.get("expense_cents")),
+                        "profit_cents": _int(profit.get("profit_cents")),
+                        "cash_closing_cents": _int(cash.get("closing_cash_cents")),
+                        "receivables_cents": sum(
+                            _int(item.get("amount_cents"))
+                            for item in items
+                            if str(item.get("code", "")).startswith(("1122", "1221"))
+                        ),
+                        "payables_cents": sum(
+                            _int(item.get("amount_cents"))
+                            for item in items
+                            if str(item.get("code", "")).startswith(("2202", "2241"))
+                        ),
+                    }
+                )
         return {"period": period, "compare_period": previous_period, "rows": rows}
 
     def timeline(self, actor, period: str):

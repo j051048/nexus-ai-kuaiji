@@ -71,3 +71,47 @@
 .finance-settlement h4 {
   margin-block: var(--space-4) var(--space-2);
 }
+
+.asset-vehicle-link {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--line, #d9ded9);
+  border-radius: 10px;
+}
+.asset-vehicle-link-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.asset-vehicle-link-head strong {
+  font-size: 14px;
+}
+.asset-vehicle-link p {
+  margin: 8px 0;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.asset-vehicle-link-stale {
+  color: #8a5a12;
+}
+.asset-vehicle-link-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.asset-vehicle-link-row input {
+  flex: 1;
+  min-width: 180px;
+  padding: 8px 10px;
+  border: 1px solid var(--line, #d9ded9);
+  border-radius: 8px;
+  font: inherit;
+}
+.asset-vehicle-link [role='alert'] {
+  color: #a12a1f;
+}
+.asset-vehicle-link [role='status'] {
+  color: #2f5c45;
+}

@@ -1,0 +1,63 @@
+/* Open Design preview values. Map approved values into the product's existing tokens. */
+:root {
+  --bg: #f5f4ef;
+  --surface: #ffffff;
+  --surface-warm: #f0f1ea;
+  --fg: #202b25;
+  --fg-2: #46584e;
+  --muted: #55665b;
+  --meta: var(--muted);
+  --border: #d5dfd4;
+  --border-soft: #e6ebe3;
+  --accent: #245441;
+  --accent-on: #ffffff;
+  --accent-hover: #1d4636;
+  --accent-active: #17392d;
+  --success: #276344;
+  --warn: #805415;
+  --danger: #9c342d;
+
+  --font-body: 'HarmonyOS Sans SC', 'PingFang SC', 'Microsoft YaHei UI', 'Microsoft YaHei',
+    'Noto Sans CJK SC', 'Segoe UI', sans-serif;
+  --font-display: var(--font-body);
+  --font-mono: ui-monospace, Consolas, monospace;
+  --text-xs: 12px;
+  --text-sm: 14px;
+  --text-base: 16px;
+  --text-lg: 20px;
+  --text-xl: 24px;
+  --text-2xl: 28px;
+  --text-3xl: 36px;
+  --text-4xl: 48px;
+  --leading-body: 1.55;
+  --leading-tight: 1.3;
+  --tracking-display: 0;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+  --section-y-desktop: 32px;
+  --section-y-tablet: 24px;
+  --section-y-phone: 16px;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-pill: 999px;
+  --elev-flat: none;
+  --elev-ring: 0 0 0 1px var(--border);
+  --elev-raised: 0 8px 24px rgb(32 43 37 / 12%);
+  --focus-ring: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent);
+  --motion-fast: 120ms;
+  --motion-base: 180ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --container-max: 1520px;
+  --container-gutter-desktop: 24px;
+  --container-gutter-tablet: 16px;
+  --container-gutter-phone: 16px;
+}

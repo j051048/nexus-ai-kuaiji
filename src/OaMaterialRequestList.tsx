@@ -20,8 +20,13 @@ export function OaMaterialRequestList({ session }: { session: Session }) {
   useEffect(() => {
     const controller = new AbortController();
     setError('');
-    void api<{ items: MaterialRequest[] }>('/oa/material-requests', session, { signal: controller.signal })
-      .then((body) => { setError(''); setItems(body.items.filter((item) => item.status === 'open')); })
+    void api<{ items: MaterialRequest[] }>('/oa/material-requests', session, {
+      signal: controller.signal,
+    })
+      .then((body) => {
+        setError('');
+        setItems(body.items.filter((item) => item.status === 'open'));
+      })
       .catch((cause) => {
         if (cause?.name === 'AbortError') return;
         setItems([]);
@@ -38,14 +43,20 @@ export function OaMaterialRequestList({ session }: { session: Session }) {
           <p>来自已核定的 OA 审批事实；只补材料，不重放或代审 OA。</p>
         </div>
       </header>
-      {error ? <p className="oa-material-error" role="alert">{error}</p> : null}
+      {error ? (
+        <p className="oa-material-error" role="alert">
+          {error}
+        </p>
+      ) : null}
       {items.length ? (
         <div className="oa-material-list">
           {items.map((item) => (
             <article key={item.id}>
               <strong>{item.title}</strong>
               <p>{item.reason}</p>
-              <small>{item.company_name} · {item.book_name} · 待补材料 · 版本 {item.version}</small>
+              <small>
+                {item.company_name} · {item.book_name} · 待补材料 · 版本 {item.version}
+              </small>
             </article>
           ))}
         </div>

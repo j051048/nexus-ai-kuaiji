@@ -13,6 +13,7 @@ from collections import Counter
 from uuid import uuid4
 from pydantic import ValidationError
 from ..accounting.access import AccessControl
+from ..accounting.audit import write_download_audit
 from ..accounting.domain import AccountingError
 from ..accounting.models import cents_to_money
 from ..accounting.queries import page_bounds
@@ -782,8 +783,8 @@ class DeliveryService:
             for item in value["items"]
         ]
         if format == "json":
-            return json.dumps(body, ensure_ascii=False, indent=2)
-        if format != "csv":
+            content = json.dumps(body, ensure_ascii=False, indent=2)
+        elif format != "csv":
             raise AccountingError("模板格式无效")
         out = io.StringIO(newline="")
         writer = csv.DictWriter(out, fieldnames=CSV_FIELDS, lineterminator="\r\n")
@@ -812,7 +813,30 @@ class DeliveryService:
                         for key, value in row.items()
                     }
                 )
-        return "\ufeff" + out.getvalue()
+        if format == "csv":
+            content = "\ufeff" + out.getvalue()
+        with self.db.transaction(
+            write=True, actor=actor, company_id=value["company_id"], write_scope="company"
+        ) as conn:
+            # Re-authorize while recording the successful export download.
+            self.access.book(conn, actor, book_id, "read")
+            payload = content.encode("utf-8")
+            write_download_audit(
+                conn,
+                actor,
+                action="export.download",
+                object_id=export_id,
+                company_id=value["company_id"],
+                book_id=book_id,
+                details={
+                    "kind": "receipt_template",
+                    "format": format,
+                    "status": value["status"],
+                    "sha256": hashlib.sha256(payload).hexdigest(),
+                    "size_bytes": len(payload),
+                },
+            )
+        return content
 
     def add_note(self, actor, book_id, request):
         company_id = self._company_of_book(actor, book_id)

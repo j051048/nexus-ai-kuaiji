@@ -324,9 +324,222 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
-.tax-pilot { margin: 12px 0; border: 1px solid var(--line, #d9dfd2); border-radius: 10px; padding: 0 14px 12px; background: #fff; }
-.tax-pilot > summary { cursor: pointer; padding: 12px 0; font-weight: 700; }
-.tax-pilot-table { width: 100%; border-collapse: collapse; font-size: 12px; }
-.tax-pilot-table th, .tax-pilot-table td { text-align: left; border-bottom: 1px solid #edf0e9; padding: 5px 4px; vertical-align: top; }
-.tax-pilot-table select, .tax-pilot-table input, .tax-pilot > label select { width: 100%; min-height: 34px; }
-.tax-pilot-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.tax-pilot {
+  margin: 12px 0;
+  border: 1px solid var(--line, #d9dfd2);
+  border-radius: 10px;
+  padding: 0 14px 12px;
+  background: #fff;
+}
+.tax-pilot > summary {
+  cursor: pointer;
+  padding: 12px 0;
+  font-weight: 700;
+}
+.tax-pilot-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.tax-pilot-table th,
+.tax-pilot-table td {
+  text-align: left;
+  border-bottom: 1px solid #edf0e9;
+  padding: 5px 4px;
+  vertical-align: top;
+}
+.tax-pilot-table select,
+.tax-pilot-table input,
+.tax-pilot > label select {
+  width: 100%;
+  min-height: 34px;
+}
+.tax-pilot-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.closing-authority {
+  margin: 18px 0;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fff;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+.closing-authority > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.closing-authority h3 {
+  margin: 0 0 4px;
+  font-size: 16px;
+}
+.closing-authority h4 {
+  margin: 16px 0 8px;
+  font-size: 14px;
+}
+.closing-authority p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.closing-authority-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #f1f7f3;
+  border: 1px solid #cfe1d7;
+}
+.closing-authority-banner.warn {
+  background: #fff7e8;
+  border-color: #e8d3a6;
+}
+.closing-authority-banner code {
+  font-size: 12px;
+  color: var(--muted);
+}
+.closing-evidence-list {
+  margin-top: 8px;
+  overflow-x: auto;
+}
+.closing-evidence-list {
+  max-width: 100%;
+}
+.closing-evidence-list table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.closing-evidence-list th,
+.closing-evidence-list td {
+  padding: 7px 8px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.closing-evidence-list th {
+  font-weight: 600;
+  color: var(--muted);
+}
+.evidence-status {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 99px;
+  font-size: 11px;
+  background: #eef3f0;
+}
+.evidence-status.conflict {
+  background: #fde8e6;
+  color: #8f2b22;
+}
+.evidence-status.needs_review {
+  background: #fff4d9;
+  color: #7a5a11;
+}
+.evidence-status.matched {
+  background: #e6f3ea;
+  color: #235b38;
+}
+.closing-evidence-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+}
+.closing-evidence-form legend {
+  padding: 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.closing-evidence-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.closing-evidence-form label.wide {
+  grid-column: 1/-1;
+}
+.closing-evidence-form input,
+.closing-evidence-form textarea {
+  font: inherit;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  background: #fff;
+}
+.closing-evidence-form button {
+  justify-self: start;
+  min-width: 140px;
+}
+@media (max-width: 640px) {
+  .closing-evidence-form {
+    grid-template-columns: 1fr;
+  }
+  .closing-authority {
+    padding: 12px;
+  }
+}
+@media (max-width: 640px) {
+  .closing-evidence-list table,
+  .closing-evidence-list thead,
+  .closing-evidence-list tbody,
+  .closing-evidence-list tr,
+  .closing-evidence-list td {
+    display: block;
+    width: 100%;
+  }
+  .closing-evidence-list thead {
+    display: none;
+  }
+  .closing-evidence-list tr {
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    margin-bottom: 8px;
+    padding: 8px;
+  }
+  .closing-evidence-list td {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    border: 0;
+    padding: 4px 0;
+    text-align: right;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .closing-evidence-value {
+    min-width: 0;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+  }
+  .closing-evidence-list td::before {
+    content: attr(data-label);
+    color: var(--muted);
+    font-weight: 500;
+    text-align: left;
+  }
+}
+.tax-workpaper > * {
+  min-width: 0;
+}

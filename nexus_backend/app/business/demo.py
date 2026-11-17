@@ -1,6 +1,5 @@
 """Explicit fake local identities, unavailable in real authentication mode."""
 
-from ..accounting.domain import Actor
 from ..accounting.seed import LOCAL_ACTOR, USER_NAME
 
 PERSONAS = {

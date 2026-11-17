@@ -27,8 +27,12 @@ class ExternalEvidenceCreate(BaseModel):
     report_id: Identifier
     expected_report_version: Annotated[StrictInt, Field(ge=1)]
     source_kind: Literal["tplus_report", "import_result"]
-    source_name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=3, max_length=200)]
-    source_version: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
+    source_name: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=3, max_length=200)
+    ]
+    source_version: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)
+    ]
     content: EvidenceText
     note: Reason
 

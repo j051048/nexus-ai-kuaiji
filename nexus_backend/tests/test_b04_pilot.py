@@ -455,10 +455,37 @@ def test_periodic_accrual_asset_closing_reports_and_close(business):
         admin(case), run["close"]["id"], CloseCommand(expected_version=1, reason="内部锁期")
     )
     assert run["close"]["status"] == "locked"
+    # Simulate a crash after the report publish committed but before the close
+    # run moved from locked to published.
+    reports.publish(
+        admin(case),
+        report["report"]["id"],
+        ReportCommand(expected_version=1, reason="模拟报表已发布后崩溃"),
+    )
+    assert close.get(admin(case), run["close"]["id"])["close"]["status"] == "locked"
     run = close.publish(
-        admin(case), run["close"]["id"], CloseCommand(expected_version=1, reason="发布月结")
+        admin(case), run["close"]["id"], CloseCommand(expected_version=1, reason="恢复发布月结")
     )
     assert run["close"]["status"] == "published"
+    retried = close.publish(
+        admin(case), run["close"]["id"], CloseCommand(expected_version=1, reason="响应丢失后重试")
+    )
+    assert retried["close"]["status"] == "published"
+    with case.db.transaction(actor=admin(case)) as conn:
+        assert (
+            conn.execute(
+                "SELECT COUNT(*) FROM audit_events WHERE action='close.publish' AND object_id=?",
+                (run["close"]["id"],),
+            ).fetchone()[0]
+            == 1
+        )
+        assert (
+            conn.execute(
+                "SELECT COUNT(*) FROM report_runs WHERE id=? AND status='published'",
+                (run["close"]["report_run_id"],),
+            ).fetchone()[0]
+            == 1
+        )
 
     # DCP03：客户简报只认已发布冻结报表，金额、版本与锁期必须同源。
     from app.accounting.service import AccountingService

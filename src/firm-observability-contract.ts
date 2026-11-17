@@ -43,9 +43,13 @@ export function readFirmSnapshot(value: unknown, firm: string | null, period: st
     !['total', 'dirty', 'never_built', 'failing'].every((k) =>
       count(value.projection && (value.projection as Record<string, unknown>)[k]),
     ) ||
-    !['materials_pending', 'drafts_pending', 'source_rejections', 'notification_unknown', 'oldest_queue_age_seconds'].every(
-      (k) => count(value.operations && (value.operations as Record<string, unknown>)[k]),
-    ) ||
+    ![
+      'materials_pending',
+      'drafts_pending',
+      'source_rejections',
+      'notification_unknown',
+      'oldest_queue_age_seconds',
+    ].every((k) => count(value.operations && (value.operations as Record<string, unknown>)[k])) ||
     !Object.values(value.alerts).every((v) => object(v) && count(v.open) && count(v.critical)) ||
     value.signals.some(
       (s) =>

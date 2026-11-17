@@ -3,7 +3,6 @@
 No matching by account names, no new posting, and no inferred period lock.
 """
 
-import json
 from uuid import uuid4
 from ..accounting.domain import AccountingError
 from ..accounting.service import now

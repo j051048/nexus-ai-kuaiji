@@ -29,7 +29,7 @@ test('批量开期为既有客户创建当月账套、逐户报告并保持幂�
   await page.getByLabel('客户进度月份').fill('2026-11');
   await page.getByLabel('搜索月度客户').fill(`批量开期`);
   await page.getByRole('button', { name: '查找', exact: true }).click();
-  await expect(page.getByText(`批量开期甲${tag}`)).toBeVisible();
+  await expect(page.getByRole('heading', { name: `批量开期甲${tag}`, exact: true })).toBeVisible();
 
   await page.getByRole('button', { name: '批量开期', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: '月初批量开期', exact: true });

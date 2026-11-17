@@ -16,7 +16,7 @@ from __future__ import annotations
 import json
 import hashlib
 import os
-from datetime import date, datetime
+from datetime import date
 from typing import Any, Protocol
 from uuid import uuid4
 

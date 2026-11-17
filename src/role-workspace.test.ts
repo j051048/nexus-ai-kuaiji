@@ -76,7 +76,8 @@ describe('同一展示身份贯通首页和客户门户', () => {
       }),
     );
     expect(html).toContain(`<h1>${roleHome(role).name}</h1>`);
-    expect(html).toContain(`<strong>${roleHome(role).name}</strong>`);
+    expect(html).toContain(`<span class="sr-only">${roleHome(role).name}</span>`);
+    expect(html).toContain('岗位与权限');
   });
 
   it.each([

@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends, Request
 
-from .review_policy import ReviewPolicyService
+from .review_policy import FirmReviewControlService, ReviewPolicyService
 from .review_policy_models import (
+    FirmReviewControlWrite,
     ReviewPolicyChange,
     PreparationClaim,
     ManualReviewApproval,
@@ -21,6 +22,9 @@ def build_review_policy_router(actor_dependency):
     def manual(service=Depends(policy)):
         return ManualReviewService(service.db)
 
+    def firm_control(service=Depends(policy)):
+        return FirmReviewControlService(service.db)
+
     @router.get("/books/{book_id}/review-policy")
     def get_policy(book_id: str, actor=Depends(actor_dependency), service=Depends(policy)):
         return service.get(actor, book_id)
@@ -33,6 +37,22 @@ def build_review_policy_router(actor_dependency):
         service=Depends(policy),
     ):
         return service.configure(actor, book_id, payload)
+
+    @router.get("/firm/review-control")
+    def get_firm_control(actor=Depends(actor_dependency), service=Depends(firm_control)):
+        return service.get(actor)
+
+    @router.put("/firm/review-control")
+    def set_firm_control(
+        payload: FirmReviewControlWrite,
+        request: Request,
+        actor=Depends(actor_dependency),
+        service=Depends(firm_control),
+    ):
+        identity = getattr(request.state, "identity", None)
+        return service.configure(
+            actor, payload, mfa_verified=bool(identity is not None and identity.aal == "aal2")
+        )
 
     @router.post("/books/{book_id}/drafts/{draft_id}/claim-preparation")
     def claim(

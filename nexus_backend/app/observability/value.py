@@ -116,7 +116,9 @@ class ValueBaselineService:
             },
             "cost": {
                 "ai_model_cost_micro": cost,
-                "ai_cost_per_approved_micro": round(cost / approved) if approved and cost_unknown_count == 0 else None,
+                "ai_cost_per_approved_micro": round(cost / approved)
+                if approved and cost_unknown_count == 0
+                else None,
                 "cost_unknown_count": cost_unknown_count,
                 "scope": "ai_model_only",
                 "note": "仅为 AI 模型费用，不含人工、基础设施和客户费用。",

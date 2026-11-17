@@ -5,13 +5,12 @@ accounts to versioned statement lines and returns the posted voucher lines
 that contributed to each line, without rewriting or re-posting anything.
 """
 
-import json
 from uuid import uuid4
 
 from pydantic import Field, StrictStr, field_validator
 
 from ..accounting.domain import AccountingError
-from ..accounting.invariants import cents_to_money, validate_period
+from ..accounting.invariants import validate_period
 from ..accounting.models import InputModel
 from ..accounting.service import AccountingService, now
 from ..reports.service import ReportService
@@ -80,8 +79,12 @@ class ProfitDrilldownService:
             return rows
         return [
             {
-                "line_code": code, "line_name": name, "line_kind": kind,
-                "account_prefix": prefix, "sign": 1, "version": 1,
+                "line_code": code,
+                "line_name": name,
+                "line_kind": kind,
+                "account_prefix": prefix,
+                "sign": 1,
+                "version": 1,
             }
             for code, name, kind, prefixes in DEFAULTS
             for prefix in prefixes
@@ -101,7 +104,10 @@ class ProfitDrilldownService:
                 "template_version": ReportService.TEMPLATE_VERSION,
                 "version": int(rows[0]["version"]) if rows else 1,
                 "items": [
-                    {key: row[key] for key in ("line_code", "line_name", "line_kind", "account_prefix", "sign")}
+                    {
+                        key: row[key]
+                        for key in ("line_code", "line_name", "line_kind", "account_prefix", "sign")
+                    }
                     for row in rows
                 ],
             }
@@ -134,10 +140,18 @@ class ProfitDrilldownService:
                     "line_code,line_name,line_kind,account_prefix,sign,active,created_by,created_at) "
                     "VALUES(?,?,?,?,?,?,?,?,?,?,TRUE,?,?)",
                     (
-                        uuid4().hex, actor.firm_id, ReportService.TEMPLATE_ID,
-                        ReportService.TEMPLATE_VERSION, version, item.line_code.strip(),
-                        item.line_name.strip(), item.line_kind, item.account_prefix.strip(),
-                        item.sign, actor.user_id, stamp,
+                        uuid4().hex,
+                        actor.firm_id,
+                        ReportService.TEMPLATE_ID,
+                        ReportService.TEMPLATE_VERSION,
+                        version,
+                        item.line_code.strip(),
+                        item.line_name.strip(),
+                        item.line_kind,
+                        item.account_prefix.strip(),
+                        item.sign,
+                        actor.user_id,
+                        stamp,
                     ),
                 )
         return self.mapping(actor, book_id)
@@ -211,8 +225,10 @@ class ProfitDrilldownService:
                 groups.setdefault(
                     mapping["line_code"],
                     {
-                        "line_code": mapping["line_code"], "line_name": mapping["line_name"],
-                        "line_kind": mapping["line_kind"], "amount_cents": 0,
+                        "line_code": mapping["line_code"],
+                        "line_name": mapping["line_name"],
+                        "line_kind": mapping["line_kind"],
+                        "amount_cents": 0,
                         "ytd_cents": int(ytd.get(mapping["line_code"], 0)),
                         "items_count": 0,
                     },
@@ -235,47 +251,69 @@ class ProfitDrilldownService:
                 group["items_count"] += 1
                 item = {
                     "line_code": mapping["line_code"],
-                    "voucher_id": row["voucher_id"], "voucher_no": int(row["voucher_no"]),
-                    "voucher_date": row["voucher_date"], "description": row["description"],
-                    "line_no": int(row["line_no"]), "account_code": row["account_code"],
-                    "account_name": row["account_name"], "debit_cents": int(row["debit_cents"]),
-                    "credit_cents": int(row["credit_cents"]), "net_cents": amount,
-                    "source_ref": row["source_ref"], "evidence_ref": row["evidence_ref"],
+                    "voucher_id": row["voucher_id"],
+                    "voucher_no": int(row["voucher_no"]),
+                    "voucher_date": row["voucher_date"],
+                    "description": row["description"],
+                    "line_no": int(row["line_no"]),
+                    "account_code": row["account_code"],
+                    "account_name": row["account_name"],
+                    "debit_cents": int(row["debit_cents"]),
+                    "credit_cents": int(row["credit_cents"]),
+                    "net_cents": amount,
+                    "source_ref": row["source_ref"],
+                    "evidence_ref": row["evidence_ref"],
                 }
                 if not line_code or line_code == mapping["line_code"]:
                     details.append(item)
-                by_voucher.setdefault((row["voucher_id"], mapping["line_code"]), set()).add(row["line_no"])
+                by_voucher.setdefault((row["voucher_id"], mapping["line_code"]), set()).add(
+                    row["line_no"]
+                )
             lines = sorted(groups.values(), key=lambda item: item["line_code"])
             revenue = sum(x["amount_cents"] for x in lines if x["line_kind"] == "revenue")
-            cost = sum(x["amount_cents"] for x in lines if x["line_kind"] in {"cost", "tax", "selling", "admin", "finance"})
+            cost = sum(
+                x["amount_cents"]
+                for x in lines
+                if x["line_kind"] in {"cost", "tax", "selling", "admin", "finance"}
+            )
             nonoperating = sum(x["amount_cents"] for x in lines if x["line_kind"] == "nonoperating")
-            income_tax_rows = [x for x in lines if x["line_kind"] == "income_tax" and x["items_count"] > 0]
-            income_tax = sum(x["amount_cents"] for x in income_tax_rows) if income_tax_rows else None
+            income_tax_rows = [
+                x for x in lines if x["line_kind"] == "income_tax" and x["items_count"] > 0
+            ]
+            income_tax = (
+                sum(x["amount_cents"] for x in income_tax_rows) if income_tax_rows else None
+            )
             profit = revenue - cost + nonoperating
             net_profit = None if income_tax is None else profit - income_tax
             year_complete = period.endswith("-12")
             return {
-                "book_id": book_id, "period": period,
-                "template_id": ReportService.TEMPLATE_ID, "template_version": ReportService.TEMPLATE_VERSION,
+                "book_id": book_id,
+                "period": period,
+                "template_id": ReportService.TEMPLATE_ID,
+                "template_version": ReportService.TEMPLATE_VERSION,
                 "mapping_version": int(mappings[0]["version"]),
                 "lines": lines,
                 "selected_line": line_code,
-                "items": [
-                    item for item in details
-                    if not line_code or item["net_cents"] != 0
-                ][:1000],
+                "items": [item for item in details if not line_code or item["net_cents"] != 0][
+                    :1000
+                ],
                 "totals": {
-                    "revenue_cents": revenue, "cost_and_expense_cents": cost,
+                    "revenue_cents": revenue,
+                    "cost_and_expense_cents": cost,
                     "operating_profit_cents": profit,
                     "nonoperating_cents": nonoperating,
                     "income_tax_cents": income_tax,
                     "net_profit_cents": net_profit,
                     "year_to_date_known": year_complete,
-                    "year_to_date_reason": "" if year_complete else "年度未结束，年累计仅显示已发生月份，不补零",
+                    "year_to_date_reason": ""
+                    if year_complete
+                    else "年度未结束，年累计仅显示已发生月份，不补零",
                 },
                 "checks": {
                     "unmapped_line_count": unmapped,
-                    "mixed_voucher_contributions": sum(1 for count in by_voucher.values() if len(count) > 1),
+                    "mixed_voucher_contributions": sum(
+                        1 for count in by_voucher.values() if len(count) > 1
+                    ),
                     "net_profit_known": income_tax is not None,
                 },
             }
@@ -292,7 +330,8 @@ class ProfitDrilldownService:
             current_book = self._book(conn, actor, book_id)
             baseline_book = self._book(conn, actor, baseline_book_id)
         if (current_book["company_id"], current_book["firm_id"]) != (
-            baseline_book["company_id"], baseline_book["firm_id"]
+            baseline_book["company_id"],
+            baseline_book["firm_id"],
         ):
             raise AccountingError("只能对比同一企业、同一事务所的账簿", 422)
         current_lines = {item["line_code"]: item for item in current["lines"]}

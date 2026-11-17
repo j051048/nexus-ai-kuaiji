@@ -12,7 +12,7 @@ from pydantic import Field, StrictStr, field_validator, model_validator
 from app.accounting.access import AccessControl
 from app.accounting.catalog import CatalogService
 from app.accounting.domain import AccountingError
-from app.accounting.models import InputModel, cents_to_money, money_to_cents
+from app.accounting.models import InputModel, cents_to_money
 from app.accounting.queries import page_bounds
 from app.accounting.service import fingerprint, now
 from app.learning.models import RuleDefinition

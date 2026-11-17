@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from pydantic import Field, StringConstraints
+from pydantic import StringConstraints
 
 from ..accounting.models import InputModel
 

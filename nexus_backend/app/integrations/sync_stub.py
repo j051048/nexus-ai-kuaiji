@@ -5,6 +5,7 @@ contract that a real connector must satisfy: signed timestamped payloads,
 monotonic cursors, idempotent delivery, late/duplicate isolation, and explicit
 unknown/correction handling.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -12,7 +13,6 @@ import hmac
 import json
 import os
 import time
-from decimal import Decimal
 from uuid import uuid4
 
 from pydantic import Field, StrictInt, StrictStr, field_validator
@@ -72,7 +72,9 @@ class SyncStubService:
         now = int(time.time())
         if abs(now - int(request.timestamp)) > MAX_SKEW_SECONDS:
             raise AccountingError("同步事件时间戳超出允许窗口", 409)
-        expected = _signature(secret, request.timestamp, request.external_id, request.version, digest)
+        expected = _signature(
+            secret, request.timestamp, request.external_id, request.version, digest
+        )
         if not hmac.compare_digest(expected, request.signature):
             raise AccountingError("同步事件签名无效", 403)
         with self.db.transaction(write=True, actor=actor) as conn:
@@ -83,7 +85,10 @@ class SyncStubService:
                 (actor.firm_id, request.source_id, request.external_id),
             ).fetchone()
             if current and int(current["version"]) == request.version:
-                if current["payload_sha256"] != digest or current["event_type"] != request.event_type:
+                if (
+                    current["payload_sha256"] != digest
+                    or current["event_type"] != request.event_type
+                ):
                     raise AccountingError("同一同步事件版本不能改变内容", 409)
                 return self._view(current, duplicate=True)
             if current and int(current["version"]) > request.version:

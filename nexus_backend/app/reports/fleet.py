@@ -4,6 +4,7 @@ Revenue is limited to reviewed fee and recognized lease plans. Costs are limited
 to reviewed repair/insurance/OA batches. Shared costs without a vehicle stay in
 ``unallocated_cost_cents`` and are never silently spread over vehicles.
 """
+
 from __future__ import annotations
 
 import json
@@ -123,22 +124,31 @@ class FleetMetricsService:
                 raise AccountingError("车辆收入合计与来源合计不一致", 500)
             lines = []
             for vehicle in sorted(vehicles.values(), key=lambda v: (v["name"], v["id"])):
-                lines.append({
-                    **{key: value for key, value in vehicle.items() if key != "cost_kind_cents"},
-                    "fee_batch_ids": sorted(vehicle["fee_batch_ids"]),
-                    "lease_contract_ids": sorted(vehicle["lease_contract_ids"]),
-                    "cost_batch_ids": sorted(vehicle["cost_batch_ids"]),
-                    "cost_source_ids": sorted(vehicle["cost_source_ids"]),
-                    "revenue": _money(vehicle["revenue_cents"]),
-                    "assigned_cost": _money(vehicle["assigned_cost_cents"]),
-                    "repair_cost_cents": vehicle["cost_kind_cents"]["repair"],
-                    "insurance_cost_cents": vehicle["cost_kind_cents"]["insurance"],
-                    "oa_cost_cents": vehicle["cost_kind_cents"]["oa"],
-                    "contribution_cents": vehicle["revenue_cents"] - vehicle["assigned_cost_cents"],
-                    "contribution": _money(vehicle["revenue_cents"] - vehicle["assigned_cost_cents"]),
-                })
+                lines.append(
+                    {
+                        **{
+                            key: value for key, value in vehicle.items() if key != "cost_kind_cents"
+                        },
+                        "fee_batch_ids": sorted(vehicle["fee_batch_ids"]),
+                        "lease_contract_ids": sorted(vehicle["lease_contract_ids"]),
+                        "cost_batch_ids": sorted(vehicle["cost_batch_ids"]),
+                        "cost_source_ids": sorted(vehicle["cost_source_ids"]),
+                        "revenue": _money(vehicle["revenue_cents"]),
+                        "assigned_cost": _money(vehicle["assigned_cost_cents"]),
+                        "repair_cost_cents": vehicle["cost_kind_cents"]["repair"],
+                        "insurance_cost_cents": vehicle["cost_kind_cents"]["insurance"],
+                        "oa_cost_cents": vehicle["cost_kind_cents"]["oa"],
+                        "contribution_cents": vehicle["revenue_cents"]
+                        - vehicle["assigned_cost_cents"],
+                        "contribution": _money(
+                            vehicle["revenue_cents"] - vehicle["assigned_cost_cents"]
+                        ),
+                    }
+                )
             today = datetime.now(timezone.utc)
-            aging = defaultdict(lambda: {"zero_30": 0, "days_31_60": 0, "days_61_90": 0, "over_90": 0})
+            aging = defaultdict(
+                lambda: {"zero_30": 0, "days_31_60": 0, "days_61_90": 0, "over_90": 0}
+            )
             driver_rows = conn.execute(
                 "SELECT s.id AS driver_id,s.external_id,s.display_name,"
                 "i.id AS item_id,i.counterparty_id,i.amount_cents,i.created_at "
@@ -189,7 +199,15 @@ class FleetMetricsService:
                 driver["outstanding_cents"] = int(driver["outstanding_cents"] or 0) + outstanding
                 driver["aging_known"] = True
                 days = _age_days(row["created_at"], today)
-                bucket = "over_90" if days is None or days > 90 else "days_61_90" if days > 60 else "days_31_60" if days > 30 else "zero_30"
+                bucket = (
+                    "over_90"
+                    if days is None or days > 90
+                    else "days_61_90"
+                    if days > 60
+                    else "days_31_60"
+                    if days > 30
+                    else "zero_30"
+                )
                 aging[driver_id][bucket] += outstanding
             for driver_id, driver in drivers.items():
                 driver["fee_batch_ids"] = sorted(fee_batch_ids[driver_id])
@@ -198,7 +216,9 @@ class FleetMetricsService:
                 driver["aging"] = dict(aging[driver_id])
                 if driver["billed_cents"] > 0:
                     driver["collection_progress"] = round(
-                        (driver["billed_cents"] - int(driver["outstanding_cents"])) / driver["billed_cents"], 4
+                        (driver["billed_cents"] - int(driver["outstanding_cents"]))
+                        / driver["billed_cents"],
+                        4,
                     )
             total_driver_billed = sum(d["billed_cents"] for d in drivers.values())
             total_outstanding = sum(int(d["outstanding_cents"] or 0) for d in drivers.values())
@@ -222,6 +242,8 @@ class FleetMetricsService:
                     "revenue_matches_sources": total_revenue == total_fee + total_lease,
                     "assigned_cost_not_negative": total_cost >= 0,
                     "unallocated_cost_cents": unallocated,
-                    "aging_known_driver_count": sum(1 for d in drivers.values() if d["aging_known"]),
+                    "aging_known_driver_count": sum(
+                        1 for d in drivers.values() if d["aging_known"]
+                    ),
                 },
             }

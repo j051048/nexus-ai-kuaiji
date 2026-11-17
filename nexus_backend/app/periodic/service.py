@@ -5,10 +5,11 @@ import json
 from uuid import uuid4
 
 from ..accounting.domain import AccountingError
-from ..accounting.invariants import cents_to_money, money_to_cents, validate_period
+from ..accounting.invariants import cents_to_money, money_to_cents
 from ..accounting.service import AccountingService, now
 from ..posting.models import ManualLine, ManualVoucher
 from ..posting.service import PostingService
+from .authority import ClosingAuthorityService
 from .models import (
     AccrualRule,
     ClosingGenerate,
@@ -208,7 +209,7 @@ class PeriodicService:
                     line["account_version"],
                     line["debit_cents"],
                     line["credit_cents"],
-                    json.dumps(line.get("aux", {}), ensure_ascii=False),
+                    json.dumps(line.get("aux", {}), ensure_ascii=False, sort_keys=True),
                     line.get("source_ref", ""),
                 ),
             )
@@ -313,6 +314,21 @@ class PeriodicService:
             ):
                 self.accounting.access.book(conn, actor, period["book_id"], "read")
 
+    @staticmethod
+    def _asset_vehicle_input(conn, asset_id):
+        link = conn.execute(
+            "SELECT * FROM periodic_asset_vehicle_links WHERE asset_id=? AND status='active' "
+            "ORDER BY linked_at DESC LIMIT 1",
+            (asset_id,),
+        ).fetchone()
+        if not link:
+            return None
+        return {
+            "external_id": link["vehicle_external_id"],
+            "source_version": int(link["source_version"]),
+            "source_fingerprint": link["source_fingerprint"],
+        }
+
     def generate_asset(self, actor, asset_id, book_id=None):
         with self.db.transaction(write=True, actor=actor) as conn:
             asset = conn.execute("SELECT * FROM periodic_assets WHERE id=?", (asset_id,)).fetchone()
@@ -340,18 +356,39 @@ class PeriodicService:
                 raise AccountingError("本期无可计提金额", 409)
             if amount > depreciable - prior_posted:
                 amount = depreciable - prior_posted
+            link = conn.execute(
+                "SELECT * FROM periodic_asset_vehicle_links WHERE asset_id=? AND status='active' "
+                "ORDER BY linked_at DESC LIMIT 1",
+                (asset_id,),
+            ).fetchone()
+            aux = {"asset_id": asset_id}
+            if link:
+                aux.update(
+                    {
+                        "vehicle_external_id": link["vehicle_external_id"],
+                        "vehicle_source_version": int(link["source_version"]),
+                        "vehicle_source_fingerprint": link["source_fingerprint"],
+                    }
+                )
+            source_ref = f"asset:{asset_id}"
+            if link:
+                source_ref += f";vehicle:{link['vehicle_external_id']}@v{int(link['source_version'])}"
             lines = [
                 {
                     "account_id": asset["expense_account_id"],
                     "account_version": asset["expense_account_version"],
                     "debit_cents": amount,
                     "credit_cents": 0,
+                    "aux": aux,
+                    "source_ref": source_ref,
                 },
                 {
                     "account_id": asset["accum_account_id"],
                     "account_version": asset["accum_account_version"],
                     "debit_cents": 0,
                     "credit_cents": amount,
+                    "aux": aux,
+                    "source_ref": source_ref,
                 },
             ]
             return self._insert_draft(
@@ -363,7 +400,13 @@ class PeriodicService:
                 asset_id=asset_id,
                 description=("折旧：" if asset["kind"] == "fixed" else "摊销：") + asset["name"],
                 lines=lines,
-                fingerprint=_fingerprint({"asset": dict(asset), "period": book["period"]}),
+                fingerprint=_fingerprint(
+                    {
+                        "asset": dict(asset),
+                        "period": book["period"],
+                        "vehicle": self._asset_vehicle_input(conn, asset_id),
+                    }
+                ),
             )
 
     def _pl_balances_without_closing(self, conn, book, ledger_id):
@@ -414,7 +457,12 @@ class PeriodicService:
             key = (row["account_id"], aux_json)
             entry = balances.setdefault(
                 key,
-                {"account_id": row["account_id"], "aux": aux_dict(row["aux_json"]), "categories": set(), "balance": 0},
+                {
+                    "account_id": row["account_id"],
+                    "aux": aux_dict(row["aux_json"]),
+                    "categories": set(),
+                    "balance": 0,
+                },
             )
             entry["categories"].add(row["category"] or "")
             entry["balance"] += int(row["debit"]) - int(row["credit"])
@@ -423,7 +471,12 @@ class PeriodicService:
             key = (row["account_id"], aux_json)
             entry = balances.setdefault(
                 key,
-                {"account_id": row["account_id"], "aux": aux_dict(row["aux_json"]), "categories": set(), "balance": 0},
+                {
+                    "account_id": row["account_id"],
+                    "aux": aux_dict(row["aux_json"]),
+                    "categories": set(),
+                    "balance": 0,
+                },
             )
             entry["categories"].add(row["category"] or "")
             entry["balance"] += int(row["amount"])
@@ -442,17 +495,31 @@ class PeriodicService:
                     "balance": entry["balance"],
                 }
             )
-        result.sort(key=lambda value: (value["account_id"], json.dumps(value["aux"], ensure_ascii=False, sort_keys=True)))
+        result.sort(
+            key=lambda value: (
+                value["account_id"],
+                json.dumps(value["aux"], ensure_ascii=False, sort_keys=True),
+            )
+        )
         return result
 
     @staticmethod
-    def _closing_fingerprint(balances):
-        return _fingerprint({"balances": balances})
+    def _closing_fingerprint(balances, authority=None):
+        payload = {"balances": balances}
+        if authority is not None:
+            payload["authority"] = {
+                "confirmed": bool(authority["confirmed"]),
+                "mode": authority["mode"],
+                "profile_id": authority["profile_id"],
+                "profile_fingerprint": authority["profile_fingerprint"],
+            }
+        return _fingerprint(payload)
 
     def _validate_closing_source(self, conn, book, ledger_id, run):
         balances = self._pl_balances_without_closing(conn, book, ledger_id)
-        if run["input_fingerprint"] != self._closing_fingerprint(balances):
-            raise AccountingError("源损益余额已变化，请重新生成结转草稿", 409)
+        authority = ClosingAuthorityService._authority(conn, book["company_id"])
+        if run["input_fingerprint"] != self._closing_fingerprint(balances, authority):
+            raise AccountingError("源损益余额或结转权威模式已变化，请重新生成结转草稿", 409)
 
     def generate_closing(self, actor, request: ClosingGenerate):
         with self.db.transaction(write=True, actor=actor) as conn:
@@ -468,9 +535,15 @@ class PeriodicService:
             )
             if profit["category"] != "equity":
                 raise AccountingError("本年利润目标必须是权益类科目", 422)
+            authority = ClosingAuthorityService._authority(conn, book["company_id"])
+            if authority["confirmed"] and authority["mode"] in ("tplus_voucher", "hybrid"):
+                raise AccountingError(
+                    "客户结转权威模式不是内部账簿，不能生成内部结转凭证；请导入外部结转证据",
+                    409,
+                )
             key = f"closing:{book['id']}:{book['period']}"
             balances = self._pl_balances_without_closing(conn, book, ledger_id)
-            source_fingerprint = self._closing_fingerprint(balances)
+            source_fingerprint = self._closing_fingerprint(balances, authority)
             prior = self._run(conn, book["id"], key)
             if prior:
                 if prior["status"] != "posted" and prior["input_fingerprint"] != source_fingerprint:
@@ -607,7 +680,11 @@ class PeriodicService:
             raise AccountingError("资产来源已失效，请核对原记录", 409)
         self._asset_context(conn, actor, asset, draft["book_id"])
         if run["input_fingerprint"] != _fingerprint(
-            {"asset": dict(asset), "period": draft["period"]}
+            {
+                "asset": dict(asset),
+                "period": draft["period"],
+                "vehicle": self._asset_vehicle_input(conn, asset["id"]),
+            }
         ):
             raise AccountingError("资产来源已变化，请核对原记录", 409)
         depreciable = int(asset["cost_cents"]) - int(asset["residual_cents"])
@@ -632,7 +709,9 @@ class PeriodicService:
             if draft["status"] != "draft":
                 raise AccountingError("只有草稿状态可以复核", 409)
             if draft["kind"] == "closing":
-                run = conn.execute("SELECT * FROM periodic_runs WHERE id=?", (draft["run_id"],)).fetchone()
+                run = conn.execute(
+                    "SELECT * FROM periodic_runs WHERE id=?", (draft["run_id"],)
+                ).fetchone()
                 self._validate_closing_source(conn, book, ledger_id, run)
             if int(draft["version"]) != request.expected_version:
                 raise AccountingError("期末草稿版本已变化", 409)
@@ -671,7 +750,9 @@ class PeriodicService:
             if int(draft["version"]) != request.expected_version:
                 raise AccountingError("期末草稿版本已变化", 409)
             if draft["kind"] == "closing":
-                run = conn.execute("SELECT * FROM periodic_runs WHERE id=?", (draft["run_id"],)).fetchone()
+                run = conn.execute(
+                    "SELECT * FROM periodic_runs WHERE id=?", (draft["run_id"],)
+                ).fetchone()
                 self._validate_closing_source(conn, book, ledger_id, run)
             self._validate_asset_draft(conn, actor, draft)
             lines = conn.execute(

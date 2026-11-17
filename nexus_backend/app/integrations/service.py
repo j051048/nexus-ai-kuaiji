@@ -755,11 +755,15 @@ class FinancialBridgeService:
                 (item["draft_id"], book_id),
             ).fetchone()
             if source:
-                lines = conn.execute("SELECT * FROM draft_lines WHERE draft_id=? AND book_id=? ORDER BY ordinal",
-                                     (item["draft_id"], book_id)).fetchall()
+                lines = conn.execute(
+                    "SELECT * FROM draft_lines WHERE draft_id=? AND book_id=? ORDER BY ordinal",
+                    (item["draft_id"], book_id),
+                ).fetchall()
                 _, issues = fee_context(conn, source, lines)
                 if issues:
-                    raise AccountingError("规费来源已失效，旧适配文件仅保留历史证据，请重新核定", 409)
+                    raise AccountingError(
+                        "规费来源已失效，旧适配文件仅保留历史证据，请重新核定", 409
+                    )
         return package
 
     @staticmethod
@@ -967,7 +971,11 @@ class FinancialBridgeService:
                     "SELECT * FROM bridge_export_receipts WHERE artifact_id=? AND (receipt_code=? OR content_sha256=?)",
                     (artifact_id, request.receipt_code, digest),
                 ).fetchone()
-                if prior is None or prior["receipt_code"] != request.receipt_code or prior["content_sha256"] != digest:
+                if (
+                    prior is None
+                    or prior["receipt_code"] != request.receipt_code
+                    or prior["content_sha256"] != digest
+                ):
                     raise AccountingError("回执写入冲突，请重新核对", 409)
                 return self._receipt_view(conn, prior)
             for row in rows:

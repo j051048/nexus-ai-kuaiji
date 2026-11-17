@@ -6,7 +6,7 @@ This is an offline calculation contract only. It does not file, pay or post.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Literal
 
 TaxpayerType = Literal["small_scale", "general"]
@@ -66,14 +66,16 @@ def estimate_vat(
         output_vat = _money(output_vat, "output_vat_invalid")
         input_vat = _money(input_vat, "input_vat_invalid")
         vat = output_vat - input_vat
-    vat = vat.quantize(Decimal("0.01"))
-    surtax = (max(vat, Decimal("0")) * profile.surtax_rate).quantize(Decimal("0.01"))
+    vat = vat.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    surtax = (max(vat, Decimal("0")) * profile.surtax_rate).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
     return {
         "taxpayer_type": profile.taxpayer_type,
-        "sales": sales.quantize(Decimal("0.01")),
-        "purchases": purchases.quantize(Decimal("0.01")),
+        "sales": sales.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
+        "purchases": purchases.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
         "vat": vat,
         "surtax": surtax,
-        "total": (vat + surtax).quantize(Decimal("0.01")),
+        "total": (vat + surtax).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
         "filing": "not_filed",
     }

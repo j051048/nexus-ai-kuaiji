@@ -13,13 +13,21 @@ from .context import tax_context
 from .pilot import PilotBoundaryService
 from .sources import TaxSourceAdapter
 from .fees import TaxFeeService
+from .packages import (
+    PackageConsume,
+    PackageContractDraft,
+    PackageRelease,
+    PackageVersion,
+    RepairPackageService,
+)
 from .costs import (
     TaxCostGenerate,
     TaxCostInvalidate,
-    TaxCostPolicyWrite,
     TaxCostReview,
     TaxCostService,
     TaxCostSourceWrite,
+    RepairRateDeactivate,
+    RepairRateDraft,
     RepairRateService,
     RepairRateWrite,
 )
@@ -29,7 +37,6 @@ from .leases import (
     LeaseConfirmation,
     LeaseCreate,
     LeaseInvoiceRed,
-    LeasePolicy,
     LeaseRecognition,
     LeaseRefund,
     LeaseService,
@@ -37,12 +44,15 @@ from .leases import (
 from .basis import TaxBasisGenerate, TaxBasisReview, TaxBasisService
 
 
-
-
 class TaxSourceRowWrite(BaseModel):
     model_config = ConfigDict(extra="forbid")
     status: Literal["adopted", "excluded", "needs_review"]
     reason: str = Field(default="", max_length=1000)
+
+
+class RepairRateVersion(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    expected_version: StrictInt = Field(ge=1)
 
 
 class LeaseTerminateWrite(BaseModel):
@@ -89,6 +99,28 @@ class TaxFeeReviewWrite(BaseModel):
 
 class TaxFeeInvalidateWrite(TaxFeeReviewWrite):
     pass
+
+
+class FeeAllocationWrite(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    bank_source_id: str = Field(min_length=1, max_length=100)
+    amount_cents: StrictInt = Field(gt=0)
+    idempotency_key: str = Field(min_length=1, max_length=100)
+    payer_name: str | None = Field(default=None, max_length=100)
+    collection_basis: str | None = Field(default=None, max_length=500)
+
+
+class FeeAllocationReverse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    reason: str = Field(min_length=3, max_length=200)
+
+
+class FeeRefundWrite(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    bank_source_id: str = Field(min_length=1, max_length=100)
+    amount_cents: StrictInt = Field(gt=0)
+    reason: str = Field(min_length=3, max_length=500)
+    idempotency_key: str = Field(min_length=1, max_length=100)
 
 
 class TaxContributionLine(BaseModel):
@@ -358,7 +390,6 @@ def build_tax_router(actor_dependency):
             },
         )
 
-
     def pilot_service(request: Request) -> PilotBoundaryService:
         return request.app.state.tax_pilot
 
@@ -374,6 +405,9 @@ def build_tax_router(actor_dependency):
     def rate_service(request: Request) -> RepairRateService:
         return request.app.state.repair_rates
 
+    def package_service(request: Request) -> RepairPackageService:
+        return request.app.state.repair_packages
+
     def lease_service(request: Request) -> LeaseService:
         return request.app.state.tax_leases
 
@@ -381,8 +415,12 @@ def build_tax_router(actor_dependency):
         return request.app.state.tax_basis
 
     @router.post("/books/{book_id}/leases", status_code=201)
-    def create_lease(book_id: str, payload: LeaseCreate, current=Depends(actor_dependency),
-                     leases=Depends(lease_service)):
+    def create_lease(
+        book_id: str,
+        payload: LeaseCreate,
+        current=Depends(actor_dependency),
+        leases=Depends(lease_service),
+    ):
         return leases.create(current, book_id, payload)
 
     @router.get("/books/{book_id}/leases")
@@ -390,63 +428,119 @@ def build_tax_router(actor_dependency):
         return leases.list(current, book_id)
 
     @router.get("/books/{book_id}/leases/{contract_id}")
-    def get_lease(book_id: str, contract_id: str, current=Depends(actor_dependency),
-                  leases=Depends(lease_service)):
+    def get_lease(
+        book_id: str,
+        contract_id: str,
+        current=Depends(actor_dependency),
+        leases=Depends(lease_service),
+    ):
         return leases.get(current, book_id, contract_id)
 
     @router.post("/books/{book_id}/leases/{contract_id}/confirm", status_code=201)
-    def confirm_lease(book_id: str, contract_id: str, payload: LeaseConfirmation,
-                      current=Depends(actor_dependency), leases=Depends(lease_service)):
+    def confirm_lease(
+        book_id: str,
+        contract_id: str,
+        payload: LeaseConfirmation,
+        current=Depends(actor_dependency),
+        leases=Depends(lease_service),
+    ):
         return leases.confirm(current, book_id, contract_id, payload)
 
     @router.post("/books/{book_id}/leases/{contract_id}/recognize", status_code=201)
-    def recognize_lease(book_id: str, contract_id: str, payload: LeaseRecognition,
-                        current=Depends(actor_dependency), leases=Depends(lease_service)):
+    def recognize_lease(
+        book_id: str,
+        contract_id: str,
+        payload: LeaseRecognition,
+        current=Depends(actor_dependency),
+        leases=Depends(lease_service),
+    ):
         return leases.recognize(current, book_id, contract_id, payload)
 
     @router.post("/books/{book_id}/leases/{contract_id}/approve")
-    def approve_lease(book_id: str, contract_id: str, payload: LeaseApprove,
-                      current=Depends(actor_dependency), leases=Depends(lease_service)):
+    def approve_lease(
+        book_id: str,
+        contract_id: str,
+        payload: LeaseApprove,
+        current=Depends(actor_dependency),
+        leases=Depends(lease_service),
+    ):
         return leases.approve(current, book_id, contract_id, payload.expected_version)
 
     @router.post("/books/{book_id}/leases/{contract_id}/invoice-reds", status_code=201)
-    def red_lease_invoice(book_id: str, contract_id: str, payload: LeaseInvoiceRed,
-                          current=Depends(actor_dependency), leases=Depends(lease_service)):
+    def red_lease_invoice(
+        book_id: str,
+        contract_id: str,
+        payload: LeaseInvoiceRed,
+        current=Depends(actor_dependency),
+        leases=Depends(lease_service),
+    ):
         return leases.red_invoice(current, book_id, contract_id, payload)
 
     @router.post("/books/{book_id}/leases/{contract_id}/refund", status_code=201)
-    def refund_lease(book_id: str, contract_id: str, payload: LeaseRefund,
-                     current=Depends(actor_dependency), leases=Depends(lease_service)):
+    def refund_lease(
+        book_id: str,
+        contract_id: str,
+        payload: LeaseRefund,
+        current=Depends(actor_dependency),
+        leases=Depends(lease_service),
+    ):
         return leases.refund(current, book_id, contract_id, payload)
 
     @router.post("/books/{book_id}/leases/{contract_id}/amend")
-    def amend_lease(book_id: str, contract_id: str, payload: LeaseAmend,
-                    current=Depends(actor_dependency), leases=Depends(lease_service)):
+    def amend_lease(
+        book_id: str,
+        contract_id: str,
+        payload: LeaseAmend,
+        current=Depends(actor_dependency),
+        leases=Depends(lease_service),
+    ):
         return leases.amend(current, book_id, contract_id, payload)
 
     @router.post("/books/{book_id}/leases/{contract_id}/terminate")
-    def terminate_lease(book_id: str, contract_id: str, payload: LeaseTerminateWrite,
-                        current=Depends(actor_dependency), leases=Depends(lease_service)):
+    def terminate_lease(
+        book_id: str,
+        contract_id: str,
+        payload: LeaseTerminateWrite,
+        current=Depends(actor_dependency),
+        leases=Depends(lease_service),
+    ):
         return leases.terminate(current, book_id, contract_id, payload.reason)
 
     @router.post("/books/{book_id}/tax-basis", status_code=201)
-    def generate_tax_basis(book_id: str, payload: TaxBasisGenerate, current=Depends(actor_dependency),
-                           basis=Depends(basis_service)):
+    def generate_tax_basis(
+        book_id: str,
+        payload: TaxBasisGenerate,
+        current=Depends(actor_dependency),
+        basis=Depends(basis_service),
+    ):
         return basis.generate(current, book_id, payload)
 
     @router.get("/books/{book_id}/tax-basis")
-    def list_tax_basis(book_id: str, period: str = Query(min_length=7, max_length=7),
-                       current=Depends(actor_dependency), basis=Depends(basis_service)):
+    def list_tax_basis(
+        book_id: str,
+        period: str = Query(min_length=7, max_length=7),
+        current=Depends(actor_dependency),
+        basis=Depends(basis_service),
+    ):
         return basis.list(current, book_id, period)
 
     @router.get("/books/{book_id}/tax-basis/{review_id}")
-    def get_tax_basis(book_id: str, review_id: str, current=Depends(actor_dependency),
-                      basis=Depends(basis_service)):
+    def get_tax_basis(
+        book_id: str,
+        review_id: str,
+        current=Depends(actor_dependency),
+        basis=Depends(basis_service),
+    ):
         return basis.get(current, book_id, review_id)
 
     @router.post("/books/{book_id}/tax-basis/{review_id}/review")
-    def review_tax_basis(book_id: str, review_id: str, payload: TaxBasisReview,
-                         current=Depends(actor_dependency), basis=Depends(basis_service)):
+    def review_tax_basis(
+        book_id: str,
+        review_id: str,
+        payload: TaxBasisReview,
+        current=Depends(actor_dependency),
+        basis=Depends(basis_service),
+    ):
         return basis.review(current, book_id, review_id, payload)
 
     @router.post("/books/{book_id}/sources", status_code=201)
@@ -460,6 +554,7 @@ def build_tax_router(actor_dependency):
             raw = base64.b64decode(payload.content_base64, validate=True)
         except Exception:
             from ..accounting.domain import AccountingError
+
             raise AccountingError("文件内容不是有效的 Base64", 422) from None
         return sources.import_source(
             current,
@@ -487,9 +582,15 @@ def build_tax_router(actor_dependency):
             try:
                 raw = base64.b64decode(item.content_base64, validate=True)
             except Exception:
-                failures.append({"status": "failed", "external_id": item.external_id,
-                                 "http_status": 422, "error": "文件内容不是有效的 Base64",
-                                 "retryable": True})
+                failures.append(
+                    {
+                        "status": "failed",
+                        "external_id": item.external_id,
+                        "http_status": 422,
+                        "error": "文件内容不是有效的 Base64",
+                        "retryable": True,
+                    }
+                )
                 continue
             entries.append({**item.model_dump(exclude={"content_base64"}), "data": raw})
         result = sources.import_batch(current, book_id, entries)
@@ -498,13 +599,32 @@ def build_tax_router(actor_dependency):
         return result
 
     @router.get("/books/{book_id}/sources/{source_id}/original")
-    def download_source_original(book_id: str, source_id: str,
-                                 current=Depends(actor_dependency), sources=Depends(source_service)):
+    def download_source_original(
+        book_id: str,
+        source_id: str,
+        current=Depends(actor_dependency),
+        sources=Depends(source_service),
+    ):
         filename, content = sources.download_original(current, book_id, source_id)
-        return Response(content, media_type="application/octet-stream", headers={
-            "Content-Disposition": "attachment; filename*=UTF-8''" + quote(filename, safe=""),
-            "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff",
-        })
+        return Response(
+            content,
+            media_type="application/octet-stream",
+            headers={
+                "Content-Disposition": "attachment; filename*=UTF-8''" + quote(filename, safe=""),
+                "Cache-Control": "no-store",
+                "X-Content-Type-Options": "nosniff",
+            },
+        )
+
+    @router.get("/books/{book_id}/sources/{source_id}/rows/{row_number}/receipt")
+    def source_row_receipt(
+        book_id: str,
+        source_id: str,
+        row_number: int,
+        current=Depends(actor_dependency),
+        sources=Depends(source_service),
+    ):
+        return sources.row_receipt(current, book_id, source_id, row_number)
 
     @router.patch("/books/{book_id}/sources/{source_id}/rows/{row_number}")
     def review_source_row(
@@ -515,8 +635,9 @@ def build_tax_router(actor_dependency):
         current=Depends(actor_dependency),
         sources=Depends(source_service),
     ):
-        return sources.review_row(current, book_id, source_id, row_number,
-                                  status=payload.status, reason=payload.reason)
+        return sources.review_row(
+            current, book_id, source_id, row_number, status=payload.status, reason=payload.reason
+        )
 
     @router.post("/books/{book_id}/sources/{source_id}/contributions", status_code=201)
     def record_source_contributions(
@@ -527,8 +648,11 @@ def build_tax_router(actor_dependency):
         sources=Depends(source_service),
     ):
         return sources.record_contributions(
-            current, book_id, source_id,
-            output_kind=payload.output_kind, output_id=payload.output_id,
+            current,
+            book_id,
+            source_id,
+            output_kind=payload.output_kind,
+            output_id=payload.output_id,
             output_version=payload.output_version,
             contributions=[item.model_dump() for item in payload.contributions],
         )
@@ -543,7 +667,11 @@ def build_tax_router(actor_dependency):
         sources=Depends(source_service),
     ):
         return sources.aggregate_contributions(
-            current, book_id, output_kind=output_kind, output_id=output_id, output_version=output_version,
+            current,
+            book_id,
+            output_kind=output_kind,
+            output_id=output_id,
+            output_version=output_version,
         )
 
     @router.get("/books/{book_id}/sources/contributions")
@@ -555,8 +683,13 @@ def build_tax_router(actor_dependency):
         current=Depends(actor_dependency),
         sources=Depends(source_service),
     ):
-        return sources.list_contributions(current, book_id, output_kind=output_kind, output_id=output_id,
-                                          output_version=output_version)
+        return sources.list_contributions(
+            current,
+            book_id,
+            output_kind=output_kind,
+            output_id=output_id,
+            output_version=output_version,
+        )
 
     @router.get("/books/{book_id}/sources")
     def list_sources(
@@ -573,86 +706,371 @@ def build_tax_router(actor_dependency):
         current=Depends(actor_dependency),
         fees=Depends(fee_service),
     ):
-        return fees.generate(current, book_id, period=payload.period,
-                            source_file_ids=payload.source_file_ids,
-                            policy=payload.policy.model_dump())
+        return fees.generate(
+            current,
+            book_id,
+            period=payload.period,
+            source_file_ids=payload.source_file_ids,
+            policy=payload.policy.model_dump(),
+        )
 
     @router.get("/books/{book_id}/fee-batches")
-    def list_fee_batches(book_id: str, current=Depends(actor_dependency), fees=Depends(fee_service)):
+    def list_fee_batches(
+        book_id: str, current=Depends(actor_dependency), fees=Depends(fee_service)
+    ):
         return fees.list_batches(current, book_id)
 
+    @router.get("/books/{book_id}/fee-receivables")
+    def list_fee_receivables(
+        book_id: str,
+        period: str | None = Query(default=None),
+        current=Depends(actor_dependency),
+        fees=Depends(fee_service),
+    ):
+        return fees.list_receivables(current, book_id, period)
+
+    @router.post("/books/{book_id}/fee-receivables/{receivable_id}/allocations")
+    def allocate_fee_receivable(
+        book_id: str,
+        receivable_id: str,
+        payload: FeeAllocationWrite,
+        current=Depends(actor_dependency),
+        fees=Depends(fee_service),
+    ):
+        return fees.allocate_receivable(
+            current,
+            book_id,
+            receivable_id,
+            bank_source_id=payload.bank_source_id,
+            amount_cents=payload.amount_cents,
+            idempotency_key=payload.idempotency_key,
+            payer_name=payload.payer_name,
+            collection_basis=payload.collection_basis,
+        )
+
+    @router.get("/books/{book_id}/fee-bank-sources")
+    def list_fee_bank_sources(
+        book_id: str,
+        period: str | None = Query(default=None),
+        direction: str = Query(default="income", pattern="^(income|expense)$"),
+        current=Depends(actor_dependency),
+        fees=Depends(fee_service),
+    ):
+        return fees.list_bank_sources(current, book_id, period, direction)
+
+    @router.post("/books/{book_id}/fee-receivables/{receivable_id}/refunds")
+    def refund_fee_receivable(
+        book_id: str,
+        receivable_id: str,
+        payload: FeeRefundWrite,
+        current=Depends(actor_dependency),
+        fees=Depends(fee_service),
+    ):
+        return fees.refund_receivable(
+            current,
+            book_id,
+            receivable_id,
+            bank_source_id=payload.bank_source_id,
+            amount_cents=payload.amount_cents,
+            reason=payload.reason,
+            idempotency_key=payload.idempotency_key,
+        )
+
+    @router.get("/books/{book_id}/fee-refunds")
+    def list_fee_refunds(
+        book_id: str,
+        period: str | None = Query(default=None),
+        current=Depends(actor_dependency),
+        fees=Depends(fee_service),
+    ):
+        return fees.list_refunds(current, book_id, period)
+
+    @router.post("/books/{book_id}/fee-allocations/{allocation_id}/reverse")
+    def reverse_fee_allocation(
+        book_id: str,
+        allocation_id: str,
+        payload: FeeAllocationReverse,
+        current=Depends(actor_dependency),
+        fees=Depends(fee_service),
+    ):
+        return fees.reverse_allocation(current, book_id, allocation_id, payload.reason)
+
+    @router.get("/books/{book_id}/fee-allocations")
+    def list_fee_allocations(
+        book_id: str,
+        period: str | None = Query(default=None),
+        current=Depends(actor_dependency),
+        fees=Depends(fee_service),
+    ):
+        return fees.list_allocations(current, book_id, period)
+
     @router.get("/books/{book_id}/fee-batches/{batch_id}")
-    def get_fee_batch(book_id: str, batch_id: str, current=Depends(actor_dependency), fees=Depends(fee_service)):
+    def get_fee_batch(
+        book_id: str, batch_id: str, current=Depends(actor_dependency), fees=Depends(fee_service)
+    ):
         return fees.get(current, book_id, batch_id)
 
     @router.post("/books/{book_id}/fee-batches/{batch_id}/review")
-    def review_fee_batch(book_id: str, batch_id: str, payload: TaxFeeReviewWrite,
-                         current=Depends(actor_dependency), fees=Depends(fee_service)):
-        return fees.review(current, book_id, batch_id, expected_version=payload.expected_version, reason=payload.reason)
+    def review_fee_batch(
+        book_id: str,
+        batch_id: str,
+        payload: TaxFeeReviewWrite,
+        current=Depends(actor_dependency),
+        fees=Depends(fee_service),
+    ):
+        return fees.review(
+            current,
+            book_id,
+            batch_id,
+            expected_version=payload.expected_version,
+            reason=payload.reason,
+        )
 
     @router.post("/books/{book_id}/fee-batches/{batch_id}/validate")
-    def validate_fee_batch(book_id: str, batch_id: str, current=Depends(actor_dependency), fees=Depends(fee_service)):
+    def validate_fee_batch(
+        book_id: str, batch_id: str, current=Depends(actor_dependency), fees=Depends(fee_service)
+    ):
         return fees.validate(current, book_id, batch_id)
 
     @router.post("/books/{book_id}/fee-batches/{batch_id}/invalidate")
-    def invalidate_fee_batch(book_id: str, batch_id: str, payload: TaxFeeInvalidateWrite,
-                             current=Depends(actor_dependency), fees=Depends(fee_service)):
-        return fees.invalidate(current, book_id, batch_id, expected_version=payload.expected_version, reason=payload.reason)
+    def invalidate_fee_batch(
+        book_id: str,
+        batch_id: str,
+        payload: TaxFeeInvalidateWrite,
+        current=Depends(actor_dependency),
+        fees=Depends(fee_service),
+    ):
+        return fees.invalidate(
+            current,
+            book_id,
+            batch_id,
+            expected_version=payload.expected_version,
+            reason=payload.reason,
+        )
+
+    @router.get("/books/{book_id}/repair-packages")
+    def list_repair_packages(
+        book_id: str, current=Depends(actor_dependency), packages=Depends(package_service)
+    ):
+        return packages.list_contracts(current, book_id)
+
+    @router.post("/books/{book_id}/repair-packages/drafts", status_code=201)
+    def create_repair_package(
+        book_id: str,
+        payload: PackageContractDraft,
+        current=Depends(actor_dependency),
+        packages=Depends(package_service),
+    ):
+        return packages.create_draft(current, book_id, payload)
+
+    @router.post("/books/{book_id}/repair-packages/{contract_id}/confirm")
+    def confirm_repair_package(
+        book_id: str,
+        contract_id: str,
+        payload: PackageVersion,
+        current=Depends(actor_dependency),
+        packages=Depends(package_service),
+    ):
+        return packages.confirm(current, book_id, contract_id, payload.expected_version)
+
+    @router.post("/books/{book_id}/repair-packages/{contract_id}/activate")
+    def activate_repair_package(
+        book_id: str,
+        contract_id: str,
+        payload: PackageVersion,
+        current=Depends(actor_dependency),
+        packages=Depends(package_service),
+    ):
+        return packages.activate(current, book_id, contract_id, payload.expected_version)
+
+    @router.post("/books/{book_id}/repair-packages/{contract_id}/consumptions", status_code=201)
+    def consume_repair_package(
+        book_id: str,
+        contract_id: str,
+        payload: PackageConsume,
+        current=Depends(actor_dependency),
+        packages=Depends(package_service),
+    ):
+        return packages.consume(current, book_id, contract_id, payload)
+
+    @router.post("/books/{book_id}/repair-packages/consumptions/{consume_id}/releases", status_code=201)
+    def release_repair_package(
+        book_id: str,
+        consume_id: str,
+        payload: PackageRelease,
+        current=Depends(actor_dependency),
+        packages=Depends(package_service),
+    ):
+        return packages.release(current, book_id, consume_id, payload)
+
+    @router.get("/books/{book_id}/repair-packages/{contract_id}/summary")
+    def repair_package_summary(
+        book_id: str,
+        contract_id: str,
+        current=Depends(actor_dependency),
+        packages=Depends(package_service),
+    ):
+        return packages.summary(current, book_id, contract_id)
 
     @router.post("/books/{book_id}/repair-rates", status_code=201)
-    def add_repair_rate(book_id: str, payload: RepairRateWrite,
-                        current=Depends(actor_dependency), rates=Depends(rate_service)):
+    def add_repair_rate(
+        book_id: str,
+        payload: RepairRateWrite,
+        current=Depends(actor_dependency),
+        rates=Depends(rate_service),
+    ):
         return rates.add(current, book_id, payload)
 
+    @router.post("/books/{book_id}/repair-rates/drafts", status_code=201)
+    def create_repair_rate_draft(
+        book_id: str,
+        payload: RepairRateDraft,
+        current=Depends(actor_dependency),
+        rates=Depends(rate_service),
+    ):
+        return rates.create_draft(current, book_id, payload)
+
+    @router.post("/books/{book_id}/repair-rates/{card_id}/confirm")
+    def confirm_repair_rate(
+        book_id: str,
+        card_id: str,
+        payload: RepairRateVersion,
+        current=Depends(actor_dependency),
+        rates=Depends(rate_service),
+    ):
+        return rates.confirm(current, book_id, card_id, payload.expected_version)
+
+    @router.post("/books/{book_id}/repair-rates/{card_id}/activate")
+    def activate_repair_rate(
+        book_id: str,
+        card_id: str,
+        payload: RepairRateVersion,
+        current=Depends(actor_dependency),
+        rates=Depends(rate_service),
+    ):
+        return rates.activate(current, book_id, card_id, payload.expected_version)
+
+    @router.post("/books/{book_id}/repair-rates/{card_id}/renew", status_code=201)
+    def renew_repair_rate(
+        book_id: str,
+        card_id: str,
+        payload: RepairRateDraft,
+        current=Depends(actor_dependency),
+        rates=Depends(rate_service),
+    ):
+        return rates.renew(current, book_id, card_id, payload)
+
+    @router.post("/books/{book_id}/repair-rates/{card_id}/deactivate")
+    def deactivate_repair_rate(
+        book_id: str,
+        card_id: str,
+        payload: RepairRateDeactivate,
+        current=Depends(actor_dependency),
+        rates=Depends(rate_service),
+    ):
+        return rates.deactivate(current, book_id, card_id, payload)
+
+    @router.get("/books/{book_id}/repair-rates/logical/{logical_id}/history")
+    def repair_rate_history(
+        book_id: str,
+        logical_id: str,
+        current=Depends(actor_dependency),
+        rates=Depends(rate_service),
+    ):
+        return rates.history(current, book_id, logical_id)
+
+    @router.get("/books/{book_id}/repair-rates/{card_id}/impact")
+    def repair_rate_impact(
+        book_id: str,
+        card_id: str,
+        current=Depends(actor_dependency),
+        rates=Depends(rate_service),
+    ):
+        return rates.impact(current, book_id, card_id)
+
     @router.get("/books/{book_id}/repair-rates")
-    def list_repair_rates(book_id: str, current=Depends(actor_dependency),
-                          rates=Depends(rate_service)):
+    def list_repair_rates(
+        book_id: str, current=Depends(actor_dependency), rates=Depends(rate_service)
+    ):
         return rates.list(current, book_id)
 
     @router.get("/books/{book_id}/repair-rates/resolve")
-    def resolve_repair_rate(book_id: str, vehicle_type: str, period: str,
-                            current=Depends(actor_dependency), rates=Depends(rate_service)):
+    def resolve_repair_rate(
+        book_id: str,
+        vehicle_type: str,
+        period: str,
+        current=Depends(actor_dependency),
+        rates=Depends(rate_service),
+    ):
         return rates.resolve(current, book_id, vehicle_type, period)
 
     @router.post("/books/{book_id}/cost-sources", status_code=201)
-    def add_cost_source(book_id: str, payload: TaxCostSourceWrite,
-                        current=Depends(actor_dependency), costs=Depends(cost_service)):
+    def add_cost_source(
+        book_id: str,
+        payload: TaxCostSourceWrite,
+        current=Depends(actor_dependency),
+        costs=Depends(cost_service),
+    ):
         return costs.add_source(current, book_id, payload)
 
     @router.get("/books/{book_id}/cost-sources")
-    def list_cost_sources(book_id: str, kind: Literal["repair", "insurance", "oa"] | None = None,
-                          period: str | None = None, current=Depends(actor_dependency),
-                          costs=Depends(cost_service)):
+    def list_cost_sources(
+        book_id: str,
+        kind: Literal["repair", "insurance", "oa"] | None = None,
+        period: str | None = None,
+        current=Depends(actor_dependency),
+        costs=Depends(cost_service),
+    ):
         return costs.list_sources(current, book_id, kind=kind, period=period)
 
     @router.post("/books/{book_id}/cost-batches", status_code=201)
-    def generate_cost_batch(book_id: str, payload: TaxCostGenerate,
-                            current=Depends(actor_dependency), costs=Depends(cost_service)):
+    def generate_cost_batch(
+        book_id: str,
+        payload: TaxCostGenerate,
+        current=Depends(actor_dependency),
+        costs=Depends(cost_service),
+    ):
         return costs.generate(current, book_id, payload)
 
     @router.get("/books/{book_id}/cost-batches")
-    def list_cost_batches(book_id: str, kind: Literal["repair", "insurance", "oa"] | None = None,
-                          current=Depends(actor_dependency), costs=Depends(cost_service)):
+    def list_cost_batches(
+        book_id: str,
+        kind: Literal["repair", "insurance", "oa"] | None = None,
+        current=Depends(actor_dependency),
+        costs=Depends(cost_service),
+    ):
         return costs.list_batches(current, book_id, kind=kind)
 
     @router.get("/books/{book_id}/cost-batches/{batch_id}")
-    def get_cost_batch(book_id: str, batch_id: str, current=Depends(actor_dependency),
-                       costs=Depends(cost_service)):
+    def get_cost_batch(
+        book_id: str, batch_id: str, current=Depends(actor_dependency), costs=Depends(cost_service)
+    ):
         return costs.get_batch(current, book_id, batch_id)
 
     @router.post("/books/{book_id}/cost-batches/{batch_id}/validate")
-    def validate_cost_batch(book_id: str, batch_id: str, current=Depends(actor_dependency),
-                            costs=Depends(cost_service)):
+    def validate_cost_batch(
+        book_id: str, batch_id: str, current=Depends(actor_dependency), costs=Depends(cost_service)
+    ):
         return costs.validate(current, book_id, batch_id)
 
     @router.post("/books/{book_id}/cost-batches/{batch_id}/review")
-    def review_cost_batch(book_id: str, batch_id: str, payload: TaxCostReview,
-                          current=Depends(actor_dependency), costs=Depends(cost_service)):
+    def review_cost_batch(
+        book_id: str,
+        batch_id: str,
+        payload: TaxCostReview,
+        current=Depends(actor_dependency),
+        costs=Depends(cost_service),
+    ):
         return costs.review(current, book_id, batch_id, payload)
 
     @router.post("/books/{book_id}/cost-batches/{batch_id}/invalidate")
-    def invalidate_cost_batch(book_id: str, batch_id: str, payload: TaxCostInvalidate,
-                              current=Depends(actor_dependency), costs=Depends(cost_service)):
+    def invalidate_cost_batch(
+        book_id: str,
+        batch_id: str,
+        payload: TaxCostInvalidate,
+        current=Depends(actor_dependency),
+        costs=Depends(cost_service),
+    ):
         return costs.invalidate(current, book_id, batch_id, payload)
 
     @router.get("/pilot/companies/{company_id}/readiness")

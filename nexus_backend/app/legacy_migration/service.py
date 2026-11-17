@@ -4,9 +4,8 @@ This domain never manufactures current sources, drafts, approvals or exports.
 All publication is bounded by a currently authorized migration project.
 """
 
-import hashlib
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from uuid import uuid4
 
 from app.accounting.access import AccessControl
@@ -1671,7 +1670,6 @@ class LegacyMigrationService:
         history_end=None,
         cutover_date=None,
     ):
-        import calendar
         from datetime import date
         from .models import ProjectCreate
 

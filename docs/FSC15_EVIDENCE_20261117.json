@@ -1,0 +1,60 @@
+{
+  "batch": "FSC15",
+  "date": "2026-11-17",
+  "status": "partial",
+  "head": "767f7cdf7c717c98d3516a0e31b53bd8cd9ae1a9",
+  "candidate": {
+    "source_files": 2346,
+    "source_sha256": "49a5d9878c1fd1fdda313ff893c5d9b91a1be4fa9ab92e8be68e2397b08efcba",
+    "migration_files": 465,
+    "migration_sha256": "1776b62a44345a74743485eeb6c1dd55343084eac2f27e7071d54988a6027d5f"
+  },
+  "tests": {
+    "sqlite": {
+      "command": "PYTHONPATH=..:. pytest -q tests/test_fsc15_rate_lifecycle.py tests/test_tax09_costs.py tests/test_tax04_recovery.py",
+      "result": "20 passed",
+      "duration_seconds": 37.65
+    },
+    "pg17": {
+      "command": "python scripts/test_accounting_postgres_isolated.py --config tmp_test/fsc02-pg/env17/unified.json nexus_backend/tests/test_fsc15_rate_lifecycle_postgres.py -q",
+      "result": "3 passed",
+      "duration_seconds": 1.61,
+      "artifact": "tmp_test/ak05-pg-runs/4e247e0a9a8a4252b04d4f3b741ac764"
+    },
+    "pg16": {
+      "command": "python scripts/test_accounting_postgres_isolated.py --config tmp_test/fsc02-pg/env16/unified.json nexus_backend/tests/test_fsc15_rate_lifecycle_postgres.py -q",
+      "result": "3 passed",
+      "duration_seconds": 1.58,
+      "artifact": "tmp_test/ak05-pg-runs/697f821c687f4ca3af7f8cfe8777736d"
+    },
+    "browser": {
+      "command": "npx playwright test e2e/fsc15-rates.spec.ts --reporter=line",
+      "result": "2 passed",
+      "duration_seconds": 38.5,
+      "screenshots": ["tmp_test/fsc15-rates-1280.png", "tmp_test/fsc15-rates-390.png"]
+    },
+    "recovery": {
+      "test": "test_fsc15_repair_rate_versions_survive_database_restore",
+      "result": "1 passed",
+      "duration_seconds": 7.54
+    }
+  },
+  "bugs_fixed": [
+    "PG boolean tax_included inserted through int() -> DatatypeMismatch; now bool()",
+    "Old TaxCostBatchPanel load response could overwrite confirmed state; loadSequence guard",
+    "Rate renew root lookup by id only; now id or logical_id with highest version"
+  ],
+  "not_verified": [
+    "two-company PG isolation",
+    "real customer rate contracts",
+    "cross-year batch generate/review/export browser chain",
+    "FSC16 settlement reversal link"
+  ],
+  "boundaries": {
+    "committed": false,
+    "pushed": false,
+    "deployed": false,
+    "production_sql": false,
+    "real_model_or_notification": false
+  }
+}

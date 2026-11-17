@@ -1,0 +1,77 @@
+{
+  "candidate": {
+    "head": "767f7cdf7c717c98d3516a0e31b53bd8cd9ae1a9",
+    "source_files": 2360,
+    "source_sha256": "ce958c8b0605ff66b834203527b39bc5e6d70dea6265ee5f26a29ff8dc9c0bf5",
+    "migration_files": 469,
+    "migration_sha256": "d266a53a73a5a3237cfe6e3676497acc43294ddb6d25466dbf88fb5b5fefb6d7"
+  },
+  "fsc12": "partial",
+  "local_passed": {
+    "sqlite": {
+      "command": "pytest tests/test_fsc01_profiles.py ... tests/test_tax04_recovery.py::... tests/test_business.py::test_fsc12_five_person_two_tasks_are_reviewed_and_posted_without_duplication",
+      "result": "52 passed",
+      "duration_seconds": 82.68
+    },
+    "pg17": {
+      "command": "test_accounting_postgres_isolated.py --config tmp_test/fsc02-pg/env17/unified.json ...",
+      "result": "21 passed",
+      "duration_seconds": 10.14,
+      "artifact": "tmp_test/ak05-pg-runs/42881745e44f43199d51e3c11fb93350"
+    },
+    "pg16": {
+      "command": "test_accounting_postgres_isolated.py --config tmp_test/fsc02-pg/env16/unified.json ...",
+      "result": "21 passed",
+      "duration_seconds": 10.07,
+      "artifact": "tmp_test/ak05-pg-runs/a8fe5344140e4555ba9c3039ae5d0ffb"
+    },
+    "browser": {
+      "command": "npx playwright test e2e/fsc13-closing.spec.ts e2e/tax-f.spec.ts e2e/fsc15-rates.spec.ts e2e/fsc16-packages.spec.ts e2e/finance-operations.spec.ts --reporter=line",
+      "result": "12 passed",
+      "duration_seconds": 210,
+      "viewports": [
+        1365,
+        1280,
+        390
+      ]
+    },
+    "frontend": {
+      "command": "npm test -- --run",
+      "files": 152,
+      "tests": 1403,
+      "result": "passed"
+    },
+    "typecheck": "passed",
+    "build": {
+      "result": "passed",
+      "index_gzip_kb": 175.55,
+      "css_gzip_kb": 20.32
+    },
+    "two_company_cross_year_lease": {
+      "pg17": "1 passed/1.98s artifact 8b20b543506b42dc97d21c6a795a596d",
+      "pg16": "1 passed/1.97s artifact 08d66671566148d5b9043d9c4489ce90"
+    }
+  },
+  "not_verified": [
+    "five-person role simulation",
+    "full database+object storage restore to fresh isolated environment",
+    "real T+/OA/insurance policy/customer documents",
+    "real devices/manual screen reader",
+    "two-company full business chain beyond lease drafts",
+    "capacity target not met (50/100 concurrency p95 16.9s/29.6s)"
+  ],
+  "committed": false,
+  "pushed": false,
+  "deployed": false,
+  "real_model_or_notification": false,
+  "capacity": {
+    "status": "failed",
+    "read_50_p95_ms": 4716.32,
+    "read_100_p95_ms": 5418.26,
+    "reports": [
+      "tmp_test/fsc12-capacity/reuse-final-50.json",
+      "tmp_test/fsc12-capacity/reuse-onequery-100.json"
+    ],
+    "note": "opt-in SQLite read reuse reduced but did not meet QA05 PG baseline; single-process SQLite, not production capacity."
+  }
+}

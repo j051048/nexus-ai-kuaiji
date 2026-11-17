@@ -34,7 +34,15 @@ BASE_COLUMNS = [
     "复核状态",
     "来源包指纹",
 ]
-LINE_COLUMNS = ["科目编码", "科目名称", "借方金额", "贷方金额", "辅助核算类型", "辅助核算编码", "行摘要"]
+LINE_COLUMNS = [
+    "科目编码",
+    "科目名称",
+    "借方金额",
+    "贷方金额",
+    "辅助核算类型",
+    "辅助核算编码",
+    "行摘要",
+]
 COLUMNS = BASE_COLUMNS + [
     f"分录{index}-{name}" for index in range(1, LINES_PER_ROW + 1) for name in LINE_COLUMNS
 ]
@@ -180,10 +188,7 @@ def parse_result(content: bytes, codes: list[str]) -> list[dict]:
             reason = raw["原因"].strip()
             if status not in RESULT_STATES or not code:
                 raise ValueError("status or code")
-            if any(
-                value.startswith(FORMULA_PREFIX)
-                for value in (code, status, reason)
-            ):
+            if any(value.startswith(FORMULA_PREFIX) for value in (code, status, reason)):
                 raise ValueError("formula")
             if len(content) > 2_000_000:
                 raise ValueError("size")
@@ -201,13 +206,15 @@ def parse_result(content: bytes, codes: list[str]) -> list[dict]:
         raise AccountingError("T+ 回执行数必须在 1 到 10000 之间", 422)
     if [row["row_number"] for row in rows] != list(range(1, len(rows) + 1)):
         raise AccountingError("T+ 回执行号必须连续", 422)
-    if (len(rows) != len(codes) or len(set(codes)) != len(codes)
-            or len({row["voucher_external_code"] for row in rows}) != len(rows)
-            or {row["voucher_external_code"] for row in rows} != set(codes)):
+    if (
+        len(rows) != len(codes)
+        or len(set(codes)) != len(codes)
+        or len({row["voucher_external_code"] for row in rows}) != len(rows)
+        or {row["voucher_external_code"] for row in rows} != set(codes)
+    ):
         raise AccountingError("T+ 回执必须逐行覆盖本次导出的全部凭证", 422)
     if any(
-        row["status"] in {"rejected", "unknown", "duplicate"} and not row["reason"]
-        for row in rows
+        row["status"] in {"rejected", "unknown", "duplicate"} and not row["reason"] for row in rows
     ):
         raise AccountingError("拒绝、重复或未知回执必须填写原因", 422)
     return rows

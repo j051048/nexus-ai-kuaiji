@@ -148,7 +148,7 @@ describe('岗位首页围绕主任务收敛', () => {
   it('授权说明默认收折，身份仍在可访问区域内', () => {
     const html = render('employee');
     expect(html).toMatch(/<section[^>]*aria-label="当前职责与授权范围"[^>]*>\s*<details/);
-    expect(html).toContain('<strong>我的工作台</strong>');
+    expect(html).toContain('<span class="sr-only">我的工作台</span>');
     expect(html).toContain('查看岗位与操作说明');
     expect(html).not.toMatch(/<details[^>]*\bopen(?:="")?[^>]*>/);
   });
@@ -202,7 +202,7 @@ describe('IMP02 shell compression', () => {
     const html = render('finance');
     expect(html).not.toContain('HENGZHANG · ACCOUNTING AGENT');
     expect(html).not.toContain('<span>当前工作台</span>');
-    expect(html).toContain('岗位说明与权限');
+    expect(html).toContain('岗位与权限');
     expect(html).toContain('当前职责与授权范围');
   });
 });

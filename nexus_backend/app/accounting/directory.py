@@ -405,6 +405,13 @@ class DirectoryService:
                 raise AccountingError(
                     "正式复核仅可授予事务所复核人员；客户财务请使用经办或只读", 403
                 )
+            if (
+                request.role == "reviewer"
+                and self.access.separation_required(conn, actor.firm_id)
+                and member
+                and member["role"] in FIRM_MANAGERS
+            ):
+                raise AccountingError("管理与复核分离已开启，管理员不能授予自己或其他管理员复核角色", 403)
             existing = conn.execute(
                 "SELECT role FROM book_access WHERE book_id=? AND user_id=?", (book_id, user_id)
             ).fetchone()

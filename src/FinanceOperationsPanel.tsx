@@ -13,6 +13,7 @@ import {
 import './finance-operations.css';
 import { SettlementDetail } from './SettlementDetail';
 import { AssetReconciliation } from './AssetReconciliation';
+import { AssetVehicleLinkEditor } from './AssetVehicleLinkEditor';
 
 type Props = {
   session: Session;
@@ -399,6 +400,11 @@ function Periodic({ session, bookId, companyId, period, onChanged, onVoucher }: 
               >
                 核对历史差异与科目版本
               </button>
+              <AssetVehicleLinkEditor
+                session={session}
+                assetId={asset.id}
+                assetActive={asset.status === 'active'}
+              />
             </article>
           ))}
           <h3>期末草稿</h3>

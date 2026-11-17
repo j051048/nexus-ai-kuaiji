@@ -27,7 +27,9 @@ ADMIN_URL = os.getenv("ACCOUNTING_TEST_POSTGRES_URL")
 APP_URL = os.getenv("ACCOUNTING_TEST_DATABASE_URL")
 pytestmark = []
 
-POLICY = TaxCostPolicyWrite(version="cost-v1", expense_account_code="6602.03", credit_account_code="2202")
+POLICY = TaxCostPolicyWrite(
+    version="cost-v1", expense_account_code="6602.03", credit_account_code="2202"
+)
 
 
 @pytest.fixture(scope="module")
@@ -72,7 +74,9 @@ def case(pg):
             "INSERT INTO accounting.memberships(firm_id,user_id,role) VALUES(%s,%s,'reviewer')",
             (firm, reviewer.user_id),
         )
-    book = AccountingService(db).create_book(maker, BookCreate(name="虚构TAX10账套", period="2026-10"))
+    book = AccountingService(db).create_book(
+        maker, BookCreate(name="虚构TAX10账套", period="2026-10")
+    )
     with psycopg.connect(ADMIN_URL) as conn:
         conn.execute(
             "INSERT INTO accounting.book_access(book_id,firm_id,user_id,role) VALUES(%s,%s,%s,'reviewer')",
@@ -86,12 +90,20 @@ def _repair(case, key="FP-PG-1", version=1):
         case.manager,
         case.book["id"],
         TaxCostSourceWrite(
-            kind="repair", source_key=key, source_version=version, period="2026-10",
-            subject_label="京A1", original_ref="原件/维修-PG.pdf", sha256="a" * 64,
+            kind="repair",
+            source_key=key,
+            source_version=version,
+            period="2026-10",
+            subject_label="京A1",
+            original_ref="原件/维修-PG.pdf",
+            sha256="a" * 64,
             amount="100.00",
             payload={
-                "invoice_ref": key, "vehicle_external_id": "V1", "coverage": "per_vehicle",
-                "rate_cents": 5000, "quantity_milli": 2000,
+                "invoice_ref": key,
+                "vehicle_external_id": "V1",
+                "coverage": "per_vehicle",
+                "rate_cents": 5000,
+                "quantity_milli": 2000,
             },
         ),
     )
@@ -104,19 +116,26 @@ def test_pg_repair_batch_is_balanced_and_independently_reviewed(case):
         case.manager,
         case.book["id"],
         TaxCostGenerate(
-            period="2026-10", kind="repair", source_ids=[source["id"]],
-            policy=POLICY, reason="PG 核定维修批次",
+            period="2026-10",
+            kind="repair",
+            source_ids=[source["id"]],
+            policy=POLICY,
+            reason="PG 核定维修批次",
         ),
     )
     draft = AccountingService(case.db).get_draft(case.manager, case.book["id"], batch["draft_id"])
     assert batch["amount_cents"] == 10000
     assert len(draft["lines"]) == 2 and draft["issues"] == []
     reviewed = service.review(
-        case.reviewer, case.book["id"], batch["id"],
+        case.reviewer,
+        case.book["id"],
+        batch["id"],
         TaxCostReview(expected_version=1, review_reason="PG 独立复核"),
     )
     assert reviewed["status"] == "reviewed" and reviewed["draft_status"] == "approved"
-    approved = AccountingService(case.db).get_draft(case.manager, case.book["id"], batch["draft_id"])
+    approved = AccountingService(case.db).get_draft(
+        case.manager, case.book["id"], batch["draft_id"]
+    )
     assert approved["status"] == "approved"
     with case.db.transaction(actor=case.manager) as conn:
         assert conn.execute("SELECT COUNT(*) c FROM tax_cost_batches").fetchone()["c"] == 1
@@ -128,14 +147,22 @@ def test_pg_source_upgrade_and_outsider_are_rejected(case):
 
     source = _repair(case)
     batch = TaxCostService(case.db).generate(
-        case.manager, case.book["id"],
-        TaxCostGenerate(period="2026-10", kind="repair", source_ids=[source["id"]],
-                        policy=POLICY, reason="PG 来源升级批次"),
+        case.manager,
+        case.book["id"],
+        TaxCostGenerate(
+            period="2026-10",
+            kind="repair",
+            source_ids=[source["id"]],
+            policy=POLICY,
+            reason="PG 来源升级批次",
+        ),
     )
     _repair(case, version=2)
     with pytest.raises(AccountingError) as stale:
         TaxCostService(case.db).review(
-            case.reviewer, case.book["id"], batch["id"],
+            case.reviewer,
+            case.book["id"],
+            batch["id"],
             TaxCostReview(expected_version=1, review_reason="来源升级后复核"),
         )
     assert stale.value.status == 409
@@ -161,21 +188,85 @@ def test_pg_source_upgrade_and_outsider_are_rejected(case):
 
 def test_pg_repair_rate_card_resolves_and_guards_amount(case):
     rates = RepairRateService(case.db)
-    card = rates.add(case.manager, case.book["id"], RepairRateWrite(
-        vehicle_type="出租车", rate_cents=5000, valid_from="2026-10", valid_to="2026-12",
-        coverage_scope="基础保养（不含轮胎）", source_ref="合同/2026-费率",
-    ))
+    card = rates.add(
+        case.manager,
+        case.book["id"],
+        RepairRateWrite(
+            vehicle_type="出租车",
+            rate_cents=5000,
+            valid_from="2026-10",
+            valid_to="2026-12",
+            coverage_scope="基础保养（不含轮胎）",
+            source_ref="合同/2026-费率",
+        ),
+    )
     assert rates.resolve(case.manager, case.book["id"], "出租车", "2026-11")["id"] == card["id"]
     with pytest.raises(AccountingError) as mismatch:
         TaxCostService(case.db).add_source(
-            case.manager, case.book["id"], TaxCostSourceWrite(
-                kind="repair", source_key="FP-PG-RATE", source_version=1, period="2026-10",
-                subject_label="京A1", original_ref="原件/维修-RATE.pdf", sha256="b" * 64,
+            case.manager,
+            case.book["id"],
+            TaxCostSourceWrite(
+                kind="repair",
+                source_key="FP-PG-RATE",
+                source_version=1,
+                period="2026-10",
+                subject_label="京A1",
+                original_ref="原件/维修-RATE.pdf",
+                sha256="b" * 64,
                 amount="310.00",
                 payload={
-                    "invoice_ref": "FP-PG-RATE", "vehicle_external_id": "V1", "vehicle_type": "出租车",
-                    "coverage": "per_vehicle", "quantity_milli": 6000, "rate_card_id": card["id"],
+                    "invoice_ref": "FP-PG-RATE",
+                    "vehicle_external_id": "V1",
+                    "vehicle_type": "出租车",
+                    "coverage": "per_vehicle",
+                    "quantity_milli": 6000,
+                    "rate_card_id": card["id"],
                 },
             ),
         )
     assert mismatch.value.status == 409
+
+
+def test_pg_same_insurance_policy_and_period_is_rejected(case):
+    service = TaxCostService(case.db)
+    payload = {
+        "policy_no": "P-PG-DUP",
+        "premium_cents": 120000,
+        "start_period": "2026-01",
+        "end_period": "2026-12",
+        "total_months": 12,
+        "algorithm": "straight_line",
+    }
+    service.add_source(
+        case.manager,
+        case.book["id"],
+        TaxCostSourceWrite(
+            kind="insurance",
+            source_key="P-PG-1",
+            source_version=1,
+            period="2026-10",
+            subject_label="京A1",
+            original_ref="原件/保单-PG.pdf",
+            sha256="b" * 64,
+            amount="100.00",
+            payload=payload,
+        ),
+    )
+    with pytest.raises(AccountingError) as exc:
+        service.add_source(
+            case.manager,
+            case.book["id"],
+            TaxCostSourceWrite(
+                kind="insurance",
+                source_key="P-PG-2",
+                source_version=1,
+                period="2026-10",
+                subject_label="京A1",
+                original_ref="原件/保单-PG-2.pdf",
+                sha256="c" * 64,
+                amount="100.00",
+                payload=payload,
+            ),
+        )
+    assert exc.value.status == 409
+    assert "同一保单" in exc.value.detail

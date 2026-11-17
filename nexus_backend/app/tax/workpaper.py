@@ -17,6 +17,7 @@ from ..accounting.domain import AccountingError
 from ..accounting.invariants import (
     MAX_CENTS,
     cents_to_money,
+    scale_by_basis_points,
     signed_cents_to_money,
     validate_period,
 )
@@ -35,7 +36,7 @@ def encode(value):
 
 def _ratio(cents, rate_bp):
     """Half-up integer rounding of cents x basis points, no floats involved."""
-    return (int(cents) * int(rate_bp) + 5000) // 10000
+    return scale_by_basis_points(int(cents), int(rate_bp))
 
 
 def _bounds(period):

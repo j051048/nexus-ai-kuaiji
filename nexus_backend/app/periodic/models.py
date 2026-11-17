@@ -78,6 +78,26 @@ class DraftCommand(InputModel):
     reason: StrictStr = Field(min_length=3, max_length=1000)
 
 
+class ClosingEvidenceWrite(InputModel):
+    """An external closing result is correspondence evidence, never a posting."""
+
+    book_id: StrictStr = Field(min_length=1, max_length=100)
+    source_system: StrictStr = Field(min_length=1, max_length=80)
+    source_object: StrictStr = Field(min_length=1, max_length=120)
+    source_id: StrictStr = Field(min_length=1, max_length=160)
+    source_version: StrictStr = Field(min_length=1, max_length=80)
+    amount: StrictStr
+    reason: StrictStr = Field(min_length=3, max_length=1000)
+    details: dict = Field(default_factory=dict)
+
+    @field_validator("amount")
+    @classmethod
+    def non_negative(cls, value):
+        if money_to_cents(value) < 0:
+            raise ValueError("外部结转金额不能为负")
+        return value
+
+
 class AssetReconcile(InputModel):
     book_id: StrictStr = Field(min_length=1, max_length=100)
     expected_fingerprint: StrictStr = Field(pattern=r"^[0-9a-f]{64}$")

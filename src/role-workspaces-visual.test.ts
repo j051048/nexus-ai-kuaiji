@@ -83,7 +83,8 @@ describe('V02 employee and finance workspaces', () => {
     for (const role of ['employee', 'finance'] as const) {
       const html = render(role);
       expect(html).toMatch(new RegExp(`<main[^>]*workspace-${role}`));
-      expect(html.match(/<section\b/g)).toHaveLength(4);
+      expect(html.match(/<section\b/g)).toHaveLength(role === 'employee' ? 5 : 4);
+      if (role === 'employee') expect(html).toContain('aria-label="补件材料请求"');
       expect(html).not.toContain('全所运营概览');
       expect(html).not.toContain('开始批量复核');
     }

@@ -5,6 +5,8 @@ import pytest
 from app.accounting.domain import AccountingError, Actor
 from app.accounting.models import ApprovalRequest, ExportRequest
 from app.accounting.service import AccountingService
+from app.posting.models import PostDraft
+from app.posting.service import PostingService
 from app.tax.leases import (
     LeaseAmend,
     LeaseApprove,
@@ -212,3 +214,49 @@ def test_invoice_red_reversal_keeps_history_and_rejects_over_red(business):
             ),
         )
     assert exc.value.status == 409 and "已红冲" in exc.value.detail
+
+
+def test_old_lease_draft_cannot_be_approved_after_current_contract_amendment(business):
+    case = business
+    _advance_account(case)
+    contract = _create(case)
+    _confirm(case, contract["id"], "business", "2026-11", "1000.00", "SERVICE-OLD")
+    view = _recognize(case, contract["id"], "2026-11")
+    draft_id = [row for row in view["plan"] if row["period"] == "2026-11" and row["kind"] == "revenue"][0]["draft_id"]
+    LeaseService(case.db).amend(
+        case.manager, case.book["id"], contract["id"],
+        LeaseAmend(expected_version=1, end_period="2027-01", monthly="1100.00", reason="合同续签"),
+    )
+    LeaseService(case.db).approve(case.manager, case.book["id"], contract["id"], 2)
+    with pytest.raises(AccountingError) as exc:
+        AccountingService(case.db).approve(
+            case.actors["accountant"], case.book["id"], draft_id,
+            ApprovalRequest(expected_version=1),
+        )
+    assert exc.value.status == 409
+
+
+def test_old_approved_lease_draft_cannot_be_posted_after_current_contract_amendment(business):
+    case = business
+    _advance_account(case)
+    contract = _create(case)
+    _confirm(case, contract["id"], "business", "2026-11", "1000.00", "SERVICE-POST-OLD")
+    view = _recognize(case, contract["id"], "2026-11")
+    draft_id = [row for row in view["plan"] if row["period"] == "2026-11" and row["kind"] == "revenue"][0]["draft_id"]
+    approved = AccountingService(case.db).approve(
+        case.actors["accountant"], case.book["id"], draft_id, ApprovalRequest(expected_version=1)
+    )
+    LeaseService(case.db).amend(
+        case.manager, case.book["id"], contract["id"],
+        LeaseAmend(expected_version=1, end_period="2027-01", monthly="1100.00", reason="合同续签"),
+    )
+    LeaseService(case.db).approve(case.manager, case.book["id"], contract["id"], 2)
+    with pytest.raises(AccountingError) as exc:
+        PostingService(case.db).post_draft(
+            case.actors["accountant"], case.book["id"], draft_id,
+            PostDraft(
+                command_key="lease-stale-post-001", expected_version=approved["version"],
+                voucher_date="2026-11-15",
+            ),
+        )
+    assert exc.value.status == 409

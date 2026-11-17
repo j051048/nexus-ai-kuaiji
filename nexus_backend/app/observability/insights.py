@@ -188,16 +188,44 @@ class FirmInsightsService:
         for book in books:
             blockers = []
             if material.get(book["id"]):
-                blockers.append({"code": "materials_pending", "label": BLOCKER_LABELS["materials_pending"], "count": material[book["id"]]})
+                blockers.append(
+                    {
+                        "code": "materials_pending",
+                        "label": BLOCKER_LABELS["materials_pending"],
+                        "count": material[book["id"]],
+                    }
+                )
             if drafts.get(book["id"]):
-                blockers.append({"code": "drafts_pending", "label": BLOCKER_LABELS["drafts_pending"], "count": drafts[book["id"]]})
+                blockers.append(
+                    {
+                        "code": "drafts_pending",
+                        "label": BLOCKER_LABELS["drafts_pending"],
+                        "count": drafts[book["id"]],
+                    }
+                )
             if basis.get(book["id"]):
-                blockers.append({"code": "tax_basis_pending", "label": BLOCKER_LABELS["tax_basis_pending"], "count": basis[book["id"]]})
+                blockers.append(
+                    {
+                        "code": "tax_basis_pending",
+                        "label": BLOCKER_LABELS["tax_basis_pending"],
+                        "count": basis[book["id"]],
+                    }
+                )
             if cases.get(book["id"]):
-                blockers.append({"code": "open_cases", "label": BLOCKER_LABELS["open_cases"], "count": cases[book["id"]]})
+                blockers.append(
+                    {
+                        "code": "open_cases",
+                        "label": BLOCKER_LABELS["open_cases"],
+                        "count": cases[book["id"]],
+                    }
+                )
             report = reports.get(book["id"])
             plan = plans.get(book["id"])
-            if report and report["status"] in {"reviewed", "published"} and report["status"] == "published":
+            if (
+                report
+                and report["status"] in {"reviewed", "published"}
+                and report["status"] == "published"
+            ):
                 stage = "archive" if book["period_status"] == "closed" else "delivery"
             elif book["period_status"] == "closed":
                 stage = "archive"
@@ -236,7 +264,9 @@ class FirmInsightsService:
         exception_counts: dict[str, int] = {}
         for item in items:
             for blocker in item["blockers"]:
-                exception_counts[blocker["code"]] = exception_counts.get(blocker["code"], 0) + blocker["count"]
+                exception_counts[blocker["code"]] = (
+                    exception_counts.get(blocker["code"], 0) + blocker["count"]
+                )
         if unknown:
             exception_counts["notification_unknown"] = int(unknown)
         financial = {key: 0 for key in FINANCIAL_KEYS}
@@ -263,8 +293,12 @@ class FirmInsightsService:
         trends = []
         for month in months:
             reviewed = trend_reports.get(month, [])
-            revenue = sum(_int(_json(row.get("profit_statement")).get("revenue_cents")) for row in reviewed)
-            profit_value = sum(_int(_json(row.get("profit_statement")).get("profit_cents")) for row in reviewed)
+            revenue = sum(
+                _int(_json(row.get("profit_statement")).get("revenue_cents")) for row in reviewed
+            )
+            profit_value = sum(
+                _int(_json(row.get("profit_statement")).get("profit_cents")) for row in reviewed
+            )
             counts = trend_periods.get(month, {})
             trends.append(
                 {
@@ -279,7 +313,11 @@ class FirmInsightsService:
             )
         risk = sorted(
             [item for item in items if item["blockers"] or item["overdue"]],
-            key=lambda item: (-len(item["blockers"]), item["due_on"] or "9999-99-99", item["company_name"]),
+            key=lambda item: (
+                -len(item["blockers"]),
+                item["due_on"] or "9999-99-99",
+                item["company_name"],
+            ),
         )[:12]
         staff: dict[str, dict] = {}
         for item in items:
@@ -321,10 +359,15 @@ class FirmInsightsService:
                 "ai_cost_unknown": _int(cost["unknown_count"]),
             },
             "financial": {**financial, "known_books": known, "missing_books": len(items) - known},
-            "stages": [{"code": key, "label": STAGE_LABELS[key], "count": stage_counts[key]} for key in STAGE_ORDER],
+            "stages": [
+                {"code": key, "label": STAGE_LABELS[key], "count": stage_counts[key]}
+                for key in STAGE_ORDER
+            ],
             "exceptions": [
                 {"code": code, "label": BLOCKER_LABELS.get(code, "通知结果未知"), "count": count}
-                for code, count in sorted(exception_counts.items(), key=lambda pair: (-pair[1], pair[0]))
+                for code, count in sorted(
+                    exception_counts.items(), key=lambda pair: (-pair[1], pair[0])
+                )
             ],
             "trends": trends,
             "risk": risk,
@@ -359,11 +402,14 @@ class FirmInsightsService:
         ).fetchall()
         latest: dict[tuple[str, str], dict] = {}
         for row in rows:
-            latest.setdefault((row["book_id"], row["period"]), {
-                "version": row["version"],
-                "status": row["status"],
-                "content": _json(row["content_json"]),
-            })
+            latest.setdefault(
+                (row["book_id"], row["period"]),
+                {
+                    "version": row["version"],
+                    "status": row["status"],
+                    "content": _json(row["content_json"]),
+                },
+            )
         result: dict[str, list[dict]] = {}
         for (book_id, period), value in latest.items():
             content = value["content"]
@@ -378,13 +424,28 @@ class FirmInsightsService:
             "stage_projection": True,
             "note": "当前月份没有可汇总的账套；看板不生成业务数据。",
             "kpis": {
-                "companies": 0, "books": 0, "blocked": 0, "overdue": 0, "closed": 0,
-                "review_pending": 0, "materials_pending": 0, "exceptions": 0,
-                "notification_unknown": 0, "known_reports": 0, "missing_reports": 0,
-                "ai_cost_micro": 0, "ai_cost_unknown": 0,
+                "companies": 0,
+                "books": 0,
+                "blocked": 0,
+                "overdue": 0,
+                "closed": 0,
+                "review_pending": 0,
+                "materials_pending": 0,
+                "exceptions": 0,
+                "notification_unknown": 0,
+                "known_reports": 0,
+                "missing_reports": 0,
+                "ai_cost_micro": 0,
+                "ai_cost_unknown": 0,
             },
-            "financial": {**{key: 0 for key in FINANCIAL_KEYS}, "known_books": 0, "missing_books": 0},
-            "stages": [{"code": key, "label": STAGE_LABELS[key], "count": 0} for key in STAGE_ORDER],
+            "financial": {
+                **{key: 0 for key in FINANCIAL_KEYS},
+                "known_books": 0,
+                "missing_books": 0,
+            },
+            "stages": [
+                {"code": key, "label": STAGE_LABELS[key], "count": 0} for key in STAGE_ORDER
+            ],
             "exceptions": [],
             "trends": [],
             "risk": [],

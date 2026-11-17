@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from urllib.parse import urlsplit
 from uuid import uuid4
 
+from ..accounting.audit import write_download_audit
 from ..accounting.domain import AccountingError
 from ..accounting.service import fingerprint, now
 from ..accounting.telemetry import tag_authorized_company
@@ -395,9 +396,33 @@ class IntakeService:
             ).fetchone()
             if not row:
                 raise AccountingError("附件不存在或无权访问", 404)
-            self._draft(conn, actor, row["intake_id"])
+            company_id = self._draft(conn, actor, row["intake_id"])["company_id"]
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
+            row = conn.execute(
+                "SELECT * FROM intake_attachments WHERE id=? AND firm_id=?",
+                (attachment_id, actor.firm_id),
+            ).fetchone()
+            if not row:
+                raise AccountingError("附件不存在或无权访问", 404)
+            draft = self._draft(conn, actor, row["intake_id"])
             metadata = dict(row)
-        return self.storage.read(metadata), metadata
+            content = self.storage.read(metadata)
+            write_download_audit(
+                conn,
+                actor,
+                action="attachment.download",
+                object_id=attachment_id,
+                company_id=draft["company_id"],
+                details={
+                    "attachment_id": attachment_id,
+                    "intake_id": row["intake_id"],
+                    "sha256": row["sha256"],
+                    "size_bytes": row["size_bytes"],
+                },
+            )
+        return content, metadata
 
     def recognize(self, actor, draft_id, attachment_id, request):
         started_at = time.monotonic()

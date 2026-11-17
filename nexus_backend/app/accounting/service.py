@@ -352,11 +352,18 @@ class AccountingService:
         accrual, fee_issues = fee_context(conn, source, lines)
         if str(source["external_id"]).startswith("tax-cost:"):
             # The caller-controlled bank ID alone is not proof of an accrual.
-            accrual = bool(conn.execute(
-                "SELECT 1 FROM tax_cost_batches b JOIN drafts d ON d.id=b.draft_id AND d.book_id=b.book_id "
-                "WHERE d.source_id=? AND b.book_id=? AND b.id=? AND b.batch_fingerprint=?",
-                (source["id"], source["book_id"], source["external_id"][9:], source["fingerprint"]),
-            ).fetchone())
+            accrual = bool(
+                conn.execute(
+                    "SELECT 1 FROM tax_cost_batches b JOIN drafts d ON d.id=b.draft_id AND d.book_id=b.book_id "
+                    "WHERE d.source_id=? AND b.book_id=? AND b.id=? AND b.batch_fingerprint=?",
+                    (
+                        source["id"],
+                        source["book_id"],
+                        source["external_id"][9:],
+                        source["fingerprint"],
+                    ),
+                ).fetchone()
+            )
         accounts = {
             x["code"]
             for x in conn.execute(
@@ -364,7 +371,9 @@ class AccountingService:
             )
         }
         return (
-            self._calculate_issues(source, lines, accounts, self._effective_evidence(conn, source), accrual=accrual)
+            self._calculate_issues(
+                source, lines, accounts, self._effective_evidence(conn, source), accrual=accrual
+            )
             + fee_issues
             + self._guard_issues(conn, source, actor)
             + self._case_guard().blocking_issues_in_transaction(conn, actor, source)
@@ -435,7 +444,11 @@ class AccountingService:
             if source["direction"] == "income"
             else (0, source["amount_cents"])
         )
-        if source["source_kind"] == "bank" and not accrual and (bank_debit, bank_credit) != expected:
+        if (
+            source["source_kind"] == "bank"
+            and not accrual
+            and (bank_debit, bank_credit) != expected
+        ):
             issues.append("银行存款分录的金额或方向与原始流水不符")
         return list(dict.fromkeys(issues))
 
@@ -1256,6 +1269,9 @@ class AccountingService:
         book = self._book(conn, actor, book_id, reviewer=True)
         self._open(book)
         draft = self._editable_draft(conn, book_id, draft_id, expected_version)
+        from ..tax.lease_guards import assert_lease_source_current
+
+        assert_lease_source_current(conn, book_id, draft["source_id"], draft_id)
         own_event = conn.execute(
             "SELECT 1 FROM business_mappings m JOIN business_events e ON e.id=m.event_id AND e.firm_id=m.firm_id AND e.company_id=m.company_id WHERE m.draft_id=? AND m.book_id=? AND e.applicant_id=?",
             (draft_id, book_id, actor.user_id),
@@ -1368,14 +1384,10 @@ class AccountingService:
                     (draft["source_id"], book_id),
                 ).fetchone()
                 external_id = source["external_id"] if source else ""
-                if external_id.startswith("lease:"):
-                    contract_id = external_id.split(":", 2)[1]
-                    lease = conn.execute(
-                        "SELECT version,approved_version,status FROM lease_contracts WHERE id=? AND book_id=?",
-                        (contract_id, book_id),
-                    ).fetchone()
-                    if not lease or lease["status"] != "active" or lease["approved_version"] != lease["version"]:
-                        raise AccountingError("租赁合同已改版，旧审批版本的凭证不能导出，请确认当前版本后重新生成", 409)
+                if external_id.startswith(("lease:", "lease-refund:")):
+                    from ..tax.lease_guards import assert_lease_source_current
+
+                    assert_lease_source_current(conn, book_id, draft["source_id"], draft_id)
                 selected.append(value)
             output = io.StringIO(newline="")
             writer = csv.writer(output, lineterminator="\r\n")

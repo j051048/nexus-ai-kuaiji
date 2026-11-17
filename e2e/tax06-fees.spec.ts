@@ -3,6 +3,8 @@ import { expect, test } from '@playwright/test';
 import { checked } from './formal-fixtures';
 import { openTax, taxFullFixture } from './n04-tax-fixtures';
 
+test.describe.configure({ timeout: 180_000 });
+
 type FormalFixture = Awaited<ReturnType<typeof taxFullFixture>>;
 
 const file = readFileSync('e2e/fixtures/tax06-fee.xlsx').toString('base64');
@@ -80,6 +82,36 @@ async function prepare(request: Parameters<typeof taxFullFixture>[0], f: FormalF
     );
   }
   await checked(
+    await request.post(`/api/books/${f.book.id}/imports`, {
+      headers: f.headers,
+      data: {
+        source_name: '虚构规费到账银行文件',
+        rows: [
+          {
+            external_id: 'FEE-BANK-UI-1', date: '2026-10-10', description: '张师傅规费到账',
+            counterparty: '规费辅助-张师傅', amount: '90.00', direction: 'income',
+            evidence_ref: '虚构规费到账回单，仅验证分配',
+          },
+          {
+            external_id: 'FEE-BANK-UI-2', date: '2026-10-10', description: '李师傅规费到账',
+            counterparty: '规费辅助-李师傅', amount: '100.00', direction: 'income',
+            evidence_ref: '虚构李师傅规费到账回单',
+          },
+          {
+            external_id: 'FEE-BANK-UI-3', date: '2026-10-11', description: '多收规费退款',
+            counterparty: '规费辅助-李师傅', amount: '50.00', direction: 'expense',
+            evidence_ref: '虚构退款银行回单',
+          },
+        ],
+      },
+    }),
+    200,
+  );
+  await checked(
+    await request.post(`/api/books/${f.book.id}/suggestions`, { headers: f.headers }),
+    200,
+  );
+  await checked(
     await request.post(`/api/tax/books/${f.book.id}/sources`, {
       headers: f.headers,
       data: {
@@ -130,7 +162,7 @@ for (const viewport of [
     ).toBeVisible();
     await expect(panel.getByText('¥175.00', { exact: true }).first()).toBeVisible();
     await expect(panel.getByText('2 / 0', { exact: true })).toBeVisible();
-    await expect(panel.getByText('按驾驶员')).toBeVisible();
+    await expect(panel.getByText('按驾驶员', { exact: true })).toBeVisible();
     await expect(panel.getByText('张师傅 · 1 行 · ¥90.00')).toBeVisible();
     await expect(panel.getByText('按车辆')).toBeVisible();
     await expect(panel.locator('tbody tr').filter({ hasText: 'L1' })).toBeVisible();
@@ -157,6 +189,42 @@ for (const viewport of [
     await panel.getByText(/历史批次/).click();
     await panel.getByRole('button', { name: /2026-10 · v2 · 已复核/ }).click();
     await expect(panel.getByText('已复核', { exact: true })).toBeVisible();
+    await expect(panel.getByText('驾驶员应收与到账核销')).toBeVisible();
+    await expect(panel.getByText('张师傅').first()).toBeVisible();
+    const zhangRow = panel.locator('tbody tr').filter({ hasText: '张师傅' }).first();
+    await zhangRow.getByRole('button', { name: '登记到账核销' }).click();
+    await panel.getByLabel('银行到账').selectOption({ index: 0 });
+    await panel.getByRole('button', { name: '确认核销' }).click();
+    await expect(panel.getByText(/已登记 张师傅 的到账核销/)).toBeVisible();
+    await expect(panel.getByText('到账核销记录')).toBeVisible();
+    const liRow = panel.locator('tbody tr').filter({ hasText: '李师傅' }).first();
+    await liRow.getByRole('button', { name: '登记到账核销' }).click();
+    const choices = await panel.getByLabel('银行到账').locator('option').evaluateAll((options) =>
+      options.map((option) => ({
+        value: (option as HTMLOptionElement).value,
+        remaining: Number(((option.textContent ?? '').match(/余额 ¥([\d,]+\.\d{2})/)?.[1] ?? '0').replaceAll(',', '')),
+      })),
+    );
+    const best = choices.filter((choice) => choice.value).sort((a, b) => b.remaining - a.remaining)[0];
+    await panel.getByLabel('银行到账').selectOption(best.value);
+    await panel.getByLabel('代收依据').fill('同一银行合并到账，按驾驶员分配表拆分');
+    await panel.getByRole('button', { name: '确认核销' }).click();
+    await expect(panel.getByText(/已登记 李师傅 的到账核销/)).toBeVisible();
+    await liRow.getByRole('button', { name: '登记退款' }).click();
+    await panel.getByLabel('退款金额').fill('30.00');
+    await panel.getByLabel('退款原因').fill('多收退回驾驶员');
+    await panel.getByRole('button', { name: '确认退款' }).click();
+    await expect(panel.getByText(/已登记 李师傅 的退款/)).toBeVisible();
+    await expect(panel.getByText('退款记录')).toBeVisible();
+    await expect(panel.getByText('多收退回驾驶员')).toBeVisible();
+    await panel.getByRole('row').filter({ hasText: '张师傅' }).getByRole('button', { name: '撤销核销' }).first().click();
+    await panel.getByLabel('撤销原因').fill('银行退回');
+    const reverseResponse = page.waitForResponse((response) => response.url().includes('/reverse'));
+    await panel.getByRole('button', { name: '确认撤销' }).click();
+    const reverseResult = await reverseResponse;
+    expect(reverseResult.status()).toBe(200);
+    await expect(panel.getByText(/已撤销 张师傅 的到账核销/)).toBeVisible();
+    await expect(panel.getByText('已撤销', { exact: true })).toBeVisible();
     await page.screenshot({ path: `tmp_test/tax06-fees-${viewport.width}.png`, fullPage: true });
   });
 }

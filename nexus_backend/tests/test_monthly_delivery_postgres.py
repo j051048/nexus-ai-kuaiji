@@ -114,6 +114,12 @@ def test_pg_freeze_download_and_independent_exact_hash_acknowledgement(package_c
     assert readiness["ready"], readiness["blockers"]
     package = c.monthly.create(c.reviewer, c.book["id"], c.request)
     assert c.monthly.download(c.manager, c.book["id"], package["id"]).startswith(b"PK")
+    with c.db.transaction(actor=c.manager) as conn:
+        audit = conn.execute(
+            "SELECT details FROM accounting.audit_events WHERE action='export.download' AND object_id=%s",
+            (package["id"],),
+        ).fetchall()
+    assert len(audit) == 1 and "sha256" in audit[0][0]
     assert c.monthly.create(c.reviewer, c.book["id"], c.request)["id"] == package["id"]
     ack = MonthlyPackageAcknowledge(
         manifest_sha256=package["manifest_sha256"], reason="客户已收本版交付"

@@ -316,6 +316,8 @@ class CloseService:
         with self.db.transaction(write=True, actor=actor) as conn:
             run = self._run(conn, actor, run_id, write=True)
             self.accounting.access.book(conn, actor, run["book_id"], "review")
+            if run["status"] == "published":
+                return self._view(conn, run_id)
             if run["status"] != "locked":
                 raise AccountingError("只有已锁期的月结才能发布", 409)
             if int(run["version"]) != request.expected_version:

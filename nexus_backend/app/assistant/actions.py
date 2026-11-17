@@ -4,7 +4,7 @@ The model may suggest a tool name and explanation. It never selects identifiers,
 approves accounting work, edits business facts or invokes arbitrary endpoints.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 import json
 from typing import Literal
 from uuid import uuid4

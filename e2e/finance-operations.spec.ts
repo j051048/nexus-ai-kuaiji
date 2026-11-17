@@ -42,6 +42,14 @@ for (const width of [1365, 390]) {
           },
         }),
       );
+    const vehicleExternalId = `VIN-${f.tag.replace(/\s+/g, '-')}`;
+    await checked(
+      await request.post(`/api/books/${f.book.id}/ledger/transport/subjects`, {
+        headers: f.headers,
+        data: { kind: 'vehicle', external_id: vehicleExternalId, display_name: '关联测试车辆' },
+      }),
+      201,
+    );
     let panel = await open(page, f.book, f.company);
     await expect(panel.getByText('0.00 元')).toHaveCount(5);
     await panel.getByRole('button', { name: '资产与期末草稿', exact: true }).click();
@@ -59,8 +67,24 @@ for (const width of [1365, 390]) {
     await panel.getByLabel('登记依据与理由').fill('虚构资料，尾差到期核对');
     await panel.getByRole('button', { name: '保存资产卡片' }).click();
     await expect(panel.getByRole('heading', { name: '尾差验证设备', exact: true })).toBeVisible();
+    const periodic = await checked(
+      await request.get(`/api/periodic/workspace?book_id=${f.book.id}`, { headers: f.headers }),
+      200,
+    );
+    const assetId = periodic.assets[0].id as string;
+    await panel.getByLabel('车辆外部编号').fill(vehicleExternalId);
+    await panel.getByRole('button', { name: '关联车辆' }).click();
+    await expect(panel.getByText('车辆关联已登记；折旧来源将绑定该车辆主数据版本。')).toBeVisible();
+    await expect(panel.getByText('关联生效')).toBeVisible();
+    const link = await checked(
+      await request.get(`/api/periodic/assets/${assetId}/vehicle-link`, { headers: f.headers }),
+      200,
+    );
+    expect(link.link.vehicle_external_id).toBe(vehicleExternalId);
+    expect(link.link.source_version).toBe(1);
     await panel.getByRole('button', { name: '生成或查看本期草稿' }).click();
     await expect(panel.getByText('本版本由你制单，请交另一位有复核权限的会计审核。')).toBeVisible();
+    await expect(panel.getByText('关联生效')).toBeVisible();
     await expect(panel.getByRole('button', { name: '核对分录后复核' })).toHaveCount(0);
     const lines = panel.getByRole('region', { name: '折旧：尾差验证设备分录' });
     await expect(lines.getByRole('cell', { name: '100.00', exact: true })).toHaveCount(2);

@@ -28,6 +28,12 @@ export interface ReviewPolicyData {
     created_at: string | null;
   };
   can_manage: boolean;
+  firm_control: {
+    single_operator_disabled: boolean;
+    management_review_separation: boolean;
+    version: number;
+    reason: string;
+  };
   review_summary?: {
     total_reviewed: number;
     independent: number;
@@ -114,12 +120,29 @@ export function approvalBody(value: unknown, version: number, userId: string, re
   };
 }
 export function parseReviewPolicy(value: unknown, bookId: string): ReviewPolicyData {
+  if (record(value) && value.firm_control === undefined) {
+    value = {
+      ...value,
+      firm_control: {
+        single_operator_disabled: false,
+        management_review_separation: false,
+        version: 0,
+        reason: '',
+      },
+    };
+  }
   if (
     !record(value) ||
     value.book_id !== bookId ||
     typeof value.ledger_id !== 'string' ||
     !value.ledger_id ||
     typeof value.can_manage !== 'boolean' ||
+    !record(value.firm_control) ||
+    typeof value.firm_control.single_operator_disabled !== 'boolean' ||
+    (value.firm_control.management_review_separation !== undefined &&
+      typeof value.firm_control.management_review_separation !== 'boolean') ||
+    typeof value.firm_control.version !== 'number' ||
+    typeof value.firm_control.reason !== 'string' ||
     !record(value.policy) ||
     !policyVersion(value.policy.version) ||
     !mode(value.policy.mode) ||
@@ -149,5 +172,11 @@ export function parseReviewPolicy(value: unknown, bookId: string): ReviewPolicyD
     )
       throw new Error('复核分类统计不完整，请重新读取；未知不能计为独立复核。');
   }
-  return value as unknown as ReviewPolicyData;
+  return {
+    ...(value as unknown as ReviewPolicyData),
+    firm_control: {
+      ...(value.firm_control as unknown as ReviewPolicyData['firm_control']),
+      management_review_separation: value.firm_control.management_review_separation === true,
+    },
+  };
 }

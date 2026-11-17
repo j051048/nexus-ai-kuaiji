@@ -132,5 +132,4 @@ def build_integrations_router(actor_dependency):
     ):
         return svc.dispatch(actor, book_id, intent_id)
 
-
     return router

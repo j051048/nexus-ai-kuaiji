@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { api, ApiError } from './api';
 import type { Session } from './types';
 import './tax-fee.css';
@@ -27,6 +27,49 @@ type Row = {
   line_ordinal: number | null;
 };
 type Group = { id: string; name: string; row_count: number; net_cents: number };
+type Receivable = {
+  receivable_id: string;
+  batch_id: string;
+  period: string;
+  source_row_number: number;
+  external_id: string;
+  driver_id: string | null;
+  driver_name: string;
+  vehicle_name: string;
+  amount_cents: number;
+  settlement_status: string;
+};
+type BankSource = {
+  source_id: string;
+  date: string;
+  description: string;
+  counterparty: string;
+  amount_cents: number;
+  remaining_cents: number;
+  draft_version: number;
+};
+type Allocation = {
+  allocation_id: string;
+  receivable_id: string;
+  driver_name: string;
+  period: string;
+  amount_cents: number;
+  payer_name: string | null;
+  collection_basis: string | null;
+  created_at: string;
+  reversed_at: string | null;
+  reversal_reason: string | null;
+  receivable_status: string;
+};
+type Refund = {
+  refund_id: string;
+  receivable_id: string;
+  driver_name: string;
+  amount_cents: number;
+  reason: string;
+  created_at: string;
+  receivable_status: string;
+};
 type Batch = {
   id: string;
   book_id: string;
@@ -68,7 +111,12 @@ const labels: Record<string, string> = {
 
 type Props = { session: Session; bookId: string; period: string };
 export function TaxFeeBatchPanel(props: Props) {
-  return <ScopedTaxFeeBatchPanel key={`${props.session.scope_key}:${props.session.user_id}:${props.bookId}:${props.period}`} {...props} />;
+  return (
+    <ScopedTaxFeeBatchPanel
+      key={`${props.session.scope_key}:${props.session.user_id}:${props.bookId}:${props.period}`}
+      {...props}
+    />
+  );
 }
 
 function ScopedTaxFeeBatchPanel({
@@ -83,6 +131,22 @@ function ScopedTaxFeeBatchPanel({
   const url = `/tax/books/${encodeURIComponent(bookId)}/fee-batches`;
   const [sources, setSources] = useState<Source[]>([]);
   const [batches, setBatches] = useState<Batch[]>([]);
+  const [receivables, setReceivables] = useState<Receivable[]>([]);
+  const [banks, setBanks] = useState<BankSource[]>([]);
+  const [refundBanks, setRefundBanks] = useState<BankSource[]>([]);
+  const [allocations, setAllocations] = useState<Allocation[]>([]);
+  const [refunds, setRefunds] = useState<Refund[]>([]);
+  const [refunding, setRefunding] = useState<string | null>(null);
+  const [refundBank, setRefundBank] = useState('');
+  const [refundAmount, setRefundAmount] = useState('');
+  const [refundReason, setRefundReason] = useState('');
+  const [reversing, setReversing] = useState<string | null>(null);
+  const [reverseReason, setReverseReason] = useState('');
+  const [allocating, setAllocating] = useState<string | null>(null);
+  const [bankChoice, setBankChoice] = useState('');
+  const [allocAmount, setAllocAmount] = useState('');
+  const [allocPayer, setAllocPayer] = useState('');
+  const [allocBasis, setAllocBasis] = useState('');
   const [selected, setSelected] = useState<string[]>([]);
   const [batch, setBatch] = useState<Batch | null>(null);
   const [policyVersion, setPolicyVersion] = useState('fee-v1');
@@ -103,28 +167,196 @@ function ScopedTaxFeeBatchPanel({
     const current = ++revision.current;
     setFailure('');
     try {
-      const [sourceData, batchData] = await Promise.all([
+      const [
+        sourceData,
+        batchData,
+        receivableData,
+        bankData,
+        refundBankData,
+        allocationData,
+        refundData,
+      ] = await Promise.all([
         api<{ items: Source[] }>(`/tax/books/${encodeURIComponent(bookId)}/sources`, session),
         api<{ items: Batch[] }>(url, session),
+        api<{ items: Receivable[] }>(
+          `/tax/books/${encodeURIComponent(bookId)}/fee-receivables?period=${encodeURIComponent(period)}`,
+          session,
+        ),
+        api<{ items: BankSource[] }>(
+          `/tax/books/${encodeURIComponent(bookId)}/fee-bank-sources?period=${encodeURIComponent(period)}`,
+          session,
+        ),
+        api<{ items: BankSource[] }>(
+          `/tax/books/${encodeURIComponent(bookId)}/fee-bank-sources?period=${encodeURIComponent(period)}&direction=expense`,
+          session,
+        ),
+        api<{ items: Allocation[] }>(
+          `/tax/books/${encodeURIComponent(bookId)}/fee-allocations?period=${encodeURIComponent(period)}`,
+          session,
+        ),
+        api<{ items: Refund[] }>(
+          `/tax/books/${encodeURIComponent(bookId)}/fee-refunds?period=${encodeURIComponent(period)}`,
+          session,
+        ),
       ]);
       if (current !== revision.current) return;
-      if (sourceData.items.some(item => item.book_id !== bookId))
+      if (sourceData.items.some((item) => item.book_id !== bookId))
         throw new ApiError('返回的来源范围不一致，请刷新后核对。', 409);
       batchData.items.forEach(checked);
       setSources(sourceData.items.filter((item) => item.status === 'active'));
       setBatches(batchData.items);
-      setBatch(previous => previous ? batchData.items.find(item => item.id === previous.id) ?? null : null);
+      setReceivables(receivableData.items);
+      setBanks(bankData.items);
+      setRefundBanks(refundBankData.items);
+      setAllocations(allocationData.items);
+      setRefunds(refundData.items);
+      setBatch((previous) =>
+        previous ? (batchData.items.find((item) => item.id === previous.id) ?? null) : null,
+      );
     } catch (error) {
       if (current !== revision.current) return;
-      setSources([]); setBatches([]); setSelected([]); setBatch(null); setNotice('');
+      setSources([]);
+      setBatches([]);
+      setReceivables([]);
+      setBanks([]);
+      setRefundBanks([]);
+      setAllocations([]);
+      setRefunds([]);
+      setSelected([]);
+      setBatch(null);
+      setNotice('');
       setFailure(error instanceof ApiError ? error.message : '规费批次读取失败。');
     }
   }
   useEffect(() => {
     void load();
-    return () => { revision.current++; };
+    return () => {
+      revision.current++;
+    };
     /* eslint-disable-next-line react-hooks/exhaustive-deps */
   }, [bookId, session]);
+
+  async function allocate(item: Receivable) {
+    const bank = banks.find((row) => row.source_id === bankChoice);
+    const amount = Math.round(Number(allocAmount) * 100);
+    if (!bank || !Number.isFinite(amount) || amount <= 0) {
+      setFailure('请选择银行到账并填写大于 0 的核销金额。');
+      return;
+    }
+    if (amount > bank.remaining_cents || amount > item.amount_cents) {
+      setFailure('核销金额不能超过银行到账余额或驾驶员应收余额。');
+      return;
+    }
+    setBusy(true);
+    setFailure('');
+    setNotice('');
+    try {
+      await api(
+        `/tax/books/${encodeURIComponent(bookId)}/fee-receivables/${encodeURIComponent(item.receivable_id)}/allocations`,
+        session,
+        {
+          method: 'POST',
+          body: {
+            bank_source_id: bank.source_id,
+            amount_cents: amount,
+            idempotency_key: `fee-alloc-${item.receivable_id}-${bank.source_id}-${amount}-${bank.draft_version}`,
+            payer_name: allocPayer || null,
+            collection_basis: allocBasis || null,
+          },
+        },
+      );
+      setNotice(`已登记 ${item.driver_name} 的到账核销 ${money(amount)}；银行凭证仍需独立复核。`);
+      setAllocating(null);
+      setBankChoice('');
+      setAllocAmount('');
+      setAllocPayer('');
+      setAllocBasis('');
+      await load();
+    } catch (error) {
+      setFailure(error instanceof ApiError ? error.message : '核销登记失败。');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function reverseAllocation(row: Allocation) {
+    const reason = reverseReason.trim();
+    if (reason.length < 3) {
+      setFailure('撤销原因至少 3 个字。');
+      return;
+    }
+    setBusy(true);
+    setFailure('');
+    setNotice('');
+    try {
+      await api(
+        `/tax/books/${encodeURIComponent(bookId)}/fee-allocations/${encodeURIComponent(row.allocation_id)}/reverse`,
+        session,
+        {
+          method: 'POST',
+          body: { reason },
+        },
+      );
+      setNotice(
+        `已撤销 ${row.driver_name} 的到账核销 ${money(row.amount_cents)}；原记录保留，应收余额已恢复。`,
+      );
+      setReversing(null);
+      setReverseReason('');
+      await load();
+    } catch (error) {
+      setFailure(error instanceof ApiError ? error.message : '撤销核销失败。');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function refund(item: Receivable) {
+    const bank = refundBanks.find((row) => row.source_id === refundBank);
+    const amount = Math.round(Number(refundAmount) * 100);
+    const reason = refundReason.trim();
+    if (!bank || !Number.isFinite(amount) || amount <= 0) {
+      setFailure('请选择银行付款并填写大于 0 的退款金额。');
+      return;
+    }
+    if (amount > bank.remaining_cents) {
+      setFailure('退款金额不能超过银行付款余额。');
+      return;
+    }
+    if (reason.length < 3) {
+      setFailure('退款原因至少 3 个字。');
+      return;
+    }
+    setBusy(true);
+    setFailure('');
+    setNotice('');
+    try {
+      await api(
+        `/tax/books/${encodeURIComponent(bookId)}/fee-receivables/${encodeURIComponent(item.receivable_id)}/refunds`,
+        session,
+        {
+          method: 'POST',
+          body: {
+            bank_source_id: bank.source_id,
+            amount_cents: amount,
+            reason,
+            idempotency_key: `fee-refund-${item.receivable_id}-${bank.source_id}-${amount}-${bank.draft_version}`,
+          },
+        },
+      );
+      setNotice(
+        `已登记 ${item.driver_name} 的退款 ${money(amount)}；银行付款凭证仍需独立复核，应收余额已按净额重算。`,
+      );
+      setRefunding(null);
+      setRefundBank('');
+      setRefundAmount('');
+      setRefundReason('');
+      await load();
+    } catch (error) {
+      setFailure(error instanceof ApiError ? error.message : '退款登记失败。');
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function generate() {
     if (!selected.length) {
@@ -294,6 +526,312 @@ function ScopedTaxFeeBatchPanel({
             策略 {batch.policy.version} · 批次指纹 {batch.batch_fingerprint.slice(0, 12)}… ·
             来源指纹 {batch.source_fingerprint.slice(0, 12)}…
           </p>
+          <div className="tax-fee-receivables">
+            <h4>驾驶员应收与到账核销</h4>
+            <p>已复核规费按驾驶员拆分；可登记银行到账分配，银行凭证仍需独立复核。</p>
+            {receivables.length ? (
+              <div className="tax-fee-table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>期间</th>
+                      <th>驾驶员</th>
+                      <th>车辆</th>
+                      <th>来源行</th>
+                      <th>金额</th>
+                      <th>状态</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {receivables.map((item) => (
+                      <Fragment key={item.receivable_id}>
+                        <tr>
+                          <td>{item.period}</td>
+                          <td>{item.driver_name}</td>
+                          <td>{item.vehicle_name}</td>
+                          <td>
+                            {item.external_id} · L{item.source_row_number}
+                          </td>
+                          <td>{money(item.amount_cents)}</td>
+                          <td>{item.settlement_status === 'settled' ? '已结清' : '待收'}</td>
+                          <td>
+                            <div className="tax-fee-row-actions">
+                              {item.settlement_status === 'settled' ? null : (
+                                <button
+                                  type="button"
+                                  className="secondary"
+                                  onClick={() => {
+                                    setAllocating(item.receivable_id);
+                                    setRefunding(null);
+                                    setBankChoice(banks[0]?.source_id ?? '');
+                                    setAllocAmount((item.amount_cents / 100).toFixed(2));
+                                    setAllocPayer('');
+                                    setAllocBasis('');
+                                  }}
+                                >
+                                  登记到账核销
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                className="secondary"
+                                onClick={() => {
+                                  setRefunding(item.receivable_id);
+                                  setAllocating(null);
+                                  setRefundBank(refundBanks[0]?.source_id ?? '');
+                                  setRefundAmount('');
+                                  setRefundReason('');
+                                }}
+                              >
+                                登记退款
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                        {allocating === item.receivable_id && (
+                          <tr>
+                            <td colSpan={7}>
+                              <div className="tax-fee-allocation">
+                                <label>
+                                  银行到账
+                                  <select
+                                    value={bankChoice}
+                                    onChange={(event) => setBankChoice(event.target.value)}
+                                  >
+                                    {banks.map((bank) => (
+                                      <option key={bank.source_id} value={bank.source_id}>
+                                        {bank.date} · {bank.counterparty} · 余额{' '}
+                                        {money(bank.remaining_cents)}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+                                <label>
+                                  核销金额
+                                  <input
+                                    inputMode="decimal"
+                                    value={allocAmount}
+                                    onChange={(event) => setAllocAmount(event.target.value)}
+                                  />
+                                </label>
+                                <label>
+                                  付款人
+                                  <input
+                                    value={allocPayer}
+                                    onChange={(event) => setAllocPayer(event.target.value)}
+                                    placeholder={
+                                      banks.find((row) => row.source_id === bankChoice)
+                                        ?.counterparty ?? '默认银行付款人'
+                                    }
+                                  />
+                                </label>
+                                <label>
+                                  代收依据
+                                  <input
+                                    value={allocBasis}
+                                    onChange={(event) => setAllocBasis(event.target.value)}
+                                    placeholder="付款人非驾驶员时必填"
+                                  />
+                                </label>
+                                <button
+                                  type="button"
+                                  disabled={busy}
+                                  onClick={() => void allocate(item)}
+                                >
+                                  确认核销
+                                </button>
+                                <button
+                                  type="button"
+                                  className="secondary"
+                                  onClick={() => setAllocating(null)}
+                                >
+                                  取消
+                                </button>
+                                <span>
+                                  只登记到账分配，不自动复核银行凭证；付款人非驾驶员时须有代收核定依据。
+                                </span>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                        {refunding === item.receivable_id && (
+                          <tr>
+                            <td colSpan={7}>
+                              <div className="tax-fee-allocation">
+                                <label>
+                                  银行付款
+                                  <select
+                                    value={refundBank}
+                                    onChange={(event) => setRefundBank(event.target.value)}
+                                  >
+                                    {refundBanks.map((bank) => (
+                                      <option key={bank.source_id} value={bank.source_id}>
+                                        {bank.date} · {bank.counterparty} · 余额{' '}
+                                        {money(bank.remaining_cents)}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+                                <label>
+                                  退款金额
+                                  <input
+                                    inputMode="decimal"
+                                    value={refundAmount}
+                                    onChange={(event) => setRefundAmount(event.target.value)}
+                                    placeholder="退款不超过已核销净额"
+                                  />
+                                </label>
+                                <label>
+                                  退款原因
+                                  <input
+                                    value={refundReason}
+                                    onChange={(event) => setRefundReason(event.target.value)}
+                                    placeholder="至少 3 个字"
+                                  />
+                                </label>
+                                <button
+                                  type="button"
+                                  disabled={busy || refundBanks.length === 0}
+                                  onClick={() => void refund(item)}
+                                >
+                                  确认退款
+                                </button>
+                                <button
+                                  type="button"
+                                  className="secondary"
+                                  onClick={() => setRefunding(null)}
+                                >
+                                  取消
+                                </button>
+                                <span>
+                                  {refundBanks.length === 0
+                                    ? '当前没有可用的银行付款流水。'
+                                    : '只登记退款，不修改原收款记录；银行付款凭证仍需独立复核。'}
+                                </span>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="tax-fee-empty">本期暂无已复核的驾驶员应收。</p>
+            )}
+          </div>
+          {allocations.length > 0 && (
+            <div className="tax-fee-receivables">
+              <h4>到账核销记录</h4>
+              <div className="tax-fee-table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>时间</th>
+                      <th>驾驶员</th>
+                      <th>付款人</th>
+                      <th>代收依据</th>
+                      <th>金额</th>
+                      <th>状态</th>
+                      <th>操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {allocations.map((row) => (
+                      <Fragment key={row.allocation_id}>
+                        <tr>
+                          <td>{row.created_at.slice(0, 10)}</td>
+                          <td>{row.driver_name}</td>
+                          <td>{row.payer_name || '—'}</td>
+                          <td>{row.collection_basis || '—'}</td>
+                          <td>{money(row.amount_cents)}</td>
+                          <td>{row.reversed_at ? '已撤销' : '有效'}</td>
+                          <td>
+                            {row.reversed_at ? (
+                              row.reversal_reason
+                            ) : (
+                              <button
+                                type="button"
+                                className="secondary"
+                                onClick={() => {
+                                  setReversing(row.allocation_id);
+                                  setReverseReason('');
+                                }}
+                              >
+                                撤销核销
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                        {reversing === row.allocation_id && (
+                          <tr>
+                            <td colSpan={7}>
+                              <div className="tax-fee-allocation">
+                                <label>
+                                  撤销原因
+                                  <input
+                                    value={reverseReason}
+                                    onChange={(event) => setReverseReason(event.target.value)}
+                                    placeholder="至少 3 个字"
+                                  />
+                                </label>
+                                <button
+                                  type="button"
+                                  disabled={busy}
+                                  onClick={() => void reverseAllocation(row)}
+                                >
+                                  确认撤销
+                                </button>
+                                <button
+                                  type="button"
+                                  className="secondary"
+                                  onClick={() => setReversing(null)}
+                                >
+                                  取消
+                                </button>
+                                <span>只撤销分配记录，不删除历史；银行凭证仍需独立复核。</span>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+          {refunds.length > 0 && (
+            <div className="tax-fee-receivables">
+              <h4>退款记录</h4>
+              <p>退款与原收款分开保存；应收状态按“到账核销−退款”净额重算。</p>
+              <div className="tax-fee-table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>时间</th>
+                      <th>驾驶员</th>
+                      <th>金额</th>
+                      <th>原因</th>
+                      <th>应收状态</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {refunds.map((row) => (
+                      <tr key={row.refund_id}>
+                        <td>{row.created_at.slice(0, 10)}</td>
+                        <td>{row.driver_name}</td>
+                        <td>{money(row.amount_cents)}</td>
+                        <td>{row.reason}</td>
+                        <td>{row.receivable_status === 'settled' ? '已结清' : '待收'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
           {batch.stale && (
             <div role="alert" className="tax-fee-error">
               {batch.stale_reason}

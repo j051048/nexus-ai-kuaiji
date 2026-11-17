@@ -18,8 +18,16 @@
   letter-spacing: 0.1em;
   font-size: 11px;
 }
-.fleet-metrics h4 { margin: 0 0 6px; font-size: 20px; }
-.fleet-metrics header p { margin: 0; color: #4d5f53; font-size: 13px; line-height: 1.6; }
+.fleet-metrics h4 {
+  margin: 0 0 6px;
+  font-size: 20px;
+}
+.fleet-metrics header p {
+  margin: 0;
+  color: #4d5f53;
+  font-size: 13px;
+  line-height: 1.6;
+}
 .fleet-metrics header button {
   border: 1px solid #b9cbbd;
   background: #fff;
@@ -40,21 +48,75 @@
   padding: 10px;
   background: #fff;
 }
-.fleet-summary span { display: block; color: #627467; font-size: 12px; margin-bottom: 4px; }
-.fleet-summary strong { font-size: 18px; }
-.fleet-note { margin: 8px 0; color: #5d6f62; font-size: 12px; line-height: 1.6; }
-.fleet-error { border: 1px solid #e6b4a8; color: #8b2f1f; background: #fff3ef; padding: 10px; border-radius: 10px; }
-.fleet-empty { color: #6b786e; padding: 12px 0; }
-.fleet-table-wrap { overflow-x: auto; margin-top: 12px; }
-.fleet-metrics table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.fleet-metrics caption { text-align: left; font-weight: 600; margin-bottom: 6px; }
-.fleet-metrics th, .fleet-metrics td { border-bottom: 1px solid #e6ede8; padding: 8px 6px; text-align: right; }
-.fleet-metrics th:first-child, .fleet-metrics td:first-child { text-align: left; }
-.fleet-metrics th small { display: block; color: #7a887f; font-weight: 400; }
+.fleet-summary span {
+  display: block;
+  color: #627467;
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+.fleet-summary strong {
+  font-size: 18px;
+}
+.fleet-note {
+  margin: 8px 0;
+  color: #5d6f62;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.fleet-error {
+  border: 1px solid #e6b4a8;
+  color: #8b2f1f;
+  background: #fff3ef;
+  padding: 10px;
+  border-radius: 10px;
+}
+.fleet-empty {
+  color: #6b786e;
+  padding: 12px 0;
+}
+.fleet-table-wrap {
+  overflow-x: auto;
+  margin-top: 12px;
+}
+.fleet-metrics table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.fleet-metrics caption {
+  text-align: left;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.fleet-metrics th,
+.fleet-metrics td {
+  border-bottom: 1px solid #e6ede8;
+  padding: 8px 6px;
+  text-align: right;
+}
+.fleet-metrics th:first-child,
+.fleet-metrics td:first-child {
+  text-align: left;
+}
+.fleet-metrics th small {
+  display: block;
+  color: #7a887f;
+  font-weight: 400;
+}
 @media (max-width: 720px) {
-  .fleet-metrics { padding: 14px; }
-  .fleet-metrics header { flex-direction: column; }
-  .fleet-summary { grid-template-columns: 1fr 1fr; }
-  .fleet-summary div:last-child { grid-column: 1 / -1; }
-  .fleet-metrics table { min-width: 680px; }
+  .fleet-metrics {
+    padding: 14px;
+  }
+  .fleet-metrics header {
+    flex-direction: column;
+  }
+  .fleet-summary {
+    grid-template-columns: 1fr 1fr;
+  }
+  .fleet-summary div:last-child {
+    grid-column: 1 / -1;
+  }
+  .fleet-metrics table {
+    min-width: 680px;
+  }
 }

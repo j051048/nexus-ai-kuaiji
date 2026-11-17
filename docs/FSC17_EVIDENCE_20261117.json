@@ -1,0 +1,75 @@
+{
+  "batch": "FSC17",
+  "status": "partial",
+  "as_of": "2026-11-17T17:26:00+08:00",
+  "scope": [
+    "periodic_asset_vehicle_links",
+    "AssetVehicleLinkService",
+    "depreciation auxiliary and source_ref",
+    "asset vehicle link editor",
+    "restore"
+  ],
+  "not_verified": [
+    "insurance policy binding and duplicate accrual guard",
+    "multi-vehicle policy allocation",
+    "surrender/disposal/missed accrual/two-period chain",
+    "two-company browser chain",
+    "real customer policy and external receipt"
+  ],
+  "tests": {
+    "sqlite": {
+      "command": "cd nexus_backend && PYTHONPATH=..:. pytest -q tests/test_fsc17_links.py tests/test_tax04_recovery.py::test_fsc17_asset_vehicle_link_and_aux_survive_database_restore",
+      "result": "3 passed",
+      "duration_seconds": 12.32
+    },
+    "pg17": {
+      "file": "nexus_backend/tests/test_fsc17_links_postgres.py",
+      "result": "1 passed",
+      "duration_seconds": 1.14,
+      "artifact": "tmp_test/ak05-pg-runs/58da7ae0a848407d9801682df0fe3818"
+    },
+    "pg16": {
+      "file": "nexus_backend/tests/test_fsc17_links_postgres.py",
+      "result": "1 passed",
+      "duration_seconds": 1.18,
+      "artifact": "tmp_test/ak05-pg-runs/8dd998d6df94414b8cdfc243360d3bec"
+    },
+    "browser": {
+      "command": "npx playwright test e2e/finance-operations.spec.ts --reporter=line",
+      "result": "4 passed",
+      "duration_seconds": 43.0,
+      "viewports": [
+        1365,
+        390
+      ]
+    },
+    "typecheck": "passed",
+    "prettier": "passed",
+    "ruff": "passed"
+  },
+  "candidate": {
+    "head": "767f7cdf7c717c98d3516a0e31b53bd8cd9ae1a9",
+    "source_files": 2360,
+    "source_sha256": "ce958c8b0605ff66b834203527b39bc5e6d70dea6265ee5f26a29ff8dc9c0bf5",
+    "migration_files": 469,
+    "migration_sha256": "d266a53a73a5a3237cfe6e3676497acc43294ddb6d25466dbf88fb5b5fefb6d7"
+  },
+  "external_verification": "not_authorized_or_missing_data",
+  "committed": false,
+  "pushed": false,
+  "deployed": false,
+  "joint_fsc12": {
+    "browser": "12 passed/3.5m",
+    "sqlite": "50 passed/117.21s",
+    "pg16": "9 passed/5.29s",
+    "pg17": "9 passed/4.97s"
+  },
+  "extra_checks": {
+    "insurance_duplicate_source": {
+      "sqlite": "1 passed",
+      "pg17": "0.79s 4177628c681e40ba94ba6b796601f430",
+      "pg16": "0.76s af460548710c4e9a99256df240bf5866",
+      "rule": "same policy_no+period, different source_key -> 409; version correction allowed"
+    }
+  }
+}

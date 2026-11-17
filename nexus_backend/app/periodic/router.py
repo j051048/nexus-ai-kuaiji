@@ -1,8 +1,10 @@
 from fastapi import APIRouter, Depends, Request
 
+from .links import AssetVehicleLinkRevoke, AssetVehicleLinkWrite
 from .models import (
     AccrualRule,
     AssetReconcile,
+    ClosingEvidenceWrite,
     ClosingGenerate,
     DepreciableAsset,
     DraftCommand,
@@ -15,6 +17,12 @@ def build_periodic_router(actor_dependency):
 
     def service(request: Request):
         return request.app.state.periodic
+
+    def closing_service(request: Request):
+        return request.app.state.closing_authority
+
+    def link_service(request: Request):
+        return request.app.state.asset_vehicle_links
 
     @router.get("/workspace")
     def workspace(book_id: str, current=Depends(actor_dependency), periodic=Depends(service)):
@@ -62,6 +70,38 @@ def build_periodic_router(actor_dependency):
     ):
         return periodic.reconcile_asset(current, asset_id, payload)
 
+    @router.get("/closing/authority")
+    def closing_authority(
+        company_id: str,
+        current=Depends(actor_dependency),
+        authority=Depends(closing_service),
+    ):
+        return authority.get(current, company_id)
+
+    @router.get("/closing/summary")
+    def closing_summary(
+        book_id: str,
+        current=Depends(actor_dependency),
+        authority=Depends(closing_service),
+    ):
+        return authority.summary(current, book_id)
+
+    @router.get("/closing/evidence")
+    def closing_evidence(
+        book_id: str,
+        current=Depends(actor_dependency),
+        authority=Depends(closing_service),
+    ):
+        return authority.evidence(current, book_id)
+
+    @router.post("/closing/evidence", status_code=201)
+    def bind_closing_evidence(
+        payload: ClosingEvidenceWrite,
+        current=Depends(actor_dependency),
+        authority=Depends(closing_service),
+    ):
+        return authority.bind(current, payload)
+
     @router.post("/closing/generate", status_code=201)
     def generate_closing(
         payload: ClosingGenerate,
@@ -87,6 +127,39 @@ def build_periodic_router(actor_dependency):
         periodic=Depends(service),
     ):
         return periodic.post(current, draft_id, payload)
+
+    @router.get("/assets/{asset_id}/vehicle-link")
+    def vehicle_link(
+        asset_id: str, current=Depends(actor_dependency), links=Depends(link_service)
+    ):
+        return {"link": links.summary(current, asset_id)}
+
+    @router.post("/assets/{asset_id}/vehicle-link", status_code=201)
+    def link_vehicle(
+        asset_id: str,
+        payload: AssetVehicleLinkWrite,
+        current=Depends(actor_dependency),
+        links=Depends(link_service),
+    ):
+        return links.link(current, asset_id, payload)
+
+    @router.post("/assets/{asset_id}/vehicle-link/revoke", status_code=201)
+    def revoke_vehicle_link(
+        asset_id: str,
+        payload: AssetVehicleLinkRevoke,
+        current=Depends(actor_dependency),
+        links=Depends(link_service),
+    ):
+        return links.revoke(current, asset_id, payload)
+
+    @router.get("/vehicle-links")
+    def vehicle_links(
+        book_id: str,
+        vehicle_external_id: str,
+        current=Depends(actor_dependency),
+        links=Depends(link_service),
+    ):
+        return links.for_vehicle(current, book_id, vehicle_external_id)
 
     @router.get("/drafts")
     def drafts(

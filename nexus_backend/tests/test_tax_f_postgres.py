@@ -10,11 +10,11 @@ import pytest
 
 from app.accounting.database import Database
 from app.accounting.domain import AccountingError, Actor
-from app.accounting.models import BookCreate
+from app.accounting.models import ApprovalRequest, BookCreate
 from app.accounting.service import AccountingService
 from app.reports.profit import ProfitDrilldownService, ProfitMappingItem, ProfitMappingWrite
 from app.tax.basis import TaxBasisGenerate, TaxBasisPolicy, TaxBasisReview, TaxBasisAdjustment, TaxBasisService
-from app.tax.leases import LeaseConfirmation, LeaseCreate, LeaseInvoiceRed, LeasePolicy, LeaseRecognition, LeaseService
+from app.tax.leases import LeaseAmend, LeaseConfirmation, LeaseCreate, LeaseInvoiceRed, LeasePolicy, LeaseRecognition, LeaseService
 from scripts.pg_suite_target import load_suite_target, verify_suite_target
 
 ADMIN_URL = os.getenv("ACCOUNTING_TEST_POSTGRES_URL")
@@ -244,3 +244,163 @@ def test_lease_invoice_red_reversal_is_immutable_and_scoped(case):
             ),
         )
     assert exc.value.status == 409
+
+
+def test_fsc_company_profile_confirm_is_immutable_and_scope_bound(case):
+    import psycopg
+    from app.fsc.profiles import FscProfileService, ProfileConfirm, ProfileWrite, REQUIRED, SECTIONS
+
+    service = FscProfileService(case.db)
+    confirmations = {
+        key: {
+            "status": "confirmed",
+            "owner": "虚构客户负责人",
+            "evidence_ref": f"FSC01-{key}",
+            "confirmed_at": "2026-11-16T10:00:00+08:00",
+        }
+        for key in REQUIRED
+    }
+    payload = {key: {"status": "unknown", "note": "待客户输入"} for key in REQUIRED}
+    payload["_confirmations"] = confirmations
+    draft = service.create_draft(
+        case.manager, case.book["company_id"],
+        ProfileWrite(industry="taxi", payload=payload),
+    )
+    assert draft["status"] == "draft" and draft["version"] >= 1
+    confirmed = service.confirm(case.manager, draft["id"], ProfileConfirm(expected_version=draft["version"]))
+    assert confirmed["status"] == "confirmed"
+    assert set(confirmed["confirmations"]) == set(REQUIRED)
+
+    with pytest.raises(Exception) as immutable:
+        with psycopg.connect(ADMIN_URL) as conn:
+            conn.execute(
+                "UPDATE accounting.fsc_company_profiles SET industry='tampered' WHERE id=%s",
+                (draft["id"],),
+            )
+    assert "immutable" in str(immutable.value).lower() or "不可变" in str(immutable.value)
+
+    suffix = uuid4().hex[:12]
+    outsider = Actor(user_id=f"taxf-outsider-{suffix}", firm_id=f"taxf-outsider-firm-{suffix}")
+    with psycopg.connect(ADMIN_URL) as conn:
+        conn.execute(
+            "INSERT INTO accounting.users(id,name,email) VALUES(%s,'outsider',%s)",
+            (outsider.user_id, f"taxf-outsider-{suffix}@example.test"),
+        )
+        conn.execute(
+            "INSERT INTO accounting.firms(id,name,created_by) VALUES(%s,'虚构外部所',%s)",
+            (outsider.firm_id, outsider.user_id),
+        )
+        conn.execute(
+            "INSERT INTO accounting.memberships(firm_id,user_id,role) VALUES(%s,%s,'owner')",
+            (outsider.firm_id, outsider.user_id),
+        )
+    with pytest.raises(AccountingError) as denied:
+        service.active(outsider, case.book["company_id"])
+    assert denied.value.status in {403, 404}
+
+
+def test_stale_lease_draft_is_rejected_after_amendment_on_postgres(case):
+    service = LeaseService(case.db)
+    contract = service.create(
+        case.manager, case.book["id"],
+        LeaseCreate(
+            customer_name="虚构租赁客户-STALE", customer_external_id="C-STALE",
+            vehicle_external_id="V-STALE", start_period="2026-10", end_period="2026-11",
+            monthly="1000.00",
+        ),
+    )
+    service.confirm(
+        case.manager, case.book["id"], contract["id"],
+        LeaseConfirmation(kind="business", period="2026-11", amount="1000.00", reference="业务-STALE"),
+    )
+    view = service.recognize(
+        case.manager, case.book["id"], contract["id"],
+        LeaseRecognition(period="2026-11", policy=LEASE_POLICY, reason="旧版本收入草稿"),
+    )
+    draft_id = [row for row in view["plan"] if row["period"] == "2026-11" and row["kind"] == "revenue"][0]["draft_id"]
+    service.amend(
+        case.manager, case.book["id"], contract["id"],
+        LeaseAmend(expected_version=1, end_period="2027-01", monthly="1100.00", reason="续签改版"),
+    )
+    service.approve(case.manager, case.book["id"], contract["id"], 2)
+    with pytest.raises(AccountingError) as exc:
+        AccountingService(case.db).approve(
+            case.reviewer, case.book["id"], draft_id, ApprovalRequest(expected_version=1)
+        )
+    assert exc.value.status == 409
+
+
+def test_two_companies_cross_year_lease_chain_keeps_drafts_isolated(case):
+    accounting = AccountingService(case.db)
+    second = accounting.create_book(
+        case.manager, BookCreate(name="虚构TAXF第二企业账套", period="2026-10")
+    )
+    service = LeaseService(case.db)
+
+    def recognize_two_periods(book_id: str, label: str) -> list[dict]:
+        contract = service.create(
+            case.manager,
+            book_id,
+            LeaseCreate(
+                customer_name=f"虚构跨年客户-{label}",
+                customer_external_id=f"CROSS-{label}",
+                vehicle_external_id=f"V-CROSS-{label}",
+                start_period="2026-12",
+                end_period="2027-02",
+                monthly="1000.00",
+            ),
+        )
+        for period in ("2026-12", "2027-01"):
+            service.confirm(
+                case.manager,
+                book_id,
+                contract["id"],
+                LeaseConfirmation(
+                    kind="business",
+                    period=period,
+                    amount="1000.00",
+                    reference=f"业务确认-{label}-{period}",
+                ),
+            )
+            service.confirm(
+                case.manager,
+                book_id,
+                contract["id"],
+                LeaseConfirmation(
+                    kind="receipt",
+                    period=period,
+                    amount="1000.00",
+                    reference=f"收款-{label}-{period}",
+                ),
+            )
+        drafts = []
+        for period in ("2026-12", "2027-01"):
+            view = service.recognize(
+                case.manager,
+                book_id,
+                contract["id"],
+                LeaseRecognition(
+                    period=period,
+                    policy=LEASE_POLICY,
+                    reason=f"跨年确认-{label}-{period}",
+                ),
+            )
+            plan = [
+                row
+                for row in view["plan"]
+                if row["period"] == period and row["kind"] == "revenue"
+            ][0]
+            assert plan["status"] == "recognized"
+            draft = accounting.get_draft(case.manager, book_id, plan["draft_id"])
+            assert draft["status"] == "draft"
+            assert draft["lines"][0]["debit"] == "1000.00"
+            drafts.append((period, draft))
+        return drafts
+
+    first_drafts = recognize_two_periods(case.book["id"], "A")
+    second_drafts = recognize_two_periods(second["id"], "B")
+    assert {draft["id"] for _, draft in first_drafts}.isdisjoint(
+        {draft["id"] for _, draft in second_drafts}
+    )
+    assert [period for period, _ in first_drafts] == ["2026-12", "2027-01"]
+    assert [period for period, _ in second_drafts] == ["2026-12", "2027-01"]

@@ -383,7 +383,6 @@ class PostingService:
             replay = self._command_replay(conn, actor, book_id, request.command_key, fingerprint)
             if replay:
                 return replay
-            binding = self._binding(conn, book["id"])
             draft = conn.execute(
                 "SELECT * FROM drafts WHERE id=? AND book_id=?", (draft_id, book["id"])
             ).fetchone()
@@ -400,6 +399,10 @@ class PostingService:
             ).fetchone()
             if not source:
                 raise AccountingError("草稿来源不存在", 409)
+            from ..tax.lease_guards import assert_lease_source_current
+
+            assert_lease_source_current(conn, book["id"], source["id"], draft_id)
+            binding = self._binding(conn, book["id"])
             if (
                 conn.execute(
                     "SELECT 1 FROM bank_source_dispositions WHERE book_id=? AND source_id=?",
@@ -411,6 +414,11 @@ class PostingService:
                 ).fetchone()
             ):
                 raise AccountingError("来源已隔离或已被替代，不能记账", 409)
+            if getattr(self.db, "is_postgres", False):
+                conn.execute(
+                    "SELECT pg_advisory_xact_lock(hashtext(?))",
+                    (f"voucher-source:draft:{draft_id}",),
+                )
             if conn.execute(
                 "SELECT 1 FROM voucher_sources WHERE source_kind='draft' AND source_id=?",
                 (draft_id,),

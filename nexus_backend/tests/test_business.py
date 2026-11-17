@@ -325,3 +325,125 @@ def test_concurrent_create_retry_creates_exactly_one_event(business):
     with case.db.transaction() as conn:
         assert conn.execute("SELECT COUNT(*) FROM business_events").fetchone()[0] == 1
         assert conn.execute("SELECT COUNT(*) FROM audit_events WHERE action='business.create'").fetchone()[0] == 1
+
+
+def test_fsc12_five_person_two_tasks_are_reviewed_and_posted_without_duplication(business):
+    from app.accounting.models import ApprovalRequest
+
+    case = business
+    with case.db.transaction(write=True, actor=case.manager) as conn:
+        conn.execute(
+            "UPDATE ai_company_settings SET enabled=0 WHERE firm_id=? AND company_id IN (?,?)",
+            (case.manager.firm_id, case.company["id"], case.other["id"]),
+        )
+
+    events = [
+        approved(case, template="daily_cashflow", direction="income", payment_status="paid"),
+        approved(case, template="daily_cashflow", direction="income", payment_status="paid"),
+    ]
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        handed = list(executor.map(lambda event: handoff(case, event), events))
+    assert len({row["draft_id"] for row in handed}) == 2
+
+    wanted = {row["draft_id"] for row in handed}
+    drafts = [
+        draft
+        for draft in case.ledger.get_book(case.actors["accountant"], case.book["id"])["drafts"]
+        if draft["id"] in wanted
+    ]
+    assert len(drafts) == 2
+
+    accounting = AccountingService(case.db)
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        reviewed = list(
+            executor.map(
+                lambda draft: accounting.approve(
+                    case.actors["accountant"],
+                    case.book["id"],
+                    draft["id"],
+                    ApprovalRequest(expected_version=draft["version"]),
+                ),
+                drafts,
+            )
+        )
+    assert {row["status"] for row in reviewed} == {"approved"}
+
+    with case.db.transaction() as conn:
+        rows = conn.execute(
+            "SELECT d.id,d.status FROM drafts d WHERE d.id IN (?,?)",
+            tuple(wanted),
+        ).fetchall()
+    assert {row["status"] for row in rows} == {"approved"}
+
+    from app.opening.models import AccountCreate, MappingCreate
+    from app.opening.service import OpeningService
+    from app.posting.models import OpeningBind, PostDraft
+    from app.posting.service import PostingService
+    from test_posting_service import frozen_opening
+
+    opening = frozen_opening(case)
+    opening_service = OpeningService(case.db)
+    revenue = opening_service.create_account(
+        case.manager,
+        AccountCreate(
+            ledger_id=opening["ledger_id"],
+            code="6001",
+            name="主营业务收入",
+            category="income",
+            normal_balance="credit",
+            effective_from="2026-01",
+            effective_to="2026-12",
+            reason="FSC12 五人正式过账收入科目",
+        ),
+    )
+    opening_service.create_mapping(
+        case.manager,
+        MappingCreate(
+            book_id=case.book["id"],
+            book_account_code="6001",
+            account_id=revenue["id"],
+            account_version=1,
+            reason="FSC12 五人正式过账收入映射",
+        ),
+    )
+    posting = PostingService(case.db)
+    posting.bind_opening(
+        case.manager,
+        OpeningBind(
+            book_id=case.book["id"],
+            package_version_id=opening["version_id"],
+            reason="FSC12 五人正式过账冻结期初",
+        ),
+    )
+    with case.db.transaction() as conn:
+        versions = {
+            row["id"]: int(row["version"])
+            for row in conn.execute(
+                "SELECT id,version FROM drafts WHERE id IN (?,?)", tuple(wanted)
+            ).fetchall()
+        }
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        posted = list(
+            executor.map(
+                lambda draft: posting.post_draft(
+                    case.actors["accountant"],
+                    case.book["id"],
+                    draft["id"],
+                    PostDraft(
+                        command_key="fsc12-five-person-" + draft["id"],
+                        expected_version=versions[draft["id"]],
+                        voucher_date="2026-10-31",
+                    ),
+                ),
+                drafts,
+            )
+        )
+    assert len(posted) == 2
+    assert len({row["voucher"]["id"] for row in posted}) == 2
+    with case.db.transaction() as conn:
+        rows = conn.execute(
+            "SELECT v.id FROM vouchers v JOIN voucher_sources s ON s.voucher_id=v.id "
+            "WHERE s.source_kind='draft' AND s.source_id IN (?,?)",
+            tuple(wanted),
+        ).fetchall()
+    assert len(rows) == 2

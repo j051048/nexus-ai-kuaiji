@@ -44,6 +44,20 @@ def signed_cents_to_money(cents: int) -> str:
     return f"{sign}{value // 100}.{value % 100:02d}"
 
 
+def scale_by_basis_points(cents: int, rate_bp: int) -> int:
+    """Apply a non-negative basis-point rate to integer cents, half-up.
+
+    Negative amounts are rounded by absolute value and then restored to the
+    original sign. No float or Decimal participates in the calculation.
+    """
+    if type(cents) is not int or type(rate_bp) is not int:
+        raise ValueError("金额和基点费率必须是整数")
+    if rate_bp < 0:
+        raise ValueError("基点费率不能为负")
+    sign = -1 if cents < 0 else 1
+    return sign * ((abs(cents) * rate_bp + 5000) // 10000)
+
+
 def validate_period(value: str) -> str:
     if not isinstance(value, str) or not PERIOD_PATTERN.fullmatch(value):
         raise ValueError("期间必须是 2000 至 2099 年内的 YYYY-MM")

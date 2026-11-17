@@ -30,6 +30,13 @@ test(`TAX04 uploads a synthetic transport ledger and shows row evidence ${viewpo
   await expect(panel.getByText('来源行核定已保存，未冻结输出需要重新核对。')).toBeVisible();
   await panel.locator('tr').filter({ hasText: 'L2' }).getByRole('button', { name: '改为采用' }).click();
   await expect(panel.getByText(/已采用 2 行、待核对 0 行、排除 1 行/)).toBeVisible();
+  const receiptDownload = page.waitForEvent('download');
+  await panel.locator('tr').filter({ hasText: 'L1' }).getByRole('button', { name: /逐行回执/ }).click();
+  const receiptFile = await receiptDownload;
+  const receipt = JSON.parse(readFileSync((await receiptFile.path())!, 'utf8'));
+  expect(receipt.row_external_id).toBe('L1');
+  expect(receipt.receipt_fingerprint).toHaveLength(64);
+  await expect(panel.getByText(/第 2 行回执已生成/)).toBeVisible();
   await panel.getByText('核对来源原件', { exact: true }).click();
   const download = page.waitForEvent('download');
   await panel.getByRole('link', { name: '下载原件' }).click();

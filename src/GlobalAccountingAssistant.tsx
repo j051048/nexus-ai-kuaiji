@@ -1713,7 +1713,11 @@ export function GlobalAccountingAssistant({
                     }
                     onChange={(event) => setQuestion(event.target.value)}
                     onKeyDown={(event) => {
-                      if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && !isCompositionKey(event)) {
+                      if (
+                        event.key === 'Enter' &&
+                        (event.ctrlKey || event.metaKey) &&
+                        !isCompositionKey(event)
+                      ) {
                         event.preventDefault();
                         sendQuestion(question);
                       }

@@ -182,7 +182,12 @@ export function LedgerWorkspace({
             </div>
             <span className="badge">当前 {data.period}</span>
           </section>
-          <TransportMasterPanel session={session} bookId={bookId} entities={data.entities} canManage={data.can_manage} />
+          <TransportMasterPanel
+            session={session}
+            bookId={bookId}
+            entities={data.entities}
+            canManage={data.can_manage}
+          />
           <section className="panel">
             <div className="panel-heading">
               <div>

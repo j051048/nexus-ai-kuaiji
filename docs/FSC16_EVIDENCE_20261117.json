@@ -1,0 +1,39 @@
+{
+  "batch": "FSC16",
+  "date": "2026-11-17",
+  "head": "767f7cdf7c717c98d3516a0e31b53bd8cd9ae1a9",
+  "source": {
+    "files": 2352,
+    "sha256": "7817238a6ae338b85c0090fdd2edd96cea9601f15fb2a947f952cde4a5597277"
+  },
+  "migration": {
+    "files": 467,
+    "sha256": "50fb3cc398b1683c9f662d02a2a9baea8cf7e3ffc92450a17d47607ab434fe21"
+  },
+  "tests": {
+    "sqlite": "15 passed / 24.35s",
+    "pg17": {
+      "passed": 4,
+      "seconds": 2.09,
+      "artifact": "tmp_test/ak05-pg-runs/1b1e415383764fecb40213c7234ef246"
+    },
+    "pg16": {
+      "passed": 4,
+      "seconds": 2.1,
+      "artifact": "tmp_test/ak05-pg-runs/a5bcc71e107f4428b952b1cbc68af265"
+    },
+    "browser": "2 passed / 38.0s",
+    "restore": "1 passed / 7.44s",
+    "typecheck": 0
+  },
+  "screenshots": [
+    "tmp_test/fsc16-packages-1280.png",
+    "tmp_test/fsc16-packages-390.png"
+  ],
+  "unverified": [
+    "real customer package contract",
+    "real repair invoice/T+ receipt/archive",
+    "two-company browser/cross-year full chain",
+    "FSC17/FSC12"
+  ]
+}

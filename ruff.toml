@@ -4,8 +4,12 @@ extend-exclude = [".codex", ".vercel", "node_modules", "nexus_backend/migrations
 
 [lint]
 # Start with executable correctness checks; broader style rules can follow by domain.
-select = ["E9", "F63", "F7", "F82"]
+select = ["E9", "F63", "F7", "F82", "F401", "F811"]
 
 [format]
 quote-style = "double"
 line-ending = "lf"
+
+[lint.per-file-ignores]
+# 测试代码允许保留 pytest fixture/兼容导入；生产代码仍检查 F401/F811。
+"nexus_backend/tests/**" = ["F401", "F811"]
