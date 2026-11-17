@@ -6,6 +6,7 @@ from uuid import uuid4
 
 from app.accounting.access import AccessControl, FIRM_MANAGERS
 from app.accounting.domain import Actor, AccountingError
+from app.accounting.account_roles import AccountRoleService
 from app.accounting.models import money_to_cents
 from app.accounting.service import fingerprint, now
 from app.accounting.telemetry import tag_authorized_company
@@ -917,17 +918,20 @@ class BusinessService:
             )
             return {"revoked": True}
 
-    @staticmethod
-    def _proposal(template_id, payload, amount):
+    def _proposal(self, conn, book_id, template_id, payload, amount):
         if payload["direction"] == "income":
             return [("1002", amount, 0), ("6001", 0, amount)]
-        clearing = (
-            "2241"
-            if template_id == "reimbursement"
-            else "2202"
-            if payload["payment_status"] == "unpaid"
-            else "1002"
-        )
+        if payload["payment_status"] == "unpaid":
+            codes = set(AccountRoleService.codes(conn, book_id, "payable"))
+            preferred = "2241" if template_id == "reimbursement" else "2202"
+            if preferred in codes:
+                clearing = preferred
+            elif len(codes) == 1:
+                clearing = next(iter(codes))
+            else:
+                clearing = preferred
+        else:
+            clearing = "1002"
         lines = [(clearing, 0, amount)]
         if payload["category"] in EXPENSE_ACCOUNTS:
             lines.insert(0, (EXPENSE_ACCOUNTS[payload["category"]], amount, 0))
@@ -1054,7 +1058,7 @@ class BusinessService:
             if configured is not None
             else []
             if template_pending
-            else self._proposal(event["template_id"], payload, amount)
+            else self._proposal(conn, request.book_id, event["template_id"], payload, amount)
         )
         available = {
             row["code"]

@@ -10,6 +10,7 @@ import json
 from uuid import uuid4
 
 from ..accounting.access import AccessControl
+from ..accounting.account_roles import AccountRoleService
 from ..accounting.domain import AccountingError
 from ..accounting.models import money_to_cents, cents_to_money
 from ..accounting.queries import inactive_source_sql
@@ -129,7 +130,10 @@ class SettlementService:
         if conn.execute("SELECT 1 FROM ai_bank_links WHERE event_id=?", (row["id"],)).fetchone():
             raise AccountingError("旧完整流水匹配与核销分配互斥", 409)
         side = "credit_cents" if source["direction"] == "expense" else "debit_cents"
-        allowed = PAYABLES if source["direction"] == "expense" else RECEIVABLES
+        role = "payable" if source["direction"] == "expense" else "receivable"
+        allowed = set(AccountRoleService.codes(conn, book["id"], role))
+        if not allowed:
+            allowed = PAYABLES if source["direction"] == "expense" else RECEIVABLES
         rows = conn.execute(
             "SELECT account_code,SUM("
             + side
@@ -647,7 +651,7 @@ class SettlementService:
         ]
         lines.append(
             {
-                "account_code": "1002",
+                "account_code": AccountRoleService.bank_code(conn, book["id"]),
                 "debit": cents_to_money(source["amount_cents"] if side == "credit" else 0),
                 "credit": cents_to_money(source["amount_cents"] if side == "debit" else 0),
                 "auxiliary_values": {},

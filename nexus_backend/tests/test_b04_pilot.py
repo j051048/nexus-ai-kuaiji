@@ -540,3 +540,64 @@ def test_periodic_accrual_asset_closing_reports_and_close(business):
                 ],
             ),
         )
+
+
+def test_report_requires_template_for_company_standard(business):
+    case = business
+    setup_b03(case)
+    from app.accounting.service import now
+    with case.db.transaction(write=True) as conn:
+        conn.execute(
+            "INSERT INTO report_templates(id,name,standard,version,effective_from,definition_json,active,created_at) "
+            "VALUES('enterprise_general','企业模板','enterprise',1,'2026-01','{}',0,?)",
+            (now(),),
+        )
+        conn.execute(
+            "UPDATE accounting_policies SET standard_kind='enterprise' "
+            "WHERE ledger_id=(SELECT ledger_id FROM ledger_periods WHERE book_id=?) AND status='active'",
+            (case.book["id"],),
+        )
+    with pytest.raises(AccountingError, match="报表模板未启用"):
+        ReportService(case.db).create(case.manager, case.book["id"], "2026-10")
+
+
+def test_report_rejects_invalid_template_definition(business):
+    case = business
+    setup_b03(case)
+    reports = ReportService(case.db)
+    reports.create(case.manager, case.book["id"], "2026-10")
+    with case.db.transaction(write=True) as conn:
+        conn.execute(
+            "UPDATE report_templates SET definition_json=? WHERE id='small_enterprise_basic'",
+            ('{"currency":"CNY","sections":{"balance_sheet":[]}}',),
+        )
+    with pytest.raises(AccountingError, match="行定义不完整"):
+        reports.create(case.manager, case.book["id"], "2026-10")
+
+
+def test_enterprise_template_generates_balanced_report(business):
+    case = business
+    setup_b03(case)
+    with case.db.transaction(write=True) as conn:
+        conn.execute(
+            "UPDATE accounting_policies SET standard_kind='enterprise' "
+            "WHERE ledger_id=(SELECT ledger_id FROM ledger_periods WHERE book_id=?) AND status='active'",
+            (case.book["id"],),
+        )
+    report = ReportService(case.db).create(case.manager, case.book["id"], "2026-10")
+    content = report["content"]
+    assert content["balance_sheet"]["label"] == "资产负债表"
+    assert content["profit_statement"]["label"] == "利润表"
+    assert content["checks"]["balance_sheet_passed"] is True
+    assert content["checks"]["profit_statement_passed"] is True
+
+
+def test_enterprise_chart_seed_is_optional_and_synthetic():
+    from app.opening.enterprise_chart import enterprise_chart
+
+    chart = enterprise_chart()
+    codes = {row["code"] for row in chart}
+    assert {"1001", "1002", "2202", "4001", "6001", "6602"}.issubset(codes)
+    assert all(row["normal_balance"] in {"debit", "credit"} for row in chart)
+    chart[0]["name"] = "changed"
+    assert enterprise_chart()[0]["name"] == "库存现金"

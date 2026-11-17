@@ -142,9 +142,23 @@ test('第七阶段真实分页与辅助核算：二十五笔待办按需读取�
     .getByRole('button', { name: /^复核 办公用品分页验证/ })
     .first()
     .click();
-  await page.getByLabel('第 1 行会计科目', { exact: true }).selectOption('6401.02');
+  const accountPicker = page.getByLabel('第 1 行会计科目', { exact: true });
+  await accountPicker.click();
+  await expect(page.getByRole('listbox', { name: '第 1 行会计科目候选' })).toBeVisible();
+  await accountPicker.fill('6401');
+  await expect(page.getByRole('option', { name: /6401\.02/ })).toBeVisible();
+  await page.screenshot({ path: 'tmp_test/opt08-account-picker.png' });
+  await accountPicker.fill('6401.02');
+  await accountPicker.press('Enter');
   await expect(page.getByLabel('第 1 行project辅助核算', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: '保存草稿', exact: true }).click();
+  const beforeAdd = await page.locator('tr.journal-grid-line').count();
+  await accountPicker.press('Alt+Enter');
+  await expect(page.locator('tr.journal-grid-line')).toHaveCount(beforeAdd + 1);
+  await page
+    .getByRole('button', { name: new RegExp(`^(同屏)?删除第 ${beforeAdd + 1} 行`) })
+    .click();
+  await expect(page.locator('tr.journal-grid-line')).toHaveCount(beforeAdd);
+  await accountPicker.press('Control+Enter');
   await expect(page.getByLabel('待处理问题', { exact: true })).toContainText('项目');
   await expect(page.getByRole('button', { name: '确认审核', exact: true })).toBeDisabled();
   await page.getByLabel('第 1 行project辅助核算', { exact: true }).fill('MVP 验证项目');

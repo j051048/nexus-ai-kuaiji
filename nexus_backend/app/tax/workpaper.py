@@ -221,6 +221,49 @@ def _ledger_vat(conn, book, period, vat_accounts):
     )
 
 
+def _policy_snapshot(conn, profile, period, bases):
+    """Return policy-driven tax lines, or None for the legacy single-rate path."""
+    rows = conn.execute(
+        "SELECT * FROM tax_policy_items WHERE profile_id=? "
+        "AND effective_from<=? AND (effective_to IS NULL OR effective_to>=?) "
+        "ORDER BY kind,code,effective_from",
+        (profile["id"], period, period),
+    ).fetchall()
+    if not rows:
+        return None
+    missing = sorted({row["basis_kind"] for row in rows} - set(bases))
+    if missing:
+        raise AccountingError("缺少税费计税基础：" + "、".join(missing), 409)
+    lines = []
+    for row in rows:
+        base = bases[row["basis_kind"]]
+        if type(base) is not int or base < 0:
+            raise AccountingError("计税基础必须为非负整数分", 422)
+        amount = scale_by_basis_points(base, int(row["rate_bp"]))
+        lines.append(
+            {
+                "kind": row["kind"],
+                "code": row["code"],
+                "name": row["name"],
+                "basis_kind": row["basis_kind"],
+                "rate_bp": int(row["rate_bp"]),
+                "base_cents": base,
+                "amount_cents": amount,
+                "item_fingerprint": row["fingerprint"],
+            }
+        )
+    vat = sum(line["amount_cents"] for line in lines if line["kind"] == "vat_output")
+    vat -= sum(line["amount_cents"] for line in lines if line["kind"] == "agriculture_deduction")
+    surtax = sum(line["amount_cents"] for line in lines if line["kind"] == "surtax")
+    return {
+        "profile_id": profile["id"],
+        "period": period,
+        "lines": lines,
+        "vat_cents": vat,
+        "surtax_cents": surtax,
+    }
+
+
 def _snapshot(conn, book, period, profile, vat_accounts=None):
     """One deterministic source snapshot used by both generate and review."""
     if profile["filing_cycle"] != "monthly":
@@ -244,9 +287,25 @@ def _snapshot(conn, book, period, profile, vat_accounts=None):
     output_tax = sum(row["tax_cents"] for row in output)
     input_net = sum(row["amount_cents"] for row in incoming)
     input_tax = sum(row["tax_cents"] for row in incoming)
-    tax = _ratio(output_net, profile["vat_rate_bp"])
-    credit_carry = 0
-    surtax = _ratio(tax, profile["surtax_rate_bp"])
+    policy = _policy_snapshot(
+        conn,
+        profile,
+        period,
+        {
+            "output_net": output_net,
+            "output_tax": output_tax,
+            "input_net": input_net,
+            "input_tax": input_tax,
+        },
+    )
+    if policy is None:
+        tax = _ratio(output_net, profile["vat_rate_bp"])
+        credit_carry = 0
+        surtax = _ratio(tax, profile["surtax_rate_bp"])
+    else:
+        tax = policy["vat_cents"]
+        credit_carry = 0
+        surtax = policy["surtax_cents"]
     totals = [output_net, output_tax, input_net, input_tax, tax, surtax, credit_carry, ledger]
     if any(abs(value) > MAX_CENTS for value in [*totals, tax - ledger]):
         raise AccountingError("底稿汇总金额超出允许范围，请分清业务范围后人工核验", 409)
@@ -266,8 +325,10 @@ def _snapshot(conn, book, period, profile, vat_accounts=None):
         "ledger": formal,
         "totals": totals,
     }
+    if policy is not None:
+        source["tax_policy"] = policy
     digest = fingerprint(source)
-    return {
+    result = {
         "rows": rows,
         "output_net": output_net,
         "output_tax": output_tax,
@@ -280,6 +341,9 @@ def _snapshot(conn, book, period, profile, vat_accounts=None):
         "digest": digest,
         "source": source,
     }
+    if policy is not None:
+        result["policy"] = policy
+    return result
 
 
 class TaxWorkpaperService:

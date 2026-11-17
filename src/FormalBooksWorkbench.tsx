@@ -15,6 +15,8 @@ const LegacyReviewPanel = lazy(() =>
   import('./LegacyReviewPanel').then((module) => ({ default: module.LegacyReviewPanel })),
 );
 import { AnalysisEvidencePanel } from './AnalysisEvidencePanel';
+import { MoneyCell } from './MoneyCell';
+import { balanceDirection } from './money';
 const FormalClosePanel = lazy(() =>
   import('./FormalClosePanel').then((module) => ({ default: module.FormalClosePanel })),
 );
@@ -592,7 +594,7 @@ function FormalBooksContent({
             {data.kind === 'trial_balance' && (
               <>
                 <p className="formal-books-help">
-                  借方余额为正，贷方余额为负；父级包含下级，合计仅按末级科目汇总。
+                  期末余额按方向列显示借方或贷方，金额为绝对值；父级包含下级，合计仅按末级科目汇总。
                 </p>
                 {data.rows.length ? (
                   <div
@@ -609,6 +611,7 @@ function FormalBooksContent({
                           <th scope="col">期初余额</th>
                           <th scope="col">本期借方</th>
                           <th scope="col">本期贷方</th>
+                          <th scope="col">方向</th>
                           <th scope="col">期末余额</th>
                           <th scope="col">操作</th>
                         </tr>
@@ -623,7 +626,16 @@ function FormalBooksContent({
                             <td>{formatFormalCents(row.opening_cents)}</td>
                             <td>{formatFormalCents(row.debit_cents)}</td>
                             <td>{formatFormalCents(row.credit_cents)}</td>
-                            <td>{formatFormalCents(row.closing_cents)}</td>
+                            <td>{balanceDirection(BigInt(row.closing_cents))}</td>
+                            <td className="money-cell-table">
+                              <MoneyCell
+                                cents={
+                                  row.closing_cents < 0
+                                    ? BigInt(-row.closing_cents)
+                                    : BigInt(row.closing_cents)
+                                }
+                              />
+                            </td>
                             <td>
                               {row.is_leaf ? (
                                 <button
@@ -647,7 +659,16 @@ function FormalBooksContent({
                           <td>{formatFormalCents(data.totals.opening_cents)}</td>
                           <td>{formatFormalCents(data.totals.debit_cents)}</td>
                           <td>{formatFormalCents(data.totals.credit_cents)}</td>
-                          <td>{formatFormalCents(data.totals.closing_cents)}</td>
+                          <td>{balanceDirection(BigInt(data.totals.closing_cents))}</td>
+                          <td className="money-cell-table">
+                            <MoneyCell
+                              cents={
+                                data.totals.closing_cents < 0
+                                  ? BigInt(-data.totals.closing_cents)
+                                  : BigInt(data.totals.closing_cents)
+                              }
+                            />
+                          </td>
                           <td />
                         </tr>
                       </tfoot>

@@ -5,6 +5,7 @@ import { acceptPackage } from './monthly-package-read';
 import type { MonthlyPackage } from './monthly-package-types';
 import type { BusinessContext } from './business-types';
 import type { Session } from './types';
+import { formatCents } from './money';
 import { expenseSummary } from './access-policy';
 import './access-policy.css';
 
@@ -288,7 +289,7 @@ function DepartmentExpenseForm({ session }: { session: Session }) {
         query.data.department_id === selected?.department_id && (
           <p role="status">
             {query.data.label} · {query.data.period} · 已入账费用净额 ¥
-            {(query.data.cents / 100).toFixed(2)}
+            {formatCents(BigInt(query.data.cents))}
           </p>
         )}
       <p className="field-help">

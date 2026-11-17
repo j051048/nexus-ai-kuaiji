@@ -1,4 +1,5 @@
 import type { SourceRow } from './types';
+import { formatCents, parseYuanToCents } from './money';
 import { maxUploadBytes, uploadLimitLabel } from './transport-limits';
 
 export const MAX_CSV_BYTES = 2 * 1024 * 1024;
@@ -123,17 +124,12 @@ export function toSourceRows(text: string): SourceRow[] {
   });
 }
 
-export function moneyToCents(value: string): bigint {
-  if (!/^(?:0|[1-9][0-9]{0,11})(?:\.\d{1,2})?$/.test(value))
-    throw new Error('金额须为非负数，最多两位小数，不能包含多余前导零。');
-  const [whole, fraction = ''] = value.split('.');
-  return BigInt(whole) * 100n + BigInt(fraction.padEnd(2, '0'));
-}
+export { formatCents };
 
-export function formatCents(value: bigint): string {
-  const negative = value < 0n;
-  const absolute = negative ? -value : value;
-  return `${negative ? '-' : ''}${(absolute / 100n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',')}.${(absolute % 100n).toString().padStart(2, '0')}`;
+export function moneyToCents(value: string): bigint {
+  const cents = parseYuanToCents(value);
+  if (cents === null) throw new Error('金额须为非负数，最多两位小数，不能包含多余前导零。');
+  return cents;
 }
 
 export function formatMoney(value: string): string {

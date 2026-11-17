@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { api } from './api';
 import { useOperationRequests } from './useOperationRequests';
 import type { Session } from './types';
+import { formatCents } from './money';
 import './analysis-evidence.css';
 import { createReadGuard } from './scoped-read';
 import {
@@ -232,7 +233,7 @@ export function AnalysisEvidencePanel(props: {
                           ? `来源 ${String(row.kind)} · 版本 ${String(row.version)}`
                           : `凭证 ${String(row.voucher_no)} · ${String(row.date)} · ${String(row.description)}`}
                         {' · '}
-                        {(Number(row.amount_cents) / 100).toFixed(2)} 元
+                        {formatCents(BigInt(String(row.amount_cents)))} 元
                       </li>
                     ))}
                   </ul>

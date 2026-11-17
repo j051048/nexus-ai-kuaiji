@@ -311,9 +311,11 @@ test('固定事项独立审批、生成未知结果重读不重复，新版本�
     await page.getByLabel('固定事项凭证摘要').fill(`合成固定租金 ${tag}`);
     await page.getByLabel('固定事项原件依据').fill('明确合成租赁约定，仅验证流程');
     await page.getByLabel('固定事项版本依据').fill('真实金额由合成测试明确为一百元');
-    await page.getByLabel('第 1 行会计科目', { exact: true }).selectOption('6602.01');
+    await page.getByLabel('第 1 行会计科目', { exact: true }).fill('6602.01');
+    await page.getByLabel('第 1 行会计科目', { exact: true }).press('Enter');
     await page.getByLabel('第 1 行借方金额', { exact: true }).fill('100.00');
-    await page.getByLabel('第 2 行会计科目', { exact: true }).selectOption('1002');
+    await page.getByLabel('第 2 行会计科目', { exact: true }).fill('1002');
+    await page.getByLabel('第 2 行会计科目', { exact: true }).press('Enter');
     await page.getByLabel('第 2 行贷方金额', { exact: true }).fill('100.00');
     await page.getByRole('button', { name: '保存并等待独立审批', exact: true }).click();
     await expect(page.getByRole('status')).toContainText('等待独立审批');

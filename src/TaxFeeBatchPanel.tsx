@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { api, ApiError } from './api';
 import type { Session } from './types';
+import { centsToApiString, parseYuanToCents } from './money';
 import './tax-fee.css';
 
 type Source = {
@@ -238,8 +239,9 @@ function ScopedTaxFeeBatchPanel({
 
   async function allocate(item: Receivable) {
     const bank = banks.find((row) => row.source_id === bankChoice);
-    const amount = Math.round(Number(allocAmount) * 100);
-    if (!bank || !Number.isFinite(amount) || amount <= 0) {
+    const parsed = parseYuanToCents(allocAmount);
+    const amount = parsed === null ? 0 : Number(parsed);
+    if (!bank || amount <= 0) {
       setFailure('请选择银行到账并填写大于 0 的核销金额。');
       return;
     }
@@ -312,9 +314,10 @@ function ScopedTaxFeeBatchPanel({
 
   async function refund(item: Receivable) {
     const bank = refundBanks.find((row) => row.source_id === refundBank);
-    const amount = Math.round(Number(refundAmount) * 100);
+    const parsed = parseYuanToCents(refundAmount);
+    const amount = parsed === null ? 0 : Number(parsed);
     const reason = refundReason.trim();
-    if (!bank || !Number.isFinite(amount) || amount <= 0) {
+    if (!bank || amount <= 0) {
       setFailure('请选择银行付款并填写大于 0 的退款金额。');
       return;
     }
@@ -564,7 +567,7 @@ function ScopedTaxFeeBatchPanel({
                                     setAllocating(item.receivable_id);
                                     setRefunding(null);
                                     setBankChoice(banks[0]?.source_id ?? '');
-                                    setAllocAmount((item.amount_cents / 100).toFixed(2));
+                                    setAllocAmount(centsToApiString(BigInt(item.amount_cents)));
                                     setAllocPayer('');
                                     setAllocBasis('');
                                   }}

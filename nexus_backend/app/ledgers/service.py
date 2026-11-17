@@ -791,6 +791,12 @@ class LedgersService:
                     now(),
                 ),
             )
+            conn.execute(
+                "INSERT INTO subject_aliases(id,firm_id,company_id,subject_type,subject_id,alias,source,status,effective_from,created_by,created_at) "
+                "VALUES(?,?,?,'transport_subject',?,?,?,'approved',?,?,?)",
+                (alias_id, actor.firm_id, book["company_id"], request.subject_id, request.alias,
+                 request.source, "0001-01-01", actor.user_id, now()),
+            )
             self._history(
                 conn, actor, book, alias_id, "transport.alias.create", request.model_dump()
             )
@@ -916,7 +922,7 @@ class LedgersService:
             )
             return {"id": assignment_id, "valid_from": start, "valid_to": end}
 
-    def _transport_subject(self, conn, actor, company_id, kind, external_id, display_name):
+    def _transport_subject(self, conn, actor, company_id, kind, external_id, display_name, on_date=None):
         if not external_id and not display_name:
             raise AccountingError("必须提供稳定外部 ID 或历史名称", 422)
         if external_id:
@@ -929,10 +935,19 @@ class LedgersService:
                 "SELECT * FROM transport_subjects WHERE firm_id=? AND company_id=? AND kind=? AND display_name=?",
                 (actor.firm_id, company_id, kind, display_name),
             ).fetchall()
-            if not rows:
+            if not rows and on_date:
                 rows = conn.execute(
-                    "SELECT s.* FROM transport_subjects s JOIN transport_aliases a ON a.subject_id=s.id AND a.firm_id=s.firm_id AND a.company_id=s.company_id WHERE a.firm_id=? AND a.company_id=? AND s.kind=? AND a.alias=?",
-                    (actor.firm_id, company_id, kind, display_name),
+                    "SELECT s.* FROM transport_subjects s JOIN subject_aliases a ON a.subject_id=s.id AND a.firm_id=s.firm_id AND a.company_id=s.company_id "
+                    "WHERE a.firm_id=? AND a.company_id=? AND a.subject_type='transport_subject' AND a.status='approved' AND s.kind=? AND a.alias=? "
+                    "AND a.effective_from<=? AND (a.effective_to IS NULL OR a.effective_to>=?)",
+                    (actor.firm_id, company_id, kind, display_name, on_date, on_date),
+                ).fetchall()
+            if not rows and not on_date:
+                rows = conn.execute(
+                    "SELECT s.* FROM transport_subjects s JOIN subject_aliases a ON a.subject_id=s.id AND a.firm_id=s.firm_id AND a.company_id=s.company_id "
+                    "WHERE a.firm_id=? AND a.company_id=? AND a.subject_type='transport_subject' AND a.status='approved' AND s.kind=? AND a.alias=? "
+                    "AND a.effective_from<=? AND (a.effective_to IS NULL OR a.effective_to>=?)",
+                    (actor.firm_id, company_id, kind, display_name, "9999-12-31", "9999-12-31"),
                 ).fetchall()
             if len(rows) != 1:
                 raise AccountingError(
@@ -984,11 +999,11 @@ class LedgersService:
             book = self.access.book(conn, actor, book_id, "read")
             company_id = book["company_id"]
             vehicle = self._transport_subject(
-                conn, actor, company_id, "vehicle", vehicle_external_id, vehicle_name
+                conn, actor, company_id, "vehicle", vehicle_external_id, vehicle_name, day.isoformat()
             )
             driver = (
                 self._transport_subject(
-                    conn, actor, company_id, "driver", driver_external_id, driver_name
+                    conn, actor, company_id, "driver", driver_external_id, driver_name, day.isoformat()
                 )
                 if (driver_external_id or driver_name)
                 else None

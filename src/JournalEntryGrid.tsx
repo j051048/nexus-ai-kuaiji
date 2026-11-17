@@ -2,6 +2,10 @@ import { Fragment, useEffect, useRef, useState } from 'react';
 import { Trash2 } from 'lucide-react';
 import type { BookDetail, JournalLine } from './types';
 import { isCompositionKey } from './keyboard';
+import { AccountPicker } from './AccountPicker';
+import { MoneyCell } from './MoneyCell';
+import './account-picker.css';
+import { parseYuanToCents, sumCents } from './money';
 import './journal-grid.css';
 
 const auxiliaryLabels = {
@@ -39,6 +43,8 @@ export function JournalEntryGrid({
   mode = 'standard',
   pageSize = 50,
   onChange,
+  onAddLine,
+  onSaveShortcut,
 }: {
   lines: JournalLine[];
   accounts: BookDetail['accounts'];
@@ -48,6 +54,8 @@ export function JournalEntryGrid({
   /** Bound the rendered rows for controlled large vouchers; 0 renders all lines. */
   pageSize?: number;
   onChange: (lines: JournalLine[]) => void;
+  onAddLine?: () => void;
+  onSaveShortcut?: () => void;
 }) {
   const size = Math.max(1, pageSize || lines.length);
   const [page, setPage] = useState(0),
@@ -166,14 +174,12 @@ export function JournalEntryGrid({
       }),
     );
   }
-  const amount = (value: string | number | null | undefined) => {
-    const parsed = typeof value === 'number' ? value : Number.parseFloat(value ?? '0');
-    return Number.isFinite(parsed) ? parsed : 0;
-  };
+  const amount = (value: string | number | null | undefined) =>
+    (typeof value === 'number'
+      ? parseYuanToCents(value.toFixed(2))
+      : parseYuanToCents(value ?? '0')) ?? 0n;
   const sum = (rows: JournalLine[], field: 'debit' | 'credit') =>
-    rows.reduce((total, line) => total + amount(line[field]), 0);
-  const money = (value: number) =>
-    value.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    sumCents(rows.map((line) => amount(line[field])));
   const pageDebit = sum(visible, 'debit'),
     pageCredit = sum(visible, 'credit'),
     allDebit = sum(lines, 'debit'),
@@ -184,8 +190,30 @@ export function JournalEntryGrid({
       : field === 'delete'
         ? `删除第 ${index + 1} 行分录`
         : `第 ${index + 1} 行${{ account: '会计科目', debit: '借方金额', credit: '贷方金额', delete: '' }[field]}`;
+  function removeLine(index: number) {
+    onChange(lines.filter((_, position) => position !== index));
+    requestAnimationFrame(() => {
+      const next = Math.min(index, Math.max(0, lines.length - 2));
+      document.querySelector<HTMLInputElement>(`#journal-row-${next} input`)?.focus();
+    });
+  }
   return (
-    <div className={'journal-grid-wrap' + (readonly ? ' journal-grid-readonly' : '')}>
+    <div
+      className={'journal-grid-wrap' + (readonly ? ' journal-grid-readonly' : '')}
+      onKeyDown={(event) => {
+        if (isCompositionKey(event)) return;
+        if (event.altKey && event.key === 'Enter' && onAddLine && !busy) {
+          event.preventDefault();
+          onAddLine();
+          requestAnimationFrame(() => {
+            document.querySelector<HTMLInputElement>(`#journal-row-${lines.length} input`)?.focus();
+          });
+        } else if (event.ctrlKey && event.key === 'Enter' && onSaveShortcut && !busy) {
+          event.preventDefault();
+          onSaveShortcut();
+        }
+      }}
+    >
       <div className="journal-grid-toolbar">
         <span>
           每页 {size} 行，当前第 {current + 1} / {pageCount} 页
@@ -240,6 +268,13 @@ export function JournalEntryGrid({
           {density === 'compact' ? '舒适行距' : '紧凑行距'}
         </button>
       </div>
+      {(onAddLine || onSaveShortcut) && (
+        <p className="journal-grid-shortcuts" aria-label="键盘快捷键">
+          {onAddLine && 'Alt+Enter 新增分录'}
+          {onAddLine && onSaveShortcut && ' · '}
+          {onSaveShortcut && 'Ctrl+Enter 保存草稿'}
+        </p>
+      )}
       <table
         ref={table}
         className={`journal-entry-grid density-${density} width-${widthMode}${columnWidths ? ' has-custom-widths' : ''}`}
@@ -324,24 +359,18 @@ export function JournalEntryGrid({
             const index = start + offset;
             return (
               <Fragment key={index}>
-                <tr className="journal-grid-line">
+                <tr className="journal-grid-line" id={`journal-row-${index}`}>
                   <th scope="row" className="journal-grid-index">
                     {String(index + 1).padStart(2, '0')}
                   </th>
                   <td className="journal-grid-account" data-label="会计科目">
-                    <select
-                      aria-label={label(index, 'account')}
+                    <AccountPicker
+                      accounts={accounts}
                       value={line.account_code}
                       disabled={readonly || busy}
-                      onChange={(event) => update(index, 'account_code', event.target.value)}
-                    >
-                      <option value="">选择会计科目</option>
-                      {accounts.map((account) => (
-                        <option key={account.code} value={account.code}>
-                          {account.code} · {account.name}
-                        </option>
-                      ))}
-                    </select>
+                      ariaLabel={label(index, 'account')}
+                      onChange={(code) => update(index, 'account_code', code)}
+                    />
                   </td>
                   <td className="journal-grid-amount" data-label="借方">
                     <input
@@ -373,7 +402,7 @@ export function JournalEntryGrid({
                       className="icon-button"
                       aria-label={label(index, 'delete')}
                       disabled={readonly || busy || lines.length <= 1}
-                      onClick={() => onChange(lines.filter((_, position) => position !== index))}
+                      onClick={() => removeLine(index)}
                     >
                       <Trash2 size={14} />
                     </button>
@@ -410,10 +439,12 @@ export function JournalEntryGrid({
       </table>
       <div className="journal-grid-totals" data-testid="journal-totals">
         <span>
-          本页 借 ¥{money(pageDebit)} · 贷 ¥{money(pageCredit)}
+          本页 借 <MoneyCell cents={pageDebit} options={{ currency: true }} /> · 贷{' '}
+          <MoneyCell cents={pageCredit} options={{ currency: true }} />
         </span>
         <span>
-          全量 借 ¥{money(allDebit)} · 贷 ¥{money(allCredit)}
+          全量 借 <MoneyCell cents={allDebit} options={{ currency: true }} /> · 贷{' '}
+          <MoneyCell cents={allCredit} options={{ currency: true }} />
         </span>
       </div>
       {pageCount > 1 && (

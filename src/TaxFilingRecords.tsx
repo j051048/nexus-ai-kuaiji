@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, apiBlob, errorMessage } from './api';
 import { prepareUploadIntent } from './upload-client';
 import type { Session } from './types';
+import { parseYuanToCents } from './money';
 import { formatYuan, parseFilings, type TaxFiling } from './tax-filings';
 
 const KINDS = [
@@ -184,7 +185,12 @@ export function TaxFilingRecords({
     event.preventDefault();
     setBusy(true);
     setFailure('');
-    const cents = Math.round(Number(amount) * 100);
+    const cents = parseYuanToCents(amount);
+    if (cents === null) {
+      setBusy(false);
+      setFailure('金额须为非负数，最多两位小数。');
+      return;
+    }
     try {
       const created = await api<{ id: string }>('/tax/filings', session, {
         method: 'POST',
@@ -195,7 +201,7 @@ export function TaxFilingRecords({
           status,
           external_ref: reference.trim(),
           occurred_at: occurredAt,
-          amount_cents: Number.isFinite(cents) && cents > 0 ? cents : 0,
+          amount_cents: cents > 0n ? Number(cents) : 0,
           evidence_note: note.trim(),
           entry_kind: entryKind,
           supersedes_id: supersedes?.id ?? null,

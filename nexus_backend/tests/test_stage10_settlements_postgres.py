@@ -2,6 +2,7 @@ from uuid import uuid4
 import json
 import pytest
 from app.accounting.models import ApprovalRequest, DraftUpdate, ExportRequest
+from app.accounting.account_roles import AccountRoleService
 from app.accounting.domain import AccountingError
 from app.ledgers.models import EntityCreate
 from app.ledgers.service import LedgersService
@@ -95,3 +96,19 @@ def test_pg_independent_reversal_restores_balance_and_keeps_allocation(pg_ai):
     assert service.reversal(c.manager,c.book["id"],row["id"],request)==first
     value=service.overview(c.manager,c.book["id"])
     assert value["items"][0]["remaining"]=="0.30" and value["allocations"][0]["reversed"]
+
+
+def test_pg_custom_payable_role_flows_through_business_and_settlement(pg_ai):
+    c=pg_ai
+    c.intelligence.company_settings(c.manager,c.company["id"],False)
+    with c.db.transaction(write=True,actor=c.manager) as conn:
+        conn.execute("INSERT INTO accounts(book_id,code,name,category,normal_balance) VALUES(%s,%s,%s,%s,%s)",(c.book["id"],"3202","应付账款","liability","credit"))
+        AccountRoleService.set_role(conn,c.book["id"],"3202","payable")
+        AccountRoleService.set_role(conn,c.book["id"],"2202","payable",enabled=False)
+        AccountRoleService.set_role(conn,c.book["id"],"2241","payable",enabled=False)
+    original=handoff(c,create_event(c,template="procurement_expense",payment_status="unpaid"))
+    draft=c.ledger.get_draft(c.actors["accountant"],c.book["id"],original["draft_id"])
+    assert [line["account_code"] for line in draft["lines"]]==["6602.02","3202"]
+    party=LedgersService(c.db).create_entity(c.manager,c.book["id"],EntityCreate(kind="counterparty",code="SUP-CUSTOM",name="耗材商店"))
+    item=SettlementService(c.db).open_item(c.actors["accountant"],c.book["id"],OpenItemCreate(source_id=original["source_id"],counterparty_id=party["id"],expected_draft_version=draft["version"],idempotency_key=uuid4().hex,reason="核验自定义应付科目"))
+    assert item["clearing_account"]=="3202"

@@ -361,6 +361,23 @@ export function Reviewer({
           readonly={readOnly}
           busy={!!busy}
           onChange={setLines}
+          onAddLine={
+            readOnly || lines.length >= 20
+              ? undefined
+              : () =>
+                  setLines((current) => [
+                    ...current,
+                    { account_code: '', debit: '0.00', credit: '0.00' },
+                  ])
+          }
+          onSaveShortcut={
+            readOnly
+              ? undefined
+              : () => {
+                  if (busy || !dirty || !description.trim() || amountError) return;
+                  void onSave(draft, description.trim(), lines, correctionReason.trim());
+                }
+          }
         />
         {!readOnly && (
           <button

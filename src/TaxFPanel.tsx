@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, ApiError } from './api';
 import type { Session } from './types';
+import { centsToApiString } from './money';
 import { FleetMetricsPanel } from './FleetMetricsPanel';
 import { InlineReviewDrawer } from './InlineReviewDrawer';
 import './tax-f.css';
@@ -243,7 +244,7 @@ export function TaxFPanel({
           original_reference: invoice.reference,
           red_reference: redRef.trim(),
           period: invoice.period,
-          amount: (invoice.amount_cents / 100).toFixed(2),
+          amount: centsToApiString(BigInt(invoice.amount_cents)),
           reason: redReason.trim(),
         },
       });

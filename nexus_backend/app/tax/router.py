@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, StrictInt
 from . import filings
 from .readiness import filing_readiness
 from .workpaper import TaxWorkpaperService
+from .policy_items import TaxPolicyItemService, TaxPolicyItemWrite
 from .context import tax_context
 from .pilot import PilotBoundaryService
 from .sources import TaxSourceAdapter
@@ -249,6 +250,41 @@ def build_tax_router(actor_dependency):
         tax=Depends(service),
     ):
         return tax_context(tax, current, book_id, period)
+
+    def policy_items(request: Request) -> TaxPolicyItemService:
+        return request.app.state.tax_policy_items
+
+    class PolicyBases(BaseModel):
+        model_config = ConfigDict(extra="forbid")
+        period: str = Field(min_length=7, max_length=7)
+        bases: dict[str, int]
+
+    @router.get("/books/{book_id}/policy-items")
+    def list_policy_items(
+        book_id: str,
+        period: str | None = Query(default=None, max_length=7),
+        current=Depends(actor_dependency),
+        policies=Depends(policy_items),
+    ):
+        return policies.list(current, book_id, period)
+
+    @router.post("/books/{book_id}/policy-items", status_code=201)
+    def add_policy_items(
+        book_id: str,
+        payload: list[TaxPolicyItemWrite],
+        current=Depends(actor_dependency),
+        policies=Depends(policy_items),
+    ):
+        return policies.add(current, book_id, payload)
+
+    @router.post("/books/{book_id}/policy-items/calculate")
+    def calculate_policy_items(
+        book_id: str,
+        payload: PolicyBases,
+        current=Depends(actor_dependency),
+        policies=Depends(policy_items),
+    ):
+        return policies.calculate(current, book_id, payload.period, payload.bases)
 
     @router.put("/profile")
     def write_profile(

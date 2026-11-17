@@ -899,3 +899,304 @@
 - source：`2329 / b98a351a29dfaf55662374af607f396b91236dcf8a11e93e36f19f66e578e8fe`
 - migration：`457 / b3d82bd26848ba8a2ee47068edbbd585e0cdf7096cc0800a57e6401ff9886781`
 - 说明：含 OPT06-A/B，以及管理员自授复核的前向加固；工作区未提交。
+
+## OPT06-C  <状态：完成>
+
+- 现状核实：无 delegation/substitute 机制；`AccessControl.book` 只看有效账套权限；PG `book_review_allowed()` 只认 reviewer/manager，因此替补复核会被应用层与 DB 触发器同时拒绝。
+- 失败测试：
+  - 新增 `tests/test_opt06_review_delegation.py`：生效期内财务可复核经理草稿、到期 403、替补不能复核自己制的单、发起人自批 403、使用/到期/撤销审计。
+  - 修改前红：SQLite 触发器报 `Current independent reviewer and policy required`，因 `service_book_user_permissions.can_review` 不认 delegation。
+- 修改文件：
+  - `migrations/sqlite/200_opt06_review_delegations.sql`：`book_review_delegations` 表；重建 `service_book_user_permissions` 仅在 active delegation 窗口内增加 can_review，不增加 edit/export/manage。
+  - `migrations/postgres/285_opt06_review_delegations.sql`：同表、RLS/FORCE/GRANT；替换 `accounting.book_review_allowed()`，仅非 manager 且当前窗口内 allow。
+  - `app/accounting/review_delegations.py`：申请/批准/撤销/到期服务；发起人与批准人不同，>31 天拒绝，目标不得是 owner/admin 或本人。
+  - `app/accounting/access.py`：active delegation 只增 read/review；分离策略开启时不生效。
+  - `app/accounting/service.py::_approve_in_transaction`：使用替补时写 `review.delegation.use` 审计。
+  - `app/accounting/review_delegation_router.py`、`app/main.py`：API 注册。
+  - `tests/test_opt06_review_delegation_postgres.py`：PG 生效/到期 window。
+- 验收命令与输出：
+  ```
+  cd nexus_backend && PYTHONPATH='..;.' pytest -q tests/test_opt06_review_delegation.py
+  4 passed in 10.71s
+  ```
+  ```
+  cd nexus_backend && PYTHONPATH='..;.' pytest -q tests/test_opt06_review_delegation.py tests/test_opt06_review_control.py tests/test_review_policy_service.py
+  25 passed in 50.41s
+  ```
+  ```
+  python scripts/test_accounting_postgres_isolated.py --config tmp_test/fsc02-pg/env17/unified.json nexus_backend/tests/test_opt06_review_delegation_postgres.py -q
+  1 passed in 0.87s   # artifact d61dca3e2a7b4448a4515abc0c04463a
+  ```
+  ```
+  python scripts/test_accounting_postgres_isolated.py --config tmp_test/fsc02-pg/env16/unified.json nexus_backend/tests/test_opt06_review_delegation_postgres.py -q
+  1 passed in 0.88s   # artifact 8dbed57c5ee84c3b9db42a6d9a6d4aeb
+  ```
+  ```
+  tmp_test/opt02-ruff-venv/Scripts/ruff.exe check <6 files>  -> All checks passed!
+  ruff format --check <6 files> -> 6 files already formatted
+  git diff --check -> clean
+  ```
+- 行为：
+  - 替补授权有起止时间、账套/职责、发起人、批准人；发起人≠批准人，最长 31 天。
+  - 每次权限判断按当前时间计算；到期后自动失效，`expire` 只做状态与审计，不承担授权判断。
+  - 替补人只获得 read/review；不能编辑、导出或管理；分离开启时 manager 不能借替补绕过。
+  - 替补人复核自己制的单仍被独立复核规则 403。
+- 未做或未验证：前端申请/批准界面；真实请假/审批流程；定时 expire 任务的实际部署调度（权限不依赖它）；真实客户。
+- 顺带发现：SQLite 200 首版重复追加 view 定义，已删除重复段后重跑；PG 285 未改历史迁移。
+- 未提交/推送/部署。
+
+### OPT06 候选更新（2026-11-17，含 C）
+
+- HEAD：`557c4fa1aa7c9aa2f2179fadcbcd5ee1ffd2c77d`
+- source：`2366 / 9b48bd000f88e7773dd018e07814f5245edfdf71c6e2fa7223cc92080f96d104`
+- migration：`471 / ba300e1d75eb5630659fba15d3398d341e39d324149e6c0f3be30fd92c3ad439`
+- 说明：含 OPT06-C；工作区仅 9 项未提交。HEAD 557c 是他人已完成的 FSC01–17/OPT 提交，本轮未提交。
+
+
+### OPT06-D 凭证断号巡检（2026-11-17，部分完成）
+
+- 现状核实：月结雷达原先没有凭证编号连续性检查；`vouchers` 只有追加和断号数据可能来自历史导入/人工补录，雷达无法阻断。
+- 失败测试：
+  - `tests/test_opt06_voucher_gaps.py` 构造 1、3 号凭证（仅 disposable SQLite fixture 临时移除 insert 触发器以模拟历史断号），`scan/watch` 前无对应 blocker。
+  - `tests/test_opt06_voucher_gaps_postgres.py` 首版直接用 raw psycopg 连接，`?` 占位符报 `the query has 0 placeholders but 1 parameters were passed`，属测试连接适配错误；改为 `Database.connect()` 后通过。
+- 修改文件：
+  - `app/posting/integrity.py`：`VoucherGapService.scan/scan_in_transaction`；按类型聚合 count/max，SQLite 递归 CTE、PG `generate_series` 找缺口；不修改凭证、不重排编号。
+  - `app/observability/closing.py`：雷达每账套扫描，追加 `voucher_number_gap` blocker；`precheck=blocked`、`closable=false`，下一步要求人工核对。
+  - `migrations/sqlite/201_opt03_audit_hash_init_guard.sql` 与 `migrations/postgres/286_...`：修复 OPT03-B 回归。SQLite 原 append-only 守卫会与“插入后一次性写 hash”的哈希链触发器冲突，导致 `material_request_actions` 的审计插入报 `audit_events are append-only`；新迁移只放宽一次性初始化：内容字段不可变、prev_hash 必须等于链尾、row_hash 只能由 NULL 变非 NULL，二次更新仍拒绝。PG 侧 no-op 对齐编号。
+  - `tests/test_opt06_voucher_gaps.py`、`tests/test_opt06_voucher_gaps_postgres.py`。
+- 验收命令与输出：
+  ```
+  cd nexus_backend && PYTHONPATH='..;.' ../.venv/Scripts/python.exe -m pytest -q tests/test_opt06_voucher_gaps.py
+  2 passed in 8.11s
+  ```
+  ```
+  python scripts/test_accounting_postgres_isolated.py --config tmp_test/fsc02-pg/env17/unified.json tests/test_opt06_voucher_gaps_postgres.py -q
+  1 passed in 0.30s   # bc9ef385f0c747acbe88e1f5e56f73fd
+  ```
+  ```
+  python scripts/test_accounting_postgres_isolated.py --config tmp_test/fsc02-pg/env16/unified.json tests/test_opt06_voucher_gaps_postgres.py -q
+  1 passed in 0.34s   # 7135e4730e454457b7cab96bde85377b
+  ```
+  ```
+  pytest -q tests/test_opt06_voucher_gaps.py tests/test_opt03_audit_immutability.py tests/test_opt03_audit_chain.py
+  7 passed, 3 skipped in 9.84s
+  ```
+  ```
+  pytest -q -k 'close or posting'
+  5 failed, 172 passed, 89 skipped, 6087 deselected in 298.82s
+  ```
+- 未通过/未验证：
+  - `-k close or posting` 的 5 个失败不是断号用例；审计哈希初始化回归已由 201/286 修复（`test_stage25_service_plans.py` 目标用例通过）。剩余失败为旧 reviewer 授权测试（2）、P02 缺隔离 runner（1）、OCR/案例夹具（2）。
+  - 迁移数应为 473（471+201/286）；source 已变化。
+  - 未跑全量 backend；未跑 OPT06-D 的浏览器/真实历史断号。
+  - 因上述失败，OPT06-D 只记“定向用例/两库 SQL 分支通过”，不记完成。
+- 未提交/推送/部署。
+
+### OPT06 候选复核（2026-11-17，含 D 改动）
+
+- HEAD：`557c4fa1aa7c9aa2f2179fadcbcd5ee1ffd2c77d`
+- source：`2371 / 85f5760e92f11a8a0691997fefb703055263a93b3a523279f17282fe4998d8e4`
+- migration：`473 / c97932c91ce8bcbe219e6910479e7f342d6cc6d3127b3fdfa425f0731697f4bc`
+- 说明：工作区 16 项未提交（本模块新增/修改 + 201/286）；未提交、未推送、未部署。
+
+
+### OPT07-A 硬编码科目盘点（2026-11-17，只读完成）
+
+- 现状核实：`rg` 扫描 `nexus_backend/app` 中作为字面量出现的四位/六位科目代码。未改代码，未改迁移。
+- 盘点表：
+
+| 文件:位置 | 字面量 | 用途分类 | 说明 |
+| --- | --- | --- | --- |
+| `reports/profit.py:19-26` | `6001/6051/6111`、`6401/6402`、`6403`、`6601`、`6602`、`6603`、`6711/6301`、`6801` | 报表取数 | 利润表行次科目前缀 |
+| `reports/service.py:140` | `1122/2202/2203/2204` | 报表取数 | 往来项目/勾稽辅助判断 |
+| `reports/service.py:187` | `1001/1002` | 报表取数 | 货币资金分类 |
+| `accounting/service.py:35-44` | `CHART` 10 个科目 | 种子数据 | 小企业默认科目表 |
+| `accounting/service.py:49-53` | `RULES` 房租/办公/交通/通信/收入 | 业务规则 | 关键词到科目映射 |
+| `accounting/service.py:188-190` | `6001` 方向判断 | 业务规则 | 科目方向/余额符号 |
+| `accounting/service.py:440-441` | `1002` 前缀 | 对账口径 | 银行流水借贷合计 |
+| `accounting/service.py:1047` | `1002` | 业务规则 | 银行分录默认科目 |
+| `accounting/queries.py:48-49` | `1002` 前缀 | 对账口径 | 总账银行发生额 |
+| `settlements/service.py:20-21` | `2202/2241`、`1122/1221` | 对账口径 | 应付/应收结算范围 |
+| `settlements/service.py:650` | `1002` | 业务规则 | 结算银行科目 |
+| `monthly/briefing_source.py:167-169` | `1122/1221`、`2202/2203`、`2221` | 报表取数 | 月度简报应收/应付/税额 |
+| `monthly/briefing.py:167-172` | `1122/1221`、`2202/2203` | 报表取数 | 简报风险分类 |
+| `subledger/reconciliation.py:143,232,289` | `1001/1002` | 对账口径 | 现金/银行子账范围 |
+| `subledger/service.py:120,740` | `1122/1123/2202/2203` | 对账口径 | 往来子账范围 |
+| `subledger/service.py:954` | `1001/1002` | 业务规则 | 银行凭证校验 |
+| `observability/insights_extra.py:172,177,258,263` | `1122/1221`、`2202/2241` | 报表取数 | 经营看板应收/应付 |
+| `tax/leases.py:50-54` | `1122/2203/6001/1002` | 业务规则 | 租赁默认科目（可被请求覆盖） |
+| `business/service.py:26-29` | `6602.01-.04` | 业务规则 | 费用类别默认科目 |
+| `business/service.py:923-929` | `1002/6001/2202/2241` | 业务规则 | 手工业务分录默认科目 |
+| `legacy_migration/service.py:1700-1702,1755-1779` | `1002/2001/6602.02` | 种子/迁移样例 | 合成迁移样例，非生产业务规则 |
+| `legacy_migration/settlements.py:296` | `1002` | 对账口径 | 旧账迁移银行科目校验 |
+| `intelligence/service.py:1392-1393` | `1002` | 对账口径 | 银行发生额核对 |
+| `integrations/service.py:380` | `1002` | 业务规则 | 集成样例银行科目 |
+
+- 结论：真正需要 OPT07-D 配置化的是“业务规则/对账口径”约 15 处；`CHART`/`RULES` 属种子数据，保留。
+- 未改任何代码；未提交/推送/部署。
+Open objectives: OPT07-B 报表模板数据化；OPT07-C/D/E/F（m40767）。
+
+### OPT07-B 报表模板数据化（2026-11-17，部分完成）
+
+- 现状核实：`ReportService._ensure_template` 固定写死 `small_enterprise_basic`；`definition_json` 只是描述性字符串，行顺序/分组仍由 Python 固定。`report_runs` 已保存 `template_id/template_version`，但没有按企业 `standard_kind` 选模板，也没有缺失模板/非法定义的明确拒绝。
+- 失败测试：
+  - `test_report_requires_template_for_company_standard`：将活动 `accounting_policies.standard_kind` 改为 `enterprise` 后生成报表，修改前会静默套用小企业模板。
+  - `test_report_rejects_invalid_template_definition`：将 `report_templates.definition_json` 改为缺少利润表行定义，修改前不会拒绝。
+- 修改：
+  - `app/reports/service.py`：新增 `TEMPLATES`、`_standard_kind`、`_template_for_book`、`_validate_definition`。
+  - 按 `accounting_policies.standard_kind` 选模板；无对应模板 → 409“账套适用的报表模板未配置：enterprise”。
+  - 模板 `definition_json.sections.balance_sheet/profit_statement` 驱动报表行分组、顺序、标签；值仍由现有科目活动计算，未新增任意表达式/脚本。
+  - 非法定义（非 CNY、无 sections、空行、未知科目分组、缺名称）→ 422。
+  - `_build_in_transaction` 接收模板；指纹纳入模板 id/version/定义指纹；`report_runs` 写模板 id/version。
+  - 保留 `small_enterprise` 原有输出：资产负债/利润表金额与现有测试一致。
+- 验收命令与输出：
+  - `cd nexus_backend && PYTHONPATH='..;.' ../.venv/Scripts/python.exe -m pytest -q tests/test_b04_pilot.py -k 'template or report_is_stale' --maxfail=1`
+    - `3 passed, 2 deselected in 10.87s`
+  - `... pytest -q tests/test_b04_pilot.py tests/test_b04_api.py --maxfail=1`
+    - `7 passed, 1 warning in 23.95s`
+- 未做或未验证：模板配置 UI、`enterprise` 正式模板、每行公式完全数据化（当前仅行分组/顺序/标签由模板驱动，值计算仍是固定通用函数）、模板变更对已发布报表的历史冻结仅靠 `report_runs.template_version` + 内容快照保证，尚未做跨模板回放。因此本模块只记“部分完成”，不宣称模板引擎已完全数据化。
+- 顺带发现：`ReportService.TEMPLATE_ID/TEMPLATE_VERSION` 常量仍保留供兼容引用，实际路径已按企业标准选择模板。
+Open objectives: OPT07-C/D/E/F；OPT08–OPT10（m40767）。
+- 候选（OPT07-B 后）：HEAD `557c4fa1aa7c9aa2f2179fadcbcd5ee1ffd2c77d`；source **2371 / `5552f1790eb99759449ceb93ddac01ae4432071c71582c6286d40d1c5fc89a68`**；migration **473 / `c97932c91ce8bcbe219e6910479e7f342d6cc6d3127b3fdfa425f0731697f4bc`**。
+- 未提交/推送/部署。
+
+### OPT07-C 企业会计准则报表模板（2026-11-17，部分完成）
+
+- 现状核实：OPT07-B 已按 `standard_kind` 选择模板；尚无 `enterprise` 模板；`standard_kind='enterprise'` 会被明确 409。
+- 失败测试：`test_report_requires_template_for_company_standard`（修改前静默用小企业模板）、`test_enterprise_template_generates_balanced_report`（先红，因无 enterprise 模板）。
+- 修改：
+  - `app/reports/service.py` 增加 `enterprise_general` v1 合成模板，标题注明“合成模板，未经客户与会计师确认，仅供离线验收”。
+  - 资产负债表/利润表使用同一通用分组/行标签驱动；未编造不确定行次的取数公式。
+  - `_template_for_book` 区分“无模板”与“模板被停用”：停用 → 409“报表模板未启用：enterprise”。
+  - 原缺失模板测试改为插入 inactive 企业模板，验证不回退小企业模板。
+- 验收命令与输出：
+  - `pytest -q tests/test_b04_pilot.py -k 'enterprise or template'` → **3 passed/10.63s**。
+  - `pytest -q tests/test_b04_pilot.py -k 'template or report_is_stale'` → **3 passed/11.03s**。
+  - `ruff check` 通过。
+- 未做或未验证：企业会计准则科目表种子；现金流量表企业模板；每个有取数规则行次的专项用例；企业账套 PG16/17；“待专业确认”清单尚未逐行展开（仅保留模板头注）。
+- 因此 C 记“部分完成”，不宣称企业准则报表已完整覆盖。
+- 候选（C 后）：HEAD `557c4fa1aa7c9aa2f2179fadcbcd5ee1ffd2c77d`；source **2371 / `e6e8e8ccd2c971af58826da1458af042b0b1bb0fcf5372c30d009914d06019f2`**；migration **473 / `c97932c91ce8bcbe219e6910479e7f342d6cc6d3127b3fdfa425f0731697f4bc`**。
+- 未提交/推送/部署。
+
+#### OPT07-C 补充：可选企业科目种子（2026-11-17）
+
+- 新增 `nexus_backend/app/opening/enterprise_chart.py`：19 个合成企业会计准则科目（资产/负债/权益/收入/费用），`enterprise_chart()` 返回独立副本，作为可选初始化数据，不改现有小企业科目表。
+- 新测试 `test_enterprise_chart_seed_is_optional_and_synthetic` 覆盖代码集合、借贷方向、副本隔离；`pytest -q tests/test_b04_pilot.py -k enterprise` → **2 passed/6.60s**。
+- 未接入开户初始化，也未用该科目表实际建账；C 仍为部分完成。
+- 候选更新：HEAD `557c4fa1aa7c9aa2f2179fadcbcd5ee1ffd2c77d`；source **2372 / `2a63dde0a8f720bc26b6d23fb4ef4b48cafb59e902204dda4f06dcfa033fb6a5`**；migration **473 / `c97932c91ce8bcbe219e6910479e7f342d6cc6d3127b3fdfa425f0731697f4bc`**。
+- 复核（2026-11-17）：`pytest -q tests/test_b04_pilot.py -k 'enterprise or template'` → **4 passed,3 deselected/10.40s**；`ruff check app/opening/enterprise_chart.py app/reports/service.py tests/test_b04_pilot.py` 通过；新文件 `ruff format --check` 通过。C 仍为部分完成。
+
+### OPT07-D 科目角色配置化（2026-11-17，部分完成）
+
+- 现状核实：总账银行发生额、结算应付/应收范围、结算银行科目均按 `1002/2202/2241/1122/1221` 硬编码；报表/月度简报/子账等其它口径尚未迁移。
+- 失败测试：自定义应付科目 3202 登记 `payable` 后，`AccountRoleService.codes` 仍只返回默认科目；`open_item` 进一步被 `settlement_items.clearing_account` CHECK 阻断。
+- 修改：
+  - `sqlite/202_opt07_account_roles.sql`、`postgres/287_opt07_account_roles.sql`：`account_roles` + 默认回填。
+  - `app/accounting/account_roles.py`、`create_book` 种子、`queries.py` 银行 CTE、`settlements/service.py` 的 allowed/bank code 改读角色；空结果才回退旧常量。
+  - `test_opt07_account_roles.py` 验证自定义角色解析。
+- 验收：
+  - `tests/test_opt06_review_delegation.py tests/test_stage20_access_reads.py tests/test_opt07_account_roles.py` → **18 passed**。
+  - `tests/test_stage10_settlements.py::test_full_allocated_bank_clears_reviewed_payable_then_exports_without_repeating_expense` → **1 passed**。
+- 未完成/阻断：`settlement_items.clearing_account` 仍有硬编码 CHECK（sqlite 031 / pg 045），PG `settlement_clearing_account()` 仍硬编码；自定义应付代码无法端到端过账。需新增前向迁移重建约束/函数，未做。D 只记部分完成。
+- 候选（D 部分完成）：HEAD `557c4fa1aa7c9aa2f2179fadcbcd5ee1ffd2c77d`；source **2376 / `062432a951169e145debae58eafc76b488e97940202234fba1c98253b7b1ef67`**；migration **475 / `904a548e462dde788fe3f2b0aef37230f50fb1b0d7f818582f7fb84246a57d54`**。
+- 未提交/推送/部署。
+
+### OPT07-D 历史阻断记录（已被下方完成段取代）
+
+- 失败证据：自定义应付科目 3202 经 `AccountRoleService` 识别，但 `open_item` 插入 `settlement_items` 时被硬编码 CHECK 拒绝：
+  `CHECK constraint failed: clearing_account IN ('2202','2241','1122','1221')`。
+- 该约束位于历史迁移 `031_settlements.sql` / `045_settlements.sql`；PG `accounting.settlement_clearing_account()` 同样硬编码。
+- 按 OPT00 边界，不修改已应用迁移；修复必须新增前向迁移重建 SQLite 表/放宽约束，并在 PG 替换 CHECK 与函数。该改动会影响结算主链，当前未完成，不能以只改 Python 冒充通过。
+- 决定：OPT07-D 标记“部分完成/阻断”，不宣布通过；按总令跳到不依赖该约束的 OPT07-E。后续恢复 D 时先做前向迁移与 `3202` 端到端红测。
+- 候选：source `062432a951169e145debae58eafc76b488e97940202234fba1c98253b7b1ef67`；migration `904a548e462dde788fe3f2b0aef37230f50fb1b0d7f818582f7fb84246a57d54`。
+
+
+### OPT07-D 科目角色配置化（2026-11-17，完成）
+
+- 现状核实：银行发生额 CTE、结算应付/应收 allowed、结算银行科目均硬编码 `1002/2202/2241/1122/1221`；结算表 CHECK 和 PG 函数也硬编码。
+- 失败测试：自定义 3202 设为 payable 后，业务草稿仍写 2202/2241；`open_item` 被 `CHECK constraint failed: clearing_account IN (...)` 拒绝。
+- 修改：
+  - `sqlite/202_opt07_account_roles.sql`、`postgres/287_opt07_account_roles.sql`：`account_roles(book_id, code, role)`，默认角色回填。
+  - `sqlite/203_opt07_settlement_roles.sql`、`postgres/288_opt07_settlement_roles.sql`：前向重建/放宽 `settlement_items` 的 hardcoded CHECK；PG `settlement_clearing_account()` 改读 `account_roles`。
+  - `AccountRoleService`；`create_book` 种子；银行 CTE、结算 allowed/bank code 读角色；业务未付款草稿优先默认应付、仅一个自定义应付时用自定义代码。
+- 验收命令与输出：
+  - `pytest -q tests/test_opt07_account_roles.py` → **2 passed/8.03s**。
+  - `pytest -q tests/test_opt07_account_roles.py tests/test_stage10_settlements.py tests/test_opt06_review_delegation.py tests/test_stage20_access_reads.py` → **27 passed/46.56s**。
+  - `pytest -q tests/test_stage10_settlements.py` → **10 passed/23.89s**。
+  - PG17 自定义应付 **1 passed/3.03s** `a661fd69120449cc8ea4c6cb0ad91f70`；PG16 **1 passed/3.05s** `747139153aad47599ae90df4d1696f1e`。
+  - PG17 结算全量 **5 passed/11.97s** `adf43088b3fd453190fc12d8c62bff77`；PG16 **5 passed/12.30s** `e5eb760a3819450591e24ad15b31c503`。
+  - `ruff check` 通过；新测试已格式化。既有 CRLF 文件未整文件重排。
+- 未做或未验证：带既有 allocation 数据的 203 升级路径；`-k "close or posting"` 仍有 5 个旧失败（旧 reviewer 授权、P02 runner、OCR/案例夹具），与 D 无关。
+- 候选：HEAD `557c4fa1aa7c9aa2f2179fadcbcd5ee1ffd2c77d`；source **2378 / `e0aacc1c6dd45201e5dde5562f21b7dc03684d6e7f8d2d7c31dd96984a377056`**；migration **477 / `c90fe378fcf5b12ee4a0c4d7254f93fef5109ad3589c0b2eec5c971ad49df36e`**。
+- 未提交/推送/部署。
+
+## OPT07-D  科目角色配置化  <状态：完成>
+
+- 现状核实：结算 `settlement_items.clearing_account` 与 PG `settlement_clearing_account()` 硬编码 2202/2241/1122/1221；业务未付款草稿、银行 CTE、结算 allowed 同样假定固定代码。
+- 失败测试：`test_custom_payable_role_is_used_by_business_and_settlement` 在 3202 设为 payable 后，`open_item` 触发 `CHECK constraint failed: clearing_account IN ('2202','2241','1122','1221')`；PG 首次运行还暴露 `COALESCE(boolean,0)` 类型错误。
+- 修改文件：
+  - 新增 `nexus_backend/migrations/sqlite/202_opt07_account_roles.sql`、`postgres/287_opt07_account_roles.sql`：`account_roles` 与默认角色回填。
+  - 新增 `nexus_backend/migrations/sqlite/203_opt07_settlement_roles.sql`、`postgres/288_opt07_settlement_roles.sql`：放宽结算 CHECK，PG 函数改读角色。
+  - 新增 `nexus_backend/app/accounting/account_roles.py`；`create_book`、`queries.py`、`settlements/service.py`、`business/service.py` 改读角色。
+  - 修复 `access.py` 的 PG boolean `COALESCE`。
+  - 新增/扩展 `tests/test_opt07_account_roles.py`、`tests/test_stage10_settlements_postgres.py`。
+- 验收命令与输出：
+  - `pytest -q tests/test_opt07_account_roles.py` → `2 passed in 8.14s`
+  - `pytest -q tests/test_opt07_account_roles.py tests/test_stage10_settlements.py tests/test_opt06_review_delegation.py tests/test_stage20_access_reads.py` → `27 passed in 46.56s`
+  - PG17 自定义应付 → `1 passed/3.03s`，artifact `a661fd69120449cc8ea4c6cb0ad91f70`
+  - PG16 自定义应付 → `1 passed/3.05s`，artifact `747139153aad47599ae90df4d1696f1e`
+  - PG17 结算全量 → `5 passed/11.97s`，artifact `adf43088b3fd453190fc12d8c62bff77`
+  - PG16 结算全量 → `5 passed/12.30s`，artifact `e5eb760a3819450591e24ad15b31c503`
+  - `ruff check` 通过。
+- 未做或未验证：带既有 allocation 数据的 203 升级路径；`pytest -k "close or posting"` 仍有 5 个既有失败（旧 reviewer 授权 2、P02 runner 1、OCR/案例夹具 2），与 D 无关。
+- 候选：HEAD `557c4fa1aa7c9aa2f2179fadcbcd5ee1ffd2c77d`；source `e0aacc1c6dd45201e5dde5562f21b7dc03684d6e7f8d2d7c31dd96984a377056`；migration `c90fe378fcf5b12ee4a0c4d7254f93fef5109ad3589c0b2eec5c971ad49df36e`。
+
+## OPT07-E 税费政策条目化  <状态：部分完成>
+
+- 现状核实：`tax_profiles` 只有单一 `vat_rate_bp/surtax_rate_bp`；`TaxWorkpaperService._snapshot` 用销项净额乘单一税率，不按票面税率/条目分项。现有 `_invoice_rows` 已有逐票 `amount_cents/tax_cents`，可用于后续多税率归集。
+- 已新增：
+  - `nexus_backend/migrations/sqlite/204_opt07_tax_policy_items.sql`、`postgres/289_opt07_tax_policy_items.sql`：`tax_policy_items`（profile 下 kind/code/name/basis_kind/rate_bp/effective_from/effective_to/conditions/authority/approved_by/created_by/created_at/fingerprint），PG RLS/FORCE/GRANT。
+  - `nexus_backend/app/tax/policy_items.py`：`TaxPolicyItemService.list/add/calculate`；`calculate` 按 `basis_kind` 匹配生效条目，复用 OPT01-C 的 `scale_by_basis_points`，缺条目抛 409。
+  - API：`GET/POST /api/tax/books/{book_id}/policy-items`、`POST .../policy-items/calculate`；`main.py` 注册 `application.state.tax_policy_items`。
+  - `nexus_backend/tests/test_opt07_tax_policy_items.py`：6%/13% 两档销项、文化事业建设费、农产品扣除，合计 2210 分；缺 `missing_basis` 409；复核后新增条目不改写旧底稿且旧版本导出 409。
+- 验收命令与输出：
+  - `pytest -q tests/test_opt07_tax_policy_items.py` → **3 passed/9.51s**（含 workpaper 条目集成与版本冻结负向）。
+  - `pytest -q tests/test_tax_workpaper.py tests/test_n04_tax_contract.py tests/test_opt07_tax_policy_items.py` → **24 passed/42.75s**，无 policy 时旧 API 形状不变。
+  - `pytest -q tests/test_tax_workpaper_scope_sqlite.py tests/test_tax_workpaper_guards.py tests/test_tax_api.py` → **19 passed/35.41s**。
+  - PG 工作底稿回归（含迁移 289）：PG17 **32 passed/16.36s** `tmp_test/ak05-pg-runs/1f049ebcd6bd44d7a6af1f289677412c`；PG16 **32 passed/16.60s** `tmp_test/ak05-pg-runs/ec92fc4f99764f3daba744711e8d375c`。
+  - `ruff check` 通过；`workpaper.py` 已格式化。
+- `TaxWorkpaperService._snapshot` 已读取条目：`_policy_snapshot` 按 `basis_kind` 匹配生效条目，缺基础/条目 409；`vat_cents=vat_output−agriculture_deduction`；无 policy 保持旧单税率路径。
+- 未完成或未验证：
+  - 多税率按发票/业务分类归集、附加税分项、企业所得税预缴、印花税模型未实现；API 条目集成测试未加；前端未接。
+  - 两企业/停用条目对评审的负向测试未覆盖；版本冻结与导出 409 已覆盖。
+- 候选：HEAD `557c4fa1aa7c9aa2f2179fadcbcd5ee1ffd2c77d`；source **2382 / `cd05573e5e3df22947963dea8fd072fdda67b93adb8021c714bf470272521b0a`**；migration **479 / `e31665124832171eed717a9c9b463e10151556a62643de39d578eb45845f3a41`**。
+- 未提交/推送/部署。
+
+
+## OPT07-F 通用主体别名  <状态：后端本地通过，前端待做（整体部分完成）>
+
+- 现状核实：`transport_aliases` 只有 firm/company/subject_id/alias/source/status/created_at，没有主体类型和生效期；出租车解析只认旧表。
+- 已新增：
+  - `nexus_backend/migrations/sqlite/205_opt07_subject_aliases.sql`、`postgres/290_opt07_subject_aliases.sql`：`subject_aliases`（firm/company/subject_type/subject_id/alias/source/status/effective_from/effective_to/created_by/created_at/停用信息），唯一 `(firm,company,type,alias,effective_from)`；回填旧出租车别名；PG RLS/FORCE/GRANT。
+  - `nexus_backend/app/aliases.py`：`AliasService.add/retire/resolve`；同企业同类型有效期重叠的别名只能指向一个主体，冲突 409；解析返回 resolved/ambiguous/not_found。
+  - `nexus_backend/app/ledgers/service.py::_transport_subject` 改为只查 `subject_aliases`，按发生日期解析，不再回退旧表。
+  - `nexus_backend/app/alias_router.py`：`GET /api/companies/{id}/aliases/resolve`、`POST /api/companies/{id}/aliases`、`POST .../{alias_id}/retire`；`main.py` 注册 `application.state.aliases`。
+  - `nexus_backend/tests/test_opt07_alias_http.py`：未命中返回 not_found、缺主体 404；**1 passed/7.99s**。
+  - `nexus_backend/migrations/sqlite/206_opt07_generic_alias_types.sql`、`postgres/291_opt07_generic_alias_types.sql`：前向放开 `subject_type` 到 `transport_subject`/`counterparty`；SQLite 重建表，PG 动态替换旧 CHECK；不改已应用 205/290。
+  - `nexus_backend/app/aliases.py`：`counterparty` 主体必须存在、`active=1` 且同企业；解析时过滤已停用客商；其余类型仍 422。
+  - `nexus_backend/tests/test_opt07_subject_aliases.py`：客商别名新增/解析、同名指向第二客商 409、停用后 not_found；冲突 409、生效期解析、失效后 not_found、手工脏数据触发 ambiguous；`AliasService` 写入 `alias.create`/`alias.retire` 审计。
+  - `pytest -q tests/test_opt07_subject_aliases.py` → **4 passed/10.36s**；`test_opt07_subject_aliases.py + test_tax03_transport.py` → **10 passed/21.48s**（旧表回退移除时）。
+- 验收命令与输出：
+  - `pytest -q tests/test_opt07_subject_aliases.py` → **3 passed/8.83s**。
+  - `pytest -q tests/test_tax03_transport.py tests/test_opt07_subject_aliases.py` → **10 passed/21.48s**。
+  - PG16/17 `test_opt07_subject_aliases_postgres.py` 各 **1 passed**：同 firm/company/type/alias/生效日唯一，跨生效日与跨 company 允许，`counterparty` 行可写入。
+  - 修复 `postgres/290` 回填：`substr(timestamptz)` 需 `created_at::text`；测试用 savepoint 隔离预期唯一冲突。
+  - `pytest -q tests/test_opt07_subject_aliases.py` → **4 passed/10.36s**；PG17 `1 passed/0.40s`、PG16 `1 passed/0.43s`。
+  - `pytest -q tests/test_opt07_subject_aliases.py tests/test_tax03_transport.py -k 'not http'` → **10 passed/18.33s，1 deselected**；被排除的是 `test_http_transport_overview_and_subject_creation`，本机 Starlette 0.35 `TestClient(client=...)` 不兼容，不是产品断言失败，也不算通过。
+  - `pytest -q tests/test_opt07_alias_http.py` → **1 passed/7.85s**（未命中/缺主体 HTTP 契约，未覆盖客商正例）。
+- 未完成或未验证：
+  - 前端未提供客商别名维护/解析入口；
+  - 未做两企业/并发的服务层 PG 负向；`counterparty` 只验证 schema 与服务，未接真实导入消费者；
+  - 已移除出租车解析的旧表回退；新增别名 `effective_from=0001-01-01`，历史名称对既有业务日期可解析。
+- 候选：HEAD `557c4fa1aa7c9aa2f2179fadcbcd5ee1ffd2c77d`；source **2391 / `aee9fbbcfcba4b510ebee20cded0f57b0049edc4f30beccc814360fab8222d64`**；migration **483 / `cc997bbc2eeffd73b7994ce73e58df900333fdf1ad078c010e6f7fe44154fc46`**。
+- 未提交/推送/部署。

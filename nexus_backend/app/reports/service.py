@@ -21,6 +21,51 @@ class ReportService:
     TEMPLATE_ID = "small_enterprise_basic"
     TEMPLATE_VERSION = 1
 
+    TEMPLATES = {
+        "enterprise": {
+            "id": "enterprise_general",
+            "name": "企业会计准则一般企业报表（合成模板，未经客户与会计师确认）",
+            "version": 1,
+            "definition": {
+                "kind": "enterprise_general",
+                "standard": "enterprise",
+                "currency": "CNY",
+                "sections": {
+                    "balance_sheet": [
+                        {"key": "asset", "label": "资产", "category": "asset", "sign": 1},
+                        {"key": "liability", "label": "负债", "category": "liability", "sign": -1},
+                        {"key": "equity", "label": "所有者权益（或股东权益）", "category": "equity", "sign": -1},
+                    ],
+                    "profit_statement": [
+                        {"key": "income", "label": "营业收入", "category": "income", "sign": 1},
+                        {"key": "expense", "label": "营业成本及费用", "category": "expense", "sign": 1},
+                    ],
+                },
+            },
+        },
+        "small_enterprise": {
+            "id": "small_enterprise_basic",
+            "name": "小企业基础报表",
+            "version": 1,
+            "definition": {
+                "kind": "small_enterprise_basic",
+                "standard": "small_enterprise",
+                "currency": "CNY",
+                "sections": {
+                    "balance_sheet": [
+                        {"key": "asset", "label": "资产", "category": "asset", "sign": 1},
+                        {"key": "liability", "label": "负债", "category": "liability", "sign": -1},
+                        {"key": "equity", "label": "所有者权益", "category": "equity", "sign": -1},
+                    ],
+                    "profit_statement": [
+                        {"key": "income", "label": "收入", "category": "income", "sign": 1},
+                        {"key": "expense", "label": "费用", "category": "expense", "sign": 1},
+                    ],
+                },
+            },
+        }
+    }
+
     def __init__(self, db):
         self.db = db
         self.accounting = AccountingService(db)
@@ -35,37 +80,70 @@ class ReportService:
             raise AccountingError("账套未关联长期账套", 409)
         return book, ledger["ledger_id"]
 
-    def _ensure_template(self, conn):
+    def _standard_kind(self, conn, ledger_id):
         row = conn.execute(
-            "SELECT * FROM report_templates WHERE id=? AND version=?",
-            (self.TEMPLATE_ID, self.TEMPLATE_VERSION),
+            "SELECT standard_kind FROM accounting_policies WHERE ledger_id=? AND status='active' "
+            "ORDER BY version DESC LIMIT 1",
+            (ledger_id,),
+        ).fetchone()
+        return row["standard_kind"] if row else "small_enterprise"
+
+    def _validate_definition(self, definition):
+        if not isinstance(definition, dict):
+            raise AccountingError("报表模板定义格式无效", 422)
+        if definition.get("currency") != "CNY":
+            raise AccountingError("报表模板币种仅支持 CNY", 422)
+        sections = definition.get("sections")
+        if not isinstance(sections, dict):
+            raise AccountingError("报表模板缺少行定义", 422)
+        allowed = {"asset", "liability", "equity", "income", "expense"}
+        for name in ("balance_sheet", "profit_statement"):
+            rows = sections.get(name)
+            if not isinstance(rows, list) or not rows:
+                raise AccountingError("报表模板行定义不完整", 422)
+            for row in rows:
+                if not isinstance(row, dict) or row.get("key") not in allowed:
+                    raise AccountingError("报表模板行定义含未知科目分组", 422)
+                if not isinstance(row.get("label"), str) or not row["label"].strip():
+                    raise AccountingError("报表模板行缺少名称", 422)
+        return definition
+
+    def _template_for_book(self, conn, book):
+        ledger = conn.execute(
+            "SELECT ledger_id FROM ledger_periods WHERE book_id=?", (book["id"],)
+        ).fetchone()
+        if not ledger:
+            raise AccountingError("账套未关联长期账套", 409)
+        standard = self._standard_kind(conn, ledger["ledger_id"])
+        spec = self.TEMPLATES.get(standard)
+        if not spec:
+            raise AccountingError(f"账套适用的报表模板未配置：{standard}", 409)
+        self._validate_definition(spec["definition"])
+        row = conn.execute(
+            "SELECT * FROM report_templates WHERE id=? AND version=? AND active=1",
+            (spec["id"], spec["version"]),
         ).fetchone()
         if row:
+            self._validate_definition(json.loads(row["definition_json"]))
             return row
-        definition = {
-            "kind": "small_enterprise_basic",
-            "currency": "CNY",
-            "balance_sheet": "category_and_code_mapping_v1",
-            "profit_statement": "category_activity_v1",
-            "cash_flow": "single_cash_line_counterparty_category_v1",
-        }
+        inactive = conn.execute(
+            "SELECT 1 FROM report_templates WHERE id=? AND version=?",
+            (spec["id"], spec["version"]),
+        ).fetchone()
+        if inactive:
+            raise AccountingError(f"账套适用的报表模板未启用：{standard}", 409)
         stamp = now()
         conn.execute(
             "INSERT INTO report_templates(id,name,standard,version,effective_from,definition_json,active,created_at) "
             "VALUES(?,?,?,?,?,?,1,?)",
             (
-                self.TEMPLATE_ID,
-                "小企业基础报表",
-                "small_enterprise",
-                self.TEMPLATE_VERSION,
-                "2026-01",
-                json.dumps(definition, ensure_ascii=False),
-                stamp,
+                spec["id"], spec["name"], standard, spec["version"], "2026-01",
+                json.dumps(spec["definition"], ensure_ascii=False), stamp,
             ),
         )
         return conn.execute(
             "SELECT * FROM report_templates WHERE id=? AND version=?",
-            (self.TEMPLATE_ID, self.TEMPLATE_VERSION),
+            (spec["id"], spec["version"]),
         ).fetchone()
 
     def _activity(self, conn, book):
@@ -161,7 +239,9 @@ class ReportService:
         with self.db.transaction(actor=actor) as conn:
             return self._build_in_transaction(conn, actor, book)
 
-    def _build_in_transaction(self, conn, actor, book, trial=None):
+    def _build_in_transaction(self, conn, actor, book, trial=None, template=None):
+        template = template or self._template_for_book(conn, book)
+        definition = self._validate_definition(json.loads(template["definition_json"]))
         trial = trial or self.posting.trial_balance_in_transaction(conn, actor, book["id"])
         binding = conn.execute(
             "SELECT * FROM opening_bindings WHERE book_id=? AND status='active'", (book["id"],)
@@ -231,56 +311,57 @@ class ReportService:
             and cash_flow["unclassified_absolute_cents"] == 0
         )
 
+        by_section = {
+            "asset": assets,
+            "liability": liabilities,
+            "equity": equity,
+            "income": income,
+            "expense": expense,
+        }
+        balance_items = []
+        for section in definition["sections"]["balance_sheet"]:
+            for row in by_section[section["key"]]:
+                amount = signed(row)
+                if section["sign"] < 0:
+                    amount = -amount
+                balance_items.append(
+                    {
+                        "section": section["key"],
+                        "account_id": row["account_id"],
+                        "code": row["code"],
+                        "name": row["name"],
+                        "amount_cents": amount,
+                    }
+                )
+        profit_items = []
+        for section in definition["sections"]["profit_statement"]:
+            for row in by_section[section["key"]]:
+                amount = period_net(row)
+                if section["sign"] < 0:
+                    amount = -amount
+                profit_items.append(
+                    {
+                        "account_id": row["account_id"],
+                        "code": row["code"],
+                        "name": row["name"],
+                        "amount_cents": amount,
+                    }
+                )
         content = {
             "balance_sheet": {
+                "label": "资产负债表",
                 "assets": total_assets,
                 "liabilities": total_liabilities,
                 "equity": total_equity,
                 "unclosed_profit": profit_in_equity,
-                "items": [
-                    {
-                        "section": "asset",
-                        "account_id": row["account_id"],
-                        "code": row["code"],
-                        "name": row["name"],
-                        "amount_cents": signed(row),
-                    }
-                    for row in assets
-                ]
-                + [
-                    {
-                        "section": "liability",
-                        "account_id": row["account_id"],
-                        "code": row["code"],
-                        "name": row["name"],
-                        "amount_cents": -signed(row),
-                    }
-                    for row in liabilities
-                ]
-                + [
-                    {
-                        "section": "equity",
-                        "account_id": row["account_id"],
-                        "code": row["code"],
-                        "name": row["name"],
-                        "amount_cents": -signed(row),
-                    }
-                    for row in equity
-                ],
+                "items": balance_items,
             },
             "profit_statement": {
+                "label": "利润表",
                 "revenue_cents": revenue,
                 "expense_cents": expenses,
                 "profit_cents": profit,
-                "items": [
-                    {
-                        "account_id": row["account_id"],
-                        "code": row["code"],
-                        "name": row["name"],
-                        "amount_cents": period_net(row),
-                    }
-                    for row in income + expense
-                ],
+                "items": profit_items,
             },
             "cash_flow": {
                 **cash_flow,
@@ -307,9 +388,14 @@ class ReportService:
                 "opening": opening,
                 "cash_flow": cash_flow,
                 "closing_vouchers": closing_vouchers,
+                "template": {
+                    "id": template["id"],
+                    "version": int(template["version"]),
+                    "definition_fingerprint": _fingerprint(definition),
+                },
                 "policy_and_schema_revisions": {
                     key: value
-                    for key, value in close_dependencies(conn, book["id"], self.TEMPLATE_ID).items()
+                    for key, value in close_dependencies(conn, book["id"], template["id"]).items()
                     if key != "book"
                 },
             }
@@ -322,11 +408,11 @@ class ReportService:
             if period != book["period"]:
                 raise AccountingError("报表期间与账套期间不一致", 422)
             self._book(conn, actor, book_id, write=True)
-            template = self._ensure_template(conn)
-            content, fingerprint = self._build_in_transaction(conn, actor, book)
+            template = self._template_for_book(conn, book)
+            content, fingerprint = self._build_in_transaction(conn, actor, book, template=template)
             version = conn.execute(
                 "SELECT COALESCE(MAX(version),0)+1 FROM report_runs WHERE book_id=? AND period=? AND template_id=?",
-                (book["id"], period, self.TEMPLATE_ID),
+                (book["id"], period, template["id"]),
             ).fetchone()[0]
             report_id = uuid4().hex
             content_json = json.dumps(content, ensure_ascii=False, sort_keys=True)
@@ -338,7 +424,7 @@ class ReportService:
                     report_id,
                     book["id"],
                     period,
-                    self.TEMPLATE_ID,
+                    template["id"],
                     template["version"],
                     version,
                     fingerprint,
@@ -391,7 +477,7 @@ class ReportService:
         ).fetchone()
         if not template:
             raise AccountingError("报表模板版本已变化，请重新生成报表", 409)
-        content, fingerprint = self._build_in_transaction(conn, actor, book, trial=trial)
+        content, fingerprint = self._build_in_transaction(conn, actor, book, trial=trial, template=template)
         if (
             fingerprint != row["inputs_fingerprint"]
             or _fingerprint(json.loads(row["content_json"])) != row["content_hash"]

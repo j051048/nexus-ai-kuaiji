@@ -1,3 +1,5 @@
+import { formatCents } from './money';
+
 export interface TaxFiling {
   id: string;
   period: string;
@@ -71,5 +73,5 @@ export function parseFilings(raw: unknown): TaxFiling[] {
 }
 
 export function formatYuan(cents: number): string {
-  return (cents / 100).toFixed(2);
+  return formatCents(BigInt(cents));
 }

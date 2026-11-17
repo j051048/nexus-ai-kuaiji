@@ -1,0 +1,14 @@
+.money-cell {
+  display: inline-block;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.money-cell-negative {
+  color: var(--status-danger);
+}
+
+.money-cell-table {
+  text-align: right;
+}

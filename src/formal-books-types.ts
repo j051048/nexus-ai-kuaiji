@@ -1,4 +1,5 @@
 /** Read-only display contracts. All balances come from the formal accounting API. */
+import { formatCents } from './money';
 export type FormalBookKind = 'trial_balance' | 'account_ledger' | 'daily_journal' | 'aux_ledger';
 export interface FormalBookScope {
   book_id: string;
@@ -266,9 +267,7 @@ export function parseFormalVoucher(
 
 export function formatFormalCents(value: number): string {
   integer(value);
-  const amount = BigInt(value),
-    absolute = amount < 0n ? -amount : amount;
-  return `${amount < 0n ? '-' : ''}${(absolute / 100n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',')}.${(absolute % 100n).toString().padStart(2, '0')}`;
+  return formatCents(BigInt(value));
 }
 
 export function formalBooksPath(

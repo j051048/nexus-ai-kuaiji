@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 
 from ..accounting.access import AccessControl
 from ..accounting.domain import AccountingError
+from ..posting.integrity import VoucherGapService
 
 
 class ClosingRadarService:
@@ -133,6 +134,18 @@ class ClosingRadarService:
                             "count": 1,
                             "owner_role": "accountant",
                             "next_action": "打开子账控制设置确认适用性或控制科目",
+                        }
+                    )
+                gaps = VoucherGapService(self.db, self.access).scan_in_transaction(conn, book["id"])
+                if gaps["missing"]:
+                    blockers.append(
+                        {
+                            "code": "voucher_number_gap",
+                            "label": "凭证编号断号",
+                            "count": len(gaps["missing"]),
+                            "voucher_numbers": gaps["missing"],
+                            "owner_role": "accountant",
+                            "next_action": "核对凭证编号连续性并登记核查结论；不得重排已记账凭证",
                         }
                     )
                 authoritative = not blockers

@@ -14,7 +14,8 @@ import {
   X,
 } from 'lucide-react';
 import { api, apiBlob, ApiError, errorMessage } from './api';
-import { formatCents, formatMoney, moneyToCents } from './csv';
+import { formatMoney, moneyToCents } from './csv';
+import { MoneyCell } from './MoneyCell';
 import { EvidenceViewer, type EvidenceFocus, type ReviewAttachment } from './EvidenceViewer';
 import { JournalEntryGrid } from './JournalEntryGrid';
 import {
@@ -864,6 +865,16 @@ export function InlineReviewDrawer({
                     setLines(value);
                     setAcknowledged(false);
                   }}
+                  onAddLine={
+                    readonly || lines.length >= 20
+                      ? undefined
+                      : () =>
+                          setLines((old) => [
+                            ...old,
+                            { account_code: '', debit: '0.00', credit: '0.00' },
+                          ])
+                  }
+                  onSaveShortcut={readonly ? undefined : () => void mutate('save')}
                 />
                 {!readonly && (
                   <button
@@ -882,10 +893,10 @@ export function InlineReviewDrawer({
                 )}
                 <div className={`inline-review-totals ${balanced ? '' : 'unbalanced'}`}>
                   <span>
-                    借方 <b>{amountError ? '—' : formatCents(debit)}</b>
+                    借方 <b>{amountError ? '—' : <MoneyCell cents={debit} />}</b>
                   </span>
                   <span>
-                    贷方 <b>{amountError ? '—' : formatCents(credit)}</b>
+                    贷方 <b>{amountError ? '—' : <MoneyCell cents={credit} />}</b>
                   </span>
                   <p>
                     {balanced ? (
@@ -895,9 +906,18 @@ export function InlineReviewDrawer({
                       </>
                     ) : (
                       amountError ||
-                      (debit === 0n && credit === 0n
-                        ? '借贷金额须大于零，请补充分录金额'
-                        : `借贷差额 ¥${formatCents(debit > credit ? debit - credit : credit - debit)}，请核对金额`)
+                      (debit === 0n && credit === 0n ? (
+                        '借贷金额须大于零，请补充分录金额'
+                      ) : (
+                        <>
+                          借贷差额{' '}
+                          <MoneyCell
+                            cents={debit > credit ? debit - credit : credit - debit}
+                            options={{ currency: true }}
+                          />
+                          ，请核对金额
+                        </>
+                      ))
                     )}
                   </p>
                 </div>

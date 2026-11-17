@@ -1,3 +1,9 @@
+.journal-grid-shortcuts {
+  margin: 0 8px 6px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
 .journal-grid-wrap {
   width: 100%;
   container-type: inline-size;

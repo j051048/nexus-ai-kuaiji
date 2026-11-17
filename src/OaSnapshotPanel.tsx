@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, ApiError } from './api';
 import type { Session } from './types';
+import { formatCents, parseYuanToCents } from './money';
 import './oa-snapshot.css';
 
 type Snapshot = {
@@ -23,8 +24,8 @@ type MaterialRequest = {
 };
 
 function cents(value: string) {
-  const n = Number(value);
-  return Number.isFinite(n) && n > 0 ? Math.round(n * 100) : 0;
+  const parsed = parseYuanToCents(value);
+  return parsed === null ? 0 : Number(parsed);
 }
 
 export function OaSnapshotPanel({
@@ -223,7 +224,9 @@ export function OaSnapshotPanel({
                 <span>
                   审批人 {row.approved_by} ·{' '}
                   {row.lines
-                    .map((line) => `${line.account_code} ¥${(line.amount_cents / 100).toFixed(2)}`)
+                    .map(
+                      (line) => `${line.account_code} ¥${formatCents(BigInt(line.amount_cents))}`,
+                    )
                     .join(' / ')}
                 </span>
                 <span className="oa-fingerprint">快照 {row.fingerprint.slice(0, 12)}</span>

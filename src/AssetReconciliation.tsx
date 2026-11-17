@@ -100,7 +100,7 @@ export function AssetReconciliation({
     `${session.scope_key}:${bookId}:${period}:${assetId}`,
   );
   const data = query.data;
-  const money = (cents: number) => (cents / 100).toFixed(2);
+  const money = (cents: number) => formatFormalCents(cents);
   if (history)
     return (
       <HistoryVoucher

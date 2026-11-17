@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, ApiError } from './api';
 import type { Session } from './types';
+import { centsToApiString, formatCents, parseYuanToCents } from './money';
 import './tax-cost.css';
 
 type Kind = 'repair' | 'insurance' | 'oa';
@@ -535,8 +536,9 @@ export function TaxCostBatchPanel({
   }
 
   async function consumePackage(contract: PackageContract) {
-    const cents = Math.round(Number(usageAmount) * 100);
-    if (!Number.isFinite(cents) || cents <= 0) {
+    const parsed = parseYuanToCents(usageAmount);
+    const cents = parsed === null ? 0 : Number(parsed);
+    if (cents <= 0) {
       setFailure('包干占用金额必须大于 0。');
       return;
     }
@@ -572,8 +574,9 @@ export function TaxCostBatchPanel({
   }
 
   async function releasePackage(usageId: string) {
-    const cents = Math.round(Number(releaseAmount) * 100);
-    if (!Number.isFinite(cents) || cents <= 0) {
+    const parsed = parseYuanToCents(releaseAmount);
+    const cents = parsed === null ? 0 : Number(parsed);
+    if (cents <= 0) {
       setFailure('释放金额必须大于 0。');
       return;
     }
@@ -674,7 +677,7 @@ export function TaxCostBatchPanel({
             {packages.map((contract) => (
               <article key={contract.id}>
                 <strong>
-                  {contract.contract_no} · ¥{(contract.limit_cents / 100).toFixed(2)}
+                  {contract.contract_no} · ¥{formatCents(BigInt(contract.limit_cents))}
                   <span className="tax-rate-status">
                     {contract.status === 'active'
                       ? '已生效'
@@ -786,9 +789,9 @@ export function TaxCostBatchPanel({
           <div className="tax-cost-note">
             <p>
               {packageSummary.contract.contract_no}：额度 ¥
-              {(packageSummary.limit_cents / 100).toFixed(2)}，已占用 ¥
-              {(packageSummary.consumed_cents / 100).toFixed(2)}，剩余 ¥
-              {(packageSummary.remaining_cents / 100).toFixed(2)}，记录{' '}
+              {formatCents(BigInt(packageSummary.limit_cents))}，已占用 ¥
+              {formatCents(BigInt(packageSummary.consumed_cents))}，剩余 ¥
+              {formatCents(BigInt(packageSummary.remaining_cents))}，记录{' '}
               {packageSummary.usage.length} 条。
             </p>
             <ul className="tax-package-usage">
@@ -796,7 +799,7 @@ export function TaxCostBatchPanel({
                 <li key={usage.id}>
                   <span>
                     {usage.kind === 'consume' ? '占用' : '释放'} · {usage.source_key} ·{' '}
-                    {usage.period} · ¥{(usage.amount_cents / 100).toFixed(2)}
+                    {usage.period} · ¥{formatCents(BigInt(usage.amount_cents))}
                   </span>
                   {usage.kind === 'consume' && (
                     <button
@@ -804,7 +807,7 @@ export function TaxCostBatchPanel({
                       disabled={busy}
                       onClick={() => {
                         setReleaseTarget(releaseTarget === usage.id ? '' : usage.id);
-                        setReleaseAmount((usage.amount_cents / 100).toFixed(2));
+                        setReleaseAmount(centsToApiString(BigInt(usage.amount_cents)));
                       }}
                     >
                       释放
@@ -902,7 +905,7 @@ export function TaxCostBatchPanel({
             {rates.map((rate) => (
               <article key={rate.id}>
                 <strong>
-                  {rate.vehicle_type} · ¥{(rate.rate_cents / 100).toFixed(2)}
+                  {rate.vehicle_type} · ¥{formatCents(BigInt(rate.rate_cents))}
                   <span className="tax-rate-status">
                     {rate.status === 'active'
                       ? '已生效'

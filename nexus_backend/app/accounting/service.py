@@ -14,6 +14,7 @@ from .database import Database
 from .domain import Actor, AccountingError
 from .access import AccessControl
 from .review_policy import ReviewPolicyService
+from .account_roles import AccountRoleService
 from .queries import health_cte, book_filter, page_bounds, inactive_source_sql
 from .models import (
     ApprovalRequest,
@@ -192,6 +193,7 @@ class AccountingService:
                     for code, name in CHART
                 ],
             )
+            AccountRoleService.ensure_defaults(conn, book_id)
             self._audit(
                 conn,
                 actor,
@@ -1298,6 +1300,16 @@ class AccountingService:
         )
         if changed.rowcount != 1:
             raise AccountingError("凭证版本已变化，审核未提交", 409)
+        delegation = self.access.active_review_delegation(conn, actor, book_id)
+        if delegation:
+            self._audit(
+                conn,
+                actor,
+                book_id,
+                "review.delegation.use",
+                delegation["id"],
+                {"draft_id": draft_id, "delegated_from": delegation["from_user_id"]},
+            )
         self._learning_guard().capture_in_transaction(
             conn, actor, book, draft, value, expected_version
         )

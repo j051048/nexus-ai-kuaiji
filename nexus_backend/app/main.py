@@ -148,6 +148,7 @@ from .reports.service import ReportService
 from .tax.router import build_tax_router
 from .tax.sources import TaxSourceAdapter
 from .tax.workpaper import TaxWorkpaperService
+from .tax.policy_items import TaxPolicyItemService
 from .tax.fees import TaxFeeService
 from .tax.costs import RepairRateService, TaxCostService
 from .tax.packages import RepairPackageService
@@ -353,6 +354,11 @@ def create_app(
                             "API与后台处理必须使用独立账号；API登录不得授予accounting_worker"
                         )
             application.state.service = AccountingService(database)
+            from .aliases import AliasService
+            from .accounting.review_delegations import ReviewDelegationService
+
+            application.state.review_delegations = ReviewDelegationService(database)
+            application.state.aliases = AliasService(database)
             application.state.ledgers = LedgersService(database)
             application.state.opening = OpeningService(database)
             application.state.posting = PostingService(database)
@@ -365,6 +371,7 @@ def create_app(
             application.state.profit = ProfitDrilldownService(database)
             application.state.fleet = FleetMetricsService(database)
             application.state.tax = TaxWorkpaperService(database)
+            application.state.tax_policy_items = TaxPolicyItemService(database)
             application.state.tax_pilot = PilotBoundaryService(database)
             application.state.tax_sources = TaxSourceAdapter(database)
             application.state.tax_fees = TaxFeeService(database)
@@ -1168,6 +1175,11 @@ def create_app(
     from .accounting.access_policy_router import build_access_policy_router
 
     app.include_router(build_access_policy_router(actor))
+    from .accounting.review_delegation_router import build_review_delegation_router
+
+    from .alias_router import build_alias_router
+    app.include_router(build_alias_router(actor))
+    app.include_router(build_review_delegation_router(actor))
     app.include_router(build_execution_router(actor))
     app.include_router(build_admin_router(actor))
     app.include_router(build_admin_identity_router(actor, identity))

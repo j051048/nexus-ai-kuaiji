@@ -45,8 +45,8 @@ def health_cte(scope_sql, dialect="sqlite"):
     totals AS (
       SELECT l.draft_id,l.book_id,COUNT(*) AS line_count,SUM(l.debit_cents) AS debit,
         SUM(l.credit_cents) AS credit,
-        SUM(CASE WHEN substr(l.account_code,1,4)='1002' THEN l.debit_cents ELSE 0 END) AS bank_debit,
-        SUM(CASE WHEN substr(l.account_code,1,4)='1002' THEN l.credit_cents ELSE 0 END) AS bank_credit,
+        SUM(CASE WHEN EXISTS(SELECT 1 FROM account_roles ar WHERE ar.book_id=l.book_id AND ar.code=l.account_code AND ar.role='bank') THEN l.debit_cents ELSE 0 END) AS bank_debit,
+        SUM(CASE WHEN EXISTS(SELECT 1 FROM account_roles ar WHERE ar.book_id=l.book_id AND ar.code=l.account_code AND ar.role='bank') THEN l.credit_cents ELSE 0 END) AS bank_credit,
         SUM(CASE WHEN ac.active=1 AND (l.debit_cents>0 AND l.credit_cents=0 OR l.credit_cents>0 AND l.debit_cents=0) THEN 0 ELSE 1 END) AS invalid_lines
         ,SUM(CASE WHEN ac.auxiliary_requirements='[]' THEN 0 WHEN {auxiliary_missing} THEN 1 ELSE 0 END) AS missing_auxiliaries
       FROM draft_lines l JOIN visible_books v ON v.id=l.book_id

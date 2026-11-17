@@ -1,6 +1,14 @@
 """Authorization derives from current database membership, never JWT metadata."""
 
+from datetime import datetime, timezone
+
 from .domain import AccountingError, Actor
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
 from .telemetry import tag_authorized_company
 
 FIRM_MANAGERS = {"owner", "admin"}
@@ -71,7 +79,8 @@ class AccessControl:
         book = conn.execute(
             "SELECT b.*,m.role AS _access_firm_role,a.role AS _access_book_role,"
             "cm.role AS _access_company_role,"
-            "frc.management_review_separation AS _access_separation FROM users u "
+            "frc.management_review_separation AS _access_separation,"
+            "rd.id AS _access_delegation_id FROM users u "
             "LEFT JOIN memberships m ON m.user_id=u.id AND m.firm_id=? "
             "LEFT JOIN firm_review_controls frc ON frc.firm_id=m.firm_id "
             "LEFT JOIN (SELECT b.*,c.name AS company_name,p.status AS period_status FROM books b "
@@ -80,18 +89,23 @@ class AccessControl:
             "WHERE b.id=? AND b.firm_id=? AND fc.status='active' AND c.status='active') b ON 1=1 "
             "LEFT JOIN effective_book_access a ON a.book_id=b.id AND a.firm_id=b.firm_id AND a.user_id=u.id "
             "LEFT JOIN company_memberships cm ON cm.company_id=b.company_id AND cm.user_id=u.id "
+            "LEFT JOIN book_review_delegations rd ON rd.firm_id=b.firm_id AND rd.book_id=b.id "
+            "AND rd.to_user_id=u.id AND rd.status='active' AND rd.starts_at<=? AND rd.ends_at>? "
+            "AND COALESCE(frc.management_review_separation,FALSE)=FALSE "
             "WHERE u.id=? AND u.active=1",
-            (actor.firm_id, book_id, actor.firm_id, actor.user_id),
+            (actor.firm_id, book_id, actor.firm_id, _now(), _now(), actor.user_id),
         ).fetchone()
         if not book:
             raise AccountingError("账号未激活或已停用", 403)
         if not book["id"]:
             raise AccountingError("账套不存在或无权访问", 404)
+        delegated = bool(book["_access_delegation_id"])
         permissions = self.permissions(
             book["_access_firm_role"],
             book["_access_book_role"],
             book["_access_company_role"],
             management_review_separation=bool(book["_access_separation"]),
+            delegated_reviewer=delegated,
         )
         if not permissions[capability]:
             if not permissions["read"] and capability != "manage":
@@ -112,11 +126,38 @@ class AccessControl:
         return bool(row and row[0])
 
     @staticmethod
-    def permissions(firm_role, book_role, company_role, *, management_review_separation=False):
+    def active_review_delegation(
+        conn, actor: Actor, book_id, *, management_review_separation=False
+    ):
+        """Return the current delegated-review row, if any.
+
+        Expiry is decided from the database clock on every access read. The
+        status column is not trusted for expiry; it only records the lifecycle.
+        Managers under separation can never re-enter review through a
+        delegation, even if a stale row exists.
+        """
+        if management_review_separation:
+            return None
+        return conn.execute(
+            "SELECT * FROM book_review_delegations WHERE firm_id=? AND book_id=? "
+            "AND to_user_id=? AND status='active' "
+            "AND starts_at<=? AND ends_at>?",
+            (actor.firm_id, book_id, actor.user_id, _now(), _now()),
+        ).fetchone()
+
+    @staticmethod
+    def permissions(
+        firm_role,
+        book_role,
+        company_role,
+        *,
+        management_review_separation=False,
+        delegated_reviewer=False,
+    ):
         manager = firm_role in FIRM_MANAGERS
         auto_manage = manager and not management_review_separation
         principal = bool(firm_role) or company_role in COMPANY_LEDGER_ROLES
-        read = manager or (principal and book_role is not None)
+        read = manager or (principal and book_role is not None) or bool(delegated_reviewer)
         edit = auto_manage or (
             read
             and book_role in {"editor", "reviewer"}
@@ -131,10 +172,18 @@ class AccessControl:
             and firm_role in FIRM_REVIEWERS
             and not (manager and management_review_separation)
         )
+        if delegated_reviewer:
+            review = True
+        export = auto_manage or (
+            principal
+            and book_role == "reviewer"
+            and firm_role in FIRM_REVIEWERS
+            and not (manager and management_review_separation)
+        )
         return {
             "read": read,
             "edit": edit,
             "review": review,
-            "export": review,
+            "export": export,
             "manage": manager or company_role in {"owner", "admin"},
         }

@@ -1,0 +1,74 @@
+.account-picker {
+  position: relative;
+  min-width: 0;
+}
+
+.account-picker > input {
+  width: 100%;
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 9px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+}
+
+.account-picker > input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.account-picker-list {
+  position: fixed;
+  z-index: 80;
+  max-height: 260px;
+  margin: 0;
+  padding: 4px;
+  overflow: auto;
+  list-style: none;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: 0 12px 32px rgb(15 38 30 / 14%);
+}
+
+.account-picker-option {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 8px;
+  align-items: baseline;
+  padding: 7px 8px;
+  border-radius: 7px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.account-picker-option.is-active {
+  background: var(--accent-soft);
+}
+
+.account-picker-option.is-group {
+  color: var(--muted);
+  cursor: default;
+  background: transparent;
+}
+
+.account-picker-code {
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.account-picker-tag {
+  font-size: 11px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 1px 6px;
+}
+
+.account-picker-empty {
+  padding: 10px;
+  color: var(--muted);
+  font-size: 13px;
+}

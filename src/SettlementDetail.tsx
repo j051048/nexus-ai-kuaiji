@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, errorMessage } from './api';
 import type { Session } from './types';
+import { formatCents, parseYuanToCents } from './money';
 import { useScopedQuery } from './useScopedQuery';
 import { agingKinds, parseSettlement } from './finance-operations';
 
-const money = (n: number) => `${Math.trunc(n / 100)}.${String(n % 100).padStart(2, '0')}`;
+const money = (n: number) => formatCents(BigInt(n));
 export function SettlementDetail({
   session,
   bookId,
@@ -51,9 +52,8 @@ export function SettlementDetail({
     };
   }, []);
   const data = query.data;
-  const cents = /^\d+(\.\d{1,2})?$/.test(value)
-    ? Number(value.split('.')[0]) * 100 + Number((value.split('.')[1] ?? '').padEnd(2, '0'))
-    : NaN;
+  const parsed = parseYuanToCents(value);
+  const cents = parsed === null ? NaN : Number(parsed);
   const selected = data?.vouchers.find((row) => row.id === voucher);
   const valid =
     Number.isSafeInteger(cents) &&
