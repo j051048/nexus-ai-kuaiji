@@ -22,6 +22,7 @@ class PolicyCreate(InputModel):
     fiscal_year_start_month: int = Field(default=1, strict=True, ge=1, le=12)
     effective_from: StrictStr
     effective_to: StrictStr | None = None
+    is_synthetic: bool = Field(default=False, strict=True)
     reason: StrictStr = Field(min_length=3, max_length=1000)
 
     @field_validator("effective_from", "effective_to")

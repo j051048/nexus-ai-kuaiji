@@ -557,8 +557,9 @@ def test_report_requires_template_for_company_standard(business):
             "WHERE ledger_id=(SELECT ledger_id FROM ledger_periods WHERE book_id=?) AND status='active'",
             (case.book["id"],),
         )
-    with pytest.raises(AccountingError, match="报表模板未启用"):
-        ReportService(case.db).create(case.manager, case.book["id"], "2026-10")
+    report = ReportService(case.db).create(case.manager, case.book["id"], "2026-10")
+    assert report["report"]["mode"] == "trial"
+    assert "模板未启用" in "".join(report["report"]["trial_reasons"])
 
 
 def test_report_rejects_invalid_template_definition(business):

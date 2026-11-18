@@ -237,6 +237,27 @@ def test_sql_pagination_and_authorized_filters(case):
     assert case[1].list_drafts(LOCAL_ACTOR, company_id="invisible")["items"] == []
 
 
+def test_queue_returns_explainable_risk_grades_and_filters(case):
+    clean, missing = draft(case), draft(case, external_id="row-002", evidence="")
+    page = case[1].list_drafts(LOCAL_ACTOR)
+    by_id = {item["draft_id"]: item for item in page["items"]}
+    assert by_id[clean["draft_id"]]["risk"] == "low"
+    assert by_id[clean["draft_id"]]["risk_reasons"] == []
+    assert by_id[clean["draft_id"]]["risk_rule_version"] == "review-risk-v1"
+    assert by_id[missing["draft_id"]]["risk"] == "high"
+    assert any("证据" in reason for reason in by_id[missing["draft_id"]]["risk_reasons"])
+    assert by_id[missing["draft_id"]]["issue_count"] >= 1
+    assert page["risk_scope"] == (
+        "deterministic_projection_v1_full_checks_on_preview_and_confirmation"
+    )
+    high = case[1].list_drafts(LOCAL_ACTOR, risk="high")
+    low = case[1].list_drafts(LOCAL_ACTOR, risk="low")
+    assert [item["draft_id"] for item in high["items"]] == [missing["draft_id"]]
+    assert [item["draft_id"] for item in low["items"]] == [clean["draft_id"]]
+    with pytest.raises(AccountingError, match="筛选参数"):
+        case[1].list_drafts(LOCAL_ACTOR, risk="unknown")
+
+
 def test_expired_preview_is_not_a_durable_approval_authorization(case, monkeypatch):
     item = draft(case)
     value = preview(case, [item])

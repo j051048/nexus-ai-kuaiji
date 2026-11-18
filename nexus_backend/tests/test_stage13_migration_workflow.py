@@ -37,9 +37,9 @@ def test_migration_task_is_exact_project_with_current_independent_acceptance_aut
     assert task['tasks'][0]['action_label'] == '继续准备资料'
     _, report = ready(c)
     assert assert_response(client.get('/api/workspace/tasks?kind=migration', headers=c.owner))['tasks'] == []
-    reviewer = assert_response(client.get('/api/workspace/tasks?kind=migration', headers=c.finance))
+    reviewer = assert_response(client.get('/api/workspace/tasks?kind=migration', headers=c.reviewer))
     assert reviewer['tasks'][0]['action_label'] == '独立验收'
-    assert_response(client.post(c.path + '/accept', headers=c.finance, json=confirmation(c, report)), 201)
+    assert_response(client.post(c.path + '/accept', headers=c.reviewer, json=confirmation(c, report)), 201)
     assert assert_response(client.get('/api/workspace/tasks?kind=migration', headers=c.owner))['tasks'][0]['action_label'] == '确认接管'
     assert_response(client.post(c.path + '/activate', headers=c.owner, json=confirmation(c, report)), 201)
     assert assert_response(client.get('/api/workspace/tasks?kind=migration&bucket=all', headers=c.owner))['tasks'] == []
@@ -53,7 +53,7 @@ def test_original_corruption_blocks_download_acceptance_and_never_publishes_cuto
     client.app.state.attachment_store._path(key).write_bytes(b'SYNTHETIC-original-corruption')
     response = client.get(c.path + '/files/' + original['file']['id'], headers=c.owner)
     assert response.status_code == 409 and '校验' in response.text
-    assert client.post(c.path + '/accept', headers=c.finance, json=confirmation(c, report)).status_code == 409
+    assert client.post(c.path + '/accept', headers=c.reviewer, json=confirmation(c, report)).status_code == 409
     with c.db.transaction(actor=c.manager) as conn:
         assert conn.execute('SELECT count(*) FROM migration_acceptances WHERE project_id=?', (c.project,)).fetchone()[0] == 0
         assert conn.execute('SELECT count(*) FROM migration_cutovers WHERE project_id=?', (c.project,)).fetchone()[0] == 0
@@ -63,7 +63,7 @@ def test_current_business_arriving_after_report_prevents_dirty_target_initializa
     c = prepare_http(client)
     _, report = ready(c)
     assert_response(client.post('/api/books/' + c.book['id'] + '/imports', headers=c.owner, json={'source_name': 'SYNTHETIC-当期新银行流水', 'rows': [{'external_id': uuid4().hex, 'date': '2026-10-03', 'description': '当前业务不可覆盖', 'counterparty': 'SYNTHETIC-企业', 'amount': '0.01', 'direction': 'income', 'evidence_ref': 'SYNTHETIC-回单'}]}))
-    assert_response(client.post(c.path + '/accept', headers=c.finance, json=confirmation(c, report)), 201)
+    assert_response(client.post(c.path + '/accept', headers=c.reviewer, json=confirmation(c, report)), 201)
     response = client.post(c.path + '/activate', headers=c.owner, json=confirmation(c, report))
     assert response.status_code == 409
     assert '新业务' in response.text or '目标月份' in response.text
@@ -82,7 +82,7 @@ def test_column_profile_replacement_preserves_original_and_invalidates_previous_
     changed = detail(c)
     assert any(row['id'] == original['file']['id'] and row['superseded'] for row in changed['files'])
     assert client.get(c.path + '/report', headers=c.finance).status_code == 409
-    assert client.post(c.path + '/accept', headers=c.finance, json=previous_body).status_code == 409
+    assert client.post(c.path + '/accept', headers=c.reviewer, json=previous_body).status_code == 409
     assert client.get(c.path + '/files/' + original['file']['id'], headers=c.finance).status_code == 200
     run_phase(c, 'parse')
     run_phase(c, 'validate')
@@ -105,7 +105,7 @@ def test_same_old_voucher_identity_with_changed_amount_is_blocking_not_overwritt
     records = assert_response(client.get(c.path + '/records?kind=voucher', headers=c.owner))
     assert records['pagination']['total'] == 1
     assert records['records'][0]['payload']['lines'][0]['debit'] == '0.30'
-    assert client.post(c.path + '/accept', headers=c.finance, json=confirmation(c, report)).status_code == 409
+    assert client.post(c.path + '/accept', headers=c.reviewer, json=confirmation(c, report)).status_code == 409
 
 
 def test_backup_includes_every_historical_original_and_restores_exact_bytes(client, tmp_path):
@@ -344,7 +344,7 @@ def test_existing_target_category_direction_or_auxiliary_mismatch_blocks_accepta
     report = assert_response(client.get(c.path+'/report',headers=c.finance))
     assert report['report']['blocking_count']>0 and not report['report']['coverage']['complete']
     assert any(issue.get('kind')=='account' and '6602.02' in (issue.get('external_id','')+issue.get('message','')) and issue['severity']=='blocking' for issue in report['report']['issues'])
-    assert client.post(c.path+'/accept',headers=c.finance,json=confirmation(c,report)).status_code==409
+    assert client.post(c.path+'/accept',headers=c.reviewer,json=confirmation(c,report)).status_code==409
 
 
 def test_historical_nonposting_parent_remains_archive_only_after_cutover(client):
@@ -356,7 +356,7 @@ def test_historical_nonposting_parent_remains_archive_only_after_cutover(client)
     c.package['controls']['record_counts']['account']+=1
     _, report = ready(c)
     assert report['report']['blocking_count']==0
-    assert_response(client.post(c.path+'/accept',headers=c.finance,json=confirmation(c,report)),201)
+    assert_response(client.post(c.path+'/accept',headers=c.reviewer,json=confirmation(c,report)),201)
     assert_response(client.post(c.path+'/activate',headers=c.owner,json=confirmation(c,report)),201)
     archived = assert_response(client.get(c.path+'/records?kind=account',headers=c.finance))
     assert any(row['payload']['code']=='66' and row['payload']['posting'] is False for row in archived['records'])

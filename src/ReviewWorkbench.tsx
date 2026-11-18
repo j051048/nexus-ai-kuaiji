@@ -12,7 +12,7 @@ import {
 import { useReviewFilters } from './useReviewFilters';
 import { useLocation } from 'react-router-dom';
 import { api, ApiError, errorMessage } from './api';
-import { reviewGroups, reviewSelection, reviewTemplateLabels } from './review-helpers';
+import { reviewRiskLabel, reviewSelection, reviewTemplateLabels } from './review-helpers';
 import type { ReviewList, ReviewPreview, ReviewReceipt, ReviewSelection } from './review-types';
 import { ReviewPackageWorkbench } from './ReviewPackageWorkbench';
 import { InlineReviewDrawer, type InlineReviewTarget } from './InlineReviewDrawer';
@@ -272,7 +272,8 @@ export function ReviewWorkbench({
       window.removeEventListener('accounting:unauthorized', revoke);
     };
   }, [clear]);
-  const groups = reviewGroups(list?.items ?? []);
+  const riskCounts = { high: 0, medium: 0, low: 0 };
+  for (const item of list?.items ?? []) riskCounts[item.risk] += 1;
   function select(id: string, checked: boolean) {
     if (busy || preview) return;
     setSelected((value) => {
@@ -459,7 +460,7 @@ export function ReviewWorkbench({
               <h2>
                 待复核事项<span className="count-label">{list?.pagination.total ?? 0}</span>
               </h2>
-              <p>基础检查分组用于定位待办，正式审核会重新核验全部事实</p>
+              <p>风险分档用于排序和定位待办，正式审核会重新核验全部事实和原因</p>
             </div>
           </div>
           <div className="batch-review-filters">
@@ -517,7 +518,7 @@ export function ReviewWorkbench({
               </select>
             </label>
             <label>
-              <span>检查分组</span>
+              <span>风险分档</span>
               <select
                 aria-label="复核风险分组"
                 value={risk}
@@ -527,11 +528,20 @@ export function ReviewWorkbench({
                   setOffset(0);
                 }}
               >
-                <option value="all">全部待复核</option>
-                <option value="basic_clear">基础检查正常</option>
-                <option value="basic_exception">需处理基础异常</option>
+                <option value="all">全部风险</option>
+                <option value="high">高风险</option>
+                <option value="medium">中风险</option>
+                <option value="low">低风险</option>
               </select>
             </label>
+          </div>
+          <div className="review-risk-summary" aria-label="本页风险摘要">
+            <span className="risk-high">高风险 {riskCounts.high}</span>
+            <span className="risk-medium">中风险 {riskCounts.medium}</span>
+            <span className="risk-low">低风险 {riskCounts.low}</span>
+            <span className="risk-rule">
+              规则 {list?.items[0]?.risk_rule_version ?? 'review-risk-v1'} · 本页
+            </span>
           </div>
           <div className="batch-selection-bar">
             <label>
@@ -581,39 +591,67 @@ export function ReviewWorkbench({
               <LoaderCircle size={16} className="spinner" />
               正在读取待复核事项…
             </div>
-          ) : groups.length ? (
-            groups.map((group) => (
-              <section key={group.key} className="batch-review-group">
-                <h3>{group.label}</h3>
-                {group.items.map((item) => (
-                  <article key={item.draft_id} className="batch-review-row">
-                    <input
-                      type="checkbox"
-                      aria-label={`选择凭证 ${item.description}`}
-                      checked={selected.has(item.draft_id)}
-                      disabled={frozen}
-                      onChange={(event) => select(item.draft_id, event.target.checked)}
-                    />
-                    <div>
-                      <strong>{item.description}</strong>
-                      <p>
-                        {item.book_name} · {item.source_date} · 版本 {item.expected_version}
-                      </p>
-                    </div>
-                    <span className="batch-review-amount">¥{item.source_amount}</span>
-                    <button
-                      type="button"
-                      className="text-button"
-                      disabled={!!busy}
-                      onClick={() => openInline(item)}
-                    >
-                      查看证据
-                      <ArrowRight size={13} />
-                    </button>
-                  </article>
-                ))}
-              </section>
-            ))
+          ) : list?.items.length ? (
+            <div className="review-table" role="table" aria-label="待复核事项">
+              <div className="review-table-head" role="row">
+                <span role="columnheader" aria-label="选择" />
+                <span role="columnheader">企业 / 账套</span>
+                <span role="columnheader">风险与原因</span>
+                <span role="columnheader">摘要 / 来源</span>
+                <span role="columnheader" className="align-right">
+                  金额
+                </span>
+                <span role="columnheader">操作</span>
+              </div>
+              {list.items.map((item) => (
+                <div
+                  key={item.draft_id}
+                  className={`review-table-row risk-${item.risk}`}
+                  role="row"
+                >
+                  <input
+                    type="checkbox"
+                    aria-label={`选择凭证 ${item.description}`}
+                    checked={selected.has(item.draft_id)}
+                    disabled={frozen}
+                    onChange={(event) => select(item.draft_id, event.target.checked)}
+                  />
+                  <div className="review-company-cell" role="cell">
+                    <strong>{item.company_name}</strong>
+                    <span>
+                      {item.book_name} · {item.period} ·{' '}
+                      {reviewTemplateLabels[item.template] ?? item.template}
+                    </span>
+                  </div>
+                  <div className="review-risk-cell" role="cell">
+                    <span className={`risk-badge risk-${item.risk}`}>
+                      {reviewRiskLabel(item.risk)}
+                    </span>
+                    <span className="review-risk-reason">
+                      {item.risk_reasons[0] ?? '无硬性异常'}
+                    </span>
+                  </div>
+                  <div className="review-summary-cell" role="cell">
+                    <strong>{item.description}</strong>
+                    <span>
+                      {item.source_date} · 版本 {item.expected_version}
+                    </span>
+                  </div>
+                  <span className="review-amount-cell" role="cell">
+                    ¥{item.source_amount}
+                  </span>
+                  <button
+                    type="button"
+                    className="text-button"
+                    disabled={!!busy}
+                    onClick={() => openInline(item)}
+                  >
+                    查看证据
+                    <ArrowRight size={13} />
+                  </button>
+                </div>
+              ))}
+            </div>
           ) : (
             <div className="empty-state">
               <div className="empty-icon">
@@ -822,6 +860,9 @@ export function ReviewWorkbench({
                     />
                     我已核对所选凭证的证据、金额和会计处理
                   </label>
+                  <p className="review-irreversible-note" role="note">
+                    确认后本批凭证进入已审核状态，不能在此直接撤销；如后续发现错误，只能按更正或冲销流程处理，原审核记录保留。
+                  </p>
                   <p>
                     预览有效至{' '}
                     {new Date(preview.expires_at).toLocaleTimeString('zh-CN', {

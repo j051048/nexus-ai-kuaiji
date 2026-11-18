@@ -6,6 +6,16 @@ export const reviewTemplateLabels: Record<string, string> = {
   procurement_expense: '采购 / 费用',
   daily_cashflow: '日常收支',
 };
+export const reviewRiskLabels: Record<ReviewPending['risk'], string> = {
+  high: '高风险',
+  medium: '中风险',
+  low: '低风险',
+};
+
+export function reviewRiskLabel(risk: ReviewPending['risk'] | string | undefined) {
+  return reviewRiskLabels[risk as ReviewPending['risk']] ?? '风险未知';
+}
+
 export function reviewGroups(items: ReviewPending[]) {
   const groups = new Map<string, { key: string; label: string; items: ReviewPending[] }>();
   for (const item of items) {
@@ -14,7 +24,7 @@ export function reviewGroups(items: ReviewPending[]) {
     if (!group) {
       group = {
         key,
-        label: `${item.company_name} · ${item.period} · ${reviewTemplateLabels[item.template] ?? item.template} · ${item.risk === 'basic_exception' ? '需处理基础异常' : '基础检查正常'}`,
+        label: `${item.company_name} · ${item.period} · ${reviewTemplateLabels[item.template] ?? item.template} · ${reviewRiskLabel(item.risk)}`,
         items: [],
       };
       groups.set(key, group);

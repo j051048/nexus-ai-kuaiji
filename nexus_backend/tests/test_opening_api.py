@@ -1,8 +1,7 @@
 """HTTP contract and permission checks for B02 opening preparation."""
 
-from fastapi.testclient import TestClient
-
 from app.main import create_app
+from test_business_api import local_client
 
 
 def auth(client, persona="accountant"):
@@ -13,7 +12,7 @@ def auth(client, persona="accountant"):
 
 def test_opening_http_policy_account_package_and_permission(tmp_path):
     app = create_app(tmp_path / "opening-http.db", seed=True)
-    with TestClient(app, base_url="http://127.0.0.1", client=("127.0.0.1", 45678)) as client:
+    with local_client(app, 45678) as client:
         headers = auth(client)
         with app.state.service.db.transaction() as conn:
             ledger_id = conn.execute(

@@ -11,6 +11,7 @@ from uuid import uuid4
 from ..accounting.domain import AccountingError
 from ..accounting.invariants import signed_money_to_cents
 from ..accounting.service import now
+from ..reports.mapping import mapping_fingerprint
 
 
 def _fingerprint(value):
@@ -82,8 +83,8 @@ class OpeningService:
             conn.execute(
                 "INSERT INTO accounting_policies(id,firm_id,company_id,ledger_id,standard_kind,"
                 "taxpayer_kind,industry,fiscal_year_start_month,currency,version,status,"
-                "effective_from,effective_to,reason,created_by,created_at) "
-                "VALUES(?,?,?,?,?,?,?,?,'CNY',?,'active',?,?,?,?,?)",
+                "effective_from,effective_to,is_synthetic,reason,created_by,created_at) "
+                "VALUES(?,?,?,?,?,?,?,?,'CNY',?,'active',?,?,?,?,?,?)",
                 (
                     policy_id,
                     ledger["firm_id"],
@@ -96,6 +97,7 @@ class OpeningService:
                     version,
                     request.effective_from,
                     request.effective_to,
+                    request.is_synthetic,
                     request.reason,
                     actor.user_id,
                     stamp,
@@ -111,6 +113,39 @@ class OpeningService:
                     "standard_kind": request.standard_kind,
                     "taxpayer_kind": request.taxpayer_kind,
                     "version": version,
+                },
+            )
+            return self._policy_row(conn, policy_id)
+
+    def approve_policy(self, actor, policy_id):
+        with self.db.transaction(write=True, actor=actor) as conn:
+            policy = conn.execute(
+                "SELECT * FROM accounting_policies WHERE id=?", (policy_id,)
+            ).fetchone()
+            if not policy:
+                raise AccountingError("核算政策不存在", 404)
+            self._ledger(conn, actor, policy["ledger_id"], manage=True)
+            if policy["status"] != "active":
+                raise AccountingError("只有生效中的核算政策才能批准", 409)
+            if policy["approved_by"]:
+                return self._policy_row(conn, policy_id)
+            stamp = now()
+            fingerprint = mapping_fingerprint(conn, actor.firm_id)
+            conn.execute(
+                "UPDATE accounting_policies SET approved_by=?,approved_at=?,mapping_fingerprint=? "
+                "WHERE id=? AND approved_by IS NULL",
+                (actor.user_id, stamp, fingerprint, policy_id),
+            )
+            self._audit(
+                conn,
+                actor,
+                policy["ledger_id"],
+                "opening.policy.approve",
+                policy_id,
+                {
+                    "version": policy["version"],
+                    "mapping_fingerprint": fingerprint,
+                    "is_synthetic": bool(policy["is_synthetic"]),
                 },
             )
             return self._policy_row(conn, policy_id)

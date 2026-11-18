@@ -23,6 +23,12 @@ def build_opening_router(actor_dependency):
     ):
         return opening.create_policy(current, payload)
 
+    @router.post("/policies/{policy_id}/approve")
+    def approve_policy(
+        policy_id: str, current=Depends(actor_dependency), opening=Depends(service)
+    ):
+        return opening.approve_policy(current, policy_id)
+
     @router.get("/policies")
     def list_policies(
         ledger_id: str = Query(min_length=1, max_length=100),

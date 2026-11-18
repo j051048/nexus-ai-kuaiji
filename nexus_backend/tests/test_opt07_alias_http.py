@@ -43,3 +43,18 @@ def test_alias_http_resolves_unknown_and_rejects_missing_subject(client):
         },
     )
     assert created.status_code == 404, created.text
+
+
+def test_alias_http_lists_manageable_aliases(client):
+    headers = auth(client, "accountant")
+    context = client.get("/api/business/context", headers=headers)
+    assert context.status_code == 200, context.text
+    company_id = context.json()["companies"][0]["id"]
+
+    listed = client.get(
+        f"/api/companies/{company_id}/aliases",
+        params={"subject_type": "counterparty"},
+        headers=headers,
+    )
+    assert listed.status_code == 200, listed.text
+    assert isinstance(listed.json()["items"], list)

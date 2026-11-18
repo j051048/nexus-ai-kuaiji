@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>衡账 · review · 方向 B</title>
+<link rel="stylesheet" href="shared.css">
+</head>
+<body class="direction-b" data-prototype="review" data-direction="b">
+<header class="appbar">
+  <div class="brand">
+    <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+    <span><span class="brand-name">衡账</span><span class="brand-sub">HENGZHANG · ACCOUNTING</span></span>
+  </div>
+  <div class="context">
+    <span>单位 <b>示例会计师事务所</b></span>
+    <span>身份 <b>复核会计 周岚</b></span>
+    <span class="period">账期 2026-10</span>
+  </div>
+</header>
+<main>
+  <div class="page-head">
+    <div>
+      <p class="eyebrow">跨企业复核</p>
+      <h1>待复核凭证</h1>
+      <p class="small muted">按企业、期间和风险查看；核对原件、分录与版本后再决定。</p>
+    </div>
+    <div class="actions">
+      <button class="btn" type="button">刷新待办</button>
+      <button class="btn" type="button">复核说明</button>
+    </div>
+  </div>
+  <div class="review-layout">
+    <section class="panel queue-panel" aria-labelledby="queue-title">
+      <div class="panel-head">
+        <div><h2 id="queue-title">待复核 15 张</h2><p class="small muted">当前账期 · 仅显示已授权账套</p></div>
+        <span class="status warning">5 高 / 5 中 / 5 低</span>
+      </div>
+      <div class="queue-filter" aria-label="队列筛选">
+        <select aria-label="企业"><option>全部企业</option><option>澄光科技</option><option>禾田商贸</option><option>青屿设计</option></select>
+        <select aria-label="风险"><option>全部风险</option><option>高风险</option><option>中风险</option><option>低风险</option></select>
+        <input aria-label="搜索摘要" placeholder="搜索摘要或企业">
+      </div>
+      <div class="queue-scroll">
+        <table class="queue-table">
+          <caption class="visually-hidden">15 张待复核凭证，含高、中、低三档风险</caption>
+          <thead><tr><th scope="col">企业 / 摘要</th><th scope="col">风险</th><th scope="col" style="text-align:right">金额</th><th scope="col">来源</th></tr></thead>
+          <tbody>
+<tr>
+        <td><strong>澄光科技</strong> · 办公用品采购</td>
+        <td><span class="status warning">中风险</span></td>
+        <td class="num">¥368.50</td>
+        <td class="small">2026-10-02 · 示例文具店</td>
+      </tr>
+<tr class="selected">
+        <td><strong>澄光科技</strong> · 办公室房租</td>
+        <td><span class="status danger">高风险</span></td>
+        <td class="num">¥8,500.00</td>
+        <td class="small">2026-10-01 · 示例园区</td>
+      </tr>
+<tr>
+        <td><strong>澄光科技</strong> · 项目服务收入</td>
+        <td><span class="status success">低风险</span></td>
+        <td class="num">¥18,000.00</td>
+        <td class="small">2026-10-03 · 示例客户甲</td>
+      </tr>
+<tr>
+        <td><strong>禾田商贸</strong> · 办公设备租金</td>
+        <td><span class="status warning">中风险</span></td>
+        <td class="num">¥1,200.00</td>
+        <td class="small">2026-10-02 · 示例设备商</td>
+      </tr>
+<tr>
+        <td><strong>禾田商贸</strong> · 日常款项往来</td>
+        <td><span class="status danger">高风险</span></td>
+        <td class="num">¥2,600.00</td>
+        <td class="small">2026-10-01 · 示例往来方</td>
+      </tr>
+<tr>
+        <td><strong>青屿设计</strong> · 宽带通信费</td>
+        <td><span class="status success">低风险</span></td>
+        <td class="num">¥299.00</td>
+        <td class="small">2026-10-02 · 示例运营商</td>
+      </tr>
+<tr>
+        <td><strong>青屿设计</strong> · 市内交通费</td>
+        <td><span class="status warning">中风险</span></td>
+        <td class="num">¥126.80</td>
+        <td class="small">2026-10-01 · 示例出行</td>
+      </tr>
+<tr>
+        <td><strong>澄光科技</strong> · 差旅住宿</td>
+        <td><span class="status success">低风险</span></td>
+        <td class="num">¥486.00</td>
+        <td class="small">2026-10-08 · 示例酒店</td>
+      </tr>
+<tr>
+        <td><strong>澄光科技</strong> · 客户招待</td>
+        <td><span class="status danger">高风险</span></td>
+        <td class="num">¥2,180.00</td>
+        <td class="small">2026-10-09 · 示例餐厅</td>
+      </tr>
+<tr>
+        <td><strong>禾田商贸</strong> · 物流运费</td>
+        <td><span class="status warning">中风险</span></td>
+        <td class="num">¥3,420.00</td>
+        <td class="small">2026-10-06 · 示例物流</td>
+      </tr>
+<tr>
+        <td><strong>禾田商贸</strong> · 银行手续费</td>
+        <td><span class="status success">低风险</span></td>
+        <td class="num">¥12.50</td>
+        <td class="small">2026-10-07 · 示例银行</td>
+      </tr>
+<tr>
+        <td><strong>青屿设计</strong> · 设计外包</td>
+        <td><span class="status danger">高风险</span></td>
+        <td class="num">¥12,600.00</td>
+        <td class="small">2026-10-05 · 示例外包方</td>
+      </tr>
+<tr>
+        <td><strong>青屿设计</strong> · 办公租赁</td>
+        <td><span class="status warning">中风险</span></td>
+        <td class="num">¥9,800.00</td>
+        <td class="small">2026-10-01 · 示例园区</td>
+      </tr>
+<tr>
+        <td><strong>澄光科技</strong> · 折旧计提</td>
+        <td><span class="status success">低风险</span></td>
+        <td class="num">¥4,250.00</td>
+        <td class="small">2026-10-31 · 固定资产</td>
+      </tr>
+<tr>
+        <td><strong>禾田商贸</strong> · 预付款核销</td>
+        <td><span class="status danger">高风险</span></td>
+        <td class="num">¥7,000.00</td>
+        <td class="small">2026-10-04 · 示例供应商</td>
+      </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="queue-foot"><span>第 1–15 张，共 15 张</span><span>每页 20 张 · 第 1 / 1 页</span></div>
+    </section>
+    <section class="panel facts-panel" aria-labelledby="facts-title">
+      <div class="panel-head">
+        <div><h2 id="facts-title">第 2 / 15 张 · 办公室房租</h2><p class="small muted">澄光科技 · 2026-10 · 记账凭证</p></div>
+        <span class="status danger">借贷不平</span>
+      </div>
+      <div class="facts-body">
+        <dl class="facts-meta">
+          <div><dt>来源金额</dt><dd class="num">¥8,500.00</dd></div>
+          <div><dt>发生日期</dt><dd>2026-10-01</dd></div>
+          <div><dt>交易对方</dt><dd>示例园区</dd></div>
+          <div><dt>来源版本</dt><dd>v3 · 已提交</dd></div>
+        </dl>
+        <table class="entry-table">
+          <caption class="visually-hidden">凭证分录，借方合计 8500 元，贷方合计 6800 元，差额 1700 元</caption>
+          <thead><tr><th scope="col">摘要</th><th scope="col">科目</th><th scope="col" style="text-align:right">借方</th><th scope="col" style="text-align:right">贷方</th></tr></thead>
+          <tbody>
+            <tr><td>办公室房租</td><td>6602.01 管理费用—房租</td><td class="num">8,500.00</td><td class="num">0.00</td></tr>
+            <tr><td>办公室房租</td><td>1002 银行存款</td><td class="num">0.00</td><td class="num">6,800.00</td></tr>
+            <tr class="group"><td>合计</td><td></td><td class="num">8,500.00</td><td class="num">6,800.00</td></tr>
+          </tbody>
+        </table>
+        <p class="difference"><span>借贷差额</span><strong class="num">¥1,700.00</strong></p>
+        <p class="small muted" style="margin-top:8px">差额未消除前不能提交独立复核；请核对银行回单或退回补正。</p>
+        <div class="actions" style="margin-top:10px">
+          <button class="btn" type="button">退回补正</button>
+          <button class="btn" type="button" disabled>确认审核</button>
+        </div>
+      </div>
+    </section>
+    <section class="panel original-panel" aria-labelledby="original-title">
+      <div class="panel-head">
+        <div><h2 id="original-title">原始附件</h2><p class="small muted">1 / 1 · 与当前版本绑定</p></div>
+        <span class="status success">可预览</span>
+      </div>
+      <div class="original-body">
+        <div class="original-placeholder">
+          <span class="paper-icon" aria-hidden="true"></span>
+          <strong>办公室租赁合同.pdf</strong>
+          <span class="small muted">12 页 · 4.8 MB · PDF</span>
+          <span class="small muted">预览区域示意，不含真实客户文件</span>
+        </div>
+        <div class="original-meta">
+          <div><span>来源</span><span>企业上传</span></div>
+          <div><span>上传时间</span><span>2026-10-02 09:18</span></div>
+          <div><span>文件指纹</span><span class="num">sha256: 8f3a…c21d</span></div>
+          <div><span>原件版本</span><span>v1 · 未替换</span></div>
+        </div>
+        <div class="original-actions">
+          <button class="btn" type="button">新窗口查看</button>
+          <button class="btn" type="button">下载原件</button>
+        </div>
+      </div>
+    </section>
+  </div>
+</main>
+</body>
+</html>

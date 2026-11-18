@@ -6,6 +6,7 @@ import { canReviewAlias, masterNames, nextPeriod } from './ledger-types';
 import type { LedgerOverview, MasterKind } from './ledger-types';
 import './ledger.css';
 import { TransportMasterPanel } from './TransportMasterPanel';
+import { SubjectAliasPanel } from './SubjectAliasPanel';
 
 const enc = encodeURIComponent;
 const errorText = (failure: unknown) =>
@@ -185,6 +186,12 @@ export function LedgerWorkspace({
           <TransportMasterPanel
             session={session}
             bookId={bookId}
+            entities={data.entities}
+            canManage={data.can_manage}
+          />
+          <SubjectAliasPanel
+            session={session}
+            companyId={data.company_id}
             entities={data.entities}
             canManage={data.can_manage}
           />

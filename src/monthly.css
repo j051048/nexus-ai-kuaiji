@@ -3,6 +3,30 @@
   gap: 22px;
   min-width: 0;
 }
+.monthly-view-switch {
+  display: inline-flex;
+  align-self: start;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface-muted);
+}
+.monthly-view-switch button {
+  min-height: 36px;
+  padding: 6px 14px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+.monthly-view-switch button[aria-pressed='true'] {
+  border-color: var(--line);
+  background: var(--surface, #fffefa);
+  color: var(--text);
+  font-weight: 600;
+}
 .monthly-focus {
   display: flex;
   flex-wrap: wrap;

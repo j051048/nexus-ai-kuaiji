@@ -16,7 +16,9 @@ export function readReviewFilters(search: string) {
     )
       ? template
       : 'all',
-    risk: ['all', 'basic_clear', 'basic_exception'].includes(risk) ? risk : 'all',
+    risk: ['all', 'high', 'medium', 'low', 'basic_clear', 'basic_exception'].includes(risk)
+      ? risk
+      : 'all',
     offset: Number.isSafeInteger(offset) && offset >= 0 && offset <= 1_000_000 ? offset : 0,
   };
 }

@@ -8,6 +8,7 @@ from ..accounting.bank_imports import BankImportService
 from ..accounting.domain import AccountingError
 from ..accounting.models import ImportRequest, SourceRow, money_to_cents
 from ..accounting.service import fingerprint, now
+from ..security.redaction import mask_bank_account
 from .models import PreviewRequest
 from .parser import convert_row, parse_file, validate_import_original
 from .storage import ImportOriginalStore
@@ -157,7 +158,7 @@ class ImportWizardService:
                     {
                         "id": row["id"],
                         "namespace": row["namespace"],
-                        "bank_account": row["bank_account"],
+                        "bank_account": mask_bank_account(row["bank_account"]),
                         "headers": json.loads(row["headers_json"]),
                         "mapping": json.loads(row["mapping_json"]),
                         "version": row["version"],

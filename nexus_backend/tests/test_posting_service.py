@@ -56,6 +56,7 @@ def frozen_opening(case):
             reason="B03 期初政策",
         ),
     )
+    opening.approve_policy(case.manager, policy["id"])
 
     def account(code, name, category="asset", normal="debit"):
         return opening.create_account(

@@ -44,6 +44,12 @@ def build_admin_router(actor_dependency):
     def company(company_id: str, current=Depends(actor_dependency), service=Depends(admin)):
         return service.get_company(current, company_id)
 
+    @router.get("/companies/{company_id}/sensitive")
+    def reveal_sensitive(
+        company_id: str, current=Depends(actor_dependency), service=Depends(admin)
+    ):
+        return service.reveal_sensitive(current, company_id)
+
     @router.get("/companies/{company_id}/onboarding")
     def onboarding(
         company_id: str,

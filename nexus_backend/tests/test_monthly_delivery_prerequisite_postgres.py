@@ -43,6 +43,7 @@ def declaration_case(p0_case):
             reason="本机交付前置零余额政策",
         ),
     )
+    opening.approve_policy(c.manager, policy["id"])
     accounts = [
         opening.create_account(
             c.manager,

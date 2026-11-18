@@ -55,6 +55,7 @@ def formal_case(p0_case, request):
             reason="P02当前月核算政策",
         ),
     )
+    c.opening.approve_policy(c.manager, c.policy["id"])
     c.accounts = [
         c.opening.create_account(
             c.manager,

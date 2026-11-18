@@ -10,6 +10,10 @@ def build_alias_router(actor):
     def service(request: Request) -> AliasService:
         return request.app.state.aliases
 
+    @router.get("/api/companies/{company_id}/aliases")
+    def list_aliases(company_id: str, subject_type: str | None = None, current=Depends(actor), svc=Depends(service)):
+        return svc.list(current, company_id, subject_type)
+
     @router.get("/api/companies/{company_id}/aliases/resolve")
     def resolve_alias(company_id: str, alias: str = Query(min_length=1), subject_type: str = "transport_subject", on_date: str = Query(alias="on_date"), current=Depends(actor), svc=Depends(service)):
         return svc.resolve(current, company_id, subject_type, alias, on_date)

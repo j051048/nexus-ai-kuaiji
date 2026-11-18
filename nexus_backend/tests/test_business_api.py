@@ -9,6 +9,16 @@ from app.main import create_app
 from app.business.storage import MAX_REQUEST_BYTES
 
 
+def local_client(app, port=5678):
+    """Starlette 0.35 TestClient has no client=; pin the ASGI client scope."""
+    @app.middleware("http")
+    async def _loopback_client(request, call_next):
+        request.scope["client"] = ("127.0.0.1", port)
+        return await call_next(request)
+
+    return TestClient(app, base_url="http://127.0.0.1")
+
+
 @pytest.fixture
 def client(tmp_path):
     app = create_app(tmp_path / "workflow.db", seed=True, attachment_root=tmp_path / "private")

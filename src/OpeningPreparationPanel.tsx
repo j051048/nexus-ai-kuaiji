@@ -47,8 +47,8 @@ export function OpeningPreparationPanel({
     [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false),
     [uncertain, setUncertain] = useState(false);
-  const [standard, setStandard] = useState('small_enterprise'),
-    [taxpayer, setTaxpayer] = useState('small_scale');
+  const [standard, setStandard] = useState(''),
+    [taxpayer, setTaxpayer] = useState('');
   const [code, setCode] = useState(''),
     [name, setName] = useState(''),
     [category, setCategory] = useState('asset'),
@@ -159,7 +159,7 @@ export function OpeningPreparationPanel({
     }
   }
   const data = query.data,
-    disabled = busy || uncertain || !data || reason.trim().length < 3;
+    disabled = busy || uncertain || !data || reason.trim().length < 3 || !standard || !taxpayer;
   return (
     <section aria-label="期初办理" className="review-section opening-preparation">
       <h3>
@@ -217,6 +217,9 @@ export function OpeningPreparationPanel({
           <label>
             会计准则
             <select value={standard} onChange={(e) => setStandard(e.target.value)} disabled={busy}>
+              <option value="" disabled>
+                请选择准则
+              </option>
               <option value="small_enterprise">小企业会计准则</option>
               <option value="enterprise">企业会计准则</option>
             </select>
@@ -224,6 +227,9 @@ export function OpeningPreparationPanel({
           <label>
             纳税人身份
             <select value={taxpayer} onChange={(e) => setTaxpayer(e.target.value)} disabled={busy}>
+              <option value="" disabled>
+                请选择纳税人身份
+              </option>
               <option value="small_scale">小规模纳税人</option>
               <option value="general">一般纳税人</option>
               <option value="non_taxpayer">非纳税主体</option>

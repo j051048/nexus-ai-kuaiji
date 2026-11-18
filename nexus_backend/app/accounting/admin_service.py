@@ -3,6 +3,7 @@
 import json
 from urllib.parse import urlsplit
 
+from ..security.redaction import mask_tax_id
 from .access import AccessControl, FIRM_MANAGERS
 from .directory import DirectoryService
 from .domain import AccountingError
@@ -77,7 +78,32 @@ class AdminService:
                 (actor.firm_id, company["id"]),
             ).fetchone()[0]
         company.update(can_manage=True, can_change_status=manager)
+        company["tax_id"] = mask_tax_id(str(company.get("tax_id") or ""))
         return company
+
+    def reveal_sensitive(self, actor, company_id):
+        """The only full-value read path; restricted to firm managers and audited."""
+        with self.db.transaction(write=True, actor=actor, company_id=company_id) as conn:
+            if self.access.firm_role(conn, actor) not in FIRM_MANAGERS:
+                raise AccountingError("完整敏感信息仅限事务所负责人查看", 403)
+            self.require_admin_company(conn, actor, company_id)
+            row = conn.execute("SELECT tax_id FROM companies WHERE id=?", (company_id,)).fetchone()
+            if row is None:
+                raise AccountingError("企业不存在", 404)
+            conn.execute(
+                "INSERT INTO audit_events(firm_id,user_id,action,object_id,details,created_at,company_id) "
+                "VALUES(?,?,?,?,?,?,?)",
+                (
+                    actor.firm_id,
+                    actor.user_id,
+                    "security.sensitive.reveal",
+                    company_id,
+                    json.dumps({"fields": ["tax_id"], "scope": "manager_only"}, ensure_ascii=False),
+                    now(),
+                    company_id,
+                ),
+            )
+            return {"company_id": company_id, "tax_id": row["tax_id"]}
 
     def list_companies(self, actor, *, search="", status=None, limit=50, offset=0):
         with self.db.transaction(actor=actor) as conn:

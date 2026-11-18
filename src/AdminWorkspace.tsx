@@ -5,6 +5,8 @@ import {
   ArrowUpRight,
   Building2,
   ChevronRight,
+  Eye,
+  EyeOff,
   History,
   LogOut,
   Plus,
@@ -442,13 +444,18 @@ function CompanyDetail({
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState(initialTab);
-  useEffect(() => setTab(initialTab), [initialTab, companyId]);
+  useEffect(() => {
+    setTab(initialTab);
+    setRevealedTaxId('');
+  }, [initialTab, companyId]);
   function changeTab(value: string) {
     setTab(value);
     void navigate({ pathname: location.pathname, search: `?tab=${value}` }, { replace: true });
   }
   const [edit, setEdit] = useState(false);
   const [targetStatus, setTargetStatus] = useState<CompanyStatus>();
+  const [revealedTaxId, setRevealedTaxId] = useState('');
+  const [revealBusy, setRevealBusy] = useState(false);
   const [busy, setBusy] = useState(false);
   const changedBusy = useCallback(
     (value: boolean) => {
@@ -483,6 +490,21 @@ function CompanyDetail({
     });
     return () => controller.abort();
   }, [reload]);
+  async function revealTaxId() {
+    setRevealBusy(true);
+    try {
+      const value = await api<{ tax_id: string }>(
+        `/admin/companies/${encodeURIComponent(companyId)}/sensitive`,
+        session,
+      );
+      setRevealedTaxId(value.tax_id);
+      setError('');
+    } catch (failure) {
+      setError(errorMessage(failure));
+    } finally {
+      setRevealBusy(false);
+    }
+  }
   return (
     <>
       <button className="text-button admin-back" disabled={busy} onClick={onBack}>
@@ -510,9 +532,20 @@ function CompanyDetail({
           <>
             <AdminHeading
               title={detail.company.name}
-              description={`税号：${detail.company.tax_id || '未填写'} · ${companyStatusLabels[detail.company.status]}`}
+              description={`税号：${revealedTaxId || detail.company.tax_id || '未填写'} · ${companyStatusLabels[detail.company.status]}`}
               action={
                 <div className="admin-inline-actions">
+                  <button
+                    className="button"
+                    disabled={busy || revealBusy}
+                    onClick={() => {
+                      if (revealedTaxId) setRevealedTaxId('');
+                      else void revealTaxId();
+                    }}
+                  >
+                    {revealedTaxId ? <EyeOff size={15} /> : <Eye size={15} />}
+                    {revealedTaxId ? '隐藏完整税号' : '显示完整税号'}
+                  </button>
                   <button
                     className="icon-button"
                     aria-label="刷新企业详情"

@@ -230,3 +230,33 @@ def test_reviewed_workpaper_is_not_rewritten_when_policy_items_change(business):
         assert "来源" in str(exc) or "摘要" in str(exc)
     else:  # pragma: no cover
         raise AssertionError("changed policy must block export of the frozen workpaper")
+
+
+def test_missing_all_policy_items_blocks_without_single_rate_default(business):
+    case = business
+    workpapers = TaxWorkpaperService(case.db)
+    workpapers.set_profile(
+        case.manager,
+        case.book["id"],
+        {
+            "taxpayer_type": "small_scale",
+            "filing_cycle": "monthly",
+            "vat_rate_bp": 300,
+            "surtax_rate_bp": 0,
+            "effective_from": "2026-10",
+            "reason": "合成测试政策：验证缺条目不得回退单一税率",
+        },
+    )
+    items = TaxPolicyItemService(case.db)
+    try:
+        items.calculate(
+            case.manager,
+            case.book["id"],
+            "2026-10",
+            {"output_net": 10_000},
+        )
+    except AccountingError as exc:
+        assert exc.status == 409
+        assert "缺少税费政策条目：output_net" in str(exc)
+    else:  # pragma: no cover
+        raise AssertionError("没有政策条目时必须阻断，不得使用档案单一税率")

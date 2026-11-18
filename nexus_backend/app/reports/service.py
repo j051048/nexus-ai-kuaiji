@@ -8,6 +8,7 @@ from ..accounting.close_dependencies import close_dependencies
 from ..accounting.domain import AccountingError
 from ..accounting.service import AccountingService, now
 from ..posting.service import PostingService
+from .mapping import mapping_fingerprint
 from .models import ReportCommand, ReportNote
 
 
@@ -20,6 +21,7 @@ def _fingerprint(value):
 class ReportService:
     TEMPLATE_ID = "small_enterprise_basic"
     TEMPLATE_VERSION = 1
+    STANDARD_UNASSESSED = "unassessed"
 
     TEMPLATES = {
         "enterprise": {
@@ -80,13 +82,16 @@ class ReportService:
             raise AccountingError("账套未关联长期账套", 409)
         return book, ledger["ledger_id"]
 
-    def _standard_kind(self, conn, ledger_id):
-        row = conn.execute(
-            "SELECT standard_kind FROM accounting_policies WHERE ledger_id=? AND status='active' "
+    def _active_policy(self, conn, ledger_id):
+        return conn.execute(
+            "SELECT * FROM accounting_policies WHERE ledger_id=? AND status='active' "
             "ORDER BY version DESC LIMIT 1",
             (ledger_id,),
         ).fetchone()
-        return row["standard_kind"] if row else "small_enterprise"
+
+    def _standard_kind(self, conn, ledger_id):
+        row = self._active_policy(conn, ledger_id)
+        return row["standard_kind"] if row else self.STANDARD_UNASSESSED
 
     def _validate_definition(self, definition):
         if not isinstance(definition, dict):
@@ -108,13 +113,7 @@ class ReportService:
                     raise AccountingError("报表模板行缺少名称", 422)
         return definition
 
-    def _template_for_book(self, conn, book):
-        ledger = conn.execute(
-            "SELECT ledger_id FROM ledger_periods WHERE book_id=?", (book["id"],)
-        ).fetchone()
-        if not ledger:
-            raise AccountingError("账套未关联长期账套", 409)
-        standard = self._standard_kind(conn, ledger["ledger_id"])
+    def _template_for_standard(self, conn, standard):
         spec = self.TEMPLATES.get(standard)
         if not spec:
             raise AccountingError(f"账套适用的报表模板未配置：{standard}", 409)
@@ -145,6 +144,17 @@ class ReportService:
             "SELECT * FROM report_templates WHERE id=? AND version=?",
             (spec["id"], spec["version"]),
         ).fetchone()
+
+    def _template_for_book(self, conn, book):
+        ledger = conn.execute(
+            "SELECT ledger_id FROM ledger_periods WHERE book_id=?", (book["id"],)
+        ).fetchone()
+        if not ledger:
+            raise AccountingError("账套未关联长期账套", 409)
+        standard = self._standard_kind(conn, ledger["ledger_id"])
+        if standard == self.STANDARD_UNASSESSED:
+            raise AccountingError("核算政策未核定，不能生成报表；请先批准当前期间适用的核算政策", 409)
+        return self._template_for_standard(conn, standard)
 
     def _activity(self, conn, book):
         closing_vouchers = [
@@ -402,14 +412,58 @@ class ReportService:
         )
         return content, fingerprint
 
+    def _formal_reasons(self, conn, book, policy, template, content):
+        reasons = []
+        if not policy:
+            reasons.append("缺少生效的核算政策")
+        else:
+            if not policy["approved_by"]:
+                reasons.append("核算政策尚未批准")
+            if bool(policy["is_synthetic"]):
+                reasons.append("核算政策为合成演练，不可正式出表")
+            effective_to = policy["effective_to"]
+            if book["period"] < policy["effective_from"] or (
+                effective_to and book["period"] > effective_to
+            ):
+                reasons.append("当前期间不在核算政策生效期内")
+            current_mapping = mapping_fingerprint(conn, policy["firm_id"])
+            if (
+                not policy["mapping_fingerprint"]
+                or policy["mapping_fingerprint"] != current_mapping
+            ):
+                reasons.append("科目到报表行次的映射在政策批准后发生变化")
+        checks = content["checks"]
+        if not all(
+            checks.get(key)
+            for key in ("balance_sheet_passed", "profit_statement_passed", "cash_flow_passed")
+        ):
+            reasons.append("报表勾稽未通过")
+        if (
+            checks.get("unclassified_cash_cents")
+            or checks.get("unclassified_cash_count")
+            or checks.get("unclassified_cash_absolute_cents")
+        ):
+            reasons.append("存在未分类现金流量")
+        return reasons
+
     def create(self, actor, book_id, period):
         with self.db.transaction(write=True, actor=actor) as conn:
-            book, _ = self._book(conn, actor, book_id)
+            book, ledger_id = self._book(conn, actor, book_id)
             if period != book["period"]:
                 raise AccountingError("报表期间与账套期间不一致", 422)
             self._book(conn, actor, book_id, write=True)
-            template = self._template_for_book(conn, book)
+            policy = self._active_policy(conn, ledger_id)
+            reasons = []
+            standard = policy["standard_kind"] if policy else "small_enterprise"
+            try:
+                template = self._template_for_standard(conn, standard)
+            except AccountingError as exc:
+                reasons.append(str(exc))
+                template = self._template_for_standard(conn, "small_enterprise")
             content, fingerprint = self._build_in_transaction(conn, actor, book, template=template)
+            reasons.extend(self._formal_reasons(conn, book, policy, template, content))
+            mode = "formal" if not reasons else "trial"
+            mapping = mapping_fingerprint(conn, actor.firm_id)
             version = conn.execute(
                 "SELECT COALESCE(MAX(version),0)+1 FROM report_runs WHERE book_id=? AND period=? AND template_id=?",
                 (book["id"], period, template["id"]),
@@ -418,8 +472,9 @@ class ReportService:
             content_json = json.dumps(content, ensure_ascii=False, sort_keys=True)
             conn.execute(
                 "INSERT INTO report_runs(id,book_id,period,template_id,template_version,status,version,"
-                "inputs_fingerprint,content_json,content_hash,created_by,created_at) "
-                "VALUES(?,?,?,?,?,'draft',?,?,?,?,?,?)",
+                "inputs_fingerprint,content_json,content_hash,created_by,created_at,mode,standard_kind,"
+                "policy_version,policy_approver,mapping_fingerprint,trial_reasons_json) "
+                "VALUES(?,?,?,?,?,'draft',?,?,?,?,?,?,?,?,?,?,?,?)",
                 (
                     report_id,
                     book["id"],
@@ -432,9 +487,22 @@ class ReportService:
                     _fingerprint(content),
                     actor.user_id,
                     now(),
+                    mode,
+                    standard,
+                    int(policy["version"]) if policy else None,
+                    policy["approved_by"] if policy else None,
+                    mapping,
+                    json.dumps(reasons, ensure_ascii=False),
                 ),
             )
-            self._audit(conn, actor, book["id"], "report.create", report_id, {"version": version})
+            self._audit(
+                conn,
+                actor,
+                book["id"],
+                "report.create",
+                report_id,
+                {"version": version, "mode": mode, "trial_reasons": reasons},
+            )
             return self._view(conn, report_id)
 
     def _report(self, conn, actor, report_id, write=False):
@@ -489,6 +557,8 @@ class ReportService:
     def review(self, actor, report_id, request: ReportCommand):
         with self.db.transaction(write=True, actor=actor) as conn:
             row = self._report(conn, actor, report_id, write=True)
+            if row["mode"] != "formal":
+                raise AccountingError("试算报表不能进入复核", 409)
             self._current_in_transaction(conn, actor, report_id)
             if row["status"] != "validated":
                 raise AccountingError("只有核验通过的报表才能复核", 409)
@@ -505,6 +575,9 @@ class ReportService:
     def publish(self, actor, report_id, request: ReportCommand):
         with self.db.transaction(write=True, actor=actor) as conn:
             row = self._report(conn, actor, report_id, write=True)
+            if row["mode"] != "formal":
+                reasons = json.loads(row["trial_reasons_json"] or "[]")
+                raise AccountingError("试算报表不能发布：" + "；".join(reasons), 409)
             self._current_in_transaction(conn, actor, report_id)
             if row["status"] == "published":
                 return self._view(conn, report_id)
@@ -547,7 +620,10 @@ class ReportService:
 
     def _view(self, conn, report_id):
         row = conn.execute("SELECT * FROM report_runs WHERE id=?", (report_id,)).fetchone()
-        return {"report": dict(row), "content": json.loads(row["content_json"])}
+        report = dict(row)
+        report["trial_reasons"] = json.loads(report.get("trial_reasons_json") or "[]")
+        report["mode_label"] = "试算，不可对外" if report.get("mode") == "trial" else "正式"
+        return {"report": report, "content": json.loads(row["content_json"])}
 
     @staticmethod
     def _audit(conn, actor, book_id, action, object_id, details):

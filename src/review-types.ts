@@ -12,7 +12,11 @@ export interface ReviewPending extends ReviewSelection {
   book_name: string;
   period: string;
   template: string;
-  risk: 'basic_exception' | 'basic_clear';
+  risk: 'high' | 'medium' | 'low';
+  risk_reasons: string[];
+  risk_rule_version: string;
+  risk_legacy: 'basic_exception' | 'basic_clear';
+  issue_count: number;
   description: string;
   source_date: string;
   source_amount: string;

@@ -104,6 +104,7 @@ def _manual(c):
             reason="独立复核合成政策",
         ),
     )
+    opening.approve_policy(c.owner, policy["id"])
     accounts = [
         opening.create_account(
             c.owner,

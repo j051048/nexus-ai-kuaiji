@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>衡账 · owner · 方向 A</title>
+<link rel="stylesheet" href="shared.css">
+</head>
+<body class="direction-a" data-prototype="owner" data-direction="a">
+<header class="appbar">
+  <div class="brand">
+    <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+    <span><span class="brand-name">衡账</span><span class="brand-sub">HENGZHANG · ACCOUNTING</span></span>
+  </div>
+  <div class="context">
+    <span>单位 <b>示例会计师事务所</b></span>
+    <span>身份 <b>事务所负责人 沈宁</b></span>
+    <span class="period">账期 2026-10</span>
+  </div>
+</header>
+<main>
+  <div class="page-head">
+    <div>
+      <p class="eyebrow">全所经营</p>
+      <h1>五家企业月度卡点</h1>
+      <p class="small muted">只投影当前授权账套；每家企业只有一个当前阻断，点开进入原记录。</p>
+    </div>
+    <div class="actions">
+      <button class="btn" type="button">切换账期</button>
+      <button class="btn primary" type="button">批量处理</button>
+    </div>
+  </div>
+  <section class="owner-summary" aria-label="本月总览">
+    <div class="stat"><span>服务企业</span><strong>5</strong></div>
+    <div class="stat"><span>待复核凭证</span><strong>7</strong></div>
+    <div class="stat"><span>待补件企业</span><strong>2</strong></div>
+    <div class="stat"><span>待客户签收</span><strong>1</strong></div>
+    <div class="stat"><span>已锁期</span><strong>1</strong></div>
+  </section>
+  <section class="company-grid" aria-label="五家企业状态">
+<article class="panel company-card">
+  <header><h2>澄光科技（虚构）</h2><span class="status warning">待补件</span></header>
+  <p class="meta">2026-10 · 人民币账套 · 1 套</p>
+  <p class="blocker warning">缺 2 张原始凭证：房租发票、银行回单。</p>
+  <dl>
+    <dt>负责人</dt><dd>周敏</dd>
+    <dt>进度</dt><dd>3 / 6</dd>
+    <dt>下一节点</dt><dd>补件核验</dd>
+    <dt>到期</dt><dd>11-08</dd>
+  </dl>
+  <button class="btn" type="button">打开客户</button>
+</article>
+<article class="panel company-card">
+  <header><h2>禾田商贸（虚构）</h2><span class="status danger">待复核</span></header>
+  <p class="meta">2026-10 · 人民币账套 · 1 套</p>
+  <p class="blocker danger">7 张凭证待独立复核，其中 2 张借贷不平。</p>
+  <dl>
+    <dt>负责人</dt><dd>李哲</dd>
+    <dt>进度</dt><dd>4 / 6</dd>
+    <dt>下一节点</dt><dd>独立复核</dd>
+    <dt>到期</dt><dd>11-06</dd>
+  </dl>
+  <button class="btn" type="button">打开客户</button>
+</article>
+<article class="panel company-card">
+  <header><h2>青屿设计（虚构示例）</h2><span class="status info">可交付</span></header>
+  <p class="meta">2026-10 · 人民币账套 · 1 套</p>
+  <p class="blocker info">核对完成，可生成月度包；尚未通知客户。</p>
+  <dl>
+    <dt>负责人</dt><dd>王倩</dd>
+    <dt>进度</dt><dd>6 / 6</dd>
+    <dt>下一节点</dt><dd>生成交付包</dd>
+    <dt>到期</dt><dd>11-10</dd>
+  </dl>
+  <button class="btn" type="button">打开客户</button>
+</article>
+<article class="panel company-card">
+  <header><h2>启程物流（虚构）</h2><span class="status success">已签收</span></header>
+  <p class="meta">2026-10 · 人民币账套 · 1 套</p>
+  <p class="blocker success">客户已签收 2026-10 月度包 V2。</p>
+  <dl>
+    <dt>负责人</dt><dd>周敏</dd>
+    <dt>进度</dt><dd>6 / 6</dd>
+    <dt>下一节点</dt><dd>归档</dd>
+    <dt>到期</dt><dd>11-11</dd>
+  </dl>
+  <button class="btn" type="button">打开客户</button>
+</article>
+<article class="panel company-card">
+  <header><h2>上海远山广告传播有限公司（虚构）</h2><span class="status idle">已锁期</span></header>
+  <p class="meta">2026-10 · 人民币账套 · 1 套</p>
+  <p class="blocker ">账期已锁，后续更正须走受控更正流程。</p>
+  <dl>
+    <dt>负责人</dt><dd>李哲</dd>
+    <dt>进度</dt><dd>6 / 6</dd>
+    <dt>下一节点</dt><dd>无</dd>
+    <dt>到期</dt><dd>11-12</dd>
+  </dl>
+  <button class="btn" type="button">打开客户</button>
+</article>
+  </section>
+  <section class="panel owner-table">
+    <div class="panel-head"><h2>需要负责人决定</h2><span class="small muted">按到期和阻断排序</span></div>
+    <table>
+      <caption class="visually-hidden">需要负责人决定的事项</caption>
+      <thead><tr><th scope="col">企业</th><th scope="col">阻断</th><th scope="col">负责人</th><th scope="col">期限</th><th scope="col">下一步</th></tr></thead>
+      <tbody>
+        <tr><td>禾田商贸（虚构）</td><td>2 张凭证借贷不平</td><td>李哲</td><td>11-06</td><td>核对银行回单后重编</td></tr>
+        <tr><td>澄光科技（虚构）</td><td>房租发票缺失</td><td>周敏</td><td>11-08</td><td>向企业财务发起补件</td></tr>
+        <tr><td>青屿设计（虚构示例）</td><td>月度包待生成</td><td>王倩</td><td>11-10</td><td>生成并发送客户</td></tr>
+      </tbody>
+    </table>
+  </section>
+</main>
+</body>
+</html>

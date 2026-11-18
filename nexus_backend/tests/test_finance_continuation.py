@@ -307,6 +307,7 @@ def test_asset_three_months_cross_year_posts_exact_residual(business):
                     reason="新年政策",
                 ),
             )["id"]
+            prep.approve_policy(c.manager, policy_id)
         package = prep.create_package(
             c.manager,
             OpeningPackageCreate(

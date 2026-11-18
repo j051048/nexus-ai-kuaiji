@@ -6,6 +6,7 @@ printed. A partial failed backup/restore is left for investigation, never erased
 
 from __future__ import annotations
 import argparse
+import base64
 from contextlib import closing
 from datetime import datetime, timezone
 import hashlib
@@ -16,9 +17,169 @@ import shutil
 import sqlite3
 import subprocess
 import sys
+import tempfile
 
 FORMAT_VERSION = 1
 ORIGINALS_POLICY_VERSION = 3
+ENCRYPTION_FORMAT = "nxbk-gcm-v1"
+ENCRYPTION_ALGORITHM = "AES-256-GCM"
+ENCRYPTION_MAGIC = b"NXBK1"
+
+
+def _production_environment():
+    return os.getenv("ACCOUNTING_ENV", "local").lower() in {"production", "prod"} or any(
+        os.getenv(key, "").lower() in {"production", "prod"}
+        for key in ("APP_ENV", "ENV", "ENVIRONMENT")
+    )
+
+
+def _backup_key():
+    """Return (key bytes, key id) or None; the secret never enters a manifest."""
+    encoded = os.getenv("ACCOUNTING_BACKUP_KEY", "").strip()
+    if not encoded:
+        if _production_environment():
+            raise ValueError("生产备份必须配置备份加密密钥 ACCOUNTING_BACKUP_KEY")
+        return None
+    try:
+        padded = encoded + "=" * (-len(encoded) % 4)
+        key = base64.urlsafe_b64decode(padded.encode("ascii"))
+    except (ValueError, UnicodeEncodeError) as error:
+        raise ValueError("备份加密密钥不是有效的 base64") from error
+    if len(key) != 32:
+        raise ValueError("备份加密密钥必须是 32 字节（AES-256）")
+    key_id = os.getenv("ACCOUNTING_BACKUP_KEY_ID", "").strip()
+    if not key_id:
+        key_id = "sha256:" + hashlib.sha256(key).hexdigest()[:16]
+    return key, key_id
+
+
+def _encryption_key_for_manifest(manifest):
+    encryption = manifest.get("encryption")
+    if encryption is None:
+        return None
+    if (
+        not isinstance(encryption, dict)
+        or encryption.get("format") != ENCRYPTION_FORMAT
+        or encryption.get("algorithm") != ENCRYPTION_ALGORITHM
+        or not isinstance(encryption.get("key_id"), str)
+        or not encryption["key_id"]
+    ):
+        raise ValueError("不支持的备份加密格式")
+    loaded = _backup_key()
+    if loaded is None:
+        raise ValueError("加密备份需要配置备份加密密钥")
+    return loaded[0]
+
+
+def _encrypt_file(source, destination, key):
+    from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+
+    nonce = os.urandom(12)
+    encryptor = Cipher(algorithms.AES(key), modes.GCM(nonce)).encryptor()
+    destination = Path(destination)
+    try:
+        with Path(source).open("rb") as src, destination.open("xb") as dst:
+            dst.write(ENCRYPTION_MAGIC + nonce)
+            while True:
+                chunk = src.read(1024 * 1024)
+                if not chunk:
+                    break
+                dst.write(encryptor.update(chunk))
+            encryptor.finalize()
+            dst.write(encryptor.tag)
+        destination.chmod(0o600)
+        return destination
+    except Exception:
+        destination.unlink(missing_ok=True)
+        raise
+
+
+def _decrypt_file(source, destination, key):
+    """Stream-decrypt and write plaintext; never leave a partial destination."""
+    from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+
+    source = Path(source)
+    destination = Path(destination)
+    size = source.stat().st_size
+    if size < len(ENCRYPTION_MAGIC) + 12 + 16:
+        raise ValueError("加密备份文件过短")
+    with source.open("rb") as src:
+        header = src.read(len(ENCRYPTION_MAGIC) + 12)
+        if not header.startswith(ENCRYPTION_MAGIC):
+            raise ValueError("备份文件不是支持的加密格式")
+        nonce = header[len(ENCRYPTION_MAGIC) :]
+        src.seek(size - 16)
+        tag = src.read(16)
+        src.seek(len(ENCRYPTION_MAGIC) + 12)
+        remaining = size - len(ENCRYPTION_MAGIC) - 12 - 16
+        decryptor = Cipher(algorithms.AES(key), modes.GCM(nonce, tag)).decryptor()
+        digest = hashlib.sha256()
+        written = 0
+        try:
+            with destination.open("xb") as dst:
+                while remaining:
+                    chunk = src.read(min(1024 * 1024, remaining))
+                    if not chunk:
+                        break
+                    remaining -= len(chunk)
+                    plain = decryptor.update(chunk)
+                    digest.update(plain)
+                    dst.write(plain)
+                    written += len(plain)
+                if remaining:
+                    raise ValueError("加密备份文件被截断")
+                tail = decryptor.finalize()
+                digest.update(tail)
+                dst.write(tail)
+                written += len(tail)
+            destination.chmod(0o600)
+        except Exception:
+            destination.unlink(missing_ok=True)
+            raise
+    return digest.hexdigest(), written
+
+
+def _decrypt_digest(source, key):
+    from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+
+    source = Path(source)
+    size = source.stat().st_size
+    if size < len(ENCRYPTION_MAGIC) + 12 + 16:
+        raise ValueError("加密备份文件过短")
+    with source.open("rb") as src:
+        header = src.read(len(ENCRYPTION_MAGIC) + 12)
+        if not header.startswith(ENCRYPTION_MAGIC):
+            raise ValueError("备份文件不是支持的加密格式")
+        nonce = header[len(ENCRYPTION_MAGIC) :]
+        src.seek(size - 16)
+        tag = src.read(16)
+        src.seek(len(ENCRYPTION_MAGIC) + 12)
+        remaining = size - len(ENCRYPTION_MAGIC) - 12 - 16
+        decryptor = Cipher(algorithms.AES(key), modes.GCM(nonce, tag)).decryptor()
+        digest = hashlib.sha256()
+        written = 0
+        while remaining:
+            chunk = src.read(min(1024 * 1024, remaining))
+            if not chunk:
+                break
+            remaining -= len(chunk)
+            plain = decryptor.update(chunk)
+            digest.update(plain)
+            written += len(plain)
+        if remaining:
+            raise ValueError("加密备份文件被截断")
+        tail = decryptor.finalize()
+        digest.update(tail)
+        written += len(tail)
+    return digest.hexdigest(), written
+
+
+def _plaintext_sha_for_item(manifest, original):
+    path = "originals/" + original["storage_key"].replace("\\", "/")
+    for item in manifest["files"]:
+        if item.get("path") == path:
+            return item.get("plaintext_sha256") if item.get("encrypted") else item["sha256"]
+    raise ValueError("备份清单缺少原件身份")
 
 # Single registry for every database row that points at a private original.
 # A backup must cover all of them; a restore must verify the same set. New
@@ -619,8 +780,11 @@ def _verify_reference_snapshot(manifest, originals):
         raise ValueError("备份清单与数据库原件引用集合不同")
     for key, item in snapshot.items():
         copied = archived[key]
+        expected_sha = (
+            copied.get("plaintext_sha256") if copied.get("encrypted") else copied["sha256"]
+        )
         if (
-            copied["sha256"] != item["sha256"]
+            expected_sha != item["sha256"]
             or copied["size_bytes"] != item["size_bytes"]
             or _canonical_references(copied["references"])
             != _canonical_references(item["references"])
@@ -628,9 +792,24 @@ def _verify_reference_snapshot(manifest, originals):
             raise ValueError("备份清单与数据库原件引用不一致")
 
 
+def _encrypt_manifest_files(target, files, key):
+    for item in files:
+        path = safe_child(target, item["path"])
+        plaintext_sha256, plaintext_size = item["sha256"], item["size_bytes"]
+        temporary = safe_child(target, item["path"] + ".enc.tmp")
+        _encrypt_file(path, temporary, key)
+        temporary.replace(path)
+        path.chmod(0o600)
+        item["encrypted"] = True
+        item["plaintext_sha256"] = plaintext_sha256
+        item["stored_size_bytes"] = path.stat().st_size
+        item["sha256"] = sha256(path)
+
+
 def backup(database, storage_root, destination, *, storage_store=None):
     if storage_store is not None:
         storage_store.verify_private()
+    key_info = _backup_key()
     target = empty_destination(destination)
     postgres = database.startswith(("postgres://", "postgresql://"))
     security_manifest = None
@@ -686,6 +865,15 @@ def backup(database, storage_root, destination, *, storage_store=None):
         files = copy_originals(storage_root, target, originals, storage_store=storage_store)
     dump.chmod(0o600)
     files.insert(0, {"path": dump.name, "sha256": sha256(dump), "size_bytes": dump.stat().st_size})
+    encryption = None
+    if key_info is not None:
+        key, key_id = key_info
+        _encrypt_manifest_files(target, files, key)
+        encryption = {
+            "format": ENCRYPTION_FORMAT,
+            "algorithm": ENCRYPTION_ALGORITHM,
+            "key_id": key_id,
+        }
     manifest = {
         "format_version": FORMAT_VERSION,
         "originals_policy_version": ORIGINALS_POLICY_VERSION,
@@ -705,6 +893,8 @@ def backup(database, storage_root, destination, *, storage_store=None):
     }
     if security_manifest is not None:
         manifest["security"] = security_manifest
+    if encryption is not None:
+        manifest["encryption"] = encryption
     with (target / "manifest.json").open("x", encoding="utf-8") as stream:
         json.dump(manifest, stream, ensure_ascii=False, indent=2)
     (target / "manifest.json").chmod(0o600)
@@ -724,6 +914,11 @@ def verify(directory):
         raise ValueError("不支持的备份格式")
     if manifest.get("originals_policy_version", 1) not in (1, 2, ORIGINALS_POLICY_VERSION):
         raise ValueError("不支持的原件引用策略版本")
+    encryption_key = _encryption_key_for_manifest(manifest)
+    if encryption_key is None:
+        for item in manifest.get("files", []):
+            if isinstance(item, dict) and item.get("encrypted"):
+                raise ValueError("备份清单含加密文件但缺少加密配置")
     if "security" in manifest:
         try:
             from scripts.recovery_security import validate_security_manifest
@@ -745,9 +940,28 @@ def verify(directory):
             raise ValueError("备份清单文件重复或非预期")
         names.add(name)
         source = safe_child(directory, name)
-        if (
-            not source.is_file()
-            or source.stat().st_size != item["size_bytes"]
+        if not source.is_file():
+            raise ValueError("备份文件缺失或哈希不符")
+        if item.get("encrypted"):
+            if (
+                encryption_key is None
+                or type(item.get("stored_size_bytes")) is not int
+                or item["stored_size_bytes"] < len(ENCRYPTION_MAGIC) + 28
+                or not isinstance(item.get("plaintext_sha256"), str)
+                or source.stat().st_size != item["stored_size_bytes"]
+                or sha256(source) != item["sha256"]
+            ):
+                raise ValueError("备份文件缺失或哈希不符")
+            try:
+                digest, plaintext_size = _decrypt_digest(source, encryption_key)
+            except Exception as error:
+                if isinstance(error, ValueError):
+                    raise
+                raise ValueError("备份解密失败：密钥错误或密文被篡改") from error
+            if plaintext_size != item["size_bytes"] or digest != item["plaintext_sha256"]:
+                raise ValueError("备份解密后的明文哈希不符")
+        elif (
+            source.stat().st_size != item["size_bytes"]
             or sha256(source) != item["sha256"]
         ):
             raise ValueError("备份文件缺失或哈希不符")
@@ -764,13 +978,21 @@ def verify(directory):
         if manifest.get("reference_verification") != reference_verification(manifest["files"]):
             raise ValueError("原件引用验证摘要不一致")
         if manifest["dialect"] == "sqlite":
-            with closing(
-                sqlite3.connect(
-                    safe_child(directory, expected_database).as_uri() + "?mode=ro", uri=True
-                )
-            ) as conn:
-                _, originals = original_rows(conn, "sqlite")
-                _verify_reference_snapshot(manifest, originals)
+            database_item = next(
+                item for item in manifest["files"] if item["path"] == expected_database
+            )
+            with tempfile.TemporaryDirectory(prefix="nxbk-verify-") as temporary:
+                database_path = safe_child(directory, expected_database)
+                if database_item.get("encrypted"):
+                    database_path = Path(temporary) / expected_database
+                    _decrypt_file(
+                        safe_child(directory, expected_database), database_path, encryption_key
+                    )
+                with closing(
+                    sqlite3.connect(database_path.as_uri() + "?mode=ro", uri=True)
+                ) as conn:
+                    _, originals = original_rows(conn, "sqlite")
+                    _verify_reference_snapshot(manifest, originals)
     return manifest
 
 
@@ -808,6 +1030,7 @@ def _record_restore_hold(conn, dialect, restore_id):
 
 def restore(directory, destination, postgres_target=None, *, restore_permissions=False):
     manifest = verify(directory)
+    encryption_key = _encryption_key_for_manifest(manifest)
     if restore_permissions and (manifest["dialect"] != "postgres" or "security" not in manifest):
         raise ValueError("精确授权恢复需要带安全清单的 PostgreSQL 备份")
     source, target = Path(directory).resolve(), empty_destination(destination)
@@ -831,20 +1054,33 @@ def restore(directory, destination, postgres_target=None, *, restore_permissions
             ).fetchone()[0]
             if count or custom_schemas or custom_functions:
                 raise ValueError("PostgreSQL 目标不是空数据库，禁止覆盖")
-        pg_tool(
-            "pg_restore",
-            [
-                "--no-owner",
-                "--no-privileges",
-                "--single-transaction",
-                "--exit-on-error",
-                "--no-password",
-                "--dbname",
-                pg_environment(postgres_target).get("PGDATABASE", ""),
-                str(source / "database.dump"),
-            ],
-            postgres_target,
+        database_item = next(
+            (item for item in manifest["files"] if item["path"] == "database.dump"), None
         )
+        dump_source = source / "database.dump"
+        decrypted_dump = None
+        try:
+            if database_item is not None and database_item.get("encrypted"):
+                decrypted_dump = target / ".database.dump.restore"
+                _decrypt_file(dump_source, decrypted_dump, encryption_key)
+                dump_source = decrypted_dump
+            pg_tool(
+                "pg_restore",
+                [
+                    "--no-owner",
+                    "--no-privileges",
+                    "--single-transaction",
+                    "--exit-on-error",
+                    "--no-password",
+                    "--dbname",
+                    pg_environment(postgres_target).get("PGDATABASE", ""),
+                    str(dump_source),
+                ],
+                postgres_target,
+            )
+        finally:
+            if decrypted_dump is not None:
+                decrypted_dump.unlink(missing_ok=True)
         with psycopg.connect(postgres_target) as conn:
             _record_restore_hold(conn, "postgres", restore_id)
             # Persist isolation BEFORE ACL reconstruction. A failed structural
@@ -863,11 +1099,21 @@ def restore(directory, destination, postgres_target=None, *, restore_permissions
             continue
         destination_file = safe_child(target, item["path"])
         destination_file.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        with safe_child(source, item["path"]).open("rb") as src, destination_file.open("xb") as dst:
-            shutil.copyfileobj(src, dst)
-        destination_file.chmod(0o600)
-        if sha256(destination_file) != item["sha256"]:
-            raise ValueError("恢复原件哈希不符")
+        if item.get("encrypted"):
+            _decrypt_file(safe_child(source, item["path"]), destination_file, encryption_key)
+            if (
+                destination_file.stat().st_size != item["size_bytes"]
+                or sha256(destination_file) != item.get("plaintext_sha256")
+            ):
+                raise ValueError("恢复文件解密后的明文哈希不符")
+        else:
+            with safe_child(source, item["path"]).open("rb") as src, destination_file.open(
+                "xb"
+            ) as dst:
+                shutil.copyfileobj(src, dst)
+            destination_file.chmod(0o600)
+            if sha256(destination_file) != item["sha256"]:
+                raise ValueError("恢复原件哈希不符")
         if item["path"] == "database.sqlite":
             with closing(sqlite3.connect(destination_file)) as conn:
                 _record_restore_hold(conn, "sqlite", restore_id)
@@ -885,7 +1131,8 @@ def restore(directory, destination, postgres_target=None, *, restore_permissions
             _verify_reference_snapshot(manifest, originals)
             for item in originals:
                 file = safe_child(target, "originals/" + item["storage_key"].replace("\\", "/"))
-                if file.stat().st_size != item["size_bytes"] or sha256(file) != item["sha256"]:
+                expected_sha = _plaintext_sha_for_item(manifest, item)
+                if file.stat().st_size != item["size_bytes"] or sha256(file) != expected_sha:
                     raise ValueError("恢复后的数据库与原件不一致")
     else:
         with psycopg.connect(postgres_target) as conn:
@@ -906,10 +1153,11 @@ def restore(directory, destination, postgres_target=None, *, restore_permissions
             _verify_reference_snapshot(manifest, originals)
             for item in originals:
                 file = safe_child(target, "originals/" + item["storage_key"].replace("\\", "/"))
+                expected_sha = _plaintext_sha_for_item(manifest, item)
                 if (
                     not file.is_file()
                     or file.stat().st_size != item["size_bytes"]
-                    or sha256(file) != item["sha256"]
+                    or sha256(file) != expected_sha
                 ):
                     raise ValueError("恢复后的数据库与原件不一致")
     receipt = {

@@ -29,6 +29,14 @@ def build_monthly_workbench_router(actor_dependency):
     ):
         return monthly.list(current, period, search, limit, offset, focus)
 
+    @router.get("/annual")
+    def annual(
+        year: int = Query(ge=2000, le=2099),
+        current=Depends(actor_dependency),
+        monthly=Depends(service),
+    ):
+        return monthly.annual(current, year)
+
     @router.post("/batch/open", status_code=202)
     def batch_open(
         payload: BatchOpen,

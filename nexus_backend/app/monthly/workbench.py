@@ -90,6 +90,203 @@ class MonthlyWorkbenchService:
                 ],
             }
 
+    _ANNUAL_PRIORITY = {
+        "no_book": 0,
+        "closed": 1,
+        "delivered": 2,
+        "open": 3,
+        "review": 4,
+        "materials": 5,
+        "delivery": 6,
+    }
+
+    @classmethod
+    def _annual_book_state(cls, *, closed, package_pending, delivered, materials, drafts):
+        if package_pending:
+            return "delivery"
+        if materials:
+            return "materials"
+        if drafts:
+            return "review"
+        if delivered:
+            return "delivered"
+        if closed:
+            return "closed"
+        return "open"
+
+    def annual(self, actor, year):
+        """Year view is a projection of the same current grants; no cached completion."""
+        if not isinstance(year, int) or isinstance(year, bool) or not 2000 <= year <= 2099:
+            raise AccountingError("请选择有效的年度")
+        start, end = f"{year}-01", f"{year}-12"
+        with self.db.transaction(actor=actor) as conn:
+            role = self.access.firm_role(conn, actor)
+            scope, values = self.accounting._summary_scope(actor)
+            scope += " AND b.period BETWEEN ? AND ?"
+            values.extend([start, end])
+            if role not in {"owner", "admin"}:
+                scope += (
+                    " AND a.role IS NOT NULL AND (?=1 OR cm.role IN ('owner','admin','finance'))"
+                )
+                values.append(1 if role else 0)
+            books = [
+                dict(row)
+                for row in conn.execute(f"SELECT * FROM ({scope}) v ORDER BY company_name,period", values)
+            ]
+            clients = [
+                dict(row)
+                for row in conn.execute(
+                    """SELECT c.id AS company_id,c.name AS company_name FROM companies c
+                    JOIN firm_clients fc ON fc.company_id=c.id AND fc.firm_id=? AND fc.status='active'
+                    ORDER BY c.name,c.id""",
+                    (actor.firm_id,),
+                )
+            ]
+            visible_companies = {row["company_id"] for row in books}
+            if role not in {"owner", "admin"}:
+                clients = [row for row in clients if row["company_id"] in visible_companies]
+            book_ids = [row["id"] for row in books]
+            marks = ",".join("?" for _ in book_ids)
+            plans = {}
+            materials = {}
+            drafts = {}
+            packages = {}
+            if book_ids:
+                plan_sql = (
+                    f"""SELECT p.book_id,labels.lead_name FROM service_plan_versions p
+                    LEFT JOIN LATERAL accounting.service_plan_labels(p.book_id) labels ON true
+                    WHERE p.book_id IN ({marks}) AND p.version=(
+                        SELECT MAX(q.version) FROM service_plan_versions q WHERE q.book_id=p.book_id)"""
+                    if self.db.is_postgres
+                    else f"""SELECT p.book_id,lead.name AS lead_name FROM service_plan_versions p
+                    LEFT JOIN users lead ON lead.id=p.lead_user_id
+                    WHERE p.book_id IN ({marks}) AND p.version=(
+                        SELECT MAX(q.version) FROM service_plan_versions q WHERE q.book_id=p.book_id)"""
+                )
+                for row in conn.execute(plan_sql, book_ids):
+                    plans[row["book_id"]] = row["lead_name"]
+                for row in conn.execute(
+                    f"""SELECT r.book_id,COUNT(*) AS count FROM material_requests r
+                    LEFT JOIN material_request_actions a ON a.request_id=r.id AND a.version=(
+                        SELECT MAX(q.version) FROM material_request_actions q WHERE q.request_id=r.id)
+                    WHERE r.book_id IN ({marks})
+                    AND COALESCE(a.state,'pending') IN ('pending','returned') GROUP BY r.book_id""",
+                    book_ids,
+                ):
+                    materials[row["book_id"]] = int(row["count"])
+                inactive = inactive_source_sql(self.db.dialect)
+                for row in conn.execute(
+                    f"""SELECT d.book_id,COUNT(*) AS count FROM drafts d
+                    JOIN sources s ON s.id=d.source_id AND s.book_id=d.book_id
+                    WHERE d.book_id IN ({marks}) AND d.status='draft' AND NOT ({inactive})
+                    GROUP BY d.book_id""",
+                    book_ids,
+                ):
+                    drafts[row["book_id"]] = int(row["count"])
+                for row in conn.execute(
+                    f"""SELECT p.book_id,p.version,
+                    EXISTS(SELECT 1 FROM monthly_delivery_acknowledgements a WHERE a.package_id=p.id) AS acknowledged
+                    FROM monthly_delivery_packages p WHERE p.book_id IN ({marks})
+                    AND p.version=(SELECT MAX(q.version) FROM monthly_delivery_packages q WHERE q.book_id=p.book_id)""",
+                    book_ids,
+                ):
+                    packages[row["book_id"]] = row
+
+            by_key = {(row["company_id"], row["period"]): [] for row in books}
+            for row in books:
+                pending_package = bool(
+                    packages.get(row["id"]) and not packages[row["id"]]["acknowledged"]
+                )
+                stage = self._annual_book_state(
+                    closed=row["period_status"] == "closed",
+                    package_pending=pending_package,
+                    delivered=bool(
+                        packages.get(row["id"]) and packages[row["id"]]["acknowledged"]
+                    ),
+                    materials=materials.get(row["id"], 0),
+                    drafts=drafts.get(row["id"], 0),
+                )
+                by_key[(row["company_id"], row["period"])].append(
+                    {
+                        "book_id": row["id"],
+                        "book_name": row["name"],
+                        "stage": stage,
+                        "blockers": drafts.get(row["id"], 0)
+                        + materials.get(row["id"], 0)
+                        + int(pending_package),
+                        "owner": plans.get(row["id"]) or "待安排",
+                    }
+                )
+
+            rows = []
+            months = [f"{year}-{month:02d}" for month in range(1, 13)]
+            for client in clients:
+                cells = []
+                for period in months:
+                    entries = by_key.get((client["company_id"], period), [])
+                    if not entries:
+                        cells.append(
+                            {
+                                "period": period,
+                                "month": period[5:],
+                                "stage": "no_book",
+                                "label": "未建账",
+                                "next": "开通本月账套",
+                                "blockers": 0,
+                                "owner": "事务所管理员",
+                                "book_count": 0,
+                                "books": [],
+                            }
+                        )
+                        continue
+                    stage = max(
+                        (entry["stage"] for entry in entries),
+                        key=lambda value: self._ANNUAL_PRIORITY[value],
+                    )
+                    labels = {
+                        "no_book": ("未建账", "开通本月账套"),
+                        "closed": ("已锁期", "查看锁定依据"),
+                        "delivered": ("已签收", "查看签收记录"),
+                        "open": ("可办理", "继续办理"),
+                        "review": ("待复核", "复核待审凭证"),
+                        "materials": ("待补资料", "查看待补资料"),
+                        "delivery": ("待签收", "查看交付包"),
+                    }
+                    label, next_action = labels[stage]
+                    owners = list(dict.fromkeys(entry["owner"] for entry in entries))
+                    cells.append(
+                        {
+                            "period": period,
+                            "month": period[5:],
+                            "stage": stage,
+                            "label": label,
+                            "next": next_action,
+                            "blockers": sum(entry["blockers"] for entry in entries),
+                            "owner": "、".join(owners),
+                            "book_count": len(entries),
+                            "books": entries,
+                        }
+                    )
+                rows.append(
+                    {
+                        "company_id": client["company_id"],
+                        "company_name": client["company_name"],
+                        "months": cells,
+                    }
+                )
+            return {
+                "year": year,
+                "months": months,
+                "rows": rows,
+                "scope": "authorized_books_v1",
+                "updated_at": now(),
+                "notes": [
+                    "年度矩阵只投影当前授权的账套、期间和待办；未建账月份不按 0 或已完成处理。",
+                    "同企业同月多账套折叠为一格，展开可查看各账套阶段与阻断数。",
+                    "阶段顺序按待签收、待补资料、待复核、可办理、已签收、已锁期取最需处理项。",
+                ],
+            }
+
     def _focus(self, actor, role, focus):
         """Predicates precede LIMIT and use the same authorization as row details."""
         manager = role in {"owner", "admin"}

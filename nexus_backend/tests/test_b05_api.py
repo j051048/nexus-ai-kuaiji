@@ -1,15 +1,12 @@
 """B05 management API smoke test: endpoints and company policy."""
 
-from fastapi.testclient import TestClient
-
 from app.main import create_app
+from test_business_api import local_client
 
 
 def test_b05_endpoint_and_policy_routes(tmp_path):
     app = create_app(tmp_path / "b05-http.db", seed=True)
-    with TestClient(
-        app, base_url="http://127.0.0.1", client=("127.0.0.1", 45678)
-    ) as client:
+    with local_client(app, 45678) as client:
         token = client.get("/api/session").json()["token"]
         headers = {"Authorization": "Bearer " + token}
         with app.state.service.db.transaction() as conn:

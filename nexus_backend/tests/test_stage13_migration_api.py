@@ -7,20 +7,25 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
-from fastapi.testclient import TestClient
 
 from app.accounting.seed import LOCAL_ACTOR
 from app.main import create_app
 from app.auth import Identity
 from app.accounting.models import FirmMemberGrant, BookMemberGrant
 from app.legacy_migration.worker import MigrationWorker
-from test_business_api import auth
+from test_business_api import auth, local_client
 from test_stage13_legacy_settlements import drain_project_phase
 
 
 @pytest.fixture
 def client(tmp_path):
-    with TestClient(create_app(tmp_path / 'migration-api.db', seed=False, attachment_root=tmp_path / 'private', queue_worker_enabled=False), base_url='http://127.0.0.1', client=('127.0.0.1', 1351)) as value:
+    app = create_app(
+        tmp_path / 'migration-api.db',
+        seed=False,
+        attachment_root=tmp_path / 'private',
+        queue_worker_enabled=False,
+    )
+    with local_client(app, 1351) as value:
         yield value
 
 

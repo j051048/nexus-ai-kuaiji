@@ -22,6 +22,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from .auth import AuthSettings, AuthError, Identity, SupabaseAuthenticator
 from .auth.admin_security import allow_firm_signup, requires_admin_mfa
+from .security.rate_limit import RateLimitMiddleware, limiter_from_environment
 from .accounting.database import Database, DatabaseCapacityError
 from .accounting.db_diagnostics import log_database_unavailable
 from .agent_workspace.service import AgentWorkspaceService
@@ -674,6 +675,7 @@ def create_app(
     app.add_middleware(AttachmentBodyLimitMiddleware)
     app.add_middleware(CaseAttachmentBodyLimitMiddleware)
     app.add_middleware(BridgeBodyLimitMiddleware)
+    app.add_middleware(RateLimitMiddleware, limiter=limiter_from_environment())
     app.add_middleware(
         CORSMiddleware,
         allow_origins=origins,

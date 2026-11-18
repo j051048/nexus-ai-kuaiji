@@ -43,7 +43,7 @@ def ledger_of(case, book_id):
 
 
 def policy(service, actor, ledger_id):
-    return service.create_policy(
+    row = service.create_policy(
         actor,
         PolicyCreate(
             ledger_id=ledger_id,
@@ -54,6 +54,8 @@ def policy(service, actor, ledger_id):
             reason="B02 隔离测试政策",
         ),
     )
+    service.approve_policy(actor, row["id"])
+    return row
 
 
 def account(service, actor, ledger_id, code="1002", name="银行存款", **changes):

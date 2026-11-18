@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>衡账 · login · 方向 A</title>
+<link rel="stylesheet" href="shared.css">
+</head>
+<body class="direction-a" data-prototype="login" data-direction="a">
+<header class="appbar">
+  <div class="brand">
+    <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+    <span><span class="brand-name">衡账</span><span class="brand-sub">HENGZHANG · ACCOUNTING</span></span>
+  </div>
+  <div class="context">
+    <span>单位 <b>示例会计师事务所</b></span>
+    <span>身份 <b>待登录</b></span>
+    <span class="period">账期 2026-10</span>
+  </div>
+</header>
+<main class="login-main">
+  <section class="login-intro">
+    <p class="eyebrow">会计工作空间</p>
+    <h1>登录会计工作空间</h1>
+    <p>使用管理员开通的账户，进入已授权的企业与账套。登录身份与授权范围由服务端确认。</p>
+    <dl class="login-facts">
+      <div><dt>服务企业</dt><dd>5 家</dd></div>
+      <div><dt>本期账套</dt><dd>5 套</dd></div>
+      <div><dt>当前账期</dt><dd>2026-10</dd></div>
+      <div><dt>数据范围</dt><dd>本地合成</dd></div>
+    </dl>
+  </section>
+  <section class="panel login-card" aria-labelledby="login-title">
+    <div class="login-brand-row">
+      <strong id="login-title">账户登录</strong>
+      <span class="status idle">未登录</span>
+    </div>
+    <form class="form-grid" aria-label="账户登录">
+      <div class="field">
+        <label for="email">工作邮箱</label>
+        <input id="email" type="email" autocomplete="username" placeholder="name@example.test">
+      </div>
+      <div class="field">
+        <label for="password">密码</label>
+        <input id="password" type="password" autocomplete="current-password" placeholder="输入账户密码">
+      </div>
+      <button class="btn primary" type="button">登录工作空间</button>
+    </form>
+    <p class="helper">忘记密码请联系事务所管理员。关闭页面后需重新登录。</p>
+    <button class="btn ghost" type="button">管理员入口</button>
+  </section>
+</main>
+</body>
+</html>

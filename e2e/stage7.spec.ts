@@ -151,6 +151,18 @@ test('第七阶段真实分页与辅助核算：二十五笔待办按需读取�
   await accountPicker.fill('6401.02');
   await accountPicker.press('Enter');
   await expect(page.getByLabel('第 1 行project辅助核算', { exact: true })).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await accountPicker.click();
+  await accountPicker.fill('6401');
+  const mobileMenu = page.getByRole('listbox', { name: '第 1 行会计科目候选' });
+  await expect(mobileMenu).toBeVisible();
+  const mobileMenuBox = await mobileMenu.boundingBox();
+  expect(mobileMenuBox).not.toBeNull();
+  expect(mobileMenuBox!.x).toBeGreaterThanOrEqual(0);
+  expect(mobileMenuBox!.x + mobileMenuBox!.width).toBeLessThanOrEqual(390);
+  await page.screenshot({ path: 'tmp_test/opt08-account-picker-mobile.png' });
+  await page.keyboard.press('Escape');
+  await page.setViewportSize({ width: 1280, height: 720 });
   const beforeAdd = await page.locator('tr.journal-grid-line').count();
   await accountPicker.press('Alt+Enter');
   await expect(page.locator('tr.journal-grid-line')).toHaveCount(beforeAdd + 1);

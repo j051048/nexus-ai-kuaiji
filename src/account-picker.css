@@ -13,6 +13,7 @@
   color: var(--ink);
   font: inherit;
   font-size: 13px;
+  text-align: left;
 }
 
 .account-picker > input:focus-visible {

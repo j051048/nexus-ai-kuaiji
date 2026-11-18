@@ -94,6 +94,44 @@ export interface MonthlyClientRow {
     label: string;
   };
 }
+export type AnnualStage =
+  'no_book' | 'closed' | 'delivered' | 'open' | 'review' | 'materials' | 'delivery';
+
+export interface AnnualBookCell {
+  book_id: string;
+  book_name: string;
+  stage: AnnualStage;
+  blockers: number;
+  owner: string;
+}
+
+export interface AnnualMonthCell {
+  period: string;
+  month: string;
+  stage: AnnualStage;
+  label: string;
+  next: string;
+  blockers: number;
+  owner: string;
+  book_count: number;
+  books: AnnualBookCell[];
+}
+
+export interface AnnualCompanyRow {
+  company_id: string;
+  company_name: string;
+  months: AnnualMonthCell[];
+}
+
+export interface AnnualMatrix {
+  year: number;
+  months: string[];
+  rows: AnnualCompanyRow[];
+  scope: string;
+  updated_at: string;
+  notes: string[];
+}
+
 export interface MonthlyClients {
   period: string;
   rows: MonthlyClientRow[];

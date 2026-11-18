@@ -1200,3 +1200,75 @@ Open objectives: OPT07-C/D/E/F；OPT08–OPT10（m40767）。
   - 已移除出租车解析的旧表回退；新增别名 `effective_from=0001-01-01`，历史名称对既有业务日期可解析。
 - 候选：HEAD `557c4fa1aa7c9aa2f2179fadcbcd5ee1ffd2c77d`；source **2391 / `aee9fbbcfcba4b510ebee20cded0f57b0049edc4f30beccc814360fab8222d64`**；migration **483 / `cc997bbc2eeffd73b7994ce73e58df900333fdf1ad078c010e6f7fe44154fc46`**。
 - 未提交/推送/部署。
+
+
+## OPT08 金额、表格与输入  <状态：本地验收通过；跨浏览器/人工 IME 未验>
+
+结论：A–E 的本地实现与验收已完成；Firefox/WebKit 与真实输入法/屏幕阅读器不构成本地代码阻断，但未验证，不得写成全浏览器通过。
+
+- A 金额精确化：新增 `src/money.ts`（`parseYuanToCents`、`formatCents`、`sumCents`、`centsToApiString`、`balanceDirection`），以 bigint 分为单位；拒绝指数、超两位小数、前导零和超出上限。`csv.ts`、`formal-books-types.ts` 委托该模块，已替换 JournalEntryGrid、TaxFilingRecords、TaxCostBatchPanel、TaxFeeBatchPanel、SettlementDetail、OaSnapshotPanel、AnalysisEvidencePanel、ClientAccessTools、AssetReconciliation、tax-filings、TaxFPanel。`FirmObservability`/`value-baseline` 仍为 micro 元成本（非分），`transport-limits` 为 MB，未强行替换。
+- B MoneyCell：新增 `src/MoneyCell.tsx`/`src/money-cell.css`，统一等宽右对齐、负数语义色与方向列；FormalBooksWorkbench 增加“方向”，期末余额显示绝对值；JournalEntryGrid 合计、InlineReviewDrawer 借贷/差额接入。
+- C 科目选择：新增 `src/account-picker.ts`、`src/AccountPicker.tsx`/CSS。末级科目按父前缀识别，支持代码/名称过滤、父级禁用分组、ArrowUp/Down、Enter、Escape；菜单固定定位避免被表格裁剪，已替换 JournalEntryGrid 原生 select。
+- D 键盘：JournalEntryGrid 支持 Alt+Enter 新增行、Ctrl+Enter 保存（排除 IME）；删除行后聚焦相邻行；工具栏显示快捷键提示。`InlineReviewDrawer` 与 stage7 实际使用的 `VoucherReviewer` 均已接线。提交前仍使用既有 dirty/摘要/金额错误/busy 阻断，不新增绕过复核的入口。
+- E 验收：`e2e/stage7.spec.ts` **3 passed/24.9s**，覆盖打开候选、按 6401 过滤、选择 6401.02、Alt+Enter 新增、删除回焦、Ctrl+Enter 保存；桌面截图 `tmp_test/opt08-account-picker.png`。同一用例在 390×844 下重新打开候选，断言菜单横向不越界，截图 `tmp_test/opt08-account-picker-mobile.png`。`e2e/tax05-large-voucher.spec.ts` **6 passed/37.0s**，516 行分页断言本页借 ¥2,500.00、全量借 ¥25,800.00。
+- 离线门禁：`npm test -- --run` **154 files / 1416 passed**；`npm run lint` 0 error（4 条既有 unused eslint-disable warning）；`npm run format:check` 通过；`npm run build` 通过，initial JS **567.43 KB / gzip 175.87 KB**，CSS **99.95 KB / gzip 20.32 KB**。首次 build 因系统临时目录 `esbuild` 文件删除被 Windows 拒绝而失败，改用仓库内 `TMP/TEMP` 后通过，不是产品构建缺陷。
+- 未完成或未验证：
+  - 跨浏览器 Firefox/WebKit、真实 IME/输入法、屏幕阅读器人工验证未做；手机 390 已由 Chromium 覆盖。
+  - 生产构建 chunk 仍 >500 KB 警告，未在本模块内做代码分割。
+- 候选：HEAD `7cce49a57543f8ec3a02c68114eb1500b308eb12`；source **2399 / `1f48e709861409682a3eb7ba6a0099d2ebeb98dc190a6a3e4374cb83ee15ab07`**；migration **483 / `cc997bbc2eeffd73b7994ce73e58df900333fdf1ad078c010e6f7fe44154fc46`**。
+- 候选包含其他任务在 `7cce49a` 的提交与 AccountPicker/MoneyCell 接线；本模块另有未提交的 `src/account-picker.css`、`src/journal-grid.css` 两个文件（均只改本模块样式）。未由本任务提交/推送/部署。
+
+## OPT09 复核队列风险分档、年度矩阵与防误操作  <状态：本地验收通过；跨浏览器/顶栏切换未专项>
+
+结论：A–E 的本地实现与浏览器验收完成。真实年度数据规模、Firefox/WebKit、顶栏企业切换的迟到响应未专项验证。
+
+- A 风险分档：新增 `app/accounting/review_risk.py`（`review-risk-v1`）。任一硬性 finding/关期/自审→high；非 bank 来源无 finding→medium；bank 无 finding→low。原因去空去重。
+- A 队列：`review.py::list_drafts` 每行按当前库内事实重算 `risk`、`risk_reasons`、`risk_rule_version`、`risk_legacy`、`issue_count`；筛选支持三档及旧值；`risk_scope="deterministic_projection_v1_full_checks_on_preview_and_confirmation"`。
+- B 前端：`ReviewWorkbench` 改为高密度表格（企业/账套、风险与首因、摘要/来源、金额、查看证据），sticky 表头、40px 行高、三档筛选、三档摘要与规则版本；移动端三列堆叠。
+- C 年度矩阵：`workbench.py::annual(actor, year)` 按授权账套返回每企业×12 月 `stage/label/next/blockers/owner/book_count/books`；缺账套为 `no_book`（不按 0/已完成处理）；同企业同月多账套折叠并保留明细；路由 `GET /api/monthly/annual?year=`。
+- C 前端：`AnnualMatrixPanel` + `annual-matrix.css`，企业列/表头 sticky，1280 下 12 月完整可见，390 横向滚动；点格回月度清单并设期间；企业行可展开各账套。
+- D 防串数据：e2e 验证切换企业筛选后原高风险行消失、切回后恢复；切换风险筛选后“已选 1 张”归零为“已选 0 张”。
+- E 防误操作：确认区 `role=note` 明确“确认后不能在此直接撤销，只能更正/冲销，原审核记录保留”；e2e 预览后断言该提示。
+- 验收：
+  - `test_opt09_review_risk.py` **5 passed/0.31s**；`test_opt09_review_risk.py + test_batch_review.py` **31 passed/24.71s**。
+  - `test_opt09_annual_matrix.py` **2 passed/7.87s**。
+  - `e2e/opt09-annual-matrix.spec.ts` **1 passed/13.9s**（5 企业×12 月、12 月右边界在桌面容器内、移动端可横向滚动、点格回清单）。
+  - `e2e/opt09-review-queue.spec.ts` **1 passed/15.7s**（高/低风险、原因、URL 筛选、企业/风险切换清空选择、不可逆提示）。
+  - 截图：`tmp_test/opt09-review-risk-1280.png`、`-390.png`；`tmp_test/opt09-annual-matrix-1280.png`、`-390.png`。
+- 未完成或未验证：跨浏览器/真实数据规模未验；顶栏切换企业的迟到响应由全局会话机制覆盖，未在本模块专项 e2e；确认提交后的不可逆流程未制造真实审核记录。
+
+## OPT10 安全准入  <状态：本地大部分通过；PG16 实际还原受客户端版本限制/多进程限流未验>
+
+结论：加密备份（SQLite/PG16/PG17 旧格式兼容）、敏感字段脱敏与经理按需揭示审计、日志/错误不泄露、单进程限流已实现并通过定向测试；PG17 已执行真实“备份→删除 schema→产品 `restore`→行数/迁移/表数比对”，PG16 加密备份与 verify 通过但产品 restore 被 PG17 客户端写入 PG17-only `transaction_timeout` 阻断；多进程共享计数未验证。
+
+- A 备份加密：`scripts/backup_accounting.py` 新增 `nxbk-gcm-v1`/AES-256-GCM，magic+12B nonce+密文+16B tag，1MiB 流式；密钥来自 `ACCOUNTING_BACKUP_KEY`+`ACCOUNTING_BACKUP_KEY_ID`，生产未配置拒绝；清单只记 key id，同时记明文/密文摘要；verify 解密核明文，restore 先验密文再解密、失败清理；旧未加密备份兼容。
+- A 测试 `test_opt10_backup_encryption.py` **4 passed/9.15s**；旧恢复回归 `test_stage10_backup_recovery.py + test_c01_restore_safety.py + test_restore_hold.py` **24 passed/14.70s**。
+- A PG 加密备份：`test_opt10_backup_encryption_postgres.py` 在 PG16/PG17 各 **1 passed**（1.52s/1.43s）；使用本机既有 `pg_dump`，验证 `database.dump` 为 `NXBK1` 密文、无 `PGDMP` 明文头、清单仅含 key id、`verify` 解密成功、错密钥失败。
+- A PG17 实际恢复：`scripts/opt10_pg_restore_drill.py` 备份→`DROP SCHEMA accounting CASCADE`→产品 `restore()`→比对，前后均为 `companies 498 / migrations 278 / max_version 291 / tables 316`，回执 7 个文件，`serving_enabled=false`、`outbound_disabled=true`；`tmp_test/opt10-pg-restore-drill17/result.json`。
+- A PG16 实际恢复受阻：本机仅有 PG17 `pg_restore`，dump 中 `SET transaction_timeout` 在 PG16 报 `unrecognized configuration parameter`；用 PG17 将 dump 转 SQL、删除该 GUC 后 `psql` 恢复，恢复后 `391 companies / 278 migrations / 316 tables`。这是工作区恢复，不冒充产品 `restore()` 通过；PG16 加密备份/verify 已通过。
+- B 脱敏：`mask_bank_account` 尾4、`mask_tax_id` 首4+尾4、`mask_phone`、`mask_id_card`、`redact_sensitive`；`AdminService._company` 脱敏税号，`import_wizard` 脱敏银行账号；`reveal_sensitive` 仅 firm manager，返回完整税号并写 `security.sensitive.reveal` 审计；`GET /api/admin/companies/{id}/sensitive`。
+- B 测试 `test_opt10_sensitive_redaction.py` **3 passed/6.05s**；`test_admin_workspace.py` **13 passed/13.02s**。全库检索确认业务接口未暴露 phone/mobile/id_card/account_no。
+- B 前端：`AdminWorkspace` 企业详情显示脱敏税号，新增“显示完整税号/隐藏完整税号”，切换企业清空本地完整值；`e2e/opt10-admin-sensitive.spec.ts` 在 OPT09/OPT10 套件中 **3 passed/18.8s**（含两条 OPT09），断言列表脱敏、显式揭示后完整、隐藏恢复，截图 `tmp_test/opt10-admin-sensitive-1280.png`、`tmp_test/opt10-admin-sensitive-revealed-1280.png`。
+- B 日志/错误：`test_qa_http_failures.py` 由 Starlette 0.35 不兼容的 `TestClient(client=...)` 改为不传 `client`（断言未变），**8 passed/19.28s**，覆盖 500 不泄露 `SECRET`、写请求 `result_unknown`、no-store、request id 安全；字段级加密未做。
+- C 限流：`app/security/rate_limit.py` token bucket，读/写/高成本默认 6000/1200/600（环境变量覆盖，非法值拒绝）；429+Retry-After；健康/公开配置/静态豁免；身份为 token hash 或 client IP，仅 `ACCOUNTING_TRUST_PROXY=1` 信任 XFF；`main.py` 接入，`SCOPE="single_process"`。
+- C 测试 `test_opt10_rate_limit.py` **4 passed/0.48s**；新增真实应用链路 `test_opt10_rate_limit_app.py` **1 passed/7.31s**：环境限制 2 次/分，`/api/session` 两次 200，第三次 429 + 整数 `Retry-After` + `detail=请求过于频繁，请稍后重试`；OPT10 四文件联合 **24 passed/17.63s**；加 OPT09 七文件 **57 passed/39.09s**。
+- 未完成或未验证：多进程共享计数（当前明确 `SCOPE=single_process`）、PG16 经产品 `restore()` 的实际还原（本机缺少 PG16 客户端）、跨浏览器。PG17 已做实际恢复演练；PG16 只完成加密备份/verify 与工作区 SQL 恢复，不得写成产品恢复通过。
+- 候选（OPT08 基线）：HEAD `7cce49a…`；source 2399/`1f48e709…`；migration 483/`cc997bbc…`。OPT09/OPT10 改动后的候选将在最终联合验收重算。
+
+## OPT09/OPT10 联合门禁与当前候选
+
+- `npm test -- --run`：**154 files / 1416 passed**。
+- `npm run lint`：0 error，4 条既有 unused eslint-disable warning。
+- `npm run format:check`：通过。
+- `npm run build`（`TMP/TEMP=tmp_test/build-tmp`）：通过；initial JS **567.43 KB / gzip 175.85 KB**，CSS **99.95 KB / gzip 20.32 KB**，仍 >500KB chunk warning。
+- `e2e/opt09-review-queue.spec.ts`：**1 passed/15.7s**；`e2e/opt09-annual-matrix.spec.ts`：**1 passed/13.9s**。
+- 当前候选：HEAD `7cce49a57543f8ec3a02c68114eb1500b308eb12`；source **2415 / `c256fd547596d845e50df7daca06b5e28d8cbfa909bf3299c0d5443cd09655a6`**；migration **483 / `cc997bbc2eeffd73b7994ce73e58df900333fdf1ad078c010e6f7fe44154fc46`**。新增 `test_opt10_backup_encryption_postgres.py`、`test_opt10_rate_limit_app.py`、`e2e/opt10-admin-sensitive.spec.ts`、`scripts/opt10_pg_restore_drill.py`；OPT09 两条 + OPT10 敏感揭示 e2e 在当前候选 **3 passed/18.8s**。
+- HEAD `7cce49a` 含其他任务提交与 AccountPicker/MoneyCell 接线；本任务未提交/推送/部署。
+- 整体状态：OPT01–OPT08 本地通过/部分；OPT09 本地通过；OPT10 大部分通过（PG17 实际恢复通过、主应用真实 429 通过，PG16 产品恢复受本机客户端版本限制；多进程限流、跨浏览器未验）。
+
+## 已知回归（本轮未修复，不能算全后端通过）
+
+- `cd nexus_backend && PYTHONPATH=.. python -m pytest tests -q -k "tax"` → **10 failed / 233 passed / 87 skipped / 6060 deselected / 355.76s**。
+- 4 个为本机 Starlette 0.35 不接受 `TestClient(client=...)`：`test_http_pilot_boundary_contract`、`test_http_transport_overview_and_subject_creation`、`test_tax_api.py::test_http_profile_workpaper_review_and_csv`、`test_http_readiness_blocks_before_estimating`；属环境不兼容，不得算产品失败，也不得算通过。
+- 6 个待判定/修复：`test_tax_f_recovery` 的 `approved_version` 期望 0 实际 1；`test_taxi_ad_acceptance_repair` 缺外部映射；`test_taxi_ad_backend_continuity` 费用草稿 `counterparty` 写名称而非 party id；`test_taxi_ad_recovery` 恢复夹具与关系重叠约束冲突；`test_taxi_source_input_limits` 两个用例（畸形行绕过行数上限、boolean 被当 version）未抛 `AccountingError`。
+- 本轮未修改这些断言或夹具以换取全绿；整体仍不能称“全后端通过”。

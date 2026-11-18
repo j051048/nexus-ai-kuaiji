@@ -12,6 +12,7 @@ from .domain import AccountingError
 from .models import cents_to_money
 from .queries import health_cte, page_bounds
 from .review_models import ReviewConfirmRequest, ReviewPreviewRequest
+from .review_risk import REVIEW_RISK_RULE_VERSION, grade_review_risk
 from .service import AccountingService, fingerprint, now
 
 
@@ -74,7 +75,14 @@ class ReviewService:
             "reimbursement",
             "procurement_expense",
             "daily_cashflow",
-        } or risk not in {"all", "basic_exception", "basic_clear"}:
+        } or risk not in {
+            "all",
+            "high",
+            "medium",
+            "low",
+            "basic_exception",
+            "basic_clear",
+        }:
             raise AccountingError("复核分组筛选参数无效")
         if period is not None and (
             len(period) != 7
@@ -90,6 +98,7 @@ class ReviewService:
             cte += """, pending AS (
                 SELECT h.*,v.name AS book_name,v.company_id,v.company_name,v.period,v.period_status,
                     COALESCE(e.template_id,'bank') AS business_template,
+                    e.applicant_id AS applicant_id,
                     CASE WHEN h.basic_exception=1 OR v.period_status<>'open'
                       OR e.applicant_id=? THEN 'basic_exception' ELSE 'basic_clear' END AS review_risk
                 FROM health h JOIN visible_books v ON v.id=h.book_id
@@ -99,16 +108,24 @@ class ReviewService:
             ) """
             values.append(actor.user_id)
             predicate, filters = "1=1", []
+            risk_filter = None
+            if risk in {"high", "basic_exception"}:
+                risk_filter = "review_risk='basic_exception'"
+            elif risk in {"low", "basic_clear"}:
+                risk_filter = "review_risk='basic_clear' AND business_template='bank'"
+            elif risk == "medium":
+                risk_filter = "review_risk='basic_clear' AND business_template<>'bank'"
             for column, value in (
                 ("company_id", company_id),
                 ("book_id", book_id),
                 ("period", period),
                 ("business_template", None if template == "all" else template),
-                ("review_risk", None if risk == "all" else risk),
             ):
                 if value is not None:
                     predicate += f" AND {column}=?"
                     filters.append(value)
+            if risk_filter:
+                predicate += " AND " + risk_filter
             total = conn.execute(
                 cte + "SELECT COUNT(*) FROM pending WHERE " + predicate, values + filters
             ).fetchone()[0]
@@ -137,7 +154,7 @@ class ReviewService:
                     "book_name": row["book_name"],
                     "period": row["period"],
                     "template": row["business_template"],
-                    "risk": row["review_risk"],
+                    **self._risk_in_transaction(conn, actor, row),
                     "description": row["description"],
                     "source_date": row["source_date"],
                     "source_amount": cents_to_money(row["amount_cents"]),
@@ -153,8 +170,31 @@ class ReviewService:
                     "total": total,
                     "has_more": offset + len(rows) < total,
                 },
-                "risk_scope": "basic_checks_only_full_checks_at_preview_and_confirmation",
+                "risk_scope": "deterministic_projection_v1_full_checks_on_preview_and_confirmation",
             }
+
+    def _risk_in_transaction(self, conn, actor, row):
+        draft = self.accounting._editable_draft(
+            conn, row["book_id"], row["id"], row["version"]
+        )
+        value = self.accounting._draft_json(conn, draft, actor)
+        issues = list(value["issues"])
+        responsibility = value["review_responsibility"]
+        if not responsibility["can_review"]:
+            issues.append(responsibility["blocked_reason"])
+        risk = grade_review_risk(
+            issues=issues,
+            period_open=row["period_status"] == "open",
+            self_applicant=row["applicant_id"] == actor.user_id,
+            business_template=row["business_template"],
+        )
+        return {
+            "risk": risk["grade"],
+            "risk_reasons": risk["reasons"],
+            "risk_rule_version": risk["rule_version"],
+            "risk_legacy": row["review_risk"],
+            "issue_count": len(issues),
+        }
 
     def _snapshot(self, conn, actor, item, book):
         draft = self.accounting._editable_draft(

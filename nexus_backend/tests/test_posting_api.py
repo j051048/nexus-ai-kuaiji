@@ -43,6 +43,7 @@ def test_http_bind_manual_reverse_and_balance(tmp_path):
                 reason="B03 HTTP 政策",
             ),
         )
+        opening.approve_policy(LOCAL_ACTOR, policy["id"])
 
         def account(code, name, category="asset", normal="debit"):
             return opening.create_account(

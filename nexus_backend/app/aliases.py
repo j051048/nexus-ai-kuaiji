@@ -105,6 +105,28 @@ class AliasService:
             )
             return {"id": alias_id, "status": "retired"}
 
+    def list(self, actor, company_id, subject_type=None):
+        if subject_type and subject_type not in {"transport_subject", "counterparty"}:
+            raise AccountingError("不支持的别名主体类型", 422)
+        with self.db.transaction(actor=actor) as conn:
+            self.access.company(conn, actor, company_id)
+            where = "a.firm_id=? AND a.company_id=?"
+            params = [actor.firm_id, company_id]
+            if subject_type:
+                where += " AND a.subject_type=?"
+                params.append(subject_type)
+            rows = conn.execute(
+                "SELECT a.id,a.subject_type,a.subject_id,a.alias,a.source,a.status,"
+                "a.effective_from,a.effective_to,a.created_at,"
+                "COALESCE(t.display_name,e.name) AS subject_name "
+                "FROM subject_aliases a "
+                "LEFT JOIN transport_subjects t ON t.id=a.subject_id AND t.firm_id=a.firm_id AND t.company_id=a.company_id "
+                "LEFT JOIN company_master_entities e ON e.id=a.subject_id AND e.firm_id=a.firm_id AND e.company_id=a.company_id AND e.kind='counterparty' "
+                f"WHERE {where} ORDER BY a.alias,a.effective_from DESC",
+                tuple(params),
+            ).fetchall()
+        return {"items": [dict(row) for row in rows]}
+
     def resolve(self, actor, company_id, subject_type, alias, on_date):
         if subject_type not in {"transport_subject", "counterparty"}:
             raise AccountingError("不支持的别名主体类型", 422)

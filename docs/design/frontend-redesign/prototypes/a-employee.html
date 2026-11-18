@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>衡账 · employee · 方向 A</title>
+<link rel="stylesheet" href="shared.css">
+</head>
+<body class="direction-a" data-prototype="employee" data-direction="a">
+<div class="phone-body">
+<header class="appbar">
+  <div class="brand">
+    <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+    <span><span class="brand-name">衡账</span><span class="brand-sub">HENGZHANG · ACCOUNTING</span></span>
+  </div>
+  <div class="context">
+    <span>单位 <b>澄光科技（虚构）</b></span>
+    <span>身份 <b>企业员工 陈晓</b></span>
+    <span class="period">账期 2026-10</span>
+  </div>
+</header>
+<main class="employee-main">
+  <div class="employee-title">
+    <div>
+      <p class="eyebrow">员工自助</p>
+      <h1>我的待办</h1>
+      <p class="small muted">只显示本人提交和被退回的事项。</p>
+    </div>
+    <span class="status warning">1 件待补</span>
+  </div>
+  <div class="employee-stats">
+    <div class="stat"><span>待我提交</span><strong>1</strong></div>
+    <div class="stat"><span>办理中</span><strong>2</strong></div>
+  </div>
+  <section class="returned" aria-labelledby="returned-title">
+    <div class="returned-head">
+      <strong id="returned-title">办公用品采购 · 已退回</strong>
+      <span class="num">¥368.50</span>
+    </div>
+    <div class="returned-body">
+      <dl>
+        <dt>发生日期</dt><dd>2026-10-02</dd>
+        <dt>交易对方</dt><dd>示例文具店</dd>
+        <dt>退回人</dt><dd>企业财务 周倩</dd>
+        <dt>退回时间</dt><dd>2026-10-15 14:22</dd>
+      </dl>
+      <p class="required"><strong>需要补：</strong>发票抬头与公司名称不一致，请补开发票或上传盖章说明。</p>
+      <div class="actions">
+        <button class="btn primary" type="button">补充材料</button>
+        <button class="btn" type="button">查看原提交</button>
+      </div>
+    </div>
+  </section>
+  <section class="panel employee-section" aria-labelledby="new-expense">
+    <h2 id="new-expense">提交新报销</h2>
+    <div class="upload">
+      <strong>拍照或上传票据</strong>
+      <span>JPG / PNG / PDF，单张不超过 10 MB</span>
+      <button class="btn" type="button">选择文件</button>
+    </div>
+    <form class="employee-form" aria-label="提交新报销">
+      <div class="two">
+        <div class="field"><label for="date">发生日期</label><input id="date" type="date" value="2026-10-18"></div>
+        <div class="field"><label for="amount">金额（元）</label><input id="amount" class="num" inputmode="decimal" value="128.50"></div>
+      </div>
+      <div class="field"><label for="summary">事由</label><input id="summary" value="客户拜访交通费"></div>
+      <div class="field"><label for="payee">交易对方</label><input id="payee" value="示例出租车公司"></div>
+    </form>
+    <div class="employee-actions">
+      <button class="btn" type="button">暂存</button>
+      <button class="btn primary" type="button">提交审批</button>
+    </div>
+    <p class="small muted" style="margin-top:8px">提交后进入部门审批；退回或补件会回到本页。</p>
+  </section>
+</main>
+</div>
+</body>
+</html>

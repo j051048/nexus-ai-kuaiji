@@ -94,3 +94,26 @@ def test_taxi_alias_write_is_mirrored_to_generic_table(business):
         row = conn.execute("SELECT subject_type,status FROM subject_aliases WHERE alias='旧牌-W'").fetchone()
     assert row["subject_type"] == "transport_subject"
     assert row["status"] == "approved"
+
+
+def test_counterparty_aliases_are_listed_for_management(business):
+    case = business
+    svc = AliasService(case.db)
+    ledger = LedgersService(case.db)
+    company_id = case.book["company_id"]
+    entity = ledger.create_entity(
+        case.manager,
+        case.book["id"],
+        EntityCreate(kind="counterparty", code="ALIAS-L1", name="虚构客商列表"),
+    )
+    created = svc.add(
+        case.manager,
+        company_id,
+        AliasCreate(subject_type="counterparty", subject_id=entity["id"], alias="列表旧称", source="测试台账", effective_from="2026-10-01"),
+    )
+    listed = svc.list(case.manager, company_id, "counterparty")
+    row = next(item for item in listed["items"] if item["id"] == created["id"])
+    assert row["alias"] == "列表旧称"
+    assert row["subject_name"] == "虚构客商列表"
+    assert row["status"] == "approved"
+    assert row["effective_from"] == "2026-10-01"

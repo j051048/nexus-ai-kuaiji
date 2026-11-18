@@ -13,7 +13,7 @@ def test_historical_account_name_outside_current_catalog_is_reported_before_acce
     _, report = ready(c)
     problems = report['report']['issues']
     assert any(item['code'] == 'ACCOUNT_MAPPING_UNSUPPORTED' and item['severity'] == 'blocking' for item in problems)
-    assert client.post(c.path + '/accept', headers=c.finance, json=confirmation(c, report)).status_code == 409
+    assert client.post(c.path + '/accept', headers=c.reviewer, json=confirmation(c, report)).status_code == 409
     assert detail(c)['project']['status'] == 'needs_attention'
     with c.db.transaction(actor=c.manager) as conn:
         assert conn.execute('SELECT count(*) FROM migration_cutovers WHERE project_id=?', (c.project,)).fetchone()[0] == 0

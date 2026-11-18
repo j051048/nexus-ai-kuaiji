@@ -156,6 +156,7 @@ def _reviewed_close(c, adjustment=False, approved_draft=False, extra_report=Fals
             reason="P0合成政策",
         ),
     )
+    opening.approve_policy(c.manager, policy["id"])
     accounts = {}
     for code, name, category, normal in (
         ("1002", "银行存款", "asset", "debit"),

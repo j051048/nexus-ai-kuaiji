@@ -32,16 +32,22 @@ def previous_profile(service, actor):
         if finance
         else "approver"
         if approve
-        else "employee"
-        if submit
         else "manager"
         if manage
+        else "employee"
+        if submit
         else "accountant"
         if can_review
         else "viewer"
     )
     return {
         "role": primary,
+        "display_role": {
+            "owner": "firm_owner",
+            "admin": "admin",
+            "reviewer": "reviewer",
+            "operator": "accountant",
+        }.get(role, primary),
         "can_submit": submit,
         "can_approve": approve,
         "can_finance": finance,
