@@ -161,6 +161,7 @@ interface WorkspaceRouteApp {
   deliveryTarget: string;
   migrationTarget: string;
   operationsTarget: string;
+  operationsAlert: string;
   operationsCompanies: OperationsCompany[];
   queueTarget: string;
   queueJobTarget: string;
@@ -294,6 +295,7 @@ export function WorkspaceRouteContent({
     deliveryTarget,
     migrationTarget,
     operationsTarget,
+    operationsAlert,
     operationsCompanies,
     queueTarget,
     queueJobTarget,
@@ -374,6 +376,17 @@ export function WorkspaceRouteContent({
             setWorkPeriod('');
           }}
           onAccounting={() => navigate('accounting')}
+          onViewCompleted={(task) => {
+            setWorkCompany(task.company_id);
+            setWorkPeriod(task.period || '');
+            if (task.kind === 'review' && task.book_id) {
+              setWorkBook(task.book_id);
+              navigate('accounting');
+            } else if (task.event_id) {
+              setBusinessTarget(task.event_id);
+              navigate('business');
+            }
+          }}
           onMonthly={() => navigate('monthly')}
           onReview={() => navigate('review')}
           onBriefing={(target) => {
@@ -610,6 +623,7 @@ export function WorkspaceRouteContent({
               ? operationsCompanies.filter((c) => c.id === operationsTarget)
               : operationsCompanies
           }
+          initialAlertId={operationsAlert}
           onBusyChange={changeBusinessBusy}
         />
       ) : routeView === 'operations' ? (

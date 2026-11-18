@@ -187,9 +187,8 @@ test('待办打开前重新核验实时授权，撤权后不展示原件或凭�
       .filter({ hasText: name })
       .getByRole('button', { name: '同屏复核', exact: true })
       .click();
-    await expect(
-      page.getByRole('alert').filter({ hasText: '事项已处理、权限已变更或不存在' }),
-    ).toBeVisible();
+    // 撤权后服务端按不可见统一返回 404，不能据此探测对象是否仍存在。
+    await expect(page.getByRole('dialog', { name: '待办不可见', exact: true })).toBeVisible();
     await expect(
       page.getByRole('dialog', { name: '原件与凭证，一起核对', exact: true }),
     ).toHaveCount(0);

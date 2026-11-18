@@ -1,6 +1,12 @@
 from fastapi import APIRouter, Depends, Query, Request
 
-from .models import ReportCommand, ReportGenerate, ReportNote
+from .models import (
+    ReportCommand,
+    ReportDifferenceNote,
+    ReportGenerate,
+    ReportNote,
+    ReportReconcile,
+)
 from .profit import ProfitMappingWrite
 
 
@@ -106,5 +112,32 @@ def build_report_router(actor_dependency):
         reports=Depends(service),
     ):
         return reports.add_note(current, report_id, payload)
+
+    @router.post("/{report_id}/reconcile")
+    def reconcile(
+        report_id: str,
+        payload: ReportReconcile,
+        current=Depends(actor_dependency),
+        reports=Depends(service),
+    ):
+        return reports.reconcile(current, report_id, payload)
+
+    @router.post("/{report_id}/reconciliation-notes", status_code=201)
+    def reconciliation_note(
+        report_id: str,
+        payload: ReportDifferenceNote,
+        current=Depends(actor_dependency),
+        reports=Depends(service),
+    ):
+        return reports.explain_difference(current, report_id, payload)
+
+    @router.get("/{report_id}/reconciliation-notes")
+    def reconciliation_notes(
+        report_id: str,
+        reference_sha256: str = Query(pattern=r"^[0-9a-f]{64}$"),
+        current=Depends(actor_dependency),
+        reports=Depends(service),
+    ):
+        return reports.reconciliation_notes(current, report_id, reference_sha256)
 
     return router

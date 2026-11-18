@@ -102,8 +102,7 @@ export function SubjectAliasPanel({
                     <strong>{item.alias}</strong>
                     <span>→ {item.subject_name || item.subject_id}</span>
                     <small>
-                      {item.status === 'approved' ? '生效' : '已停用'} ·{' '}
-                      {item.effective_from}
+                      {item.status === 'approved' ? '生效' : '已停用'} · {item.effective_from}
                       {item.effective_to ? ` 至 ${item.effective_to}` : ' 起'}
                     </small>
                   </div>
@@ -173,7 +172,11 @@ export function SubjectAliasPanel({
               </label>
               <label>
                 来源
-                <input required value={source} onChange={(event) => setSource(event.target.value)} />
+                <input
+                  required
+                  value={source}
+                  onChange={(event) => setSource(event.target.value)}
+                />
               </label>
               <label>
                 生效日

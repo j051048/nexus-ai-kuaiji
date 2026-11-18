@@ -78,6 +78,29 @@ describe('formal close response boundary', () => {
       ),
     ).toThrow();
   });
+  it('keeps trial label and reasons, and defaults legacy rows to formal', () => {
+    const [formal] = parseReportRows({ reports: [report] }, scope);
+    expect(formal.mode).toBe('formal');
+    expect(formal.mode_label).toBe('正式');
+    expect(formal.trial_reasons).toEqual([]);
+    const [trial] = parseReportRows(
+      {
+        reports: [
+          {
+            ...report,
+            mode: 'trial',
+            mode_label: '试算，不可对外',
+            trial_reasons: ['核算政策尚未批准', '  '],
+          },
+        ],
+      },
+      scope,
+    );
+    expect(trial.mode).toBe('trial');
+    expect(trial.mode_label).toBe('试算，不可对外');
+    expect(trial.trial_reasons).toEqual(['核算政策尚未批准']);
+    expect(() => parseReportRows({ reports: [{ ...report, mode: 'published' }] }, scope)).toThrow();
+  });
   it('keeps a created but blocked preflight blocked and preserves actionable reason when rows are empty', () => {
     const [value] = parseCloseRows({ runs: [close] }, scope);
     expect(value.status).toBe('preflight_failed');

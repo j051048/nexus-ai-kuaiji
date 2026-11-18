@@ -4,7 +4,7 @@ from uuid import uuid4
 import pytest
 from app.accounting.domain import Actor
 from test_stage8_cases_api import client, cmd, prepare
-from test_business_api import auth, create, attachment_bytes
+from test_business_api import auth, create, attachment_bytes, local_client
 
 
 @pytest.mark.parametrize('persona, role', [('employee', 'employee'), ('department', 'approver'), ('finance', 'finance'), ('accountant', 'accountant')])
@@ -73,12 +73,11 @@ def test_http_workspace_authentication_and_input_boundaries(client):
 
 
 def test_http_exact_ocr_job_is_scoped_to_current_enterprise_memberships(tmp_path):
-    from fastapi.testclient import TestClient
     from app.main import create_app
     from app.accounting.seed import LOCAL_ACTOR
     from test_intelligence_workflow import FakeProvider
     app = create_app(tmp_path / 'exact-ocr.db', seed=True, attachment_root=tmp_path / 'private', intelligence_provider=FakeProvider(), queue_worker_enabled=False)
-    with TestClient(app, base_url='http://127.0.0.1', client=('127.0.0.1', 5678)) as client:
+    with local_client(app, 5678) as client:
         employee = auth(client, 'employee')
         companies = client.get('/api/business/context', headers=employee).json()['companies'][:2]
         jobs = []

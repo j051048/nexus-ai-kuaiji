@@ -33,6 +33,7 @@ function bound(value: unknown, scope: CloseScope, legacy = false) {
     created_by: legacy && row.created_by === null ? '' : text(row.created_by),
   };
 }
+export type ReportMode = 'trial' | 'formal';
 export interface ReportRow {
   id: string;
   version: number;
@@ -40,6 +41,13 @@ export interface ReportRow {
   created_by: string;
   content_hash: string;
   content: ReportContent;
+  mode: ReportMode;
+  mode_label: string;
+  trial_reasons: string[];
+  standard_kind: string;
+  policy_version: number | null;
+  policy_approver: string | null;
+  mapping_fingerprint: string | null;
 }
 export interface ReportContent {
   balance_sheet: Record<'assets' | 'liabilities' | 'equity' | 'unclosed_profit', number> & {
@@ -115,11 +123,29 @@ export function parseReportRows(value: unknown, scope: CloseScope): ReportRow[] 
       throw new Error('报表状态未知。');
     const hash = text(row.content_hash);
     if (!/^[a-f0-9]{64}$/.test(hash)) throw new Error('报表指纹无效。');
+    const mode = row.mode === 'trial' ? 'trial' : 'formal';
+    if (row.mode !== undefined && row.mode !== 'trial' && row.mode !== 'formal')
+      throw new Error('报表模式未知，请重新读取。');
     return {
       ...identity,
       status: String(row.status),
       content_hash: hash,
       content: parseReportContent(row.content_json),
+      mode,
+      mode_label: mode === 'trial' ? '试算，不可对外' : '正式',
+      trial_reasons: Array.isArray(row.trial_reasons)
+        ? row.trial_reasons.filter(
+            (item): item is string => typeof item === 'string' && !!item.trim(),
+          )
+        : [],
+      standard_kind: typeof row.standard_kind === 'string' ? row.standard_kind : '',
+      policy_version:
+        typeof row.policy_version === 'number' && Number.isSafeInteger(row.policy_version)
+          ? row.policy_version
+          : null,
+      policy_approver: typeof row.policy_approver === 'string' ? row.policy_approver : null,
+      mapping_fingerprint:
+        typeof row.mapping_fingerprint === 'string' ? row.mapping_fingerprint : null,
     };
   });
 }

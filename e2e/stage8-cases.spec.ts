@@ -122,12 +122,14 @@ test('真实补件站内闭环：员工只见本人公开请求，追加原件�
   request,
 }) => {
   const { headers, event, mapping, task } = await setup(request);
-  await page.goto('/');
+  await page.goto('/workspace/home');
   await choosePersona(page, 'employee');
-  await page.evaluate((id) => {
-    window.history.pushState({}, '', `/workspace/cases?case=${id}`);
-    window.dispatchEvent(new PopStateEvent('popstate'));
-  }, task.id);
+  const employeeTask = page
+    .locator('article.workspace-task')
+    .filter({ hasText: '补充业务资料' })
+    .first();
+  await expect(employeeTask).toBeVisible();
+  await employeeTask.getByRole('button', { name: '打开处理任务', exact: true }).click();
   await expect(page.getByText('会计内部交易调查不可见', { exact: true })).toHaveCount(0);
 
   await expect(
@@ -143,11 +145,14 @@ test('真实补件站内闭环：员工只见本人公开请求，追加原件�
   await page.getByRole('button', { name: '提交补件核验', exact: true }).click();
   await expect(page.getByText('已提交 · 待核验', { exact: true })).toBeVisible();
   await page.screenshot({ path: 'artifacts/stage8-employee-supplement.png', fullPage: true });
+  await page.goto('/workspace/home');
   await choosePersona(page, 'accountant');
-  await page.evaluate((id) => {
-    window.history.pushState({}, '', `/workspace/cases?case=${id}`);
-    window.dispatchEvent(new PopStateEvent('popstate'));
-  }, task.id);
+  const accountantTask = page.locator(`[data-task-key*="${task.id}"]`).first();
+  await expect(accountantTask).toBeVisible();
+  await accountantTask.getByRole('button', { name: '打开处理任务', exact: true }).click();
+  await expect(
+    page.getByRole('heading', { name: '第八阶段补充合同用途', exact: true }),
+  ).toBeVisible();
 
   await page.getByLabel('异常处理操作', { exact: true }).selectOption('accept');
   await page.getByLabel('替代 ' + image.name, { exact: true }).check();
@@ -174,6 +179,8 @@ test('真实补件站内闭环：员工只见本人公开请求，追加原件�
   expect(detail.history.every((row: { audience: string }) => row.audience === 'requester')).toBe(
     true,
   );
+  await page.goto('/workspace/home');
+  await expect(page.locator(`[data-task-key*="${task.id}"]`)).toHaveCount(0);
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(
     true,

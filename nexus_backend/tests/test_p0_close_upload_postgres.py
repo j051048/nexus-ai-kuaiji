@@ -43,6 +43,7 @@ from app.opening.models import (
     PolicyCreate,
 )
 from app.opening.service import OpeningService
+from policy_fixtures import approve_policy_independently
 from app.posting.models import OpeningBind
 from app.posting.service import PostingService
 from app.reports.models import ReportCommand
@@ -156,7 +157,7 @@ def _reviewed_close(c, adjustment=False, approved_draft=False, extra_report=Fals
             reason="P0合成政策",
         ),
     )
-    opening.approve_policy(c.manager, policy["id"])
+    approve_policy_independently(opening, c.db, c.manager, policy["id"])
     accounts = {}
     for code, name, category, normal in (
         ("1002", "银行存款", "asset", "debit"),

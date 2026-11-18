@@ -71,6 +71,16 @@ export type WorkspaceTask = {
   responsible: string;
   overdue: boolean;
   amount?: string | null;
+  /** Server-derived envelope; never grants access by itself. */
+  period?: string | null;
+  object_type?: TaskKind;
+  object_id?: string;
+  object_version?: string;
+  available_action?: 'can_act' | 'read_only' | 'no_access';
+  business_action?: string;
+  current_handler?: string;
+  alternate_actions?: string[];
+  amount_impact?: string | null;
 };
 export type WorkspaceTasks = {
   tasks: WorkspaceTask[];
@@ -187,7 +197,7 @@ export function taskDestination(task: WorkspaceTask, client = false) {
     case 'delivery':
       return { type: 'delivery' as const, id: task.ref, bookId: task.book_id };
     case 'alert':
-      return { type: 'alert' as const, id: task.company_id };
+      return { type: 'alert' as const, id: task.ref, companyId: task.company_id };
     case 'migration':
       return { type: 'migration' as const, bookId: task.book_id, id: task.ref };
   }

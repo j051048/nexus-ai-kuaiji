@@ -546,6 +546,7 @@ def test_report_requires_template_for_company_standard(business):
     case = business
     setup_b03(case)
     from app.accounting.service import now
+
     with case.db.transaction(write=True) as conn:
         conn.execute(
             "INSERT INTO report_templates(id,name,standard,version,effective_from,definition_json,active,created_at) "

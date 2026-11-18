@@ -19,6 +19,7 @@ from app.opening.models import (
     PolicyCreate,
 )
 from app.opening.service import OpeningService
+from policy_fixtures import approve_policy_independently
 from app.posting.models import ManualLine, ManualVoucher, OpeningBind
 from app.posting.service import PostingService
 from test_business_postgres import business_case, business_postgres  # noqa: F401
@@ -104,7 +105,7 @@ def _manual(c):
             reason="独立复核合成政策",
         ),
     )
-    opening.approve_policy(c.owner, policy["id"])
+    approve_policy_independently(opening, c.db, c.owner, policy["id"])
     accounts = [
         opening.create_account(
             c.owner,

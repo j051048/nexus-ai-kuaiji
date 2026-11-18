@@ -8,11 +8,17 @@ import { parseOpeningLines, type OpeningAccount } from './opening-preparation';
 type Policy = {
   id: string;
   ledger_id: string;
+  version: number;
   standard_kind: string;
   taxpayer_kind: string;
   effective_from: string;
   effective_to: string | null;
   status: string;
+  approved_by: string | null;
+  approved_at: string | null;
+  is_synthetic: boolean | number;
+  mapping_fingerprint: string | null;
+  mapping_matches: boolean;
 };
 type Package = { id: string; ledger_id: string; target_period: string; policy_id: string };
 type Version = { id: string; version: number; status: string; submitted_by: string | null };
@@ -123,6 +129,29 @@ export function OpeningPreparationPanel({
     },
     `${scope}:${selectedPackage}:${query.data?.packages.map((row) => row.id).join(',')}`,
   );
+  async function approvePolicy(policyId: string) {
+    if (lock.current || busy) return;
+    lock.current = true;
+    setBusy(true);
+    onBusyChange(true);
+    setError('');
+    setNotice('');
+    try {
+      await api(`/opening/policies/${encodeURIComponent(policyId)}/approve`, session, {
+        method: 'POST',
+        body: {},
+      });
+      setNotice('政策已批准；已生成的试算报表不会因此转为正式，需重新生成。');
+      query.reload();
+    } catch (failure) {
+      setError(errorMessage(failure) + ' 请重新读取政策核对结果。');
+    } finally {
+      lock.current = false;
+      setBusy(false);
+      onBusyChange(false);
+    }
+  }
+
   async function command(path: string, body: object) {
     if (lock.current || uncertain || !query.data || reason.trim().length < 3) return;
     lock.current = true;
@@ -205,12 +234,35 @@ export function OpeningPreparationPanel({
       </label>
       {data && step === 'template' && (
         <>
-          <ul>
+          <ul className="policy-list">
             {data.policies.map((row) => (
               <li key={row.id}>
-                {row.standard_kind === 'small_enterprise' ? '小企业会计准则' : '企业会计准则'} ·{' '}
-                {row.effective_from} 至 {row.effective_to || '长期'} ·{' '}
-                {row.status === 'active' ? '有效' : '已停用'}
+                <strong>
+                  {row.standard_kind === 'small_enterprise' ? '小企业会计准则' : '企业会计准则'} · V
+                  {row.version} · {row.status === 'active' ? '有效' : '已停用'}
+                </strong>
+                <span>
+                  生效 {row.effective_from} 至 {row.effective_to || '长期'} · 批准人{' '}
+                  {row.approved_by || '未批准'}
+                  {row.approved_at ? ` · ${row.approved_at.slice(0, 10)}` : ''}
+                </span>
+                <span>
+                  {row.is_synthetic ? '合成演练政策' : '客户确认政策'} · 映射：
+                  {!row.approved_by
+                    ? '批准时冻结'
+                    : row.mapping_matches
+                      ? '与批准时一致'
+                      : '批准后已变化，需重新批准'}
+                </span>
+                {row.status === 'active' && !row.approved_by && (
+                  <button
+                    className="button secondary"
+                    disabled={busy}
+                    onClick={() => void approvePolicy(row.id)}
+                  >
+                    批准本政策
+                  </button>
+                )}
               </li>
             ))}
           </ul>

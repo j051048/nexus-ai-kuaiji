@@ -11,7 +11,13 @@ import {
 } from './firm-inbox-contract';
 import type { WorkspaceTask } from './workspace-types';
 import { Bell, CheckCircle2, RefreshCw, UserRoundCheck } from 'lucide-react';
-import { api, errorMessage } from './api';
+import { api, ApiError, errorMessage } from './api';
+import { taskOpenErrorMessage, taskStale } from './task-availability';
+import {
+  TaskUnavailableDialog,
+  type TaskUnavailableReason,
+  type TaskUnavailableTask,
+} from './TaskUnavailableDialog';
 import {
   followupRows,
   followupSummary,
@@ -76,6 +82,12 @@ export function FirmInbox({
   const [message, setMessage] = useState('请在今天完成当前待办，如缺少资料请直接反馈。');
   const [busy, setBusy] = useState('');
   const [actionError, setError] = useState('');
+  const [unavailable, setUnavailable] = useState<{
+    task: TaskUnavailableTask;
+    reason: TaskUnavailableReason;
+    detail?: string;
+  } | null>(null);
+  const [latestBusy, setLatestBusy] = useState(false);
   const [revision, setRevision] = useState(0);
   const inbox = useMonthlyData<unknown>(
     session,
@@ -178,18 +190,57 @@ export function FirmInbox({
         current.kind !== item.kind ||
         current.ref !== item.ref ||
         current.company_id !== item.company_id ||
-        current.book_id !== item.book_id
+        current.book_id !== item.book_id ||
+        (item.object_version && current.object_version !== item.object_version)
       )
-        throw new Error('待办范围已变化，请刷新列表后重新打开。');
+        throw new Error('待办内容已更新，请刷新列表后重新打开。');
       onOpen?.(current);
     } catch (caught) {
       if (stamp === epoch.current) {
-        setError(errorMessage(caught));
-        setRevision((n) => n + 1);
+        const task = item;
+        if (taskStale(caught)) {
+          setUnavailable({ task, reason: 'stale' });
+        } else if (caught instanceof ApiError && caught.status === 410) {
+          setUnavailable({ task, reason: 'completed', detail: caught.message });
+          setRevision((n) => n + 1);
+        } else if (caught instanceof ApiError && [403, 404].includes(caught.status)) {
+          setUnavailable({ task, reason: caught.status === 403 ? 'forbidden' : 'missing' });
+          setRevision((n) => n + 1);
+        } else {
+          setError(taskOpenErrorMessage(caught));
+          setRevision((n) => n + 1);
+        }
       }
     } finally {
       opening.current = false;
       if (stamp === epoch.current) setBusy('');
+    }
+  }
+
+  async function openLatest() {
+    if (!unavailable || latestBusy || !onOpen) return;
+    setLatestBusy(true);
+    try {
+      const current = await api<WorkspaceTask>(
+        `/workspace/tasks/${encodeURIComponent(unavailable.task.kind)}/${encodeURIComponent(
+          unavailable.task.ref,
+        )}`,
+        session,
+      );
+      setUnavailable(null);
+      onOpen(current);
+    } catch (caught) {
+      setUnavailable({
+        task: unavailable.task,
+        reason:
+          caught instanceof ApiError && caught.status === 403
+            ? 'forbidden'
+            : caught instanceof ApiError && caught.status === 404
+              ? 'missing'
+              : 'stale',
+      });
+    } finally {
+      setLatestBusy(false);
     }
   }
   const selectedTasks = selected;
@@ -504,6 +555,19 @@ export function FirmInbox({
           </div>
         )}
       </section>
+      {unavailable && (
+        <TaskUnavailableDialog
+          task={unavailable.task}
+          reason={unavailable.reason}
+          handler={unavailable.task.current_handler}
+          detail={unavailable.detail}
+          busy={latestBusy}
+          onClose={() => setUnavailable(null)}
+          onOpenLatest={
+            unavailable.reason === 'stale' && onOpen ? () => void openLatest() : undefined
+          }
+        />
+      )}
       {data && (
         <nav className="cockpit-pages" aria-label="待办分页">
           <span>共 {data.pagination.total} 项</span>

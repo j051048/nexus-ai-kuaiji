@@ -92,6 +92,17 @@ async function blockedCloseFixture(request: APIRequestContext) {
       },
     }),
   );
+  const reviewerSession = await checked(
+    await request.get('/api/session?persona=reviewer'),
+    200,
+  );
+  await checked(
+    await request.post(`/api/opening/policies/${policy.id}/approve`, {
+      headers: { Authorization: `Bearer ${reviewerSession.token}` },
+      data: {},
+    }),
+    200,
+  );
   const accounts: { id: string }[] = [];
   for (const item of [
     { code: '1002', name: '虚构银行存款', category: 'asset', normal_balance: 'debit' },

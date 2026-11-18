@@ -57,6 +57,44 @@
 .formal-close-evidence li {
   margin-block: var(--space-2);
 }
+.formal-report-mode {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-left-width: 3px;
+  background: var(--surface-muted);
+  overflow-wrap: anywhere;
+}
+.formal-report-mode strong {
+  font-size: 14px;
+}
+.formal-report-mode span {
+  color: var(--text-muted);
+}
+.formal-report-mode.trial {
+  border-color: var(--status-danger);
+  background: var(--status-danger-soft);
+}
+.formal-report-mode.trial strong,
+.formal-report-mode.trial span {
+  color: var(--status-danger);
+}
+.formal-report-mode ul {
+  flex-basis: 100%;
+  margin: var(--space-1) 0 0;
+  padding-left: 20px;
+}
+.formal-report-mode li {
+  margin-block: 2px;
+}
+.formal-report-blocked {
+  color: var(--status-danger);
+  font-weight: 600;
+}
 .formal-close-report {
   margin-top: var(--space-3);
 }
@@ -190,6 +228,31 @@
 .setup-wizard-note {
   color: var(--text-muted, #475569);
   font-size: 0.85rem;
+}
+.policy-list {
+  display: grid;
+  gap: var(--space-2);
+  margin: var(--space-3) 0;
+  padding: 0;
+  list-style: none;
+}
+.policy-list li {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  background: var(--surface-muted);
+}
+.policy-list strong {
+  font-size: 14px;
+}
+.policy-list span {
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+.policy-list button {
+  justify-self: start;
+  margin-top: var(--space-1);
 }
 .opening-preparation {
   display: grid;

@@ -21,6 +21,7 @@ from app.opening.service import OpeningService
 from app.posting.models import ManualLine, ManualVoucher, OpeningBind, PostDraft, ReverseVoucher
 from app.posting.service import PostingService
 from period_fixtures import restore_period_state
+from policy_fixtures import approve_policy_independently
 from test_business import business
 
 
@@ -56,7 +57,7 @@ def frozen_opening(case):
             reason="B03 期初政策",
         ),
     )
-    opening.approve_policy(case.manager, policy["id"])
+    approve_policy_independently(opening, case.db, case.manager, policy["id"])
 
     def account(code, name, category="asset", normal="debit"):
         return opening.create_account(

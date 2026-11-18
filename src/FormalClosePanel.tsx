@@ -134,6 +134,32 @@ function EvidenceRows({
   );
 }
 export const CloseEvidenceRows = EvidenceRows;
+export function ReportModeNotice({ report }: { report: ReportRow }) {
+  if (report.mode === 'formal') {
+    return (
+      <p className="formal-report-mode formal">
+        <strong>正式</strong>
+        <span>已按批准政策与冻结映射生成，可进入后续复核流程。</span>
+      </p>
+    );
+  }
+  return (
+    <div className="formal-report-mode trial" role="alert">
+      <strong>{report.mode_label}</strong>
+      <span>本版只能内部核对，不能复核、发布、交付或对外导出。</span>
+      {report.trial_reasons.length > 0 ? (
+        <ul>
+          {report.trial_reasons.map((reason) => (
+            <li key={reason}>{reason}</li>
+          ))}
+        </ul>
+      ) : (
+        <p>服务端未返回试算原因，请重新生成或联系管理员核对政策。</p>
+      )}
+    </div>
+  );
+}
+
 export function FrozenCloseReport({ report }: { report: ReportRow }) {
   const content = report.content;
   const groups = [
@@ -515,12 +541,17 @@ function CloseContent({ session, bookId, period, canReview, companyId, accountLa
                 <option value="">请选择要办理的报表版本</option>
                 {data.reports.map((item) => (
                   <option key={item.id} value={item.id}>
-                    报表 V{item.version} · {labels[item.status]}
+                    报表 V{item.version} · {item.mode_label} · {labels[item.status]}
                   </option>
                 ))}
               </select>
             </label>
-            {report && <FrozenCloseReport report={report} />}
+            {report && (
+              <>
+                <ReportModeNotice report={report} />
+                <FrozenCloseReport report={report} />
+              </>
+            )}
             <div className="formal-close-actions">
               <button
                 className="button secondary"
@@ -539,7 +570,8 @@ function CloseContent({ session, bookId, period, canReview, companyId, accountLa
               {report?.status === 'draft' && (
                 <button
                   className="button secondary"
-                  disabled={disabled}
+                  disabled={disabled || report.mode === 'trial'}
+                  title={report.mode === 'trial' ? report.mode_label : undefined}
                   onClick={() =>
                     void write(
                       `/reports/${report.id}/validate`,
@@ -556,7 +588,9 @@ function CloseContent({ session, bookId, period, canReview, companyId, accountLa
                 <button
                   className="button secondary"
                   disabled={
-                    needsReason || !canIndependentlyReview(report, session.user_id, canReview)
+                    needsReason ||
+                    report.mode === 'trial' ||
+                    !canIndependentlyReview(report, session.user_id, canReview)
                   }
                   onClick={() =>
                     void write(
@@ -571,19 +605,30 @@ function CloseContent({ session, bookId, period, canReview, companyId, accountLa
                 </button>
               )}
             </div>
-            {report?.status === 'validated' && report.created_by === session.user_id && (
-              <p>你是报表编制人，请另一位获授权复核员办理独立复核。</p>
+            {report?.mode === 'trial' && (
+              <p>试算版不能核验或复核；先按上方原因补齐政策、批准或映射后重新生成。</p>
             )}
+            {report?.status === 'validated' &&
+              report.mode === 'formal' &&
+              report.created_by === session.user_id && (
+                <p>你是报表编制人，请另一位获授权复核员办理独立复核。</p>
+              )}
           </article>
           <article>
             <h3>4. 预检、锁期与发布</h3>
             <p>处理过证据、配置或草稿后须重新预检；预检返回成功并不代表已经通过。</p>
+            {report?.mode === 'trial' && (
+              <p className="formal-report-blocked">
+                当前选择的是「{report.mode_label}」，预检、锁期与发布不可用。
+              </p>
+            )}
             <button
               className="button secondary"
               disabled={
                 needsReason ||
                 !!locked ||
                 !report ||
+                report.mode === 'trial' ||
                 !['reviewed', 'published'].includes(report.status)
               }
               onClick={() =>
@@ -678,7 +723,7 @@ function CloseContent({ session, bookId, period, canReview, companyId, accountLa
                   {close.status === 'locked' && (
                     <button
                       className="button"
-                      disabled={needsReason}
+                      disabled={needsReason || report?.mode === 'trial'}
                       onClick={() =>
                         void write(
                           `/b04-close/${close.id}/publish`,

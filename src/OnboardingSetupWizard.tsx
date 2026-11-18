@@ -90,6 +90,11 @@ export function SetupStepList({
               </span>
             </div>
             <p>{step.detail}</p>
+            {step.complete && step.id === 'template' && onOpen && (
+              <button type="button" className="button secondary" onClick={() => onOpen(step)}>
+                查看核算政策
+              </button>
+            )}
             {!step.complete && (
               <>
                 <p className="formal-close-guidance">

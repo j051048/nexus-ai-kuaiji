@@ -20,6 +20,8 @@ import {
   X,
 } from 'lucide-react';
 import { api, ApiError, errorMessage } from './api';
+import { taskOpenErrorMessage, taskStale } from './task-availability';
+import { TaskUnavailableDialog, type TaskUnavailableReason } from './TaskUnavailableDialog';
 import { AgentCompanyPicker } from './AgentCompanyPicker';
 import {
   formatTaskAmount,
@@ -61,6 +63,7 @@ export function WorkspaceHome({
   onNew,
   onCompanyChange,
   onAccounting,
+  onViewCompleted,
   onMonthly,
   onMaterials,
   onBusiness,
@@ -82,6 +85,7 @@ export function WorkspaceHome({
   onNew: (template: BusinessTemplate) => void;
   onCompanyChange?: (companyId: string) => void;
   onAccounting: () => void;
+  onViewCompleted?: (task: WorkspaceTask) => void;
   onMonthly?: () => void;
   onMaterials?: () => void;
   onBusiness?: () => void;
@@ -132,6 +136,12 @@ export function WorkspaceHome({
   const [loading, setLoading] = useState(false);
   const [opening, setOpening] = useState('');
   const [openError, setOpenError] = useState('');
+  const [unavailable, setUnavailable] = useState<{
+    task: WorkspaceTask;
+    reason: TaskUnavailableReason;
+    detail?: string;
+  } | null>(null);
+  const [latestBusy, setLatestBusy] = useState(false);
   const [privacyRevision, setPrivacyRevision] = useState(0);
   const epoch = useRef(0);
   const alive = useRef(true);
@@ -301,18 +311,74 @@ export function WorkspaceHome({
         session,
         { signal: controller.signal },
       );
-      if (alive.current && scope.current === started && !controller.signal.aborted) onOpen(current);
+      if (
+        current.kind !== task.kind ||
+        current.ref !== task.ref ||
+        current.company_id !== task.company_id ||
+        (task.object_version && current.object_version !== task.object_version)
+      )
+        throw new Error('待办内容已更新，请刷新列表后重新打开。');
+      if (alive.current && scope.current === started && !controller.signal.aborted) {
+        onOpen(current);
+      }
     } catch (caught) {
       if (alive.current && scope.current === started && !controller.signal.aborted) {
-        setValue(null);
-        if (caught instanceof ApiError && [401, 403, 404].includes(caught.status))
+        if (taskStale(caught)) {
+          setUnavailable({ task, reason: 'stale' });
+        } else if (caught instanceof ApiError && caught.status === 403) {
+          setUnavailable({ task, reason: 'forbidden' });
+          setValue(null);
           setPrivacyRevision((value) => value + 1);
-        setOpenError(errorMessage(caught));
-        void load();
+          void load();
+        } else if (caught instanceof ApiError && caught.status === 410) {
+          setUnavailable({ task, reason: 'completed', detail: caught.message });
+          setValue(null);
+          setPrivacyRevision((value) => value + 1);
+          void load();
+        } else if (caught instanceof ApiError && caught.status === 404) {
+          setUnavailable({ task, reason: 'missing' });
+          setValue(null);
+          setPrivacyRevision((value) => value + 1);
+          void load();
+        } else {
+          if (caught instanceof ApiError && caught.status === 401) {
+            setValue(null);
+            setPrivacyRevision((value) => value + 1);
+            void load();
+          }
+          setOpenError(taskOpenErrorMessage(caught));
+        }
       }
     } finally {
       if (alive.current && scope.current === started) setOpening('');
       openingLock.current = false;
+    }
+  }
+
+  async function openLatest() {
+    if (!unavailable || latestBusy) return;
+    setLatestBusy(true);
+    try {
+      const current = await api<WorkspaceTask>(
+        `/workspace/tasks/${encodeURIComponent(unavailable.task.kind)}/${encodeURIComponent(
+          unavailable.task.ref,
+        )}`,
+        session,
+      );
+      setUnavailable(null);
+      onOpen(current);
+    } catch (caught) {
+      setUnavailable({
+        task: unavailable.task,
+        reason:
+          caught instanceof ApiError && caught.status === 403
+            ? 'forbidden'
+            : caught instanceof ApiError && caught.status === 404
+              ? 'missing'
+              : 'stale',
+      });
+    } finally {
+      setLatestBusy(false);
     }
   }
   function saveView() {
@@ -1053,6 +1119,26 @@ export function WorkspaceHome({
         </details>
       )}
       {employee ? <OaMaterialRequestList session={session} /> : null}
+      {unavailable && (
+        <TaskUnavailableDialog
+          task={unavailable.task}
+          reason={unavailable.reason}
+          handler={unavailable.task.current_handler}
+          detail={unavailable.detail}
+          busy={latestBusy}
+          onClose={() => setUnavailable(null)}
+          onOpenLatest={unavailable.reason === 'stale' ? () => void openLatest() : undefined}
+          onViewRecord={
+            unavailable.reason === 'completed'
+              ? () => {
+                  const task = unavailable.task;
+                  setUnavailable(null);
+                  onViewCompleted?.(task);
+                }
+              : undefined
+          }
+        />
+      )}
       <p className="workspace-boundary">
         <CircleDot size={12} />
         AI 在后台识别、核对与生成草稿；会计复核后导出。

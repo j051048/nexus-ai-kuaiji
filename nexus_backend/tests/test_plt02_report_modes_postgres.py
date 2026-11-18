@@ -6,6 +6,7 @@ import pytest
 from app.opening.models import PolicyCreate
 from app.reports.models import ReportCommand
 from app.reports.service import ReportService
+from policy_fixtures import approve_policy_independently
 from test_n03_notification_postgres import p0_case, p0_pg  # noqa: F401
 from test_p02_formal_read_postgres import formal_case  # noqa: F401
 
@@ -17,7 +18,8 @@ def test_formal_report_persists_policy_binding_and_blocks_trial_publish(formal_c
     assert formal["report"]["mode"] == "formal", formal
     assert formal["report"]["standard_kind"] == "small_enterprise"
     assert formal["report"]["policy_version"] == c.policy["version"]
-    assert formal["report"]["policy_approver"] == c.manager.user_id
+    assert formal["report"]["policy_approver"] == c.policy["approved_by"]
+    assert formal["report"]["policy_approver"] != c.manager.user_id
     assert len(formal["report"]["mapping_fingerprint"]) == 64
     assert formal["report"]["trial_reasons"] == []
 
@@ -32,13 +34,15 @@ def test_formal_report_persists_policy_binding_and_blocks_trial_publish(formal_c
             is_synthetic=True,
         ),
     )
-    c.opening.approve_policy(c.manager, synthetic["id"])
+    approve_policy_independently(c.opening, c.db, c.manager, synthetic["id"])
     trial = reports.create(c.manager, c.book["id"], "2026-10")
     assert trial["report"]["mode"] == "trial"
     assert "合成演练" in "；".join(trial["report"]["trial_reasons"])
     with pytest.raises(Exception) as caught:
         reports.review(
-            c.manager, trial["report"]["id"], ReportCommand(expected_version=1, reason="不得复核试算")
+            c.manager,
+            trial["report"]["id"],
+            ReportCommand(expected_version=1, reason="不得复核试算"),
         )
     assert "试算" in str(caught.value) or "不可" in str(caught.value)
 

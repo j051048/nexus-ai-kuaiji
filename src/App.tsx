@@ -33,6 +33,7 @@ import type {
 } from './assistant-types';
 import { clearReviewSession } from './review-session';
 import { taskDestination } from './workspace-types';
+import { taskScope } from './task-scope';
 import { RoleQuickStart } from './RoleQuickStart';
 import { AccountIdentity } from './AccountIdentity';
 import { accountIdentity } from './account-identity';
@@ -133,6 +134,7 @@ export default function App() {
     onChanged: (bookId: string, draft: Draft) => void;
     onClose: () => void;
   } | null>(null);
+  const taskReturn = useRef<{ scrollY: number; companyId: string; period: string } | null>(null);
   const [inlineTarget, setInlineTarget] = useState<{ bookId: string; draftId: string } | null>(
     null,
   );
@@ -141,6 +143,8 @@ export default function App() {
   >();
   const [operationsCompanies, setOperationsCompanies] = useState<OperationsCompany[]>([]);
   const [operationsTarget, setOperationsTarget] = useState('');
+  const [operationsAlert, setOperationsAlert] = useState('');
+  const [taskVersion, setTaskVersion] = useState('');
   const [queueTarget, setQueueTarget] = useState('');
   const [queueJobTarget, setQueueJobTarget] = useState('');
   const [businessTarget, setBusinessTarget] = useState('');
@@ -170,6 +174,8 @@ export default function App() {
     );
     setMigrationTarget('');
     setOperationsTarget('');
+    setOperationsAlert('');
+    setTaskVersion('');
     setProfile(null);
     setProfileError('');
     setIntakeTarget('');
@@ -485,6 +491,8 @@ export default function App() {
     reviewBookId: inlineTarget?.bookId ?? '',
     reviewDraftId: inlineTarget?.draftId ?? '',
     materialId: routeView === 'materials' ? materialTarget : '',
+    alertId: routeView === 'operations' ? operationsAlert : '',
+    taskVersion,
   };
   const routeGuard = useWorkspaceRoute({
     scope: session?.firm_id ? session.scope_key : undefined,
@@ -547,6 +555,9 @@ export default function App() {
       setMigrationTarget(route.migrationId);
       setDeliveryTarget(route.deliveryId);
       setProposalTarget(route.proposalId);
+      setOperationsTarget(route.view === 'operations' ? route.companyId : '');
+      setOperationsAlert(route.view === 'operations' ? route.alertId : '');
+      setTaskVersion(route.taskVersion);
       setInlineTarget(
         route.reviewBookId && route.reviewDraftId
           ? { bookId: route.reviewBookId, draftId: route.reviewDraftId }
@@ -835,7 +846,17 @@ export default function App() {
       });
       return;
     }
+    const scope = taskScope(task, { companyId: workCompany, period: workPeriod });
+    setTaskVersion(task.object_version ?? '');
+    setWorkCompany(scope.companyId);
+    setWorkPeriod(scope.period);
+    if (scope.notice) setNotice({ kind: 'success', text: scope.notice });
     if (target.type === 'review' && target.bookId) {
+      taskReturn.current = {
+        scrollY: window.scrollY,
+        companyId: workCompany,
+        period: workPeriod,
+      };
       setInlineTarget({ bookId: target.bookId, draftId: target.id });
       return;
     }
@@ -844,49 +865,55 @@ export default function App() {
       return;
     }
     progress.capture(workspaceRoute, task.key);
+    const go = (view: Parameters<typeof navigate>[0]) => {
+      navigate(view, false, true);
+      // navigate() clears the workspace scope; restore the task's own scope so
+      // every target page and URL carries the same company/period.
+      setWorkCompany(scope.companyId);
+      setWorkPeriod(scope.period);
+    };
     if (target.type === 'material') {
-      navigate('materials', false, true);
+      go('materials');
       setMaterialTarget(target.id);
-      setWorkCompany(task.company_id);
       setWorkBook(profile?.can_accounting ? (task.book_id ?? '') : '');
       return;
     }
     if (target.type === 'business' || target.type === 'intake') {
-      navigate('business', false, true);
-      setWorkCompany(task.company_id);
+      go('business');
       if (target.type === 'intake') setIntakeTarget(target.id);
       else setBusinessTarget(target.id);
     } else if (target.type === 'case') {
-      navigate('cases', false, true);
+      go('cases');
       setInitialCaseId(target.id);
     } else if (target.type === 'ocr' && target.id) {
-      navigate('queue', false, true);
+      go('queue');
       setQueueTarget(target.id);
       setQueueJobTarget(target.jobId);
     } else if (target.type === 'export' && target.bookId) {
-      navigate('accounting', false, true);
+      go('accounting');
       setBookId(target.bookId);
       focusBookRef.current = target.bookId;
       setFilter('approved');
       setListTab('drafts');
       if (routeUsesBook) void initialize(undefined, target.bookId);
     } else if (target.type === 'delivery' && target.bookId) {
-      navigate('accounting', false, true);
+      go('accounting');
       setBookId(target.bookId);
       focusBookRef.current = target.bookId;
       setDeliveryTarget(target.id);
       setRouteView('delivery');
       if (routeUsesBook) void initialize(undefined, target.bookId);
     } else if (target.type === 'migration' && target.bookId) {
-      navigate('accounting', false, true);
+      go('accounting');
       setBookId(target.bookId);
       focusBookRef.current = target.bookId;
       setMigrationTarget(target.id);
       setRouteView('migration');
       if (routeUsesBook) void initialize(undefined, target.bookId);
     } else if (target.type === 'alert') {
-      navigate('operations', false, true);
-      setOperationsTarget(target.id);
+      go('operations');
+      setOperationsTarget(task.company_id);
+      setOperationsAlert(target.id);
     }
   }
   function openInlineReview(
@@ -1258,6 +1285,7 @@ export default function App() {
     deliveryTarget,
     migrationTarget,
     operationsTarget,
+    operationsAlert,
     operationsCompanies,
     queueTarget,
     queueJobTarget,
@@ -1379,9 +1407,24 @@ export default function App() {
             }
             onBusyChange={changeBusinessBusy}
             onClose={() => {
+              const restore = taskReturn.current;
+              taskReturn.current = null;
               inlineContext.current?.onClose();
               inlineContext.current = null;
               setInlineTarget(null);
+              if (restore) {
+                setWorkCompany(restore.companyId);
+                setWorkPeriod(restore.period);
+                let attempts = 0;
+                const restoreScroll = () => {
+                  window.scrollTo({ top: restore.scrollY, behavior: 'instant' });
+                  attempts += 1;
+                  if (attempts < 40 && window.scrollY < restore.scrollY - 2) {
+                    window.setTimeout(restoreScroll, 50);
+                  }
+                };
+                window.setTimeout(restoreScroll, 0);
+              }
               setWorkspaceRevision((n) => n + 1);
             }}
             onNavigate={(targetBook, targetDraft) =>

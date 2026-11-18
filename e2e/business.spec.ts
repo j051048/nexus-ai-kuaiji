@@ -66,6 +66,112 @@ async function open(page: Page, description: string, scope: '部门审批' | '�
   await expect(page.getByRole('heading', { name: description, exact: true })).toBeVisible();
 }
 
+test('部门、财务、会计从各自待办卡片进入同一条业务事项', async ({ page }) => {
+  test.setTimeout(60_000);
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await page.goto('/');
+  await persona(page, 'employee');
+  const description = 'PLT03待办链办公报销';
+  await create(page, description, '员工报销', '318.20');
+  await page.getByRole('button', { name: '提交审批', exact: true }).click();
+  await expect(page.locator('.business-notice')).toContainText('事项已提交');
+
+  await page.goto('/workspace/home');
+  await choosePersona(page, 'department');
+  const departmentTask = page
+    .locator('article.workspace-task')
+    .filter({ hasText: description })
+    .first();
+  await expect(departmentTask).toBeVisible();
+  await departmentTask.scrollIntoViewIfNeeded();
+  const departmentReturnY = await page.evaluate(() => window.scrollY);
+  await departmentTask.locator('button').first().click();
+  await page.getByRole('button', { name: '部门审批通过', exact: true }).click();
+  await expect(page.locator('.business-notice')).toContainText('部门审批已通过');
+  await page.getByRole('button', { name: '返回待办', exact: true }).click();
+  await expect(page).toHaveURL(/\/workspace\/home/);
+  await expect
+    .poll(() => page.evaluate(() => window.scrollY), { timeout: 4_000 })
+    .toBeGreaterThanOrEqual(Math.max(0, departmentReturnY - 2));
+  await expect(page.locator('article.workspace-task').filter({ hasText: description })).toHaveCount(0);
+
+  await page.goto('/workspace/home');
+  await choosePersona(page, 'finance');
+  const financeTask = page.locator('article.workspace-task').filter({ hasText: description }).first();
+  await expect(financeTask).toBeVisible();
+  await financeTask.locator('button').first().click();
+  await page.getByRole('button', { name: '财务核验通过', exact: true }).click();
+  await page.getByLabel('交接到账套', { exact: true }).selectOption({ index: 1 });
+  await page.getByRole('button', { name: '生成凭证草稿', exact: true }).click();
+  await expect(page.locator('.business-notice')).toContainText('已交接并关联凭证草稿');
+
+  await page.goto('/workspace/home');
+  await choosePersona(page, 'accountant');
+  const accountantTask = page
+    .locator('article.workspace-task')
+    .filter({ hasText: description })
+    .first();
+  await expect(accountantTask).toBeVisible();
+  await accountantTask.locator('button').first().click();
+  const drawer = page.getByRole('dialog', { name: '原件与凭证，一起核对', exact: true });
+  await expect(drawer).toBeVisible();
+  await expect(drawer.getByLabel('同屏凭证摘要', { exact: true })).toHaveValue(description);
+  await page.screenshot({ path: 'tmp_test/plt03c-four-role-chain.png', fullPage: false });
+});
+
+test('390 视口部门、财务、会计从待办卡片进入同一条业务事项', async ({ page }) => {
+  test.setTimeout(90_000);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/');
+  await persona(page, 'employee');
+  const description = 'PLT03待办链手机报销';
+  await create(page, description, '员工报销', '218.40');
+  await page.getByRole('button', { name: '提交审批', exact: true }).click();
+  await expect(page.locator('.business-notice')).toContainText('事项已提交');
+
+  await page.goto('/workspace/home');
+  await choosePersona(page, 'department');
+  const departmentTask = page
+    .locator('article.workspace-task')
+    .filter({ hasText: description })
+    .first();
+  await expect(departmentTask).toBeVisible();
+  await departmentTask.scrollIntoViewIfNeeded();
+  const departmentReturnY = await page.evaluate(() => window.scrollY);
+  await departmentTask.locator('button').first().click();
+  await page.getByRole('button', { name: '部门审批通过', exact: true }).click();
+  await expect(page.locator('.business-notice')).toContainText('部门审批已通过');
+  await page.getByRole('button', { name: '返回待办', exact: true }).click();
+  await expect(page).toHaveURL(/\/workspace\/home/);
+  await expect
+    .poll(() => page.evaluate(() => window.scrollY), { timeout: 4_000 })
+    .toBeGreaterThanOrEqual(Math.max(0, departmentReturnY - 2));
+  await expect(page.locator('article.workspace-task').filter({ hasText: description })).toHaveCount(0);
+
+  await page.goto('/workspace/home');
+  await choosePersona(page, 'finance');
+  const financeTask = page.locator('article.workspace-task').filter({ hasText: description }).first();
+  await expect(financeTask).toBeVisible();
+  await financeTask.locator('button').first().click();
+  await page.getByRole('button', { name: '财务核验通过', exact: true }).click();
+  await page.getByLabel('交接到账套', { exact: true }).selectOption({ index: 1 });
+  await page.getByRole('button', { name: '生成凭证草稿', exact: true }).click();
+  await expect(page.locator('.business-notice')).toContainText('已交接并关联凭证草稿');
+
+  await page.goto('/workspace/home');
+  await choosePersona(page, 'accountant');
+  const accountantTask = page
+    .locator('article.workspace-task')
+    .filter({ hasText: description })
+    .first();
+  await expect(accountantTask).toBeVisible();
+  await accountantTask.locator('button').first().click();
+  const drawer = page.getByRole('dialog', { name: '原件与凭证，一起核对', exact: true });
+  await expect(drawer).toBeVisible();
+  await expect(drawer.getByLabel('同屏凭证摘要', { exact: true })).toHaveValue(description);
+  await page.screenshot({ path: 'tmp_test/plt03c-four-role-chain-390.png', fullPage: false });
+});
+
 test('员工报销经过独立审批与原件上传后交接指定账套、会计复核并导出', async ({ page }) => {
   // Four authenticated roles, attachment validation, review and an actual CSV download.
   test.setTimeout(60_000);

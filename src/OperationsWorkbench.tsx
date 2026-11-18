@@ -142,10 +142,12 @@ export function OperationsBudgetSummary({ overview }: { overview: OperationsOver
 export function OperationsWorkbench({
   session,
   companies,
+  initialAlertId,
   onBusyChange,
 }: {
   session: Session;
   companies: OperationsCompany[];
+  initialAlertId?: string;
   onBusyChange: (value: boolean) => void;
 }) {
   const [companyId, setCompanyId] = useState(companies[0]?.id ?? '');
@@ -168,6 +170,16 @@ export function OperationsWorkbench({
   const targetRef = useRef(target);
   targetRef.current = target;
   const canManage = !!overview?.can_manage_budget;
+  useEffect(() => {
+    if (!initialAlertId) return;
+    const timer = window.setTimeout(() => {
+      document.getElementById(`operations-alert-${initialAlertId}`)?.scrollIntoView({
+        block: 'center',
+        behavior: 'smooth',
+      });
+    }, 80);
+    return () => window.clearTimeout(timer);
+  }, [initialAlertId, overview]);
   useEffect(() => {
     active.current = true;
     return () => {
@@ -554,7 +566,13 @@ export function OperationsWorkbench({
                 {overview.alerts.length ? (
                   <div className="operations-alert-list">
                     {overview.alerts.map((alert) => (
-                      <article key={alert.id} className={`operations-alert ${alert.state}`}>
+                      <article
+                        key={alert.id}
+                        id={`operations-alert-${alert.id}`}
+                        className={`operations-alert ${alert.state}${
+                          alert.id === initialAlertId ? ' is-target' : ''
+                        }`}
+                      >
                         <div>
                           <TriangleAlert size={16} />
                           <strong>

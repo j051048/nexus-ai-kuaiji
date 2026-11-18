@@ -9,6 +9,7 @@ from app.ledgers.models import EntityCreate
 from app.ledgers.service import LedgersService
 from app.subledger.models import AllocationCreate, AllocationPart, AllocationReverse, OpenItemCreate
 from app.subledger.service import SubledgerService
+from policy_fixtures import approve_policy_independently
 from test_b04_pilot import setup_b03, configure_payable
 from test_business import business  # noqa: F401
 from test_c01_closure import payment
@@ -307,7 +308,7 @@ def test_asset_three_months_cross_year_posts_exact_residual(business):
                     reason="新年政策",
                 ),
             )["id"]
-            prep.approve_policy(c.manager, policy_id)
+            approve_policy_independently(prep, c.db, c.manager, policy_id)
         package = prep.create_package(
             c.manager,
             OpeningPackageCreate(

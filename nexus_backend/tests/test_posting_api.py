@@ -19,6 +19,7 @@ from app.opening.models import (
     OpeningPackageCreate,
     PolicyCreate,
 )
+from policy_fixtures import approve_policy_independently
 
 
 def test_http_bind_manual_reverse_and_balance(tmp_path):
@@ -43,7 +44,9 @@ def test_http_bind_manual_reverse_and_balance(tmp_path):
                 reason="B03 HTTP 政策",
             ),
         )
-        opening.approve_policy(LOCAL_ACTOR, policy["id"])
+        approve_policy_independently(
+            opening, app.state.service.db, LOCAL_ACTOR, policy["id"]
+        )
 
         def account(code, name, category="asset", normal="debit"):
             return opening.create_account(

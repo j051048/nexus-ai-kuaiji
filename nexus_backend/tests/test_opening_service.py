@@ -21,6 +21,7 @@ from app.opening.models import (
     PolicyCreate,
 )
 from app.opening.service import OpeningService
+from policy_fixtures import approve_policy_independently
 from test_business import business
 
 
@@ -54,7 +55,7 @@ def policy(service, actor, ledger_id):
             reason="B02 隔离测试政策",
         ),
     )
-    service.approve_policy(actor, row["id"])
+    approve_policy_independently(service, service.db, actor, row["id"])
     return row
 
 

@@ -22,6 +22,7 @@ from app.posting.models import OpeningBind
 from app.posting.service import PostingService
 from app.subledger.models import ControlApplicability
 from app.subledger.service import SubledgerService
+from policy_fixtures import approve_policy_independently
 from test_monthly_delivery_postgres import p0_case, p0_pg  # noqa: F401
 
 
@@ -43,7 +44,7 @@ def declaration_case(p0_case):
             reason="本机交付前置零余额政策",
         ),
     )
-    opening.approve_policy(c.manager, policy["id"])
+    approve_policy_independently(opening, c.db, c.manager, policy["id"])
     accounts = [
         opening.create_account(
             c.manager,

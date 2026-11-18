@@ -1,15 +1,14 @@
 """真实站内登录、私有补件下载和异常阻断 API 验证。"""
 from uuid import uuid4
-from fastapi.testclient import TestClient
 import pytest
 from app.main import create_app
-from test_business_api import auth, create, attachment_bytes
+from test_business_api import auth, create, attachment_bytes, local_client
 
 
 @pytest.fixture
 def client(tmp_path):
     app = create_app(tmp_path / "stage8-cases.db", seed=True, attachment_root=tmp_path / "private")
-    with TestClient(app, base_url="http://127.0.0.1", client=("127.0.0.1", 5678)) as client:
+    with local_client(app, 5678) as client:
         yield client
 
 

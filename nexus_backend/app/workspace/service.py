@@ -1245,6 +1245,7 @@ class WorkspaceService:
             if item["kind"] == "alert":
                 item["title"] = ALERTS.get(item["title"], "待处理运行告警")
             tasks.append(item)
+        self._decorate_task_envelopes(conn, tasks)
         return {
             "tasks": tasks,
             "counts": counts,
@@ -1255,6 +1256,53 @@ class WorkspaceService:
                 "has_more": offset + limit < total,
             },
         }
+
+    def _decorate_task_envelopes(self, conn, tasks):
+        """Add the server-derived target/version envelope to task rows.
+
+        The task queries already enforce authorization. This method only fills
+        the object period and stable version token used by the UI; it never
+        upgrades a waiting task into an actionable one.
+        """
+        book_ids = sorted({item["book_id"] for item in tasks if item.get("book_id")})
+        event_ids = sorted(
+            {item["event_id"] for item in tasks if item.get("event_id") and not item.get("book_id")}
+        )
+        periods = {}
+        if book_ids:
+            places = ",".join("?" for _ in book_ids)
+            periods.update(
+                {
+                    row["id"]: row["period"]
+                    for row in conn.execute(
+                        f"SELECT id,period FROM books WHERE id IN ({places})", book_ids
+                    ).fetchall()
+                }
+            )
+        if event_ids:
+            places = ",".join("?" for _ in event_ids)
+            for row in conn.execute(
+                f"SELECT id,payload FROM business_events WHERE id IN ({places})", event_ids
+            ).fetchall():
+                payload = row["payload"]
+                if isinstance(payload, str):
+                    try:
+                        payload = json.loads(payload)
+                    except ValueError:
+                        payload = {}
+                period = payload.get("period") if isinstance(payload, dict) else None
+                if period:
+                    periods[row["id"]] = period
+        for item in tasks:
+            item["period"] = periods.get(item.get("book_id")) or periods.get(item.get("event_id"))
+            item["object_type"] = item["kind"]
+            item["object_id"] = item["ref"]
+            item["object_version"] = item["updated_at"]
+            item["available_action"] = "can_act" if item["bucket"] == "action" else "read_only"
+            item["business_action"] = item["action_label"]
+            item["current_handler"] = item["responsible"]
+            item["alternate_actions"] = []
+            item["amount_impact"] = item.get("amount")
 
     @staticmethod
     def _search(value):
@@ -1298,8 +1346,90 @@ class WorkspaceService:
                 },
             }
 
+    def _business_completion(self, actor, kind, ref):
+        """Explain why a former business task disappeared without leaking it.
+
+        Only a caller who can still see the company gets the 410 detail.  The
+        action table is the authority for who completed the stage and when.
+        """
+        stage = {"approval": "department", "finance": "finance", "handoff": "handoff"}.get(kind)
+        if stage is None:
+            return None
+        completed_status = {
+            "approval": ("department_approved", "finance_approved", "handed_off"),
+            "finance": ("finance_approved", "handed_off"),
+            "handoff": ("handed_off",),
+        }[kind]
+        decision = "handoff" if kind == "handoff" else "approve"
+        with self.db.transaction(actor=actor) as conn:
+            firm_role, gates, _ = self._task_gates(conn, actor)
+            allowed = bool(gates.get(kind)) or firm_role in FIRM_MANAGERS
+            placeholders = ",".join("?" for _ in completed_status)
+            row = conn.execute(
+                f"""SELECT ba.created_at, u.name AS actor_name
+                FROM business_events e
+                JOIN business_actions ba ON ba.event_id=e.id
+                JOIN users u ON u.id=ba.created_by
+                WHERE e.id=? AND e.firm_id=? AND e.status IN ({placeholders})
+                  AND ba.stage=? AND ba.decision=?
+                  AND (
+                    (? AND ? AND EXISTS(
+                      SELECT 1 FROM firm_clients fc
+                      WHERE fc.firm_id=e.firm_id AND fc.company_id=e.company_id
+                        AND fc.status='active'
+                    ))
+                    OR EXISTS(
+                      SELECT 1 FROM company_memberships cm
+                      WHERE cm.company_id=e.company_id AND cm.user_id=?
+                    )
+                  )
+                ORDER BY ba.created_at DESC, ba.id DESC
+                LIMIT 1""",
+                (
+                    ref,
+                    actor.firm_id,
+                    *completed_status,
+                    stage,
+                    decision,
+                    firm_role in FIRM_MANAGERS,
+                    allowed,
+                    actor.user_id,
+                ),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def _review_completion(self, actor, ref):
+        with self.db.transaction(actor=actor) as conn:
+            firm_role, _, _ = self._task_gates(conn, actor)
+            reviews, params, _ = self.review._review_scope(conn, actor, role=firm_role)
+            row = conn.execute(
+                f"""WITH review_books AS ({reviews})
+                SELECT d.approved_by, d.approved_at, u.name AS approver_name
+                FROM review_books rb
+                JOIN drafts d ON d.book_id=rb.id
+                JOIN users u ON u.id=d.approved_by
+                WHERE d.id=? AND d.status IN ('approved','exported')""",
+                (*params, ref),
+            ).fetchone()
+        return dict(row) if row else None
+
     def get(self, actor, kind, ref):
         result = self.list(actor, bucket="all", kind=kind, ref=ref, limit=1)
         if not result["tasks"]:
+            completed = None
+            if kind == "review":
+                completed = self._review_completion(actor, ref)
+                completed_at = completed["approved_at"] if completed else None
+                completed_by = completed["approver_name"] if completed else None
+            elif kind in ("approval", "finance", "handoff"):
+                completed = self._business_completion(actor, kind, ref)
+                completed_at = completed["created_at"] if completed else None
+                completed_by = completed["actor_name"] if completed else None
+            if completed and completed_at and completed_by:
+                raise AccountingError(
+                    f"该待办已由 {completed_by} 于 {completed_at} 办理，"
+                    "列表状态已更新，请返回队列查看。",
+                    410,
+                )
             raise AccountingError("事项已处理、权限已变更或不存在，请刷新待办", 404)
         return result["tasks"][0]

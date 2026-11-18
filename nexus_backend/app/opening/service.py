@@ -129,6 +129,8 @@ class OpeningService:
                 raise AccountingError("只有生效中的核算政策才能批准", 409)
             if policy["approved_by"]:
                 return self._policy_row(conn, policy_id)
+            if policy["created_by"] == actor.user_id:
+                raise AccountingError("制单人与批准人必须不同，请由另一名事务所管理员批准", 409)
             stamp = now()
             fingerprint = mapping_fingerprint(conn, actor.firm_id)
             conn.execute(
@@ -162,7 +164,17 @@ class OpeningService:
                 "SELECT * FROM accounting_policies WHERE ledger_id=? ORDER BY version DESC",
                 (ledger_id,),
             ).fetchall()
-            return [dict(row) for row in rows]
+            current_mapping = mapping_fingerprint(conn, actor.firm_id)
+            return [
+                {
+                    **dict(row),
+                    "mapping_matches": bool(
+                        row["mapping_fingerprint"]
+                        and row["mapping_fingerprint"] == current_mapping
+                    ),
+                }
+                for row in rows
+            ]
 
     # ---------- stable accounts ----------
 

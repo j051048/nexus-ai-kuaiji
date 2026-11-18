@@ -10,6 +10,7 @@ from ..accounting.service import AccountingService, now
 from ..posting.service import PostingService
 from .mapping import mapping_fingerprint
 from .models import ReportCommand, ReportNote
+from .reconciliation import canonical_line, compare as compare_reference
 
 
 def _fingerprint(value):
@@ -36,11 +37,21 @@ class ReportService:
                     "balance_sheet": [
                         {"key": "asset", "label": "资产", "category": "asset", "sign": 1},
                         {"key": "liability", "label": "负债", "category": "liability", "sign": -1},
-                        {"key": "equity", "label": "所有者权益（或股东权益）", "category": "equity", "sign": -1},
+                        {
+                            "key": "equity",
+                            "label": "所有者权益（或股东权益）",
+                            "category": "equity",
+                            "sign": -1,
+                        },
                     ],
                     "profit_statement": [
                         {"key": "income", "label": "营业收入", "category": "income", "sign": 1},
-                        {"key": "expense", "label": "营业成本及费用", "category": "expense", "sign": 1},
+                        {
+                            "key": "expense",
+                            "label": "营业成本及费用",
+                            "category": "expense",
+                            "sign": 1,
+                        },
                     ],
                 },
             },
@@ -65,7 +76,7 @@ class ReportService:
                     ],
                 },
             },
-        }
+        },
     }
 
     def __init__(self, db):
@@ -136,8 +147,13 @@ class ReportService:
             "INSERT INTO report_templates(id,name,standard,version,effective_from,definition_json,active,created_at) "
             "VALUES(?,?,?,?,?,?,1,?)",
             (
-                spec["id"], spec["name"], standard, spec["version"], "2026-01",
-                json.dumps(spec["definition"], ensure_ascii=False), stamp,
+                spec["id"],
+                spec["name"],
+                standard,
+                spec["version"],
+                "2026-01",
+                json.dumps(spec["definition"], ensure_ascii=False),
+                stamp,
             ),
         )
         return conn.execute(
@@ -153,7 +169,9 @@ class ReportService:
             raise AccountingError("账套未关联长期账套", 409)
         standard = self._standard_kind(conn, ledger["ledger_id"])
         if standard == self.STANDARD_UNASSESSED:
-            raise AccountingError("核算政策未核定，不能生成报表；请先批准当前期间适用的核算政策", 409)
+            raise AccountingError(
+                "核算政策未核定，不能生成报表；请先批准当前期间适用的核算政策", 409
+            )
         return self._template_for_standard(conn, standard)
 
     def _activity(self, conn, book):
@@ -545,7 +563,9 @@ class ReportService:
         ).fetchone()
         if not template:
             raise AccountingError("报表模板版本已变化，请重新生成报表", 409)
-        content, fingerprint = self._build_in_transaction(conn, actor, book, trial=trial, template=template)
+        content, fingerprint = self._build_in_transaction(
+            conn, actor, book, trial=trial, template=template
+        )
         if (
             fingerprint != row["inputs_fingerprint"]
             or _fingerprint(json.loads(row["content_json"])) != row["content_hash"]
@@ -609,6 +629,74 @@ class ReportService:
             )
             return {"report_id": report_id, "note_key": request.note_key}
 
+    def reconcile(self, actor, report_id, request):
+        with self.db.transaction(actor=actor) as conn:
+            row = self._report(conn, actor, report_id)
+            content = json.loads(row["content_json"])
+            result = compare_reference(request.csv_text, content)
+            result["report_id"] = report_id
+            result["report_mode"] = row["mode"]
+            result["reference_name"] = request.reference_name
+            return result
+
+    def explain_difference(self, actor, report_id, request):
+        with self.db.transaction(write=True, actor=actor) as conn:
+            row = self._report(conn, actor, report_id, write=True)
+            line = canonical_line(request.line_key)
+            note_id = uuid4().hex
+            conn.execute(
+                "INSERT INTO report_reconciliation_notes(id,report_id,book_id,firm_id,"
+                "reference_sha256,line_key,explanation_type,note,created_by,created_at) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?)",
+                (
+                    note_id,
+                    report_id,
+                    row["book_id"],
+                    actor.firm_id,
+                    request.reference_sha256,
+                    request.line_key,
+                    request.explanation_type,
+                    request.note,
+                    actor.user_id,
+                    now(),
+                ),
+            )
+            self._audit(
+                conn,
+                actor,
+                row["book_id"],
+                "report.reconciliation.explain",
+                note_id,
+                {
+                    "report_id": report_id,
+                    "reference_sha256": request.reference_sha256,
+                    "line_key": request.line_key,
+                    "explanation_type": request.explanation_type,
+                    "reason": request.reason,
+                },
+            )
+            return {
+                "id": note_id,
+                "report_id": report_id,
+                "reference_sha256": request.reference_sha256,
+                "line_key": request.line_key,
+                "line_name": line["line_name"],
+                "explanation_type": request.explanation_type,
+                "note": request.note,
+                "created_by": actor.user_id,
+                "created_at": now(),
+            }
+
+    def reconciliation_notes(self, actor, report_id, reference_sha256):
+        with self.db.transaction(actor=actor) as conn:
+            self._report(conn, actor, report_id)
+            rows = conn.execute(
+                "SELECT * FROM report_reconciliation_notes "
+                "WHERE report_id=? AND reference_sha256=? ORDER BY created_at,id",
+                (report_id, reference_sha256),
+            ).fetchall()
+            return {"notes": [dict(row) for row in rows]}
+
     def list(self, actor, book_id):
         with self.db.transaction(actor=actor) as conn:
             book, _ = self._book(conn, actor, book_id)
@@ -616,7 +704,15 @@ class ReportService:
                 "SELECT * FROM report_runs WHERE book_id=? ORDER BY period DESC,version DESC",
                 (book["id"],),
             ).fetchall()
-            return [dict(row) for row in rows]
+            reports = []
+            for row in rows:
+                report = dict(row)
+                report["trial_reasons"] = json.loads(report.get("trial_reasons_json") or "[]")
+                report["mode_label"] = (
+                    "试算，不可对外" if report.get("mode") == "trial" else "正式"
+                )
+                reports.append(report)
+            return reports
 
     def _view(self, conn, report_id):
         row = conn.execute("SELECT * FROM report_runs WHERE id=?", (report_id,)).fetchone()

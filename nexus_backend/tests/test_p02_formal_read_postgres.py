@@ -18,6 +18,7 @@ from app.opening.models import (
     PolicyCreate,
 )
 from app.opening.service import OpeningService
+from policy_fixtures import approve_policy_independently
 from app.posting.models import OpeningBind
 from app.posting.service import PostingService
 from app.reports.service import ReportService
@@ -55,7 +56,7 @@ def formal_case(p0_case, request):
             reason="P02当前月核算政策",
         ),
     )
-    c.opening.approve_policy(c.manager, c.policy["id"])
+    approve_policy_independently(c.opening, c.db, c.manager, c.policy["id"])
     c.accounts = [
         c.opening.create_account(
             c.manager,

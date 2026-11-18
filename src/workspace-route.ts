@@ -84,6 +84,8 @@ export interface WorkspaceRoute {
   reviewBookId: string;
   reviewDraftId: string;
   materialId: string;
+  alertId: string;
+  taskVersion: string;
 }
 const identifiers = {
   bookId: 'book',
@@ -99,6 +101,8 @@ const identifiers = {
   reviewBookId: 'review_book',
   reviewDraftId: 'review_draft',
   materialId: 'material',
+  alertId: 'alert',
+  taskVersion: 'task_version',
 } as const;
 export const emptyWorkspaceRoute: WorkspaceRoute = {
   view: 'home',
@@ -120,6 +124,8 @@ export const emptyWorkspaceRoute: WorkspaceRoute = {
   reviewBookId: '',
   reviewDraftId: '',
   materialId: '',
+  alertId: '',
+  taskVersion: '',
 };
 function safeId(value: string | null): string {
   return value && value.length <= 200 && !/[\u0000-\u001f\u007f]/.test(value) ? value : '';

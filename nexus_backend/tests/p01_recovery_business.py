@@ -200,7 +200,7 @@ def _zero_formal_opening(db, owner, reviewer, book):
             reason="P01虚构零业务企业核算政策",
         ),
     )
-    opening.approve_policy(owner, policy["id"])
+    opening.approve_policy(reviewer, policy["id"])
     accounts = [
         opening.create_account(
             owner,
