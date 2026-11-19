@@ -51,7 +51,8 @@ export type TaskKind =
   | 'alert'
   | 'migration'
   | 'material'
-  | 'fee_variance';
+  | 'fee_variance'
+  | 'bridge_return';
 export type WorkspaceTask = {
   key: string;
   kind: TaskKind;
@@ -206,5 +207,7 @@ export function taskDestination(task: WorkspaceTask, client = false) {
       return { type: 'migration' as const, bookId: task.book_id, id: task.ref };
     case 'fee_variance':
       return { type: 'fee_variance' as const, id: task.ref, bookId: task.book_id };
+    case 'bridge_return':
+      return { type: 'bridge_return' as const, id: task.ref, bookId: task.book_id };
   }
 }

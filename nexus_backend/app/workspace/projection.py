@@ -139,9 +139,31 @@ def refresh_statements(db, firm_id, company_id):
         (
             INSERTS + "SELECT fv.firm_id,fv.company_id,'fee_variance',fv.id,fv.book_id,"
             "NULL,NULL,NULL,NULL,NULL,fv.processing_started_by,NULL,fv.created_by,'',"
-            "'fee_variance','',0,fv.status,'核对到账差额 · ' || fv.kind,NULL,COALESCE(fv.handled_at,fv.processing_started_at,fv.created_at),"
+            "'fee_variance','',0,fv.status,'核对到账差额 · ' || fv.kind,NULL,CAST(COALESCE(fv.handled_at,fv.processing_started_at,fv.created_at) AS TEXT),"
             "ABS(fv.difference_cents) FROM fee_receivable_variances fv "
             "WHERE fv.firm_id=? AND fv.company_id=? AND fv.status='pending'",
+            scope,
+        )
+    )
+    statements.append(
+        (
+            INSERTS + "SELECT i.firm_id,i.company_id,'bridge_return',"
+            "i.id||':'||r.voucher_code,i.book_id,NULL,NULL,NULL,NULL,NULL,NULL,NULL,"
+            "i.created_by,'','bridge_return','',0,r.status,"
+            "'处理返回差异 · '||r.voucher_code||' · '||CASE r.status "
+            "WHEN 'amount_mismatch' THEN '金额不一致' "
+            "WHEN 'account_mismatch' THEN '科目不一致' "
+            "WHEN 'rejected' THEN '对方拒绝' "
+            "WHEN 'unknown' THEN '对方未找到凭证' "
+            "WHEN 'missing' THEN '对方缺少凭证' "
+            "WHEN 'extra' THEN '对方多出凭证' "
+            "ELSE r.status END,NULL,CAST(i.created_at AS TEXT),"
+            "ABS(COALESCE(r.actual_cents,0)-COALESCE(r.expected_cents,0)) "
+            "FROM bridge_return_imports i JOIN bridge_return_rows r ON r.import_id=i.id "
+            "LEFT JOIN bridge_return_row_handlers h ON h.import_id=r.import_id "
+            "AND h.voucher_code=r.voucher_code "
+            "WHERE i.firm_id=? AND i.company_id=? AND h.import_id IS NULL "
+            "AND r.status NOT IN ('accepted','duplicate')",
             scope,
         )
     )

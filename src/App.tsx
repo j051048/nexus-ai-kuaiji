@@ -128,6 +128,7 @@ export default function App() {
   const [materialTarget, setMaterialTarget] = useState('');
   const [deliveryTarget, setDeliveryTarget] = useState('');
   const [feeVarianceTarget, setFeeVarianceTarget] = useState('');
+  const [integrationFocus, setIntegrationFocus] = useState('');
   const [proposalTarget, setProposalTarget] = useState('');
   const inlineContext = useRef<{
     scope: string;
@@ -186,6 +187,7 @@ export default function App() {
     setMaterialTarget('');
     setDeliveryTarget('');
     setFeeVarianceTarget('');
+    setIntegrationFocus('');
     setProposalTarget('');
     setInlineTarget(null);
     setWorkspaceRevision(0);
@@ -826,6 +828,7 @@ export default function App() {
     setMaterialTarget('');
     setDeliveryTarget('');
     setFeeVarianceTarget('');
+    setIntegrationFocus('');
     if (view === 'accounting') {
       setFilter('all');
       setSearch('');
@@ -913,6 +916,14 @@ export default function App() {
       setDeliveryTarget('');
       setFeeVarianceTarget(target.id);
       setRouteView('delivery');
+      if (routeUsesBook) void initialize(undefined, target.bookId);
+    } else if (target.type === 'bridge_return' && target.bookId) {
+      go('accounting');
+      setBookId(target.bookId);
+      focusBookRef.current = target.bookId;
+      setDeliveryTarget('');
+      setIntegrationFocus(target.id);
+      setRouteView('integration');
       if (routeUsesBook) void initialize(undefined, target.bookId);
     } else if (target.type === 'migration' && target.bookId) {
       go('accounting');
@@ -1295,6 +1306,7 @@ export default function App() {
     materialTarget,
     deliveryTarget,
     feeVarianceTarget,
+    integrationFocus,
     migrationTarget,
     operationsTarget,
     operationsAlert,

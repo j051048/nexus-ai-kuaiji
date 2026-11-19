@@ -34,6 +34,7 @@ KINDS = {
     "migration",
     "material",
     "fee_variance",
+    "bridge_return",
 }
 TEMPLATES = {
     "reimbursement": "报销",
@@ -276,6 +277,7 @@ class WorkspaceService:
             "material": any_task,
             "migration": book_worker,
             "fee_variance": book_worker,
+            "bridge_return": reviewer,
         }
         return row["firm_role"], gates, bool(row["projection_clean"])
 
@@ -583,8 +585,32 @@ class WorkspaceService:
             ],
             "p.kind='fee_variance' AND p.state='pending' "
             "AND EXISTS(SELECT 1 FROM edit_books eb WHERE eb.id=p.book_id) "
-            "AND (p.assignee_id=? OR (p.assignee_id IS NULL AND ?))",
+            "AND (p.assignee_id=? OR (p.assignee_id IS NULL AND ?=1))",
             (actor.user_id, manager_flag),
+        )
+        branch(
+            "bridge_return",
+            [
+                "'bridge_return'",
+                "p.ref",
+                "p.company_id",
+                "p.book_id",
+                "NULL",
+                "NULL",
+                "NULL",
+                "p.title",
+                "p.state",
+                "1",
+                "NULL",
+                "p.updated_at",
+                "'action'",
+                "'处置返回差异'",
+                "COALESCE((SELECT u.name FROM users u WHERE u.id=p.created_by),'会计交付人')",
+                "p.amount_cents",
+            ],
+            "p.kind='bridge_return' "
+            "AND p.state NOT IN ('accepted','duplicate') "
+            "AND EXISTS(SELECT 1 FROM review_books rb WHERE rb.id=p.book_id)",
         )
         branch(
             "review",
@@ -1003,7 +1029,7 @@ class WorkspaceService:
             "fee_variance",
             "fee_receivable_variances fv LEFT JOIN users fu ON fu.id=fv.processing_started_by",
             "fv.status='pending' AND EXISTS(SELECT 1 FROM edit_books eb WHERE eb.id=fv.book_id) "
-            "AND (fv.processing_started_by=? OR (fv.processing_started_by IS NULL AND ?))",
+            "AND (fv.processing_started_by=? OR (fv.processing_started_by IS NULL AND ?=1))",
             {
                 "company_id": "fv.company_id",
                 "ref": "fv.id",
@@ -1014,13 +1040,46 @@ class WorkspaceService:
                 "title": "'核对到账差额 · ' || fv.kind",
                 "state": "fv.status",
                 "priority": "1",
-                "updated_at": "COALESCE(fv.handled_at,fv.processing_started_at,fv.created_at)",
+                "updated_at": "CAST(COALESCE(fv.handled_at,fv.processing_started_at,fv.created_at) AS TEXT)",
                 "bucket": "'action'",
                 "action_label": "'核对到账差额'",
                 "responsible": "COALESCE(fu.name,'未分配')",
                 "amount_cents": "ABS(fv.difference_cents)",
             },
             (actor.user_id, 1 if firm_role in FIRM_MANAGERS or gates.get("alert") else 0),
+        )
+        branch(
+            "bridge_return",
+            "bridge_return_imports i JOIN bridge_return_rows r ON r.import_id=i.id "
+            "LEFT JOIN bridge_return_row_handlers h ON h.import_id=r.import_id "
+            "AND h.voucher_code=r.voucher_code LEFT JOIN users cu ON cu.id=i.created_by",
+            "i.firm_id=? AND h.import_id IS NULL "
+            "AND r.status NOT IN ('accepted','duplicate') "
+            "AND EXISTS(SELECT 1 FROM review_books rb WHERE rb.id=i.book_id)",
+            {
+                "ref": "i.id || ':' || r.voucher_code",
+                "company_id": "i.company_id",
+                "book_id": "i.book_id",
+                "event_id": "NULL",
+                "draft_id": "NULL",
+                "batch_id": "NULL",
+                "title": "'处理返回差异 · ' || r.voucher_code || ' · ' || CASE r.status "
+                "WHEN 'amount_mismatch' THEN '金额不一致' "
+                "WHEN 'account_mismatch' THEN '科目不一致' "
+                "WHEN 'rejected' THEN '对方拒绝' "
+                "WHEN 'unknown' THEN '对方未找到凭证' "
+                "WHEN 'missing' THEN '对方缺少凭证' "
+                "WHEN 'extra' THEN '对方多出凭证' "
+                "ELSE r.status END",
+                "state": "r.status",
+                "priority": "1",
+                "updated_at": "CAST(i.created_at AS TEXT)",
+                "bucket": "'action'",
+                "action_label": "'处置返回差异'",
+                "responsible": "COALESCE(cu.name,'会计交付人')",
+                "amount_cents": "ABS(COALESCE(r.actual_cents,0)-COALESCE(r.expected_cents,0))",
+            },
+            (actor.firm_id,),
         )
         inactive = inactive_source_sql(self.db.dialect)
         branch(

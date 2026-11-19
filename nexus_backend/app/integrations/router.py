@@ -179,6 +179,15 @@ def build_integrations_router(actor_dependency):
             "X-Content-Type-Options": "nosniff",
         })
 
+    @router.get("/returns/tasks")
+    def return_tasks(
+        book_id: str,
+        limit: int = 50,
+        actor=Depends(actor_dependency),
+        svc=Depends(service),
+    ):
+        return {"tasks": svc.list_return_tasks(actor, book_id, limit)}
+
     @router.get("/artifacts/{artifact_id}/returns")
     def artifact_returns(
         book_id: str,

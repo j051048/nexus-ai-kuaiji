@@ -96,6 +96,15 @@ def test_return_import_amount_mismatch_is_partial_and_not_received(service, book
     assert result["counts"]["mismatch"] == 1
     assert result["counts"]["discrepancy"] == 1
     assert result["rows"][0]["status"] == "amount_mismatch"
+    tasks = bridge.list_return_tasks(LOCAL_ACTOR, book)
+    assert [task["object_id"] for task in tasks] == [f"{result['id']}:{result['rows'][0]['voucher_code']}"]
+    assert tasks[0]["available_action"] == "handle_return"
+    assert set(tasks[0]) >= {
+        "task_type", "object_type", "object_id", "company_id", "book_id",
+        "artifact_id", "import_id", "voucher_code", "status",
+        "available_action", "business_action", "task_version",
+        "amount_cents", "reason",
+    }
 
 
 def test_return_import_rejects_other_batch(service, book):  # noqa: F811

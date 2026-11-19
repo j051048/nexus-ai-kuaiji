@@ -26,6 +26,7 @@ const kindLabels: Record<TaskKind, string> = {
   migration: '旧账转入进度',
   material: '需要提供的资料',
   fee_variance: '到账差异',
+  bridge_return: '对方回传的差异',
 };
 
 export function taskKindLabel(kind: TaskKind, profile: WorkspaceProfile | null): string {
@@ -99,6 +100,14 @@ const clientDetails: Record<TaskKind, Readonly<Record<string, string>>> = {
   },
   alert: { open: '需要负责人协助', resolved: '这项问题已处理' },
   fee_variance: { pending: '到账差额待核对' },
+  bridge_return: {
+    amount_mismatch: '对方回传金额与本方不一致',
+    account_mismatch: '对方回传科目与本方不一致',
+    rejected: '对方拒收这笔凭证',
+    unknown: '对方未找到这笔凭证',
+    missing: '对方缺少这笔凭证',
+    extra: '对方多出这笔凭证',
+  },
   migration: {
     collecting: '正在收集旧账资料',
     processing: '正在处理旧账资料',

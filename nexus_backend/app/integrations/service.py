@@ -1450,6 +1450,41 @@ class FinancialBridgeService:
                 ]
             }
 
+    def list_return_tasks(self, actor, book_id, limit=50):
+        with self.db.transaction(actor=actor) as conn:
+            book = self.access.book(conn, actor, book_id, "read")
+            rows = conn.execute(
+                "SELECT i.id import_id, i.artifact_id, i.book_id, i.company_id, i.batch_code, i.fingerprint, "
+                "a.outbox_id, r.voucher_code, r.status, r.reason, r.expected_cents, r.actual_cents "
+                "FROM bridge_return_rows r JOIN bridge_return_imports i ON i.id=r.import_id "
+                "JOIN bridge_export_artifacts a ON a.id=i.artifact_id "
+                "LEFT JOIN bridge_return_row_handlers h ON h.import_id=r.import_id AND h.voucher_code=r.voucher_code "
+                "WHERE i.firm_id=? AND i.book_id=? AND i.company_id=? AND h.import_id IS NULL "
+                "AND r.status NOT IN ('accepted','duplicate') "
+                "ORDER BY i.created_at, i.id, r.voucher_code LIMIT ?",
+                (actor.firm_id, book_id, book["company_id"], max(1, min(int(limit), 200))),
+            ).fetchall()
+            return [
+                {
+                    "task_type": "bridge_return",
+                    "object_type": "bridge_return",
+                    "object_id": f"{row['import_id']}:{row['voucher_code']}",
+                    "company_id": row["company_id"],
+                    "book_id": row["book_id"],
+                    "artifact_id": row["artifact_id"],
+                    "outbox_id": row["outbox_id"],
+                    "import_id": row["import_id"],
+                    "voucher_code": row["voucher_code"],
+                    "status": "action",
+                    "available_action": "handle_return",
+                    "business_action": "handle_return",
+                    "task_version": row["voucher_code"] + ":" + row["fingerprint"],
+                    "amount_cents": abs(int(row["actual_cents"] or 0) - int(row["expected_cents"] or 0)),
+                    "reason": row["reason"] or row["status"],
+                }
+                for row in rows
+            ]
+
     def dispatch(self, actor, book_id, intent_id):
 
         with self.db.transaction(actor=actor) as conn:

@@ -162,12 +162,14 @@ async function fileBase64(file: File): Promise<string> {
 export function IntegrationWorkbench({
   session,
   bookId,
+  focus = '',
   onBack,
   onBusyChange,
   embedded = false,
 }: {
   session: Session;
   bookId: string;
+  focus?: string;
   onBack: () => void;
   onBusyChange?: (busy: boolean) => void;
   embedded?: boolean;
@@ -254,6 +256,65 @@ export function IntegrationWorkbench({
   useEffect(() => {
     void load();
   }, [load]);
+  async function refreshArtifact(outboxId: string) {
+    const value = await api<{ artifacts: Artifact[] }>(
+      `${base}/outbox/${outboxId}/artifacts`,
+      session,
+    );
+    if (!live.current) return;
+    setArtifact(value.artifacts[0] ?? null);
+    setReceipts([]);
+    setReturns([]);
+    setMessage(
+      value.artifacts.length
+        ? '已读取冻结适配文件，可下载 CSV 或登记客户回执。'
+        : '该交付意图尚未生成 54 列适配文件。',
+    );
+    if (value.artifacts[0]) {
+      const rows = await api<{ receipts: Receipt[] }>(
+        `${base}/artifacts/${value.artifacts[0].id}/receipts`,
+        session,
+      );
+      if (live.current) setReceipts(rows.receipts);
+      const returned = await api<{ returns: ReturnImport[] }>(
+        `${base}/artifacts/${value.artifacts[0].id}/returns`,
+        session,
+      );
+      if (live.current) setReturns(returned.returns);
+    }
+  }
+  async function openFocusTask(ref: string) {
+    await run(async () => {
+      const listed = await api<{
+        tasks: {
+          object_id: string;
+          import_id: string;
+          voucher_code: string;
+          outbox_id: string;
+        }[];
+      }>(`${base}/returns/tasks?limit=200`, session);
+      if (!live.current) return;
+      const task = listed.tasks.find((item) => item.object_id === ref);
+      if (!task) {
+        setMessage('该差异已处置或不在当前待办中，请刷新待办后重试。');
+        return;
+      }
+      await refreshArtifact(task.outbox_id);
+      if (!live.current) return;
+      setHandleDraft({
+        importId: task.import_id,
+        voucherCode: task.voucher_code,
+        action: 'resolved',
+        reason: '',
+        evidence: '',
+      });
+      setMessage('已定位返回文件差异，请核对金额、科目和过账日期，再填写处置原因与证据。');
+    });
+  }
+  useEffect(() => {
+    if (focus) void openFocusTask(focus);
+    // 待办跳转只传一次目标；处置完成后不自动重放。
+  }, [focus]);
   async function run(action: () => Promise<void>) {
     if (lock.current) return;
     lock.current = true;
@@ -360,33 +421,7 @@ export function IntegrationWorkbench({
     });
   }
   async function loadArtifact(outboxId: string) {
-    await run(async () => {
-      const value = await api<{ artifacts: Artifact[] }>(
-        `${base}/outbox/${outboxId}/artifacts`,
-        session,
-      );
-      if (!live.current) return;
-      setArtifact(value.artifacts[0] ?? null);
-      setReceipts([]);
-      setReturns([]);
-      setMessage(
-        value.artifacts.length
-          ? '已读取冻结适配文件，可下载 CSV 或登记客户回执。'
-          : '该交付意图尚未生成 54 列适配文件。',
-      );
-      if (value.artifacts[0]) {
-        const rows = await api<{ receipts: Receipt[] }>(
-          `${base}/artifacts/${value.artifacts[0].id}/receipts`,
-          session,
-        );
-        if (live.current) setReceipts(rows.receipts);
-        const returned = await api<{ returns: ReturnImport[] }>(
-          `${base}/artifacts/${value.artifacts[0].id}/returns`,
-          session,
-        );
-        if (live.current) setReturns(returned.returns);
-      }
-    });
+    await run(() => refreshArtifact(outboxId));
   }
   async function makeArtifact(outboxId: string) {
     await run(async () => {
@@ -1048,6 +1083,16 @@ export function IntegrationWorkbench({
                           onChange={(e) => setManualReturn((d) => ({ ...d, note: e.target.value }))}
                         />
                       </label>
+                      <label>
+                        证据原件
+                        <input
+                          type="file"
+                          accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"
+                          disabled={busy}
+                          onChange={(e) => setManualEvidence(e.target.files?.[0] ?? null)}
+                        />
+                        <small>PDF/PNG/JPEG，≤2MB；与证据引用一并留痕。</small>
+                      </label>
                     </div>
                     <button
                       className="button secondary"
@@ -1070,7 +1115,10 @@ export function IntegrationWorkbench({
                             缺 {row.counts.missing} / 多 {row.counts.extra} / 金额科目{' '}
                             {row.counts.mismatch}
                           </span>
-                          <details className="integration-return-rows">
+                          <details
+                            className="integration-return-rows"
+                            open={handleDraft?.importId === row.id}
+                          >
                             <summary>逐笔明细（{row.rows.length}）</summary>
                             <table>
                               <thead>

@@ -69,6 +69,14 @@ const details: Record<TaskKind, Readonly<Record<string, string>>> = {
   },
   alert: { open: '待处理', resolved: '已处理' },
   fee_variance: { pending: '待核对到账差额' },
+  bridge_return: {
+    amount_mismatch: '回传金额不一致',
+    account_mismatch: '回传科目不一致',
+    rejected: '对方拒收',
+    unknown: '对方未找到凭证',
+    missing: '对方缺少凭证',
+    extra: '对方多出凭证',
+  },
   migration: {
     collecting: '资料收集中',
     processing: '后台处理中',
@@ -124,6 +132,14 @@ function capability(task: WorkspaceTask, profile: WorkspaceProfile): boolean {
     delivery: ['unverified', 'mismatch', 'failed'],
     alert: ['open'],
     fee_variance: ['pending'],
+    bridge_return: [
+      'amount_mismatch',
+      'account_mismatch',
+      'rejected',
+      'unknown',
+      'missing',
+      'extra',
+    ],
     migration: ['collecting', 'processing', 'needs_attention', 'ready', 'accepted'],
     material: ['pending', 'returned', 'submitted'],
   };
@@ -164,6 +180,8 @@ function capability(task: WorkspaceTask, profile: WorkspaceProfile): boolean {
       return (
         profile.can_accounting || profile.can_finance || profile.can_review || profile.can_manage
       );
+    case 'bridge_return':
+      return profile.can_review;
     case 'migration':
       return task.state === 'ready'
         ? profile.can_review
@@ -229,6 +247,8 @@ function actionNext(task: WorkspaceTask): string {
       return '打开告警，核对受影响企业和处理原因，再按现有权限处理或联系系统管理员。';
     case 'fee_variance':
       return '打开到账差异，核对银行流水、应收与证据，按政策原因处理或说明待查原因；不要直接改账。';
+    case 'bridge_return':
+      return '打开返回文件，对照冻结交付包核对这笔凭证的金额、科目与过账日期，填写原因和证据后再处置差异；不要改动对方原始数据。';
     case 'migration':
       return task.state === 'ready'
         ? '核对迁移资料、余额与差异，再由独立复核人员按页面授权验收。'

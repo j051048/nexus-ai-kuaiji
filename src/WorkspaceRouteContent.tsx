@@ -160,6 +160,7 @@ interface WorkspaceRouteApp {
   materialTarget: string;
   deliveryTarget: string;
   feeVarianceTarget: string;
+  integrationFocus: string;
   migrationTarget: string;
   operationsTarget: string;
   operationsAlert: string;
@@ -296,6 +297,7 @@ export function WorkspaceRouteContent({
     materialTarget,
     deliveryTarget,
     feeVarianceTarget,
+    integrationFocus,
     migrationTarget,
     operationsTarget,
     operationsAlert,
@@ -817,6 +819,7 @@ export function WorkspaceRouteContent({
                 key={session.scope_key + ':' + bookId}
                 session={session}
                 bookId={bookId}
+                focus={integrationFocus}
                 embedded
                 onBack={() => setRouteView('accounting')}
                 onBusyChange={changeBusinessBusy}

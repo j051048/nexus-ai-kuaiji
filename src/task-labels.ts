@@ -16,4 +16,5 @@ export const taskLabels: Record<TaskKind, string> = {
   migration: '旧账迁移',
   material: '周期资料',
   fee_variance: '规费差异',
+  bridge_return: '返回差异',
 };

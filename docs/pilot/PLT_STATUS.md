@@ -4,7 +4,7 @@
 
 ## PLT00 执行纪律、责任与计量基线  <状态：工具就绪待客户输入（本机门禁/模板/合成演练通过；真实工时、客户资料、责任人签认未提供）>
 
-- 现状核实：HEAD `c8da023777fff5c7eeb7311067cdcd7e8244e61b`；工作区 120+ 项改动；迁移最高 302（215/300/301/302 已在 PG16/17 应用）。PLT01–PLT04 已记录（PLT04-D 本地通过；E 工具就绪待客户），PLT05-A 本地通过（真实 T+ 未联调），PLT05-B 契约/解析器/PG/浏览器/手工证据通过（差异待办与 handler 浏览器 e2e 未接），PLT05-C–PLT09 尚未执行。
+- 现状核实：HEAD `c8da023777fff5c7eeb7311067cdcd7e8244e61b`；工作区 120+ 项改动；迁移最高 302（215/300/301/302 已在 PG16/17 应用）。PLT01–PLT04 已记录（PLT04-D 本地通过；E 工具就绪待客户），PLT05-A 本地通过（真实 T+ 未联调），PLT05-B 契约/解析器/PG/浏览器/手工证据通过（返回差异任务投影已就绪、WorkSpace 待办映射与 handler/手工浏览器 e2e 未接），PLT05-C–PLT09 尚未执行。
 - 当前联合候选：source **2487/`98986251c5fe425b7536a5ecf8cb181b73977d96b4504460f1f23f14131cf3e6`**、migration **505/`969cc011de43c5bea4619ace590182623126522618c1524acce0735ed1d275b2`**；各模块仍保留其通过时的历史候选。
 - 修改文件（新增）：
   - `scripts/opt_acceptance.py`：`release_blockers(results, *, require_pg)` 与 `--require-pg`；PG skipped/passed-with-skips/skipped_tests 均列 blocker，release status 置 failed。
@@ -966,7 +966,7 @@
 - 未验证/边界：真实 T+ 联调、集团汇总/助手回答/月结预检尚未接入三态显示（当前不显示，因而不会误标为已接收/过账）；PLT05-B 才能登记返回文件并逐笔核对。
 - 候选：HEAD `c8da023777fff5c7eeb7311067cdcd7e8244e61b`，source **2478/`de56cb250199885f6f8191be509c477ab362e81c18700a67cea34597f0e8163c`**、migration **499/`e1e2b1150cb69472f69a4345f81408d491f681449a84fd3a5ab5a00450abf8b2`**；未提交/推送/部署。
 
-## PLT05-B 返回结果的导入与逐笔核对  <状态：进行中（SQLite/PG16/PG17/浏览器导入、手工证据原件、手工/handler UI 通过；handler 浏览器 e2e、PLT03-B 待办与真实 T+ 未完成）>
+## PLT05-B 返回结果的导入与逐笔核对  <状态：进行中（SQLite/PG16/PG17/浏览器导入、差异处置、手工证据原件与 UI 通过；返回差异任务投影服务已就绪，Workspace 待办与 handler/手工浏览器 e2e、真实 T+ 未完成）>
 
 - 契约：新增 `docs/pilot/ROUNDTRIP_CONTRACT.md`，明确这是待真实 T+ 确认的假设契约；八列 `批次标识,凭证标识,对方凭证号,结果,失败原因,对方过账日期,金额,科目`，其中金额/科目用于判断 mismatch，缺失时不得判一致；`missing/extra/amount_mismatch/account_mismatch` 是差异而非成功。
 - 红测：先建 `test_plt05_roundtrip_contract.py`，导入 `app.integrations.roundtrip` 失败（模块不存在）确认为红；随后实现 `nexus_backend/app/integrations/roundtrip.py`，只做解析/匹配，不写库、不冒充真实 T+。
