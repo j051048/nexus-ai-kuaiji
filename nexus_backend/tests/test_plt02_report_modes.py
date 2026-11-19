@@ -164,6 +164,7 @@ def test_policy_maker_cannot_approve_own_policy(business):
             ledger_id=existing["ledger_id"],
             standard_kind="small_enterprise",
             taxpayer_kind="general",
+            formal_book_system="local",
             effective_from="2027-01",
             effective_to="2027-12",
             reason="PLT02-D 独立批准边界",

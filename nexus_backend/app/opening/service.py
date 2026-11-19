@@ -82,9 +82,11 @@ class OpeningService:
             stamp = now()
             conn.execute(
                 "INSERT INTO accounting_policies(id,firm_id,company_id,ledger_id,standard_kind,"
-                "taxpayer_kind,industry,fiscal_year_start_month,currency,version,status,"
-                "effective_from,effective_to,is_synthetic,reason,created_by,created_at) "
-                "VALUES(?,?,?,?,?,?,?,?,'CNY',?,'active',?,?,?,?,?,?)",
+                "taxpayer_kind,formal_book_system,formal_book_system_name,industry,"
+                "fiscal_year_start_month,currency,version,status,"
+                "effective_from,effective_to,is_synthetic,reason,fee_variance_reasons_json,"
+                "created_by,created_at) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?,'CNY',?,'active',?,?,?,?,?,?,?)",
                 (
                     policy_id,
                     ledger["firm_id"],
@@ -92,6 +94,8 @@ class OpeningService:
                     ledger["id"],
                     request.standard_kind,
                     request.taxpayer_kind,
+                    request.formal_book_system,
+                    request.formal_book_system_name,
                     request.industry,
                     request.fiscal_year_start_month,
                     version,
@@ -99,6 +103,11 @@ class OpeningService:
                     request.effective_to,
                     request.is_synthetic,
                     request.reason,
+                    json.dumps(
+                        [item.model_dump() for item in request.fee_variance_reasons],
+                        ensure_ascii=False,
+                        separators=(",", ":"),
+                    ),
                     actor.user_id,
                     stamp,
                 ),

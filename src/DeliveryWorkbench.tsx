@@ -38,7 +38,8 @@ const TaxWorkpaperPanel = lazy(() =>
 export function DeliveryWorkbench(props: DeliveryWorkbenchProps) {
   const location = useLocation(),
     navigate = useNavigate();
-  const tax = new URLSearchParams(location.search).get('section') === 'tax';
+  const tax =
+    new URLSearchParams(location.search).get('section') === 'tax' || !!props.initialFeeVarianceId;
   const [busy, setBusy] = useState(false);
   const onBusyChange = useCallback(
     (value: boolean) => {
@@ -83,6 +84,8 @@ export function DeliveryWorkbench(props: DeliveryWorkbenchProps) {
               companyId={props.companyId}
               period={props.period}
               onBusyChange={onBusyChange}
+              onOpenDraft={props.onOpenDraft}
+              initialFeeVarianceId={props.initialFeeVarianceId}
             />
           ) : (
             <p role="status">正在确认账套授权范围…</p>

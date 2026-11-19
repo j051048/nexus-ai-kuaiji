@@ -49,6 +49,16 @@ export async function formalFixture(
   request: APIRequestContext,
   zeroActivity = false,
   namePrefix = '正式账簿虚构',
+  options: {
+    feeVarianceReasons?: {
+      code: string;
+      label: string;
+      blocks_close: boolean;
+      debit_account?: string;
+      credit_account?: string;
+    }[];
+    formalBookSystem?: 'local' | 'external';
+  } = {},
 ) {
   const headers = await identity(request, 'accountant');
   const finance = await identity(request, 'finance');
@@ -68,6 +78,13 @@ export async function formalFixture(
     await request.put(`/api/companies/${company.id}/members`, {
       headers,
       data: { email: 'finance@demo.example.invalid', role: 'finance', department_id: null },
+    }),
+    200,
+  );
+  await checked(
+    await request.put(`/api/companies/${company.id}/members`, {
+      headers,
+      data: { email: 'reviewer@demo.example.invalid', role: 'admin', department_id: null },
     }),
     200,
   );
@@ -92,16 +109,16 @@ export async function formalFixture(
         ledger_id: ledger.id,
         standard_kind: 'small_enterprise',
         taxpayer_kind: 'general',
+        formal_book_system: options.formalBookSystem ?? 'local',
+        formal_book_system_name: options.formalBookSystem === 'external' ? '畅捷通 T+' : '',
         effective_from: '2026-01',
         effective_to: '2026-12',
+        fee_variance_reasons: options.feeVarianceReasons,
         reason: '仅本地虚构正式账簿与月度交付验收',
       },
     }),
   );
-  const reviewerSession = await checked(
-    await request.get('/api/session?persona=reviewer'),
-    200,
-  );
+  const reviewerSession = await checked(await request.get('/api/session?persona=reviewer'), 200);
   await checked(
     await request.post(`/api/opening/policies/${policy.id}/approve`, {
       headers: { Authorization: `Bearer ${reviewerSession.token}` },

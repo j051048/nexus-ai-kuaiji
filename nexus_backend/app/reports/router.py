@@ -49,15 +49,25 @@ def build_report_router(actor_dependency):
     ):
         return profit.variance(current, book_id, baseline_book_id, line_code)
 
+    @router.get("/profit/impacts")
+    def profit_impacts(
+        book_id: str = Query(min_length=1, max_length=100),
+        voucher_id: str = Query(min_length=1, max_length=100),
+        current=Depends(actor_dependency),
+        profit=Depends(profit),
+    ):
+        return profit.impacts(current, book_id, voucher_id)
+
     @router.get("/profit")
     def profit_overview(
         book_id: str = Query(min_length=1, max_length=100),
         period: str = Query(min_length=7, max_length=7),
         line_code: str = Query(default="", max_length=40),
+        report_run_id: str = Query(default="", max_length=100),
         current=Depends(actor_dependency),
         profit=Depends(profit),
     ):
-        return profit.overview(current, book_id, period, line_code)
+        return profit.overview(current, book_id, period, line_code, report_run_id)
 
     @router.get("/fleet")
     def fleet_overview(

@@ -40,6 +40,7 @@ def declaration_case(p0_case):
             ledger_id=ledger_id,
             standard_kind="small_enterprise",
             taxpayer_kind="general",
+            formal_book_system="local",
             effective_from="2026-01",
             reason="本机交付前置零余额政策",
         ),

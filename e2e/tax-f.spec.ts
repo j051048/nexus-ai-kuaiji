@@ -103,12 +103,39 @@ for (const viewport of [
     await panel.locator('header').first().getByRole('button', { name: '刷新' }).click();
     await expect(panel.locator('.tax-f-basis strong').first()).toContainText('已复核');
 
+    const createdReport = await checked(
+      await request.post('/api/reports', {
+        headers: f.headers,
+        data: { book_id: f.book.id, period: f.book.period },
+      }),
+      201,
+    );
+    const reportId = createdReport.report.id as string;
+    await panel.locator('header').first().getByRole('button', { name: '刷新' }).click();
+    const profitScope = panel.getByLabel('下钻口径');
+    await expect(profitScope.locator(`option[value="${reportId}"]`)).toHaveCount(1);
+    await profitScope.selectOption(reportId);
+    await expect(panel.getByText(/金额冻结于报表 V/)).toBeVisible();
+    await expect(panel.getByText(/与当前账簿一致/)).toBeVisible();
+
     await expect(panel.getByRole('cell', { name: '营业收入' })).toBeVisible();
     await expect(panel.getByText('¥1,000.00').last()).toBeVisible();
     await expect(panel.getByRole('cell', { name: '所得税费用' })).toBeVisible();
     await expect(panel.locator('.tax-f-totals')).toContainText('净利润');
-    await panel.getByRole('button', { name: '查看依据' }).first().click();
+    const revenueRow = panel.getByRole('row').filter({ hasText: '营业收入' });
+    await expect(revenueRow.getByRole('cell').nth(2)).toHaveText('1');
+    const drillHint = panel.locator('.tax-f-hint[role="note"]');
+    await expect(drillHint).toContainText('未映射 4 行');
+    await expect(drillHint).toContainText('混合凭证 0 张');
+    await revenueRow.getByRole('button', { name: '查看依据' }).click();
     await expect(panel.getByText(/下钻：/)).toBeVisible();
+    const accountLayer = panel.getByRole('list', { name: '利润行科目汇总' });
+    await expect(accountLayer).toContainText('6001');
+    await expect(accountLayer).toContainText('主营业务收入');
+    await expect(accountLayer).toContainText('¥1,000.00');
+    await panel.getByRole('button', { name: '影响报表行' }).click();
+    await expect(panel.getByText(/影响：/)).toBeVisible();
+    await expect(panel.getByText(/影响：/)).toContainText('营业收入');
 
     const fleet = panel.locator('.fleet-metrics');
     await expect(

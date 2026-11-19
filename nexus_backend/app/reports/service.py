@@ -439,6 +439,8 @@ class ReportService:
                 reasons.append("核算政策尚未批准")
             if bool(policy["is_synthetic"]):
                 reasons.append("核算政策为合成演练，不可正式出表")
+            if policy["formal_book_system"] == "unassessed":
+                reasons.append("正式账所在系统未核定")
             effective_to = policy["effective_to"]
             if book["period"] < policy["effective_from"] or (
                 effective_to and book["period"] > effective_to
@@ -491,8 +493,9 @@ class ReportService:
             conn.execute(
                 "INSERT INTO report_runs(id,book_id,period,template_id,template_version,status,version,"
                 "inputs_fingerprint,content_json,content_hash,created_by,created_at,mode,standard_kind,"
-                "policy_version,policy_approver,mapping_fingerprint,trial_reasons_json) "
-                "VALUES(?,?,?,?,?,'draft',?,?,?,?,?,?,?,?,?,?,?,?)",
+                "formal_book_system,formal_book_system_name,policy_version,policy_approver,"
+                "mapping_fingerprint,trial_reasons_json) "
+                "VALUES(?,?,?,?,?,'draft',?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (
                     report_id,
                     book["id"],
@@ -507,6 +510,8 @@ class ReportService:
                     now(),
                     mode,
                     standard,
+                    policy["formal_book_system"] if policy else "unassessed",
+                    policy["formal_book_system_name"] if policy else "",
                     int(policy["version"]) if policy else None,
                     policy["approved_by"] if policy else None,
                     mapping,

@@ -78,6 +78,7 @@ class CloseService:
             "AND NOT EXISTS(SELECT 1 FROM vouchers v WHERE v.review_request_id=m.id)",
             (book["id"],),
         ).fetchone()[0]
+
         report_content = json.loads(report["content_json"])
         checks = [
             {
@@ -95,6 +96,7 @@ class CloseService:
                 "status": "blocked" if manual_pending else "pass",
                 "detail": f"{manual_pending} 张手工凭证尚未完成审核和记账；录错的未审版本须由制单人说明理由后撤回",
             },
+            self._fee_variance_check(conn, book["id"], period),
             {
                 "code": "subledger_control",
                 "status": "pass" if control["passed"] else "blocked",
@@ -137,6 +139,11 @@ class CloseService:
                 "制单会计与复核会计",
                 "核对待审手工凭证，独立复核并记账；录错的版本由制单人说明理由后撤回。",
                 "manual_vouchers",
+            ),
+            "fee_variance_pending": (
+                "规费经办会计",
+                "逐笔核对差异原因与依据，完成差异处理并生成凭证；待查状态不能作为正式账务结论。",
+                "tax",
             ),
             "subledger_control": (
                 "账套会计",
@@ -250,6 +257,61 @@ class CloseService:
             self._audit(conn, actor, book["id"], "close.preflight", run_id, {"status": status})
             return self._view(conn, run_id)
 
+    def _unresolved_variance_is_advisory(self, conn, book_id, period):
+        policy = conn.execute(
+            "SELECT p.fee_variance_reasons_json FROM accounting_policies p "
+            "JOIN ledger_periods lp ON lp.ledger_id=p.ledger_id "
+            "WHERE lp.book_id=? AND p.status='active' "
+            "AND p.effective_from<=? AND (p.effective_to IS NULL OR p.effective_to>=?) "
+            "ORDER BY p.version DESC LIMIT 1",
+            (book_id, period, period),
+        ).fetchone()
+        if not policy:
+            return False
+        raw = policy["fee_variance_reasons_json"] or []
+        if isinstance(raw, str):
+            try:
+                raw = json.loads(raw)
+            except (TypeError, ValueError):
+                return False
+        if not isinstance(raw, list):
+            return False
+        for item in raw:
+            if (
+                isinstance(item, dict)
+                and item.get("code") == "unresolved"
+                and item.get("blocks_close") is False
+            ):
+                return True
+        return False
+
+    def _fee_variance_check(self, conn, book_id, period):
+        pending = conn.execute(
+            "SELECT COUNT(*) FROM fee_receivable_variances WHERE book_id=? AND period=? "
+            "AND status='pending'",
+            (book_id, period),
+        ).fetchone()[0]
+        advisory = pending > 0 and self._unresolved_variance_is_advisory(conn, book_id, period)
+        blocked = pending > 0 and not advisory
+        if blocked:
+            detail = f"{pending} 笔规费差异尚未核实原因；待查状态不能生成正式凭证"
+        elif advisory:
+            detail = f"{pending} 笔规费差异待查；已按客户政策提示，不阻断月结"
+        else:
+            detail = "本期无待查规费差异"
+        return {
+            "code": "fee_variance_pending",
+            "status": "blocked" if blocked else "pass",
+            "detail": detail,
+            "pending_count": pending,
+            "advisory": advisory,
+        }
+
+    def _assert_no_open_fee_variances(self, conn, book_id, period):
+        check = self._fee_variance_check(conn, book_id, period)
+        if check["status"] == "blocked":
+            raise AccountingError(f"{check['detail']}，不能完成月结", 409)
+
     def review(self, actor, run_id, request: CloseCommand):
         company_id = self._company_for_run(actor, run_id)
         with self.db.transaction(
@@ -263,6 +325,7 @@ class CloseService:
             if run["created_by"] == actor.user_id:
                 raise AccountingError("月结预检人与复核人必须分离", 403)
             self._assert_current(conn, actor, run)
+            self._assert_no_open_fee_variances(conn, run["book_id"], run["period"])
             conn.execute(
                 "UPDATE internal_close_runs SET status='reviewed',reviewed_by=?,reviewed_at=? WHERE id=?",
                 (actor.user_id, now(), run_id),
@@ -286,6 +349,7 @@ class CloseService:
             ).fetchone():
                 raise AccountingError("该期间已经内部锁期", 409)
             book = self._assert_current(conn, actor, run)
+            self._assert_no_open_fee_variances(conn, book["id"], run["period"])
             ledger = conn.execute(
                 "SELECT ledger_id FROM ledger_periods WHERE book_id=?", (book["id"],)
             ).fetchone()

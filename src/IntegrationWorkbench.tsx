@@ -30,7 +30,26 @@ type Overview = {
   period: string;
   pagination: { has_more: boolean; total: number };
   imports: { id: string; state: string; record_count: number; created_at: string }[];
-  outbox: { id: string; export_id: string; state: string; external_code: string }[];
+  outbox: {
+    id: string;
+    export_id: string;
+    state: string;
+    external_code: string;
+    statuses: {
+      exported: { at: string | null; evidence: string | null };
+      received: { at: string | null; evidence: string | null };
+      posted: { at: string | null; evidence: string | null };
+    };
+    result_summary: 'not_exported' | 'result_unknown' | 'received' | 'partial' | 'posted';
+    partial_failure: boolean;
+    result_unknown: boolean;
+  }[];
+  formal_book: {
+    system: 'unassessed' | 'local' | 'external';
+    name: string;
+    policy_version: number | null;
+    approved: boolean;
+  };
 };
 type Intent = { id: string; package: unknown };
 type Artifact = {
@@ -44,6 +63,42 @@ type Artifact = {
   created_at: string;
   synthetic: boolean;
   native_tplus_format: boolean;
+};
+type ReturnRow = {
+  voucher_code: string;
+  external_code: string;
+  status: string;
+  reason: string;
+  posted_date: string | null;
+  expected_cents: number;
+  actual_cents: number | null;
+  expected_accounts: string[];
+  actual_accounts: string[];
+  handled?: boolean;
+  handler?: {
+    action: string;
+    reason: string;
+    evidence_ref: string;
+    handled_by: string;
+    handled_at: string;
+  } | null;
+};
+type ReturnImport = {
+  id: string;
+  batch_code: string;
+  result_status: 'accepted' | 'partial';
+  received: boolean;
+  posted: boolean;
+  row_count: number;
+  counts: {
+    accepted: number;
+    missing: number;
+    extra: number;
+    mismatch: number;
+    discrepancy: number;
+  };
+  created_at: string;
+  rows: ReturnRow[];
 };
 type Receipt = {
   id: string;
@@ -94,6 +149,16 @@ function downloadBlob(blob: Blob, filename: string) {
   setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
+async function fileBase64(file: File): Promise<string> {
+  const dataUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(new Error('无法读取证据原件'));
+    reader.readAsDataURL(file);
+  });
+  return dataUrl.split(',', 2)[1] || '';
+}
+
 export function IntegrationWorkbench({
   session,
   bookId,
@@ -125,6 +190,22 @@ export function IntegrationWorkbench({
     [message, setMessage] = useState(''),
     [artifact, setArtifact] = useState<Artifact | null>(null),
     [receipts, setReceipts] = useState<Receipt[]>([]),
+    [returns, setReturns] = useState<ReturnImport[]>([]),
+    [returnFile, setReturnFile] = useState<File | null>(null),
+    [handleDraft, setHandleDraft] = useState<{
+      importId: string;
+      voucherCode: string;
+      action: 'resolved' | 'ignored';
+      reason: string;
+      evidence: string;
+    } | null>(null),
+    [manualEvidence, setManualEvidence] = useState<File | null>(null),
+    [manualReturn, setManualReturn] = useState({
+      received: true,
+      posted: false,
+      evidence: '',
+      note: '',
+    }),
     [receiptFile, setReceiptFile] = useState<File | null>(null),
     [receiptCode, setReceiptCode] = useState(''),
     [offset, setOffset] = useState(0);
@@ -287,6 +368,7 @@ export function IntegrationWorkbench({
       if (!live.current) return;
       setArtifact(value.artifacts[0] ?? null);
       setReceipts([]);
+      setReturns([]);
       setMessage(
         value.artifacts.length
           ? '已读取冻结适配文件，可下载 CSV 或登记客户回执。'
@@ -298,6 +380,11 @@ export function IntegrationWorkbench({
           session,
         );
         if (live.current) setReceipts(rows.receipts);
+        const returned = await api<{ returns: ReturnImport[] }>(
+          `${base}/artifacts/${value.artifacts[0].id}/returns`,
+          session,
+        );
+        if (live.current) setReturns(returned.returns);
       }
     });
   }
@@ -309,6 +396,7 @@ export function IntegrationWorkbench({
       if (!live.current) return;
       setArtifact(value);
       setReceipts([]);
+      setReturns([]);
       setMessage(`54 列合成适配文件已冻结：${value.row_count} 行，${value.voucher_count} 张凭证。`);
       await load();
     });
@@ -337,8 +425,99 @@ export function IntegrationWorkbench({
       if (!live.current) return;
       setReceipts((rows) => [value, ...rows.filter((row) => row.id !== value.id)]);
       setReceiptFile(null);
+      await load();
       setMessage(
         `回执已登记：接受 ${value.accepted_count}、拒绝 ${value.rejected_count}、重复 ${value.duplicate_count}、未知 ${value.unknown_count}。外部过账仍未确认。`,
+      );
+    });
+  }
+  async function submitRowHandle(event: React.FormEvent) {
+    event.preventDefault();
+    if (!artifact || !handleDraft) return;
+    await run(async () => {
+      const value = await api<ReturnImport>(
+        `${base}/artifacts/${artifact.id}/returns/${handleDraft.importId}/rows/${encodeURIComponent(handleDraft.voucherCode)}/handle`,
+        session,
+        {
+          method: 'POST',
+          body: {
+            action: handleDraft.action,
+            reason: handleDraft.reason,
+            evidence_ref: handleDraft.evidence,
+          },
+        },
+      );
+      setReturns((rows) => rows.map((row) => (row.id === value.id ? value : row)));
+      setHandleDraft(null);
+      setMessage('差异已处置，原返回行与处置记录同时保留。');
+    });
+  }
+
+  async function submitManualReturn() {
+    if (!artifact) return;
+    if (!manualEvidence) {
+      setMessage('手工登记必须上传证据原件（PDF/PNG/JPEG，≤2MB）。');
+      return;
+    }
+    if (uploadSizeError(manualEvidence.size, 2_000_000)) {
+      setMessage('证据原件须在 2MB 以内。');
+      return;
+    }
+    const intent = data?.outbox.find((row) => row.id === artifact.outbox_id);
+    if (!intent?.external_code) return;
+    await run(async () => {
+      const value = await api<ReturnImport>(
+        `${base}/artifacts/${artifact.id}/returns/manual`,
+        session,
+        {
+          method: 'POST',
+          body: {
+            batch_code: intent.external_code,
+            received: manualReturn.received,
+            posted: manualReturn.posted,
+            evidence_ref: manualReturn.evidence,
+            note: manualReturn.note,
+          },
+        },
+      );
+      const base64 = await fileBase64(manualEvidence);
+      await api(`${base}/artifacts/${artifact.id}/returns/${value.id}/evidence`, session, {
+        method: 'POST',
+        body: {
+          filename: manualEvidence.name,
+          media_type: manualEvidence.type || 'application/octet-stream',
+          content_base64: base64,
+        },
+      });
+      setReturns((rows) => [value, ...rows.filter((row) => row.id !== value.id)]);
+      setManualReturn({ received: true, posted: false, evidence: '', note: '' });
+      setManualEvidence(null);
+      setMessage('手工回执与证据原件已登记；操作人已留痕。');
+    });
+  }
+
+  async function submitReturn() {
+    if (!artifact || !returnFile) return;
+    const intent = data?.outbox.find((row) => row.id === artifact.outbox_id);
+    if (!intent?.external_code) throw new Error('当前交付意图缺少批次标识');
+    await run(async () => {
+      if (uploadSizeError(returnFile.size, 2_000_000))
+        throw new Error(uploadSizeError(returnFile.size, 2_000_000) ?? '返回文件过大');
+      const content = await returnFile.text();
+      const value = await api<ReturnImport>(`${base}/artifacts/${artifact.id}/returns`, session, {
+        method: 'POST',
+        body: { batch_code: intent.external_code, content },
+      });
+      if (!live.current) return;
+      setReturns((rows) => [value, ...rows.filter((row) => row.id !== value.id)]);
+      setReturnFile(null);
+      await load();
+      setMessage(
+        value.posted
+          ? `返回文件已核对：${value.counts.accepted} 张已接收并过账。`
+          : value.received
+            ? `返回文件已接收：${value.counts.accepted} 张，尚缺逐笔过账日期。`
+            : `返回文件存在差异：缺 ${value.counts.missing}、多 ${value.counts.extra}、金额/科目 ${value.counts.mismatch}，未接收。`,
       );
     });
   }
@@ -629,6 +808,17 @@ export function IntegrationWorkbench({
               <span>03</span>
               <h2>准备已审核凭证交付包</h2>
             </div>
+            <p className="integration-formal-book">
+              正式账：
+              {data.formal_book.system === 'external'
+                ? `外部系统 ${data.formal_book.name || '未命名'}`
+                : data.formal_book.system === 'local'
+                  ? '本系统'
+                  : '未核定（不能生成正式报表）'}
+              {data.formal_book.policy_version
+                ? ` · 政策 V${data.formal_book.policy_version}${data.formal_book.approved ? ' · 已批准' : ' · 未批准'}`
+                : ' · 缺少生效政策'}
+            </p>
             <p>
               每个导出只创建一个持久意图，科目与辅助项映射随包冻结。当前包为中性
               JSON，尚未验证为客户 T+
@@ -663,7 +853,34 @@ export function IntegrationWorkbench({
             </div>
             {data.outbox.map((row) => (
               <div className="integration-history" key={row.id}>
-                <span>{row.external_code.slice(0, 12)} · 等待版本适配</span>
+                <span>{row.external_code.slice(0, 12)}</span>
+                <span
+                  className={`integration-state ${row.statuses.exported.at ? 'done' : 'pending'}`}
+                >
+                  {row.statuses.exported.at
+                    ? `已导出 · ${row.statuses.exported.at.slice(0, 10)}`
+                    : '未导出'}
+                </span>
+                <span
+                  className={`integration-state ${row.statuses.received.at ? 'done' : 'pending'}`}
+                >
+                  {row.statuses.received.at
+                    ? `对方已接收 · ${row.statuses.received.at.slice(0, 10)}`
+                    : '未接收'}
+                </span>
+                <span
+                  className={`integration-state ${row.statuses.posted.at ? 'done' : 'pending'}`}
+                >
+                  {row.statuses.posted.at
+                    ? `对方已过账 · ${row.statuses.posted.at.slice(0, 10)}`
+                    : '未过账'}
+                </span>
+                {row.result_unknown && (
+                  <span className="integration-offline">尚无对方结果，不自动重发</span>
+                )}
+                {row.partial_failure && (
+                  <span className="integration-offline">部分失败，请逐笔核对</span>
+                )}
                 <button
                   className="button secondary small"
                   disabled={busy || !data.can_review}
@@ -769,6 +986,214 @@ export function IntegrationWorkbench({
                     ))}
                   </div>
                 )}
+                <div className="integration-returns">
+                  <h3>返回文件逐笔核对</h3>
+                  <label>
+                    客户返回文件 CSV
+                    <input
+                      type="file"
+                      accept=".csv,text/csv"
+                      disabled={busy}
+                      onChange={(e) => setReturnFile(e.target.files?.[0] ?? null)}
+                    />
+                    <small>
+                      八列契约：批次标识,凭证标识,对方凭证号,结果,失败原因,对方过账日期,金额,科目。
+                    </small>
+                  </label>
+                  <button
+                    className="button secondary"
+                    disabled={busy || !returnFile}
+                    onClick={() => void submitReturn()}
+                  >
+                    <Upload size={15} /> 核对返回文件
+                  </button>
+                  <details className="integration-manual-return">
+                    <summary>客户软件无文件时，手工登记接收/过账</summary>
+                    <div className="integration-form">
+                      <label>
+                        已接收
+                        <input
+                          type="checkbox"
+                          checked={manualReturn.received}
+                          onChange={(e) =>
+                            setManualReturn((d) => ({ ...d, received: e.target.checked }))
+                          }
+                        />
+                      </label>
+                      <label>
+                        已过账
+                        <input
+                          type="checkbox"
+                          checked={manualReturn.posted}
+                          disabled={!manualReturn.received}
+                          onChange={(e) =>
+                            setManualReturn((d) => ({ ...d, posted: e.target.checked }))
+                          }
+                        />
+                      </label>
+                      <label>
+                        证据引用
+                        <input
+                          value={manualReturn.evidence}
+                          placeholder="客户短信/邮件/截图归档编号"
+                          onChange={(e) =>
+                            setManualReturn((d) => ({ ...d, evidence: e.target.value }))
+                          }
+                        />
+                      </label>
+                      <label>
+                        备注
+                        <input
+                          value={manualReturn.note}
+                          onChange={(e) => setManualReturn((d) => ({ ...d, note: e.target.value }))}
+                        />
+                      </label>
+                    </div>
+                    <button
+                      className="button secondary"
+                      disabled={busy || manualReturn.evidence.trim().length < 5 || !manualEvidence}
+                      onClick={() => void submitManualReturn()}
+                    >
+                      登记手工回执
+                    </button>
+                  </details>
+                  {returns.length > 0 && (
+                    <div className="integration-receipts">
+                      {returns.map((row) => (
+                        <div className="integration-history" key={row.id}>
+                          <span>
+                            {row.batch_code} · {row.result_status} · 接受 {row.counts.accepted} /
+                            差异 {row.counts.discrepancy} · {row.received ? '已接收' : '未接收'} ·{' '}
+                            {row.posted ? '已过账' : '未过账'}
+                          </span>
+                          <span className="integration-offline">
+                            缺 {row.counts.missing} / 多 {row.counts.extra} / 金额科目{' '}
+                            {row.counts.mismatch}
+                          </span>
+                          <details className="integration-return-rows">
+                            <summary>逐笔明细（{row.rows.length}）</summary>
+                            <table>
+                              <thead>
+                                <tr>
+                                  <th>凭证标识</th>
+                                  <th>结果</th>
+                                  <th>金额</th>
+                                  <th>过账日期</th>
+                                  <th>原因</th>
+                                  <th>处置</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {row.rows.map((item) => (
+                                  <tr key={item.voucher_code}>
+                                    <td data-label="凭证标识">{item.voucher_code}</td>
+                                    <td data-label="结果">{item.status}</td>
+                                    <td data-label="金额">
+                                      {item.actual_cents == null
+                                        ? '缺金额'
+                                        : `¥${(item.actual_cents / 100).toFixed(2)}`}
+                                    </td>
+                                    <td data-label="过账日期">{item.posted_date ?? '未提供'}</td>
+                                    <td data-label="原因">{item.reason || '—'}</td>
+                                    <td data-label="处置">
+                                      {item.handled ? (
+                                        <span>
+                                          已处置 ·{' '}
+                                          {item.handler?.action === 'ignored' ? '忽略' : '已解决'}
+                                        </span>
+                                      ) : item.status === 'accepted' ? (
+                                        '—'
+                                      ) : (
+                                        <button
+                                          type="button"
+                                          className="button secondary"
+                                          disabled={busy}
+                                          onClick={() =>
+                                            setHandleDraft({
+                                              importId: row.id,
+                                              voucherCode: item.voucher_code,
+                                              action: 'resolved',
+                                              reason: '',
+                                              evidence: '',
+                                            })
+                                          }
+                                        >
+                                          处置差异
+                                        </button>
+                                      )}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                            {handleDraft?.importId === row.id && (
+                              <form className="integration-handle" onSubmit={submitRowHandle}>
+                                <strong>处置 {handleDraft.voucherCode}</strong>
+                                <label>
+                                  处置方式
+                                  <select
+                                    value={handleDraft.action}
+                                    onChange={(e) =>
+                                      setHandleDraft((d) =>
+                                        d
+                                          ? {
+                                              ...d,
+                                              action: e.target.value as 'resolved' | 'ignored',
+                                            }
+                                          : d,
+                                      )
+                                    }
+                                  >
+                                    <option value="resolved">已解决（说明原因）</option>
+                                    <option value="ignored">忽略（保留原差异）</option>
+                                  </select>
+                                </label>
+                                <label>
+                                  原因
+                                  <input
+                                    value={handleDraft.reason}
+                                    minLength={3}
+                                    required
+                                    onChange={(e) =>
+                                      setHandleDraft((d) =>
+                                        d ? { ...d, reason: e.target.value } : d,
+                                      )
+                                    }
+                                  />
+                                </label>
+                                <label>
+                                  证据
+                                  <input
+                                    value={handleDraft.evidence}
+                                    minLength={5}
+                                    required
+                                    onChange={(e) =>
+                                      setHandleDraft((d) =>
+                                        d ? { ...d, evidence: e.target.value } : d,
+                                      )
+                                    }
+                                  />
+                                </label>
+                                <div className="integration-actions">
+                                  <button className="button primary" disabled={busy} type="submit">
+                                    保存处置
+                                  </button>
+                                  <button
+                                    className="button secondary"
+                                    type="button"
+                                    onClick={() => setHandleDraft(null)}
+                                  >
+                                    取消
+                                  </button>
+                                </div>
+                              </form>
+                            )}
+                          </details>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </section>

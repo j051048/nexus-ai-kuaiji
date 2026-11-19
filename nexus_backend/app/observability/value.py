@@ -45,8 +45,8 @@ class ValueBaselineService:
             ).fetchone()[0]
             mapped = conn.execute(
                 "SELECT count(DISTINCT m.draft_id) FROM business_mappings m JOIN business_events e ON e.id=m.event_id "
-                f"WHERE e.firm_id=? AND e.company_id=? AND {mapping_month}=?",
-                (actor.firm_id, company_id, period),
+                f"WHERE e.firm_id=? AND e.company_id=? AND {event_month}=? AND {mapping_month}=?",
+                (actor.firm_id, company_id, period, period),
             ).fetchone()[0]
             # Once approved, an exported draft must stay in the approved cohort.
             approved = conn.execute(
@@ -57,13 +57,15 @@ class ValueBaselineService:
             ).fetchone()[0]
             returned = conn.execute(
                 "SELECT count(DISTINCT e.id) FROM business_actions a JOIN business_events e ON e.id=a.event_id "
-                f"WHERE e.firm_id=? AND e.company_id=? AND a.decision='return' AND {action_month}=?",
-                (actor.firm_id, company_id, period),
+                f"WHERE e.firm_id=? AND e.company_id=? AND {event_month}=? "
+                f"AND a.decision='return' AND {action_month}=?",
+                (actor.firm_id, company_id, period, period),
             ).fetchone()[0]
             return_actions = conn.execute(
                 "SELECT count(*) FROM business_actions a JOIN business_events e ON e.id=a.event_id "
-                f"WHERE e.firm_id=? AND e.company_id=? AND a.decision='return' AND {action_month}=?",
-                (actor.firm_id, company_id, period),
+                f"WHERE e.firm_id=? AND e.company_id=? AND {event_month}=? "
+                f"AND a.decision='return' AND {action_month}=?",
+                (actor.firm_id, company_id, period, period),
             ).fetchone()[0]
             cost_row = conn.execute(
                 "SELECT coalesce(sum(coalesce(c.confirmed_micro,c.estimated_micro,0)),0),"
@@ -116,6 +118,7 @@ class ValueBaselineService:
             },
             "cost": {
                 "ai_model_cost_micro": cost,
+                "ai_model_cost_complete": cost_unknown_count == 0,
                 "ai_cost_per_approved_micro": round(cost / approved)
                 if approved and cost_unknown_count == 0
                 else None,

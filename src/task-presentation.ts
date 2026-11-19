@@ -68,6 +68,7 @@ const details: Record<TaskKind, Readonly<Record<string, string>>> = {
     failed: '交付结果需核对',
   },
   alert: { open: '待处理', resolved: '已处理' },
+  fee_variance: { pending: '待核对到账差额' },
   migration: {
     collecting: '资料收集中',
     processing: '后台处理中',
@@ -122,6 +123,7 @@ function capability(task: WorkspaceTask, profile: WorkspaceProfile): boolean {
     export: ['approved'],
     delivery: ['unverified', 'mismatch', 'failed'],
     alert: ['open'],
+    fee_variance: ['pending'],
     migration: ['collecting', 'processing', 'needs_attention', 'ready', 'accepted'],
     material: ['pending', 'returned', 'submitted'],
   };
@@ -158,6 +160,10 @@ function capability(task: WorkspaceTask, profile: WorkspaceProfile): boolean {
       return profile.can_accounting;
     case 'alert':
       return profile.can_manage;
+    case 'fee_variance':
+      return (
+        profile.can_accounting || profile.can_finance || profile.can_review || profile.can_manage
+      );
     case 'migration':
       return task.state === 'ready'
         ? profile.can_review
@@ -221,6 +227,8 @@ function actionNext(task: WorkspaceTask): string {
       return '先核对已有导出记录、外部回执和差异，不要重复发送；按页面授权核验结果。';
     case 'alert':
       return '打开告警，核对受影响企业和处理原因，再按现有权限处理或联系系统管理员。';
+    case 'fee_variance':
+      return '打开到账差异，核对银行流水、应收与证据，按政策原因处理或说明待查原因；不要直接改账。';
     case 'migration':
       return task.state === 'ready'
         ? '核对迁移资料、余额与差异，再由独立复核人员按页面授权验收。'

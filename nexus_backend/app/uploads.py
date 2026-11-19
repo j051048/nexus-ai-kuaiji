@@ -30,6 +30,7 @@ Purpose = Literal[
     "bank_import",
     "invoice_import",
     "tax_filing_attachment",
+    "source_original",
 ]
 INTENT_TTL_SECONDS = 900
 PURPOSES: tuple[str, ...] = (
@@ -40,6 +41,7 @@ PURPOSES: tuple[str, ...] = (
     "bank_import",
     "invoice_import",
     "tax_filing_attachment",
+    "source_original",
 )
 Filename = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=150)]
 

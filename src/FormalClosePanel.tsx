@@ -137,10 +137,18 @@ export const CloseEvidenceRows = EvidenceRows;
 export function ReportModeNotice({ report }: { report: ReportRow }) {
   if (report.mode === 'formal') {
     return (
-      <p className="formal-report-mode formal">
+      <div className="formal-report-mode formal">
         <strong>正式</strong>
         <span>已按批准政策与冻结映射生成，可进入后续复核流程。</span>
-      </p>
+        {report.formal_book_system === 'external' ? (
+          <p>
+            正式账以 <strong>{report.formal_book_system_name || '外部系统'}</strong>{' '}
+            为准；本报表是本系统按批准政策生成的交付稿，不代表对方已接收或过账。
+          </p>
+        ) : (
+          <p>正式账以本系统为准；外部交付仍需单独核验收货、导入与过账结果。</p>
+        )}
+      </div>
     );
   }
   return (

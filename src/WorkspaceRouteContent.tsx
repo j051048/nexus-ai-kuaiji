@@ -159,6 +159,7 @@ interface WorkspaceRouteApp {
   newIntake: boolean;
   materialTarget: string;
   deliveryTarget: string;
+  feeVarianceTarget: string;
   migrationTarget: string;
   operationsTarget: string;
   operationsAlert: string;
@@ -166,6 +167,7 @@ interface WorkspaceRouteApp {
   queueTarget: string;
   queueJobTarget: string;
   initialCaseId: string;
+  setInitialCaseId: (value: string) => void;
   caseTarget?: CaseTarget;
   setWorkCompany: (value: string) => void;
   setWorkPeriod: (value: string) => void;
@@ -293,6 +295,7 @@ export function WorkspaceRouteContent({
     newIntake,
     materialTarget,
     deliveryTarget,
+    feeVarianceTarget,
     migrationTarget,
     operationsTarget,
     operationsAlert,
@@ -300,6 +303,7 @@ export function WorkspaceRouteContent({
     queueTarget,
     queueJobTarget,
     initialCaseId,
+    setInitialCaseId,
     caseTarget,
     setWorkCompany,
     setWorkPeriod,
@@ -377,14 +381,23 @@ export function WorkspaceRouteContent({
           }}
           onAccounting={() => navigate('accounting')}
           onViewCompleted={(task) => {
-            setWorkCompany(task.company_id);
-            setWorkPeriod(task.period || '');
             if (task.kind === 'review' && task.book_id) {
-              setWorkBook(task.book_id);
-              navigate('accounting');
+              openMonthlyTarget({
+                view: 'accounting',
+                companyId: task.company_id,
+                period: task.period || '',
+                bookId: task.book_id,
+              });
+            } else if (task.kind === 'case') {
+              navigate('cases');
+              setWorkCompany(task.company_id);
+              setWorkPeriod(task.period || '');
+              setInitialCaseId(task.ref);
             } else if (task.event_id) {
-              setBusinessTarget(task.event_id);
               navigate('business');
+              setWorkCompany(task.company_id);
+              setWorkPeriod(task.period || '');
+              setBusinessTarget(task.event_id);
             }
           }}
           onMonthly={() => navigate('monthly')}
@@ -748,15 +761,19 @@ export function WorkspaceRouteContent({
               />
             ) : routeView === 'delivery' && bookId ? (
               <DeliveryWorkbench
-                key={session.scope_key + ':' + bookId + ':' + deliveryTarget}
+                key={
+                  session.scope_key + ':' + bookId + ':' + deliveryTarget + ':' + feeVarianceTarget
+                }
                 session={session}
                 bookId={bookId}
                 companyId={detail?.book.id === bookId ? detail.book.company_id : undefined}
                 period={detail?.book.id === bookId ? detail.book.period : undefined}
                 initialExportId={deliveryTarget}
+                initialFeeVarianceId={feeVarianceTarget}
                 embedded
                 onBack={() => (progress.origin ? returnToWork() : setRouteView('accounting'))}
                 onBusyChange={changeBusinessBusy}
+                onOpenDraft={openRecordDraft}
               />
             ) : routeView === 'recurring' && bookId ? (
               <RecurringEntries

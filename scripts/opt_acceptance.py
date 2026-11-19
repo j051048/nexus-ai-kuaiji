@@ -81,9 +81,25 @@ def _source_files() -> list[Path]:
         rel_parts = path.relative_to(ROOT).parts
         if rel_parts[0] not in {"nexus_backend", "src", "scripts", "e2e"} and len(rel_parts) > 1:
             continue
-        if any(part in {"node_modules", ".git", "tmp_test", "dist", "data", "docs", "artifacts"} for part in path.parts):
+        if any(
+            part in {"node_modules", ".git", "tmp_test", "dist", "data", "docs", "artifacts"}
+            for part in path.parts
+        ):
             continue
-        if path.suffix.lower() not in {".py", ".ts", ".tsx", ".css", ".sql", ".json", ".md", ".toml", ".yml", ".yaml", ".sh", ".mjs"}:
+        if path.suffix.lower() not in {
+            ".py",
+            ".ts",
+            ".tsx",
+            ".css",
+            ".sql",
+            ".json",
+            ".md",
+            ".toml",
+            ".yml",
+            ".yaml",
+            ".sh",
+            ".mjs",
+        }:
             continue
         paths.append(path)
     return sorted(set(paths))
@@ -300,11 +316,46 @@ def _classify(exit_code: int, output: str) -> str:
     return "passed"
 
 
+def release_blockers(results: list[dict], *, require_pg: bool) -> list[str]:
+    """Reasons a run cannot be used as a release judgement.
+
+    A development smoke run may explicitly tolerate missing PG; a release run
+    may not. PG commands that are skipped, or that report skipped tests, leave
+    the corresponding server-side contract unverified and therefore fail the
+    release verdict rather than being counted as a pass.
+    """
+    if not require_pg:
+        return []
+    blockers: list[str] = []
+    for row in results:
+        if row.get("source") != "isolated PostgreSQL acceptance":
+            continue
+        command = str(row.get("command", "PG command"))
+        if row.get("status") == "skipped":
+            blockers.append(
+                f"{row.get('module', 'PG')} {command}: skipped without isolated PostgreSQL"
+            )
+            continue
+        skipped = int(row.get("skipped_tests") or 0)
+        if row.get("status") == "passed-with-skips" or skipped:
+            blockers.append(
+                f"{row.get('module', 'PG')} {command}: {skipped} PostgreSQL tests skipped"
+            )
+    return blockers
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", default=None)
     parser.add_argument("--timeout", type=int, default=600)
-    parser.add_argument("--sqlite", default=None, help="read-only SQLite DB for audit-chain verification")
+    parser.add_argument(
+        "--sqlite", default=None, help="read-only SQLite DB for audit-chain verification"
+    )
+    parser.add_argument(
+        "--require-pg",
+        action="store_true",
+        help="release mode: missing or skipped isolated PostgreSQL checks fail the run",
+    )
     args = parser.parse_args()
     run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid4().hex[:8]
     out = Path(args.out) if args.out else ROOT / "tmp_test/pilot/PLT01-D" / run_id
@@ -419,9 +470,10 @@ def main() -> int:
         "audit_chain": audit,
     }
     failures = [r for r in results if r["status"] in {"failed", "timeout", "zero-tests"}]
+    blockers = release_blockers(results, require_pg=args.require_pg)
     status = (
         "passed"
-        if not failures and not tracked_modified and audit["status"] != "failed"
+        if not failures and not tracked_modified and audit["status"] != "failed" and not blockers
         else "failed"
     )
     module_counts = []
@@ -456,6 +508,8 @@ def main() -> int:
         "commands": results,
         "module_counts": module_counts,
         "boundary": boundary,
+        "release_mode": args.require_pg,
+        "release_blockers": blockers,
         "status": status,
     }
     (out / "summary.json").write_text(
@@ -465,6 +519,7 @@ def main() -> int:
         f"# PLT01-D acceptance {run_id}",
         "",
         f"- status: **{status}**",
+        f"- release mode: {'yes' if args.require_pg else 'no'}",
         f"- HEAD: `{head}`",
         f"- source: {len(source_rows)} files, `{summary['source_digest']}`",
         f"- migration: {migration_count} files, `{migration_digest}`",
@@ -492,6 +547,9 @@ def main() -> int:
         lines.append(
             f"| {row['command']} | {row['status']} | {exit_text} | {row['seconds']} | {row['skipped_tests']} |"
         )
+    if blockers:
+        lines.extend(["", "## Release blockers", ""])
+        lines.extend(f"- {item}" for item in blockers)
     if skip_increases:
         lines.extend(["", "## Skip increases", ""])
         for item in skip_increases:

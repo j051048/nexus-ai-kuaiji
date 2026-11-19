@@ -9,6 +9,7 @@ from app.opening.service import OpeningService
 from app.posting.models import OpeningBind, PostDraft
 from app.posting.service import PostingService
 from app.reports.profit import ProfitDrilldownService, ProfitMappingItem, ProfitMappingWrite
+from app.reports.service import ReportService
 from test_business import business  # noqa: F401
 from test_posting_service import frozen_opening, ledger_of
 
@@ -99,11 +100,125 @@ def test_profit_drilldown_maps_lines_and_keeps_unknown_tax_out_of_zero(business)
     revenue = [line for line in view["lines"] if line["line_kind"] == "revenue"][0]
     assert revenue["amount_cents"] == 500000
     assert revenue["items_count"] == 1
+    assert revenue["accounts"] == [
+        {"account_code": "6001", "account_name": "主营业务收入", "amount_cents": 500000, "items_count": 1}
+    ]
 
     detail = service.overview(case.manager, case.book["id"], "2026-10", "revenue")
     assert len(detail["items"]) == 1
     assert detail["items"][0]["account_code"] == "6001"
     assert detail["items"][0]["evidence_ref"] == "证据-profit-revenue-1"
+    assert detail["items"][0]["original_url"] is None
+
+    with case.db.transaction(actor=case.manager) as conn:
+        source_id = conn.execute(
+            "SELECT id FROM sources WHERE book_id=? AND external_id='profit-revenue-1'",
+            (case.book["id"],),
+        ).fetchone()["id"]
+        book_scope = conn.execute(
+            "SELECT firm_id,company_id FROM books WHERE id=?", (case.book["id"],)
+        ).fetchone()
+        conn.execute(
+            "INSERT INTO bank_import_files(id,book_id,firm_id,company_id,storage_key,filename,media_type,sha256,size_bytes,table_json,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                "file-profit-revenue",
+                case.book["id"],
+                book_scope["firm_id"],
+                book_scope["company_id"],
+                "storage-profit-revenue",
+                "profit-revenue.csv",
+                "text/csv",
+                "a" * 64,
+                1,
+                '{"headers":[]}',
+                case.manager.user_id,
+                "2026-10-31T00:00:00+00:00",
+            ),
+        )
+        conn.execute(
+            "INSERT INTO bank_import_previews(id,book_id,firm_id,company_id,file_id,payload_json,fingerprint,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
+            (
+                "preview-profit-revenue",
+                case.book["id"],
+                book_scope["firm_id"],
+                book_scope["company_id"],
+                "file-profit-revenue",
+                '{"rows":[]}',
+                "b" * 64,
+                case.manager.user_id,
+                "2026-10-31T00:00:00+00:00",
+            ),
+        )
+        conn.execute(
+            "INSERT INTO bank_import_source_files(preview_id,file_id,book_id,firm_id,company_id,source_id,row_number) VALUES(?,?,?,?,?,?,?)",
+            (
+                "preview-profit-revenue",
+                "file-profit-revenue",
+                case.book["id"],
+                book_scope["firm_id"],
+                book_scope["company_id"],
+                source_id,
+                2,
+            ),
+        )
+
+    linked = service.overview(case.manager, case.book["id"], "2026-10", "revenue")
+    assert linked["items"][0]["original_file_id"] == "file-profit-revenue"
+    assert linked["items"][0]["original_url"] == (
+        f"/api/books/{case.book['id']}/import-wizard/files/file-profit-revenue"
+    )
+
+    impacts = service.impacts(
+        case.manager, case.book["id"], detail["items"][0]["voucher_id"]
+    )
+    # The voucher also debits 1122, which is intentionally outside the profit mapping.
+    assert impacts["unmapped_line_count"] == 1
+    assert impacts["lines"] == [
+        {
+            "line_code": "revenue",
+            "line_name": "营业收入",
+            "line_kind": "revenue",
+            "amount_cents": 500000,
+            "line_count": 1,
+        }
+    ]
+
+
+def test_profit_snapshot_freezes_line_amounts_and_reports_changes(business):
+    case = business
+    opening = frozen_opening(case)
+    PostingService(case.db).bind_opening(
+        case.manager,
+        OpeningBind(book_id=case.book["id"], package_version_id=opening["version_id"], reason="冻结期初"),
+    )
+    _account(case, "1122", "应收账款", "asset", "debit")
+    _account(case, "6001", "主营业务收入", "income", "credit")
+    _post(case, "profit-snapshot-revenue-1", "5000.00", "income", "2026-10-10", "profit-snapshot-revenue-1", "1002", "6001")
+    _post(case, "profit-snapshot-expense-1", "1000.00", "expense", "2026-10-11", "profit-snapshot-expense-1", "6602.02", "1002")
+
+    report = ReportService(case.db).create(case.manager, case.book["id"], "2026-10")["report"]
+    _post(case, "profit-snapshot-revenue-2", "3000.00", "income", "2026-10-12", "profit-snapshot-revenue-2", "1002", "6001")
+
+    service = ProfitDrilldownService(case.db)
+    live = service.overview(case.manager, case.book["id"], "2026-10")
+    assert live["totals"]["revenue_cents"] == 800000
+    assert live["snapshot"] is None
+
+    frozen = service.overview(case.manager, case.book["id"], "2026-10", "revenue", report["id"])
+    assert frozen["totals"]["revenue_cents"] == 500000
+    assert frozen["totals"]["cost_and_expense_cents"] == 100000
+    assert frozen["totals"]["operating_profit_cents"] == 400000
+    assert frozen["snapshot"]["report_run_id"] == report["id"]
+    assert frozen["snapshot"]["version"] == report["version"]
+    assert frozen["snapshot"]["changed_line_codes"] == ["revenue"]
+    revenue = [line for line in frozen["lines"] if line["line_kind"] == "revenue"][0]
+    assert revenue["amount_cents"] == 500000
+    assert revenue["live_amount_cents"] == 800000
+    assert revenue["snapshot_changed"] is True
+    assert revenue["items_count"] == 2
+
+    with pytest.raises(AccountingError):
+        service.overview(case.manager, case.book["id"], "2026-11", "revenue", report["id"])
 
 
 def test_profit_mapping_versions_and_permissions(business):

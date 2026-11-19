@@ -15,4 +15,5 @@ export const taskLabels: Record<TaskKind, string> = {
   alert: '运行告警',
   migration: '旧账迁移',
   material: '周期资料',
+  fee_variance: '规费差异',
 };

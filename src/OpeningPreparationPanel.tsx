@@ -11,6 +11,8 @@ type Policy = {
   version: number;
   standard_kind: string;
   taxpayer_kind: string;
+  formal_book_system: 'unassessed' | 'local' | 'external';
+  formal_book_system_name: string;
   effective_from: string;
   effective_to: string | null;
   status: string;
@@ -54,7 +56,9 @@ export function OpeningPreparationPanel({
   const [busy, setBusy] = useState(false),
     [uncertain, setUncertain] = useState(false);
   const [standard, setStandard] = useState(''),
-    [taxpayer, setTaxpayer] = useState('');
+    [taxpayer, setTaxpayer] = useState(''),
+    [formalSystem, setFormalSystem] = useState<'unassessed' | 'local' | 'external'>('local'),
+    [formalSystemName, setFormalSystemName] = useState('');
   const [code, setCode] = useState(''),
     [name, setName] = useState(''),
     [category, setCategory] = useState('asset'),
@@ -247,6 +251,14 @@ export function OpeningPreparationPanel({
                   {row.approved_at ? ` · ${row.approved_at.slice(0, 10)}` : ''}
                 </span>
                 <span>
+                  正式账：
+                  {row.formal_book_system === 'external'
+                    ? `外部系统 ${row.formal_book_system_name || '未命名'}`
+                    : row.formal_book_system === 'local'
+                      ? '本系统'
+                      : '未核定'}
+                </span>
+                <span>
                   {row.is_synthetic ? '合成演练政策' : '客户确认政策'} · 映射：
                   {!row.approved_by
                     ? '批准时冻结'
@@ -277,6 +289,32 @@ export function OpeningPreparationPanel({
             </select>
           </label>
           <label>
+            正式账所在系统
+            <select
+              value={formalSystem}
+              disabled={busy}
+              onChange={(e) =>
+                setFormalSystem(e.target.value as 'unassessed' | 'local' | 'external')
+              }
+            >
+              <option value="local">本系统</option>
+              <option value="external">外部财务系统</option>
+              <option value="unassessed">未核定</option>
+            </select>
+          </label>
+          {formalSystem === 'external' && (
+            <label>
+              外部系统名称
+              <input
+                value={formalSystemName}
+                maxLength={120}
+                disabled={busy}
+                placeholder="例如 畅捷通 T+"
+                onChange={(e) => setFormalSystemName(e.target.value)}
+              />
+            </label>
+          )}
+          <label>
             纳税人身份
             <select value={taxpayer} onChange={(e) => setTaxpayer(e.target.value)} disabled={busy}>
               <option value="" disabled>
@@ -295,6 +333,8 @@ export function OpeningPreparationPanel({
                 ledger_id: data.ledger.id,
                 standard_kind: standard,
                 taxpayer_kind: taxpayer,
+                formal_book_system: formalSystem,
+                formal_book_system_name: formalSystem === 'external' ? formalSystemName : '',
                 effective_from: period,
                 reason,
               })

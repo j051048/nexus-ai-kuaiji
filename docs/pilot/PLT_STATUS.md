@@ -2,6 +2,37 @@
 
 追加不覆盖。每个模块只在其验收命令真实通过后写“完成”；无 PG/浏览器/客户资料时如实写“未验证”。
 
+## PLT00 执行纪律、责任与计量基线  <状态：工具就绪待客户输入（本机门禁/模板/合成演练通过；真实工时、客户资料、责任人签认未提供）>
+
+- 现状核实：HEAD `c8da023777fff5c7eeb7311067cdcd7e8244e61b`；工作区 120+ 项改动；迁移最高 302（215/300/301/302 已在 PG16/17 应用）。PLT01–PLT04 已记录（PLT04-D 本地通过；E 工具就绪待客户），PLT05-A 本地通过（真实 T+ 未联调），PLT05-B 契约/解析器/PG/浏览器/手工证据通过（差异待办与 handler 浏览器 e2e 未接），PLT05-C–PLT09 尚未执行。
+- 当前联合候选：source **2487/`98986251c5fe425b7536a5ecf8cb181b73977d96b4504460f1f23f14131cf3e6`**、migration **505/`969cc011de43c5bea4619ace590182623126522618c1524acce0735ed1d275b2`**；各模块仍保留其通过时的历史候选。
+- 修改文件（新增）：
+  - `scripts/opt_acceptance.py`：`release_blockers(results, *, require_pg)` 与 `--require-pg`；PG skipped/passed-with-skips/skipped_tests 均列 blocker，release status 置 failed。
+  - `nexus_backend/tests/test_plt00_release_gate.py`。
+  - `scripts/plt09_measurement.py`、`nexus_backend/tests/test_plt09_measurement.py`。
+  - `scripts/plt09_synthetic_drill.py`、`docs/pilot/templates/measurement_synthetic_drill.csv/.json`、`docs/pilot/MEASUREMENT_SYNTHETIC_DRILL.md`。
+  - `docs/pilot/templates/measurement_baseline.csv`。
+  - `docs/pilot/SCORECARD.md`、`BASELINE_KIT.md`、`RESPONSIBILITY_MATRIX.md`、`CUSTOMER_INPUTS.md`、`METRICS_AUDIT.md`。
+- 门禁红测与修复：`pytest tests/test_plt00_release_gate.py -q` 首次 3 failed（`AttributeError: ... has no attribute 'release_blockers'`），实现后 **4 passed/0.35s**；新增零用例用例确认 `_classify(0, "no tests ran in 0.01s") == "zero-tests"`，不会被当作 passed。
+- 实际 release 门禁：
+  ```
+  env -u ACCOUNTING_TEST_POSTGRES_URL python scripts/opt_acceptance.py --require-pg \
+    --out tmp_test/pilot/PLT00-D/release-pg-skip-100256
+  ```
+  退出码 **1**；`status=failed`；7 个 PG 命令全部 `skipped`；`release_blockers` 列出 OPT02/03/04/05/06/07/10；skip delta **8**；untracked migrations **8**。证据目录 `tmp_test/pilot/PLT00-D/release-pg-skip-100256/`。
+- 计量模板：`measurement_baseline.csv` 为 5 公司 × 15 岗位 × 2 期间 = 150 行空值；`plt09_measurement.py` 区分空值/已知零，**3 passed/0.36s**。
+- 包 00 定向组合：`test_plt00_release_gate.py + test_plt09_measurement.py + test_value_baseline.py` → **10 passed/13.46s**；覆盖 release gate、零用例、空白/已知零、跨期 cohort。
+- 合成计量演练：`python scripts/plt09_synthetic_drill.py` → 15 行；`unknown_rows=0/partial_rows=0/complete_rows=15/measured_zeroes=113`。全部数字虚构，文件头与 JSON `notice` 明确“合成演练，禁止作为客户基线、人效或定编依据”；只证明空值/零/已采集可区分，不产生任何客户工时结论。
+- 证据边界：`opt_acceptance.py` 的 source/migration 摘要与 run manifest 在同一次运行内生成，因此不会拼接不同指纹；命令零用例返回 `zero-tests` 并强制 failed；截图不是该命令的通过证据，未纳入门禁，避免把旧截图当作当前候选证据。
+- 价值基线 cohort 修复：`mapped` 按 event_month 与 mapping_month、`returned/return_actions` 按 event_month 与 action_month；`cost.ai_model_cost_complete=cost_unknown_count==0`。`test_value_baseline.py` **3 passed/13.62s**，新增跨期用例确认 2026-09 事项的 2026-10 映射/退回不会混入 10 月队列。
+- 未验证/外部输入：
+  - 五家客户 15 项岗位真实工时、质量、业务量：全部空值，待客户/现场两期数据。
+  - `RESPONSIBILITY_MATRIX.md` 责任人、签认均为空；出纳、非 review 办理人时间、集团合并等尚无系统落点。
+  - 真实客户资料清单仅模板，未收到客户文件。
+- 顺带发现：`pytest -k "value or metric or insight"` 为 **1 failed,78 passed,14 skipped**；唯一失败是既有 `test_stage7_pagination.py` 的“制单人不能复核本人版本”403，不是本包 cohort 改动，未修改。
+- 未提交/推送/部署。
+- 本轮结束候选：HEAD `c8da023777fff5c7eeb7311067cdcd7e8244e61b`、source **2465/`af4472d2277d6ca54d37a544f3017e61437fe59768ae2e924f0c4243d1613a24`**、migration **495/`7272abe6403b61632d5145ae1f30145ed09658f4466bc206d1fea65495e6f633`**。
+
 ## PLT01-A  <状态：完成>
 
 - 现状核实：`rg -n '^## |^### ' docs/fsc_opt/OPT_STATUS.md` → 1274 行，OPT01–OPT10 共 39 个状态节；OPT04-B 有重复节（行 431、478）；OPT07-D 有多段历史节（行 1089/1104 被行 1114/1133 取代）；OPT11 无记录。
@@ -463,6 +494,25 @@
   - 未处理超过 512KB、非 UTF-8、Excel 公式、合并单元格等客户文件。
   - 未做客户确认人签署/双人复核；当前解释绑定登录复核人。
 
+## 包 01 / PLT02 五法人政策及出表（本轮复核）  <状态：本地通过（五家合成政策/试算正式边界/参考报表对平）；五户客户签认与上期签字报表待客户>
+
+- 现状核实：PLT02-A–E 已有实现；本轮没有重建模块，按正常入口复跑政策门禁、试算/正式阻断、五家合成政策和参考报表对平。
+- 实际命令：
+  ```text
+  cd nexus_backend && PYTHONPATH=.. python -m pytest \
+    tests/test_plt02_report_modes.py tests/test_plt02_policy_gate.py \
+    tests/test_plt02_reference_reconciliation.py tests/test_plt02_five_synthetic_policies.py -q
+  15 passed, 2617 warnings in 40.11s
+  ```
+  ```text
+  npx playwright test e2e/plt02-report-modes.spec.ts --reporter=line
+  1 passed (24.3s)
+  ```
+- 覆盖：无政策/草稿/过期/被取代 → 未核定并阻断；合成政策只能试算；未批准/映射变化/未分类现金流阻断正式；正式包引用批准政策；五家合成政策演练；参考报表 1 分舍入、重分类、缺行三类差异及解释审计；桌面/手机试算提示与按钮阻断。
+- 五张待签认卡：`docs/pilot/POLICY_INTAKE.md`；上期签字报表逐行对平记录模板：`docs/pilot/PLT02_RECONCILIATION_CSV.md`。
+- 未验/外部：真实五户准则、纳税人类型、科目表/报表格式、批准人、已确认上期报表与差异解释；医院未被代选准则。
+- 未改历史迁移；本轮只追加/复核，未提交/推送/部署。
+
 ## PLT03-A 待办来源盘点  <状态：完成（只读盘点）>
 
 - 现状核实：读取 `src/FirmInbox.tsx`、`src/workspace-types.ts::taskDestination`、`src/App.tsx::openWorkspaceTask`、`nexus_backend/app/workspace/service.py` 的 14 个 `TaskKind` 分支，以及 `FirmInbox` 的 `/delivery/followups` 独立 feed。
@@ -538,7 +588,7 @@
   - 未做真实浏览器中的封套展示与旧链接/撤权/完成态跳转。
 - 顺带发现：`test_stage13_migration_workspace.py` 的 branch 级 exact-key 断言直查 `workspace_branch`，不经 service 装饰；保持原断言并通过，不扩宽为“任意新增字段”。
 
-## PLT03-C 直达与返回  <状态：部分完成（14类目标键/范围/版本/alert/失效页/review/approval/finance/handoff已办完信息/五身份待办链/业务与复核多层返回/队列滚动通过；已完成页查看入口、更深多层返回未验）>
+## PLT03-C 直达与返回  <状态：本地完成（14类目标键/范围/版本/alert/失效页/review/业务/case 410办理人时间/completed直达/五身份待办链/业务与复核多层返回/月度进入复核后返回原月份/队列滚动通过；独立出纳身份待客户核定，见 `PLT03_ROLE_HANDOFF.md`）>
 
 - 现状核实：`WorkspaceTask` 已由 PLT03-B 提供 `company_id/book_id/period/object_*`；`taskDestination` 14 个分支已带对象 id；`openWorkspaceTask` 在打开业务/复核/导出/交付时分别设置目标状态，但此前不统一设置期间，也不提示跨单位切换。
 - 修改文件：
@@ -553,12 +603,14 @@
   - `src/workspace-route.ts` 新增 `taskVersion:'task_version'`，`App` 持久化并恢复 `taskVersion`；14 类 URL 均带 `company/period/task_version`，恢复后仍以服务端重读为准。
   - `src/WorkspaceHome.tsx`/`src/FirmInbox.tsx`：打开前重新取任务后同时比对 `kind/ref/company_id/book_id/object_version`；版本变化不进入旧对象，也不再清空原队列。仅 401/403/404 撤下列表。
   - 新增 `src/task-availability.ts::taskOpenErrorMessage`：404 统一说明“待办对象不存在、已办完或当前账号不可见”，403 说明“已无权访问”，其余错误保持服务端信息；`task-availability.test.ts` **3 passed**。
-  - 新增 `src/TaskUnavailableDialog.tsx` + `.task-unavailable-*` 样式：版本变化“待办内容已更新”可“打开最新内容”，403“权限已撤销”显示当前处理人，404 统一“待办不可见”且不泄露存在性，410“待办已办完”显示服务端给出的办理人/时间；`WorkspaceHome` 与 `FirmInbox` 均接入，原队列不清空。
+  - 新增 `src/TaskUnavailableDialog.tsx` + `.task-unavailable-*` 样式：版本变化“待办内容已更新”可“打开最新内容”，403“权限已撤销”显示当前处理人，404 统一“待办不可见”且不泄露存在性，410“待办已办完”显示服务端给出的办理人/时间，并提供“查看处理记录”直达原对象；`WorkspaceHome` 与 `FirmInbox` 均接入，原队列不清空。
   - 新增 `src/task-availability.ts`/`src/task-scope.ts`/`src/TaskUnavailableDialog.tsx`、`e2e/plt03-task-matrix.spec.ts`、`e2e/plt03-task-navigation.spec.ts`、`e2e/plt03-reviewer-chain.spec.ts`，并修改 `src/App.tsx`、`src/WorkspaceHome.tsx`、`src/FirmInbox.tsx`、`src/OperationsWorkbench.tsx`、`src/workspace-route.ts`、`src/workspace-types.ts`、`src/WorkspaceRouteContent.tsx`、`src/styles.css`、`e2e/business.spec.ts`、`e2e/stage8-cases.spec.ts`。
   - `nexus_backend/app/workspace/service.py::_review_completion`：仅在已办完 review 且当前账号仍有该账套复核范围时查询 `drafts.approved_by/approved_at/users.name`，返回 410“该待办已由 … 于 … 办理”；无权限/不存在仍是 404，不泄露存在性。SQLite 与 PG16/17 均已覆盖。
   - `nexus_backend/app/workspace/service.py::_business_completion`：对 approval/finance/handoff 的已完成阶段，按 `business_actions` 最新 approve/handoff 记录返回 410 办理人/时间；先按当前 role gates + 公司成员/事务所经理范围授权，再查动作，未知/无权仍 404。approval/finance/handoff 三类均已用各自完成事件断言 410；无审批权限的 accountant 仍 404。
   - `test_stage12_workspace.py::test_workspace_person_department_company_independent_approval`：原断言 404 改为 410，并断言无审批权限的 accountant 仍 404；该用例 **1 passed/9.31s**（红测先得 `assert 410 == 404`）；SQLite 整套 **19 passed/40.61s**。
-  - `test_workspace_finance_and_handoff_completed_return_actor_and_time`：先 `approved(c)` 再断言 finance 410，再 `handoff(c,event)` 断言 handoff 410，均含办理人/时间；SQLite 整套 **19 passed/40.61s**。
+  - `test_workspace_finance_and_handoff_completed_return_actor_and_time`：先 `approved(c)` 再断言 finance 410，再 `handoff(c,event)` 断言 handoff 410，均含办理人/时间；SQLite 整套 **20 passed/40.73s**。
+  - `nexus_backend/app/workspace/service.py::_case_completion`：先走 `CasesService._case` 的现有可见性，仅 `state='closed'` 时取最新 `case_history action='close'` 与 `users.name`，返回 410 办理人/时间；不存在/无权仍 404。SQLite 新增 closed case 410；PG16/17 各新增 1 条，各 **11 passed/23.54s、23.76s**。
+  - `WorkspaceRouteContent.tsx::onViewCompleted` 增加 case 分支并修正顺序：先 `navigate('cases')` 再设 company/period/initialCaseId；approval 分支同样先 `navigate('business')` 再设 event，否则被 `navigate()` 清空。review 分支用 `openMonthlyTarget` 一次设置 book/company/period。
   - PG 同一文件在 `tmp_test/plt02b-pg17|16` 新库各 **10 passed/23.07s、22.70s**，覆盖 410 查询的 JSONB/RLS/授权路径；approval/finance/handoff 三类完成态均已用同一实现独立验证。
 - 失败测试及修改前输出：本项未保留“打开落到错误页”的 Playwright 红测；首次新用例失败仅因断言把 `object_type` 写成 `draft`，服务端实际为任务类型 `review`，修正断言后通过。此前 `src/task-scope.test.ts` 3 passed。
 - 验收命令与输出：
@@ -568,12 +620,20 @@
   ```
   ```text
   npx playwright test e2e/plt03-task-navigation.spec.ts --reporter=line
-  2 passed (22.5s)（跨企业深链/返回筛选/旧版本对话框/403/410，手机端滚动恢复）
+  4 passed (22.1s)（跨企业深链/返回筛选/旧版本对话框/403/410/completed 查看处理记录直达原账簿；新增 case 与 approval completed 直达 case/业务事项；手机端滚动恢复）
   截图：`tmp_test/plt03c-stale-dialog.png`、`tmp_test/plt03c-forbidden-dialog.png`、`tmp_test/plt03c-completed-dialog.png`
+  ```text
+  npx playwright test e2e/plt03-task-navigation.spec.ts --reporter=line
+  4 passed (22.1s)（completed 按钮打开 accounting，book/company 精确等于待办 target；case 打开 `/workspace/cases?case=…`；approval 打开 `/workspace/business?event=…`）
+  ```
   ```
   ```text
   npx playwright test e2e/plt03-task-matrix.spec.ts --reporter=line
   1 passed (27.5s)（14 类待办逐类点击，均落到目标键，URL 均带 company/period/task_version；alert 带告警 ID）
+  ```
+  ```text
+  npx playwright test e2e/plt03-monthly-return.spec.ts --reporter=line
+  1 passed (14.3s)（月度客户行→复核/账簿→“返回客户月度进度”，月份仍为 2026-10，客户行恢复）
   ```
   ```text
   python scripts/test_accounting_postgres_isolated.py --config tmp_test/plt02b-pg17/unified.json nexus_backend/tests/test_stage12_workspace_postgres.py::test_pg_completed_review_returns_410_with_actor_and_time -q
@@ -613,17 +673,40 @@
   ```
   ```text
   TMP=tmp_test/build-tmp TEMP=tmp_test/build-tmp npm run build
-  ✓ built in 3.75s；index JS 568.45 kB / gzip 176.26 kB，index CSS 101.46 kB / gzip 20.63 kB
+  ✓ built in 3.41s；index JS 568.77 kB / gzip 176.37 kB，index CSS 101.46 kB / gzip 20.63 kB
   ```
 - 未完成：
   - 14 类已逐类验证落点键与 company/period；`alert` 已带告警 ID 并在运行页定位；`export` 的投影 ref 是账套 id，任务本身就是“该账套的已审核凭证队列”，`book+filter=approved` 即精确目标，没有单独导出请求对象可打开。
   - 对象版本已写入 URL 并在打开前与列表比对；仍未提供“查看最新版本”对比页，只提示刷新后重开。
-  - 403/404/版本变化已有独立对话框；`review` 的已办完任务在 410 中展示 `drafts.approved_by/approved_at` 的办理人和时间；其他类型仍以 404 统一“不存在/不可见”，未单独展示办理信息。
+  - 403/404/版本变化已有独立对话框；`review` 的 410 展示 `drafts.approved_by/approved_at`，approval/finance/handoff 的 410 展示 `business_actions` 的办理人和时间；对象不存在与无权仍统一 404，不泄露存在性。
+  - 410 的“查看处理记录”已接回原对象：review 通过 `openMonthlyTarget` 同时设置 company/period/book、`setBookId` 与 `initialize`，避免 navigate 后默认账套覆盖任务账套；event 带 company/period/event 进入业务事项；`e2e/plt03-task-navigation.spec.ts` 断言 book 等于待办 `target.bookId`、company 等于 `target.companyId`，**2 passed/19.7s**。
   - 队列筛选与手机端滚动位置均能恢复；恢复发生在列表重载完成之后（约 200ms），期间存在一次可见回跳。多层返回已覆盖“待办→复核抽屉→原件页签→分录页签→队列”“待办→业务事项→部门办理→返回待办”，均回到原队列并恢复滚动；月度导入-导出路径未逐层验证。
-  - 1366/390 已跑员工、部门、财务、会计、复核人从真实待办进入并完成办理的链；14 类矩阵仍只验证落点键，不验证其余类型办理成功。
-  - 员工与会计两条真实链已从待办卡片进入：`e2e/stage8-cases.spec.ts` 员工在 `/workspace/home` 打开“补充业务资料”、上传并提交；会计从同一列表打开待办、接受补件；办理后该 `data-task-key` 从列表消失。**1 passed/20.0s**。部门、财务两条链仍缺。
-- 结论：范围切换、14 类目标键与 company/period/task_version、alert 告警定位、export 账套已审核队列、跨企业深链、返回筛选/滚动、旧版本“打开最新内容”、403/404 独立提示页和 review 410 已办完办理人/时间已就绪；员工、部门、财务、会计、复核人均已在 1366 与 390 从真实待办卡片进入并办理，复核链（原件页签→分录页签→确认→返回）、业务链（事项→部门办理→返回）均恢复原滚动位置。PLT03-C 仍不能标完成：review/approval/finance/handoff 的“他人已办完”已显示办理人/时间并保留 404 防探测，但月度导入-导出这类更深多层返回未逐层验证；目前 C 的剩余证据项是：已完成页没有直接查看原对象的入口，以及“待办→对象→原件→返回→返回”的完整月度路径未逐层验证。
-- 当前候选（只读指纹）：HEAD `39067aacc1b640419ee80a794297b233fd13e546`，source **2444 / `da65176bd159969bb27ad2305db69a7685a67dbf029fde422fe1360674134725`**，migration **487 / `4964fda2103ea40dcd3f0cdb33239e4e07a66acfad1e98d4cc75548a4392b3bb`**；工作区未提交。
+  - 1366/390 已跑员工、部门、企业财务、会计、复核人从真实待办进入并完成办理的链；仓库没有独立“出纳”身份，企业财务是否等同出纳需客户确认，本项不把企业财务直接写成出纳。其余 9 类矩阵只验证落点键，不验证办理成功。
+  - 五条真实链均从待办卡片进入：员工/会计 `e2e/stage8-cases.spec.ts` **1 passed/20.0s**；部门/财务/会计 `e2e/business.spec.ts` **2 passed/36.2s**（1366/390）；复核人 `e2e/plt03-reviewer-chain.spec.ts` **2 passed/19.8s**（1366/390）。
+- 结论：范围切换、14 类目标键与 company/period/task_version、alert 告警定位、export 账套已审核队列、跨企业深链、返回筛选/滚动、旧版本“打开最新内容”、403/404/410 独立提示页、review/approval/finance/handoff/case 办理人/时间、completed 直达 review/case/审批原对象均已就绪；员工、部门、财务、会计、复核人均已在 1366 与 390 从真实待办卡片进入并办理，复核链（原件页签→分录页签→确认→返回）、业务链（事项→部门办理→返回）、月度链（客户行→复核/账簿→返回客户月度进度）均回到原对象/原月份。PLT03-C 仍不能标完成：没有独立出纳身份可验收；“原件”为复核抽屉页签，不是独立页面，未另造多层返回。
+- 当前候选（只读指纹）：HEAD `c8da023777fff5c7eeb7311067cdcd7e8244e61b`，source **2445 / `21e1413daf00c45540d22b8153f65d5e0cfde943c6f2842fd33da17dc2f5afa5`**，migration **487 / `4964fda2103ea40dcd3f0cdb33239e4e07a66acfad1e98d4cc75548a4392b3bb`**；工作区未提交。
+
+## 包 02 / PLT03 待办、手机和岗位入口（本轮复核）  <状态：本地通过（五类岗位办理与返回/14类落点/失效页/版本拦截/滚动恢复）；出纳职责待客户核定>
+
+- 现状核实：PLT03-A–D 已有实现；未重建模块，按正常待办入口复跑员工、部门、财务、会计、复核人链路。
+- 实际命令：
+  ```text
+  npx playwright test e2e/stage8-cases.spec.ts --reporter=line
+  1 passed (20.0s)
+  ```
+  ```text
+  npx playwright test e2e/business.spec.ts --reporter=line
+  2 passed (36.2s)   # 1366 + 390
+  ```
+  ```text
+  npx playwright test e2e/plt03-task-navigation.spec.ts e2e/plt03-task-matrix.spec.ts e2e/plt03-reviewer-chain.spec.ts --reporter=line
+  7 passed (43.4s)
+  ```
+- 夹具修正：`plt03-task-navigation` 不再把“当前有 7 条复核待办”当契约；同批其他用例办理后剩余 5 条时，按当前行数滚动并断言返回前后行数一致，避免跨用例状态导致假失败/放宽业务断言。
+- 覆盖：员工补件、部门审批、财务核验移交、会计接受补件、复核人原件/分录/确认；14 类待办目标键；`company/period/task_version/alert`；旧版本、403、404、410；业务与复核返回原队列和滚动位置；手机 390。
+- 出纳：系统无独立出纳身份/付款入口，按 `PLT03_ROLE_HANDOFF.md` 显式标记“待客户核定、待授权联测”，不以企业财务代替。
+- 未验：无真实出纳、银行付款、真机/读屏、Firefox/WebKit 的人工验收；不把合成身份当现场岗位验收。
+- 未提交/推送/部署。
 
 ## PLT03-D "仅查看"不计为"已办理"  <状态：完成（服务端事实驱动，合成身份）>
 
@@ -644,3 +727,264 @@
 - 需客户或人提供：四类岗位真人各走一遍，确认是否存在“点进去不知道下一步”的环节。
 - 未做/未验证：未改或重算运营看板“已处理数量/处理率”的独立口径；未做消息通知到手机待办的实际路径；未验证通知类已读与业务待办在同一页的视觉区分。
 - 顺带发现：`client_message_reads` 只影响消息未读数，业务待办不因消息已读消失；未发现打开即完成隐藏写操作。
+
+## PLT04-A 出租车计费、结算到报表全链  <状态：完成（只读代码/合成测试盘点；未生成真实运行 trace）>
+
+- 现状核实：已读 `nexus_backend/app/tax/fees.py`、`sources.py`、`posting/service.py`、`reports/profit.py`、`reports/service.py`、`src/TaxSourcePanel.tsx`、`TaxFeeBatchPanel.tsx`、`TaxFPanel.tsx` 及 080/142/147/163/164/166 迁移。
+- 修改文件：`docs/pilot/TAXI_CHAIN.md` 新建；未改产品代码、未新增迁移、未提交。
+- 链路：
+  - `tax_source_files.rows_json`（adopted 行，`source_row_number` 含表头偏移）→ `TaxFeeService.generate` → `tax_fee_batches` / `tax_fee_batch_rows` / `sources(external_id=tax-fee:<batch_id>)` / `drafts` / `draft_lines` / `draft_line_sources` / `draft_line_auxiliaries`。
+  - `TaxFeeService.review`：独立复核、政策/来源/运输身份重验、`_approve_in_transaction`、`_materialize_receivables`；`fee_receivable_items.batch_row_id` 保留行来源。
+  - `fee_receivable_allocations`/`fee_receivable_refunds` 只 FK `sources(id,book_id)`，不回 `bank_statement_lines`；核销撤销只追加撤销字段。
+  - `PostingService.post_draft` 生成 `vouchers`/`voucher_lines`，`voucher_lines.source_ref = sources.id`，`voucher_sources(source_kind='draft', source_id=draft_id)`。
+  - `ReportService.create` 写 `report_runs.content_json`；`ProfitDrilldownService._rows` 按期间实时查 `voucher_lines`，利润下钻不用报表快照。
+- 断点清单（`TAXI_CHAIN.md` 第 5 节）：B1 规费复核后无产品内“发布/记账”入口；B2 凭证行到来源行需 `line_no→draft_line_sources.ordinal` 人工映射，行拆分可错配；B3 银行核销无法精确回银行流水行；B4 利润下钻用实时凭证而非报表快照；B5 drill items 截断 1000 条；B6 结算单/银行流水/原始行多处靠金额/日期/编号人工匹配；B7 来源行无深链；B8 批次/应收/凭证无统一链路视图。
+- 验收命令与输出：本项为只读盘点，无新增可执行用例；引用既有合成夹具 `test_tax06_fees.py` 的 `_masters/_source` 作为后续 trace 路径，未把未执行 trace 写成通过。
+- 仅合成验证：文档中的 L1 为合成示例（净额 90.00 元），未用客户真实规费、银行回单、T+ 回执。
+- 未做/未验证：未运行新的链式 trace；未验证 B1 的替代入口（若存在其他通用凭证记账入口，尚未实测）；未验证真实银行流水、真实客户原件、真实申报。
+- 顺带发现：`tax_fee_batches.status` 只有 draft/reviewed/invalidated，不记录 posted；规费批次与凭证之间只能经 draft 关联。
+
+## PLT04-B 计费差异与处理  <状态：本地验收通过（合成身份/合成银行流水；六类差异、差异凭证、处理人独立复核、前端登记与处理、月结预检、PG 并发与真实锁期 guard 均通过）>
+
+- 现状核实：现有 `fee_receivable_allocations` 只有全额/部分核销，没有差异登记；`accounting_policies` 没有差异原因白名单；`b04_close.review/lock` 原来不检查规费差异。
+- 修改文件：
+  - `nexus_backend/migrations/sqlite/209_plt04_fee_variances.sql`、`nexus_backend/migrations/postgres/294_plt04_fee_variances.sql`。
+  - `nexus_backend/app/opening/models.py`、`nexus_backend/app/opening/service.py`。
+  - `nexus_backend/app/tax/variances.py`、`nexus_backend/app/tax/router.py`、`nexus_backend/app/b04_close/service.py`、`nexus_backend/app/main.py`。
+  - `nexus_backend/tests/test_plt04_fee_variances.py`、`test_plt04_fee_variances_api.py`、`test_plt04_fee_variances_postgres.py`。
+  - `nexus_backend/migrations/sqlite/210_plt04_variance_processing.sql`、`nexus_backend/migrations/postgres/295_plt04_variance_processing.sql`。
+  - `nexus_backend/migrations/sqlite/211_plt04_close_variance_check.sql`、`nexus_backend/migrations/postgres/296_plt04_close_variance_check.sql`。
+  - `nexus_backend/migrations/sqlite/212_plt04_variance_advisory_close.sql`、`nexus_backend/migrations/postgres/297_plt04_variance_advisory_close.sql`。
+  - `src/FeeVariancePanel.tsx`、`src/fee-variance.css`、`src/fee-variance-panel.render.test.ts`、`src/TaxWorkpaperPanel.tsx`。
+- 已实现：
+  - 六类差异 `underpaid/overpaid/unmatched/cross_period/many_to_one/one_to_many`；表只追加身份字段，禁止删除。
+  - 差异原因来自 active 核算政策 `fee_variance_reasons_json`；无配置时只能 `unresolved`。`unresolved` 不能处理，必须补证据；未知原因 409。
+  - `FeeVarianceService.record/list/handle/reverse`，幂等键同请求复用、异内容 409；处理/撤销写审计。
+  - 月结权威预检新增 `fee_variance_pending` 检查；存在 pending 差异时 `blocked`，并在复核/锁期再次调用 `_assert_no_open_fee_variances`，409，不自动生成凭证。
+  - HTTP：`GET/POST /api/tax/books/{book_id}/fee-variances`、`POST /api/tax/fee-variances/{id}/handle|reverse`；`main.py` 注册 `fee_variances`。
+  - PG 294/296 已实测：政策/差异表、RLS book scope、identity 不可改、禁删；`_reasons` 同时接受 TEXT `[]` 与 PG JSONB list；预检契约 7→8 的函数替换与触发已在新库验证。预检检查契约从 7 项扩到 8 项，旧 `preflight_passed` 运行在升级后需重新预检，不能沿用旧 checks。
+  - 迁移 210/295 增加 `processing_started_at/by`；`FeeVarianceService.start` 供处理人认领，`_view.state` 在 pending+已认领时投影为 `processing`，底层 `status` 仍为 pending 以继续阻断月结。
+  - `FeeVarianceService.reasons` 与 `GET /api/tax/books/{book_id}/fee-variance-reasons` 返回 active 政策原因及 `unresolved` 默认值。
+  - 前端 `FeeVariancePanel` 列出差异/差额/状态/原因/证据，支持登记差异、认领、按政策原因和证据处理、撤销；登记表单金额经 `parseYuanToCents`，处理展示经 `formatCents(BigInt(...))`；409/422 只显示服务端消息，不自动重试；移动端原因/证据单列。
+  - 政策原因可携带借贷科目；配置原因缺失科目或借贷相同 409。`handle` 以差额绝对值写银行 `sources`、`drafts` 和平衡的两行 `draft_lines`，记录 `draft_id` 与审计 `fee.variance.draft`。
+  - 复核时若 `draft_id` 对应的差异 `handled_by` 是当前复核人，403“差异处理人不能复核自己生成的凭证”；另一名有复核权限的会计可独立复核。
+  - 六类差异 `underpaid/overpaid/unmatched/cross_period/many_to_one/one_to_many` 各有参数化用例：登记→处理→生成凭证→处理人自审 403→会计独立复核通过。另测：差额恰好 5.00 时不自动归类为手续费；同一差异重复处理 409；关期 guard 返回 403。
+- 验收命令与输出：
+  ```text
+  cd nexus_backend && PYTHONPATH=.. python -m pytest tests/test_plt04_fee_variances.py tests/test_plt04_fee_variances_api.py tests/test_b04_pilot.py tests/test_stage12_workspace.py -q
+  39 passed, 2618 warnings in 76.61s；b04 预检单例另 1 passed/9.54s（含真实锁期后差异登记 409）
+  ```
+  ```text
+  # PG17 / PG16（新库已应用到 297，latest handle 凭证逻辑已重跑）
+  ACCOUNTING_ADMIN_DATABASE_URL=<local-admin-url> python scripts/migrate_accounting.py migrate
+  # 迁移完成，最高版本 297（两库各一次）
+  python scripts/test_accounting_postgres_isolated.py --config tmp_test/plt02b-pg17/unified.json nexus_backend/tests/test_plt04_fee_variances_postgres.py -q
+  2 passed, 1 warning in 8.10s
+  python scripts/test_accounting_postgres_isolated.py --config tmp_test/plt02b-pg16/unified.json nexus_backend/tests/test_plt04_fee_variances_postgres.py -q
+  2 passed, 1 warning in 5.47s
+  ```
+  ```text
+  cd nexus_backend && python -m ruff check app/tax/variances.py app/tax/router.py app/b04_close/service.py app/opening/models.py app/opening/service.py tests/test_plt04_fee_variances*.py
+  All checks passed!
+  # SQLite 211/212 已由全部新建测试库应用；PG 296/297 已在两套新库应用并重跑差异测试。
+  ```
+  ```text
+  npm test -- --run
+  158 files / 1425 tests passed
+  TMP=tmp_test/build-tmp TEMP=tmp_test/build-tmp npm run build
+  build passed: index 568.77 kB / gzip 176.35 kB; CSS 101.46 kB / gzip 20.64 kB
+  ```
+
+  ```text
+  npx playwright test e2e/plt04-fee-variances.spec.ts --reporter=line
+  2 passed (31.7s)
+  # 1366×768 / 390×844：页面登记无对应应收 5.00 → 认领 → 选择政策原因
+  # “银行手续费”（借 1002 / 贷 6602.02）+ 证据 → 保存处理 → 已处理并生成草稿；
+  # 再点“打开差异草稿”进入“原件与凭证，一起核对”；无 pageerror。
+  ```
+- 仅合成验证：单一企业/单一账套；未使用客户真实规费、银行回单或审批政策。
+- 需客户或人提供：五家客户对“差异原因”的正式政策、可接受的证据类型、审批人。
+- 已补前端草稿入口：处理完成的差异行显示“打开差异草稿”，经 `DeliveryWorkbench → TaxWorkpaperPanel → FeeVariancePanel` 回调打开现有同屏复核抽屉；e2e 在 1366/390 点击后断言“原件与凭证，一起核对”，**2 passed/31.7s**。
+- 未做/未验证：政策提示的“登记→预检→复核→锁期”专项 e2e 未做（B 验收不强制）；`processing` 仅为工作流投影（DB status 仍 pending）；审计查询页未做；跨期到账已在真实锁期后验证 409；`periods.status` 不是关账锁期来源，实际锁期读 `internal_period_locks`，本次已修正服务层 guard。
+- 新增已验：差额恰好 5.00 不自动归类为手续费；同一差异重复处理 409；PG16/17 两线程同时处理同一差异均为 1 成功 + 1 冲突，且只生成一张 draft。
+- 政策提示：允许政策原因 `code="unresolved"` + `blocks_close=false`；`_fee_variance_check` 返回 `pass + advisory=true`，不阻断 `_assert_no_open_fee_variances`。新增迁移 212/297 替换 SQLite trigger 与 PG `rr_close_checks_valid`，让 DB 守卫接受政策提示；两套 PG 库已迁移到 297，`test_plt04_fee_variances_postgres` 各 2 passed（8.10s/5.47s）。服务级政策用例 `test_policy_unresolved_reason_can_make_pending_advisory` 通过；未做专项 e2e 验证“登记→预检→复核→锁期”全链，因此不宣称政策提示全链通过。
+- 顺带发现：历史 `accounting_policies` 行新增 `fee_variance_reasons_json DEFAULT '[]'`；既有测试创建政策后行为不变。
+- 当前候选：HEAD `c8da023777fff5c7eeb7311067cdcd7e8244e61b`、source **2461/`f91346e5a9a627dee30b6c70cc3b0c3eefa7e79107d93394d39b82e0231eb301`**、migration **495/`7272abe6403b61632d5145ae1f30145ed09658f4466bc206d1fea65495e6f633`**。
+
+## PLT04-C 未匹配流水的责任与待办  <状态：完成（合成身份/合成银行流水；待办直达、主管未分配视图、同屏事实/候选、转交与撤权、桌面/手机浏览器通过）>
+
+- 现状核实：pending `fee_receivable_variances` 已能作为独立 `fee_variance` 工作台待办；处理人未指派时只对账套经理可见，指派后仅目标处理人可见；无编辑权限的会计看不到任务。
+- 修改文件：
+  - `nexus_backend/app/workspace/service.py`：`KINDS` 与 `_task_gates` 增加 `fee_variance`；投影分支与直接查询分支输出 `processing_started_by`、`ABS(difference_cents)`、期间；`_decorate_task_envelopes` 增加 `assignee_id`、`bank_source` 和最多 5 条开放应收候选。
+  - `nexus_backend/app/workspace/projection.py`：新增 `fee_variance` 投影，`ref` 指向差异 ID，`state='pending'`，投影响应来源事实。
+  - `nexus_backend/app/tax/variances.py`：`list` 返回流水事实与候选应收；新增 `assignees`（仅账套 editor）与 `assign`（仅 manager、仅 pending、不得转给本人、目标必须有 editor 权限，只更新处理人与时间并审计 `fee.variance.assign`，不授予权限）。
+  - `nexus_backend/app/tax/router.py`：`GET /books/{book_id}/fee-variance-assignees`、`POST /fee-variances/{id}/assign`。
+  - `src/workspace-types.ts`、`src/App.tsx`、`src/WorkspaceRouteContent.tsx`、`src/DeliveryWorkbench.tsx`、`src/TaxWorkpaperPanel.tsx`：新增 `fee_variance` 任务类型与直达税费底稿的目标参数；目标差异行滚动并高亮。
+  - `src/FeeVariancePanel.tsx`、`src/fee-variance.css`：同屏显示流水日期/摘要/对方/金额、候选应收、当前处理人；新增“转交处理”选择人员与原因，成功刷新。
+  - 新/改测试：`nexus_backend/tests/test_plt04_fee_variances.py`、`test_plt04_fee_variances_api.py`、`e2e/plt04-fee-variances.spec.ts`。
+- 失败测试与修复：`WorkspaceService.list` 返回键实际为 `tasks` 而非 `items`；`branch()` 默认 `event_id` 引用 `e.id` 导致 SQL 错；`fee_receivable_variances` 无 `updated_at`，改用 `processed/handled/created` 的显式时间；转交后页面仍显示点击前的“未分配”，改为转交成功后重读任务；`status` 在转交后为 `processing` 但仍需允许继续选择原因，前端条件从 `pending` 放宽为 `pending|processing`（仅界面可用性，不改变服务端 pending 状态）。
+- 验收命令与输出：
+  ```text
+  cd nexus_backend && PYTHONPATH=.. python -m pytest tests/test_plt04_fee_variances.py tests/test_plt04_fee_variances_api.py tests/test_b04_pilot.py tests/test_stage12_workspace.py -q
+  41 passed, 2630 warnings in 98.47s
+  ```
+  ```text
+  npx playwright test e2e/plt04-fee-variances.spec.ts --reporter=line
+  2 passed (54.3s)
+  # 1366×768 / 390×844：从“核对到账差额”待办进入税费底稿，目标行高亮；
+  # 转交财务后显示当前处理人；保存政策原因与证据后生成差异草稿。
+  截图：`tmp_test/plt04c-task-card-1366.png`、`plt04c-task-card-390.png`、`plt04b-fee-variance-1366.png`、`plt04b-fee-variance-390.png`
+  ```
+  ```text
+  npm test -- --run
+  158 files / 1425 tests passed
+  npm run typecheck / lint / format:check
+  passed（lint 0 error / 6 unused-disable warnings）
+  TMP=tmp_test/build-tmp TEMP=tmp_test/build-tmp npm run build
+  build passed: index 569.51 kB / gzip 176.54 kB; CSS 101.46 kB / gzip 20.63 kB
+  ```
+- 仅合成验证：是。单一合成企业/账套、合成流水与候选应收；未使用客户真实流水、银行回单或客户正式差异政策。
+- 需客户或人提供：五家客户真实“未匹配/差额”样本、正式差异原因与证据政策的签字确认；真实设备/用户走查。
+- 未做或未验证：候选应收当前只读展示，不支持把候选直接转为核销；转交并发/双人竞争未做专项测试；审计查询页未做。
+- 当前候选：HEAD `c8da023777fff5c7eeb7311067cdcd7e8244e61b`、source **2461/`436ed8ec1fadd9a272c321a4204fae9b6ba2b20870a7eb6923c7d0186d3c8a17`**、migration **495/`7272abe6403b61632d5145ae1f30145ed09658f4466bc206d1fea65495e6f633`**。
+
+## PLT08 助手办理卡片（结算差额离线实验）  <状态：本地验收通过（离线回放协议/合成数据；真实模型效果、真实会计计时和真实客户资料未验）>
+
+- 现状核实：助手原有 `expense_bridge`、`invoice_voucher_diff` 两类分析，无平台结算与银行到账差额；调查工具只有 voucher/close/delivery 三类。本包新增确定性 `settlement_difference`，不新增模型自主工具。
+- 修改文件：
+  - `nexus_backend/app/assistant/analysis.py`：`KINDS` 加 `settlement_difference`；新增 `_source_row` 和 `_settlement_difference`。金额使用整数分；无手续费为 `partial/unresolved` + `missing=["fee_evidence"]`，等额手续费为 `complete/fee_evidence`，不等为 `partial/fee_evidence_mismatch`，跨期为 `partial/cross_period_evidence`；返回 handoff、`action_target`、coverage、source version 与 fingerprint。
+  - `nexus_backend/app/assistant/router.py`：透传 `settlement_source_id/bank_source_id/fee_source_id`。
+  - `src/analysis-result.ts`、`src/AnalysisEvidencePanel.tsx`：新增“平台结算与银行到账差额”核对类型，展示两笔金额、差额、原因、缺件、来源名称/日期/版本/原件引用和原记录链接。
+- 验收命令与输出：
+  ```text
+  cd nexus_backend && PYTHONPATH=.. python -m pytest tests/test_assistant_settlement_difference.py -q
+  7 passed, 1 warning in 16.52s
+  # 无手续费 350.00 + 会计 handoff；等额手续费归因；340.00 mismatch；
+  # 跨期同额手续费不得作为本期依据；跨企业 404 不泄露；换版 409；撤权 403。
+  ```
+  ```text
+  npx playwright test e2e/plt08-settlement-difference.spec.ts --reporter=line
+  1 passed (17.9s)
+  # 真实本地导入：平台结算 100,000.00、银行到账 99,650.00、手续费 350.00；
+  # partial 状态显示 350.00、待核对、缺手续费、来源版本、会计 handoff；
+  # 补齐手续费后显示“已由手续费明细 350.00 元解释”，链接打开正确账套/来源。
+  ```
+  ```text
+  npm test -- --run
+  158 files / 1425 tests passed
+  npx tsc -p tsconfig.app.json --noEmit
+  passed
+  TMP=tmp_test/build-tmp TEMP=tmp_test/build-tmp npm run build
+  passed: index 569.51 kB / gzip 176.53 kB; CSS 101.46 kB / gzip 20.63 kB
+  ```
+- 截图：`tmp_test/plt08-settlement-difference-1366.png`、`tmp_test/plt08-settlement-difference-partial-1366.png`、`tmp_test/plt08-settlement-difference-390.png`。
+- 场景结论：
+  - 只有结算单和到账：显示 100,000.00、99,650.00、差额 350.00，原因待核对；明确缺手续费/扣款明细，handoff 给会计，可从卡片打开本账套原记录。
+  - 有本笔、已核验的 350.00 手续费：归因为手续费，引用正确来源和版本；不再显示“原因未知”。
+  - 跨期材料：不同月份的同额手续费只给 `cross_period_evidence`，不能解释本期差额。
+  - 另一法人同额手续费：跨企业来源直接 404，不出现在 facts/来源/链接；企业隔离仍由服务端查询和权限决定。
+  - 换版/撤权：换版 409、撤权 403；迟到内容不恢复。
+- A/B/C 离线对照：`tmp_test/pilot/PLT08-ABC/settlement-difference/REPORT.md`，使用同一 5 个封存样本和固定脚本，非真实模型。A 错误归因 3/5、来源正确 2/5、3 次重复无效修改，并因跨企业泄漏/撤权缓存被硬否决；B 1/5、4/5、1；C 0/5、5/5、0。未选中候选，人工核查分钟数待测。结论仅为“回放协议已验证”，不能证明改良历史提高模型提议质量，也不能证明会计省时。
+- RSI：`docs/pilot/assistant_rsi/settlement_difference/round-01.json`，事前冻结“跨期同额手续费”问题/根因/改法，事后记录 `cross_period_fee_same_amount` 修复、7 passed、保留决定；未使用验证集标签或逐样本反馈。
+- 未做/未验证：真实模型、真实 OCR/银行/平台回单、真实会计计时、真实客户签认；跨浏览器只跑 Chromium；A/B/C 使用固定脚本而非模型。
+- 当前候选：HEAD `c8da023777fff5c7eeb7311067cdcd7e8244e61b`、source **2468/`0365aa84fe59388cd60396774153ba822f72666776a1f7008ed3ee03c235be49`**、migration **495/`7272abe6403b61632d5145ae1f30145ed09658f4466bc206d1fea65495e6f633`**；未提交/推送/部署。
+
+## PLT04-D 报表下钻到原始行  <状态：本地验收通过（合成身份/凭证；快照、科目层、反向入口、银行导入与非导入来源原件、PG16/17、1366/390 浏览器上传/下载均通过；真实客户原件与生产规模未验）>
+
+- 现状核实：`reports/profit.overview` 已返回 `items_count`、`items[]`（含 voucher/line/source/evidence）以及 `checks.unmapped_line_count`/`mixed_voucher_contributions`；`TaxFPanel` 误用 `item_count`/`unmapped_count`/`mixed_voucher_count`，凭证行与提示为空。
+- 修改：`src/TaxFPanel.tsx` 改用正确字段；补充凭证行 `voucher_id/voucher_no/voucher_date/line_no/source_ref`；选中利润行时以 `sum(items.net_cents)` 与上层 `amount_cents` 比对，不一致显示 `role=alert`。
+- 红绿：`e2e/tax-f.spec.ts` 新增“凭证行 1”“未映射 4 行”“混合凭证 0 张”断言；修字段前实际为空串，修复后通过。复核人税表面板此前因只有 book reviewer 权限、无 company membership 而显示“所属单位待确认”；在 `e2e/formal-fixtures.ts` 为复核人增加 company `admin` 测试夹具后，**1366/390 两测均通过，2 passed/1.4m**。产品独立复核仍使用独立身份，未放宽服务端复核校验。
+- 全量前端 `npm test -- --run`：**158 files / 1425 passed**。
+- 反向入口：新增 `ProfitDrilldownService.impacts` 与 `GET /api/reports/profit/impacts`，按凭证 SQL 聚合其贡献的报表行；`TaxFPanel` 凭证行提供“影响报表行”，显示行名与金额。`test_tax15_profit.py` **3 passed/13.19s**；`e2e/tax-f.spec.ts` 先因点击第一行“管理费用”（0 凭证行）找不到按钮，改为点击“营业收入”行后 **2 passed/1.4m**。
+- 原件：`ProfitDrilldownService.overview` 通过 `bank_import_source_files → bank_import_files` 解析每个利润凭证行的最新导入原件，返回 `original_file_id/original_url`；UI“来源”列在存在绑定时显示“打开原件”，否则显示证据摘要/“无原件绑定”。这是导入原件，不是任意 source 的通用原件层。`test_tax15_profit.py` 新增绑定断言，**3 passed/13.27s**。
+- 快照：`ProfitDrilldownService.overview(..., report_run_id=...)` 读取 `report_runs.content_json`，按报表利润项目重算各行冻结金额，返回 `snapshot.report_run_id/version/status/content_hash/period/changed_line_codes`，每行 `live_amount_cents/snapshot_amount_cents/snapshot_changed`；UI 新增“下钻口径”下拉（实时/报表 Vn），快照行显示冻结金额与“实时 …”差异。`test_tax15_profit.py` 新增“报表后新增收入”用例，**4 passed/18.29s**；`e2e/tax-f.spec.ts` 选择报表 V1 并断言“金额冻结于报表 V… / 与当前账簿一致”，**2 passed/1.5m**。
+- 科目层：`ProfitDrilldownService.overview` 每行返回 `accounts[]`（科目编码/名称/金额/凭证行数），UI 显示“利润行 · 科目层”汇总；`test_tax15_profit.py` 断言营业收入=6001/500000，**4 passed/17.24s**；`e2e/tax-f.spec.ts` 断言科目层含 6001/主营业务收入/¥1,000.00，**2 passed/1.5m**。
+- 非导入原件：`source_original` 复用两段式上传意图；SQLite 213/PG 298 增加 `source_originals`、purpose 与绑定候选/预期 CASE；`TaxSourceAdapter.attach_original` 校验企业/账套/`review` 权限，`uploads.consume` 事务内登记，404/409/撤权边界由上传绑定层提供；`ProfitDrilldownService` 返回 `original_url`。`test_plt04_source_originals.py` SQLite 服务/HTTP/权限 **3 passed/14.16s**；SQLite 模式 `3 passed,1 skipped`（非 reviewer 与跨账套均为不可探测 404，不泄露对象是否存在）；`test_plt04_fee_variances_api.py` **1 passed**；合并 `test_source_originals + fee_variances + tax15_profit` **18 passed/52.26s**；ruff 通过。
+- PG 实测：PG17 `test_plt04_fee_variances_postgres.py` **2 passed/7.91s**，迁移最高 **298/285**，purpose CHECK 含 `source_original`；PG16 source original **1 passed/8.93s**，PG17 source original **1 passed/4.34s**。临时库 `ak01_local_ak05_plt04_src`，测试后未删（后续环境收尾处理）。
+- 浏览器实测：`e2e/plt04-d-source-original.spec.ts` 用真实文件上传→绑定→下载，1366/390 **2 passed/40.9s**；`TaxFPanel` 的“打开原件”经 `apiBlob` 带 Bearer/公司头取回后下载，文件名 `来源原件-<voucher_no>.pdf`；截图 `tmp_test/plt04-source-original-1366.png`、`-390.png`。`npm run typecheck`、`prettier --check src/TaxFPanel.tsx e2e/plt04-d-source-original.spec.ts` 通过；全量前端 `158 files/1425 passed/4.09s`（仅有既有 useLayoutEffect/ExperimentalWarning）。
+- D 本地通过时候选：HEAD `c8da023777fff5c7eeb7311067cdcd7e8244e61b`，source **2474/`51de959d82daa7e678a926dbf63ab2a626456df608611e8f0c7dbebefad508bb`**、migration **497/`79c5b5cf96bff35b1a4c13110a890d91a2ea4f5ff10e8c3aa7c8e10895d9f2db`**；未提交/推送/部署。剩余外部门槛：真实客户原件、生产文件存储/规模、真实模型/通知。
+
+## PLT04-E 真实月份走查工具包  <状态：工具就绪待客户输入（清单、只读校验、交接模板与合成演练通过；真实客户样本/授权/签字未提供）>
+
+- 交付：`docs/pilot/TAXI_WALKTHROUGH.md`（客户授权样本、脱敏、六步责任人/记录/判据、通过标准、禁止用合成数据填真实记录）；`docs/pilot/templates/taxi_walkthrough_handoff.csv`（每次交接一行，含“是否需要开发人员解释”“是否需要改库”两列）。
+- 只读校验：`scripts/validate_taxi_walkthrough.py` 复用 `app.import_wizard.parser` 的 CSV/XLSX 大小、编码、表头、日期和金额规则，检查交易编号/摘要/金额或收支列/本期日期/金额格式/零金额提示；不建库、不写对象存储。
+- 合成演练命令与退出：
+  ```
+  PYTHONIOENCODING=utf-8 python scripts/validate_taxi_walkthrough.py \
+    --period 2026-10 --json tmp_test/plt04e/taxi-synthetic.csv
+  ```
+  `status=passed`、`rows=2`、`total_cents=9965000`、`errors=[]`、`warnings=[]`；输出明确“只读预检，不入库、不替代客户确认或真实导入”。
+- 红绿：`nexus_backend/tests/test_plt04_walkthrough.py` 先红（文件不存在/路径错误），实现后 **3 passed/1.08s**：正常样本、跨期+坏金额被拒绝、缺交易编号/摘要被拒绝。
+- 未验证：真实一个月结算单/银行流水、客户确认的差异样本、五家签认、现场耗时/求助/离开 Excel 记录；因此不得写“真实走查通过”。走查通过标准要求正常款+客户确认差异各一次、会计能从利润表到原始结算行/从未匹配流水到处理人、全程不改库且不靠开发解释。
+- E 工具加入后的当前候选：source **2474/`51de959d82daa7e678a926dbf63ab2a626456df608611e8f0c7dbebefad508bb`**、migration **497/`79c5b5cf96bff35b1a4c13110a890d91a2ea4f5ff10e8c3aa7c8e10895d9f2db`**；未提交/推送/部署。
+
+## PLT05-A 系统分工与三态模型  <状态：本地验收通过（SQLite、PG16、PG17、1366/390 浏览器；真实 T+ 未联调）>
+
+- 现状核实：政策无“正式账所在系统”字段，报表无法区分本系统/外部系统正式账；`integrations.service` 只有单一 outbox `state`，`exported` 容易被读成已接收/已过账。
+- 修改：
+  - 前向迁移 214/299：`accounting_policies`、`report_runs` 增 `formal_book_system`（unassessed/local/external，默认 unassessed）与 `formal_book_system_name`；未改历史 checksum。
+  - 政策：external 必须有≥2 字名称，非 external 禁止名称；报表生成时冻结两字段；unassessed 追加正式原因“正式账所在系统未核定”，继续只能试算。
+  - 三态：`_external_state` 从 artifacts/receipts 分别计算 `statuses.exported/received/posted`（时间、依据、登记信息），另给 `result_summary`、`partial_failure`、`result_unknown`；overview/get_outbox 都返回，overview 另返回 `formal_book` 政策快照。
+  - 前端：政策入口选择本系统/外部系统/未核定；报表标题区注明“正式账以 X 为准；不代表对方接收或过账”；集成工作台用三个独立 badge，未知显示“尚无对方结果，不自动重发”，部分失败提示逐笔核对。
+- 红测/修复：`test_stage10_integrations.py` 的旧断言假设 outbox 无三态，现改为按 id/state 比较并断言三状态均空；`test_plt02_report_modes_postgres.py` 删除对过期 `c.policy["approved_by"]` 的比较；`PolicyCreate` 校验测试补必填字段并匹配真实中文错误；e2e local 文案按实际“外部交付仍需单独核验收货、导入与过账结果”修正；`formal_book_system: 'local'` 的转义错误在 4 个 fixture 修正。
+- 后端：
+  ```
+  cd nexus_backend && PYTHONPATH=.. python -m pytest -q \
+    tests/test_plt05_external_states.py \
+    tests/test_plt02_report_modes.py \
+    tests/test_stage10_integrations.py
+  ```
+  **18 passed/33.31s**；其中新文件 `test_plt05_external_states.py` **5 passed/13.44s**（仅导出无接收/过账、artifact 后 result_unknown、接收后 received 且 posted 空、list/detail 一致、无政策 unassessed、external 冻结、PolicyCreate 名称校验）。
+- PG：
+  ```
+  export ACCOUNTING_TEST_POSTGRES_URL=$(python -c "import json;print(json.load(open('tmp_test/plt04-pg17-private.json'))['admin'])")
+  export ACCOUNTING_TEST_DATABASE_URL=$(python -c "import json;print(json.load(open('tmp_test/plt04-pg17-private.json'))['app'])")
+  export ACCOUNTING_TEST_WORKER_DATABASE_URL=$(python -c "import json;print(json.load(open('tmp_test/plt04-pg17-private.json'))['worker'])")
+  export ACCOUNTING_PROJECTION_DATABASE_URL=$(python -c "import json;print(json.load(open('tmp_test/plt04-pg17-private.json'))['projection'])")
+  export ACCOUNTING_AK05_ISOLATED_TARGET=1
+  cd nexus_backend && PYTHONPATH=.. python -m pytest -q \
+    tests/test_plt02_report_modes_postgres.py \
+    tests/test_stage10_integrations_postgres.py
+  ```
+  PG17 report **1 passed/3.85s**、integrations **6 passed/9.08s**；PG16 report **1 passed/3.51s**；299 已在两库应用，最高 **299/285**，无历史 checksum 改动。
+- 浏览器：
+  ```
+  npx playwright test e2e/plt05-formal-book.spec.ts
+  npx playwright test e2e/stage10-integrations.spec.ts
+  ```
+  正式账 **2 passed/22.6s**；local 1366 断言本系统正式提示，external 1366 断言“正式账以 畅捷通 T+ 为准”“不代表对方已接收或过账”；另截 390。截图 `tmp_test/plt05-formal-book-1366.png`、`tmp_test/plt05-formal-book-390.png`、`tmp_test/plt05-formal-book-external-1366.png`。
+- 导出/回执三态 UI：`stage10-integrations.spec.ts` **1 passed/21.2s**；导出后显示“已导出·日期 / 未接收 / 未过账”，登记回执后 `await load()` 刷新为“对方已接收·日期 / 未过账”，并断言页面不存在“对方已过账”。截图 `artifacts/stage10-financial-bridge.png`。这是本轮修复：此前只显示回执记录，outbox 三态要重新进入页面才刷新。
+- 门禁：
+  ```
+  npm run typecheck
+  npm run lint
+  npm run format:check
+  npm test -- --run
+  npm run build
+  ```
+  typecheck 通过；lint **0 errors/6 existing warnings**；format:check 通过；前端 **158 files/1425 passed/4.60s**；build 通过（`index` 569.51 kB/gzip 176.55 kB，3.75s）。`test:frontend-budget` 仍报告既有 `initialGzip` 与 `homeCss 145755>145000` 违规（脚本退出 0），属 FE01 未选向/未授权修预算的已知外部门槛。
+- 未验证/边界：真实 T+ 联调、集团汇总/助手回答/月结预检尚未接入三态显示（当前不显示，因而不会误标为已接收/过账）；PLT05-B 才能登记返回文件并逐笔核对。
+- 候选：HEAD `c8da023777fff5c7eeb7311067cdcd7e8244e61b`，source **2478/`de56cb250199885f6f8191be509c477ab362e81c18700a67cea34597f0e8163c`**、migration **499/`e1e2b1150cb69472f69a4345f81408d491f681449a84fd3a5ab5a00450abf8b2`**；未提交/推送/部署。
+
+## PLT05-B 返回结果的导入与逐笔核对  <状态：进行中（SQLite/PG16/PG17/浏览器导入、手工证据原件、手工/handler UI 通过；handler 浏览器 e2e、PLT03-B 待办与真实 T+ 未完成）>
+
+- 契约：新增 `docs/pilot/ROUNDTRIP_CONTRACT.md`，明确这是待真实 T+ 确认的假设契约；八列 `批次标识,凭证标识,对方凭证号,结果,失败原因,对方过账日期,金额,科目`，其中金额/科目用于判断 mismatch，缺失时不得判一致；`missing/extra/amount_mismatch/account_mismatch` 是差异而非成功。
+- 红测：先建 `test_plt05_roundtrip_contract.py`，导入 `app.integrations.roundtrip` 失败（模块不存在）确认为红；随后实现 `nexus_backend/app/integrations/roundtrip.py`，只做解析/匹配，不写库、不冒充真实 T+。
+- 绿测：`cd nexus_backend && PYTHONPATH=.. python -m pytest -q tests/test_plt05_roundtrip_contract.py` → **5 passed/0.37s**：
+  - 全部 accepted 且有逐笔过账日期 -> received/posted；
+  - 缺一笔 + 多一笔 -> partial、missing/extra、不 received；
+  - 金额/科目与冻结清单不一致 -> amount_mismatch/account_mismatch；
+  - 凭证标识重复或批次标识不符 -> 422；
+  - 全部接收但缺过账日期 -> received 且 posted=false。
+- 解析规则：UTF-8/BOM、≤2MB、1–10000 行、连续/非空、公式前缀拒绝、日期 ISO、金额两位小数、拒绝重复标识、按冻结凭证清单补 missing 行；返回 `counts/received/posted/status`。`ruff` 通过。
+- 已落盘并验证（SQLite）：sqlite/215、postgres/300 返回文件与逐行差异表；`FinancialBridgeService.record_return/list_returns` 校验 artifact/冻结包、同批次同 hash 幂等、异内容 409、按 package vouchers 生成 exported、写 import/rows、审计 `bridge.return.import`；`_external_state` 已合并旧回执与新返回文件的 received/posted 与差异。
+- 服务测试：`test_plt05_return_import.py` 3 passed（全部 accepted 且过账、金额 mismatch=partial/未接收、错批次 422）；与 `test_stage10_integrations.py`、`test_plt05_external_states.py` 合并 **14 passed/19.12s**；`ruff` 通过，`import app.main` 成功。
+- PG：`test_stage10_integrations_postgres.py` 在 PG17 **8 passed/13.09s**、PG16 **8 passed/13.01s**；300/301 在双库应用；新增 mismatch→handle 用例。
+- 前端：`IntegrationWorkbench` 增“返回文件逐笔核对”上传、批次/接受/差异/接收/过账摘要与逐笔明细；`typecheck`、Prettier、前端 **158/1425 passed/4.06s**；真实浏览器 `e2e/stage10-integrations.spec.ts` **1 passed/21.4s**（1366/390 上传返回文件→已接收已过账→展开逐笔明细，截图 `artifacts/stage10-financial-bridge.png`、`-390.png`）。
+- 手工证据：`BridgeManualReturn`/`record_manual_return`/`POST /artifacts/{id}/returns/manual` 已接；证据<5、未接收先过账、错批次 422，同批次同 hash 幂等、异内容 409；写一条透明 `MANUAL` 整批登记行（不伪造逐笔凭证），`test_plt05_return_import.py` **5 passed/10.90s**，与 stage10/external_states **16 passed/20.37s**。手工 UI 与独立 HTTP 用例未做。
+- 差异处置：`BridgeReturnRowHandle` + `handle_return_row` + `POST /artifacts/{id}/returns/{import_id}/rows/{voucher_code}/handle`；原因≥3、证据≥5，accepted/duplicate 409，同内容幂等、异内容 409，写 `bridge_return_row_handlers` 与审计；SQLite 216/PG 301，PG16/17 **各 8 passed/13.0s**；`test_plt05_return_import.py` **6 passed/11.64s**。
+- UI：返回文件逐笔表新增“处置”列与内联表单（已解决/忽略、原因、证据、保存/取消）；“客户软件无文件时”折叠区可手工登记接收/过账、证据引用和备注。
+- 前端复验：`npm test -- --run` **158 files/1425 passed/3.96s**；typecheck、Prettier、build 通过；handler/手工 UI 尚无浏览器 e2e。
+- 证据原件：`bridge_return_evidence`（SQLite 217/PG 302）+ `POST/GET /returns/{import_id}/evidence` + 手工表单文件上传已接；证据 ≤2MB、PDF/PNG/JPEG 魔数，绑定 import/book/firm 权限；服务测试含错魔数 422/重复 409，`test_plt05_return_import.py` **9 passed/12.87s**；PG17/16 证据往返 **各 1 passed**（2.77/2.71s）。
+- 仍未做：PLT03-B 差异待办映射、handler/手工 UI 浏览器 e2e、真实 T+ 契约；返回文件/证据 API 无独立 HTTP 用例。
+- 当前候选：HEAD `c8da023777fff5c7eeb7311067cdcd7e8244e61b`，source **2487/`98986251c5fe425b7536a5ecf8cb181b73977d96b4504460f1f23f14131cf3e6`**、migration **505/`969cc011de43c5bea4619ace590182623126522618c1524acce0735ed1d275b2`**；未提交/推送/部署。

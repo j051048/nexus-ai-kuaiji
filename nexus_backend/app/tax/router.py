@@ -14,6 +14,7 @@ from .context import tax_context
 from .pilot import PilotBoundaryService
 from .sources import TaxSourceAdapter
 from .fees import TaxFeeService
+from .variances import FeeVarianceService
 from .packages import (
     PackageConsume,
     PackageContractDraft,
@@ -76,6 +77,11 @@ class TaxSourceImportWrite(BaseModel):
 class TaxSourceBatchWrite(BaseModel):
     model_config = ConfigDict(extra="forbid")
     files: list[TaxSourceImportWrite] = Field(min_length=1, max_length=20)
+
+
+class TaxSourceOriginalAttach(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    upload_id: str = Field(min_length=1, max_length=100)
 
 
 class TaxFeePolicyWrite(BaseModel):
@@ -236,11 +242,44 @@ class TaxWorkpaperReview(BaseModel):
     expected_version: StrictInt = Field(ge=1)
 
 
+class FeeVarianceRecord(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal[
+        "underpaid", "overpaid", "unmatched", "cross_period", "many_to_one", "one_to_many"
+    ]
+    expected_cents: StrictInt
+    actual_cents: StrictInt
+    receivable_id: str | None = Field(default=None, max_length=100)
+    bank_source_id: str | None = Field(default=None, max_length=100)
+    evidence_ref: str | None = Field(default=None, max_length=500)
+    idempotency_key: str = Field(min_length=1, max_length=200)
+
+
+class FeeVarianceHandle(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    reason_code: str = Field(min_length=1, max_length=100)
+    evidence_ref: str | None = Field(default=None, max_length=500)
+
+
+class FeeVarianceReverse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    reason: str = Field(min_length=3, max_length=1000)
+
+
+class FeeVarianceAssign(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    assignee_id: str = Field(min_length=1, max_length=100)
+    reason: str = Field(min_length=3, max_length=500)
+
+
 def build_tax_router(actor_dependency):
     router = APIRouter(prefix="/api/tax", tags=["B05税务底稿"])
 
     def service(request: Request) -> TaxWorkpaperService:
         return request.app.state.tax
+
+    def variances(request: Request) -> FeeVarianceService:
+        return request.app.state.fee_variances
 
     @router.get("/context")
     def preparation_context(
@@ -652,6 +691,41 @@ def build_tax_router(actor_dependency):
             },
         )
 
+    @router.post("/books/{book_id}/sources/{source_id}/originals", status_code=201)
+    def attach_source_original(
+        book_id: str,
+        source_id: str,
+        payload: TaxSourceOriginalAttach,
+        request: Request,
+        current=Depends(actor_dependency),
+        sources=Depends(source_service),
+    ):
+        return sources.attach_original(
+            request.app.state.uploads, current, book_id, source_id, payload.upload_id
+        )
+
+    @router.get("/books/{book_id}/sources/{source_id}/originals/{attachment_id}")
+    def download_source_original_file(
+        book_id: str,
+        source_id: str,
+        attachment_id: str,
+        request: Request,
+        current=Depends(actor_dependency),
+        sources=Depends(source_service),
+    ):
+        metadata = sources.original_for(current, book_id, source_id, attachment_id)
+        data = request.app.state.attachment_store.read(metadata)
+        return Response(
+            data,
+            media_type=metadata["media_type"],
+            headers={
+                "Content-Disposition": "attachment; filename*=UTF-8''"
+                + quote(metadata["filename"], safe=""),
+                "Cache-Control": "no-store",
+                "X-Content-Type-Options": "nosniff",
+            },
+        )
+
     @router.get("/books/{book_id}/sources/{source_id}/rows/{row_number}/receipt")
     def source_row_receipt(
         book_id: str,
@@ -929,7 +1003,9 @@ def build_tax_router(actor_dependency):
     ):
         return packages.consume(current, book_id, contract_id, payload)
 
-    @router.post("/books/{book_id}/repair-packages/consumptions/{consume_id}/releases", status_code=201)
+    @router.post(
+        "/books/{book_id}/repair-packages/consumptions/{consume_id}/releases", status_code=201
+    )
     def release_repair_package(
         book_id: str,
         consume_id: str,
@@ -1159,5 +1235,78 @@ def build_tax_router(actor_dependency):
         pilot=Depends(pilot_service),
     ):
         return pilot.validate_preview(current, company_id, preview_id)
+
+    @router.get("/books/{book_id}/fee-variances")
+    def list_fee_variances(
+        book_id: str,
+        period: str | None = Query(default=None, max_length=7),
+        current=Depends(actor_dependency),
+        service=Depends(variances),
+    ):
+        return service.list(current, book_id, period)
+
+    @router.get("/books/{book_id}/fee-variance-reasons")
+    def list_fee_variance_reasons(
+        book_id: str,
+        current=Depends(actor_dependency),
+        service=Depends(variances),
+    ):
+        return service.reasons(current, book_id)
+
+    @router.get("/books/{book_id}/fee-variance-assignees")
+    def list_fee_variance_assignees(
+        book_id: str,
+        current=Depends(actor_dependency),
+        service=Depends(variances),
+    ):
+        return {"items": service.assignees(current, book_id)}
+
+    @router.post("/books/{book_id}/fee-variances", status_code=201)
+    def record_fee_variance(
+        book_id: str,
+        payload: FeeVarianceRecord,
+        current=Depends(actor_dependency),
+        service=Depends(variances),
+    ):
+        return service.record(
+            current,
+            book_id,
+            **payload.model_dump(),
+        )
+
+    @router.post("/fee-variances/{variance_id}/start")
+    def start_fee_variance(
+        variance_id: str,
+        current=Depends(actor_dependency),
+        service=Depends(variances),
+    ):
+        return service.start(current, variance_id)
+
+    @router.post("/fee-variances/{variance_id}/assign")
+    def assign_fee_variance(
+        variance_id: str,
+        payload: FeeVarianceAssign,
+        current=Depends(actor_dependency),
+        service=Depends(variances),
+    ):
+        return service.assign(current, variance_id, payload.assignee_id, payload.reason)
+
+    @router.post("/fee-variances/{variance_id}/handle")
+    def handle_fee_variance(
+        variance_id: str,
+        payload: FeeVarianceHandle,
+        current=Depends(actor_dependency),
+        service=Depends(variances),
+    ):
+        return service.handle(current, variance_id, **payload.model_dump())
+
+    @router.post("/fee-variances/{variance_id}/reverse")
+    def reverse_fee_variance(
+        variance_id: str,
+        payload: FeeVarianceReverse,
+        current=Depends(actor_dependency),
+        service=Depends(variances),
+    ):
+        return service.reverse(current, variance_id, reason=payload.reason)
 
     return router

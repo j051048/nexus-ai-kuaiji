@@ -447,6 +447,8 @@ def test_periodic_accrual_asset_closing_reports_and_close(business):
     assert run["close"]["status"] == "preflight_passed", [
         check for check in run["checks"] if check["status"] == "blocked"
     ]
+    variance_check = next(c for c in run["checks"] if c["code"] == "fee_variance_pending")
+    assert variance_check["status"] == "pass" and variance_check["pending_count"] == 0
     run = close.review(
         admin(case), run["close"]["id"], CloseCommand(expected_version=1, reason="复核月结")
     )
@@ -539,6 +541,20 @@ def test_periodic_accrual_asset_closing_reports_and_close(business):
                     ),
                 ],
             ),
+        )
+
+    # PLT04-B：差异登记在真实锁期后必须被现有锁期规则拒绝。
+    from app.tax.variances import FeeVarianceService
+
+    with pytest.raises(AccountingError, match="锁期"):
+        FeeVarianceService(case.db).record(
+            case.manager,
+            case.book["id"],
+            kind="cross_period",
+            expected_cents=10_000,
+            actual_cents=9_500,
+            evidence_ref="synthetic://b04/locked-variance",
+            idempotency_key="b04-locked-variance",
         )
 
 

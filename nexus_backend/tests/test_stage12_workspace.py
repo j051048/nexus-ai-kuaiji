@@ -191,6 +191,30 @@ def test_workspace_private_supplement_recipient_never_gets_ledger_or_internal_ti
     assert service.get(c.actors["accountant"], "case", task["id"])["bucket"] == "action"
 
 
+def test_workspace_closed_case_returns_410_with_closer_and_time(business):
+    c, service = business, workspace(business)
+    draft = bank(c)
+    task = service.cases.create(
+        c.actors["accountant"],
+        CaseCreate(
+            book_id=c.book["id"],
+            draft_id=draft["id"],
+            title="已关闭的银行异常",
+            reason="请财务补充支付用途",
+            idempotency_key=uuid4().hex,
+        ),
+    )
+    closed = service.cases.command(
+        c.actors["accountant"], task["id"], "close", command(task)
+    )
+    assert closed["state"] == "closed"
+    with pytest.raises(AccountingError) as completed:
+        service.get(c.actors["accountant"], "case", task["id"])
+    assert completed.value.status == 410
+    assert "该待办已由" in completed.value.detail
+    assert "办理" in completed.value.detail
+
+
 def test_workspace_responder_cannot_be_assigned_own_response_review(business):
     c, service = business, workspace(business)
     draft = bank(c)

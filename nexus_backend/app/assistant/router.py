@@ -18,10 +18,13 @@ class AnalysisRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     book_id: str = Field(min_length=1, max_length=100)
     period: str = Field(pattern=r"^20[0-9]{2}-(0[1-9]|1[0-2])$")
-    kind: Literal["expense_bridge", "invoice_voucher_diff"]
+    kind: Literal["expense_bridge", "invoice_voucher_diff", "settlement_difference"]
     account_code: str | None = Field(default=None, max_length=20)
     compare_period: str | None = Field(default=None, pattern=r"^20[0-9]{2}-(0[1-9]|1[0-2])$")
     target_voucher_id: str | None = Field(default=None, max_length=100)
+    settlement_source_id: str | None = Field(default=None, max_length=100)
+    bank_source_id: str | None = Field(default=None, max_length=100)
+    fee_source_id: str | None = Field(default=None, max_length=100)
     limit: int = Field(default=50, strict=True, ge=1, le=100)
     offset: int = Field(default=0, strict=True, ge=0, le=1_000_000)
     expected_source_version: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")

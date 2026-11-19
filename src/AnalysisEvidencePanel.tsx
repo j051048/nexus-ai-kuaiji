@@ -16,6 +16,9 @@ const missingLabels: Record<string, string> = {
   previous_period: '上期账套',
   voucher_source: '凭证来源金额',
   account_identity: '跨期科目身份与版本',
+  fee_evidence: '手续费或扣款明细',
+  fee_evidence_mismatch: '手续费与差额不一致',
+  fee_evidence_coverage: '手续费明细的期间覆盖',
 };
 
 export function AnalysisEvidencePanel(props: {
@@ -30,6 +33,9 @@ export function AnalysisEvidencePanel(props: {
     props.targetVoucherId ? 'invoice_voucher_diff' : 'expense_bridge',
   );
   const [accountCode, setAccountCode] = useState('6602.02');
+  const [settlementSourceId, setSettlementSourceId] = useState('');
+  const [bankSourceId, setBankSourceId] = useState('');
+  const [feeSourceId, setFeeSourceId] = useState('');
   const voucherId = props.targetVoucherId ?? '';
   const [result, setResult] = useState<Analysis | null>(null);
   const [contractError, setContractError] = useState('');
@@ -43,6 +49,9 @@ export function AnalysisEvidencePanel(props: {
     kind,
     accountCode,
     voucherId,
+    settlementSourceId,
+    bankSourceId,
+    feeSourceId,
   ]);
   useLayoutEffect(() => {
     guard.current.cancel();
@@ -88,6 +97,9 @@ export function AnalysisEvidencePanel(props: {
       kind,
       accountCode,
       voucherId,
+      settlementSourceId,
+      bankSourceId,
+      feeSourceId,
       offset,
       limit: 50,
       sourceVersion,
@@ -109,7 +121,13 @@ export function AnalysisEvidencePanel(props: {
               ...(sourceVersion ? { expected_source_version: sourceVersion } : {}),
               ...(kind === 'expense_bridge'
                 ? { account_code: accountCode }
-                : { target_voucher_id: voucherId }),
+                : kind === 'invoice_voucher_diff'
+                  ? { target_voucher_id: voucherId }
+                  : {
+                      settlement_source_id: settlementSourceId,
+                      bank_source_id: bankSourceId,
+                      ...(feeSourceId ? { fee_source_id: feeSourceId } : {}),
+                    }),
             },
           });
           if (!guard.current.accepts(ticket)) throw new DOMException('Scope changed', 'AbortError');
@@ -147,9 +165,37 @@ export function AnalysisEvidencePanel(props: {
           >
             <option value="expense_bridge">费用跨期差额</option>
             <option value="invoice_voucher_diff">票据与凭证差额</option>
+            <option value="settlement_difference">平台结算与银行到账差额</option>
           </select>
         </label>
-        {kind === 'expense_bridge' ? (
+        {kind === 'settlement_difference' ? (
+          <>
+            <label>
+              结算单来源 ID
+              <input
+                value={settlementSourceId}
+                onChange={(event) => setSettlementSourceId(event.target.value)}
+                placeholder="平台结算单来源"
+              />
+            </label>
+            <label>
+              银行到账来源 ID
+              <input
+                value={bankSourceId}
+                onChange={(event) => setBankSourceId(event.target.value)}
+                placeholder="银行流水来源"
+              />
+            </label>
+            <label>
+              手续费明细 ID（可选）
+              <input
+                value={feeSourceId}
+                onChange={(event) => setFeeSourceId(event.target.value)}
+                placeholder="有依据时填写"
+              />
+            </label>
+          </>
+        ) : kind === 'expense_bridge' ? (
           <label>
             科目代码
             <input
@@ -169,7 +215,12 @@ export function AnalysisEvidencePanel(props: {
         <button
           type="button"
           className="button secondary"
-          disabled={request.busy || (kind === 'invoice_voucher_diff' && !voucherId.trim())}
+          disabled={
+            request.busy ||
+            (kind === 'invoice_voucher_diff' && !voucherId.trim()) ||
+            (kind === 'settlement_difference' &&
+              (!settlementSourceId.trim() || !bankSourceId.trim()))
+          }
           onClick={() => run()}
         >
           {request.busy ? '核对中…' : '开始只读核对'}
@@ -182,7 +233,24 @@ export function AnalysisEvidencePanel(props: {
           <p>
             {result.summary} · 状态：{result.status === 'complete' ? '当前范围已核对' : '不完整'}
           </p>
-          {result.kind === 'expense_bridge' ? (
+          {result.kind === 'settlement_difference' ? (
+            <div>
+              <p>
+                结算单 {String(result.facts.settlement_total ?? '未知')} 元，银行到账{' '}
+                {String(result.facts.bank_total ?? '未知')} 元，差额{' '}
+                <strong>{String(result.facts.difference ?? '未知')} 元</strong>。
+              </p>
+              <p>
+                {result.facts.reason === 'fee_evidence'
+                  ? `已由手续费明细 ${String(result.facts.fee_total ?? '未知')} 元解释。`
+                  : result.facts.reason === 'fee_evidence_mismatch'
+                    ? '手续费明细与差额不一致，不能据此归因。'
+                    : result.facts.reason === 'cross_period_evidence'
+                      ? '手续费明细不在本期间，覆盖范围不足，不能据此归因。'
+                      : '原因待核对，缺手续费或扣款明细。'}
+              </p>
+            </div>
+          ) : result.kind === 'expense_bridge' ? (
             <p>
               本期 {String(result.facts.current_total ?? '未知')} 元，上期{' '}
               {String(result.facts.previous_total ?? '未知')} 元，差额{' '}
@@ -224,13 +292,20 @@ export function AnalysisEvidencePanel(props: {
                       ? '本期凭证明细'
                       : key === 'previous_rows'
                         ? '对比期凭证明细'
-                        : '当前凭证的来源明细'}
+                        : '核对来源'}
                   </p>
                   <ul>
                     {rows.map((row, index) => (
                       <li key={index}>
                         {key === 'sources'
-                          ? `来源 ${String(row.kind)} · 版本 ${String(row.version)}`
+                          ? [
+                              String(row.source_name ?? row.description ?? row.kind ?? '来源'),
+                              String(row.date ?? ''),
+                              `版本 ${String(row.source_version ?? row.version ?? '未知').slice(0, 12)}`,
+                              String(row.evidence_ref ?? ''),
+                            ]
+                              .filter(Boolean)
+                              .join(' · ')
                           : `凭证 ${String(row.voucher_no)} · ${String(row.date)} · ${String(row.description)}`}
                         {' · '}
                         {formatCents(BigInt(String(row.amount_cents)))} 元
@@ -264,7 +339,14 @@ export function AnalysisEvidencePanel(props: {
           </div>
           <a
             className="text-button"
-            href={`/workspace/accounting?book=${encodeURIComponent(props.bookId)}&period=${encodeURIComponent(props.period)}&company=${encodeURIComponent(props.companyId)}`}
+            href={
+              result.handoff?.action_target ??
+              `/workspace/accounting?book=${encodeURIComponent(props.bookId)}&period=${encodeURIComponent(props.period)}&company=${encodeURIComponent(props.companyId)}${
+                result.kind === 'settlement_difference' && result.request.bank_source_id
+                  ? `&source=${encodeURIComponent(String(result.request.bank_source_id))}`
+                  : ''
+              }`
+            }
           >
             打开账套原记录核对
           </a>

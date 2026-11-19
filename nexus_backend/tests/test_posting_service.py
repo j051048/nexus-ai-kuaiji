@@ -52,6 +52,7 @@ def frozen_opening(case):
             ledger_id=ledger_id,
             standard_kind="small_enterprise",
             taxpayer_kind="general",
+            formal_book_system="local",
             effective_from="2026-01",
             effective_to="2026-12",
             reason="B03 期初政策",

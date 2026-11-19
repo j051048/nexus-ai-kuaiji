@@ -25,6 +25,7 @@ const kindLabels: Record<TaskKind, string> = {
   alert: '需要协助的问题',
   migration: '旧账转入进度',
   material: '需要提供的资料',
+  fee_variance: '到账差异',
 };
 
 export function taskKindLabel(kind: TaskKind, profile: WorkspaceProfile | null): string {
@@ -97,6 +98,7 @@ const clientDetails: Record<TaskKind, Readonly<Record<string, string>>> = {
     failed: '文件接收结果需要核对',
   },
   alert: { open: '需要负责人协助', resolved: '这项问题已处理' },
+  fee_variance: { pending: '到账差额待核对' },
   migration: {
     collecting: '正在收集旧账资料',
     processing: '正在处理旧账资料',

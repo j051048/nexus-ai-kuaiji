@@ -19,7 +19,7 @@ from ..accounting.access import AccessControl
 from ..accounting.domain import AccountingError
 
 
-KINDS = ("expense_bridge", "invoice_voucher_diff")
+KINDS = ("expense_bridge", "invoice_voucher_diff", "settlement_difference")
 MAX_ROWS = 100
 ACCOUNT_RE = re.compile(r"^\d{4}(?:\.\d{2})?$")
 PERIOD_RE = re.compile(r"^20\d{2}-(0[1-9]|1[0-2])$")
@@ -246,6 +246,178 @@ def _expense_bridge(
     return _result("expense_bridge", book, status, summary, facts, coverage, missing, limit, offset)
 
 
+def _source_row(conn, book_id, period, source_id, role):
+    if not isinstance(source_id, str) or not source_id.strip():
+        raise AccountingError("请补齐结算单和银行到账来源", 422)
+    row = conn.execute(
+        "SELECT s.id,s.amount_cents,s.source_name,s.description,s.counterparty,s.date,"
+        "s.evidence_ref,s.fingerprint,s.source_kind,"
+        "COALESCE((SELECT se.evidence_ref FROM source_evidence se "
+        "WHERE se.book_id=s.book_id AND se.source_id=s.id ORDER BY se.id DESC LIMIT 1),"
+        "s.evidence_ref) AS latest_evidence FROM sources s WHERE s.id=? AND s.book_id=?",
+        (source_id, book_id),
+    ).fetchone()
+    if not row:
+        raise AccountingError("结算单或银行到账不在当前账套", 404)
+    version = hashlib.sha256(
+        f"{row['fingerprint']}|{row['latest_evidence']}".encode("utf-8")
+    ).hexdigest()
+    return {
+        "role": role,
+        "id": row["id"],
+        "kind": row["source_kind"],
+        "source_name": row["source_name"],
+        "description": row["description"],
+        "counterparty": row["counterparty"],
+        "date": row["date"],
+        "amount_cents": int(row["amount_cents"]),
+        "evidence_ref": row["latest_evidence"],
+        "source_version": version,
+        "evidence_href": _href(book_id, period, source=row["id"]),
+    }
+
+
+def _settlement_difference(
+    service,
+    actor,
+    book_id,
+    period,
+    *,
+    settlement_source_id,
+    bank_source_id,
+    fee_source_id=None,
+    limit=50,
+    offset=0,
+):
+    if not isinstance(settlement_source_id, str) or not settlement_source_id.strip():
+        raise AccountingError("请补齐结算单来源", 422)
+    if not isinstance(bank_source_id, str) or not bank_source_id.strip():
+        raise AccountingError("请补齐银行到账来源", 422)
+    if settlement_source_id == bank_source_id:
+        raise AccountingError("结算单与银行到账不能是同一来源", 422)
+    if not isinstance(limit, int) or limit < 1 or limit > MAX_ROWS or offset < 0:
+        raise AccountingError("分页参数无效", 422)
+    book = _book(service, actor, book_id, period)
+    with _database(service).transaction(actor=actor) as conn:
+        _recheck_book(service, conn, actor, book_id)
+        settlement = _source_row(
+            conn, book_id, period, settlement_source_id, "settlement"
+        )
+        bank = _source_row(conn, book_id, period, bank_source_id, "bank")
+        if bank["kind"] != "bank":
+            raise AccountingError("银行到账来源不是银行流水", 422)
+        fee = None
+        if fee_source_id is not None:
+            fee = _source_row(conn, book_id, period, fee_source_id, "fee")
+        difference = settlement["amount_cents"] - bank["amount_cents"]
+        fee_total = fee["amount_cents"] if fee else None
+        missing = []
+        if difference == 0:
+            status, reason = "complete", "none"
+            summary = (
+                f"结算单 {_money(settlement['amount_cents'])} 元，"
+                f"银行到账 {_money(bank['amount_cents'])} 元，无差额。"
+            )
+        elif fee is not None and str(fee["date"])[:7] != period:
+            status, reason = "partial", "cross_period_evidence"
+            missing.append("fee_evidence_coverage")
+            summary = (
+                f"结算单 {_money(settlement['amount_cents'])} 元，"
+                f"银行到账 {_money(bank['amount_cents'])} 元，"
+                f"差额 {_money(difference)} 元；手续费明细属于 {str(fee['date'])[:7]}，"
+                "覆盖范围不是本期间，不能据此确认归因。"
+            )
+        elif fee is None:
+            status, reason = "partial", "unresolved"
+            missing.append("fee_evidence")
+            summary = (
+                f"结算单 {_money(settlement['amount_cents'])} 元，"
+                f"银行到账 {_money(bank['amount_cents'])} 元，"
+                f"差额 {_money(difference)} 元；原因待核对，缺手续费或扣款明细。"
+            )
+        elif fee_total != abs(difference):
+            status, reason = "partial", "fee_evidence_mismatch"
+            missing.append("fee_evidence_mismatch")
+            summary = (
+                f"结算单 {_money(settlement['amount_cents'])} 元，"
+                f"银行到账 {_money(bank['amount_cents'])} 元，"
+                f"差额 {_money(difference)} 元；手续费明细 {_money(fee_total)} 元与差额不一致。"
+            )
+        else:
+            status, reason = "complete", "fee_evidence"
+            summary = (
+                f"结算单 {_money(settlement['amount_cents'])} 元，"
+                f"银行到账 {_money(bank['amount_cents'])} 元，"
+                f"差额 {_money(difference)} 元；已由手续费明细 {_money(fee_total)} 元解释。"
+            )
+    sources = [settlement, bank] + ([fee] if fee else [])
+    facts = {
+        "settlement_source": settlement,
+        "bank_source": bank,
+        "fee_source": fee,
+        "settlement_total_cents": settlement["amount_cents"],
+        "settlement_total": _money(settlement["amount_cents"]),
+        "bank_total_cents": bank["amount_cents"],
+        "bank_total": _money(bank["amount_cents"]),
+        "fee_total_cents": fee_total,
+        "fee_total": _money(fee_total) if fee else None,
+        "difference_cents": difference,
+        "difference": _money(difference),
+        "reason": reason,
+        "currency": "CNY",
+        "sources": sources,
+    }
+    coverage = {
+        "scope": "settlement_and_bank",
+        "rows_read": len(sources),
+        "detail_rows": len(sources),
+        "total_rows": len(sources),
+        "has_more": False,
+        "detail_complete": True,
+        "total_complete": True,
+        "offset": offset,
+        "pages": 1,
+        "source_ids": [row["id"] for row in sources],
+        "source_fingerprints": [row["source_version"] for row in sources],
+    }
+    result = _result(
+        "settlement_difference",
+        book,
+        status,
+        summary,
+        facts,
+        coverage,
+        missing,
+        limit,
+        offset,
+    )
+    if status != "complete":
+        if reason == "cross_period_evidence":
+            handoff_reason = (
+                "手续费明细不在本期，覆盖范围不足。请企业财务补充本期手续费，"
+                "或提供能覆盖跨期归属的依据；会计核对后再办理。"
+            )
+        else:
+            handoff_reason = (
+                "原因待核对。请企业财务向平台取得扣款/手续费明细，"
+                "或向银行取得回单；在账套原记录核对后再办理。"
+            )
+        result["handoff"] = {
+            "reason_code": missing[0] if missing else "reason_unresolved",
+            "reason": handoff_reason,
+            "owner_role": "accountant",
+            "source_ref": (
+                f"settlement_difference:{book['id']}:{period}:"
+                f"{settlement['id']}:{bank['id']}"
+            ),
+            "source_version": "",
+            "action_target": _href(book_id, period, source=bank["id"]),
+            "deadline": None,
+            "status": "open",
+        }
+    return result
+
+
 def _invoice_voucher_diff(
     service, actor, book_id, period, *, target_voucher_id, limit=50, offset=0
 ):
@@ -370,6 +542,9 @@ def _result(kind, book, status, summary, facts, coverage, missing, limit, offset
             "difference_cents",
             "voucher_total_cents",
             "source_total_cents",
+            "settlement_total_cents",
+            "bank_total_cents",
+            "fee_total_cents",
         )
         if facts.get(key) is not None
     ]
@@ -454,14 +629,22 @@ def analyze(service, actor, book_id, period, kind, **params):
     if kind not in KINDS:
         raise AccountingError("不支持的分析类型", 422)
     expected_version = params.pop("expected_source_version", None)
-    required = "account_code" if kind == "expense_bridge" else "target_voucher_id"
+    required = (
+        ("account_code",)
+        if kind == "expense_bridge"
+        else ("target_voucher_id",)
+        if kind == "invoice_voucher_diff"
+        else ("settlement_source_id", "bank_source_id")
+    )
     allowed = (
-        {"account_code", "compare_period"} if kind == "expense_bridge" else {"target_voucher_id"}
+        {"account_code", "compare_period"}
+        if kind == "expense_bridge"
+        else {"target_voucher_id"}
+        if kind == "invoice_voucher_diff"
+        else {"settlement_source_id", "bank_source_id", "fee_source_id"}
     ) | {"limit", "offset"}
-    if (
-        set(params) - allowed
-        or not isinstance(params.get(required), str)
-        or not params[required].strip()
+    if set(params) - allowed or any(
+        not isinstance(params.get(key), str) or not params[key].strip() for key in required
     ):
         raise AccountingError("请补齐当前核对类型的必要参数", 422)
     limit, offset = params.get("limit", 50), params.get("offset", 0)
@@ -480,7 +663,13 @@ def analyze(service, actor, book_id, period, kind, **params):
     access = getattr(service, "access", None) or AccessControl()
     with db.transaction(actor=actor) as conn:
         bound = SimpleNamespace(db=_SnapshotDatabase(conn), access=access)
-        reader = _expense_bridge if kind == "expense_bridge" else _invoice_voucher_diff
+        reader = (
+            _expense_bridge
+            if kind == "expense_bridge"
+            else _invoice_voucher_diff
+            if kind == "invoice_voucher_diff"
+            else _settlement_difference
+        )
         result = reader(bound, actor, book_id, period, **params)
         books = [book_id]
         if result["facts"].get("previous_book_id"):
@@ -493,10 +682,34 @@ def analyze(service, actor, book_id, period, kind, **params):
             _recheck_book(service, conn, actor, identity)
         if _dependencies(conn, books) != dependencies:
             raise AccountingError("核对来源已变化，请重新核对", 409)
+        source_ids = result.get("coverage", {}).get("source_ids", [])
+        if source_ids:
+            placeholders = ",".join("?" for _ in source_ids)
+            current = conn.execute(
+                "SELECT s.id,s.evidence_ref,s.fingerprint,"
+                "COALESCE((SELECT se.evidence_ref FROM source_evidence se "
+                "WHERE se.book_id=s.book_id AND se.source_id=s.id ORDER BY se.id DESC LIMIT 1),"
+                "s.evidence_ref) AS latest_evidence FROM sources s "
+                f"WHERE s.book_id=? AND s.id IN ({placeholders})",
+                (book_id, *source_ids),
+            ).fetchall()
+            current_versions = {
+                row["id"]: hashlib.sha256(
+                    f"{row['fingerprint']}|{row['latest_evidence']}".encode("utf-8")
+                ).hexdigest()
+                for row in current
+            }
+            if current_versions != dict(
+                zip(source_ids, result["coverage"]["source_fingerprints"])
+            ):
+                raise AccountingError("结算或银行来源已变化，请重新核对", 409)
     normalized = {
         "account_code": params.get("account_code"),
         "compare_period": params.get("compare_period"),
         "target_voucher_id": params.get("target_voucher_id"),
+        "settlement_source_id": params.get("settlement_source_id"),
+        "bank_source_id": params.get("bank_source_id"),
+        "fee_source_id": params.get("fee_source_id"),
         "limit": limit,
         "offset": offset,
     }
@@ -508,6 +721,7 @@ def analyze(service, actor, book_id, period, kind, **params):
                 key: value for key, value in normalized.items() if key not in {"limit", "offset"}
             },
             "dependencies": dependencies,
+            "evidence": result.get("coverage", {}).get("source_fingerprints", []),
         }
     )
     if expected_version is not None and source_version != expected_version:

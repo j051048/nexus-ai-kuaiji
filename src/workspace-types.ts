@@ -50,7 +50,8 @@ export type TaskKind =
   | 'delivery'
   | 'alert'
   | 'migration'
-  | 'material';
+  | 'material'
+  | 'fee_variance';
 export type WorkspaceTask = {
   key: string;
   kind: TaskKind;
@@ -81,6 +82,9 @@ export type WorkspaceTask = {
   current_handler?: string;
   alternate_actions?: string[];
   amount_impact?: string | null;
+  bank_source?: string | null;
+  assignee_id?: string | null;
+  candidates?: { id: string; amount: string; counterparty: string }[];
 };
 export type WorkspaceTasks = {
   tasks: WorkspaceTask[];
@@ -200,5 +204,7 @@ export function taskDestination(task: WorkspaceTask, client = false) {
       return { type: 'alert' as const, id: task.ref, companyId: task.company_id };
     case 'migration':
       return { type: 'migration' as const, bookId: task.book_id, id: task.ref };
+    case 'fee_variance':
+      return { type: 'fee_variance' as const, id: task.ref, bookId: task.book_id };
   }
 }

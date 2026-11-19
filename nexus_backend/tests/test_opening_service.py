@@ -50,6 +50,7 @@ def policy(service, actor, ledger_id):
             ledger_id=ledger_id,
             standard_kind="small_enterprise",
             taxpayer_kind="general",
+            formal_book_system="local",
             effective_from="2026-01",
             effective_to="2026-12",
             reason="B02 隔离测试政策",

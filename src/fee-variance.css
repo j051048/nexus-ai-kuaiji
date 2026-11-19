@@ -1,0 +1,197 @@
+.fee-variance {
+  margin-top: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+.fee-variance > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.fee-variance h3 {
+  margin: 0 0 var(--space-1);
+  font-size: 18px;
+}
+.fee-variance header p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.fee-variance-list {
+  display: grid;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+.fee-variance-list > li {
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  background: var(--surface-muted);
+}
+.fee-variance-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.fee-variance-diff {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+.fee-variance-state {
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+.fee-variance-state.is-processing {
+  color: var(--status-warning);
+  border-color: var(--status-warning);
+}
+.fee-variance-state.is-handled {
+  color: var(--status-success);
+  border-color: var(--status-success);
+}
+.fee-variance-state.is-reversed {
+  color: var(--text-muted);
+}
+.fee-variance dl {
+  display: grid;
+  gap: var(--space-2);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: var(--space-3) 0;
+}
+.fee-variance dt {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.fee-variance dd {
+  margin: 2px 0 0;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.fee-variance-form {
+  display: grid;
+  gap: var(--space-2);
+  grid-template-columns: 1fr 2fr auto;
+  align-items: end;
+}
+.fee-variance-form label,
+.fee-variance-reverse label {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.fee-variance-form select,
+.fee-variance-form input,
+.fee-variance-reverse input {
+  min-width: 0;
+  min-height: 36px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  padding: 6px 8px;
+}
+.fee-variance-reverse {
+  margin-top: var(--space-2);
+}
+.fee-variance-reverse summary {
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.fee-variance-error {
+  color: var(--status-danger);
+}
+.fee-variance-empty {
+  color: var(--text-muted);
+  margin: var(--space-3) 0 0;
+}
+@media (max-width: 760px) {
+  .fee-variance dl {
+    grid-template-columns: 1fr 1fr;
+  }
+  .fee-variance-form {
+    grid-template-columns: 1fr;
+  }
+}
+
+.fee-variance-register {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin: 10px 0;
+  background: var(--surface-subtle);
+}
+
+.fee-variance-register summary {
+  cursor: pointer;
+  font-weight: 650;
+}
+
+.fee-variance-register form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px 12px;
+  margin-top: 10px;
+}
+
+.fee-variance-register label {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.fee-variance-register input,
+.fee-variance-register select {
+  min-width: 0;
+  min-height: 36px;
+  padding: 6px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.fee-variance-register button {
+  justify-self: start;
+  align-self: end;
+}
+
+.fee-variance-register .fee-variance-error,
+.fee-variance-register .fee-variance-ok {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+.fee-variance-ok {
+  color: var(--brand);
+  font-size: 13px;
+}
+
+@media (max-width: 700px) {
+  .fee-variance-register form {
+    grid-template-columns: 1fr;
+  }
+}
+.fee-variance-list li.is-target {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+  background: var(--brand-soft);
+}
+.fee-variance-candidates {
+  margin: 6px 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.fee-variance-candidates ul {
+  margin: 3px 0 0;
+  padding-left: 18px;
+}

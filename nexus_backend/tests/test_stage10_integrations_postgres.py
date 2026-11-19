@@ -1,10 +1,22 @@
 """文件底座的真实 PostgreSQL 边界，不连接畅捷通或客户生产库。"""
+import base64
+import csv
+import io
 import json
 from uuid import uuid4
 import pytest
 from app.accounting.domain import AccountingError
 from app.accounting.models import ApprovalRequest, ExportRequest, ImportRequest, SourceRow
-from app.integrations.models import BridgeConfiguration, BridgeExport, BridgeImport, BridgeImportConfirm
+from app.integrations.models import (
+    BridgeConfiguration,
+    BridgeExport,
+    BridgeImport,
+    BridgeImportConfirm,
+    BridgeManualReturn,
+    BridgeReturnEvidence,
+    BridgeReturnImport,
+    BridgeReturnRowHandle,
+)
 from app.integrations.service import FinancialBridgeService
 from app.ledgers.models import ManagerGrant, PeriodCreate
 from app.ledgers.service import LedgersService
@@ -123,3 +135,100 @@ def test_pg_wrong_company_envelope_is_not_a_backdoor_into_reference_storage(busi
     body=json.loads(request.content);body['company_id']=c.other_company
     with pytest.raises(AccountingError,match='范围'):
         svc.preview_import(c.owner,c.book,request.model_copy(update={'content':json.dumps(body),'idempotency_key':uuid4().hex}))
+
+
+def test_pg_return_file_marks_received_posted(business_case):
+    c = business_case
+    svc, _, _ = prepare(c)
+    export = exported(c)
+    intent = svc.prepare_export(
+        c.reviewer,
+        c.book,
+        BridgeExport(
+            export_id=export["id"],
+            configuration_version=1,
+            reason="合成返回文件核验",
+            idempotency_key=uuid4().hex,
+        ),
+    )
+    artifact = svc.create_artifact(c.reviewer, c.book, intent["id"])
+    voucher = intent["package"]["vouchers"][0]
+    amount = sum(float(line["debit"] or 0) for line in voucher["lines"])
+    buffer = io.StringIO(newline="")
+    writer = csv.writer(buffer, lineterminator="\r\n")
+    writer.writerow(["批次标识", "凭证标识", "对方凭证号", "结果", "失败原因", "对方过账日期", "金额", "科目"])
+    writer.writerow([intent["external_code"], f"T54-{voucher['external_code']}", "T-1", "accepted", "", "2026-10-31", f"{amount:.2f}", "100201"])
+    result = svc.record_return(
+        c.reviewer,
+        c.book,
+        artifact["id"],
+        BridgeReturnImport(batch_code=intent["external_code"], content=buffer.getvalue()),
+    )
+    assert result["received"] is True and result["posted"] is True
+    assert result["counts"]["accepted"] == 1
+    with c.db.transaction(actor=c.reviewer) as conn:
+        assert conn.execute("SELECT COUNT(*) FROM bridge_return_rows WHERE import_id=%s", (result["id"],)).fetchone()[0] == 1
+
+
+def test_pg_return_discrepancy_is_handled_with_evidence(business_case):
+    c = business_case
+    svc, _, _ = prepare(c)
+    export = exported(c)
+    intent = svc.prepare_export(
+        c.reviewer,
+        c.book,
+        BridgeExport(
+            export_id=export["id"],
+            configuration_version=1,
+            reason="合成差异返回核验",
+            idempotency_key=uuid4().hex,
+        ),
+    )
+    artifact = svc.create_artifact(c.reviewer, c.book, intent["id"])
+    voucher = intent["package"]["vouchers"][0]
+    amount = sum(float(line["debit"] or 0) for line in voucher["lines"])
+    buffer = io.StringIO(newline="")
+    writer = csv.writer(buffer, lineterminator="\r\n")
+    writer.writerow(["批次标识", "凭证标识", "对方凭证号", "结果", "失败原因", "对方过账日期", "金额", "科目"])
+    writer.writerow([intent["external_code"], f"T54-{voucher['external_code']}", "T-2", "amount_mismatch", "客户少记", "2026-10-31", f"{amount + 0.01:.2f}", "100201"])
+    result = svc.record_return(
+        c.reviewer,
+        c.book,
+        artifact["id"],
+        BridgeReturnImport(batch_code=intent["external_code"], content=buffer.getvalue()),
+    )
+    assert result["counts"]["mismatch"] == 1
+    handled = svc.handle_return_row(
+        c.reviewer,
+        c.book,
+        artifact["id"],
+        result["id"],
+        f"T54-{voucher['external_code']}",
+        BridgeReturnRowHandle(action="resolved", reason="客户确认手续费", evidence_ref="客户邮件 2026-11-02"),
+    )
+    assert handled["rows"][0]["handled"] is True
+
+
+def test_pg_manual_return_evidence_round_trip(business_case):
+    c = business_case
+    svc, _, _ = prepare(c)
+    export = exported(c)
+    intent = svc.prepare_export(
+        c.reviewer, c.book,
+        BridgeExport(export_id=export["id"], configuration_version=1,
+                     reason="合成手工回执证据", idempotency_key=uuid4().hex),
+    )
+    artifact = svc.create_artifact(c.reviewer, c.book, intent["id"])
+    manual = svc.record_manual_return(
+        c.reviewer, c.book, artifact["id"],
+        BridgeManualReturn(batch_code=intent["external_code"], received=True,
+                           evidence_ref="客户邮件确认收到交付包"),
+    )
+    payload = BridgeReturnEvidence(
+        filename="客户回执.pdf", media_type="application/pdf",
+        content_base64=base64.b64encode(b"%PDF-1.4 pg manual receipt").decode(),
+    )
+    result = svc.attach_evidence(c.reviewer, c.book, artifact["id"], manual["id"], payload)
+    assert result["size_bytes"] > 0
+    stored = svc.evidence_for(c.reviewer, c.book, manual["id"], artifact["id"])
+    assert bytes(stored["content"]).startswith(b"%PDF-")

@@ -304,6 +304,7 @@ def test_asset_three_months_cross_year_posts_exact_residual(business):
                     ledger_id=opening["ledger_id"],
                     standard_kind="small_enterprise",
                     taxpayer_kind="general",
+                    formal_book_system="local",
                     effective_from="2027-01",
                     reason="新年政策",
                 ),

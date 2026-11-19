@@ -74,3 +74,26 @@ class BridgeReceiptImport(InputModel):
     receipt_code: StrictStr = Field(min_length=1, max_length=100)
     content: StrictStr = Field(min_length=1, max_length=2_000_000)
     reason: StrictStr = Field(min_length=3, max_length=1000)
+
+
+class BridgeReturnImport(InputModel):
+    batch_code: StrictStr = Field(min_length=1, max_length=100)
+    content: StrictStr = Field(min_length=1, max_length=2_000_000)
+
+class BridgeManualReturn(InputModel):
+    batch_code: StrictStr = Field(min_length=1, max_length=100)
+    received: bool
+    posted: bool = False
+    evidence_ref: StrictStr = Field(min_length=1, max_length=500)
+    note: StrictStr = Field(default="", max_length=500)
+
+class BridgeReturnRowHandle(InputModel):
+    action: Literal["resolved", "ignored"]
+    reason: StrictStr = Field(min_length=3, max_length=500)
+    evidence_ref: StrictStr = Field(min_length=5, max_length=500)
+
+
+class BridgeReturnEvidence(InputModel):
+    filename: str = Field(min_length=1, max_length=200)
+    media_type: str = Field(min_length=3, max_length=100)
+    content_base64: str = Field(min_length=1)

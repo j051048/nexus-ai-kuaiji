@@ -127,6 +127,7 @@ export default function App() {
   const [initialCaseId, setInitialCaseId] = useState('');
   const [materialTarget, setMaterialTarget] = useState('');
   const [deliveryTarget, setDeliveryTarget] = useState('');
+  const [feeVarianceTarget, setFeeVarianceTarget] = useState('');
   const [proposalTarget, setProposalTarget] = useState('');
   const inlineContext = useRef<{
     scope: string;
@@ -184,6 +185,7 @@ export default function App() {
     setInitialCaseId('');
     setMaterialTarget('');
     setDeliveryTarget('');
+    setFeeVarianceTarget('');
     setProposalTarget('');
     setInlineTarget(null);
     setWorkspaceRevision(0);
@@ -823,6 +825,7 @@ export default function App() {
     setInitialCaseId('');
     setMaterialTarget('');
     setDeliveryTarget('');
+    setFeeVarianceTarget('');
     if (view === 'accounting') {
       setFilter('all');
       setSearch('');
@@ -901,6 +904,14 @@ export default function App() {
       setBookId(target.bookId);
       focusBookRef.current = target.bookId;
       setDeliveryTarget(target.id);
+      setRouteView('delivery');
+      if (routeUsesBook) void initialize(undefined, target.bookId);
+    } else if (target.type === 'fee_variance' && target.bookId) {
+      go('accounting');
+      setBookId(target.bookId);
+      focusBookRef.current = target.bookId;
+      setDeliveryTarget('');
+      setFeeVarianceTarget(target.id);
       setRouteView('delivery');
       if (routeUsesBook) void initialize(undefined, target.bookId);
     } else if (target.type === 'migration' && target.bookId) {
@@ -1283,6 +1294,7 @@ export default function App() {
     newIntake,
     materialTarget,
     deliveryTarget,
+    feeVarianceTarget,
     migrationTarget,
     operationsTarget,
     operationsAlert,
@@ -1290,6 +1302,7 @@ export default function App() {
     queueTarget,
     queueJobTarget,
     initialCaseId,
+    setInitialCaseId,
     caseTarget,
     setWorkCompany,
     setWorkPeriod,

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { api, ApiError } from './api';
+import { api, apiBlob, ApiError } from './api';
 import type { Session } from './types';
 import { centsToApiString } from './money';
+import { prepareUploadIntent } from './upload-client';
 import { FleetMetricsPanel } from './FleetMetricsPanel';
 import { InlineReviewDrawer } from './InlineReviewDrawer';
 import './tax-f.css';
@@ -61,15 +62,44 @@ type ProfitLine = {
   line_name: string;
   line_kind: string;
   amount_cents: number;
-  item_count: number;
+  items_count: number;
+  live_amount_cents?: number;
+  snapshot_amount_cents?: number;
+  snapshot_changed?: boolean;
+  accounts?: {
+    account_code: string;
+    account_name: string;
+    amount_cents: number;
+    items_count: number;
+  }[];
+};
+type ReportOption = {
+  id: string;
+  period: string;
+  version: number;
+  status: string;
+  mode_label: string;
+  created_at: string;
 };
 type ProfitItem = {
   line_code: string;
-  voucher_no: string | null;
+  voucher_id: string;
+  voucher_no: number | null;
+  voucher_date: string;
+  line_no: number;
   account_code: string;
   account_name: string;
   net_cents: number;
+  source_ref: string | null;
   evidence_ref: string;
+  original_file_id?: string | null;
+  original_url?: string | null;
+};
+type ProfitImpact = {
+  voucher_no: number;
+  voucher_date: string;
+  lines: { line_code: string; line_name: string; amount_cents: number; line_count: number }[];
+  unmapped_line_count: number;
 };
 type Profit = {
   period: string;
@@ -84,7 +114,19 @@ type Profit = {
     income_tax_cents: number | null;
     net_profit_cents: number | null;
   };
-  checks: { unmapped_count: number; mixed_voucher_count: number; net_profit_known: boolean };
+  snapshot: {
+    report_run_id: string;
+    version: number;
+    status: string;
+    content_hash: string;
+    period: string;
+    changed_line_codes: string[];
+  } | null;
+  checks: {
+    unmapped_line_count: number;
+    mixed_voucher_contributions: number;
+    net_profit_known: boolean;
+  };
 };
 
 const money = (cents: number | null) =>
@@ -133,6 +175,10 @@ export function TaxFPanel({
   const [selectedLease, setSelectedLease] = useState('');
   const [basis, setBasis] = useState<Basis[]>([]);
   const [profit, setProfit] = useState<Profit | null>(null);
+  const [profitReports, setProfitReports] = useState<ReportOption[]>([]);
+  const [profitReportId, setProfitReportId] = useState('');
+  const [profitImpact, setProfitImpact] = useState<ProfitImpact | null>(null);
+  const [profitImpactBusy, setProfitImpactBusy] = useState('');
   const [baselineBook, setBaselineBook] = useState('');
   const [variance, setVariance] = useState<{
     current_period: string;
@@ -153,6 +199,8 @@ export function TaxFPanel({
   const [busy, setBusy] = useState(false);
   const [reviewDraft, setReviewDraft] = useState('');
   const [exportingLease, setExportingLease] = useState<string | null>(null);
+  const [sourceUploadRef, setSourceUploadRef] = useState('');
+  const [originalBusy, setOriginalBusy] = useState('');
 
   const [customerName, setCustomerName] = useState('虚构租赁客户');
   const [vehicle, setVehicle] = useState('V-LEASE-UI');
@@ -170,21 +218,28 @@ export function TaxFPanel({
 
   const current = leases.find((row) => row.id === selectedLease) ?? null;
 
-  async function load() {
+  async function load(nextReportId = profitReportId) {
     setFailure('');
     try {
-      const [leaseData, basisData, profitData] = await Promise.all([
+      const reportQuery = nextReportId ? `&report_run_id=${encodeURIComponent(nextReportId)}` : '';
+      const [leaseData, basisData, profitData, reportData] = await Promise.all([
         api<{ items: Lease[] }>(leasesUrl, session),
         api<{ items: Basis[] }>(`${basisUrl}?period=${encodeURIComponent(period)}`, session),
         api<Profit>(
-          `/reports/profit?book_id=${encodeURIComponent(bookId)}&period=${encodeURIComponent(period)}`,
+          `/reports/profit?book_id=${encodeURIComponent(bookId)}&period=${encodeURIComponent(period)}${reportQuery}`,
           session,
         ),
+        api<{ reports: ReportOption[] }>(`/reports?book_id=${encodeURIComponent(bookId)}`, session),
       ]);
       setLeases(leaseData.items);
       setSelectedLease((value) => value || leaseData.items[0]?.id || '');
       setBasis(basisData.items);
       setProfit(profitData);
+      const options = reportData.reports.filter((row) => row.period === period);
+      setProfitReports(options);
+      if (nextReportId && !options.some((row) => row.id === nextReportId)) {
+        setProfitReportId('');
+      }
     } catch (error) {
       setFailure(error instanceof ApiError ? error.message : '租赁、税费与利润数据读取失败。');
     }
@@ -192,6 +247,56 @@ export function TaxFPanel({
   useEffect(() => {
     void load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */
   }, [bookId, period, session]);
+
+  async function attachSourceOriginal(sourceRef: string, file: File | undefined) {
+    if (!file || !sourceRef || sourceUploadRef) return;
+    setSourceUploadRef(sourceRef);
+    setFailure('');
+    setNotice('');
+    try {
+      const uploadId = await prepareUploadIntent(session, file, 'source_original');
+      await api(
+        `/tax/books/${encodeURIComponent(bookId)}/sources/${encodeURIComponent(sourceRef)}/originals`,
+        session,
+        { method: 'POST', body: { upload_id: uploadId } },
+      );
+      await load();
+      setNotice('来源原件已绑定到本笔凭证来源，可在本行打开核对。');
+    } catch (error) {
+      setFailure(
+        error instanceof ApiError ? error.message : '来源原件上传失败，请核对文件后重试。',
+      );
+    } finally {
+      setSourceUploadRef('');
+    }
+  }
+
+  async function openSourceOriginal(row: ProfitItem) {
+    if (!row.original_url || originalBusy) return;
+    setOriginalBusy(row.original_url);
+    setFailure('');
+    try {
+      const blob = await apiBlob(row.original_url.replace(/^\/api/, ''), session);
+      const extension =
+        blob.type === 'application/pdf'
+          ? 'pdf'
+          : blob.type === 'image/png'
+            ? 'png'
+            : blob.type === 'image/jpeg'
+              ? 'jpg'
+              : 'bin';
+      const href = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = href;
+      anchor.download = `来源原件-${row.voucher_no ?? '凭证'}.${extension}`;
+      anchor.click();
+      window.setTimeout(() => URL.revokeObjectURL(href), 1000);
+    } catch (error) {
+      setFailure(error instanceof ApiError ? error.message : '原件读取失败，请稍后重试。');
+    } finally {
+      setOriginalBusy('');
+    }
+  }
 
   async function run(action: () => Promise<void>, success: string) {
     setBusy(true);
@@ -348,6 +453,29 @@ export function TaxFPanel({
   const drillItems = selectedLine
     ? (profit?.items.filter((row) => row.line_code === selectedLine) ?? [])
     : [];
+  const selectedProfitLine = profit?.lines.find((row) => row.line_code === selectedLine) ?? null;
+  const drillTotalCents = drillItems.reduce((sum, row) => sum + row.net_cents, 0);
+  const drillMismatch = Boolean(
+    selectedProfitLine && drillTotalCents !== selectedProfitLine.amount_cents,
+  );
+
+  async function loadProfitImpact(voucherId: string) {
+    if (profitImpactBusy) return;
+    setProfitImpactBusy(voucherId);
+    setFailure('');
+    try {
+      setProfitImpact(
+        await api<ProfitImpact>(
+          `/reports/profit/impacts?book_id=${encodeURIComponent(bookId)}&voucher_id=${encodeURIComponent(voucherId)}`,
+          session,
+        ),
+      );
+    } catch (cause) {
+      setFailure(cause instanceof Error ? cause.message : '影响报表行读取失败');
+    } finally {
+      setProfitImpactBusy('');
+    }
+  }
 
   async function approveLease() {
     if (!current) return;
@@ -807,6 +935,34 @@ export function TaxFPanel({
         <h4>03 利润项目与凭证行下钻</h4>
         {profit ? (
           <>
+            <div className="tax-f-profit-scope">
+              <label>
+                下钻口径
+                <select
+                  value={profitReportId}
+                  onChange={(event) => {
+                    const next = event.target.value;
+                    setProfitReportId(next);
+                    void load(next);
+                  }}
+                >
+                  <option value="">实时账簿</option>
+                  {profitReports.map((report) => (
+                    <option key={report.id} value={report.id}>
+                      报表 V{report.version} · {report.mode_label} · {report.status}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {profit.snapshot ? (
+                <span className="tax-f-note" role="status">
+                  金额冻结于报表 V{profit.snapshot.version}（{profit.snapshot.status}）
+                  {profit.snapshot.changed_line_codes.length
+                    ? `；与当前账簿不一致：${profit.snapshot.changed_line_codes.join('、')}`
+                    : '；与当前账簿一致'}
+                </span>
+              ) : null}
+            </div>
             <div className="tax-f-totals">
               <span>
                 营业收入 <strong>{money(profit.totals.revenue_cents)}</strong>
@@ -827,6 +983,24 @@ export function TaxFPanel({
                 映射 <strong>v{profit.mapping_version}</strong>
               </span>
             </div>
+            {selectedProfitLine ? (
+              <div className="tax-f-account-summary" role="list" aria-label="利润行科目汇总">
+                <span className="tax-f-account-summary-label">
+                  {selectedProfitLine.line_name} · 科目层
+                </span>
+                {(selectedProfitLine.accounts ?? []).length ? (
+                  (selectedProfitLine.accounts ?? []).map((account) => (
+                    <span key={account.account_code} role="listitem">
+                      {account.account_code} {account.account_name}
+                      <strong>{money(account.amount_cents)}</strong>
+                      <small>{account.items_count} 行</small>
+                    </span>
+                  ))
+                ) : (
+                  <span role="listitem">无已映射科目</span>
+                )}
+              </div>
+            ) : null}
             <div className="tax-f-profit-grid">
               <div className="tax-f-table-wrap">
                 <table>
@@ -843,8 +1017,15 @@ export function TaxFPanel({
                     {profit.lines.map((row) => (
                       <tr key={row.line_code}>
                         <td>{row.line_name}</td>
-                        <td>{money(row.amount_cents)}</td>
-                        <td>{row.item_count}</td>
+                        <td>
+                          {money(row.amount_cents)}
+                          {profit.snapshot && row.snapshot_changed ? (
+                            <small className="tax-f-snapshot-diff">
+                              实时 {money(row.live_amount_cents ?? 0)}
+                            </small>
+                          ) : null}
+                        </td>
+                        <td>{row.items_count}</td>
                         <td>
                           <button type="button" onClick={() => setSelectedLine(row.line_code)}>
                             查看依据
@@ -866,6 +1047,7 @@ export function TaxFPanel({
                       <th>科目</th>
                       <th>净额</th>
                       <th>来源</th>
+                      <th>反向</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -876,16 +1058,76 @@ export function TaxFPanel({
                           {row.account_code} {row.account_name}
                         </td>
                         <td>{money(row.net_cents)}</td>
-                        <td>{row.evidence_ref || '—'}</td>
+                        <td>
+                          {row.original_url ? (
+                            <button
+                              type="button"
+                              className="tax-original-open"
+                              disabled={Boolean(originalBusy)}
+                              onClick={() => void openSourceOriginal(row)}
+                            >
+                              {originalBusy === row.original_url ? '读取中…' : '打开原件'}
+                            </button>
+                          ) : (
+                            row.evidence_ref || '无原件绑定'
+                          )}
+                          {!row.original_url && row.source_ref ? (
+                            <label className="tax-original-upload">
+                              {sourceUploadRef === row.source_ref ? '上传中…' : '补传原件'}
+                              <input
+                                type="file"
+                                accept="application/pdf,image/png,image/jpeg,image/webp"
+                                disabled={Boolean(sourceUploadRef)}
+                                onChange={(event) => {
+                                  const file = event.target.files?.[0];
+                                  event.target.value = '';
+                                  void attachSourceOriginal(row.source_ref!, file);
+                                }}
+                              />
+                            </label>
+                          ) : null}
+                        </td>
+                        <td>
+                          <button
+                            type="button"
+                            disabled={profitImpactBusy === row.voucher_id}
+                            onClick={() => void loadProfitImpact(row.voucher_id)}
+                          >
+                            影响报表行
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
             </div>
+            {profitImpact ? (
+              <p className="tax-f-hint" role="note">
+                凭证 {profitImpact.voucher_no}（{profitImpact.voucher_date}）影响：
+                {profitImpact.lines.length
+                  ? profitImpact.lines
+                      .map((row) => `${row.line_name} ${money(row.amount_cents)}`)
+                      .join('；')
+                  : '未映射到任何报表行'}
+                {profitImpact.unmapped_line_count
+                  ? `；另有 ${profitImpact.unmapped_line_count} 行未映射`
+                  : ''}
+              </p>
+            ) : null}
+            {selectedProfitLine ? (
+              <p
+                className={drillMismatch ? 'tax-f-drill-mismatch' : 'tax-f-hint'}
+                role={drillMismatch ? 'alert' : 'note'}
+              >
+                本层合计 {money(drillTotalCents)}；上层金额 {money(selectedProfitLine.amount_cents)}
+                {drillMismatch ? '；不一致，请核对映射和凭证来源，不能直接确认。' : '；一致。'}
+              </p>
+            ) : null}
             <p className="tax-f-hint" role="note">
-              未映射 {profit.checks.unmapped_count} 行；混合凭证 {profit.checks.mixed_voucher_count}{' '}
-              张； 所得税和净利润未知时显示“未知”，不补零。年累计尚不完整。
+              未映射 {profit.checks.unmapped_line_count} 行；混合凭证{' '}
+              {profit.checks.mixed_voucher_contributions} 张；
+              所得税和净利润未知时显示“未知”，不补零。 年累计尚不完整。
             </p>
           </>
         ) : (

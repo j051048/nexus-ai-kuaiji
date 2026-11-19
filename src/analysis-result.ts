@@ -3,9 +3,12 @@ export type AnalysisScope = {
   companyId: string;
   bookId: string;
   period: string;
-  kind: 'expense_bridge' | 'invoice_voucher_diff';
+  kind: 'expense_bridge' | 'invoice_voucher_diff' | 'settlement_difference';
   accountCode: string;
   voucherId: string;
+  settlementSourceId?: string;
+  bankSourceId?: string;
+  feeSourceId?: string;
   offset: number;
   limit: number;
   sourceVersion?: string;
@@ -76,7 +79,13 @@ export function parseAnalysis(v: unknown, scope: AnalysisScope): Analysis {
     r.limit !== scope.limit ||
     r.compare_period !== null ||
     r.account_code !== (scope.kind === 'expense_bridge' ? scope.accountCode : null) ||
-    r.target_voucher_id !== (scope.kind === 'invoice_voucher_diff' ? scope.voucherId : null)
+    r.target_voucher_id !== (scope.kind === 'invoice_voucher_diff' ? scope.voucherId : null) ||
+    (r.settlement_source_id ?? null) !==
+      (scope.kind === 'settlement_difference' ? (scope.settlementSourceId ?? '') : null) ||
+    (r.bank_source_id ?? null) !==
+      (scope.kind === 'settlement_difference' ? (scope.bankSourceId ?? '') : null) ||
+    (r.fee_source_id ?? null) !==
+      (scope.kind === 'settlement_difference' ? scope.feeSourceId || null : null)
   )
     return fail();
   if (
@@ -95,11 +104,23 @@ export function parseAnalysis(v: unknown, scope: AnalysisScope): Analysis {
     (v.handoff !== null && (!record(v.handoff) || typeof v.handoff.reason !== 'string'))
   )
     return fail();
+  const facts = v.facts;
+  if (scope.kind === 'settlement_difference') {
+    if (
+      typeof facts.settlement_total !== 'string' ||
+      typeof facts.bank_total !== 'string' ||
+      typeof facts.difference !== 'string' ||
+      !['unresolved', 'fee_evidence', 'fee_evidence_mismatch', 'none'].includes(
+        String(facts.reason),
+      )
+    )
+      return fail();
+    return v as Analysis;
+  }
   const fields =
     scope.kind === 'expense_bridge'
       ? ['current_total', 'previous_total', 'difference']
       : ['voucher_total', 'source_total', 'difference'];
-  const facts = v.facts;
   if (facts.currency !== 'CNY') return fail();
   const rowFields =
     scope.kind === 'expense_bridge' ? ['current_rows', 'previous_rows'] : ['sources'];

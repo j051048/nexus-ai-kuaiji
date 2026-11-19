@@ -61,6 +61,27 @@ def test_pg_workspace_current_role_and_authorization_before_count_and_limit(
     assert empty_page["counts"] == {"action": 3}
 
 
+def test_pg_workspace_closed_case_returns_410_with_closer_and_time(business_case):
+    c, service = business_case, workspace(business_case)
+    cases, _, task = prepare_case(c, "exception")
+    closed = cases.command(
+        c.reviewer,
+        task["id"],
+        "close",
+        CaseCommand(
+            expected_version=task["version"],
+            idempotency_key=uuid4().hex,
+            reason="已完成补件核验",
+        ),
+    )
+    assert closed["state"] == "closed"
+    with pytest.raises(AccountingError) as completed:
+        service.get(c.reviewer, "case", task["id"])
+    assert completed.value.status == 410
+    assert "该待办已由" in completed.value.detail
+    assert "办理" in completed.value.detail
+
+
 def test_pg_workspace_supplement_recipient_is_private_under_native_case_source_check(business_case):
     c, service = business_case, workspace(business_case)
     cases, event_id, task = prepare_case(c)
@@ -111,7 +132,7 @@ def test_pg_workspace_live_revocation_and_suspension(business_case, change):
     assert revoked.value.status == (403 if change == "inactive_user" else 404)
 
 
-def test_pg_workspace_closed_case_returns_404_without_fallback(business_case):
+def test_pg_workspace_closed_case_returns_410_without_fallback(business_case):
     c, service = business_case, workspace(business_case)
     cases, _, task = prepare_case(c, "exception")
     cases.command(
@@ -124,7 +145,8 @@ def test_pg_workspace_closed_case_returns_404_without_fallback(business_case):
     )
     with pytest.raises(AccountingError) as completed:
         service.get(c.reviewer, "case", task["id"])
-    assert completed.value.status == 404
+    assert completed.value.status == 410
+    assert "该待办已由" in completed.value.detail
 
 
 def test_pg_workspace_export_and_unknown_receipt_are_explicit_human_actions(business_case):

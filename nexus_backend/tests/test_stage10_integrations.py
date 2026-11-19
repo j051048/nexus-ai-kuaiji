@@ -85,7 +85,11 @@ def test_frozen_export_package_maps_once_and_live_dispatch_disabled(service, boo
     with pytest.raises(AccountingError, match='未启用'):
         bridge.dispatch(LOCAL_ACTOR, book, intent['id'])
     bridge.configure(LOCAL_ACTOR, book, config(expected_version=1, idempotency_key='config-later-version'))
-    assert bridge.get_outbox(LOCAL_ACTOR, book, intent['id']) == intent
+    current = bridge.get_outbox(LOCAL_ACTOR, book, intent['id'])
+    assert current['id'] == intent['id'] and current['state'] == intent['state']
+    assert current['statuses']['exported']['at'] is None
+    assert current['statuses']['received']['at'] is None
+    assert current['statuses']['posted']['at'] is None
     with pytest.raises(AccountingError, match='冻结交付'):
         bridge.prepare_export(LOCAL_ACTOR, book, req.model_copy(update={'configuration_version': 2}))
 

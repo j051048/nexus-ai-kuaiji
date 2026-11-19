@@ -5,7 +5,11 @@ from .models import (
     BridgeExport,
     BridgeImport,
     BridgeImportConfirm,
+    BridgeManualReturn,
     BridgeReceiptImport,
+    BridgeReturnEvidence,
+    BridgeReturnImport,
+    BridgeReturnRowHandle,
 )
 
 
@@ -116,6 +120,73 @@ def build_integrations_router(actor_dependency):
         svc=Depends(service),
     ):
         return svc.record_receipt(actor, book_id, artifact_id, payload)
+
+    @router.post("/artifacts/{artifact_id}/returns", status_code=201)
+    def artifact_return(
+        book_id: str,
+        artifact_id: str,
+        payload: BridgeReturnImport,
+        actor=Depends(actor_dependency),
+        svc=Depends(service),
+    ):
+        return svc.record_return(actor, book_id, artifact_id, payload)
+
+    @router.post("/artifacts/{artifact_id}/returns/manual", status_code=201)
+    def artifact_manual_return(
+        book_id: str,
+        artifact_id: str,
+        payload: BridgeManualReturn,
+        actor=Depends(actor_dependency),
+        svc=Depends(service),
+    ):
+        return svc.record_manual_return(actor, book_id, artifact_id, payload)
+
+    @router.post("/artifacts/{artifact_id}/returns/{import_id}/rows/{voucher_code}/handle")
+    def artifact_return_row_handle(
+        book_id: str,
+        artifact_id: str,
+        import_id: str,
+        voucher_code: str,
+        payload: BridgeReturnRowHandle,
+        actor=Depends(actor_dependency),
+        svc=Depends(service),
+    ):
+        return svc.handle_return_row(actor, book_id, artifact_id, import_id, voucher_code, payload)
+
+    @router.post("/artifacts/{artifact_id}/returns/{import_id}/evidence", status_code=201)
+    def artifact_return_evidence(
+        book_id: str,
+        artifact_id: str,
+        import_id: str,
+        payload: BridgeReturnEvidence,
+        actor=Depends(actor_dependency),
+        svc=Depends(service),
+    ):
+        return svc.attach_evidence(actor, book_id, artifact_id, import_id, payload)
+
+    @router.get("/artifacts/{artifact_id}/returns/{import_id}/evidence")
+    def artifact_return_evidence_download(
+        book_id: str,
+        artifact_id: str,
+        import_id: str,
+        actor=Depends(actor_dependency),
+        svc=Depends(service),
+    ):
+        row = svc.evidence_for(actor, book_id, import_id, artifact_id)
+        return Response(content=bytes(row["content"]), media_type=row["media_type"], headers={
+            "Content-Disposition": f'attachment; filename="{row["filename"]}"',
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
+        })
+
+    @router.get("/artifacts/{artifact_id}/returns")
+    def artifact_returns(
+        book_id: str,
+        artifact_id: str,
+        actor=Depends(actor_dependency),
+        svc=Depends(service),
+    ):
+        return svc.list_returns(actor, book_id, artifact_id)
 
     @router.get("/artifacts/{artifact_id}/receipts")
     def artifact_receipts(

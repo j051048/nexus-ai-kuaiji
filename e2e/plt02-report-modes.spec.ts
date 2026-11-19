@@ -21,6 +21,7 @@ test('试算报表在界面阻断复核与预检，政策页可批准但不会�
         ledger_id: f.ledger.id,
         standard_kind: 'small_enterprise',
         taxpayer_kind: 'general',
+        formal_book_system: 'local',
         effective_from: '2026-10',
         effective_to: '2026-10',
         is_synthetic: true,

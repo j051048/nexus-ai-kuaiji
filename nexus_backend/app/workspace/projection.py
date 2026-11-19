@@ -137,6 +137,16 @@ def refresh_statements(db, firm_id, company_id):
     )
     statements.append(
         (
+            INSERTS + "SELECT fv.firm_id,fv.company_id,'fee_variance',fv.id,fv.book_id,"
+            "NULL,NULL,NULL,NULL,NULL,fv.processing_started_by,NULL,fv.created_by,'',"
+            "'fee_variance','',0,fv.status,'核对到账差额 · ' || fv.kind,NULL,COALESCE(fv.handled_at,fv.processing_started_at,fv.created_at),"
+            "ABS(fv.difference_cents) FROM fee_receivable_variances fv "
+            "WHERE fv.firm_id=? AND fv.company_id=? AND fv.status='pending'",
+            scope,
+        )
+    )
+    statements.append(
+        (
             INSERTS + "SELECT b.firm_id,b.company_id,'export',b.id,b.id,NULL,NULL,NULL,NULL,NULL,"
             "NULL,NULL,NULL,'','export','',0,'approved',b.name||' · '||b.period||"
             "' · 待导出凭证 · '||COUNT(*)||' 张',NULL,MAX(s.date),SUM(s.amount_cents) "

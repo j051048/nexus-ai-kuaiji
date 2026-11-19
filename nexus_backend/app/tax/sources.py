@@ -776,6 +776,83 @@ class TaxSourceAdapter:
             return self._view(updated)
 
 
+    def attach_original(self, uploads, actor, book_id, source_id, upload_id):
+        """Bind one stored original to an existing source through the shared upload gate."""
+        with self.db.transaction(actor=actor) as conn:
+            source = conn.execute(
+                "SELECT s.id,s.book_id,b.firm_id,b.company_id FROM sources s "
+                "JOIN books b ON b.id=s.book_id WHERE s.id=? AND s.book_id=? AND b.firm_id=?",
+                (source_id, book_id, actor.firm_id),
+            ).fetchone()
+            if not source:
+                raise AccountingError("来源不存在或无权访问", 404)
+            book = self.ledgers.access.book(conn, actor, book_id, "review")
+
+        def register(conn, stored):
+            current = conn.execute(
+                "SELECT s.id,s.book_id,b.firm_id,b.company_id FROM sources s "
+                "JOIN books b ON b.id=s.book_id WHERE s.id=? AND s.book_id=? AND b.firm_id=?",
+                (source_id, book_id, actor.firm_id),
+            ).fetchone()
+            if not current:
+                raise AccountingError("来源不存在或无权访问", 404)
+            self.ledgers.access.book(conn, actor, book_id, "review")
+            if conn.execute(
+                "SELECT 1 FROM source_originals WHERE source_id=?", (source_id,)
+            ).fetchone():
+                raise AccountingError("该来源已绑定原件；补件请登记新的来源版本", 409)
+            conn.execute(
+                "INSERT INTO source_originals(id,source_id,firm_id,company_id,book_id,"
+                "storage_key,filename,media_type,sha256,size_bytes,created_by,created_at) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+                (
+                    stored["id"],
+                    source_id,
+                    actor.firm_id,
+                    book["company_id"],
+                    book_id,
+                    stored["storage_key"],
+                    stored["filename"],
+                    stored["media_type"],
+                    stored["sha256"],
+                    int(stored["size_bytes"]),
+                    actor.user_id,
+                    datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                ),
+            )
+            conn.execute(
+                "INSERT INTO audit_events(firm_id,book_id,user_id,action,object_id,details,created_at) "
+                "VALUES(?,?,?,?,?,?,?)",
+                (
+                    actor.firm_id,
+                    book_id,
+                    actor.user_id,
+                    "tax.source.original",
+                    source_id,
+                    json.dumps(
+                        {"attachment_id": stored["id"], "sha256": stored["sha256"]}
+                    ),
+                    datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                ),
+            )
+            return {"source_id": source_id, "attachment_id": stored["id"]}
+
+        return uploads.consume(actor, upload_id, "source_original", source_id, register)
+
+    def original_for(self, actor, book_id, source_id, attachment_id):
+        with self.db.transaction(actor=actor) as conn:
+            self.ledgers.access.book(conn, actor, book_id, "read")
+            row = conn.execute(
+                "SELECT a.* FROM source_originals a JOIN sources s "
+                "ON s.id=a.source_id AND s.book_id=a.book_id "
+                "WHERE a.id=? AND a.source_id=? AND a.book_id=? AND a.firm_id=?",
+                (attachment_id, source_id, book_id, actor.firm_id),
+            ).fetchone()
+            if not row:
+                raise AccountingError("来源原件不存在或无权访问", 404)
+            return dict(row)
+
+
 def _validate_contribution_lines(lines, row):
     seen = set()
     amount = 0

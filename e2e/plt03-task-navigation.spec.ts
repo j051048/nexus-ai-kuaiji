@@ -8,7 +8,9 @@ test('手机端从复核待办返回后恢复原滚动位置', async ({ page }) 
   await choosePersona(page, 'reviewer');
   await page.getByLabel('筛选待办类型').selectOption('review');
   const rows = page.locator('[data-task-key^="review:"]');
-  await expect(rows).toHaveCount(7, { timeout: 15_000 });
+  await expect(rows.first()).toBeVisible({ timeout: 15_000 });
+  const originalCount = await rows.count();
+  expect(originalCount).toBeGreaterThan(0);
   const last = rows.last();
   await last.scrollIntoViewIfNeeded();
   const before = await page.evaluate(() => window.scrollY);
@@ -18,7 +20,7 @@ test('手机端从复核待办返回后恢复原滚动位置', async ({ page }) 
   await expect(drawer).toBeVisible();
   await drawer.getByRole('button', { name: '返回列表', exact: true }).click();
   await expect(drawer).toHaveCount(0);
-  await expect(rows).toHaveCount(7);
+  await expect(rows).toHaveCount(originalCount);
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(before - 100);
 });
 
@@ -40,7 +42,7 @@ test('跨企业复核待办切换目标范围并在返回后保留筛选', async
   });
   expect(companyBResponse.status()).toBe(201);
   const companyB = await companyBResponse.json();
-  const created: { bookId: string; draftId: string; name: string }[] = [];
+  const created: { bookId: string; draftId: string; name: string; companyId: string }[] = [];
 
   for (const [company, label] of [
     [companyA, '当前企业'],
@@ -86,7 +88,7 @@ test('跨企业复核待办切换目标范围并在返回后保留筛选', async
       200,
     );
     const detail = await (await request.get(`/api/books/${book.id}`, { headers })).json();
-    created.push({ bookId: book.id, draftId: detail.drafts[0].id, name });
+    created.push({ bookId: book.id, draftId: detail.drafts[0].id, name, companyId: company.id });
   }
 
   const tasksResponse = await request.get('/api/workspace/tasks?kind=review&bucket=all&limit=50', {
@@ -174,7 +176,8 @@ test('跨企业复核待办切换目标范围并在返回后保留筛选', async
       status: 410,
       contentType: 'application/json',
       body: JSON.stringify({
-        detail: '该待办已由 示例复核会计 于 2026-10-18T09:30:00+00:00 办理，列表状态已更新，请返回队列查看。',
+        detail:
+          '该待办已由 示例复核会计 于 2026-10-18T09:30:00+00:00 办理，列表状态已更新，请返回队列查看。',
       }),
     }),
   );
@@ -185,8 +188,13 @@ test('跨企业复核待办切换目标范围并在返回后保留筛选', async
   await page.screenshot({ path: 'tmp_test/plt03c-completed-dialog.png' });
   await expect(completed).toContainText('示例复核会计');
   await expect(completed).toContainText('2026-10-18T09:30:00+00:00');
-  await completed.getByRole('button', { name: '返回队列', exact: true }).click();
+  await completed.getByRole('button', { name: '查看处理记录', exact: true }).click();
   await expect(completed).toHaveCount(0);
+  await expect(page).toHaveURL(/\/workspace\/accounting\?/);
+  await expect.poll(() => new URL(page.url()).searchParams.get('book')).toBeTruthy();
+  const accountingUrl = new URL(page.url());
+  expect(accountingUrl.searchParams.get('book')).toBe(target.bookId);
+  expect(accountingUrl.searchParams.get('company')).toBe(companyB.id);
   await page.unroute('**/api/workspace/tasks/review/**');
 
   for (const item of created) {
@@ -198,4 +206,164 @@ test('跨企业复核待办切换目标范围并在返回后保留筛选', async
       ).status(),
     ).toBe(200);
   }
+});
+
+test('已办完的异常待办可查看关闭记录并定位原事项', async ({ page, request }) => {
+  test.setTimeout(60_000);
+  const session = await (await request.get('/api/session?persona=reviewer')).json();
+  const headers = { Authorization: `Bearer ${session.token}` };
+  const context = await (await request.get('/api/business/context', { headers })).json();
+  const company = context.companies[0];
+  const caseId = 'plt03-closed-case';
+  const task = {
+    key: `case:${caseId}`,
+    kind: 'case',
+    ref: caseId,
+    company_id: company.id,
+    company_name: company.name,
+    book_id: null,
+    event_id: null,
+    draft_id: null,
+    batch_id: null,
+    title: '已关闭的异常事项',
+    state: 'closed',
+    priority: 1,
+    due_on: null,
+    updated_at: '2026-10-18T09:30:00+00:00',
+    bucket: 'action',
+    action_label: '查看',
+    responsible: '示例复核会计',
+    overdue: false,
+    period: '2026-10',
+    object_type: 'case',
+    object_id: caseId,
+    object_version: '2026-10-18T09:30:00+00:00',
+    available_action: 'can_act',
+    business_action: '查看',
+    current_handler: '示例复核会计',
+    alternate_actions: [],
+    amount_impact: null,
+  };
+  await page.route('**/api/workspace/bootstrap**', async (route) => {
+    const response = await route.fetch();
+    const body = await response.json();
+    await route.fulfill({
+      response,
+      json: {
+        ...body,
+        tasks: {
+          tasks: [task],
+          counts: { action: 1 },
+          pagination: { total: 1, limit: 20, offset: 0, has_more: false },
+        },
+      },
+    });
+  });
+  await page.route(`**/api/workspace/tasks/case/${caseId}`, (route) =>
+    route.fulfill({
+      status: 410,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        detail:
+          '该待办已由 示例复核会计 于 2026-10-18T09:30:00+00:00 办理，列表状态已更新，请返回队列查看。',
+      }),
+    }),
+  );
+
+  await page.goto('/workspace/home');
+  await choosePersona(page, 'reviewer');
+  const row = page.locator(`[data-task-key="case:${caseId}"]`);
+  await expect(row).toBeVisible({ timeout: 15_000 });
+  await row.getByRole('button').first().click();
+  const completed = page.getByRole('dialog', { name: '待办已办完', exact: true });
+  await expect(completed).toBeVisible();
+  await completed.getByRole('button', { name: '查看处理记录', exact: true }).click();
+  await expect(completed).toHaveCount(0);
+  await expect.poll(() => new URL(page.url()).pathname).toBe('/workspace/cases');
+  await expect
+    .poll(() => {
+      const query = new URL(page.url()).searchParams;
+      return [query.get('case'), query.get('company'), query.get('period')];
+    })
+    .toEqual([caseId, company.id, '2026-10']);
+});
+
+test('已办完的审批待办可查看处理记录并定位原事项', async ({ page, request }) => {
+  test.setTimeout(60_000);
+  const session = await (await request.get('/api/session?persona=reviewer')).json();
+  const headers = { Authorization: `Bearer ${session.token}` };
+  const context = await (await request.get('/api/business/context', { headers })).json();
+  const company = context.companies[0];
+  const eventId = 'plt03-completed-approval';
+  const task = {
+    key: `approval:${eventId}`,
+    kind: 'approval',
+    ref: eventId,
+    company_id: company.id,
+    company_name: company.name,
+    book_id: null,
+    event_id: eventId,
+    draft_id: null,
+    batch_id: null,
+    title: '已办完的部门审批',
+    state: 'done',
+    priority: 1,
+    due_on: null,
+    updated_at: '2026-10-18T09:30:00+00:00',
+    bucket: 'action',
+    action_label: '审批事项',
+    responsible: '示例部门负责人',
+    overdue: false,
+    period: '2026-10',
+    object_type: 'approval',
+    object_id: eventId,
+    object_version: '2026-10-18T09:30:00+00:00',
+    available_action: 'can_act',
+    business_action: '审批事项',
+    current_handler: '示例部门负责人',
+    alternate_actions: [],
+    amount_impact: null,
+  };
+  await page.route('**/api/workspace/bootstrap**', async (route) => {
+    const response = await route.fetch();
+    const body = await response.json();
+    await route.fulfill({
+      response,
+      json: {
+        ...body,
+        tasks: {
+          tasks: [task],
+          counts: { action: 1 },
+          pagination: { total: 1, limit: 20, offset: 0, has_more: false },
+        },
+      },
+    });
+  });
+  await page.route(`**/api/workspace/tasks/approval/${eventId}`, (route) =>
+    route.fulfill({
+      status: 410,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        detail:
+          '该待办已由 示例部门负责人 于 2026-10-18T09:30:00+00:00 办理，列表状态已更新，请返回队列查看。',
+      }),
+    }),
+  );
+
+  await page.goto('/workspace/home');
+  await choosePersona(page, 'reviewer');
+  const row = page.locator(`[data-task-key="approval:${eventId}"]`);
+  await expect(row).toBeVisible({ timeout: 15_000 });
+  await row.getByRole('button').first().click();
+  const completed = page.getByRole('dialog', { name: '待办已办完', exact: true });
+  await expect(completed).toBeVisible();
+  await completed.getByRole('button', { name: '查看处理记录', exact: true }).click();
+  await expect(completed).toHaveCount(0);
+  await expect.poll(() => new URL(page.url()).pathname).toBe('/workspace/business');
+  await expect
+    .poll(() => {
+      const query = new URL(page.url()).searchParams;
+      return [query.get('event'), query.get('company'), query.get('period')];
+    })
+    .toEqual([eventId, company.id, '2026-10']);
 });

@@ -33,6 +33,7 @@ KINDS = {
     "alert",
     "migration",
     "material",
+    "fee_variance",
 }
 TEMPLATES = {
     "reimbursement": "报销",
@@ -274,6 +275,7 @@ class WorkspaceService:
             "alert": manager,
             "material": any_task,
             "migration": book_worker,
+            "fee_variance": book_worker,
         }
         return row["firm_role"], gates, bool(row["projection_clean"])
 
@@ -336,6 +338,7 @@ class WorkspaceService:
             "amount_cents",
         ]
         parts = []
+        manager_flag = 1 if firm_role in FIRM_MANAGERS or gates.get("alert") else 0
 
         def branch(kind, select_list, where, args=()):
             if not gates.get(kind, True):
@@ -557,6 +560,31 @@ class WorkspaceService:
             "p.kind='case' AND p.state IN ('open','awaiting_info','response_submitted','in_review') "
             "AND (" + scope + ")",
             (actor.user_id,) * 21,
+        )
+        branch(
+            "fee_variance",
+            [
+                "'fee_variance'",
+                "p.ref",
+                "p.company_id",
+                "p.book_id",
+                "NULL",
+                "NULL",
+                "NULL",
+                "p.title",
+                "p.state",
+                "1",
+                "NULL",
+                "p.updated_at",
+                "'action'",
+                "'核对到账差额'",
+                "COALESCE((SELECT u.name FROM users u WHERE u.id=p.assignee_id),'未分配')",
+                "p.amount_cents",
+            ],
+            "p.kind='fee_variance' AND p.state='pending' "
+            "AND EXISTS(SELECT 1 FROM edit_books eb WHERE eb.id=p.book_id) "
+            "AND (p.assignee_id=? OR (p.assignee_id IS NULL AND ?))",
+            (actor.user_id, manager_flag),
         )
         branch(
             "review",
@@ -971,6 +999,29 @@ class WorkspaceService:
             },
             (actor.user_id,) * 7,
         )
+        branch(
+            "fee_variance",
+            "fee_receivable_variances fv LEFT JOIN users fu ON fu.id=fv.processing_started_by",
+            "fv.status='pending' AND EXISTS(SELECT 1 FROM edit_books eb WHERE eb.id=fv.book_id) "
+            "AND (fv.processing_started_by=? OR (fv.processing_started_by IS NULL AND ?))",
+            {
+                "company_id": "fv.company_id",
+                "ref": "fv.id",
+                "book_id": "fv.book_id",
+                "event_id": "NULL",
+                "draft_id": "NULL",
+                "batch_id": "NULL",
+                "title": "'核对到账差额 · ' || fv.kind",
+                "state": "fv.status",
+                "priority": "1",
+                "updated_at": "COALESCE(fv.handled_at,fv.processing_started_at,fv.created_at)",
+                "bucket": "'action'",
+                "action_label": "'核对到账差额'",
+                "responsible": "COALESCE(fu.name,'未分配')",
+                "amount_cents": "ABS(fv.difference_cents)",
+            },
+            (actor.user_id, 1 if firm_role in FIRM_MANAGERS or gates.get("alert") else 0),
+        )
         inactive = inactive_source_sql(self.db.dialect)
         branch(
             "review",
@@ -1293,6 +1344,38 @@ class WorkspaceService:
                 period = payload.get("period") if isinstance(payload, dict) else None
                 if period:
                     periods[row["id"]] = period
+        variance_ids = sorted(
+            {item["ref"] for item in tasks if item.get("kind") == "fee_variance"}
+        )
+        variance_facts = {}
+        if variance_ids:
+            places = ",".join("?" for _ in variance_ids)
+            for row in conn.execute(
+                "SELECT fv.id,fv.book_id,fv.period,fv.processing_started_by,"
+                "s.counterparty,s.external_id FROM fee_receivable_variances fv "
+                "LEFT JOIN sources s ON s.id=fv.bank_source_id AND s.book_id=fv.book_id "
+                f"WHERE fv.id IN ({places})",
+                variance_ids,
+            ).fetchall():
+                variance_facts[row["id"]] = dict(row)
+        candidate_books = sorted(
+            {(fact["book_id"], fact["period"]) for fact in variance_facts.values()}
+        )
+        candidates = {}
+        for book_id, period in candidate_books:
+            candidates[(book_id, period)] = [
+                {
+                    "id": row["id"],
+                    "amount": f"{int(row['amount_cents']) // 100}.{int(row['amount_cents']) % 100:02d}",
+                    "counterparty": f"{row['driver_name']} · {row['vehicle_name']}",
+                }
+                for row in conn.execute(
+                    "SELECT id,amount_cents,driver_name,vehicle_name FROM fee_receivable_items "
+                    "WHERE book_id=? AND period=? AND status='open' "
+                    "ORDER BY created_at DESC,id DESC LIMIT 5",
+                    (book_id, period),
+                ).fetchall()
+            ]
         for item in tasks:
             item["period"] = periods.get(item.get("book_id")) or periods.get(item.get("event_id"))
             item["object_type"] = item["kind"]
@@ -1303,6 +1386,14 @@ class WorkspaceService:
             item["current_handler"] = item["responsible"]
             item["alternate_actions"] = []
             item["amount_impact"] = item.get("amount")
+            if item["kind"] == "fee_variance":
+                fact = variance_facts.get(item["ref"], {})
+                item["period"] = fact.get("period") or item["period"]
+                item["bank_source"] = fact.get("counterparty") or fact.get("external_id") or ""
+                item["assignee_id"] = fact.get("processing_started_by")
+                item["candidates"] = candidates.get(
+                    (fact.get("book_id"), fact.get("period")), []
+                )
 
     @staticmethod
     def _search(value):
@@ -1398,6 +1489,26 @@ class WorkspaceService:
             ).fetchone()
         return dict(row) if row else None
 
+    def _case_completion(self, actor, ref):
+        """Return who closed a case only when the caller can still see it."""
+        with self.db.transaction(actor=actor) as conn:
+            try:
+                row = self.cases._case(conn, actor, ref)
+            except AccountingError:
+                return None
+            if row["state"] != "closed":
+                return None
+            completed = conn.execute(
+                """SELECT h.created_at, u.name AS actor_name
+                FROM case_history h
+                JOIN users u ON u.id=h.created_by
+                WHERE h.case_id=? AND h.firm_id=? AND h.action='close'
+                ORDER BY h.created_at DESC, h.id DESC
+                LIMIT 1""",
+                (ref, actor.firm_id),
+            ).fetchone()
+        return dict(completed) if completed else None
+
     def _review_completion(self, actor, ref):
         with self.db.transaction(actor=actor) as conn:
             firm_role, _, _ = self._task_gates(conn, actor)
@@ -1423,6 +1534,10 @@ class WorkspaceService:
                 completed_by = completed["approver_name"] if completed else None
             elif kind in ("approval", "finance", "handoff"):
                 completed = self._business_completion(actor, kind, ref)
+                completed_at = completed["created_at"] if completed else None
+                completed_by = completed["actor_name"] if completed else None
+            elif kind == "case":
+                completed = self._case_completion(actor, ref)
                 completed_at = completed["created_at"] if completed else None
                 completed_by = completed["actor_name"] if completed else None
             if completed and completed_at and completed_by:

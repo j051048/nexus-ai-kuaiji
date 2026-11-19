@@ -95,7 +95,9 @@ export type DeliveryWorkbenchProps = {
   companyId?: string;
   period?: string;
   initialExportId?: string;
+  initialFeeVarianceId?: string;
   onBack: () => void;
   onBusyChange?: (value: boolean) => void;
+  onOpenDraft?: (bookId: string, draftId: string) => void;
   embedded?: boolean;
 };

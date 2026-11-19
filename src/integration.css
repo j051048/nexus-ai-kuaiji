@@ -184,3 +184,125 @@
   align-items: flex-start;
   gap: 8px;
 }
+
+.integration-state {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.integration-state.done {
+  color: #1f5b45;
+  background: #e6efe7;
+}
+.integration-state.pending {
+  color: #81796d;
+  background: #f1ede5;
+}
+.integration-formal-book {
+  padding: 9px 12px;
+  border-left: 3px solid #b08a4f;
+  background: #f7f1e5;
+  color: #5c4a2d;
+  font-size: 13px;
+}
+.integration-returns {
+  margin-top: 18px;
+  border-top: 1px solid var(--line, #d9ded8);
+  padding-top: 14px;
+}
+.integration-returns h3 {
+  margin: 0 0 10px;
+  font-size: 15px;
+}
+.integration-returns label {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 10px;
+  font-size: 13px;
+}
+.integration-returns small {
+  color: var(--ink-3, #6b746c);
+  line-height: 1.5;
+}
+.integration-return-rows {
+  width: 100%;
+  margin-top: 8px;
+}
+.integration-return-rows summary {
+  cursor: pointer;
+  color: var(--ink-2, #3f4a43);
+}
+.integration-return-rows table {
+  width: 100%;
+  margin-top: 8px;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.integration-return-rows th,
+.integration-return-rows td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line, #d9ded8);
+  text-align: left;
+  vertical-align: top;
+}
+.integration-return-rows th {
+  color: var(--ink-3, #6b746c);
+  font-weight: 600;
+}
+@media (max-width: 640px) {
+  .integration-return-rows table,
+  .integration-return-rows thead,
+  .integration-return-rows tbody,
+  .integration-return-rows tr,
+  .integration-return-rows td {
+    display: block;
+  }
+  .integration-return-rows thead {
+    display: none;
+  }
+  .integration-return-rows tr {
+    margin-top: 8px;
+    padding: 8px;
+    border: 1px solid var(--line, #d9ded8);
+  }
+  .integration-return-rows td {
+    display: block;
+    border: 0;
+    padding: 3px 0;
+    text-align: left;
+    overflow-wrap: anywhere;
+    word-break: break-all;
+  }
+  .integration-return-rows td::before {
+    content: attr(data-label);
+    display: block;
+    color: var(--ink-3, #6b746c);
+    margin-bottom: 2px;
+  }
+}
+@media (max-width: 640px) {
+  .integration-artifact .integration-history .integration-state {
+    width: 100%;
+    justify-content: center;
+  }
+}
+.integration-handle {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid var(--line, #d9ded8);
+  background: var(--surface-2, #f7f8f4);
+}
+.integration-manual-return {
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px dashed var(--line, #d9ded8);
+}
+.integration-manual-return summary {
+  cursor: pointer;
+  color: var(--ink-2, #35433a);
+}

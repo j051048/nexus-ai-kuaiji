@@ -18,7 +18,9 @@ def test_formal_report_persists_policy_binding_and_blocks_trial_publish(formal_c
     assert formal["report"]["mode"] == "formal", formal
     assert formal["report"]["standard_kind"] == "small_enterprise"
     assert formal["report"]["policy_version"] == c.policy["version"]
-    assert formal["report"]["policy_approver"] == c.policy["approved_by"]
+    assert formal["report"]["formal_book_system"] == "local"
+    assert formal["report"]["formal_book_system_name"] == ""
+    assert formal["report"]["policy_approver"]
     assert formal["report"]["policy_approver"] != c.manager.user_id
     assert len(formal["report"]["mapping_fingerprint"]) == 64
     assert formal["report"]["trial_reasons"] == []
@@ -29,6 +31,7 @@ def test_formal_report_persists_policy_binding_and_blocks_trial_publish(formal_c
             ledger_id=c.ledger,
             standard_kind="small_enterprise",
             taxpayer_kind="small_scale",
+            formal_book_system="local",
             effective_from="2026-01",
             reason="PLT02-B 合成演练政策",
             is_synthetic=True,

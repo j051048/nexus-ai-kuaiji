@@ -44,6 +44,8 @@ export interface ReportRow {
   mode: ReportMode;
   mode_label: string;
   trial_reasons: string[];
+  formal_book_system: 'unassessed' | 'local' | 'external';
+  formal_book_system_name: string;
   standard_kind: string;
   policy_version: number | null;
   policy_approver: string | null;
@@ -138,6 +140,12 @@ export function parseReportRows(value: unknown, scope: CloseScope): ReportRow[] 
             (item): item is string => typeof item === 'string' && !!item.trim(),
           )
         : [],
+      formal_book_system:
+        row.formal_book_system === 'local' || row.formal_book_system === 'external'
+          ? row.formal_book_system
+          : 'unassessed',
+      formal_book_system_name:
+        typeof row.formal_book_system_name === 'string' ? row.formal_book_system_name : '',
       standard_kind: typeof row.standard_kind === 'string' ? row.standard_kind : '',
       policy_version:
         typeof row.policy_version === 'number' && Number.isSafeInteger(row.policy_version)

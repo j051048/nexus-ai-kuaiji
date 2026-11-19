@@ -90,6 +90,7 @@ export async function formalFixture(
         ledger_id: ledger.id,
         standard_kind: 'small_enterprise',
         taxpayer_kind: 'general',
+        formal_book_system: 'local',
         effective_from: '2026-01',
         effective_to: '2026-12',
         reason: '仅本地虚构正式账簿与月度交付验收',

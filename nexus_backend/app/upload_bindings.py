@@ -22,6 +22,7 @@ BINDINGS = {
         "tax_filing_attachments",
         "filing_id",
     ),
+    "source_original": ("source", "sources", "source_originals", "source_id"),
 }
 
 
@@ -29,9 +30,17 @@ def resolve_target(conn, actor, purpose, target_id):
     if purpose not in BINDINGS or not isinstance(target_id, str) or not target_id:
         raise AccountingError("上传目标无效", 422)
     _kind, table, _attachment, _parent = BINDINGS[purpose]
-    row = conn.execute(
-        f"SELECT * FROM {table} WHERE id=? AND firm_id=?", (target_id, actor.firm_id)
-    ).fetchone()
+    if purpose == "source_original":
+        row = conn.execute(
+            "SELECT s.id,b.firm_id,b.company_id,b.id AS book_id "
+            "FROM sources s JOIN books b ON b.id=s.book_id "
+            "WHERE s.id=? AND b.firm_id=?",
+            (target_id, actor.firm_id),
+        ).fetchone()
+    else:
+        row = conn.execute(
+            f"SELECT * FROM {table} WHERE id=? AND firm_id=?", (target_id, actor.firm_id)
+        ).fetchone()
     if not row:
         raise AccountingError("上传目标不存在或无权访问", 404)
     return dict(row)
@@ -67,11 +76,15 @@ def reference(conn, actor, intent, target_id):
         else target.get("event_id")
         if purpose == "case_attachment"
         else None,
-        "source_id": target.get("source_id") if purpose == "case_attachment" else None,
+        "source_id": target_id
+        if purpose == "source_original"
+        else target.get("source_id")
+        if purpose == "case_attachment"
+        else None,
         "book_id": target_id
         if kind == "book"
         else target.get("book_id")
-        if purpose in {"case_attachment", "material_attachment"}
+        if purpose in {"case_attachment", "material_attachment", "source_original"}
         else None,
         "response_id": item.get("response_id") if purpose == "case_attachment" else None,
         "storage": {key: intent[key] for key in ("storage_key", "sha256", "size_bytes")},

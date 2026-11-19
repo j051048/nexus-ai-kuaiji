@@ -125,7 +125,10 @@ test('财务软件文件底座真实 UI：配置、人工确认参考、冻结�
   const csvResponse = await request.get(base + `/artifacts/${artifact.id}/download`, { headers });
   expect(csvResponse.status()).toBe(200);
   const csvText = await csvResponse.text();
-  const header = csvText.replace(/^\uFEFF/, '').split(/\r?\n/)[0].split(',');
+  const header = csvText
+    .replace(/^\uFEFF/, '')
+    .split(/\r?\n/)[0]
+    .split(',');
   const codeIndex = header.indexOf('外部凭证编号');
   const codes = Array.from(
     new Set(
@@ -138,9 +141,12 @@ test('财务软件文件底座真实 UI：配置、人工确认参考、冻结�
     ),
   );
   expect(codes.length).toBe(1);
-  const receipt = ['行号,外部凭证编号,结果,原因', ...codes.map((code, index) => `${index + 1},${code},accepted,`)].join('\n');
+  const receipt = [
+    '行号,外部凭证编号,结果,原因',
+    ...codes.map((code, index) => `${index + 1},${code},accepted,`),
+  ].join('\n');
   await page.getByLabel('客户回执编号', { exact: true }).fill(`R-UI-${marker}`);
-  await page.locator('.integration-artifact input[type=file]').setInputFiles({
+  await page.getByLabel('逐行回执 CSV').setInputFiles({
     name: '客户逐行回执.csv',
     mimeType: 'text/csv',
     buffer: Buffer.from(receipt, 'utf8'),
@@ -149,6 +155,32 @@ test('财务软件文件底座真实 UI：配置、人工确认参考、冻结�
   await expect(page.getByText(/接受 1、拒绝 0、重复 0、未知 0/)).toBeVisible();
   await expect(page.getByText(/外部过账未确认/)).toBeVisible();
   expect(artifact.native_tplus_format).toBe(false);
+  await expect(page.getByText('对方已接收', { exact: false })).toBeVisible();
+  await expect(page.getByText('对方已过账', { exact: false })).toHaveCount(0);
+  await expect(page.getByText('未过账', { exact: true })).toBeVisible();
+  const voucher = intent.package.vouchers[0] as {
+    external_code: string;
+    lines: { account_code: string; debit: string }[];
+  };
+  const debitCents = voucher.lines.reduce(
+    (sum, line) => sum + Math.round(Number(line.debit) * 100),
+    0,
+  );
+  const accounts = Array.from(new Set(voucher.lines.map((line) => line.account_code))).join('|');
+  const returnCsv = [
+    '批次标识,凭证标识,对方凭证号,结果,失败原因,对方过账日期,金额,科目',
+    `${intent.external_code},T54-${voucher.external_code},T+-R-${marker},accepted,,2026-10-31,${(debitCents / 100).toFixed(2)},${accounts}`,
+  ].join('\n');
+  await page.locator('.integration-returns input[type=file]').setInputFiles({
+    name: '客户返回文件.csv',
+    mimeType: 'text/csv',
+    buffer: Buffer.from(returnCsv, 'utf8'),
+  });
+  await page.getByRole('button', { name: '核对返回文件', exact: true }).click();
+  await expect(page.getByText(/返回文件已核对/)).toBeVisible();
+  await expect(page.getByText(/已接收 · 已过账/)).toBeVisible();
+  await page.getByText(/逐笔明细/).click();
+  await expect(page.getByText(`T54-${voucher.external_code}`)).toBeVisible();
   await page.screenshot({ path: 'artifacts/stage10-financial-bridge.png', fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.locator('.integration-artifact').scrollIntoViewIfNeeded();

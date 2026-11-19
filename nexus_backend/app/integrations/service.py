@@ -5,6 +5,8 @@ closed; the durable intent and frozen mapping package remain reviewable.
 """
 
 import csv
+import base64
+import binascii
 import hashlib
 import io
 import json
@@ -16,7 +18,14 @@ from app.accounting.queries import page_bounds
 from app.accounting.service import fingerprint, now
 from app.delivery.service import DeliveryService
 from . import tplus54
-from .models import BridgeRecord, BridgeReceiptImport
+from .models import (
+    BridgeManualReturn,
+    BridgeRecord,
+    BridgeReceiptImport,
+    BridgeReturnImport,
+    BridgeReturnRowHandle,
+)
+from .roundtrip import parse_return_file
 
 
 def encode(value):
@@ -227,11 +236,71 @@ class FinancialBridgeService:
             (ledger_id,),
         ).fetchone()
 
+    @staticmethod
+    def _external_state(conn, outbox_id, book_id):
+        artifacts = conn.execute(
+            "SELECT id,created_at FROM bridge_export_artifacts WHERE outbox_id=? AND book_id=? ORDER BY created_at,id",
+            (outbox_id, book_id),
+        ).fetchall()
+        receipts = conn.execute(
+            "SELECT r.* FROM bridge_export_receipts r JOIN bridge_export_artifacts a ON a.id=r.artifact_id "
+            "WHERE a.outbox_id=? AND a.book_id=? ORDER BY r.created_at,r.id",
+            (outbox_id, book_id),
+        ).fetchall()
+        returns = conn.execute(
+            "SELECT r.* FROM bridge_return_imports r JOIN bridge_export_artifacts a ON a.id=r.artifact_id "
+            "WHERE a.outbox_id=? AND a.book_id=? ORDER BY r.created_at,r.id",
+            (outbox_id, book_id),
+        ).fetchall()
+        accepted = sum(int(row["accepted_count"]) for row in receipts)
+        rejected = sum(int(row["rejected_count"]) for row in receipts)
+        posted = [row for row in receipts if bool(row["external_posting"])]
+        posted += [row for row in returns if bool(row["posted"])]
+        received_rows = [row for row in receipts if int(row["accepted_count"]) > 0 or int(row["duplicate_count"]) > 0]
+        received_rows += [row for row in returns if bool(row["received"])]
+        received = bool(received_rows)
+        discrepancy = sum(int(row["discrepancy_count"]) for row in returns)
+        last_received = sorted(received_rows, key=lambda row: (row["created_at"], row["id"]))[-1] if received_rows else None
+        last_posted = sorted(posted, key=lambda row: (row["created_at"], row["id"]))[-1] if posted else None
+        first_artifact = artifacts[0] if artifacts else None
+        statuses = {
+            "exported": {"at": first_artifact["created_at"] if first_artifact else None, "evidence": first_artifact["id"] if first_artifact else None},
+            "received": {"at": last_received["created_at"] if last_received else None, "evidence": last_received["id"] if last_received else None},
+            "posted": {"at": last_posted["created_at"] if last_posted else None, "evidence": last_posted["id"] if last_posted else None},
+        }
+        if posted:
+            summary = "posted"
+        elif received and (rejected or discrepancy):
+            summary = "partial"
+        elif received:
+            summary = "received"
+        elif artifacts:
+            summary = "result_unknown"
+        else:
+            summary = "not_exported"
+        return {
+            "statuses": statuses,
+            "result_summary": summary,
+            "partial_failure": bool(received and (rejected or discrepancy)),
+            "result_unknown": bool(artifacts) and not receipts and not returns,
+        }
+
     def overview(self, actor, book_id, limit=20, offset=0):
         page_bounds(limit, offset)
         with self.db.transaction(actor=actor) as conn:
             book, ledger_id = self._scope(conn, actor, book_id)
             config = self._configuration(conn, ledger_id)
+            policy = conn.execute(
+                "SELECT formal_book_system,formal_book_system_name,approved_by,version "
+                "FROM accounting_policies WHERE ledger_id=? AND status='active'",
+                (ledger_id,),
+            ).fetchone()
+            formal_book = {
+                "system": policy["formal_book_system"] if policy else "unassessed",
+                "name": policy["formal_book_system_name"] if policy else "",
+                "policy_version": policy["version"] if policy else None,
+                "approved": bool(policy["approved_by"]) if policy else False,
+            }
             count = conn.execute(
                 "SELECT COUNT(*) FROM bridge_import_previews WHERE book_id=?", (book_id,)
             ).fetchone()[0]
@@ -242,13 +311,12 @@ class FinancialBridgeService:
                     (book_id, limit, offset),
                 )
             ]
-            intents = [
-                dict(r)
-                for r in conn.execute(
-                    "SELECT id,export_id,configuration_version,state,created_at,external_code FROM bridge_outbox WHERE book_id=? ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?",
-                    (book_id, limit, offset),
-                )
-            ]
+            intents = []
+            for r in conn.execute(
+                "SELECT id,export_id,configuration_version,state,created_at,external_code FROM bridge_outbox WHERE book_id=? ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?",
+                (book_id, limit, offset),
+            ):
+                intents.append({**dict(r), **self._external_state(conn, r["id"], book_id)})
             intent_count = conn.execute(
                 "SELECT COUNT(*) FROM bridge_outbox WHERE book_id=?", (book_id,)
             ).fetchone()[0]
@@ -266,6 +334,7 @@ class FinancialBridgeService:
                     "live_read": False,
                     "live_write": False,
                 },
+                "formal_book": formal_book,
                 "configuration": {
                     **json.loads(config["payload_json"]),
                     "version": config["version"],
@@ -735,7 +804,7 @@ class FinancialBridgeService:
             ).fetchone()
             if not row:
                 raise AccountingError("交付意图不存在或无权访问", 404)
-            return self._outbox(row)
+            return {**self._outbox(row), **self._external_state(conn, intent_id, book_id)}
 
     def _frozen_package(self, conn, actor, book_id, outbox_row):
         package = json.loads(outbox_row["package_json"])
@@ -1010,6 +1079,372 @@ class FinancialBridgeService:
                     self._receipt_view(conn, row)
                     for row in conn.execute(
                         "SELECT * FROM bridge_export_receipts WHERE artifact_id=? AND book_id=? ORDER BY created_at,id",
+                        (artifact_id, book_id),
+                    )
+                ]
+            }
+
+    def attach_evidence(self, actor, book_id, artifact_id, import_id, payload):
+        try:
+            content = base64.b64decode(payload.content_base64, validate=True)
+        except (binascii.Error, ValueError):
+            raise AccountingError("证据原件内容不是有效 base64", 422)
+        if not content or len(content) > 2_000_000:
+            raise AccountingError("证据原件须在 2MB 以内", 422)
+        if not (
+            content.startswith(b"%PDF-")
+            or content.startswith(bytes.fromhex("89504e470d0a1a0a"))
+            or content.startswith(bytes.fromhex("ffd8ff"))
+        ):
+            raise AccountingError("证据原件仅接受 PDF/PNG/JPEG", 422)
+        digest = hashlib.sha256(content).hexdigest()
+        with self.db.transaction(write=True, actor=actor) as conn:
+            book, _ledger_id = self._scope(conn, actor, book_id, False)
+            if not conn.execute(
+                "SELECT 1 FROM bridge_export_artifacts WHERE id=? AND book_id=?",
+                (artifact_id, book_id),
+            ).fetchone():
+                raise AccountingError("交付包不存在或无权访问", 404)
+            row = conn.execute(
+                "SELECT i.* FROM bridge_return_imports i WHERE i.id=? AND i.book_id=? AND i.artifact_id=?",
+                (import_id, book_id, artifact_id),
+            ).fetchone()
+            if not row:
+                raise AccountingError("返回文件记录不存在", 404)
+            if row["result_status"] != "accepted" or row["row_count"] == 0:
+                raise AccountingError("只有已验证的手工回执可补证据原件", 409)
+            if conn.execute("SELECT 1 FROM bridge_return_evidence WHERE import_id=?", (import_id,)).fetchone():
+                raise AccountingError("该回执已绑定证据原件", 409)
+            conn.execute(
+                "INSERT INTO bridge_return_evidence(import_id,book_id,firm_id,company_id,filename,media_type,sha256,size_bytes,content,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                (import_id, book_id, book["firm_id"], book["company_id"], payload.filename[:200], payload.media_type[:100], digest, len(content), content, actor.user_id, now()),
+            )
+            self.delivery._audit(conn, actor, book_id, "bridge.return.evidence", import_id, {"sha256": digest})
+            return {"import_id": import_id, "filename": payload.filename, "media_type": payload.media_type, "sha256": digest, "size_bytes": len(content)}
+
+    def evidence_for(self, actor, book_id, import_id, artifact_id=None):
+        with self.db.transaction(actor=actor) as conn:
+            self._scope(conn, actor, book_id, False)
+            sql = (
+                "SELECT e.* FROM bridge_return_evidence e JOIN bridge_return_imports i ON i.id=e.import_id "
+                "WHERE e.import_id=? AND e.book_id=?"
+            )
+            params = [import_id, book_id]
+            if artifact_id:
+                sql += " AND i.artifact_id=?"
+                params.append(artifact_id)
+            value = conn.execute(sql, params).fetchone()
+            if not value:
+                raise AccountingError("回执证据不存在或无权访问", 404)
+            return value
+
+    @staticmethod
+    def _return_view(conn, row):
+        rows = [
+            {
+                "voucher_code": item["voucher_code"],
+                "external_code": item["external_code"],
+                "status": item["status"],
+                "reason": item["reason"],
+                "posted_date": item["posted_date"],
+                "expected_cents": item["expected_cents"],
+                "actual_cents": item["actual_cents"],
+                "expected_accounts": json.loads(item["expected_accounts_json"] or "[]"),
+                "actual_accounts": json.loads(item["actual_accounts_json"] or "[]"),
+                "handled": handler is not None,
+                "handler": (
+                    {
+                        "action": handler["action"],
+                        "reason": handler["reason"],
+                        "evidence_ref": handler["evidence_ref"],
+                        "handled_by": handler["handled_by"],
+                        "handled_at": handler["handled_at"],
+                    }
+                    if handler
+                    else None
+                ),
+            }
+            for item in conn.execute(
+                "SELECT * FROM bridge_return_rows WHERE import_id=? ORDER BY voucher_code",
+                (row["id"],),
+            )
+            for handler in [
+                conn.execute(
+                    "SELECT * FROM bridge_return_row_handlers WHERE import_id=? AND voucher_code=?",
+                    (row["id"], item["voucher_code"]),
+                ).fetchone()
+            ]
+        ]
+        return {
+            "id": row["id"],
+            "artifact_id": row["artifact_id"],
+            "batch_code": row["batch_code"],
+            "content_sha256": row["content_sha256"],
+            "result_status": row["result_status"],
+            "received": bool(row["received"]),
+            "posted": bool(row["posted"]),
+            "row_count": row["row_count"],
+            "counts": {
+                key: row[f"{key}_count"]
+                for key in (
+                    "accepted", "rejected", "duplicate", "unknown",
+                    "missing", "extra", "mismatch", "discrepancy",
+                )
+            },
+            "created_at": row["created_at"],
+            "rows": rows,
+            "note": "返回文件只登记客户软件结果；外发仍关闭，手工过账回执另行核验。",
+        }
+
+    def record_return(self, actor, book_id, artifact_id, request: BridgeReturnImport):
+        raw = request.content.encode("utf-8")
+        digest = hashlib.sha256(raw).hexdigest()
+        with self.db.transaction(write=True, actor=actor) as conn:
+            book, _ = self._scope(conn, actor, book_id, True)
+            artifact = conn.execute(
+                "SELECT * FROM bridge_export_artifacts WHERE id=? AND book_id=?",
+                (artifact_id, book_id),
+            ).fetchone()
+            if not artifact:
+                raise AccountingError("适配文件不存在或无权访问", 404)
+            intent = conn.execute(
+                "SELECT * FROM bridge_outbox WHERE id=? AND book_id=?",
+                (artifact["outbox_id"], book_id),
+            ).fetchone()
+            if not intent:
+                raise AccountingError("交付意图不存在或无权访问", 404)
+            package = self._frozen_package(conn, actor, book_id, intent)
+            current, _, _ = tplus54.render(package)
+            if tplus54.content_hash(current) != artifact["content_sha256"]:
+                raise AccountingError("来源或冻结清单已变化，不能接纳旧返回文件", 409)
+            prior = conn.execute(
+                "SELECT * FROM bridge_return_imports WHERE artifact_id=? AND (batch_code=? OR content_sha256=?)",
+                (artifact_id, request.batch_code, digest),
+            ).fetchone()
+            if prior:
+                if prior["batch_code"] != request.batch_code or prior["content_sha256"] != digest:
+                    raise AccountingError("返回文件批次已用于不同内容，原记录不会覆盖", 409)
+                return self._return_view(conn, prior)
+            exported = []
+            for voucher in package.get("vouchers", []):
+                external = str(voucher.get("external_code") or "")
+                if not external:
+                    raise AccountingError("冻结凭证缺少外部编号，拒绝核对", 409)
+                amount = 0
+                accounts = set()
+                for line in voucher.get("lines") or []:
+                    amount += int(round(float(line.get("debit") or 0) * 100))
+                    if line.get("account_code"):
+                        accounts.add(str(line["account_code"]))
+                exported.append(
+                    {
+                        "voucher_code": f"T54-{external}",
+                        "amount_cents": amount,
+                        "accounts": sorted(accounts),
+                    }
+                )
+            parsed = parse_return_file(raw, batch_code=request.batch_code, exported=exported)
+            counts = parsed["counts"]
+            import_id = uuid4().hex
+            meta = {
+                "artifact_id": artifact_id,
+                "batch_code": request.batch_code,
+                "content_sha256": digest,
+                "status": parsed["status"],
+                "counts": counts,
+            }
+            conn.execute(
+                "INSERT INTO bridge_return_imports(id,artifact_id,book_id,firm_id,company_id,batch_code,content_sha256,content,result_status,received,posted,row_count,accepted_count,rejected_count,duplicate_count,unknown_count,missing_count,extra_count,mismatch_count,discrepancy_count,created_by,created_at,fingerprint) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (
+                    import_id, artifact_id, book_id, actor.firm_id, book["company_id"],
+                    request.batch_code, digest, raw, parsed["status"],
+                    bool(parsed["received"]), bool(parsed["posted"]), len(parsed["rows"]),
+                    counts["accepted"], counts["rejected"], counts["duplicate"], counts["unknown"],
+                    counts["missing"], counts["extra"],
+                    counts["amount_mismatch"] + counts["account_mismatch"],
+                    sum(counts[key] for key in ("rejected", "missing", "extra", "amount_mismatch", "account_mismatch", "unknown")),
+                    actor.user_id, now(), fingerprint(meta),
+                ),
+            )
+            for item in parsed["rows"]:
+                expected = next((e for e in exported if e["voucher_code"] == item["voucher_code"]), None)
+                conn.execute(
+                    "INSERT INTO bridge_return_rows(import_id,voucher_code,external_code,status,reason,posted_date,expected_cents,actual_cents,expected_accounts_json,actual_accounts_json,raw_hash) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                    (
+                        import_id, item["voucher_code"], item["external_code"], item["status"],
+                        item["reason"], item["posted_date"],
+                        expected["amount_cents"] if expected else None,
+                        item["actual_cents"],
+                        encode(expected["accounts"] if expected else []),
+                        encode(item["accounts"]),
+                        hashlib.sha256(encode(item).encode()).hexdigest(),
+                    ),
+                )
+            self.delivery._audit(
+                conn, actor, book_id, "bridge.return.import", import_id,
+                {**meta, "row_count": len(parsed["rows"])},
+            )
+            return self._return_view(
+                conn,
+                conn.execute("SELECT * FROM bridge_return_imports WHERE id=?", (import_id,)).fetchone(),
+            )
+
+    def record_manual_return(
+        self, actor, book_id, artifact_id, request: BridgeManualReturn,
+        *, evidence: bytes | None = None, filename: str = "", media_type: str = "",
+    ):
+        if len(request.evidence_ref.strip()) < 5:
+            raise AccountingError("手工登记必须填写可核验的接收或过账证据", 422)
+        if request.posted and not request.received:
+            raise AccountingError("未登记接收不能直接登记过账", 422)
+        payload = {
+            "manual": True,
+            "batch_code": request.batch_code.strip(),
+            "received": request.received,
+            "posted": request.posted,
+            "evidence_ref": evidence,
+            "note": request.note.strip(),
+        }
+        raw = json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
+        digest = hashlib.sha256(raw).hexdigest()
+        with self.db.transaction(write=True, actor=actor) as conn:
+            book, _ = self._scope(conn, actor, book_id, True)
+            artifact = conn.execute(
+                "SELECT * FROM bridge_export_artifacts WHERE id=? AND book_id=?",
+                (artifact_id, book_id),
+            ).fetchone()
+            if not artifact:
+                raise AccountingError("适配文件不存在或无权访问", 404)
+            intent = conn.execute(
+                "SELECT * FROM bridge_outbox WHERE id=? AND book_id=?",
+                (artifact["outbox_id"], book_id),
+            ).fetchone()
+            if not intent:
+                raise AccountingError("交付意图不存在或无权访问", 404)
+            if request.batch_code.strip() != intent["external_code"]:
+                raise AccountingError("批次标识与冻结交付包不一致", 422)
+            package = self._frozen_package(conn, actor, book_id, intent)
+            current, _, _ = tplus54.render(package)
+            if tplus54.content_hash(current) != artifact["content_sha256"]:
+                raise AccountingError("来源或冻结清单已变化，不能登记旧交付结果", 409)
+            prior = conn.execute(
+                "SELECT * FROM bridge_return_imports WHERE artifact_id=? AND batch_code=?",
+                (artifact_id, request.batch_code.strip()),
+            ).fetchone()
+            if prior:
+                if prior["content_sha256"] != digest:
+                    raise AccountingError("该批次已有不同的手工回执，原记录不会覆盖", 409)
+                return self._return_view(conn, prior)
+            import_id = uuid4().hex
+            created_at = now()
+            conn.execute(
+                "INSERT INTO bridge_return_imports(id,artifact_id,book_id,firm_id,company_id,batch_code,content_sha256,content,result_status,received,posted,row_count,accepted_count,rejected_count,duplicate_count,unknown_count,missing_count,extra_count,mismatch_count,discrepancy_count,created_by,created_at,fingerprint) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (
+                    import_id, artifact_id, book_id, book["firm_id"], book["company_id"],
+                    request.batch_code.strip(), digest, raw, "accepted",
+                    bool(request.received), bool(request.posted), 1,
+                    1, 0, 0, 0, 0, 0, 0, 0,
+                    actor.user_id, created_at, digest,
+                ),
+            )
+            conn.execute(
+                "INSERT INTO bridge_return_rows(import_id,voucher_code,external_code,status,reason,posted_date,expected_cents,actual_cents,expected_accounts_json,actual_accounts_json,raw_hash) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                (
+                    import_id, "MANUAL", request.batch_code.strip(), "accepted",
+                    f"手工登记整批接收：{request.note.strip() or evidence}",
+                    created_at[:10] if request.posted else None,
+                    None, None, "[]", "[]", digest,
+                ),
+            )
+            if evidence is not None:
+                if not evidence or len(evidence) > 2_000_000:
+                    raise AccountingError("证据原件须在 2MB 以内", 422)
+                if not (
+                    evidence.startswith(b"%PDF-")
+                    or evidence.startswith(bytes.fromhex("89504e470d0a1a0a"))
+                    or evidence.startswith(bytes.fromhex("ffd8ff"))
+                ):
+                    raise AccountingError("证据原件仅接受 PDF/PNG/JPEG", 422)
+                conn.execute(
+                    "INSERT INTO bridge_return_evidence(import_id,book_id,firm_id,company_id,filename,media_type,sha256,size_bytes,content,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                    (import_id, book_id, book["firm_id"], book["company_id"], filename or "手动回执证据", media_type or "application/octet-stream", digest, len(evidence), evidence, actor.user_id, now()),
+                )
+            self.delivery._audit(
+                conn, actor, book_id, "bridge.return.manual", import_id,
+                {"batch_code": request.batch_code.strip(), "received": request.received, "posted": request.posted, "evidence_ref": evidence},
+            )
+            return self._return_view(
+                conn,
+                conn.execute("SELECT * FROM bridge_return_imports WHERE id=?", (import_id,)).fetchone(),
+            )
+
+    def handle_return_row(
+        self, actor, book_id, artifact_id, import_id, voucher_code,
+        request: BridgeReturnRowHandle,
+    ):
+        reason = request.reason.strip()
+        evidence = request.evidence_ref.strip()
+        if len(reason) < 3:
+            raise AccountingError("差异处置必须说明原因", 422)
+        if len(evidence) < 5:
+            raise AccountingError("差异处置必须填写可核验的证据", 422)
+        with self.db.transaction(write=True, actor=actor) as conn:
+            self._scope(conn, actor, book_id, True)
+            artifact = conn.execute(
+                "SELECT * FROM bridge_export_artifacts WHERE id=? AND book_id=?",
+                (artifact_id, book_id),
+            ).fetchone()
+            if not artifact:
+                raise AccountingError("适配文件不存在或无权访问", 404)
+            imported = conn.execute(
+                "SELECT * FROM bridge_return_imports WHERE id=? AND artifact_id=? AND book_id=?",
+                (import_id, artifact_id, book_id),
+            ).fetchone()
+            if not imported:
+                raise AccountingError("返回文件不存在或无权访问", 404)
+            row = conn.execute(
+                "SELECT * FROM bridge_return_rows WHERE import_id=? AND voucher_code=?",
+                (import_id, voucher_code),
+            ).fetchone()
+            if not row:
+                raise AccountingError("返回凭证行不存在", 404)
+            if row["status"] in {"accepted", "duplicate"}:
+                raise AccountingError("一致凭证无需差异处置", 409)
+            existing = conn.execute(
+                "SELECT * FROM bridge_return_row_handlers WHERE import_id=? AND voucher_code=?",
+                (import_id, voucher_code),
+            ).fetchone()
+            if existing:
+                if existing["action"] != request.action or existing["reason"] != reason or existing["evidence_ref"] != evidence:
+                    raise AccountingError("该凭证差异已处置，原记录不会覆盖", 409)
+                return self._return_view(conn, imported)
+            conn.execute(
+                "INSERT INTO bridge_return_row_handlers(import_id,voucher_code,book_id,firm_id,company_id,action,reason,evidence_ref,handled_by,handled_at,fingerprint) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                (
+                    import_id, voucher_code, book_id, imported["firm_id"],
+                    imported["company_id"], request.action, reason, evidence,
+                    actor.user_id, now(), fingerprint({"import_id": import_id, "voucher_code": voucher_code, "action": request.action, "reason": reason, "evidence_ref": evidence}),
+                ),
+            )
+            self.delivery._audit(
+                conn, actor, book_id, "bridge.return.row_handle", import_id,
+                {"voucher_code": voucher_code, "action": request.action, "reason": reason, "evidence_ref": evidence},
+            )
+            return self._return_view(conn, imported)
+
+    def list_returns(self, actor, book_id, artifact_id):
+        with self.db.transaction(actor=actor) as conn:
+            self._scope(conn, actor, book_id)
+            if not conn.execute(
+                "SELECT 1 FROM bridge_export_artifacts WHERE id=? AND book_id=?",
+                (artifact_id, book_id),
+            ).fetchone():
+                raise AccountingError("适配文件不存在或无权访问", 404)
+            return {
+                "returns": [
+                    self._return_view(conn, row)
+                    for row in conn.execute(
+                        "SELECT * FROM bridge_return_imports WHERE artifact_id=? AND book_id=? ORDER BY created_at,id",
                         (artifact_id, book_id),
                     )
                 ]

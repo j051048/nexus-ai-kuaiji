@@ -1,0 +1,39 @@
+{
+  "schema": "assistant-improvement-round-v1",
+  "experiment": "plt08-settlement-difference",
+  "created_at": "2026-11-19T11:00:00+08:00",
+  "parent_candidate": {
+    "head": "c8da023777fff5c7eeb7311067cdcd7e8244e61b",
+    "source_sha256": "2461:436ed8ec1fadd9a272c321a4204fae9b6ba2b20870a7eb6923c7d0186d3c8a17",
+    "migration_sha256": "495:7272abe6403b61632d5145ae1f30145ed09658f4466bc206d1fea65495e6f633"
+  },
+  "before": {
+    "problem": "同一金额的跨期手续费可能被当成本期差额依据。",
+    "recurring_pattern": "只校验来源属于同一账套和同一金额，没有校验材料覆盖期间。",
+    "root_hypothesis": "_source_row 接收 period 参数但未用于日期覆盖校验；_settlement_difference 对手续费只比较金额。",
+    "change": "手续费月份不等于当前期间时，结果必须 partial/cross_period_evidence，不得 complete。",
+    "expected_fixed_samples": [
+      "cross_period_fee_same_amount"
+    ],
+    "possibly_affected_old_samples": [
+      "unexplained_350",
+      "verified_fee_350",
+      "fee_mismatch_340",
+      "other_company_fee",
+      "source_version_change"
+    ],
+    "holdout_visible": false
+  },
+  "after": {
+    "completed_at": "2026-11-19T11:20:00+08:00",
+    "actual_fixed": [
+      "cross_period_fee_same_amount"
+    ],
+    "still_wrong": [],
+    "new_regressions": [],
+    "evidence": "cd nexus_backend; PYTHONPATH=.. python -m pytest tests/test_assistant_settlement_difference.py -q -> 7 passed in 16.53s",
+    "decision": "keep",
+    "reason": "跨期同额手续费现在返回 partial/cross_period_evidence，本期同额手续费仍 complete；原有 5 个用例全部保持通过。"
+  },
+  "notes": "预冻结于修复前；不使用验收集标签；仅合成数据。"
+}

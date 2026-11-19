@@ -1280,6 +1280,12 @@ class AccountingService:
         ).fetchone()
         if own_event:
             raise AccountingError("申请人不能审核本人业务事项的凭证", 403)
+        own_variance = conn.execute(
+            "SELECT 1 FROM fee_receivable_variances WHERE draft_id=? AND book_id=? AND handled_by=?",
+            (draft_id, book_id, actor.user_id),
+        ).fetchone()
+        if own_variance:
+            raise AccountingError("差异处理人不能复核自己生成的凭证", 403)
         value = self._draft_json(conn, draft, actor)
         if value["issues"]:
             raise AccountingError("不能审核通过：" + "；".join(value["issues"]))

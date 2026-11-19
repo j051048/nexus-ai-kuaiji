@@ -151,6 +151,7 @@ from .tax.sources import TaxSourceAdapter
 from .tax.workpaper import TaxWorkpaperService
 from .tax.policy_items import TaxPolicyItemService
 from .tax.fees import TaxFeeService
+from .tax.variances import FeeVarianceService
 from .tax.costs import RepairRateService, TaxCostService
 from .tax.packages import RepairPackageService
 from .tax.leases import LeaseService
@@ -376,6 +377,7 @@ def create_app(
             application.state.tax_pilot = PilotBoundaryService(database)
             application.state.tax_sources = TaxSourceAdapter(database)
             application.state.tax_fees = TaxFeeService(database)
+            application.state.fee_variances = FeeVarianceService(database)
             application.state.tax_costs = TaxCostService(database)
             application.state.repair_rates = RepairRateService(database)
             application.state.repair_packages = RepairPackageService(database)

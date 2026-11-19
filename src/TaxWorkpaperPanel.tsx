@@ -7,6 +7,7 @@ import { PilotBoundaryPanel } from './PilotBoundaryPanel';
 import { TaxSourcePanel } from './TaxSourcePanel';
 import { ClosingAuthorityPanel } from './ClosingAuthorityPanel';
 import { TaxFeeBatchPanel } from './TaxFeeBatchPanel';
+import { FeeVariancePanel } from './FeeVariancePanel';
 import { TaxCostBatchPanel } from './TaxCostBatchPanel';
 import { OaSnapshotPanel } from './OaSnapshotPanel';
 import { TaxFPanel } from './TaxFPanel';
@@ -36,6 +37,8 @@ type Props = {
   period: string;
   onBusyChange?: (busy: boolean) => void;
   focusSource?: { id: string; version: number; fingerprint: string };
+  onOpenDraft?: (bookId: string, draftId: string) => void;
+  initialFeeVarianceId?: string;
 };
 type AccountRole = 'vat_payable' | 'excluded';
 function failureText(error: unknown): string {
@@ -65,12 +68,22 @@ export function TaxWorkpaperPanel(props: Props) {
         props.bookId,
         props.period,
         props.focusSource,
+        props.initialFeeVarianceId,
       ])}
       {...props}
     />
   );
 }
-function TaxContent({ session, bookId, companyId, period, onBusyChange, focusSource }: Props) {
+function TaxContent({
+  session,
+  bookId,
+  companyId,
+  period,
+  onBusyChange,
+  focusSource,
+  onOpenDraft,
+  initialFeeVarianceId,
+}: Props) {
   const scope = { firm_id: session.firm_id ?? '', company_id: companyId, book_id: bookId, period };
   const query = `book_id=${encodeURIComponent(bookId)}&period=${encodeURIComponent(period)}`;
   const [failure, setFailure] = useState(''),
@@ -313,6 +326,13 @@ function TaxContent({ session, bookId, companyId, period, onBusyChange, focusSou
       <TaxSourcePanel session={session} bookId={bookId} />
       <ClosingAuthorityPanel session={session} bookId={bookId} />
       <TaxFeeBatchPanel session={session} bookId={bookId} period={period} />
+      <FeeVariancePanel
+        session={session}
+        bookId={bookId}
+        period={period}
+        onOpenDraft={onOpenDraft}
+        initialVarianceId={initialFeeVarianceId}
+      />
       <TaxCostBatchPanel session={session} bookId={bookId} period={period} />
       <OaSnapshotPanel
         session={session}

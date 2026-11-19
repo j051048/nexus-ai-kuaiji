@@ -3,7 +3,7 @@
 import re
 from typing import Literal
 
-from pydantic import Field, StrictStr, field_validator
+from pydantic import Field, StrictStr, field_validator, model_validator
 
 from ..accounting.invariants import signed_money_to_cents, validate_period
 from ..accounting.models import InputModel
@@ -14,21 +14,50 @@ AccountCategory = Literal["asset", "liability", "equity", "cost", "income", "exp
 AuxiliaryDimension = Literal["department", "counterparty", "employee", "project"]
 
 
+class FeeVarianceReason(InputModel):
+    code: StrictStr = Field(pattern=r"^[a-z][a-z0-9_]{2,30}$")
+    label: StrictStr = Field(min_length=2, max_length=80)
+    blocks_close: bool = Field(default=True, strict=True)
+    debit_account: StrictStr | None = Field(default=None, min_length=4, max_length=20)
+    credit_account: StrictStr | None = Field(default=None, min_length=4, max_length=20)
+
+
 class PolicyCreate(InputModel):
     ledger_id: StrictStr = Field(min_length=1, max_length=100)
     standard_kind: StandardKind
     taxpayer_kind: TaxpayerKind
+    formal_book_system: Literal["unassessed", "local", "external"] = "unassessed"
+    formal_book_system_name: StrictStr = Field(default="", max_length=120)
     industry: StrictStr = Field(default="", max_length=120)
     fiscal_year_start_month: int = Field(default=1, strict=True, ge=1, le=12)
     effective_from: StrictStr
     effective_to: StrictStr | None = None
     is_synthetic: bool = Field(default=False, strict=True)
+    fee_variance_reasons: list[FeeVarianceReason] = Field(default_factory=list, max_length=20)
     reason: StrictStr = Field(min_length=3, max_length=1000)
 
     @field_validator("effective_from", "effective_to")
     @classmethod
     def valid_period(cls, value):
         return None if value is None else validate_period(value)
+
+    @field_validator("fee_variance_reasons")
+    @classmethod
+    def valid_variance_reasons(cls, values):
+        codes = [item.code for item in values]
+        if len(codes) != len(set(codes)):
+            raise ValueError("规费差异原因编码不能重复")
+        return values
+
+    @model_validator(mode="after")
+    def valid_formal_book(self):
+        name = self.formal_book_system_name.strip()
+        if self.formal_book_system == "external" and len(name) < 2:
+            raise ValueError("外部正式账必须写明系统名称")
+        if self.formal_book_system != "external" and name:
+            raise ValueError("仅外部正式账可以填写系统名称")
+        self.formal_book_system_name = name
+        return self
 
 
 class AccountCreate(InputModel):

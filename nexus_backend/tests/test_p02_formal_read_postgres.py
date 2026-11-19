@@ -52,6 +52,7 @@ def formal_case(p0_case, request):
             ledger_id=c.ledger,
             standard_kind="small_enterprise",
             taxpayer_kind="small_scale",
+            formal_book_system="local",
             effective_from="2026-01",
             reason="P02当前月核算政策",
         ),

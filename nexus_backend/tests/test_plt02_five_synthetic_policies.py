@@ -47,6 +47,7 @@ def test_five_synthetic_policies_require_independent_approval_and_stay_trial(bus
                 ledger_id=_ledger_id(case, book["id"]),
                 standard_kind="small_enterprise",
                 taxpayer_kind="general",
+                formal_book_system="local",
                 effective_from="2026-01",
                 effective_to="2026-12",
                 reason=f"PLT02-D {company_name} 合成演练政策",

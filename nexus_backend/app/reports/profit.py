@@ -5,6 +5,7 @@ accounts to versioned statement lines and returns the posted voucher lines
 that contributed to each line, without rewriting or re-posting anything.
 """
 
+import json
 from uuid import uuid4
 
 from pydantic import Field, StrictStr, field_validator
@@ -213,7 +214,7 @@ class ProfitDrilldownService:
             totals[mapping["line_code"]] = totals.get(mapping["line_code"], 0) + sign * amount
         return totals
 
-    def overview(self, actor, book_id, period, line_code=""):
+    def overview(self, actor, book_id, period, line_code="", report_run_id=""):
         period = validate_period(period)
         with self.db.transaction(actor=actor) as conn:
             book = self._book(conn, actor, book_id)
@@ -231,9 +232,11 @@ class ProfitDrilldownService:
                         "amount_cents": 0,
                         "ytd_cents": int(ytd.get(mapping["line_code"], 0)),
                         "items_count": 0,
+                        "accounts": [],
                     },
                 )
             by_voucher = {}
+            by_account = {}
             for row in rows:
                 mapping = self._match(row["account_code"], mappings)
                 if not mapping:
@@ -249,6 +252,17 @@ class ProfitDrilldownService:
                 group = groups[mapping["line_code"]]
                 group["amount_cents"] += amount
                 group["items_count"] += 1
+                account = by_account.setdefault(
+                    (mapping["line_code"], row["account_code"]),
+                    {
+                        "account_code": row["account_code"],
+                        "account_name": row["account_name"],
+                        "amount_cents": 0,
+                        "items_count": 0,
+                    },
+                )
+                account["amount_cents"] += amount
+                account["items_count"] += 1
                 item = {
                     "line_code": mapping["line_code"],
                     "voucher_id": row["voucher_id"],
@@ -269,6 +283,15 @@ class ProfitDrilldownService:
                 by_voucher.setdefault((row["voucher_id"], mapping["line_code"]), set()).add(
                     row["line_no"]
                 )
+            for group in groups.values():
+                group["accounts"] = sorted(
+                    (
+                        item
+                        for (line_code, _), item in by_account.items()
+                        if line_code == group["line_code"]
+                    ),
+                    key=lambda item: item["account_code"],
+                )
             lines = sorted(groups.values(), key=lambda item: item["line_code"])
             revenue = sum(x["amount_cents"] for x in lines if x["line_kind"] == "revenue")
             cost = sum(
@@ -286,6 +309,91 @@ class ProfitDrilldownService:
             profit = revenue - cost + nonoperating
             net_profit = None if income_tax is None else profit - income_tax
             year_complete = period.endswith("-12")
+            visible_items = [
+                item for item in details if not line_code or item["net_cents"] != 0
+            ][:1000]
+            source_ids = sorted({item["source_ref"] for item in visible_items if item["source_ref"]})
+            original_files = {}
+            source_original_files = {}
+            if source_ids:
+                placeholders = ",".join("?" * len(source_ids))
+                file_rows = conn.execute(
+                    "SELECT l.source_id,f.id FROM bank_import_source_files l "
+                    "JOIN bank_import_files f ON f.id=l.file_id AND f.book_id=l.book_id "
+                    f"WHERE l.book_id=? AND l.source_id IN ({placeholders}) "
+                    "ORDER BY f.created_at DESC,f.id DESC",
+                    (book_id, *source_ids),
+                ).fetchall()
+                for file_row in file_rows:
+                    original_files.setdefault(file_row["source_id"], file_row["id"])
+                attached_rows = conn.execute(
+                    "SELECT source_id,id FROM source_originals "
+                    f"WHERE book_id=? AND source_id IN ({placeholders}) "
+                    "ORDER BY created_at DESC,id DESC",
+                    (book_id, *source_ids),
+                ).fetchall()
+                for attached in attached_rows:
+                    source_original_files.setdefault(attached["source_id"], attached["id"])
+            for item in visible_items:
+                file_id = original_files.get(item["source_ref"])
+                attached_id = source_original_files.get(item["source_ref"])
+                item["original_file_id"] = file_id or attached_id
+                item["original_url"] = (
+                    f"/api/books/{book_id}/import-wizard/files/{file_id}"
+                    if file_id
+                    else (
+                        f"/api/tax/books/{book_id}/sources/{item['source_ref']}/originals/{attached_id}"
+                        if attached_id
+                        else None
+                    )
+                )
+            snapshot = None
+            if report_run_id:
+                run = conn.execute(
+                    "SELECT * FROM report_runs WHERE id=? AND book_id=?",
+                    (report_run_id, book_id),
+                ).fetchone()
+                if not run:
+                    raise AccountingError("报表版本不存在或不属于当前账套")
+                if run["period"] != period:
+                    raise AccountingError("报表版本不属于当前期间")
+                content = json.loads(run["content_json"])
+                statement = content.get("profit_statement") or {}
+                snapshot_amounts = {line["line_code"]: 0 for line in lines}
+                for item in statement.get("items") or []:
+                    mapping = self._match(item["code"], mappings)
+                    if not mapping:
+                        continue
+                    amount = int(item["amount_cents"])
+                    if mapping["line_kind"] in {
+                        "cost", "tax", "selling", "admin", "finance", "income_tax"
+                    }:
+                        amount = abs(amount)
+                    snapshot_amounts[mapping["line_code"]] += amount
+                for line in lines:
+                    live = int(line["amount_cents"])
+                    snap = int(snapshot_amounts.get(line["line_code"], 0))
+                    line["live_amount_cents"] = live
+                    line["snapshot_amount_cents"] = snap
+                    line["snapshot_changed"] = live != snap
+                    if report_run_id:
+                        line["amount_cents"] = snap
+                revenue = int(statement.get("revenue_cents") or 0)
+                cost = int(statement.get("expense_cents") or 0)
+                profit = int(statement.get("profit_cents") or 0)
+                tax_lines = [x for x in lines if x["line_kind"] == "income_tax" and x["snapshot_amount_cents"]]
+                income_tax = sum(x["snapshot_amount_cents"] for x in tax_lines) if tax_lines else None
+                net_profit = None if income_tax is None else profit - income_tax
+                snapshot = {
+                    "report_run_id": run["id"],
+                    "version": int(run["version"]),
+                    "status": run["status"],
+                    "content_hash": run["content_hash"],
+                    "period": run["period"],
+                    "changed_line_codes": sorted(
+                        line["line_code"] for line in lines if line["snapshot_changed"]
+                    ),
+                }
             return {
                 "book_id": book_id,
                 "period": period,
@@ -294,9 +402,7 @@ class ProfitDrilldownService:
                 "mapping_version": int(mappings[0]["version"]),
                 "lines": lines,
                 "selected_line": line_code,
-                "items": [item for item in details if not line_code or item["net_cents"] != 0][
-                    :1000
-                ],
+                "items": visible_items,
                 "totals": {
                     "revenue_cents": revenue,
                     "cost_and_expense_cents": cost,
@@ -309,6 +415,7 @@ class ProfitDrilldownService:
                     if year_complete
                     else "年度未结束，年累计仅显示已发生月份，不补零",
                 },
+                "snapshot": snapshot,
                 "checks": {
                     "unmapped_line_count": unmapped,
                     "mixed_voucher_contributions": sum(
@@ -316,6 +423,58 @@ class ProfitDrilldownService:
                     ),
                     "net_profit_known": income_tax is not None,
                 },
+            }
+
+    def impacts(self, actor, book_id, voucher_id):
+        """Return which report lines a voucher contributes to, by SQL aggregation."""
+        with self.db.transaction(actor=actor) as conn:
+            book = self._book(conn, actor, book_id)
+            mappings = self._active(conn, actor)
+            voucher = conn.execute(
+                "SELECT id,voucher_no,voucher_date FROM vouchers WHERE id=? AND book_id=?",
+                (voucher_id, book["id"]),
+            ).fetchone()
+            if not voucher:
+                raise AccountingError("凭证不存在或不属于当前账套", 404)
+            rows = conn.execute(
+                "SELECT l.code_snapshot account_code,l.debit_cents,l.credit_cents "
+                "FROM voucher_lines l WHERE l.voucher_id=? ORDER BY l.line_no",
+                (voucher_id,),
+            ).fetchall()
+            groups = {}
+            unmapped = 0
+            for row in rows:
+                mapping = self._match(row["account_code"], mappings)
+                if not mapping:
+                    unmapped += 1
+                    continue
+                sign = int(mapping["sign"])
+                amount = (
+                    int(row["credit_cents"]) - int(row["debit_cents"])
+                    if mapping["line_kind"] == "revenue"
+                    else int(row["debit_cents"]) - int(row["credit_cents"])
+                )
+                amount *= sign
+                group = groups.setdefault(
+                    mapping["line_code"],
+                    {
+                        "line_code": mapping["line_code"],
+                        "line_name": mapping["line_name"],
+                        "line_kind": mapping["line_kind"],
+                        "amount_cents": 0,
+                        "line_count": 0,
+                    },
+                )
+                group["amount_cents"] += amount
+                group["line_count"] += 1
+            return {
+                "book_id": book["id"],
+                "voucher_id": voucher_id,
+                "voucher_no": int(voucher["voucher_no"]),
+                "voucher_date": voucher["voucher_date"],
+                "lines": sorted(groups.values(), key=lambda item: item["line_code"]),
+                "unmapped_line_count": unmapped,
+                "mapping_version": int(mappings[0]["version"]),
             }
 
     def variance(self, actor, book_id, baseline_book_id, line_code=""):
