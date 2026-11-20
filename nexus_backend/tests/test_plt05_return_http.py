@@ -98,11 +98,12 @@ def test_manual_return_http_evidence_roundtrip(service, book):  # noqa: F811
         assert manual.json()["received"] is False
 
         pdf = b"%PDF-1.4\n% synthetic manual return evidence\n%%EOF\n"
+        filename = "客户回执.pdf"
         evidence = client.post(
             f"{base}/returns/{import_id}/evidence",
             headers=headers,
             json={
-                "filename": "customer-receipt.pdf",
+                "filename": filename,
                 "media_type": "application/pdf",
                 "content_base64": base64.b64encode(pdf).decode("ascii"),
             },
@@ -116,14 +117,15 @@ def test_manual_return_http_evidence_roundtrip(service, book):  # noqa: F811
         assert download.status_code == 200, download.text
         assert download.content == pdf
         assert download.headers["content-type"].startswith("application/pdf")
-        assert "customer-receipt.pdf" in download.headers["content-disposition"]
+        disposition = download.headers["content-disposition"]
+        assert "filename*=UTF-8''%E5%AE%A2%E6%88%B7%E5%9B%9E%E6%89%A7.pdf" in disposition
         assert download.headers["cache-control"] == "no-store"
 
         duplicate = client.post(
             f"{base}/returns/{import_id}/evidence",
             headers=headers,
             json={
-                "filename": "customer-receipt.pdf",
+                "filename": filename,
                 "media_type": "application/pdf",
                 "content_base64": base64.b64encode(pdf).decode("ascii"),
             },
@@ -133,3 +135,4 @@ def test_manual_return_http_evidence_roundtrip(service, book):  # noqa: F811
         listed = client.get(f"{base}/returns", headers=headers)
         assert listed.status_code == 200, listed.text
         assert [item["id"] for item in listed.json()["returns"]] == [import_id]
+        assert listed.json()["returns"][0]["evidence_verified"] is True

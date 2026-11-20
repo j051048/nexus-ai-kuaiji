@@ -186,6 +186,12 @@
   outline-offset: 2px;
   background: var(--brand-soft);
 }
+
+.fee-variance-target {
+  margin: 0.5rem 0;
+  color: var(--brand);
+  font-weight: 600;
+}
 .fee-variance-candidates {
   margin: 6px 0;
   color: var(--muted);

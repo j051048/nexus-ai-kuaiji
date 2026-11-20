@@ -39,6 +39,10 @@ def _parse(value: str) -> datetime:
 
 
 class ReviewDelegationService:
+    def _company_for_book(self, actor: Actor, book_id: str, capability: str = "review") -> str:
+        with self.db.transaction(actor=actor) as conn:
+            return self.access.book(conn, actor, book_id, capability)["company_id"]
+
     def __init__(self, db):
         self.db = db
         self.access = AccessControl()
@@ -59,6 +63,7 @@ class ReviewDelegationService:
         )
 
     def create(self, actor: Actor, book_id: str, request: ReviewDelegationWrite):
+        company_id = self._company_for_book(actor, book_id, "review")
         starts, ends = _parse(request.starts_at), _parse(request.ends_at)
         current = datetime.now(timezone.utc)
         if ends <= starts:
@@ -69,7 +74,9 @@ class ReviewDelegationService:
             raise AccountingError("替补有效期不能超过 31 天", 422)
         if request.to_user_id == actor.user_id:
             raise AccountingError("不能把复核职责替补给自己", 422)
-        with self.db.transaction(write=True, actor=actor) as conn:
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             book = self.access.book(conn, actor, book_id, "review")
             target = conn.execute(
                 "SELECT u.id,u.active,m.role AS firm_role,cm.role AS company_role "
@@ -131,7 +138,10 @@ class ReviewDelegationService:
             )
 
     def approve(self, actor: Actor, book_id: str, delegation_id: str):
-        with self.db.transaction(write=True, actor=actor) as conn:
+        company_id = self._company_for_book(actor, book_id, "review")
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             self.access.require_manager(conn, actor)
             row = conn.execute(
                 "SELECT * FROM book_review_delegations WHERE id=? AND book_id=? AND firm_id=?",
@@ -166,7 +176,10 @@ class ReviewDelegationService:
     def revoke(
         self, actor: Actor, book_id: str, delegation_id: str, request: ReviewDelegationRevoke
     ):
-        with self.db.transaction(write=True, actor=actor) as conn:
+        company_id = self._company_for_book(actor, book_id, "review")
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             row = conn.execute(
                 "SELECT * FROM book_review_delegations WHERE id=? AND book_id=? AND firm_id=?",
                 (delegation_id, book_id, actor.firm_id),
@@ -198,7 +211,7 @@ class ReviewDelegationService:
     def expire_due(self, actor: Actor, *, at: str | None = None):
         """Mark due rows expired and leave one audit event per row."""
         stamp = at or now()
-        with self.db.transaction(write=True, actor=actor) as conn:
+        with self.db.transaction(write=True, actor=actor, write_scope="global") as conn:
             rows = conn.execute(
                 "SELECT * FROM book_review_delegations WHERE status IN ('pending','active') AND ends_at<=?",
                 (stamp,),

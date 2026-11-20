@@ -10,7 +10,7 @@ from pydantic import ValidationError
 from app.accounting.domain import AccountingError
 from app.auth.supabase import Identity
 from app.main import create_app
-from app.reports.models import ReportDifferenceNote, ReportReconcile
+from app.reports.models import ReportCommand, ReportDifferenceNote, ReportReconcile
 from app.reports.reconciliation import compare
 from app.reports.service import ReportService
 from test_business import business  # noqa: F401
@@ -214,3 +214,112 @@ def test_reconciliation_routes_are_wired(business):
         )
         assert listed.status_code == 200, listed.text
         assert [row["explanation_type"] for row in listed.json()["notes"]] == ["rounding"]
+
+
+def test_profit_differences_drill_into_the_matching_profit_accounts():
+    content = {
+        "profit_statement": {
+            "revenue_cents": 10000,
+            "expense_cents": 5000,
+            "profit_cents": 5000,
+            "items": [
+                {"code": "6001", "name": "主营业务收入", "amount_cents": 10000, "line_code": "revenue"},
+                {"code": "6401", "name": "主营业务成本", "amount_cents": 5000, "line_code": "cost"},
+            ],
+        },
+        "cash_flow": {
+            "opening_cash_cents": 100,
+            "closing_cash_cents": 1000,
+            "net_change_cents": 900,
+        },
+    }
+    view = compare(
+        "报表,行次,行名,金额\n利润表,1,营业收入,100.01\n利润表,2,成本费用,50.01\n",
+        content,
+    )
+    rows = {row["line_key"]: row for row in view["rows"]}
+    income = rows["profit_statement.revenue_cents"]
+    assert income["section"] == "profit_statement"
+    assert [item["code"] for item in income["drilldown"]] == ["6001"]
+    expense = rows["profit_statement.expense_cents"]
+    assert expense["section"] == "profit_statement"
+    assert [item["code"] for item in expense["drilldown"]] == ["6401"]
+
+
+def test_mapping_change_invalidates_existing_formal_report(business):
+    case = business
+    _prepared(case)
+    service = ReportService(case.db)
+    report = service.create(case.manager, case.book["id"], "2026-10")["report"]
+    with case.db.transaction() as conn:
+        content = service._view(conn, report["id"])["content"]
+    with case.db.transaction(write=True) as conn:
+        conn.execute(
+            "INSERT INTO report_line_mappings(id,firm_id,template_id,template_version,version,"
+            "line_code,line_name,line_kind,account_prefix,sign,active,created_by,created_at) "
+            "VALUES(?,?,?,?,2,'revenue','营业收入','revenue','6001',1,1,?,?)",
+            (
+                "mapping-change-1",
+                case.manager.firm_id,
+                "small_enterprise_basic",
+                1,
+                case.manager.user_id,
+                "2026-10-31T00:00:00Z",
+            ),
+        )
+    with pytest.raises(AccountingError, match="映射已变化"):
+        service.reconcile(
+            case.manager,
+            report["id"],
+            ReportReconcile(reference_name="r.csv", csv_text=_csv(content)),
+        )
+    with pytest.raises(AccountingError, match="映射已变化"):
+        service.explain_difference(
+            case.manager,
+            report["id"],
+            ReportDifferenceNote(
+                reference_sha256="a" * 64,
+                line_key="balance_sheet.assets",
+                explanation_type="unknown",
+                note="待查",
+                reason="PLT02-E 映射变化",
+            ),
+        )
+    with pytest.raises(AccountingError, match="映射已变化"):
+        service.review(
+            case.manager,
+            report["id"],
+            ReportCommand(expected_version=report["version"], reason="PLT02-E 映射变化"),
+        )
+
+
+def test_explanation_is_bound_to_report_book_and_review_permission(business):
+    case = business
+    _prepared(case)
+    service = ReportService(case.db)
+    report = service.create(case.manager, case.book["id"], "2026-10")["report"]
+    with case.db.transaction() as conn:
+        content = service._view(conn, report["id"])["content"]
+    view = service.reconcile(
+        case.manager,
+        report["id"],
+        ReportReconcile(reference_name="r.csv", csv_text=_csv(content)),
+    )
+    note = ReportDifferenceNote(
+        reference_sha256=view["reference_sha256"],
+        line_key="balance_sheet.assets",
+        explanation_type="unknown",
+        note="待查",
+        reason="PLT02-E 权限绑定",
+    )
+    with pytest.raises(AccountingError):
+        service.explain_difference(case.actors["employee"], report["id"], note)
+    saved = service.explain_difference(case.manager, report["id"], note)
+    with case.db.transaction() as conn:
+        row = conn.execute(
+            "SELECT report_id,book_id,firm_id FROM report_reconciliation_notes WHERE id=?",
+            (saved["id"],),
+        ).fetchone()
+    assert row["report_id"] == report["id"]
+    assert row["book_id"] == case.book["id"]
+    assert row["firm_id"] == case.manager.firm_id

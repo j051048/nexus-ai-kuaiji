@@ -17,6 +17,7 @@ import re
 
 from ..accounting.access import AccessControl
 from ..accounting.domain import AccountingError
+from ..tax.relations import SourceRelationService
 
 
 KINDS = ("expense_bridge", "invoice_voucher_diff", "settlement_difference")
@@ -300,15 +301,20 @@ def _settlement_difference(
     book = _book(service, actor, book_id, period)
     with _database(service).transaction(actor=actor) as conn:
         _recheck_book(service, conn, actor, book_id)
-        settlement = _source_row(
-            conn, book_id, period, settlement_source_id, "settlement"
-        )
+        settlement = _source_row(conn, book_id, period, settlement_source_id, "settlement")
         bank = _source_row(conn, book_id, period, bank_source_id, "bank")
+        if settlement["kind"] != "business":
+            raise AccountingError("结算单来源不是业务单据", 422)
         if bank["kind"] != "bank":
             raise AccountingError("银行到账来源不是银行流水", 422)
+        for label, row in (("结算单", settlement), ("银行到账", bank)):
+            if str(row["date"])[:7] != period:
+                raise AccountingError(f"{label}不属于当前会计期间", 422)
         fee = None
         if fee_source_id is not None:
             fee = _source_row(conn, book_id, period, fee_source_id, "fee")
+            if fee["kind"] != "business":
+                raise AccountingError("手续费凭据不是业务单据", 422)
         difference = settlement["amount_cents"] - bank["amount_cents"]
         fee_total = fee["amount_cents"] if fee else None
         missing = []
@@ -344,12 +350,51 @@ def _settlement_difference(
                 f"差额 {_money(difference)} 元；手续费明细 {_money(fee_total)} 元与差额不一致。"
             )
         else:
-            status, reason = "complete", "fee_evidence"
-            summary = (
-                f"结算单 {_money(settlement['amount_cents'])} 元，"
-                f"银行到账 {_money(bank['amount_cents'])} 元，"
-                f"差额 {_money(difference)} 元；已由手续费明细 {_money(fee_total)} 元解释。"
+            relation = SourceRelationService(_database(service)).find(
+                conn,
+                book_id,
+                settlement_source_id=settlement["id"],
+                bank_source_id=bank["id"],
+                fee_source_id=fee["id"],
             )
+            if not relation:
+                relation = SourceRelationService(_database(service)).find(
+                    conn,
+                    book_id,
+                    settlement_source_id=settlement["id"],
+                    bank_source_id=bank["id"],
+                )
+            if not relation:
+                status, reason = "partial", "unverified_source_relation"
+                missing.append("verified_source_relation")
+                summary = (
+                    f"结算单 {_money(settlement['amount_cents'])} 元，"
+                    f"银行到账 {_money(bank['amount_cents'])} 元，"
+                    f"差额 {_money(difference)} 元；手续费金额与差额一致，"
+                    "但结算单、到账流水与手续费凭据的来源关系尚未核对，不能据此确认归因。"
+                )
+            elif relation["fee_source_id"] is None:
+                status, reason = "partial", "fee_relation_mismatch"
+                missing.append("verified_fee_relation")
+                summary = (
+                    f"结算单 {_money(settlement['amount_cents'])} 元，"
+                    f"银行到账 {_money(bank['amount_cents'])} 元，"
+                    f"差额 {_money(difference)} 元；已核对结算与到账关系，"
+                    "但所选手续费凭据不在该关系内，不能据此确认归因。"
+                )
+            elif (
+                relation["settlement_version"] != settlement["source_version"]
+                or relation["bank_version"] != bank["source_version"]
+                or relation["fee_version"] != fee["source_version"]
+            ):
+                raise AccountingError("来源关系已变化，请重新核对", 409)
+            else:
+                status, reason = "complete", "fee_evidence"
+                summary = (
+                    f"结算单 {_money(settlement['amount_cents'])} 元，"
+                    f"银行到账 {_money(bank['amount_cents'])} 元，"
+                    f"差额 {_money(difference)} 元；已由手续费明细 {_money(fee_total)} 元解释。"
+                )
     sources = [settlement, bank] + ([fee] if fee else [])
     facts = {
         "settlement_source": settlement,
@@ -407,8 +452,7 @@ def _settlement_difference(
             "reason": handoff_reason,
             "owner_role": "accountant",
             "source_ref": (
-                f"settlement_difference:{book['id']}:{period}:"
-                f"{settlement['id']}:{bank['id']}"
+                f"settlement_difference:{book['id']}:{period}:{settlement['id']}:{bank['id']}"
             ),
             "source_version": "",
             "action_target": _href(book_id, period, source=bank["id"]),
@@ -699,9 +743,7 @@ def analyze(service, actor, book_id, period, kind, **params):
                 ).hexdigest()
                 for row in current
             }
-            if current_versions != dict(
-                zip(source_ids, result["coverage"]["source_fingerprints"])
-            ):
+            if current_versions != dict(zip(source_ids, result["coverage"]["source_fingerprints"])):
                 raise AccountingError("结算或银行来源已变化，请重新核对", 409)
     normalized = {
         "account_code": params.get("account_code"),

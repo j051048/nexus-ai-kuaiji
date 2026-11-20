@@ -245,7 +245,7 @@ export function TaxFPanel({
     }
   }
   useEffect(() => {
-    void load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */
+    void load();  
   }, [bookId, period, session]);
 
   async function attachSourceOriginal(sourceRef: string, file: File | undefined) {

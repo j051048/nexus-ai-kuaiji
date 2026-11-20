@@ -77,7 +77,10 @@ _HEADER_ALIASES = {
     "金额": "amount",
     "本期金额": "amount",
 }
-_CANONICAL = {(section, name): (kind, group, value_key, label) for section, name, kind, group, value_key, label in CANONICAL_LINES}
+_CANONICAL = {
+    (section, name): (kind, group, value_key, label)
+    for section, name, kind, group, value_key, label in CANONICAL_LINES
+}
 
 
 def _text(value: str) -> str:
@@ -170,6 +173,18 @@ def _system_value(content: dict, section: str, value_key: str):
     return int(value) if isinstance(value, int) else None
 
 
+def _profit_item_section(row: dict) -> str | None:
+    section = row.get("section")
+    if section in {"income", "expense"}:
+        return section
+    code = str(row.get("code", ""))
+    if code.startswith(("6001", "6051", "6111", "6301")):
+        return "income"
+    if code.startswith(("6401", "6402", "6403", "6601", "6602", "6603", "6711", "6801")):
+        return "expense"
+    return None
+
+
 def _drilldown(content: dict, section: str, kind: str) -> list[dict]:
     if section == "balance_sheet":
         items = content.get("balance_sheet", {}).get("items", [])
@@ -180,23 +195,41 @@ def _drilldown(content: dict, section: str, kind: str) -> list[dict]:
             if row.get("section") in allowed
         ]
     if section == "profit_statement":
-        items = content.get("profit_statement", {}).get("items", [])
-        if kind == "income":
-            return [
-                {"code": row["code"], "name": row["name"], "amount_cents": int(row["amount_cents"])}
+        statement = content.get("profit_statement", {})
+        items = statement.get("items", [])
+        if kind in {"income", "expense"}:
+            matched = [
+                {
+                    "code": row["code"],
+                    "name": row["name"],
+                    "amount_cents": int(row["amount_cents"]),
+                }
                 for row in items
-                if row.get("code", "").startswith("6")
+                if _profit_item_section(row) == kind
             ]
-        if kind == "expense":
+            if matched:
+                return matched
+            key, name = (
+                ("revenue_cents", "营业收入")
+                if kind == "income"
+                else ("expense_cents", "成本费用")
+            )
+            return [{"code": key, "name": name, "amount_cents": int(statement.get(key) or 0)}]
+        if items:
             return [
                 {"code": row["code"], "name": row["name"], "amount_cents": int(row["amount_cents"])}
                 for row in items
-                if not row.get("code", "").startswith("6")
             ]
         return [
-            {"code": row["code"], "name": row["name"], "amount_cents": int(row["amount_cents"])}
-            for row in items
+            {"code": key, "name": name, "amount_cents": int(statement.get(key) or 0)}
+            for key, name in (
+                ("revenue_cents", "营业收入"),
+                ("expense_cents", "成本费用"),
+                ("profit_cents", "利润"),
+            )
         ]
+    if section != "cash_flow":
+        return []
     cash = content.get("cash_flow", {})
     labels = {
         "opening_cash_cents": "期初现金",
@@ -208,7 +241,11 @@ def _drilldown(content: dict, section: str, kind: str) -> list[dict]:
     }
     if section == "cash_flow" and "items" in cash and isinstance(cash["items"], list):
         return [
-            {"code": str(row.get("code", "")), "name": str(row.get("name", "")), "amount_cents": int(row["amount_cents"])}
+            {
+                "code": str(row.get("code", "")),
+                "name": str(row.get("name", "")),
+                "amount_cents": int(row["amount_cents"]),
+            }
             for row in cash["items"]
         ]
     return [
@@ -227,7 +264,7 @@ def compare(csv_text: str, content: dict) -> dict:
         if value is None:
             continue
         system_by_key[f"{group}.{value_key}"] = {
-            "section": section,
+            "section": group,
             "line_no": len(system_by_key) + 1,
             "line_name": label,
             "key": f"{group}.{value_key}",
@@ -291,13 +328,18 @@ def compare(csv_text: str, content: dict) -> dict:
                     "drilldown": [],
                 }
             )
-    rows.sort(key=lambda row: (row["section"], row["line_no"] or 10**6, row["reference_line_no"] or 10**6))
-    counts = {status: sum(1 for row in rows if row["status"] == status) for status in (
-        "matched",
-        "amount_different",
-        "missing_reference",
-        "missing_system",
-    )}
+    rows.sort(
+        key=lambda row: (row["section"], row["line_no"] or 10**6, row["reference_line_no"] or 10**6)
+    )
+    counts = {
+        status: sum(1 for row in rows if row["status"] == status)
+        for status in (
+            "matched",
+            "amount_different",
+            "missing_reference",
+            "missing_system",
+        )
+    }
     return {
         "reference_sha256": reference["sha256"],
         "reference_rows": len(reference["rows"]),

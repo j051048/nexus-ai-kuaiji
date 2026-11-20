@@ -399,3 +399,98 @@ def test_manager_can_assign_variance_to_qualified_editor_only(business):
     with pytest.raises(AccountingError) as missing:
         service.assign(case.manager, item["id"], "missing-user", "无此人")
     assert missing.value.status == 409
+
+
+def _bank_source(conn, book_id, source_id, amount, kind="bank", date="2026-10-18"):
+    from uuid import uuid4
+
+    conn.execute(
+        "INSERT INTO sources(id,book_id,external_id,source_name,date,description,"
+        "counterparty,amount_cents,direction,evidence_ref,fingerprint,source_kind) "
+        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+        (
+            source_id,
+            book_id,
+            f"ext-{source_id}",
+            f"流水 {source_id}",
+            date,
+            "测试流水",
+            "虚构平台",
+            amount,
+            "income",
+            "银行回单",
+            uuid4().hex,
+            kind,
+        ),
+    )
+
+
+def test_variance_actual_source_must_be_a_matching_bank_flow(business):
+    case = business
+    _prepared(case)
+    service = FeeVarianceService(case.db)
+    with case.db.transaction(write=True, actor=case.manager) as conn:
+        _bank_source(conn, case.book["id"], "variance-business", 800, kind="business")
+        _bank_source(conn, case.book["id"], "variance-bank", 700)
+
+    with pytest.raises(AccountingError) as wrong_kind:
+        service.record(
+            case.manager,
+            case.book["id"],
+            kind="underpaid",
+            expected_cents=1_000,
+            actual_cents=800,
+            bank_source_id="variance-business",
+            idempotency_key="variance-wrong-kind",
+        )
+    assert wrong_kind.value.status == 422
+    assert "不是银行流水" in str(wrong_kind.value)
+
+    with pytest.raises(AccountingError) as wrong_amount:
+        service.record(
+            case.manager,
+            case.book["id"],
+            kind="underpaid",
+            expected_cents=1_000,
+            actual_cents=800,
+            bank_source_id="variance-bank",
+            idempotency_key="variance-wrong-amount",
+        )
+    assert wrong_amount.value.status == 422
+    assert "金额与所选银行流水不一致" in str(wrong_amount.value)
+
+
+def test_variance_relation_binds_settlement_bank_and_amount(business):
+    case = business
+    _prepared(case)
+    service = FeeVarianceService(case.db)
+    with case.db.transaction(write=True, actor=case.manager) as conn:
+        _bank_source(conn, case.book["id"], "variance-settle", 1_100, kind="business")
+        _bank_source(conn, case.book["id"], "variance-bank-2", 800)
+
+    with pytest.raises(AccountingError) as mismatch:
+        service.record(
+            case.manager,
+            case.book["id"],
+            kind="overpaid",
+            expected_cents=400,
+            actual_cents=800,
+            settlement_source_id="variance-settle",
+            bank_source_id="variance-bank-2",
+            idempotency_key="variance-relation-mismatch",
+        )
+    assert mismatch.value.status == 422
+    assert "来源关系差额与差异登记金额不一致" in str(mismatch.value)
+
+    item = service.record(
+        case.manager,
+        case.book["id"],
+        kind="overpaid",
+        expected_cents=500,
+        actual_cents=800,
+        settlement_source_id="variance-settle",
+        bank_source_id="variance-bank-2",
+        idempotency_key="variance-relation-ok",
+    )
+    assert item["relation_id"]
+    assert item["bank_source_id"] == "variance-bank-2"

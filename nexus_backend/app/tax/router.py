@@ -251,6 +251,8 @@ class FeeVarianceRecord(BaseModel):
     actual_cents: StrictInt
     receivable_id: str | None = Field(default=None, max_length=100)
     bank_source_id: str | None = Field(default=None, max_length=100)
+    settlement_source_id: str | None = Field(default=None, max_length=100)
+    fee_source_id: str | None = Field(default=None, max_length=100)
     evidence_ref: str | None = Field(default=None, max_length=500)
     idempotency_key: str = Field(min_length=1, max_length=200)
 

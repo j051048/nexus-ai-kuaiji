@@ -139,6 +139,7 @@ test('返回差异进入统一待办，从待办进入财务软件接入处置�
   await form.getByLabel('证据', { exact: true }).fill(`客户邮件归档 return-e2e-${marker}`);
   await form.getByRole('button', { name: '保存处置', exact: true }).click();
   await expect(page.getByText(/差异已处置/)).toBeVisible({ timeout: 30_000 });
+  await page.getByText(/逐笔明细/).click();
   await expect(page.getByText('已处置 · 已解决')).toBeVisible();
   const remaining = await (
     await request.get(`${f.base}/returns/tasks`, { headers: f.headers })
@@ -165,6 +166,7 @@ test('手工登记回执在浏览器选择证据原件并留痕', async ({ page,
   await page.getByRole('button', { name: '财务软件接入', exact: true }).click();
   await expect(page.getByRole('heading', { name: '财务软件接入', exact: true })).toBeVisible();
   await page.getByLabel('选择已审核导出', { exact: true }).selectOption(f.exportId);
+  await page.getByLabel('本次操作依据', { exact: true }).fill('合成客户手工回执登记');
   const download = page.waitForEvent('download');
   const preparation = page.waitForResponse(
     (r) => r.url().endsWith('/integrations/tplus/outbox') && r.request().method() === 'POST',
@@ -182,6 +184,7 @@ test('手工登记回执在浏览器选择证据原件并留痕', async ({ page,
   await manual.locator('summary').click();
   await manual.getByLabel('证据引用', { exact: true }).fill(`客户邮件归档 MANUAL-${marker}`);
   await manual.getByLabel('已过账', { exact: true }).check();
+  await manual.getByLabel('对方过账日期', { exact: true }).fill('2026-11-02');
   await manual.locator('input[type=file]').setInputFiles({
     name: 'manual-receipt.pdf',
     mimeType: 'application/pdf',
@@ -375,7 +378,7 @@ test('财务软件文件底座真实 UI：配置、人工确认参考、冻结�
     '批次标识,凭证标识,对方凭证号,结果,失败原因,对方过账日期,金额,科目',
     `${intent.external_code},T54-${voucher.external_code},T+-R-${marker},accepted,,2026-10-31,${(debitCents / 100).toFixed(2)},${accounts}`,
   ].join('\n');
-  await page.locator('.integration-returns input[type=file]').setInputFiles({
+  await page.getByLabel('客户返回文件 CSV').setInputFiles({
     name: '客户返回文件.csv',
     mimeType: 'text/csv',
     buffer: Buffer.from(returnCsv, 'utf8'),

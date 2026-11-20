@@ -4,6 +4,8 @@ No role grant, SQL receipt insertion, policy waiver or service monkeypatch.
 The existing accounting assertions still execute against production services.
 """
 
+import json
+
 from app.accounting.access import AccessControl
 from app.accounting.domain import Actor, AccountingError
 from app.accounting.review_policy import ReviewPolicyService
@@ -72,7 +74,7 @@ def reverse_reviewed(posting, actor, voucher_id, request):
                 account_version=r["account_version"],
                 debit=cents_to_money(r["credit_cents"]),
                 credit=cents_to_money(r["debit_cents"]),
-                auxiliary_values=r.get("auxiliary_values", {}),
+                auxiliary_values=json.loads(r["aux_json"]) if r.get("aux_json") else {},
                 source_ref=r["source_ref"],
             )
             for r in original["lines"]

@@ -163,7 +163,7 @@ class NotificationDispatcher:
         )
         rows = conn.execute(
             "SELECT * FROM delivery_notifications WHERE state IN('pending','failed','claimed','sending') "
-            "AND (restore_epoch<>? OR (state IN('claimed','sending') AND (lease_until<=? OR ?))) "
+            "AND (restore_epoch<>? OR (state IN('claimed','sending') AND (lease_until<=? OR ?=1))) "
             "ORDER BY created_at,id LIMIT 100",
             (epoch, stamp, held),
         ).fetchall()

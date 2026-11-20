@@ -309,10 +309,12 @@ class ProfitDrilldownService:
             profit = revenue - cost + nonoperating
             net_profit = None if income_tax is None else profit - income_tax
             year_complete = period.endswith("-12")
-            visible_items = [
-                item for item in details if not line_code or item["net_cents"] != 0
-            ][:1000]
-            source_ids = sorted({item["source_ref"] for item in visible_items if item["source_ref"]})
+            visible_items = [item for item in details if not line_code or item["net_cents"] != 0][
+                :1000
+            ]
+            source_ids = sorted(
+                {item["source_ref"] for item in visible_items if item["source_ref"]}
+            )
             original_files = {}
             source_original_files = {}
             if source_ids:
@@ -366,7 +368,12 @@ class ProfitDrilldownService:
                         continue
                     amount = int(item["amount_cents"])
                     if mapping["line_kind"] in {
-                        "cost", "tax", "selling", "admin", "finance", "income_tax"
+                        "cost",
+                        "tax",
+                        "selling",
+                        "admin",
+                        "finance",
+                        "income_tax",
                     }:
                         amount = abs(amount)
                     snapshot_amounts[mapping["line_code"]] += amount
@@ -381,8 +388,14 @@ class ProfitDrilldownService:
                 revenue = int(statement.get("revenue_cents") or 0)
                 cost = int(statement.get("expense_cents") or 0)
                 profit = int(statement.get("profit_cents") or 0)
-                tax_lines = [x for x in lines if x["line_kind"] == "income_tax" and x["snapshot_amount_cents"]]
-                income_tax = sum(x["snapshot_amount_cents"] for x in tax_lines) if tax_lines else None
+                tax_lines = [
+                    x
+                    for x in lines
+                    if x["line_kind"] == "income_tax" and x["snapshot_amount_cents"]
+                ]
+                income_tax = (
+                    sum(x["snapshot_amount_cents"] for x in tax_lines) if tax_lines else None
+                )
                 net_profit = None if income_tax is None else profit - income_tax
                 snapshot = {
                     "report_run_id": run["id"],

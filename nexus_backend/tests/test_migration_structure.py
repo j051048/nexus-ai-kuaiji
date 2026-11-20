@@ -123,9 +123,10 @@ def test_scanner_recognizes_dynamic_and_direct_gates():
     assert "<dynamic>" in facts["batch_operations"].gate_functions
     # 105 的表用直接 CREATE TRIGGER 装 P0 依赖写门。
     assert "close_dependency_write_guard" in facts["vouchers"].gate_functions
-    # 全局模板表必须不被误判为公司表，否则豁免会掩盖真实缺口。
+    # 全局模板表必须不被误判为公司表；`rls` 可能因 106 的统一启用而为真，
+    # 真正会导致豁免风险的是 company_isolation/租户列。
     assert "company_id" not in facts["report_templates"].columns
-    assert not facts["report_templates"].rls
+    assert not facts["report_templates"].company_isolation
 
 
 def test_import_wizard_large_file_migration_covers_every_row_bound():

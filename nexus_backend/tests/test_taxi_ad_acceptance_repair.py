@@ -165,9 +165,19 @@ def test_frozen_adapter_cannot_present_stale_fee_as_current(business):
     exported = business.ledger.export(business.manager, business.book["id"],
         ExportRequest(draft_ids=[batch["draft_id"]], idempotency_key="taxi-stale-bridge"))
     bridge = FinancialBridgeService(business.db)
+    draft = business.ledger.get_draft(business.manager, business.book["id"], batch["draft_id"])
+    account_codes = sorted({line["account_code"] for line in draft["lines"]})
+    auxiliary_pairs = sorted({
+        (kind, value)
+        for line in draft["lines"]
+        for kind, value in line.get("auxiliary_values", {}).items()
+    })
     bridge.configure(business.manager, business.book["id"], BridgeConfiguration(expected_version=0,
-        external_book_id="synthetic-only", accounts=[{"local_code": code, "external_code": code}
-        for code in ("1122", "6001")], reason="离线映射核定", idempotency_key="taxi-config"))
+        external_book_id="synthetic-only",
+        accounts=[{"local_code": code, "external_code": code} for code in account_codes],
+        auxiliaries=[{"kind": kind, "local_value": value, "external_code": value}
+                     for kind, value in auxiliary_pairs],
+        reason="离线映射核定", idempotency_key="taxi-config"))
     intent = bridge.prepare_export(business.manager, business.book["id"], BridgeExport(
         export_id=exported["id"], configuration_version=1, reason="冻结独立复核集合", idempotency_key="taxi-intent"))
     artifact = bridge.create_artifact(business.manager, business.book["id"], intent["id"])

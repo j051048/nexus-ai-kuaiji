@@ -1,4 +1,5 @@
 """OPT07-F: firm-scoped aliases with effective windows."""
+
 from __future__ import annotations
 
 from uuid import uuid4
@@ -28,6 +29,7 @@ class AliasService:
     @staticmethod
     def _date(value: str, name: str) -> str:
         from datetime import date
+
         try:
             return date.fromisoformat(value).isoformat()
         except ValueError as error:
@@ -54,7 +56,9 @@ class AliasService:
         end = self._date(request.effective_to, "失效日") if request.effective_to else None
         if end and end <= start:
             raise AccountingError("失效日必须晚于生效日", 422)
-        with self.db.transaction(write=True, actor=actor) as conn:
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             self.access.company(conn, actor, company_id, manage=True)
             self._subject(conn, actor, company_id, request.subject_type, request.subject_id)
             rows = conn.execute(
@@ -73,20 +77,41 @@ class AliasService:
             conn.execute(
                 "INSERT INTO subject_aliases(id,firm_id,company_id,subject_type,subject_id,alias,source,status,effective_from,effective_to,created_by,created_at) "
                 "VALUES(?,?,?,?,?,?,?,'approved',?,?,?,?)",
-                (alias_id, actor.firm_id, company_id, request.subject_type, request.subject_id,
-                 request.alias, request.source, start, end, actor.user_id, stamp),
+                (
+                    alias_id,
+                    actor.firm_id,
+                    company_id,
+                    request.subject_type,
+                    request.subject_id,
+                    request.alias,
+                    request.source,
+                    start,
+                    end,
+                    actor.user_id,
+                    stamp,
+                ),
             )
             conn.execute(
                 "INSERT INTO audit_events(firm_id,company_id,user_id,action,object_id,details,created_at) VALUES(?,?,?,?,?,?,?)",
-                (actor.firm_id, company_id, actor.user_id, "alias.create", alias_id,
-                 '{"subject_type":"%s","subject_id":"%s","alias":"%s"}' % (request.subject_type, request.subject_id, request.alias), stamp),
+                (
+                    actor.firm_id,
+                    company_id,
+                    actor.user_id,
+                    "alias.create",
+                    alias_id,
+                    '{"subject_type":"%s","subject_id":"%s","alias":"%s"}'
+                    % (request.subject_type, request.subject_id, request.alias),
+                    stamp,
+                ),
             )
             return {"id": alias_id, "status": "approved"}
 
     def retire(self, actor, company_id, alias_id, reason: str):
         if len(reason.strip()) < 5:
             raise AccountingError("停用原因至少 5 个字", 422)
-        with self.db.transaction(write=True, actor=actor) as conn:
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             self.access.company(conn, actor, company_id, manage=True)
             row = conn.execute(
                 "SELECT id FROM subject_aliases WHERE id=? AND firm_id=? AND company_id=? AND status='approved'",
@@ -100,8 +125,15 @@ class AliasService:
             )
             conn.execute(
                 "INSERT INTO audit_events(firm_id,company_id,user_id,action,object_id,details,created_at) VALUES(?,?,?,?,?,?,?)",
-                (actor.firm_id, company_id, actor.user_id, "alias.retire", alias_id,
-                 '{"reason":"%s"}' % reason.strip(), now()),
+                (
+                    actor.firm_id,
+                    company_id,
+                    actor.user_id,
+                    "alias.retire",
+                    alias_id,
+                    '{"reason":"%s"}' % reason.strip(),
+                    now(),
+                ),
             )
             return {"id": alias_id, "status": "retired"}
 
@@ -141,10 +173,13 @@ class AliasService:
             subjects = sorted({row["subject_id"] for row in rows})
             if subjects and subject_type == "counterparty":
                 placeholders = ",".join("?" for _ in subjects)
-                active = {row["id"] for row in conn.execute(
-                    f"SELECT id FROM company_master_entities WHERE id IN ({placeholders}) AND firm_id=? AND company_id=? AND kind='counterparty' AND active=1",
-                    (*subjects, actor.firm_id, company_id),
-                ).fetchall()}
+                active = {
+                    row["id"]
+                    for row in conn.execute(
+                        f"SELECT id FROM company_master_entities WHERE id IN ({placeholders}) AND firm_id=? AND company_id=? AND kind='counterparty' AND active=1",
+                        (*subjects, actor.firm_id, company_id),
+                    ).fetchall()
+                }
                 subjects = sorted(active)
         if not subjects:
             return {"status": "not_found", "subject_id": None}

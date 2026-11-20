@@ -161,6 +161,7 @@ def test_manual_return_marks_received_not_posted(service, book):  # noqa: F811
             LOCAL_ACTOR, book, artifact["id"],
             BridgeManualReturn(
                 batch_code=intent["external_code"], received=True, posted=True,
+                posted_date="2026-11-02",
                 evidence_ref="另一份回执 2026-11-02",
             ),
         )
@@ -248,3 +249,87 @@ def test_manual_evidence_rejects_invalid_base64_without_leaking(service):  # noq
             BridgeReturnEvidence(filename="x.pdf", media_type="application/pdf", content_base64="not-base64!"),
         )
     assert exc.value.status == 422
+
+
+def test_return_import_rejects_other_frozen_batch(service, book):  # noqa: F811
+    bridge = FinancialBridgeService(service.db)
+    intent, artifact = _artifact(bridge, service, book)
+    voucher = intent["package"]["vouchers"][0]
+    with pytest.raises(AccountingError, match="批次标识"):
+        bridge.record_return(
+            LOCAL_ACTOR,
+            book,
+            artifact["id"],
+            BridgeReturnImport(
+                batch_code="other-batch",
+                content=_csv("other-batch", f"T54-{voucher['external_code']}", 80),
+            ),
+        )
+
+
+def test_return_without_amount_or_accounts_is_received_not_posted(service, book):  # noqa: F811
+    bridge = FinancialBridgeService(service.db)
+    intent, artifact = _artifact(bridge, service, book)
+    voucher = intent["package"]["vouchers"][0]
+    buffer = io.StringIO(newline="")
+    writer = csv.writer(buffer, lineterminator="\r\n")
+    writer.writerow(["批次标识", "凭证标识", "对方凭证号", "结果", "失败原因", "对方过账日期", "金额", "科目"])
+    writer.writerow([intent["external_code"], f"T54-{voucher['external_code']}", "T-1", "accepted", "", "2026-10-31", "", ""])
+    result = bridge.record_return(
+        LOCAL_ACTOR,
+        book,
+        artifact["id"],
+        BridgeReturnImport(batch_code=intent["external_code"], content=buffer.getvalue()),
+    )
+    assert result["result_status"] == "accepted"
+    assert result["received"] is True
+    assert result["posted"] is False
+    assert "只能确认接收" in result["rows"][0]["reason"]
+
+
+def test_manual_posted_needs_date_and_verified_evidence(service, book):  # noqa: F811
+    bridge = FinancialBridgeService(service.db)
+    intent, artifact = _artifact(bridge, service, book)
+    with pytest.raises(AccountingError, match="过账日期"):
+        bridge.record_manual_return(
+            LOCAL_ACTOR,
+            book,
+            artifact["id"],
+            BridgeManualReturn(
+                batch_code=intent["external_code"],
+                received=True,
+                posted=True,
+                evidence_ref="客户邮件回执 2026-11-02",
+            ),
+        )
+    manual = bridge.record_manual_return(
+        LOCAL_ACTOR,
+        book,
+        artifact["id"],
+        BridgeManualReturn(
+            batch_code=intent["external_code"],
+            received=True,
+            posted=True,
+            posted_date="2026-11-02",
+            evidence_ref="客户邮件回执 2026-11-02",
+        ),
+    )
+    assert manual["posted_declared"] is True
+    assert manual["evidence_verified"] is False
+    assert manual["posted"] is False
+    bridge.attach_evidence(
+        LOCAL_ACTOR,
+        book,
+        artifact["id"],
+        manual["id"],
+        BridgeReturnEvidence(
+            filename="客户回执.pdf",
+            media_type="application/pdf",
+            content_base64=base64.b64encode(b"%PDF-1.4 synthetic receipt").decode(),
+        ),
+    )
+    verified = bridge.list_returns(LOCAL_ACTOR, book, artifact["id"])["returns"][0]
+    assert verified["evidence_verified"] is True
+    assert verified["posted"] is True
+    assert verified["rows"][0]["posted_date"] == "2026-11-02"
+    assert verified["rows"][0]["reason"] == "手工登记整批接收：客户邮件回执 2026-11-02"

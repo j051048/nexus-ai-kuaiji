@@ -15,6 +15,7 @@ from uuid import uuid4
 from ..accounting.domain import AccountingError, Actor
 from ..accounting.service import AccountingService, now
 from ..ledgers.service import LedgersService
+from .relations import SourceRelationService
 
 KINDS = {"underpaid", "overpaid", "unmatched", "cross_period", "many_to_one", "one_to_many"}
 UNRESOLVED = "unresolved"
@@ -59,6 +60,15 @@ class FeeVarianceService:
             (book_id,),
         ).fetchone()
 
+    def _company_for_book(self, actor, book_id):
+        with self.db.transaction(actor=actor) as conn:
+            return self.ledgers.access.book(conn, actor, book_id, "edit")["company_id"]
+
+    def _company_for_variance(self, actor, variance_id, capability):
+        with self.db.transaction(actor=actor) as conn:
+            row = self._row(conn, actor, variance_id, capability)
+            return self.ledgers.access.book(conn, actor, row["book_id"], capability)["company_id"]
+
     def record(
         self,
         actor,
@@ -69,9 +79,12 @@ class FeeVarianceService:
         actual_cents,
         receivable_id=None,
         bank_source_id=None,
+        settlement_source_id=None,
+        fee_source_id=None,
         evidence_ref="",
         idempotency_key,
     ):
+        company_id = self._company_for_book(actor, book_id)
         kind = str(kind or "").strip()
         if kind not in KINDS:
             raise AccountingError("规费差异类型无效", 422)
@@ -96,9 +109,13 @@ class FeeVarianceService:
                 "actual": actual_cents,
                 "receivable_id": receivable_id,
                 "bank_source_id": bank_source_id,
+                "settlement_source_id": settlement_source_id,
+                "fee_source_id": fee_source_id,
             }
         )
-        with self.db.transaction(write=True, actor=actor) as conn:
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             book = self.ledgers.access.book(conn, actor, book_id, "edit")
             AccountingService(self.db)._open(book)
             if conn.execute(
@@ -106,6 +123,32 @@ class FeeVarianceService:
                 (book_id, book["period"]),
             ).fetchone():
                 raise AccountingError("该会计期间已锁期，不可登记规费差异", 409)
+            relation = None
+            if bank_source_id:
+                source = conn.execute(
+                    "SELECT id,source_kind,amount_cents FROM sources WHERE id=? AND book_id=?",
+                    (bank_source_id, book_id),
+                ).fetchone()
+                if not source:
+                    raise AccountingError("实际到账来源不存在或不属于当前账套", 404)
+                if source["source_kind"] != "bank":
+                    raise AccountingError("实际到账来源不是银行流水", 422)
+                if int(source["amount_cents"]) != actual_cents:
+                    raise AccountingError("实际到账金额与所选银行流水不一致", 422)
+            if settlement_source_id or fee_source_id:
+                if not (settlement_source_id and bank_source_id):
+                    raise AccountingError("登记来源关系必须同时提供结算单与实际到账流水", 422)
+                relation = SourceRelationService(self.db).verify_in(
+                    conn,
+                    actor,
+                    book,
+                    settlement_source_id=settlement_source_id,
+                    bank_source_id=bank_source_id,
+                    fee_source_id=fee_source_id,
+                    reason="规费差异登记来源核对",
+                )
+                if abs(int(relation["difference_cents"])) != abs(difference):
+                    raise AccountingError("来源关系差额与差异登记金额不一致", 422)
             if receivable_id:
                 row = conn.execute(
                     "SELECT * FROM fee_receivable_items WHERE id=? AND book_id=? AND firm_id=?",
@@ -130,10 +173,10 @@ class FeeVarianceService:
             variance_id = uuid4().hex
             conn.execute(
                 "INSERT INTO fee_receivable_variances(id,firm_id,company_id,book_id,period,kind,"
-                "receivable_id,bank_source_id,expected_cents,actual_cents,difference_cents,status,"
+                "receivable_id,bank_source_id,relation_id,expected_cents,actual_cents,difference_cents,status,"
                 "reason_code,evidence_ref,policy_version,policy_fingerprint,created_by,created_at,"
                 "idempotency_key,request_fingerprint) "
-                "VALUES(?,?,?,?,?,?,?,?,?,?,?, 'pending',?,?,?,?,?,?,?,?)",
+                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?, 'pending',?,?,?,?,?,?,?,?)",
                 (
                     variance_id,
                     actor.firm_id,
@@ -143,6 +186,7 @@ class FeeVarianceService:
                     kind,
                     receivable_id,
                     bank_source_id,
+                    relation["id"] if relation else None,
                     expected_cents,
                     actual_cents,
                     difference,
@@ -228,7 +272,10 @@ class FeeVarianceService:
         block close; ``processing`` is a workflow projection exposed by
         ``_view`` rather than a second accounting state.
         """
-        with self.db.transaction(write=True, actor=actor) as conn:
+        company_id = self._company_for_variance(actor, variance_id, "edit")
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             row = self._row(conn, actor, variance_id, "edit")
             if row["status"] == "reversed":
                 raise AccountingError("已撤销差异不能开始处理", 409)
@@ -252,7 +299,10 @@ class FeeVarianceService:
     def handle(self, actor, variance_id, *, reason_code, evidence_ref=""):
         reason_code = str(reason_code or "").strip()
         evidence_ref = str(evidence_ref or "").strip()
-        with self.db.transaction(write=True, actor=actor) as conn:
+        company_id = self._company_for_variance(actor, variance_id, "review")
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             row = self._row(conn, actor, variance_id, "review", for_update=True)
             if row["status"] == "reversed":
                 raise AccountingError("已撤销差异不能处理", 409)
@@ -352,7 +402,10 @@ class FeeVarianceService:
         reason = str(reason or "").strip()
         if len(reason) < 3:
             raise AccountingError("撤销差异必须说明原因", 422)
-        with self.db.transaction(write=True, actor=actor) as conn:
+        company_id = self._company_for_variance(actor, variance_id, "review")
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             row = self._row(conn, actor, variance_id, "review")
             if row["status"] == "reversed":
                 raise AccountingError("差异已撤销", 409)
@@ -404,7 +457,10 @@ class FeeVarianceService:
             return [{"id": row["id"], "name": row["name"]} for row in rows]
 
     def assign(self, actor, variance_id: str, assignee_id: str, reason: str) -> dict:
-        with self.db.transaction(write=True, actor=actor) as conn:
+        company_id = self._company_for_variance(actor, variance_id, "manage")
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             row = self._row(conn, actor, variance_id, "manage", for_update=True)
             if row["status"] != "pending":
                 raise AccountingError("只有待处理差异可以转交", 409)
@@ -463,6 +519,7 @@ class FeeVarianceService:
                 "kind",
                 "receivable_id",
                 "bank_source_id",
+                "relation_id",
                 "expected_cents",
                 "actual_cents",
                 "difference_cents",

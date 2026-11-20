@@ -148,7 +148,7 @@ class SchedulerService:
 
     def create_plan(self, actor, request: PlanWrite) -> dict:
         rule = self._normalize(request)
-        with self.db.transaction(write=True, actor=actor) as conn:
+        with self.db.transaction(write=True, actor=actor, write_scope="global") as conn:
             self.access.require_manager(conn, actor)
             if request.company_id and not self._company_ok(conn, actor.firm_id, request.company_id):
                 raise AccountingError("企业不属于当前事务所", 404)
@@ -181,7 +181,7 @@ class SchedulerService:
         return self._plan_view(row)
 
     def set_enabled(self, actor, plan_id: str, enabled: bool) -> dict:
-        with self.db.transaction(write=True, actor=actor) as conn:
+        with self.db.transaction(write=True, actor=actor, write_scope="global") as conn:
             self.access.require_manager(conn, actor)
             row = conn.execute(
                 "SELECT * FROM fsc_schedule_plans WHERE id=? AND firm_id=?",
@@ -229,7 +229,7 @@ class SchedulerService:
         return {"triggers": created, "skipped": skipped, "at": now.isoformat()}
 
     def _tick_plan(self, plan_id: str, now: datetime) -> str:
-        with self.db.transaction(write=True, actor=None, system=True) as conn:
+        with self.db.transaction(write=True, actor=None, system=True, write_scope="global") as conn:
             if self.db.is_postgres:
                 conn.execute(
                     "SELECT pg_advisory_xact_lock(hashtext(?))", (f"fsc-schedule:{plan_id}",)
@@ -394,7 +394,7 @@ class SchedulerService:
         ]
 
     def confirm(self, actor, trigger_id: str) -> dict:
-        with self.db.transaction(write=True, actor=actor) as conn:
+        with self.db.transaction(write=True, actor=actor, write_scope="global") as conn:
             self.access.require_manager(conn, actor)
             row = conn.execute(
                 "SELECT * FROM fsc_schedule_triggers WHERE id=? AND firm_id=?",

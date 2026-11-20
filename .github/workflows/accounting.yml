@@ -62,6 +62,8 @@ jobs:
         run: npm run test:frontend-budget
       # These suites require the four-role, non-default-port isolation contract.
       # They run below on BOTH PG16/17, with exact identities and zero skips.
+      - name: SQLite/PostgreSQL SQL hygiene guard
+        run: python -m pytest nexus_backend/tests/test_pg_sql_hygiene.py -q
       - run: >-
           python -m pytest nexus_backend/tests -q
           --ignore=nexus_backend/tests/test_tax_workpaper_postgres.py
@@ -192,6 +194,9 @@ jobs:
           python scripts/ak05_postgres_gate.py run
           --manifest tmp_test/ak05-ci-config/manifest.json
           --out tmp_test/ak05-ci-reports
+      - name: SQLite/PG parity and PLT04/PLT05 return-file gates, no skips
+        run: |
+          python scripts/test_accounting_postgres_isolated.py --config tmp_test/ak05-ci-config/regression.json             nexus_backend/tests/test_plt04_fee_variances_postgres.py             nexus_backend/tests/test_plt04_source_originals.py             nexus_backend/tests/test_stage10_integrations_postgres.py             nexus_backend/tests/test_plt05_return_import.py             -q --junitxml=tmp_test/ak05-ci-reports/sqlite-pg-parity.xml
       - name: Monthly delivery and prerequisite regressions, no skips
         run: |
           python scripts/test_accounting_postgres_isolated.py --config tmp_test/ak05-ci-config/regression.json nexus_backend/tests/test_monthly_delivery_postgres.py nexus_backend/tests/test_monthly_delivery_prerequisite_postgres.py -q --junitxml=tmp_test/ak05-ci-reports/monthly-delivery.xml

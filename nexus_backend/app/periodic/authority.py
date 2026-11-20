@@ -122,7 +122,12 @@ class ClosingAuthorityService:
                 "details": request.details,
             }
         )
-        with self.db.transaction(write=True, actor=actor) as conn:
+        with self.db.transaction(actor=actor) as conn:
+            prebook = self.access.book(conn, actor, request.book_id, "review")
+            company_id = prebook["company_id"]
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             book = self.access.book(conn, actor, request.book_id, "review")
             authority = self._authority(conn, book["company_id"])
             if not authority["confirmed"]:

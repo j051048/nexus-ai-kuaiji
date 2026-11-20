@@ -5,9 +5,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-SENSITIVE_KEYS = frozenset(
-    {"bank_account", "account_no", "tax_id", "phone", "mobile", "id_card"}
-)
+SENSITIVE_KEYS = frozenset({"bank_account", "account_no", "tax_id", "phone", "mobile", "id_card"})
 
 
 def mask_bank_account(value: str) -> str:
@@ -58,7 +56,9 @@ def redact_sensitive(value: Any) -> Any:
     """Recursively mask known fields without changing the stored record."""
     if isinstance(value, dict):
         return {
-            key: mask_sensitive_value(key, item) if key in SENSITIVE_KEYS else redact_sensitive(item)
+            key: mask_sensitive_value(key, item)
+            if key in SENSITIVE_KEYS
+            else redact_sensitive(item)
             for key, item in value.items()
         }
     if isinstance(value, list):

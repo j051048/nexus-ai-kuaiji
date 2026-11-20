@@ -56,7 +56,7 @@ def preview(service, conn, actor, asset_id, book_id):
         service.accounting.access.book(conn, actor, history["book_id"], "read")
         if (
             history["period"] >= book["period"]
-            or history["unsupported"]
+            or _unsupported_history(conn, history["id"], asset)
             or history["net_cents"] != history["accum_cents"]
         ):
             blockers.append("历史调整包含其他科目、辅助项或未来期间，请先人工核对资产归属")
@@ -173,3 +173,15 @@ def generate(service, conn, actor, asset_id, request):
         },
     )
     return result
+
+def _unsupported_history(conn, voucher_id, asset):
+    """Asset lines carry the asset id in aux; other aux keys remain blocking."""
+    rows = conn.execute(
+        "SELECT account_id,aux_json FROM voucher_lines WHERE voucher_id=?", (voucher_id,)
+    ).fetchall()
+    allowed = {asset["expense_account_id"], asset["accum_account_id"]}
+    for row in rows:
+        aux = json.loads(row["aux_json"] or "{}")
+        if row["account_id"] not in allowed or any(key != "asset_id" for key in aux):
+            return True
+    return False

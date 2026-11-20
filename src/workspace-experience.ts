@@ -15,7 +15,7 @@ export function workspaceExperience(profile: WorkspaceProfile | null) {
   if (profile?.can_finance || profile?.can_accounting || profile?.can_manage) {
     kinds.push('handoff', 'ocr', 'proposal', 'migration');
   }
-  if (profile?.can_review) kinds.push('review', 'export', 'delivery');
+  if (profile?.can_review) kinds.push('review', 'export', 'delivery', 'bridge_return');
   if (profile?.can_manage) kinds.push('alert');
   return {
     processing,

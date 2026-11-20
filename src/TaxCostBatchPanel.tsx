@@ -218,7 +218,7 @@ export function TaxCostBatchPanel({
     }
   }
   useEffect(() => {
-    void load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */
+    void load();  
   }, [bookId, session]);
 
   function changeKind(next: Kind) {

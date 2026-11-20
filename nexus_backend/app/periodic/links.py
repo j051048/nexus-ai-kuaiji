@@ -111,7 +111,12 @@ class AssetVehicleLinkService:
         vehicle = request.vehicle_external_id.strip()
         if not vehicle:
             raise AccountingError("车辆外部编号不能为空", 422)
-        with self.db.transaction(write=True, actor=actor) as conn:
+        with self.db.transaction(actor=actor) as conn:
+            _asset, prebook = self._asset(conn, actor, asset_id, "edit")
+            company_id = prebook["company_id"]
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             asset, book = self._asset(conn, actor, asset_id, "edit")
             if asset["status"] != "active":
                 raise AccountingError("已处置资产不能建立车辆关联", 409)
@@ -171,7 +176,12 @@ class AssetVehicleLinkService:
             return self._view(conn, row)
 
     def revoke(self, actor, asset_id: str, request: AssetVehicleLinkRevoke):
-        with self.db.transaction(write=True, actor=actor) as conn:
+        with self.db.transaction(actor=actor) as conn:
+            _asset, prebook = self._asset(conn, actor, asset_id, "edit")
+            company_id = prebook["company_id"]
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             asset, book = self._asset(conn, actor, asset_id, "edit")
             row = conn.execute(
                 "SELECT * FROM periodic_asset_vehicle_links WHERE asset_id=? AND status='active'",

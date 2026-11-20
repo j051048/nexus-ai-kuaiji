@@ -45,8 +45,8 @@ def mapped_fee(case):
 def test_fee_draft_carries_real_driver_and_vehicle_auxiliaries(business):
     batch, party, project = mapped_fee(business)
     draft = business.ledger.get_draft(business.manager, business.book["id"], batch["draft_id"])
-    assert draft["lines"][0]["auxiliary_values"] == {"counterparty": party["id"]}
-    assert draft["lines"][1]["auxiliary_values"] == {"project": project["id"]}
+    assert draft["lines"][0]["auxiliary_values"] == {"counterparty": party["name"]}
+    assert draft["lines"][1]["auxiliary_values"] == {"project": project["name"]}
 
 
 def test_fee_receivable_cannot_masquerade_as_business_settlement(business):

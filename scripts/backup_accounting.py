@@ -193,6 +193,7 @@ ORIGINAL_TABLES = (
     ("material_attachments", "1=1", ("firm_id", "company_id")),
     ("invoice_import_batches", "1=1", ("firm_id", "company_id")),
     ("tax_filing_attachments", "1=1", ("firm_id", "company_id")),
+    ("source_originals", "1=1", ("firm_id", "company_id")),
     # Upload intents are never deleted. Stored/consuming rows may hold an
     # original that has not yet been attached to a business record.
     ("upload_intents", "state IN ('stored','consuming','consumed')", ("firm_id", "user_id")),
@@ -219,6 +220,7 @@ CONSUMED_TARGETS = {
         "tax_filing_attachments",
         "filing_id",
     ),
+    "source_original": ("source", "sources", "source_originals", "source_id"),
 }
 REFERENCE_COLUMNS = (
     "id",

@@ -72,7 +72,7 @@ class FirmReviewControlService:
         reason = request.reason.strip()
         if len(reason) < 10:
             raise AccountingError("修改事务所复核控制须填写至少 10 个字的理由", 422)
-        with self.db.transaction(write=True, actor=actor) as conn:
+        with self.db.transaction(write=True, actor=actor, write_scope="global") as conn:
             self.access.require_manager(conn, actor)
             current = self.get_in_transaction(conn, actor.firm_id)
             if current["version"] != request.expected_version:
@@ -210,7 +210,9 @@ class ReviewPolicyService:
             control = FirmReviewControlService.get_in_transaction(conn, book["firm_id"])
             ledger_id = self.policy_in_transaction(conn, book_id)["ledger_id"]
         if request.mode == "single_operator" and control["single_operator_disabled"]:
-            with self.db.transaction(write=True, actor=actor) as conn:
+            with self.db.transaction(
+                write=True, actor=actor, company_id=company_id, write_scope="company"
+            ) as conn:
                 self.audit(
                     conn,
                     actor,

@@ -4,8 +4,8 @@
 
 ## PLT00 执行纪律、责任与计量基线  <状态：工具就绪待客户输入（本机门禁/模板/合成演练通过；真实工时、客户资料、责任人签认未提供）>
 
-- 现状核实：HEAD `c8da023777fff5c7eeb7311067cdcd7e8244e61b`；工作区 120+ 项改动；迁移最高 302（215/300/301/302 已在 PG16/17 应用）。PLT01–PLT04 已记录（PLT04-D 本地通过；E 工具就绪待客户），PLT05-A 本地通过（真实 T+ 未联调），PLT05-B 契约/解析器/PG/浏览器/手工证据通过（返回差异任务投影已就绪、WorkSpace 待办映射与 handler/手工浏览器 e2e 未接），PLT05-C–PLT09 尚未执行。
-- 当前联合候选：source **2487/`98986251c5fe425b7536a5ecf8cb181b73977d96b4504460f1f23f14131cf3e6`**、migration **505/`969cc011de43c5bea4619ace590182623126522618c1524acce0735ed1d275b2`**；各模块仍保留其通过时的历史候选。
+- 现状核实：HEAD `074c7ad1f80797f3a194632ebf2c4d224a3882c7`；工作区 120+ 项改动；迁移最高 308（PG 304/305/307/308 尚未在 PG16/17 应用验证）。PLT01–PLT04 已记录（PLT04-D 本地通过；E 工具就绪待客户），PLT05-A 本地通过（真实 T+ 未联调），PLT05-B 契约/解析器/PG/浏览器/手工证据通过；PLT05-C 返回差异接入统一待办与 handler/手工浏览器 e2e、独立 HTTP 成功路径通过（PG 303 未应用验证）；PLT05-D 六项缺口补强本机 SQLite/浏览器/HTTP/前端门禁通过（PG 304/305/307/308 与 RLS 用例未实跑），PLT05-E–PLT09 尚未执行。
+- 当前联合候选：source **2411/`39f21b945a4da9914fb02d5b9fc753b2e02984fc19cdef6bbadcc0977888f374`**、migration **514/`046d9ac0baf39faf734145c9030b171e093263b749ba1f88786db436d8b76533`**；各模块仍保留其通过时的历史候选。
 - 修改文件（新增）：
   - `scripts/opt_acceptance.py`：`release_blockers(results, *, require_pg)` 与 `--require-pg`；PG skipped/passed-with-skips/skipped_tests 均列 blocker，release status 置 failed。
   - `nexus_backend/tests/test_plt00_release_gate.py`。
@@ -987,4 +987,66 @@
 - 前端复验：`npm test -- --run` **158 files/1425 passed/3.96s**；typecheck、Prettier、build 通过；handler/手工 UI 尚无浏览器 e2e。
 - 证据原件：`bridge_return_evidence`（SQLite 217/PG 302）+ `POST/GET /returns/{import_id}/evidence` + 手工表单文件上传已接；证据 ≤2MB、PDF/PNG/JPEG 魔数，绑定 import/book/firm 权限；服务测试含错魔数 422/重复 409，`test_plt05_return_import.py` **9 passed/12.87s**；PG17/16 证据往返 **各 1 passed**（2.77/2.71s）。
 - 仍未做：PLT03-B 差异待办映射、handler/手工 UI 浏览器 e2e、真实 T+ 契约；返回文件/证据 API 无独立 HTTP 用例。
+- 接续（PLT05-C）：本节“仍未做”中的 PLT03-B 差异待办映射、handler/手工 UI 浏览器 e2e、独立 HTTP 用例均已完成，见下节；真实 T+ 仍未验证。
 - 当前候选：HEAD `c8da023777fff5c7eeb7311067cdcd7e8244e61b`，source **2487/`98986251c5fe425b7536a5ecf8cb181b73977d96b4504460f1f23f14131cf3e6`**、migration **505/`969cc011de43c5bea4619ace590182623126522618c1524acce0735ed1d275b2`**；未提交/推送/部署。
+
+## PLT05-C 返回差异接入统一待办  <状态：进行中（SQLite 待办/处置/手工回执/浏览器与 HTTP 成功路径通过；PG 303 未应用验证、真实 T+ 未验证）>
+
+- 目标与口径：把 `FinancialBridgeService.list_return_tasks` 投影为 Workspace 待办 `kind='bridge_return'`，`ref='{import_id}:{voucher_code}'`（与 `GET /returns/tasks` 的 `object_id` 同一值，UI 不需要再解析）；仅对具备复核能力的人可见——待办过滤用 `review_books`（`src/App.tsx` 与 handler 写路径同一个 capability `"review"`），无复核权的人既看不到待办也无法处置；差异处置后该行从待办消失。
+- 后端（`nexus_backend`）：
+  - `app/workspace/service.py`：`KINDS` 增 `bridge_return`；`_task_gates` 增 `"bridge_return": reviewer`；`_query`（实时）与 `_projected_query`（投影）各增一个分支，均 `FROM bridge_return_imports i JOIN bridge_return_rows r` + `LEFT JOIN bridge_return_row_handlers h`，过滤 `h.import_id IS NULL AND r.status NOT IN ('accepted','duplicate')` 且 `EXISTS(review_books)`；状态词映射为中文标题（金额不一致/科目不一致/对方拒绝/对方未找到凭证/对方缺少凭证/对方多出凭证），金额为 `ABS(actual-expected)`。
+  - `app/workspace/projection.py`：增 `bridge_return` 投影 INSERT（22 列与既有语句一致），供投影干净时直接读物化表。
+  - `nexus_backend/migrations/sqlite/218_plt05_return_projection.sql`：为 `bridge_return_imports`、`bridge_return_row_handlers` 建 `AFTER INSERT` 置脏触发器（`workspace_projection_state.revision+1`）。
+  - `nexus_backend/migrations/postgres/303_plt05_return_projection.sql`：**不复用** `workspace_projection_bump()`（117 号迁移给它加了来源表白名单，非白名单表会直接 `RAISE EXCEPTION 'Untrusted workspace projection trigger source'`），另建 `accounting.bridge_return_projection_bump()`（SECURITY DEFINER，校验 schema/AFTER/INSERT/表名/`TG_RELID`/`firm_clients` 关系），并 `REVOKE ALL ... FROM PUBLIC, accounting_app, accounting_worker`；两表各建 `AFTER INSERT` 触发器。
+  - `app/integrations/service.py`：`list_return_tasks` SQL 增 `JOIN bridge_export_artifacts a` 并返回 `outbox_id`，供 UI 从待办直接定位冻结交付包；`app/integrations/router.py` 的 `GET /returns/tasks` 保留。
+- 前端（`src`）：
+  - 类型/文案：`workspace-types.ts` 的 `TaskKind` 增 `bridge_return`、`taskDestination` 返回 `{type:'bridge_return', id: task.ref, bookId: task.book_id}`；`task-labels.ts`、`task-language.ts`、`task-presentation.ts`（details/actionStates/capability/actionNext）、`workspace-experience.ts` 补映射与“筛选待办类型”选项（仅 `can_review`）。
+  - 导航：`App.tsx` 新增 `integrationFocus` state（session 重置与 `navigate()` 都清空），`openWorkspaceTask` 的 bridge_return 分支走 `go('accounting')` → `setBookId` → `setIntegrationFocus(target.id)` → `setRouteView('integration')` → `initialize`；`WorkspaceRouteContent.tsx` 把 `integrationFocus` 透传给 `IntegrationWorkbench`。
+  - `IntegrationWorkbench.tsx`：新增 `focus` prop；`loadArtifact` 抽成可复用的 `refreshArtifact`；`openFocusTask(ref)` 先 `GET returns/tasks?limit=200` 按 `object_id` 定位，再加载对应 outbox 并预置处置表单，找不到时提示“该差异已处置或不在当前待办中”；差异行在预置处置表单时自动展开。
+  - 修复真实缺口：手工登记区的 `manualEvidence` 此前没有任何文件输入赋值，按钮 `!manualEvidence` 导致浏览器里永久禁用；已补“证据原件” `input[type=file]`（PDF/PNG/JPEG）。
+- 测试与验收（本机真实输出）：
+  - 后端：`cd nexus_backend && PYTHONPATH=.. python -m pytest -q tests/test_plt05_return_import.py tests/test_plt05_return_workspace.py tests/test_plt05_return_http.py` → **14 passed/19.56s**。
+  - 新增 `tests/test_plt05_return_workspace.py`（3 条）：待办可见/字段/金额/期间/责任人 → 处置后消失；`refresh_company` 后 live 与投影逐行相等、处置后投影置脏；无复核权（`viewer`）看不到。
+  - 新增 `tests/test_plt05_return_http.py`（2 条，独立 HTTP 成功路径）：`GET /returns/tasks` 含 `outbox_id` → `POST .../handle` 200 且再查为空 → 同参数重复 POST 幂等；`POST /returns/manual` 201 → `POST evidence` 201 → `GET evidence` 200（字节、`application/pdf`、`Content-Disposition`、`no-store`）→ 重复 attach 409。
+  - 浏览器 e2e：`npx playwright test e2e/stage10-integrations.spec.ts --reporter=line` → **3 passed/29.5s**。新增两条：① 返回差异出现在 `/workspace/home` → 点卡片 → 落在财务软件接入 → 内联处置 → 卡片消失；② 浏览器选择证据原件 → 手工登记 → “已接收 · 已过账” → API 证据可下载。截图 `artifacts/plt05-return-task-handled.png`、`artifacts/plt05-return-manual.png`。
+  - 前端门禁：`npm run typecheck` 通过；`npm test -- --run` **158 files/1425 passed/3.67s**；`npm run build` 通过（Windows esbuild 曾因系统 TEMP 目录 “Access is denied” 失败，把 `TEMP`/`TMP` 指到工作区 `tmp_build` 后 3.32s 成功；`index` 570.67 kB/gzip 176.89 kB 为既有体积提示）；Prettier 通过。
+  - 回归：`tests/test_workspace_projection.py tests/test_stage22_workspace_reads.py tests/test_stage12_workspace.py` → **34 passed/1 failed/1 skipped**；唯一失败 `test_projection_matches_live_for_export_and_delivery` 是既有 maker-checker 失败（`c.ledger.approve` 抛“制单人不能独立审核本人创建版本”，发生在任何 workspace 查询之前），已把本包改动 stash 后在 HEAD 基线复跑同样失败，属预存基线问题，未修改。
+- 未验证/边界：无 PG 环境，**migration 303 与两个触发器未在 PG16/PG17 应用或实跑**（仅代码审阅）；真实 T+ 契约仍未联调；PLT05-B 的 `test_plt05_evidence_http.py` 仍是 404/422 fail-closed 用例，未改成成功路径（成功路径在本包 `test_plt05_return_http.py`）。
+- 候选：HEAD `074c7ad1f80797f3a194632ebf2c4d224a3882c7`；source **2398/`506953a34707d942bf4dd2475afba9d67271bba2204fc3ae042014f37f710094`**、migration **507/`7595c03157f7b07afa2de8b4b1e71b46d55c3a09eaf6214abf68e346712058c6`**。HEAD 提交已含本包主体（19 文件，+827/−36；含迁移 218/303、两份新测试、e2e 与前端接线）；提交后仍有 `e2e/stage10-integrations.spec.ts`（展开断言/本次操作依据/文件选择器修正）与 `src/workspace-experience.ts`（筛选选项）两处修改未提交；未推送、未部署。
+
+## PLT05-D 六项缺口补强（P0-1/P0-2/P0-3/P1-4/P1-5/P1-6）  <状态：进行中（本机 SQLite/浏览器/HTTP/前端门禁通过；PG 304/305/307/308 与 RLS 用例未在 PG16/17 实跑）>
+
+- 来源与口径：按用户给出的六项缺口清单逐项补强，先写失败测试再改实现；未修改既有迁移，新增前向迁移 SQLite 219/220、PostgreSQL 304/305/307。PG 环境不可用，涉及 PG 的策略/列/触发器只做代码审阅，不写“完成”。
+- P0-1 回执原件账套隔离（已完成本机验证）：
+  - `nexus_backend/migrations/postgres/304_plt05_return_evidence_book_scope.sql`：删除 `bridge_return_evidence`、`bridge_return_row_handlers` 的 firm-only 策略，改为读/写两条策略，条件为 `accounting.book_allowed(book_id[,TRUE])` + `EXISTS(SELECT 1 FROM bridge_return_imports i WHERE i.id=import_id AND i.book_id=book_id AND i.company_id=company_id AND i.firm_id=accounting.actor_firm())`；同所跨账套、跨法人、撤权均被拒。
+  - `nexus_backend/app/integrations/service.py` 的 `attach_evidence` 改用写权限（`_scope(..., True)`），并先做 base64/魔数校验再查账套，避免非法输入把 422 变成 404。
+  - 新增 `nexus_backend/tests/test_plt05_return_rls_postgres.py`：`c.unassigned`（firm reviewer、无账套）读到 0 行、`c.reviewer` 读到 1 行、无账套 INSERT handler 抛 `InsufficientPrivilege`、删除 `book_access` 后立即 0 行；无 PG 时 skip。
+- P0-2 外部过账误确认（已完成本机验证）：
+  - `record_return` 校验返回文件批次标识等于冻结交付批次（否则 422“批次标识与冻结交付批次不一致，拒绝登记”）。
+  - 新增 `bridge_return_imports.evidence_verified`（SQLite 219、PostgreSQL 305，PG 需 `GRANT UPDATE(evidence_verified)`）：文件回执为 1，手工回执只有附证据原件才为 1；`attach_evidence` 写入证据后置 1。
+  - 返回行无金额或无科目时只确认“接收”，`posted` 要求每行有对方过账日期、金额与科目；手工登记“已过账”必须填写对方过账日期，`_return_view` 同时返回 `posted_declared`/`evidence_verified`，`_external_state` 只有两者皆真才显示已过账。
+  - 修复手工回执把 `evidence_ref` 存成证据字节、备注为空时 reason 写入 `None`、过账日期用当天等缺陷；下载头改 RFC 5987（ASCII fallback + `filename*=UTF-8''…`），`客户回执.pdf` 不再 500。
+  - 前端 `IntegrationWorkbench` 手工区增“对方过账日期”输入并纳入禁用条件，证据上传后重取 returns 以即时反映核验状态；e2e 手工用例补填过账日期。
+  - 测试：`test_plt05_return_import.py` 12 passed；`test_plt05_return_http.py` 用中文文件名断言 `filename*=UTF-8''%E5%AE%A2%E6%88%B7%E5%9B%9E%E6%89%A7.pdf` 与 `evidence_verified=True`。
+- P0-3 出租车差额归因（已完成本机验证）：
+  - 新增 `fee_source_relations`（SQLite 220 / PostgreSQL 307）：把结算单、银行到账、手续费凭据及其版本、金额、差额绑定成一条经核对的关系，`relation_sha256` 防换版；PG 开 RLS（`book_allowed` 读/写）并挂 `batch2_company_write_gate`。`fee_receivable_variances` 增 `relation_id`。
+  - 新增 `app/tax/relations.py`：`SourceRelationService.verify/verify_in/find`，校验来源属于本账套、settlement/fee 为业务单据、bank 为银行流水、期间一致、金额与差额一致、证据非空；同摘要幂等，换版 409“来源关系已变化，请重新核对”。
+  - `app/assistant/analysis.py`：结算单/手续费必须是业务单据、结算/到账必须属于当前期间；手续费金额与差额一致但无已核对关系时返回 `partial/unverified_source_relation`（不再宣称“已由手续费解释”），关系不含手续费时 `fee_relation_mismatch`，版本不符 409。
+  - `app/tax/variances.py`：登记时校验 `bank_source_id` 是本账套银行流水且金额等于 `actual_cents`；同时给结算单/手续费时强制建立关系，并要求关系差额与登记差额一致。
+  - 测试：`test_assistant_settlement_difference.py` 9 passed（含同额无关手续费、换版 409）；`test_plt04_fee_variances.py` 15 passed（含非银行来源 422、金额不符 422、关系差额不一致 422、关系绑定成功）。
+- P1-4 报表差异下钻指错依据（已完成本机验证）：
+  - `reconciliation.py` 的 `system_by_key["section"]` 由中文表名改为 `group`；新增 `_profit_item_section`（优先冻结的 income/expense，旧内容按科目前缀 6001/6051/6111/6301 与 6401/6402/6403/6601/6602/6603/6711/6801 回退）；`_drilldown` 的利润收入/费用按归属下钻，缺明细回退合计，未知 section 返回空，不再全部落到现金流。
+  - `reports/service.py` 新增 `_assert_mapping_current`：正式报表的 `mapping_fingerprint` 与当前科目映射不一致时，`validate/reconcile/explain_difference/review/publish` 均抛 409“科目到报表行次的映射已变化，请重新生成报表”；解释写库经 `_report(..., write=True)` 绑定报表、账套与复核权限。
+  - `test_plt02_reference_reconciliation.py` 8 passed（利润收入/费用下钻科目、映射变更后 reconcile/explain/review 409、employee 无复核权被拒、解释记录 report/book/firm 绑定）。
+- P1-5 待办定位与返回（已完成本机验证）：
+  - `src/FeeVariancePanel.tsx`：目标不在当前期间时显示 `role=status` 提示并保留人工核查入口；目标存在时提示“已定位到待办中的这笔差异”，`requestAnimationFrame` 后 `scrollIntoView` + `focus`，目标 `li` 加 `tabIndex={-1}`；`src/fee-variance.css` 增 `.fee-variance-target`。
+  - 新增 `e2e/plt04-fee-variance-target.spec.ts`：真实 API 建 2026-10 书与规费差异待办，桌面 1280×900 与手机 390×844 均验证目标行可见/高亮、URL 保留 `period=2026-10` 与 `company=`、点“返回待办”回到 `/workspace/home` 且卡片仍在。
+- P1-6 发布证据（已完成本机验证）：
+  - `../.venv/Scripts/python.exe -m ruff check app tests` → All checks passed；`npm run lint`、`npm run typecheck` 通过；`npm run test` → 158 files/1425 passed/3.97s；`npm run build`（TEMP/TMP 指到工作区 `tmp_build`）→ built in 3.65s。
+  - 重建后 `npm run test:frontend-budget` → violations: []（initialJs 566,623/570,000；initialGzip 175,537/176,000；homeCss 144,715/145,000）；此前超限数字属旧 dist，不据此改预算。
+  - `tests/test_migration_structure.py tests/test_migration_compatibility.py tests/test_release_migration_history.py` → 16 passed/7.96s。边界：219/304/305 的 compatibility 摘要由外部并发进程登记在 `nexus_backend/tests/migration_structure_debt.json`（本包未改该文件）；306/308 为外部并发批次迁移，不属于本包。
+- 联合验收（本机真实输出）：
+  - `pytest tests/test_plt05_return_import.py tests/test_plt05_return_workspace.py tests/test_plt05_return_http.py tests/test_plt04_fee_variances.py tests/test_assistant_settlement_difference.py tests/test_plt02_reference_reconciliation.py -q` → **49 passed/89.12s**。
+  - `npx playwright test e2e/stage10-integrations.spec.ts e2e/plt04-fee-variance-target.spec.ts --reporter=line` → **4 passed/50.2s**（返回差异待办处置、手工登记、原集成底座、规费差异桌面+手机）。
+- 未验证/边界：无 PG 环境，**304/305/307（及外部 308）未在 PG16/17 应用或实跑，RLS 用例仅 skip**；真实 T+ 契约仍未联调；P1-4 的旧正式报表失效按“拒绝继续复核/对账/解释”处理，未回写报表状态列；PLT05-D 前端增量已由重建后的预算门禁覆盖，但后续新增代码仍受同一预算约束。
+- 候选：HEAD `074c7ad1f80797f3a194632ebf2c4d224a3882c7`；source **2411/`39f21b945a4da9914fb02d5b9fc753b2e02984fc19cdef6bbadcc0977888f374`**、migration **514/`046d9ac0baf39faf734145c9030b171e093263b749ba1f88786db436d8b76533`**。本包改动与既有 120+ 项工作区改动混存，未提交/推送/部署。

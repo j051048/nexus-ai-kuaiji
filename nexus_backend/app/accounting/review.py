@@ -12,7 +12,7 @@ from .domain import AccountingError
 from .models import cents_to_money
 from .queries import health_cte, page_bounds
 from .review_models import ReviewConfirmRequest, ReviewPreviewRequest
-from .review_risk import REVIEW_RISK_RULE_VERSION, grade_review_risk
+from .review_risk import grade_review_risk
 from .service import AccountingService, fingerprint, now
 
 
@@ -174,9 +174,7 @@ class ReviewService:
             }
 
     def _risk_in_transaction(self, conn, actor, row):
-        draft = self.accounting._editable_draft(
-            conn, row["book_id"], row["id"], row["version"]
-        )
+        draft = self.accounting._editable_draft(conn, row["book_id"], row["id"], row["version"])
         value = self.accounting._draft_json(conn, draft, actor)
         issues = list(value["issues"])
         responsibility = value["review_responsibility"]

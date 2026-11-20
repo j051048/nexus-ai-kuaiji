@@ -6,7 +6,7 @@ from uuid import uuid4
 import pytest
 
 from app.accounting.directory import DirectoryService
-from app.accounting.domain import Actor
+from app.accounting.domain import AccountingError, Actor
 from app.accounting.models import (
     BookCreate,
     BookMemberGrant,
@@ -52,9 +52,13 @@ def person(c, company=None, role="finance", firm_role=None):
     return identity, Actor(uid, c.actor.firm_id)
 
 
-def derived_grants(c, member, company=None, book=None):
+def derived_grants(c, member, company=None, book=None, *, reviewer=False):
     company, book = company or c.company, book or c.book
-    c.directory.grant_book_member(c.actor, book, member.user_id, BookMemberGrant(role="reviewer"))
+    c.directory.grant_book_member(c.actor, book, member.user_id, BookMemberGrant(role="viewer"))
+    if reviewer:
+        c.directory.grant_book_member(
+            c.actor, book, member.user_id, BookMemberGrant(role="reviewer")
+        )
     c.ledgers.grant_manager(
         c.actor, book, ManagerGrant(user_id=member.user_id, reason="明确授予长期账套管理职责")
     )
@@ -103,24 +107,26 @@ def assert_removed(c, uid, ledger, project, book=None):
         assert conn.execute("SELECT active FROM users WHERE id=?", (uid,)).fetchone()[0] == 1
 
 
-def test_explicit_company_finance_manager_can_create_period_without_granting_existing_books(
+def test_explicit_company_finance_manager_cannot_create_period_without_firm_reviewer(
     scoped_case,
 ):
     c = scoped_case
     member, actor = person(c)
     derived_grants(c, member)
-    next_period = c.ledgers.create_period(
-        actor,
-        c.book,
-        PeriodCreate(
-            period="2026-11",
-            name="十一月",
-            source_book_id=c.book,
-            idempotency_key="finance-next-period",
-        ),
-    )
-    assert c.service.get_book(actor, next_period["book_id"])["book"]["permissions"]["review"]
-    assert c.ledgers.overview(actor, c.book)["can_manage"]
+    c.directory.grant_book_member(c.actor, c.book, member.user_id, BookMemberGrant(role="viewer"))
+    with pytest.raises(AccountingError) as exc:
+        c.ledgers.create_period(
+            actor,
+            c.book,
+            PeriodCreate(
+                period="2026-11",
+                name="十一月",
+                source_book_id=c.book,
+                idempotency_key="finance-next-period",
+            ),
+        )
+    assert exc.value.status == 403
+    assert not c.ledgers.overview(actor, c.book)["can_manage"]
 
 
 @pytest.mark.parametrize("mutation", ["delete", "downgrade", "native_delete", "native_downgrade"])
@@ -161,9 +167,17 @@ def test_company_admin_revocation_clears_derived_grants_only_in_its_company(scop
     c.directory.grant_company_member(
         c.actor, c.company, CompanyMemberGrant(email=member.email, role="finance")
     )
-    c.directory.grant_book_member(c.actor, c.book, member.user_id, BookMemberGrant(role="reviewer"))
-    assert not c.ledgers.overview(actor, c.book)["can_manage"]
-    assert c.ledgers.overview(actor, other_book)["can_manage"]
+    with pytest.raises(AccountingError) as exc:
+        c.directory.grant_book_member(
+            c.actor, c.book, member.user_id, BookMemberGrant(role="reviewer")
+        )
+    assert exc.value.status == 403
+    with pytest.raises(AccountingError) as no_access:
+        c.ledgers.overview(actor, c.book)
+    assert no_access.value.status == 404
+    other_view = c.ledgers.overview(actor, other_book)
+    assert not other_view["can_manage"]
+    assert not other_view["can_review"]
     with c.db.transaction(actor=c.actor) as conn:
         assert (
             conn.execute(
@@ -186,7 +200,7 @@ def test_firm_member_revocation_clears_derived_grants_even_with_separate_company
 ):
     c = scoped_case
     member, actor = person(c, firm_role="reviewer")
-    ledger, project = derived_grants(c, member)
+    ledger, project = derived_grants(c, member, reviewer=True)
     c.directory.revoke_firm_member(c.actor, member.user_id)
     assert_removed(c, member.user_id, ledger, project)
     c.directory.grant_firm_member(c.actor, FirmMemberGrant(email=member.email, role="reviewer"))
@@ -197,7 +211,7 @@ def test_firm_member_revocation_clears_derived_grants_even_with_separate_company
 def test_removing_company_membership_preserves_independent_firm_authority(scoped_case):
     c = scoped_case
     member, actor = person(c, firm_role="reviewer")
-    _, project = derived_grants(c, member)
+    _, project = derived_grants(c, member, reviewer=True)
     c.directory.revoke_company_member(c.actor, c.company, member.user_id)
     assert c.ledgers.overview(actor, c.book)["can_manage"]
     with c.db.transaction(actor=c.actor) as conn:

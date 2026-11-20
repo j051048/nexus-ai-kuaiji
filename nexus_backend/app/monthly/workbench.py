@@ -131,7 +131,9 @@ class MonthlyWorkbenchService:
                 values.append(1 if role else 0)
             books = [
                 dict(row)
-                for row in conn.execute(f"SELECT * FROM ({scope}) v ORDER BY company_name,period", values)
+                for row in conn.execute(
+                    f"SELECT * FROM ({scope}) v ORDER BY company_name,period", values
+                )
             ]
             clients = [
                 dict(row)
@@ -200,9 +202,7 @@ class MonthlyWorkbenchService:
                 stage = self._annual_book_state(
                     closed=row["period_status"] == "closed",
                     package_pending=pending_package,
-                    delivered=bool(
-                        packages.get(row["id"]) and packages[row["id"]]["acknowledged"]
-                    ),
+                    delivered=bool(packages.get(row["id"]) and packages[row["id"]]["acknowledged"]),
                     materials=materials.get(row["id"], 0),
                     drafts=drafts.get(row["id"], 0),
                 )

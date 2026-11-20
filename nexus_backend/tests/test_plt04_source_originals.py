@@ -2,6 +2,7 @@
 
 import hashlib
 import time
+from uuid import uuid4
 
 import pytest
 
@@ -195,7 +196,7 @@ def test_pg_source_original_round_trip(formal_case, tmp_path):
     case = formal_case
     case.store = AttachmentStore(tmp_path / "pg-source-originals")
     case.uploads = UploadIntentService(case.db, case.store)
-    source_id = "src-original-pg-plt04"
+    source_id = f"src-original-pg-{uuid4().hex[:10]}"
     with case.db.transaction(write=True, actor=case.manager) as conn:
         conn.execute(
             "INSERT INTO sources(id,book_id,external_id,source_name,date,description,"
@@ -243,4 +244,3 @@ def test_pg_source_original_round_trip(formal_case, tmp_path):
         ).fetchone()
         assert '"purpose":"source_original"' in binding["binding_json"]
         assert f'"source_id":"{source_id}"' in binding["binding_json"]
-

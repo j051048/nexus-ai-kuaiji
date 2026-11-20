@@ -6,8 +6,9 @@ from uuid import uuid4
 
 import pytest
 
-from app.accounting.domain import AccountingError
-from app.accounting.models import ApprovalRequest, ExportRequest, ImportRequest, SourceRow
+from app.accounting.domain import Actor, AccountingError
+from app.accounting.models import ApprovalRequest, BookMemberGrant, ExportRequest, FirmMemberGrant, ImportRequest, SourceRow
+from app.accounting.review_policy import ReviewPolicyService
 from app.accounting.service import now
 from app.business.models import BusinessEventCreate, HandoffRequest
 from app.business.service import BusinessService
@@ -37,6 +38,17 @@ def guard_case(request):
                                finance=raw.actors["finance"], approver=raw.actors["approver"],
                                reviewer=raw.actors["accountant"], ledger=raw.ledger, company=raw.company["id"], book=raw.book["id"])
         case.business = raw.service
+        reviewer2 = "ledger-reviewer-" + uuid4().hex
+        with case.db.transaction(write=True, actor=case.owner) as conn:
+            conn.execute(
+                "INSERT INTO users(id,name,email,active) VALUES(?,?,?,1)",
+                (reviewer2, "独立复核人", reviewer2 + "@example.test"),
+            )
+        raw.directory.grant_firm_member(case.owner, FirmMemberGrant(email=reviewer2 + "@example.test", role="reviewer"))
+        raw.directory.grant_book_member(case.owner, case.book, reviewer2, BookMemberGrant(role="reviewer"))
+        case.reviewer2 = Actor(reviewer2, case.owner.firm_id)
+    if not hasattr(case, "reviewer2"):
+        case.reviewer2 = case.reviewer
     case.ai = IntelligenceService(case.db, None, provider=OpenAICompatibleProvider(AISettings()))
     # This suite compares an explicitly paused legacy ledger against enabling
     # its OCR guard. Product defaults are independently covered as enabled.
@@ -90,11 +102,13 @@ def draft_value(case, draft_id):
 
 def approve(case, draft_id):
     value = draft_value(case, draft_id)
-    return case.ledger.approve(case.reviewer, case.book, draft_id, ApprovalRequest(expected_version=value["version"]))
+    reviewer = getattr(case, "reviewer2", case.reviewer)
+    return case.ledger.approve(reviewer, case.book, draft_id, ApprovalRequest(expected_version=value["version"]))
 
 
 def export(case, draft_id):
-    return case.ledger.export(case.reviewer, case.book, ExportRequest(draft_ids=[draft_id], idempotency_key=uuid4().hex))
+    reviewer = getattr(case, "reviewer2", case.reviewer)
+    return case.ledger.export(reviewer, case.book, ExportRequest(draft_ids=[draft_id], idempotency_key=uuid4().hex))
 
 
 def finding_count(case):
@@ -251,9 +265,14 @@ def test_ledger_linked_bank_export_has_independent_defense_after_external_status
     event, _, _ = business_draft(case, paid=True)
     bank = bank_draft(case)
     link_bank(case, event, bank)
-    # Simulate an out-of-band status change; the public approve API rejects it.
-    with case.db.transaction(write=True, actor=case.reviewer) as conn:
-        conn.execute("UPDATE drafts SET status='approved' WHERE id=?", (bank["id"],))
+    # Simulate a status change written outside the public approve API. The
+    # database still requires the current independent reviewer/policy fields.
+    policy_version = ReviewPolicyService(case.db).get(case.reviewer2, case.book)["policy"]["version"]
+    with case.db.transaction(write=True, actor=case.reviewer2) as conn:
+        conn.execute(
+            "UPDATE drafts SET status='approved', version=version+1, approved_by=?, approved_at=?, review_policy_version=? WHERE id=?",
+            (case.reviewer2.user_id, now(), policy_version, bank["id"]),
+        )
     with pytest.raises(AccountingError, match="禁止重复审核或导出"):
         export(case, bank["id"])
     with case.db.transaction(actor=case.reviewer) as conn:

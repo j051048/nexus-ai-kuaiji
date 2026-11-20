@@ -4,6 +4,7 @@ import pytest
 
 from app.accounting.domain import AccountingError
 from app.assistant import analysis
+from app.tax.relations import SourceRelationService
 from test_business import business  # noqa: F401
 
 
@@ -67,12 +68,55 @@ def test_unexplained_difference_states_amount_missing_evidence_and_owner(settlem
 def test_verified_fee_evidence_explains_only_matching_difference(settlement_case):
     with settlement_case.db.transaction() as conn:
         _source(conn, settlement_case.book["id"], "fee-001", "平台手续费", 35_000)
+    SourceRelationService(settlement_case.db).verify(
+        settlement_case.manager,
+        settlement_case.book["id"],
+        settlement_source_id="settle-001",
+        bank_source_id="bank-001",
+        fee_source_id="fee-001",
+        reason="核对平台结算单、到账流水与手续费凭据",
+    )
     result = _run(settlement_case, fee_source_id="fee-001")
     assert result["status"] == "complete"
     assert result["facts"]["reason"] == "fee_evidence"
     assert result["facts"]["fee_total"] == "350.00"
     assert result["handoff"] is None
     assert result["facts"]["fee_source"]["evidence_href"].endswith("source=fee-001")
+
+
+def test_same_amount_fee_outside_verified_relation_is_not_accepted(settlement_case):
+    with settlement_case.db.transaction() as conn:
+        _source(conn, settlement_case.book["id"], "fee-004", "同额但未核对的手续费", 35_000)
+    SourceRelationService(settlement_case.db).verify(
+        settlement_case.manager,
+        settlement_case.book["id"],
+        settlement_source_id="settle-001",
+        bank_source_id="bank-001",
+        reason="只核对结算单与到账流水",
+    )
+    result = _run(settlement_case, fee_source_id="fee-004")
+    assert result["status"] == "partial"
+    assert result["facts"]["reason"] == "fee_relation_mismatch"
+    assert "verified_fee_relation" in result["missing"]
+
+
+def test_changed_source_invalidates_verified_relation(settlement_case):
+    with settlement_case.db.transaction() as conn:
+        _source(conn, settlement_case.book["id"], "fee-005", "平台手续费", 35_000)
+    SourceRelationService(settlement_case.db).verify(
+        settlement_case.manager,
+        settlement_case.book["id"],
+        settlement_source_id="settle-001",
+        bank_source_id="bank-001",
+        fee_source_id="fee-005",
+        reason="核对平台结算单、到账流水与手续费凭据",
+    )
+    with settlement_case.db.transaction() as conn:
+        conn.execute("UPDATE sources SET evidence_ref='换版后的手续费' WHERE id='fee-005'")
+    with pytest.raises(AccountingError) as exc:
+        _run(settlement_case, fee_source_id="fee-005")
+    assert exc.value.status == 409
+    assert "来源关系已变化" in str(exc.value)
 
 
 def test_fee_evidence_mismatch_is_not_accepted(settlement_case):

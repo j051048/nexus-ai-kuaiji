@@ -1,4 +1,4 @@
-import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { assistantDeliveryTarget, type AssistantDeliveryTarget } from './assistant-delivery-target';
 import {
@@ -17,7 +17,12 @@ import {
   X,
 } from 'lucide-react';
 import { api, errorMessage } from './api';
-import { AuthScreen, NoAuthorization } from './AuthScreen';
+const AuthScreen = lazy(() =>
+  import('./AuthScreen').then((module) => ({ default: module.AuthScreen })),
+);
+const NoAuthorization = lazy(() =>
+  import('./AuthScreen').then((module) => ({ default: module.NoAuthorization })),
+);
 import { useAccountingAuth } from './useAccountingAuth';
 import { ActivityTimer } from './ActivityTimer';
 import { AgentNavigation, type AgentNavigationView } from './AgentNavigation';
@@ -716,25 +721,29 @@ export default function App() {
     );
   if (!session)
     return (
-      <AuthScreen
-        admin={adminMode}
-        config={auth.config}
-        loading={auth.loading}
-        error={auth.error}
-        onLogin={auth.login}
-        onRetry={auth.initialize}
-      />
+      <Suspense fallback={<div className="app-loading">正在加载登录页…</div>}>
+        <AuthScreen
+          admin={adminMode}
+          config={auth.config}
+          loading={auth.loading}
+          error={auth.error}
+          onLogin={auth.login}
+          onRetry={auth.initialize}
+        />
+      </Suspense>
     );
   if (!session.firm_id)
     return (
-      <NoAuthorization
-        name={session.user_name}
-        loading={auth.loading}
-        error={auth.error}
-        onCreate={auth.createFirm}
-        onLogout={auth.logout}
-        allowCreate={auth.config?.allow_firm_signup === true || auth.config?.mode === 'local'}
-      />
+      <Suspense fallback={<div className="app-loading">正在加载…</div>}>
+        <NoAuthorization
+          name={session.user_name}
+          loading={auth.loading}
+          error={auth.error}
+          onCreate={auth.createFirm}
+          onLogout={auth.logout}
+          allowCreate={auth.config?.allow_firm_signup === true || auth.config?.mode === 'local'}
+        />
+      </Suspense>
     );
   const canSeeAccounting =
     profile?.can_accounting ??

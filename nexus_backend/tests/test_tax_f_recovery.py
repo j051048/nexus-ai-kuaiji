@@ -80,7 +80,7 @@ def test_lease_basis_and_mapping_survive_full_restore(business, tmp_path):
         assert saved["version"] == 1
         assert saved["status"] == "active"
         assert saved["monthly_cents"] == 100000
-        assert saved["approved_version"] == 0
+        assert saved["approved_version"] == 1
 
         plan = conn.execute(
             "SELECT period,kind,status,amount_cents,draft_id,advance_cents "

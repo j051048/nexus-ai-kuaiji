@@ -1,3 +1,5 @@
+from urllib.parse import quote
+
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import Response
 from .models import (
@@ -173,11 +175,22 @@ def build_integrations_router(actor_dependency):
         svc=Depends(service),
     ):
         row = svc.evidence_for(actor, book_id, import_id, artifact_id)
-        return Response(content=bytes(row["content"]), media_type=row["media_type"], headers={
-            "Content-Disposition": f'attachment; filename="{row["filename"]}"',
-            "Cache-Control": "no-store",
-            "X-Content-Type-Options": "nosniff",
-        })
+        filename = str(row["filename"])
+        for char in ("\\", '"', "\r", "\n"):
+            filename = filename.replace(char, "_")
+        disposition = (
+            f"attachment; filename=\"{filename.encode('ascii', 'replace').decode('ascii')}\"; "
+            f"filename*=UTF-8''{quote(filename, safe='')}"
+        )
+        return Response(
+            content=bytes(row["content"]),
+            media_type=row["media_type"],
+            headers={
+                "Content-Disposition": disposition,
+                "Cache-Control": "no-store",
+                "X-Content-Type-Options": "nosniff",
+            },
+        )
 
     @router.get("/returns/tasks")
     def return_tasks(

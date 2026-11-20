@@ -2,7 +2,8 @@
 
 from uuid import uuid4
 
-from app.accounting.models import ApprovalRequest, ExportRequest
+from app.accounting.domain import Actor
+from app.accounting.models import ApprovalRequest, BookMemberGrant, ExportRequest, FirmMemberGrant
 from app.accounting.review_models import ReviewConfirmRequest
 from app.accounting.seed import LOCAL_ACTOR
 from app.business.storage import AttachmentStore
@@ -31,13 +32,26 @@ def company_of(db, book_id):
 def test_journal_import_review_export_are_company_scoped(business):
     c = business
     actor, book_id = c.actors["accountant"], c.book["id"]
-    calls = tap(c.db)
     draft = bank(c)
+    reviewer_id = "scope-reviewer-" + uuid4().hex
+    with c.db.transaction(write=True, actor=c.manager) as conn:
+        conn.execute(
+            "INSERT INTO users(id,name,email,active) VALUES(?,?,?,1)",
+            (reviewer_id, "范围复核人", reviewer_id + "@example.test"),
+        )
+    c.directory.grant_firm_member(
+        c.manager, FirmMemberGrant(email=reviewer_id + "@example.test", role="reviewer")
+    )
+    c.directory.grant_book_member(
+        c.manager, book_id, reviewer_id, BookMemberGrant(role="reviewer")
+    )
+    reviewer = Actor(reviewer_id, c.manager.firm_id)
+    calls = tap(c.db)
     c.ledger.approve(
-        actor, book_id, draft["id"], ApprovalRequest(expected_version=draft["version"])
+        reviewer, book_id, draft["id"], ApprovalRequest(expected_version=draft["version"])
     )
     c.ledger.export(
-        actor, book_id, ExportRequest(draft_ids=[draft["id"]], idempotency_key=uuid4().hex)
+        reviewer, book_id, ExportRequest(draft_ids=[draft["id"]], idempotency_key=uuid4().hex)
     )
     assert_scoped(calls, c.company["id"])
 

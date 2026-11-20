@@ -205,6 +205,7 @@ export function IntegrationWorkbench({
     [manualReturn, setManualReturn] = useState({
       received: true,
       posted: false,
+      postedDate: '',
       evidence: '',
       note: '',
     }),
@@ -510,6 +511,7 @@ export function IntegrationWorkbench({
             batch_code: intent.external_code,
             received: manualReturn.received,
             posted: manualReturn.posted,
+            posted_date: manualReturn.postedDate,
             evidence_ref: manualReturn.evidence,
             note: manualReturn.note,
           },
@@ -524,8 +526,12 @@ export function IntegrationWorkbench({
           content_base64: base64,
         },
       });
-      setReturns((rows) => [value, ...rows.filter((row) => row.id !== value.id)]);
-      setManualReturn({ received: true, posted: false, evidence: '', note: '' });
+      const refreshed = await api<{ returns: ReturnImport[] }>(
+        `${base}/artifacts/${artifact.id}/returns`,
+        session,
+      );
+      setReturns(refreshed.returns);
+      setManualReturn({ received: true, posted: false, postedDate: '', evidence: '', note: '' });
       setManualEvidence(null);
       setMessage('手工回执与证据原件已登记；操作人已留痕。');
     });
@@ -1067,6 +1073,17 @@ export function IntegrationWorkbench({
                         />
                       </label>
                       <label>
+                        对方过账日期
+                        <input
+                          type="date"
+                          value={manualReturn.postedDate}
+                          disabled={!manualReturn.posted}
+                          onChange={(e) =>
+                            setManualReturn((d) => ({ ...d, postedDate: e.target.value }))
+                          }
+                        />
+                      </label>
+                      <label>
                         证据引用
                         <input
                           value={manualReturn.evidence}
@@ -1096,7 +1113,12 @@ export function IntegrationWorkbench({
                     </div>
                     <button
                       className="button secondary"
-                      disabled={busy || manualReturn.evidence.trim().length < 5 || !manualEvidence}
+                      disabled={
+                        busy ||
+                        manualReturn.evidence.trim().length < 5 ||
+                        !manualEvidence ||
+                        (manualReturn.posted && !manualReturn.postedDate)
+                      }
                       onClick={() => void submitManualReturn()}
                     >
                       登记手工回执

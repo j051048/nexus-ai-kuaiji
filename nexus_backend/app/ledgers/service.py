@@ -794,8 +794,17 @@ class LedgersService:
             conn.execute(
                 "INSERT INTO subject_aliases(id,firm_id,company_id,subject_type,subject_id,alias,source,status,effective_from,created_by,created_at) "
                 "VALUES(?,?,?,'transport_subject',?,?,?,'approved',?,?,?)",
-                (alias_id, actor.firm_id, book["company_id"], request.subject_id, request.alias,
-                 request.source, "0001-01-01", actor.user_id, now()),
+                (
+                    alias_id,
+                    actor.firm_id,
+                    book["company_id"],
+                    request.subject_id,
+                    request.alias,
+                    request.source,
+                    "0001-01-01",
+                    actor.user_id,
+                    now(),
+                ),
             )
             self._history(
                 conn, actor, book, alias_id, "transport.alias.create", request.model_dump()
@@ -922,7 +931,9 @@ class LedgersService:
             )
             return {"id": assignment_id, "valid_from": start, "valid_to": end}
 
-    def _transport_subject(self, conn, actor, company_id, kind, external_id, display_name, on_date=None):
+    def _transport_subject(
+        self, conn, actor, company_id, kind, external_id, display_name, on_date=None
+    ):
         if not external_id and not display_name:
             raise AccountingError("必须提供稳定外部 ID 或历史名称", 422)
         if external_id:
@@ -999,11 +1010,23 @@ class LedgersService:
             book = self.access.book(conn, actor, book_id, "read")
             company_id = book["company_id"]
             vehicle = self._transport_subject(
-                conn, actor, company_id, "vehicle", vehicle_external_id, vehicle_name, day.isoformat()
+                conn,
+                actor,
+                company_id,
+                "vehicle",
+                vehicle_external_id,
+                vehicle_name,
+                day.isoformat(),
             )
             driver = (
                 self._transport_subject(
-                    conn, actor, company_id, "driver", driver_external_id, driver_name, day.isoformat()
+                    conn,
+                    actor,
+                    company_id,
+                    "driver",
+                    driver_external_id,
+                    driver_name,
+                    day.isoformat(),
                 )
                 if (driver_external_id or driver_name)
                 else None

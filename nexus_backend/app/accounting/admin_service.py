@@ -83,7 +83,9 @@ class AdminService:
 
     def reveal_sensitive(self, actor, company_id):
         """The only full-value read path; restricted to firm managers and audited."""
-        with self.db.transaction(write=True, actor=actor, company_id=company_id) as conn:
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             if self.access.firm_role(conn, actor) not in FIRM_MANAGERS:
                 raise AccountingError("完整敏感信息仅限事务所负责人查看", 403)
             self.require_admin_company(conn, actor, company_id)

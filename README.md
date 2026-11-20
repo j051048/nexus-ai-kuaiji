@@ -37,6 +37,27 @@ npm run dev
 
 打开 http://127.0.0.1:8080。默认通过 `/api` 代理连接本地后端，首次启动创建本地验证身份和虚构账套。本地模式保留第一阶段的完整操作流程。
 
+### 后端测试环境
+
+后端测试必须使用按 `nexus_backend/requirements.lock` 安装的独立虚拟环境，不能复用系统 Python。当前已验证环境为仓库根目录 `.venv`（Python 3.14.1，Starlette 1.8.0、FastAPI 0.133.1）。先核对版本：
+
+```powershell
+.\.venv\Scripts\python.exe scripts/check_test_env.py
+```
+
+退出码必须为 0；不匹配时会列出每个包的实际版本。随后运行：
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest nexus_backend/tests -q -p no:cacheprovider --ignore-glob="*_postgres.py"
+```
+
+重建环境时严格按锁文件安装，不升降锁文件版本：
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r nexus_backend/requirements.lock -r nexus_backend/requirements-dev.txt
+```
+
 数据库默认保存在 `nexus_backend/data/accounting.db`，不纳入 Git。关闭服务后备份该文件；可用 `ACCOUNTING_DB_PATH` 指向另一份本地数据库。`ACCOUNTING_SEED=0` 可停用示例账套。
 
 ## Vercel 前端与网关

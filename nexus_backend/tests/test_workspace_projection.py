@@ -141,7 +141,7 @@ def test_projection_matches_live_for_export_and_delivery(business):
     service = workspace(c)
     actor, book = c.actors["accountant"], c.book["id"]
     draft = bank(c)
-    c.ledger.approve(actor, book, draft["id"], ApprovalRequest(expected_version=draft["version"]))
+    c.ledger.approve(c.reviewer, book, draft["id"], ApprovalRequest(expected_version=draft["version"]))
     exported = c.ledger.export(
         actor, book, ExportRequest(draft_ids=[draft["id"]], idempotency_key=uuid4().hex)
     )

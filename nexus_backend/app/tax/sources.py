@@ -80,7 +80,7 @@ class TaxSourceAdapter:
     ):
         if not data or len(data) > MAX_BYTES:
             raise AccountingError("文件不能为空，单个文件最多 10MB", 413)
-        if not isinstance(version, int) or version < 1:
+        if type(version) is not int or version < 1:
             raise AccountingError("版本号必须为正整数", 422)
         if not column_map.get("external_id") or not column_map.get("amount"):
             raise AccountingError("必须映射外部行 ID 与金额列", 422)
@@ -196,6 +196,7 @@ class TaxSourceAdapter:
 
     def _rows(self, conn, parsed, index, book, source_system, external_id, version):
         output, seen = [], set()
+        source_rows = 0
         base = {
             "source_system": source_system,
             "source_external_id": external_id,
@@ -210,6 +211,9 @@ class TaxSourceAdapter:
             }
             if not any(cells.values()):
                 continue
+            source_rows += 1
+            if source_rows > MAX_ROWS:
+                raise AccountingError("每次最多 5,000 行，请拆分文件", 413)
             row_number = (
                 parsed.get("row_positions", [])[offset - 2]
                 if offset - 2 < len(parsed.get("row_positions", []))
@@ -271,8 +275,6 @@ class TaxSourceAdapter:
                     row["amount_cents"] = amount
                     row["quantity_milli"] = qty or 0
             output.append(row)
-            if len(output) > MAX_ROWS:
-                raise AccountingError("每次最多 5,000 行，请拆分文件", 413)
         return output
 
     def list_sources(self, actor, book_id):
@@ -775,7 +777,6 @@ class TaxSourceAdapter:
             ).fetchone()
             return self._view(updated)
 
-
     def attach_original(self, uploads, actor, book_id, source_id, upload_id):
         """Bind one stored original to an existing source through the shared upload gate."""
         with self.db.transaction(actor=actor) as conn:
@@ -829,9 +830,7 @@ class TaxSourceAdapter:
                     actor.user_id,
                     "tax.source.original",
                     source_id,
-                    json.dumps(
-                        {"attachment_id": stored["id"], "sha256": stored["sha256"]}
-                    ),
+                    json.dumps({"attachment_id": stored["id"], "sha256": stored["sha256"]}),
                     datetime.now(timezone.utc).isoformat(timespec="seconds"),
                 ),
             )

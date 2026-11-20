@@ -1,0 +1,28 @@
+-- compatibility: incremental
+-- PLT04: verified settlement/bank/fee source relation shared by the assistant
+-- and the fee-variance register.  Registration is explicit: amounts, periods and
+-- source versions must agree before a difference can be attributed to a fee.
+CREATE TABLE fee_source_relations (
+  id TEXT PRIMARY KEY,
+  firm_id TEXT NOT NULL,
+  company_id TEXT NOT NULL,
+  book_id TEXT NOT NULL REFERENCES books(id),
+  period TEXT NOT NULL,
+  settlement_source_id TEXT NOT NULL,
+  bank_source_id TEXT NOT NULL,
+  fee_source_id TEXT,
+  settlement_version TEXT NOT NULL,
+  bank_version TEXT NOT NULL,
+  fee_version TEXT,
+  settlement_amount_cents INTEGER NOT NULL CHECK(settlement_amount_cents>0),
+  bank_amount_cents INTEGER NOT NULL CHECK(bank_amount_cents>=0),
+  fee_amount_cents INTEGER CHECK(fee_amount_cents IS NULL OR fee_amount_cents>=0),
+  difference_cents INTEGER NOT NULL,
+  relation_sha256 TEXT NOT NULL,
+  verified_by TEXT NOT NULL REFERENCES users(id),
+  created_at TEXT NOT NULL,
+  UNIQUE(book_id,settlement_source_id,bank_source_id,fee_source_id)
+);
+CREATE INDEX idx_fee_source_relation_bank ON fee_source_relations(book_id,bank_source_id);
+
+ALTER TABLE fee_receivable_variances ADD COLUMN relation_id TEXT;

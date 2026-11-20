@@ -1403,9 +1403,7 @@ class WorkspaceService:
                 period = payload.get("period") if isinstance(payload, dict) else None
                 if period:
                     periods[row["id"]] = period
-        variance_ids = sorted(
-            {item["ref"] for item in tasks if item.get("kind") == "fee_variance"}
-        )
+        variance_ids = sorted({item["ref"] for item in tasks if item.get("kind") == "fee_variance"})
         variance_facts = {}
         if variance_ids:
             places = ",".join("?" for _ in variance_ids)
@@ -1450,9 +1448,7 @@ class WorkspaceService:
                 item["period"] = fact.get("period") or item["period"]
                 item["bank_source"] = fact.get("counterparty") or fact.get("external_id") or ""
                 item["assignee_id"] = fact.get("processing_started_by")
-                item["candidates"] = candidates.get(
-                    (fact.get("book_id"), fact.get("period")), []
-                )
+                item["candidates"] = candidates.get((fact.get("book_id"), fact.get("period")), [])
 
     @staticmethod
     def _search(value):

@@ -372,7 +372,9 @@ class PeriodicService:
                 )
             source_ref = f"asset:{asset_id}"
             if link:
-                source_ref += f";vehicle:{link['vehicle_external_id']}@v{int(link['source_version'])}"
+                source_ref += (
+                    f";vehicle:{link['vehicle_external_id']}@v{int(link['source_version'])}"
+                )
             lines = [
                 {
                     "account_id": asset["expense_account_id"],

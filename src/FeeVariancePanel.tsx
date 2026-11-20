@@ -82,10 +82,20 @@ export function FeeVariancePanel({
   const [registering, setRegistering] = useState(false);
   const [registerError, setRegisterError] = useState('');
   const [registered, setRegistered] = useState('');
+  const [targetNotice, setTargetNotice] = useState('');
   useEffect(() => {
     if (!initialVarianceId || !items) return;
     const node = document.getElementById(`fee-variance-${initialVarianceId}`);
-    node?.scrollIntoView({ block: 'center' });
+    if (!node) {
+      setTargetNotice('这笔差异不在当前期间，可能已处理、已撤销或权限已变更，请刷新待办。');
+      return;
+    }
+    setTargetNotice('已定位到待办中的这笔差异。');
+    const frame = requestAnimationFrame(() => {
+      node.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
+      node.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
   }, [initialVarianceId, items]);
 
   const [draft, setDraft] = useState({
@@ -121,7 +131,6 @@ export function FeeVariancePanel({
     const controller = new AbortController();
     void load(controller.signal);
     return () => controller.abort();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bookId, period, session.scope_key]);
 
   useEffect(() => {
@@ -136,7 +145,6 @@ export function FeeVariancePanel({
     return () => {
       active = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bookId, session.scope_key]);
 
   async function register() {
@@ -316,239 +324,253 @@ export function FeeVariancePanel({
       ) : items.length === 0 ? (
         <p className="fee-variance-empty">当前期间没有规费差异。</p>
       ) : (
-        <ul className="fee-variance-list">
-          {items.map((item) => {
-            const state = item.state || item.status;
-            const reason = reasons.find((entry) => entry.code === item.reason_code);
-            return (
-              <li
-                key={item.id}
-                id={`fee-variance-${item.id}`}
-                data-state={state}
-                className={initialVarianceId === item.id ? 'is-target' : undefined}
-              >
-                <div className="fee-variance-head">
-                  <strong>{KIND_LABELS[item.kind] || item.kind}</strong>
-                  <span className={`fee-variance-state is-${state}`}>
-                    {STATE_LABELS[state] || state}
-                  </span>
-                  <span className="fee-variance-diff">
-                    差额 {formatCents(BigInt(item.difference_cents))}
-                  </span>
-                </div>
-                <dl>
-                  <div>
-                    <dt>应收</dt>
-                    <dd>{formatCents(BigInt(item.expected_cents))}</dd>
+        <>
+          {targetNotice && (
+            <p role="status" className="fee-variance-target">
+              {targetNotice}
+            </p>
+          )}
+          <ul className="fee-variance-list">
+            {items.map((item) => {
+              const state = item.state || item.status;
+              const reason = reasons.find((entry) => entry.code === item.reason_code);
+              return (
+                <li
+                  key={item.id}
+                  id={`fee-variance-${item.id}`}
+                  data-state={state}
+                  tabIndex={initialVarianceId === item.id ? -1 : undefined}
+                  className={initialVarianceId === item.id ? 'is-target' : undefined}
+                >
+                  <div className="fee-variance-head">
+                    <strong>{KIND_LABELS[item.kind] || item.kind}</strong>
+                    <span className={`fee-variance-state is-${state}`}>
+                      {STATE_LABELS[state] || state}
+                    </span>
+                    <span className="fee-variance-diff">
+                      差额 {formatCents(BigInt(item.difference_cents))}
+                    </span>
                   </div>
-                  <div>
-                    <dt>实际到账</dt>
-                    <dd>{formatCents(BigInt(item.actual_cents))}</dd>
-                  </div>
-                  <div>
-                    <dt>原因</dt>
-                    <dd>
-                      {reason?.label ||
-                        (item.reason_code === 'unresolved' ? '待查' : item.reason_code)}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>证据</dt>
-                    <dd>{item.evidence_ref || '—'}</dd>
-                  </div>
-                  {item.assignee_name ? (
+                  <dl>
                     <div>
-                      <dt>当前处理人</dt>
-                      <dd>{item.assignee_name}</dd>
+                      <dt>应收</dt>
+                      <dd>{formatCents(BigInt(item.expected_cents))}</dd>
+                    </div>
+                    <div>
+                      <dt>实际到账</dt>
+                      <dd>{formatCents(BigInt(item.actual_cents))}</dd>
+                    </div>
+                    <div>
+                      <dt>原因</dt>
+                      <dd>
+                        {reason?.label ||
+                          (item.reason_code === 'unresolved' ? '待查' : item.reason_code)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>证据</dt>
+                      <dd>{item.evidence_ref || '—'}</dd>
+                    </div>
+                    {item.assignee_name ? (
+                      <div>
+                        <dt>当前处理人</dt>
+                        <dd>{item.assignee_name}</dd>
+                      </div>
+                    ) : null}
+                    {item.bank_source ? (
+                      <>
+                        <div>
+                          <dt>流水日期</dt>
+                          <dd>{item.bank_source.date}</dd>
+                        </div>
+                        <div>
+                          <dt>流水摘要</dt>
+                          <dd>{item.bank_source.description}</dd>
+                        </div>
+                        <div>
+                          <dt>流水对方</dt>
+                          <dd>{item.bank_source.counterparty}</dd>
+                        </div>
+                        <div>
+                          <dt>流水金额</dt>
+                          <dd>{formatCents(BigInt(item.bank_source.amount_cents))}</dd>
+                        </div>
+                      </>
+                    ) : null}
+                  </dl>
+                  {item.candidates?.length ? (
+                    <div className="fee-variance-candidates">
+                      <span>候选应收（只读）</span>
+                      <ul>
+                        {item.candidates.map((candidate) => (
+                          <li key={candidate.id}>
+                            {candidate.counterparty} · {formatCents(BigInt(candidate.amount_cents))}
+                          </li>
+                        ))}
+                      </ul>
                     </div>
                   ) : null}
-                  {item.bank_source ? (
-                    <>
-                      <div>
-                        <dt>流水日期</dt>
-                        <dd>{item.bank_source.date}</dd>
-                      </div>
-                      <div>
-                        <dt>流水摘要</dt>
-                        <dd>{item.bank_source.description}</dd>
-                      </div>
-                      <div>
-                        <dt>流水对方</dt>
-                        <dd>{item.bank_source.counterparty}</dd>
-                      </div>
-                      <div>
-                        <dt>流水金额</dt>
-                        <dd>{formatCents(BigInt(item.bank_source.amount_cents))}</dd>
-                      </div>
-                    </>
+                  {item.draft_id && onOpenDraft ? (
+                    <button
+                      type="button"
+                      className="secondary"
+                      onClick={() => onOpenDraft(bookId, item.draft_id as string)}
+                    >
+                      打开差异草稿
+                    </button>
                   ) : null}
-                </dl>
-                {item.candidates?.length ? (
-                  <div className="fee-variance-candidates">
-                    <span>候选应收（只读）</span>
-                    <ul>
-                      {item.candidates.map((candidate) => (
-                        <li key={candidate.id}>
-                          {candidate.counterparty} · {formatCents(BigInt(candidate.amount_cents))}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : null}
-                {item.draft_id && onOpenDraft ? (
-                  <button
-                    type="button"
-                    className="secondary"
-                    onClick={() => onOpenDraft(bookId, item.draft_id as string)}
-                  >
-                    打开差异草稿
-                  </button>
-                ) : null}
-                {state === 'pending' && !item.processing_started_by && (
-                  <button
-                    type="button"
-                    className="secondary"
-                    onClick={() => void act(item.id, 'start')}
-                    disabled={!!busy}
-                  >
-                    开始处理
-                  </button>
-                )}
-                {(state === 'pending' || state === 'processing') && (
-                  <div className="fee-variance-form">
-                    <label>
-                      原因
-                      <select
-                        value={reasonBy[item.id] || 'unresolved'}
-                        onChange={(event) =>
-                          setReasonBy((current) => ({ ...current, [item.id]: event.target.value }))
-                        }
-                      >
-                        <option value="unresolved">待查</option>
-                        {reasons.map((entry) => (
-                          <option key={entry.code} value={entry.code}>
-                            {entry.label}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label>
-                      核查依据
-                      <input
-                        value={evidenceBy[item.id] || ''}
-                        onChange={(event) =>
-                          setEvidenceBy((current) => ({
-                            ...current,
-                            [item.id]: event.target.value,
-                          }))
-                        }
-                        placeholder="原件编号、流水号或核查说明"
-                      />
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => void act(item.id, 'handle')}
-                      disabled={!!busy}
-                    >
-                      保存处理
-                    </button>
-                  </div>
-                )}
-                {(state === 'pending' || state === 'processing') && assignees.length ? (
-                  <details className="fee-variance-reverse">
-                    <summary>转交处理</summary>
-                    <label>
-                      接手人
-                      <select
-                        value={assignTo[item.id] || ''}
-                        onChange={(event) =>
-                          setAssignTo((current) => ({
-                            ...current,
-                            [item.id]: event.target.value,
-                          }))
-                        }
-                      >
-                        <option value="">选择有编辑权限的人员</option>
-                        {assignees.map((person) => (
-                          <option key={person.id} value={person.id}>
-                            {person.name}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label>
-                      转交原因
-                      <input
-                        value={assignReason[item.id] || ''}
-                        onChange={(event) =>
-                          setAssignReason((current) => ({
-                            ...current,
-                            [item.id]: event.target.value,
-                          }))
-                        }
-                        placeholder="至少 3 个字"
-                      />
-                    </label>
-                    {assignError ? <p role="alert">{assignError}</p> : null}
+                  {state === 'pending' && !item.processing_started_by && (
                     <button
                       type="button"
                       className="secondary"
-                      disabled={!!busy}
-                      onClick={async () => {
-                        setAssignError('');
-                        const target = assignTo[item.id];
-                        const reason = (assignReason[item.id] || '').trim();
-                        if (!target || reason.length < 3) {
-                          setAssignError('请选择接手人并填写至少 3 个字的转交原因。');
-                          return;
-                        }
-                        setBusy(item.id);
-                        try {
-                          await api(`/tax/fee-variances/${item.id}/assign`, session, {
-                            method: 'POST',
-                            body: { assignee_id: target, reason },
-                          });
-                          setAssignTo((current) => ({ ...current, [item.id]: '' }));
-                          setAssignReason((current) => ({ ...current, [item.id]: '' }));
-                          await load();
-                        } catch (failure) {
-                          setAssignError(failureText(failure));
-                        } finally {
-                          setBusy('');
-                        }
-                      }}
-                    >
-                      确认转交
-                    </button>
-                  </details>
-                ) : null}
-                {state !== 'reversed' && (
-                  <details className="fee-variance-reverse">
-                    <summary>撤销这笔差异</summary>
-                    <label>
-                      撤销原因
-                      <input
-                        value={reverseBy[item.id] || ''}
-                        onChange={(event) =>
-                          setReverseBy((current) => ({ ...current, [item.id]: event.target.value }))
-                        }
-                        placeholder="至少 3 个字"
-                      />
-                    </label>
-                    <button
-                      type="button"
-                      className="secondary"
-                      onClick={() => void act(item.id, 'reverse')}
+                      onClick={() => void act(item.id, 'start')}
                       disabled={!!busy}
                     >
-                      确认撤销
+                      开始处理
                     </button>
-                  </details>
-                )}
-              </li>
-            );
-          })}
-        </ul>
+                  )}
+                  {(state === 'pending' || state === 'processing') && (
+                    <div className="fee-variance-form">
+                      <label>
+                        原因
+                        <select
+                          value={reasonBy[item.id] || 'unresolved'}
+                          onChange={(event) =>
+                            setReasonBy((current) => ({
+                              ...current,
+                              [item.id]: event.target.value,
+                            }))
+                          }
+                        >
+                          <option value="unresolved">待查</option>
+                          {reasons.map((entry) => (
+                            <option key={entry.code} value={entry.code}>
+                              {entry.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        核查依据
+                        <input
+                          value={evidenceBy[item.id] || ''}
+                          onChange={(event) =>
+                            setEvidenceBy((current) => ({
+                              ...current,
+                              [item.id]: event.target.value,
+                            }))
+                          }
+                          placeholder="原件编号、流水号或核查说明"
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => void act(item.id, 'handle')}
+                        disabled={!!busy}
+                      >
+                        保存处理
+                      </button>
+                    </div>
+                  )}
+                  {(state === 'pending' || state === 'processing') && assignees.length ? (
+                    <details className="fee-variance-reverse">
+                      <summary>转交处理</summary>
+                      <label>
+                        接手人
+                        <select
+                          value={assignTo[item.id] || ''}
+                          onChange={(event) =>
+                            setAssignTo((current) => ({
+                              ...current,
+                              [item.id]: event.target.value,
+                            }))
+                          }
+                        >
+                          <option value="">选择有编辑权限的人员</option>
+                          {assignees.map((person) => (
+                            <option key={person.id} value={person.id}>
+                              {person.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        转交原因
+                        <input
+                          value={assignReason[item.id] || ''}
+                          onChange={(event) =>
+                            setAssignReason((current) => ({
+                              ...current,
+                              [item.id]: event.target.value,
+                            }))
+                          }
+                          placeholder="至少 3 个字"
+                        />
+                      </label>
+                      {assignError ? <p role="alert">{assignError}</p> : null}
+                      <button
+                        type="button"
+                        className="secondary"
+                        disabled={!!busy}
+                        onClick={async () => {
+                          setAssignError('');
+                          const target = assignTo[item.id];
+                          const reason = (assignReason[item.id] || '').trim();
+                          if (!target || reason.length < 3) {
+                            setAssignError('请选择接手人并填写至少 3 个字的转交原因。');
+                            return;
+                          }
+                          setBusy(item.id);
+                          try {
+                            await api(`/tax/fee-variances/${item.id}/assign`, session, {
+                              method: 'POST',
+                              body: { assignee_id: target, reason },
+                            });
+                            setAssignTo((current) => ({ ...current, [item.id]: '' }));
+                            setAssignReason((current) => ({ ...current, [item.id]: '' }));
+                            await load();
+                          } catch (failure) {
+                            setAssignError(failureText(failure));
+                          } finally {
+                            setBusy('');
+                          }
+                        }}
+                      >
+                        确认转交
+                      </button>
+                    </details>
+                  ) : null}
+                  {state !== 'reversed' && (
+                    <details className="fee-variance-reverse">
+                      <summary>撤销这笔差异</summary>
+                      <label>
+                        撤销原因
+                        <input
+                          value={reverseBy[item.id] || ''}
+                          onChange={(event) =>
+                            setReverseBy((current) => ({
+                              ...current,
+                              [item.id]: event.target.value,
+                            }))
+                          }
+                          placeholder="至少 3 个字"
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        className="secondary"
+                        onClick={() => void act(item.id, 'reverse')}
+                        disabled={!!busy}
+                      >
+                        确认撤销
+                      </button>
+                    </details>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </>
       )}
     </section>
   );

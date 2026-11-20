@@ -127,7 +127,17 @@ class OpeningService:
             return self._policy_row(conn, policy_id)
 
     def approve_policy(self, actor, policy_id):
-        with self.db.transaction(write=True, actor=actor) as conn:
+        with self.db.transaction(actor=actor) as conn:
+            policy = conn.execute(
+                "SELECT * FROM accounting_policies WHERE id=?", (policy_id,)
+            ).fetchone()
+            if not policy:
+                raise AccountingError("核算政策不存在", 404)
+            ledger = self._ledger(conn, actor, policy["ledger_id"], manage=True)
+            company_id = ledger["company_id"]
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             policy = conn.execute(
                 "SELECT * FROM accounting_policies WHERE id=?", (policy_id,)
             ).fetchone()
@@ -178,8 +188,7 @@ class OpeningService:
                 {
                     **dict(row),
                     "mapping_matches": bool(
-                        row["mapping_fingerprint"]
-                        and row["mapping_fingerprint"] == current_mapping
+                        row["mapping_fingerprint"] and row["mapping_fingerprint"] == current_mapping
                     ),
                 }
                 for row in rows

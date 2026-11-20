@@ -132,6 +132,8 @@ def parse_return_file(content: bytes, *, batch_code: str, exported: list[dict]) 
             status, reason = "account_mismatch", reason or "科目与冻结交付包不一致"
         elif status in {"missing", "extra", "amount_mismatch", "account_mismatch"}:
             reason = reason or "文件声明存在差异"
+        if status == "accepted" and (row["actual_cents"] is None or not row["accounts"]):
+            reason = reason or "客户未提供金额或科目，只能确认接收"
         row.update(status=status, reason=reason)
         rows.append(row)
 
@@ -151,7 +153,11 @@ def parse_return_file(content: bytes, *, batch_code: str, exported: list[dict]) 
 
     counts = {state: sum(row["status"] == state for row in rows) for state in RESULT_STATES}
     received = all(row["status"] == "accepted" for row in rows)
-    posted = received and all(bool(row["posted_date"]) for row in rows)
+    complete = all(
+        bool(row["posted_date"]) and row["actual_cents"] is not None and bool(row["accounts"])
+        for row in rows
+    )
+    posted = received and complete
     if received:
         status = "accepted"
     elif counts["rejected"] or counts["amount_mismatch"] or counts["account_mismatch"]:

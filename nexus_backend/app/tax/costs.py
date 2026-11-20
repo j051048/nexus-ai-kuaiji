@@ -108,6 +108,10 @@ class TaxCostService:
     def _book(self, conn, actor, book_id, write=False):
         return self.accounting.access.book(conn, actor, book_id, "review" if write else "read")
 
+    def _company_for_book(self, actor, book_id):
+        with self.db.transaction(actor=actor) as conn:
+            return self._book(conn, actor, book_id)["company_id"]
+
     @staticmethod
     def _source_fingerprint(kind, key, version, period, sha256, amount_cents, payload):
         return _fingerprint(
@@ -839,6 +843,9 @@ class RepairRateService:
         self.db = db
         self.accounting = TaxCostService(db).accounting
 
+    def _company_for_book(self, actor, book_id):
+        return TaxCostService(self.db)._company_for_book(actor, book_id)
+
     def add(self, actor, book_id, request: RepairRateWrite):
         if request.valid_from > request.valid_to:
             raise AccountingError("费率生效起始月不能晚于结束月", 422)
@@ -900,9 +907,12 @@ class RepairRateService:
             )
 
     def create_draft(self, actor, book_id, request: RepairRateDraft):
+        company_id = self._company_for_book(actor, book_id)
         if request.valid_from > request.valid_to:
             raise AccountingError("费率生效起始月不能晚于结束月", 422)
-        with self.db.transaction(write=True, actor=actor) as conn:
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             self._book(conn, actor, book_id, write=True)
             logical_id = request.logical_id or uuid4().hex
             if request.logical_id:
@@ -983,7 +993,10 @@ class RepairRateService:
             )
 
     def confirm(self, actor, book_id, card_id, expected_version):
-        with self.db.transaction(write=True, actor=actor) as conn:
+        company_id = self._company_for_book(actor, book_id)
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             self._book(conn, actor, book_id, write=True)
             row = conn.execute(
                 "SELECT * FROM repair_rate_cards WHERE id=? AND book_id=?", (card_id, book_id)
@@ -1012,7 +1025,10 @@ class RepairRateService:
             )
 
     def activate(self, actor, book_id, card_id, expected_version):
-        with self.db.transaction(write=True, actor=actor) as conn:
+        company_id = self._company_for_book(actor, book_id)
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             self._book(conn, actor, book_id, write=True)
             row = conn.execute(
                 "SELECT * FROM repair_rate_cards WHERE id=? AND book_id=?", (card_id, book_id)
@@ -1087,7 +1103,10 @@ class RepairRateService:
         return self.create_draft(actor, book_id, payload)
 
     def deactivate(self, actor, book_id, card_id, request: RepairRateDeactivate):
-        with self.db.transaction(write=True, actor=actor) as conn:
+        company_id = self._company_for_book(actor, book_id)
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             self._book(conn, actor, book_id, write=True)
             row = conn.execute(
                 "SELECT * FROM repair_rate_cards WHERE id=? AND book_id=?", (card_id, book_id)

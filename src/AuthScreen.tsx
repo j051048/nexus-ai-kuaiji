@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import './auth-screen.css';
 import { Link } from 'react-router-dom';
 import {
   ArrowRight,

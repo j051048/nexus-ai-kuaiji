@@ -29,7 +29,7 @@ def seed_taxi_recovery(db, owner, reviewer, company_id):
     )
     case = SimpleNamespace(db=db, manager=owner, book=book)
     ledger = LedgersService(db)
-    subjects = _masters(case)
+    subjects = _masters(case, with_mapping=False)
     auxiliaries = []
     for index, subject in enumerate(subjects):
         entity = ledger.create_entity(
@@ -42,7 +42,7 @@ def seed_taxi_recovery(db, owner, reviewer, company_id):
             ),
         )
         auxiliaries.append(
-            {"kind": entity["kind"], "local_value": entity["id"], "external_code": entity["code"]}
+            {"kind": entity["kind"], "local_value": entity["name"], "external_code": entity["code"]}
         )
         ledger.create_transport_relation(
             owner,

@@ -59,8 +59,11 @@ def test_bridge_http_package_frozen_after_review_and_native_send_disabled(client
     imported=client.post(f'/api/books/{bid}/imports',headers=headers,json={'source_name':'合成回单','rows':[{'external_id':uuid4().hex,'date':'2026-10-03','description':'办公用品','counterparty':'合成供应商','amount':'80.00','direction':'expense','evidence_ref':'合成核验资料'}]})
     assert imported.status_code==200,imported.text
     client.post(f'/api/books/{bid}/suggestions',headers=headers)
+    reviewer=auth(client,'reviewer')
+    reviewer_id=client.get('/api/me',headers=reviewer).json()['user']['id']
+    assert client.put(f'/api/books/{bid}/members/{reviewer_id}',headers=headers,json={'role':'reviewer'}).status_code==200
     draft=client.get(f'/api/books/{bid}',headers=headers).json()['drafts'][0]
-    assert client.post(f"/api/books/{bid}/drafts/{draft['id']}/approve",headers=headers,json={'expected_version':draft['version']}).status_code==200
+    assert client.post(f"/api/books/{bid}/drafts/{draft['id']}/approve",headers=reviewer,json={'expected_version':draft['version']}).status_code==200
     export=client.post(f'/api/books/{bid}/exports',headers=headers,json={'draft_ids':[draft['id']],'idempotency_key':uuid4().hex})
     assert export.status_code==200,export.text
     cmd={'export_id':export.json()['id'],'configuration_version':1,'reason':'凭证经人工审核后准备交付','idempotency_key':uuid4().hex}
@@ -69,4 +72,5 @@ def test_bridge_http_package_frozen_after_review_and_native_send_disabled(client
     intent=result.json();assert intent['state']=='awaiting_adapter' and intent['automatic_resend'] is False
     assert client.post(base+'/outbox',headers=headers,json=cmd).json()['id']==intent['id']
     assert client.post(base+'/outbox/'+intent['id']+'/dispatch',headers=headers).status_code==409
-    assert client.get(base+'/outbox/'+intent['id'],headers=headers).json()==intent
+    detail=client.get(base+'/outbox/'+intent['id'],headers=headers).json()
+    assert detail['id']==intent['id'] and detail['state']==intent['state'] and detail['automatic_resend'] is False

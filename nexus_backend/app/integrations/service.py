@@ -229,6 +229,11 @@ class FinancialBridgeService:
             raise AccountingError("请先建立长期账套与期间关联", 409)
         return book, row["ledger_id"]
 
+    def _company_for_book(self, actor, book_id):
+        with self.db.transaction(actor=actor) as conn:
+            book, _ = self._scope(conn, actor, book_id, False)
+            return book["company_id"]
+
     @staticmethod
     def _configuration(conn, ledger_id):
         return conn.execute(
@@ -255,18 +260,37 @@ class FinancialBridgeService:
         accepted = sum(int(row["accepted_count"]) for row in receipts)
         rejected = sum(int(row["rejected_count"]) for row in receipts)
         posted = [row for row in receipts if bool(row["external_posting"])]
-        posted += [row for row in returns if bool(row["posted"])]
-        received_rows = [row for row in receipts if int(row["accepted_count"]) > 0 or int(row["duplicate_count"]) > 0]
+        posted += [row for row in returns if bool(row["posted"]) and bool(row["evidence_verified"])]
+        received_rows = [
+            row
+            for row in receipts
+            if int(row["accepted_count"]) > 0 or int(row["duplicate_count"]) > 0
+        ]
         received_rows += [row for row in returns if bool(row["received"])]
         received = bool(received_rows)
         discrepancy = sum(int(row["discrepancy_count"]) for row in returns)
-        last_received = sorted(received_rows, key=lambda row: (row["created_at"], row["id"]))[-1] if received_rows else None
-        last_posted = sorted(posted, key=lambda row: (row["created_at"], row["id"]))[-1] if posted else None
+        last_received = (
+            sorted(received_rows, key=lambda row: (row["created_at"], row["id"]))[-1]
+            if received_rows
+            else None
+        )
+        last_posted = (
+            sorted(posted, key=lambda row: (row["created_at"], row["id"]))[-1] if posted else None
+        )
         first_artifact = artifacts[0] if artifacts else None
         statuses = {
-            "exported": {"at": first_artifact["created_at"] if first_artifact else None, "evidence": first_artifact["id"] if first_artifact else None},
-            "received": {"at": last_received["created_at"] if last_received else None, "evidence": last_received["id"] if last_received else None},
-            "posted": {"at": last_posted["created_at"] if last_posted else None, "evidence": last_posted["id"] if last_posted else None},
+            "exported": {
+                "at": first_artifact["created_at"] if first_artifact else None,
+                "evidence": first_artifact["id"] if first_artifact else None,
+            },
+            "received": {
+                "at": last_received["created_at"] if last_received else None,
+                "evidence": last_received["id"] if last_received else None,
+            },
+            "posted": {
+                "at": last_posted["created_at"] if last_posted else None,
+                "evidence": last_posted["id"] if last_posted else None,
+            },
         }
         if posted:
             summary = "posted"
@@ -1097,9 +1121,12 @@ class FinancialBridgeService:
             or content.startswith(bytes.fromhex("ffd8ff"))
         ):
             raise AccountingError("证据原件仅接受 PDF/PNG/JPEG", 422)
+        company_id = self._company_for_book(actor, book_id)
         digest = hashlib.sha256(content).hexdigest()
-        with self.db.transaction(write=True, actor=actor) as conn:
-            book, _ledger_id = self._scope(conn, actor, book_id, False)
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
+            book, _ledger_id = self._scope(conn, actor, book_id, True)
             if not conn.execute(
                 "SELECT 1 FROM bridge_export_artifacts WHERE id=? AND book_id=?",
                 (artifact_id, book_id),
@@ -1113,14 +1140,40 @@ class FinancialBridgeService:
                 raise AccountingError("返回文件记录不存在", 404)
             if row["result_status"] != "accepted" or row["row_count"] == 0:
                 raise AccountingError("只有已验证的手工回执可补证据原件", 409)
-            if conn.execute("SELECT 1 FROM bridge_return_evidence WHERE import_id=?", (import_id,)).fetchone():
+            if conn.execute(
+                "SELECT 1 FROM bridge_return_evidence WHERE import_id=?", (import_id,)
+            ).fetchone():
                 raise AccountingError("该回执已绑定证据原件", 409)
             conn.execute(
                 "INSERT INTO bridge_return_evidence(import_id,book_id,firm_id,company_id,filename,media_type,sha256,size_bytes,content,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
-                (import_id, book_id, book["firm_id"], book["company_id"], payload.filename[:200], payload.media_type[:100], digest, len(content), content, actor.user_id, now()),
+                (
+                    import_id,
+                    book_id,
+                    book["firm_id"],
+                    book["company_id"],
+                    payload.filename[:200],
+                    payload.media_type[:100],
+                    digest,
+                    len(content),
+                    content,
+                    actor.user_id,
+                    now(),
+                ),
             )
-            self.delivery._audit(conn, actor, book_id, "bridge.return.evidence", import_id, {"sha256": digest})
-            return {"import_id": import_id, "filename": payload.filename, "media_type": payload.media_type, "sha256": digest, "size_bytes": len(content)}
+            conn.execute(
+                "UPDATE bridge_return_imports SET evidence_verified=TRUE WHERE id=?",
+                (import_id,),
+            )
+            self.delivery._audit(
+                conn, actor, book_id, "bridge.return.evidence", import_id, {"sha256": digest}
+            )
+            return {
+                "import_id": import_id,
+                "filename": payload.filename,
+                "media_type": payload.media_type,
+                "sha256": digest,
+                "size_bytes": len(content),
+            }
 
     def evidence_for(self, actor, book_id, import_id, artifact_id=None):
         with self.db.transaction(actor=actor) as conn:
@@ -1182,13 +1235,21 @@ class FinancialBridgeService:
             "content_sha256": row["content_sha256"],
             "result_status": row["result_status"],
             "received": bool(row["received"]),
-            "posted": bool(row["posted"]),
+            "posted": bool(row["posted"]) and bool(row["evidence_verified"]),
+            "posted_declared": bool(row["posted"]),
+            "evidence_verified": bool(row["evidence_verified"]),
             "row_count": row["row_count"],
             "counts": {
                 key: row[f"{key}_count"]
                 for key in (
-                    "accepted", "rejected", "duplicate", "unknown",
-                    "missing", "extra", "mismatch", "discrepancy",
+                    "accepted",
+                    "rejected",
+                    "duplicate",
+                    "unknown",
+                    "missing",
+                    "extra",
+                    "mismatch",
+                    "discrepancy",
                 )
             },
             "created_at": row["created_at"],
@@ -1197,9 +1258,12 @@ class FinancialBridgeService:
         }
 
     def record_return(self, actor, book_id, artifact_id, request: BridgeReturnImport):
+        company_id = self._company_for_book(actor, book_id)
         raw = request.content.encode("utf-8")
         digest = hashlib.sha256(raw).hexdigest()
-        with self.db.transaction(write=True, actor=actor) as conn:
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             book, _ = self._scope(conn, actor, book_id, True)
             artifact = conn.execute(
                 "SELECT * FROM bridge_export_artifacts WHERE id=? AND book_id=?",
@@ -1213,6 +1277,8 @@ class FinancialBridgeService:
             ).fetchone()
             if not intent:
                 raise AccountingError("交付意图不存在或无权访问", 404)
+            if request.batch_code.strip() != str(intent["external_code"]):
+                raise AccountingError("批次标识与冻结交付批次不一致，拒绝登记", 422)
             package = self._frozen_package(conn, actor, book_id, intent)
             current, _, _ = tplus54.render(package)
             if tplus54.content_hash(current) != artifact["content_sha256"]:
@@ -1254,25 +1320,57 @@ class FinancialBridgeService:
                 "counts": counts,
             }
             conn.execute(
-                "INSERT INTO bridge_return_imports(id,artifact_id,book_id,firm_id,company_id,batch_code,content_sha256,content,result_status,received,posted,row_count,accepted_count,rejected_count,duplicate_count,unknown_count,missing_count,extra_count,mismatch_count,discrepancy_count,created_by,created_at,fingerprint) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO bridge_return_imports(id,artifact_id,book_id,firm_id,company_id,batch_code,content_sha256,content,result_status,received,posted,evidence_verified,row_count,accepted_count,rejected_count,duplicate_count,unknown_count,missing_count,extra_count,mismatch_count,discrepancy_count,created_by,created_at,fingerprint) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (
-                    import_id, artifact_id, book_id, actor.firm_id, book["company_id"],
-                    request.batch_code, digest, raw, parsed["status"],
-                    bool(parsed["received"]), bool(parsed["posted"]), len(parsed["rows"]),
-                    counts["accepted"], counts["rejected"], counts["duplicate"], counts["unknown"],
-                    counts["missing"], counts["extra"],
+                    import_id,
+                    artifact_id,
+                    book_id,
+                    actor.firm_id,
+                    book["company_id"],
+                    request.batch_code,
+                    digest,
+                    raw,
+                    parsed["status"],
+                    bool(parsed["received"]),
+                    bool(parsed["posted"]),
+                    True,
+                    len(parsed["rows"]),
+                    counts["accepted"],
+                    counts["rejected"],
+                    counts["duplicate"],
+                    counts["unknown"],
+                    counts["missing"],
+                    counts["extra"],
                     counts["amount_mismatch"] + counts["account_mismatch"],
-                    sum(counts[key] for key in ("rejected", "missing", "extra", "amount_mismatch", "account_mismatch", "unknown")),
-                    actor.user_id, now(), fingerprint(meta),
+                    sum(
+                        counts[key]
+                        for key in (
+                            "rejected",
+                            "missing",
+                            "extra",
+                            "amount_mismatch",
+                            "account_mismatch",
+                            "unknown",
+                        )
+                    ),
+                    actor.user_id,
+                    now(),
+                    fingerprint(meta),
                 ),
             )
             for item in parsed["rows"]:
-                expected = next((e for e in exported if e["voucher_code"] == item["voucher_code"]), None)
+                expected = next(
+                    (e for e in exported if e["voucher_code"] == item["voucher_code"]), None
+                )
                 conn.execute(
                     "INSERT INTO bridge_return_rows(import_id,voucher_code,external_code,status,reason,posted_date,expected_cents,actual_cents,expected_accounts_json,actual_accounts_json,raw_hash) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
                     (
-                        import_id, item["voucher_code"], item["external_code"], item["status"],
-                        item["reason"], item["posted_date"],
+                        import_id,
+                        item["voucher_code"],
+                        item["external_code"],
+                        item["status"],
+                        item["reason"],
+                        item["posted_date"],
                         expected["amount_cents"] if expected else None,
                         item["actual_cents"],
                         encode(expected["accounts"] if expected else []),
@@ -1281,33 +1379,52 @@ class FinancialBridgeService:
                     ),
                 )
             self.delivery._audit(
-                conn, actor, book_id, "bridge.return.import", import_id,
+                conn,
+                actor,
+                book_id,
+                "bridge.return.import",
+                import_id,
                 {**meta, "row_count": len(parsed["rows"])},
             )
             return self._return_view(
                 conn,
-                conn.execute("SELECT * FROM bridge_return_imports WHERE id=?", (import_id,)).fetchone(),
+                conn.execute(
+                    "SELECT * FROM bridge_return_imports WHERE id=?", (import_id,)
+                ).fetchone(),
             )
 
     def record_manual_return(
-        self, actor, book_id, artifact_id, request: BridgeManualReturn,
-        *, evidence: bytes | None = None, filename: str = "", media_type: str = "",
+        self,
+        actor,
+        book_id,
+        artifact_id,
+        request: BridgeManualReturn,
+        *,
+        evidence: bytes | None = None,
+        filename: str = "",
+        media_type: str = "",
     ):
+        company_id = self._company_for_book(actor, book_id)
         if len(request.evidence_ref.strip()) < 5:
             raise AccountingError("手工登记必须填写可核验的接收或过账证据", 422)
         if request.posted and not request.received:
             raise AccountingError("未登记接收不能直接登记过账", 422)
+        if request.posted and not request.posted_date.strip():
+            raise AccountingError("登记过账必须填写对方过账日期", 422)
         payload = {
             "manual": True,
             "batch_code": request.batch_code.strip(),
             "received": request.received,
             "posted": request.posted,
-            "evidence_ref": evidence,
+            "posted_date": request.posted_date.strip(),
+            "evidence_ref": request.evidence_ref.strip(),
             "note": request.note.strip(),
         }
         raw = json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
         digest = hashlib.sha256(raw).hexdigest()
-        with self.db.transaction(write=True, actor=actor) as conn:
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             book, _ = self._scope(conn, actor, book_id, True)
             artifact = conn.execute(
                 "SELECT * FROM bridge_export_artifacts WHERE id=? AND book_id=?",
@@ -1338,22 +1455,48 @@ class FinancialBridgeService:
             import_id = uuid4().hex
             created_at = now()
             conn.execute(
-                "INSERT INTO bridge_return_imports(id,artifact_id,book_id,firm_id,company_id,batch_code,content_sha256,content,result_status,received,posted,row_count,accepted_count,rejected_count,duplicate_count,unknown_count,missing_count,extra_count,mismatch_count,discrepancy_count,created_by,created_at,fingerprint) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO bridge_return_imports(id,artifact_id,book_id,firm_id,company_id,batch_code,content_sha256,content,result_status,received,posted,evidence_verified,row_count,accepted_count,rejected_count,duplicate_count,unknown_count,missing_count,extra_count,mismatch_count,discrepancy_count,created_by,created_at,fingerprint) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (
-                    import_id, artifact_id, book_id, book["firm_id"], book["company_id"],
-                    request.batch_code.strip(), digest, raw, "accepted",
-                    bool(request.received), bool(request.posted), 1,
-                    1, 0, 0, 0, 0, 0, 0, 0,
-                    actor.user_id, created_at, digest,
+                    import_id,
+                    artifact_id,
+                    book_id,
+                    book["firm_id"],
+                    book["company_id"],
+                    request.batch_code.strip(),
+                    digest,
+                    raw,
+                    "accepted",
+                    bool(request.received),
+                    bool(request.posted),
+                    evidence is not None,
+                    1,
+                    1,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    actor.user_id,
+                    created_at,
+                    digest,
                 ),
             )
             conn.execute(
                 "INSERT INTO bridge_return_rows(import_id,voucher_code,external_code,status,reason,posted_date,expected_cents,actual_cents,expected_accounts_json,actual_accounts_json,raw_hash) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
                 (
-                    import_id, "MANUAL", request.batch_code.strip(), "accepted",
-                    f"手工登记整批接收：{request.note.strip() or evidence}",
-                    created_at[:10] if request.posted else None,
-                    None, None, "[]", "[]", digest,
+                    import_id,
+                    "MANUAL",
+                    request.batch_code.strip(),
+                    "accepted",
+                    f"手工登记整批接收：{request.note.strip() or request.evidence_ref.strip()}",
+                    request.posted_date.strip() or None if request.posted else None,
+                    None,
+                    None,
+                    "[]",
+                    "[]",
+                    digest,
                 ),
             )
             if evidence is not None:
@@ -1367,28 +1510,60 @@ class FinancialBridgeService:
                     raise AccountingError("证据原件仅接受 PDF/PNG/JPEG", 422)
                 conn.execute(
                     "INSERT INTO bridge_return_evidence(import_id,book_id,firm_id,company_id,filename,media_type,sha256,size_bytes,content,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
-                    (import_id, book_id, book["firm_id"], book["company_id"], filename or "手动回执证据", media_type or "application/octet-stream", digest, len(evidence), evidence, actor.user_id, now()),
+                    (
+                        import_id,
+                        book_id,
+                        book["firm_id"],
+                        book["company_id"],
+                        filename or "手动回执证据",
+                        media_type or "application/octet-stream",
+                        digest,
+                        len(evidence),
+                        evidence,
+                        actor.user_id,
+                        now(),
+                    ),
                 )
             self.delivery._audit(
-                conn, actor, book_id, "bridge.return.manual", import_id,
-                {"batch_code": request.batch_code.strip(), "received": request.received, "posted": request.posted, "evidence_ref": evidence},
+                conn,
+                actor,
+                book_id,
+                "bridge.return.manual",
+                import_id,
+                {
+                    "batch_code": request.batch_code.strip(),
+                    "received": request.received,
+                    "posted": request.posted,
+                    "posted_date": request.posted_date.strip(),
+                    "evidence_ref": request.evidence_ref.strip(),
+                },
             )
             return self._return_view(
                 conn,
-                conn.execute("SELECT * FROM bridge_return_imports WHERE id=?", (import_id,)).fetchone(),
+                conn.execute(
+                    "SELECT * FROM bridge_return_imports WHERE id=?", (import_id,)
+                ).fetchone(),
             )
 
     def handle_return_row(
-        self, actor, book_id, artifact_id, import_id, voucher_code,
+        self,
+        actor,
+        book_id,
+        artifact_id,
+        import_id,
+        voucher_code,
         request: BridgeReturnRowHandle,
     ):
+        company_id = self._company_for_book(actor, book_id)
         reason = request.reason.strip()
         evidence = request.evidence_ref.strip()
         if len(reason) < 3:
             raise AccountingError("差异处置必须说明原因", 422)
         if len(evidence) < 5:
             raise AccountingError("差异处置必须填写可核验的证据", 422)
-        with self.db.transaction(write=True, actor=actor) as conn:
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             self._scope(conn, actor, book_id, True)
             artifact = conn.execute(
                 "SELECT * FROM bridge_export_artifacts WHERE id=? AND book_id=?",
@@ -1415,20 +1590,49 @@ class FinancialBridgeService:
                 (import_id, voucher_code),
             ).fetchone()
             if existing:
-                if existing["action"] != request.action or existing["reason"] != reason or existing["evidence_ref"] != evidence:
+                if (
+                    existing["action"] != request.action
+                    or existing["reason"] != reason
+                    or existing["evidence_ref"] != evidence
+                ):
                     raise AccountingError("该凭证差异已处置，原记录不会覆盖", 409)
                 return self._return_view(conn, imported)
             conn.execute(
                 "INSERT INTO bridge_return_row_handlers(import_id,voucher_code,book_id,firm_id,company_id,action,reason,evidence_ref,handled_by,handled_at,fingerprint) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
                 (
-                    import_id, voucher_code, book_id, imported["firm_id"],
-                    imported["company_id"], request.action, reason, evidence,
-                    actor.user_id, now(), fingerprint({"import_id": import_id, "voucher_code": voucher_code, "action": request.action, "reason": reason, "evidence_ref": evidence}),
+                    import_id,
+                    voucher_code,
+                    book_id,
+                    imported["firm_id"],
+                    imported["company_id"],
+                    request.action,
+                    reason,
+                    evidence,
+                    actor.user_id,
+                    now(),
+                    fingerprint(
+                        {
+                            "import_id": import_id,
+                            "voucher_code": voucher_code,
+                            "action": request.action,
+                            "reason": reason,
+                            "evidence_ref": evidence,
+                        }
+                    ),
                 ),
             )
             self.delivery._audit(
-                conn, actor, book_id, "bridge.return.row_handle", import_id,
-                {"voucher_code": voucher_code, "action": request.action, "reason": reason, "evidence_ref": evidence},
+                conn,
+                actor,
+                book_id,
+                "bridge.return.row_handle",
+                import_id,
+                {
+                    "voucher_code": voucher_code,
+                    "action": request.action,
+                    "reason": reason,
+                    "evidence_ref": evidence,
+                },
             )
             return self._return_view(conn, imported)
 
@@ -1479,7 +1683,9 @@ class FinancialBridgeService:
                     "available_action": "handle_return",
                     "business_action": "handle_return",
                     "task_version": row["voucher_code"] + ":" + row["fingerprint"],
-                    "amount_cents": abs(int(row["actual_cents"] or 0) - int(row["expected_cents"] or 0)),
+                    "amount_cents": abs(
+                        int(row["actual_cents"] or 0) - int(row["expected_cents"] or 0)
+                    ),
                     "reason": row["reason"] or row["status"],
                 }
                 for row in rows

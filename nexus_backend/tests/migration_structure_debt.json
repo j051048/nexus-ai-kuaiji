@@ -60,6 +60,870 @@
    "file": "129_delivery_provider_events.sql",
    "sha256": "31c2d3b2548fa8f75e2a2bcf61b382df65f31c9d17860a5ae1e4498601360cb9",
    "reason": "Frozen NEXT06 migration: invalid compatibility header; runtime conservatively classifies breaking. Never rewrite bytes/checksum. Scope protection added by PG211/SQLite131; exception limited to this exact historical digest."
+  },
+  {
+   "dialect": "sqlite",
+   "file": "141_transport_relations.sql",
+   "sha256": "7d00ac72b00e6281e5b834cfcdc0d8738fe68b43b28e002b05678e010248344f",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "142_tax_source_adapters.sql",
+   "sha256": "eda3a82833855197c34fcecd316a207608d32f1e2cfc36f4e48272af74b89f1b",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "143_tax_source_bindings.sql",
+   "sha256": "f3c7277606541b1452e6cd9563c8baa7ef845d43f49cde0492f982db76761f43",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "144_tax_source_contributions.sql",
+   "sha256": "297f11030db8ed81156bd4c63219496ea07b85ea6b1be008d9faa95e18a93bee",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "145_tax_source_contribution_lines.sql",
+   "sha256": "38a6e614ef22a76093135a2b54a5443d424fa56373ab06c9e1d8096da53dbf18",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "146_tax_source_multi_binding.sql",
+   "sha256": "513b093e6d3f138f841ee80cc6c67fec2b7fb4178d14f12b24692f8689bd70e8",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "147_tax_fee_batches.sql",
+   "sha256": "8d569d78488cdb1a8acd76e5427aff107bfdfd22c480f483ff3bcf44b79c9541",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "148_tplus54_receipts.sql",
+   "sha256": "4eacd3c4c078b5b5effd28277635969ee847fad459ce784b558b9f7983f773f8",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "149_tax_cost_batches.sql",
+   "sha256": "5f242f4ee79fbc8c5ded3a21db4750686a1650a2fa0ccaada3544763c1ad6237",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "151_tax_f_leases_basis_profit.sql",
+   "sha256": "7f8247415ad679e9bf0488dde9d734607491e2bcc860758a5510f35d30d96355",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "152_monthly_external_evidence.sql",
+   "sha256": "d5a09f2a6177fd8c11a80203d161b7eaf4f371bc4a604eb11422a3dbe77fd354",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "153_sync_stub_events.sql",
+   "sha256": "11e03982cbbe0489835236346102b012a69dfa6a51db7f88f366355cb4c0d889",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "154_taxi_fee_authority.sql",
+   "sha256": "5f4f7ec34894dccf6c66eaffeb3bc81531172721e6fbed24f60b071b0a001719",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "155_oa_approval_snapshots.sql",
+   "sha256": "138f01cde120492e2210a951bfe69b21fcc6f27d0f930a249dd49fea83f00777",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "157_oa_material_requests.sql",
+   "sha256": "d31263aefa2452f0cfaca3f0c6b2e46a1ddfbcde34b61a13f4f636ecd349adec",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "158_ai_route_decisions.sql",
+   "sha256": "64379719354a6df32c84356d9c9052005635b4adf0ef69d99a7c411d6bfc8c87",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "159_taxi_transport_binding.sql",
+   "sha256": "8a51b69a493614276c57cd6dd6b16aaac5e39db5f5dfffd938004b7e84146a1f",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "160_lease_invoice_reds.sql",
+   "sha256": "54b44f9b53f082d8dfaaeb3d743a7ee56f6fe1970ce9d6793b25d26186f6ca02",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "161_repair_rate_cards.sql",
+   "sha256": "9e18bd08759985b3f194e2dd7ded1dc2f800e450e563960e798b39dbc34af3fe",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "162_fsc_company_profiles.sql",
+   "sha256": "3bbf205848dfe8ca393d5935765724c5ecb2e28a934d54480b52b09859cf7583",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "163_fee_receivable_items.sql",
+   "sha256": "dc2aa87bd11a11a0ac7cf24c427e21815802fdd5e5ec6c347d2a208eb45a4222",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "164_fee_receivable_allocations.sql",
+   "sha256": "73077c57d73617fae7cc8a3ee3ffde4e5f7c288eecc95f648e09b2a19afdcb79",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "165_fee_receivable_allocation_reversals.sql",
+   "sha256": "63c52c347f2925b533f9996759cb23f98e15af8f26a9a8f9f9a81d0e246ab609",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "166_fee_receivable_refunds.sql",
+   "sha256": "a00e4b6914798200240527ca9b7df3f65f3e96b3313eb94de854830fdb4c2f2c",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "167_fee_allocation_payer.sql",
+   "sha256": "ded8900e411dfa3453a0c1484a318d35eb3a7ca394ff966aa15b4aadb65552fa",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "168_fsc_industry_contracts.sql",
+   "sha256": "bdbfb633cbab54417c4534d2b9d310e0ca07a7f2ef42aaff80d937cd10d38630",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "169_fsc_import_envelopes.sql",
+   "sha256": "d623afba23bbed3c626368a1e593c3c7192360d7b69ec1518cfb9ea5e3d8fc06",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "170_fsc_advertising_revenue_drafts.sql",
+   "sha256": "809cb9b6b61255b7a1d6c24e94b53e840c3eefc1dc5ab9ebdcc93f4e6dc5b3fb",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "171_fsc_contract_one_active.sql",
+   "sha256": "f2facc4111327397eb33c1ba855c143991f0b3da1d43a5c8213759e5c2043afd",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "172_fsc_evidence_policies.sql",
+   "sha256": "c87b7936b20e6ece2f49d86880eda7881795c3c5c42f98a32fd0ffd3e05b7009",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "173_fsc_profile_firm_client_fk.sql",
+   "sha256": "a29120b432047fdfa5903d565a197c098caea1b54da3955a66a5479eb6606fb8",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "174_fsc_evidence_request_links.sql",
+   "sha256": "bc0894561ead2dc5398d6bf9d282c4208c318f7af21899fa2e58b6e00705c628",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "175_fee_receivable_money_bigint.sql",
+   "sha256": "8993ff9f5f66bbee253d5b072855eb932097576bc6286ac7efdb6dded1045dc8",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "176_audit_events_append_only.sql",
+   "sha256": "e02d0f44df147c6296c652a0dc37c21f74dd4e066a49a9018e919a3a17ce996a",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "177_audit_hash_chain.sql",
+   "sha256": "5c063096a8c6fd96fabe7c3a785a9b77ef84634f98b7553c42082c33cdb60d8c",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "178_opt04_force_rls_noop.sql",
+   "sha256": "5985717a68fa8b5e05f6047e9b9a7604bddee1501d3c510f648ec5fe3fc96054",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "179_opt04_fee_fsc_write_policies_noop.sql",
+   "sha256": "a5753b74bf0cbd819f572a2c1206462fa5c1022661450db5f810c1f2b88f0de0",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "180_opt04_profile_firm_scope.sql",
+   "sha256": "85dbc464706d1babc6896baa76e36596ef6db241612f9bdf6076f50777257e00",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "181_opt04_contract_evidence_firm_scope.sql",
+   "sha256": "cbc9fa1b40507a1040906b30e6c5772c4dddae597bd79a0f71d33bb8422da995",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "182_opt04_evidence_link_fk.sql",
+   "sha256": "9b055bb03174741e83d391d3bbf391e86e609ecdda1ef0af4124bde96a9c6bdc",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "183_opt04_voucher_source_unique.sql",
+   "sha256": "4616b2e0845862b501cd4419145ec5aabad846f95043296e8d6b961ed1d6ada8",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "184_opt05_batch_lease_renewal.sql",
+   "sha256": "d875352c3679730fbc3e35338ef359acb21d8f455cb71e0378fec2e33ea38f09",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "185_opt05_scheduler.sql",
+   "sha256": "26e3d79e697a480ead9a43185de6ba09d06080a524f78394ad3ad5b1aa90a879",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "186_opt05_scheduler_system_execute.sql",
+   "sha256": "b4e0497804e46e0a0b0b8c31975b062152d551bac49c3c2e80932567b4085dcd",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "187_opt05_scheduler_system_tables.sql",
+   "sha256": "b4e0497804e46e0a0b0b8c31975b062152d551bac49c3c2e80932567b4085dcd",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "188_opt05_scheduler_system_policy.sql",
+   "sha256": "b4e0497804e46e0a0b0b8c31975b062152d551bac49c3c2e80932567b4085dcd",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "189_opt06_firm_review_control.sql",
+   "sha256": "3d56fd097d1b4eefd68831ac64e7040083b5799c19057ec4a669e43debb2cc54",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "190_opt06_management_separation.sql",
+   "sha256": "aed5eef18b859873fe808bb6f8a548bf5956b8aca08f122ae7963ab625511742",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "191_opt06_separation_permission_view.sql",
+   "sha256": "cafc5aae32be032c9e77cd49e7045ba466176431550105b5476e50dc9285f2d2",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "192_opt06_separation_view_grant.sql",
+   "sha256": "b4e0497804e46e0a0b0b8c31975b062152d551bac49c3c2e80932567b4085dcd",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "193_opt06_manager_self_review_grant.sql",
+   "sha256": "b14da0861727daba769255c620849b79a26e9873f53470eceb267fa19086441f",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "194_fsc13_closing_authority.sql",
+   "sha256": "6dfb22d56b9fdbcd78f17291f5bf98d661a7337f901cc50721c2384d86bb11f8",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "195_fsc14_lease_draft_bindings.sql",
+   "sha256": "acc5a658e105cdc1f379544ad046f1adfdd68461be72d28b42417e8a6e9c9a8a",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "196_fsc14_lease_plan_delete_grant.sql",
+   "sha256": "b62f4e67e10fb86cab835b255d302566f101c66ffe74a002eeab47558f498a2c",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "197_fsc15_repair_rate_lifecycle.sql",
+   "sha256": "4f55f90668b36af6296773a68944dfc6a3409502d87015eed1eb4654fa0ba597",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "198_fsc16_repair_package_contracts.sql",
+   "sha256": "4c07f397b37737ba66fd920892aad1b1c6037e78aee9160001ed1213ac6c2dfb",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "199_fsc17_asset_vehicle_links.sql",
+   "sha256": "02d34e7c3730b1c7173bec2a22ef9da58de81393254a78f4f1ea0f1d4ba26e0e",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "200_opt06_review_delegations.sql",
+   "sha256": "5acaf7a04beceffb91300affd55864fa712e45559582d6a22c415c3c483353f5",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "201_opt03_audit_hash_init_guard.sql",
+   "sha256": "f66753463ffb1eccd92c3c4b756057d4464a4e4d9a8d3ec2db78761688c2bdab",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "202_opt07_account_roles.sql",
+   "sha256": "68d1ffa5d03fe338ddc8233a53873bfae3bc8bd741a9fbf9c383d0fff53b6b2b",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "203_opt07_settlement_roles.sql",
+   "sha256": "ba48c29e2633d48a7ac7c1a55f20fa4c4049f46171e22c356cd0c99a253101a5",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "204_opt07_tax_policy_items.sql",
+   "sha256": "cebd1dba30a34ec279f16b731a739eb7928ae94042d679ca46a2ab48411b348d",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "205_opt07_subject_aliases.sql",
+   "sha256": "5c0bbe0694d8eff7c59eb08050b011c312bce07c40b2a73c156d3d77e07876ac",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "206_opt07_generic_alias_types.sql",
+   "sha256": "f6654a06527cf6fa82ee0bbc2c30b88887a60dd43909572b2cf7e10184721baf",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "207_plt02_report_modes.sql",
+   "sha256": "bc1f5ee2b43d8c7616ecc9bffb43fe30ef2236292a8404e7aed5841a24772d8d",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "208_plt02_reconciliation_notes.sql",
+   "sha256": "c91c2f545b53b8ccdc92666eb60dce63c4eaf85f788ef54dbcf9997658584cbc",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "210_plt04_variance_processing.sql",
+   "sha256": "60d41fd67e6d3f6e839204cf0eadf19f9bd10579d95f8b81fceb835454801d62",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "214_plt05_formal_book.sql",
+   "sha256": "aa1170053369734ce0ba79fe4a1c831acee4e9169c2e391d0dae2d7c2628e856",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "215_plt05_return_files.sql",
+   "sha256": "fd3833d48e51e37f37de941e239cda967082ae75d14d00eed4a7c51a12faffdc",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "216_plt05_return_handlers.sql",
+   "sha256": "96a47b5eca2010c1215d077ade58833fadaf4b578cb173770b2b6daa6ba4daa2",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "217_plt05_manual_evidence.sql",
+   "sha256": "598b267314651c41e2f9534c1bfdfd97c4f76d2dcddcc1151070de35e4a87be2",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "224_transport_relations.sql",
+   "sha256": "4d881732d6186f6323d5d758e5663d14d456381bad7ee1cbcd24c158b7c865ba",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "226_tax_source_bindings.sql",
+   "sha256": "1390e46506fad97619cce912efec080d0425a643f96c2e2cc7943cb5e3d2a01d",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "227_tax_source_contributions.sql",
+   "sha256": "1c9cd0aa6d404d494d5d9b1491912029bbb2572b3c72b92c87a8e7e0557fdcfd",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "228_tax_source_contribution_lines.sql",
+   "sha256": "e7ac927a1931750590aa046a663fcb9f65e5ede07c1945ceafea8f7662825d2e",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "229_tax_source_multi_binding.sql",
+   "sha256": "0f124dfe21b51108fc3b3a70f5b6ea85ae989ebae356c1c09fda2a5fc2b60c76",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "230_tax_fee_batches.sql",
+   "sha256": "94c8631bb77a9dbecedc7a9adc6b53f2101c13c8932d342d9f7424925fb065d1",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "231_tplus54_receipts.sql",
+   "sha256": "6b7aefa6cfa3fbd955d8ded3883d5bf67882988743d4f1f6c60371a269e52d39",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "232_tax_cost_batches.sql",
+   "sha256": "eaa541b6d8d50702bd2e687c2eebb761a614eb52237bc61ba628d785253a4eae",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "234_tax_f_leases_basis_profit.sql",
+   "sha256": "f7cdc0c8874286a90ab7888a6cd94d07359a5836257642262284ef011eb8e036",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "235_monthly_external_evidence.sql",
+   "sha256": "2c453fb078a2427e02cc8d8a9733bf33eecfd3b5ad3e52ba2bc56a66a554d4ce",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "236_sync_stub_events.sql",
+   "sha256": "91dd08a6ac61598af7d7cc54abb6f1b9bcaf135a3ff928b565fdf62459280349",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "238_oa_approval_snapshots.sql",
+   "sha256": "d82a8cc12c0d7942788a7acdc88609a661528331161994691d011acda461f29a",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "240_oa_material_requests.sql",
+   "sha256": "05ade4ea348d96318c48153ed83de42dd8f2e8c8e2bc363bd4c7b6121a041cc4",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "241_ai_route_decisions.sql",
+   "sha256": "6775d911991a6534c922968bede0e4020b2ec232d1f2c49c537aa9682e8c7c94",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "242_ai_route_decisions_app_grant.sql",
+   "sha256": "57384253bdbb401b98c0fa05cc4fe9a37942fe3600edc0b41e29b207c8a59803",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "244_lease_invoice_reds.sql",
+   "sha256": "cfa39daa72d7c52c21a076602feb16c6cfd052fbe1028571fee3d6e7965f975b",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "245_repair_rate_cards.sql",
+   "sha256": "8092ee77c27c56b4e87ed9fc1ef9959caab36244eac79437059859c75ca1516e",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "246_fsc_company_profiles.sql",
+   "sha256": "f3fc4790600858592de09ec8157a5ea2a3c11f71125002ac3ca6541d3030e197",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "247_fee_receivable_items.sql",
+   "sha256": "9045ff78ed558847191fbd6146850b8e512ff1b872305ea7c2ca15b11d14778c",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "248_taxi_transport_guard_names.sql",
+   "sha256": "6060b4933f50a5e8711396a53e191797aa5c83f706c635282136497af6f4c483",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "249_fee_receivable_allocations.sql",
+   "sha256": "98e8d2ebde65e25f206648593737074db6e5fbfda965ab52c9c091707b998a2b",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "250_fee_receivable_allocation_reversals.sql",
+   "sha256": "dfc75ad5c229f3aa975062e07d992f541d9787e17c5603c953b7a74a69a258c4",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "251_fee_receivable_refunds.sql",
+   "sha256": "52a864c71ee180e99987ac58e4b118df2311c048bbc1852b7440391b25f8a3d6",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "252_fee_receivable_allocation_update_grant.sql",
+   "sha256": "354433426a69f3dd3fa82d0165dd4ea115217fbbded150c48fb32576428067c9",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "253_fee_allocation_payer.sql",
+   "sha256": "27444c83d03abd49e583582d18c8d70d01fa10c6e3bd2ee189fa0be761b698fa",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "254_fsc_industry_contracts.sql",
+   "sha256": "b17fc29d743122f3209c1879c9531359c8fcacd1ddf2df4b9a6d3b25cd08cef4",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "255_fsc_import_envelopes.sql",
+   "sha256": "769048c8c2a0a59f699d3d3fd2a43568c3a2dfc6e3371a12d92117ec9508d46d",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "256_fsc_advertising_revenue_drafts.sql",
+   "sha256": "68ea84b39d4937e13e16851bef0149578fba62ba4da026b1cda56e2faadb3a21",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "257_fsc_contract_one_active.sql",
+   "sha256": "942f8b7e2cb0f44efc11588e1eedc234a1d6536a0d66cb877a2b95270cbd07f7",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "258_fsc_evidence_policies.sql",
+   "sha256": "9fb01b2838324ac4592570456e59c0f371b42b011569d8d88314826411d41950",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "259_fsc_evidence_request_links.sql",
+   "sha256": "82fe16a6834c50ed8004bd211b5c835ed70f0e0028bbdfe84b184d7829333042",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "260_fee_receivable_money_bigint.sql",
+   "sha256": "55cbb3581961e432ffa50d282ad1feffed622f336d3b4a8686a5bf681a1c86f5",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "261_audit_events_append_only.sql",
+   "sha256": "e354eb2ae84b6d1b49290452ec0096cb0b285612d973ff20dbfb31966030a685",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "262_audit_hash_chain.sql",
+   "sha256": "dfa32f734f8f88ee92c47365b0f5322a840932437bbe4ddb86993fca3f567a1d",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "263_opt04_force_rls_tenant_tables.sql",
+   "sha256": "338df75b08b0d2e1b13997ac51633f0c2da7bf498cbcd162476c0c07a404649b",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "264_opt04_fee_fsc_write_policies.sql",
+   "sha256": "1e879eb433e3c1aee64c006704f7c6634816c065d01a8c799ff7c8d663a9a5db",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "265_opt04_profile_firm_scope.sql",
+   "sha256": "f2bfc1c3c58cdbdc86395f570113c6fbe58ff0b79a867c83fb38e7b7e322c667",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "266_opt04_contract_evidence_firm_scope.sql",
+   "sha256": "8eaaed1cc14078f7f0aa44ac0317b1016928326e5951960eebbe344f23e35690",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "267_opt04_voucher_source_unique.sql",
+   "sha256": "acc7463788acd541a1be0c25790317afc4f564f8e4b08045353733a40d5613af",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "268_opt05_batch_lease_renewal.sql",
+   "sha256": "d3434cf388a1a39095347b1872f0c37d2c0cfdc6250349482dc454913031b51b",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "269_opt05_worker_schema_usage.sql",
+   "sha256": "93849345558d19ba8a6d2cc109a22830b13833228f7abc79d9693cad5b13579d",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "270_opt05_scheduler.sql",
+   "sha256": "e3cacb0477889496b0acf4fc88030c9f7e4878c1c30b9c64b5cd349f8a570eb2",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "271_opt05_scheduler_system_execute.sql",
+   "sha256": "a4db25fa6d6b72ea344de53b3e99e738f73afb14dd7ee1a276f1de15ffd6de05",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "272_opt05_scheduler_system_tables.sql",
+   "sha256": "67379b64c61293089a0837ed823c0055cfbed280e34b82a66ccd3928324e3b4c",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "273_opt05_scheduler_system_policy.sql",
+   "sha256": "51dcc5b964988a0096b210f7d9766fa6b7c706ba871721390e7374509ee344ef",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "274_opt06_firm_review_control.sql",
+   "sha256": "dc0e2f1b07a138f2226d779b3f8fe7fc3a75b88d694e05415a1250d7775a2e1e",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "275_opt06_management_separation.sql",
+   "sha256": "333c9b1d156dce2d980d8855b837fbfa5ed3ba4f47ebaae1fa36f3b6f67c630e",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "276_opt06_separation_permission_view.sql",
+   "sha256": "903adaef8f8c28bb21e1e0187d80c039f6321654018a17fcf62029b5faf471fc",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "277_opt06_separation_view_grant.sql",
+   "sha256": "782b178e9ebf1027a055f2a92032b5bcb5a196c2c13c90d686027a631ac73b40",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "278_opt06_manager_self_review_grant.sql",
+   "sha256": "1cd2b56875df82b82b765ed41117a8bb092ae56ec8f7b224943ee58b807d3cd1",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "279_fsc13_closing_authority.sql",
+   "sha256": "4b4ee5610f9cf0d1dd9a55cb2b9491334e1067d99675e438ad7bea0781895cb8",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "280_fsc14_lease_draft_bindings.sql",
+   "sha256": "a24bbae66c1caf732eeadf72781b72a1454df77ebc5c450e154ffd1f7483e2e8",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "281_fsc14_lease_plan_delete_grant.sql",
+   "sha256": "c468a34ea306169d001e3130ed636962b67b5d2bdd642b440e67ccd88a48f813",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "282_fsc15_repair_rate_lifecycle.sql",
+   "sha256": "acf8b1464b0b1bae0c285187956f4297a6fa653bca3182ad2611cc61e793d7c9",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "283_fsc16_repair_package_contracts.sql",
+   "sha256": "649d3158d6634947fe95f6527d2138dadfa8a9e4e4d003cfdda67a8321d7fe21",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "284_fsc17_asset_vehicle_links.sql",
+   "sha256": "a2c7741e5c3b2acc6d62f85b67dc47f9c8596b56cd3b4808c6bea753fa2fc5a1",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "285_opt06_review_delegations.sql",
+   "sha256": "09c1faecc67354ca6db42a67de1293e81a403f4b2328500ea66d6b9733630cb8",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "286_opt03_audit_hash_init_guard.sql",
+   "sha256": "da84682e5e5ceaef9f9c80385c9dc1841dbf114c4cde6c9e9cf890bd786032d5",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "287_opt07_account_roles.sql",
+   "sha256": "a574dbef5a8abd555e376be5ed06a51b2b1fb0246fe6bd9956463c977b403702",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "288_opt07_settlement_roles.sql",
+   "sha256": "bc6497a7355b3870a2055837b0b37976bb7e468d35ff2cf283bb4d2cc787078f",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "289_opt07_tax_policy_items.sql",
+   "sha256": "78a092ea1a742176bc68a0602f73954140aca05e0e0dda90615095f32168cf98",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "290_opt07_subject_aliases.sql",
+   "sha256": "04a4431ab1d912fbb88353f910ff3c63ad975baa3f4094f6198a80e70d316879",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "291_opt07_generic_alias_types.sql",
+   "sha256": "6aaba17ca207970345617571fa00530c247269c14cd331ad92c18f4235941b89",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "292_plt02_report_modes.sql",
+   "sha256": "117f19a9a1cbe70c2f87f650fa39ed4106508cc4fd5bb92633fb020f3d43b834",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "293_plt02_reconciliation_notes.sql",
+   "sha256": "c47dbffb158296d60fd67bacc4381fe33bfbbfb2b90329c164cb14144b2996e2",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "295_plt04_variance_processing.sql",
+   "sha256": "ed0bfe2d88e337c7c7a5acb3847ff0342151ec25e7e6a5c4e733afaeae16df78",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "299_plt05_formal_book.sql",
+   "sha256": "e2808ae8ca24205ee7128d436aa5ea749002bced2020aed64f0ac87b245dc757",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "300_plt05_return_files.sql",
+   "sha256": "9d34d01bb20001c992b8d4e3d8cfef1b36483c5d813125941ebf57619f3f089c",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "301_plt05_return_handlers.sql",
+   "sha256": "e43026a6942059493dafc86389a28f07140a4a9cdef0bab5130cfb773d51ae8f",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "302_plt05_manual_evidence.sql",
+   "sha256": "5376389ee75f30c67c7d12919c024a24c2aa51a4fdb6919bb49d9580e0568fa5",
+   "reason": "UPG Batch01 历史兼容性登记：已存在的冻结迁移缺少 compatibility 头；不改 bytes/checksum，新迁移继续要求兼容头。"
+  },
+  {
+   "dialect": "sqlite",
+   "file": "219_plt05_return_evidence_verified.sql",
+   "sha256": "d74583689f2a0e298eb10a45c3448cd3fc6156c77c3509fce5c7073a5267e300",
+   "reason": "并发新增迁移缺少 compatibility 头；只登记精确摘要，不改他人文件。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "304_plt05_return_evidence_book_scope.sql",
+   "sha256": "76b9486302714753c1a29209e04576f915729d9f214dbfd380a25922b1902ffe",
+   "reason": "并发新增迁移缺少 compatibility 头；只登记精确摘要，不改他人文件。"
+  },
+  {
+   "dialect": "postgres",
+   "file": "305_plt05_return_evidence_verified.sql",
+   "sha256": "03cab50158e714569cb044d5f42a8d3d3c2172b608bef5ecfc9e12b9da393e6a",
+   "reason": "并发新增迁移缺少 compatibility 头；只登记精确摘要，不改他人文件。"
   }
  ]
 }

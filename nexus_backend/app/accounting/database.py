@@ -765,10 +765,7 @@ class Database:
             raise ValueError("actor 与 system/projection 身份事务不能混用")
         started = perf_counter()
         reuse_sqlite_read = bool(
-            self._sqlite_read_reuse
-            and not self.is_postgres
-            and not write
-            and not privileged
+            self._sqlite_read_reuse and not self.is_postgres and not write and not privileged
         )
         try:
             conn = self._sqlite_read_connection() if reuse_sqlite_read else self.connect()

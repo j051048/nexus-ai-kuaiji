@@ -369,6 +369,7 @@ class ReportService:
                     amount = -amount
                 profit_items.append(
                     {
+                        "section": section["key"],
                         "account_id": row["account_id"],
                         "code": row["code"],
                         "name": row["name"],
@@ -538,6 +539,7 @@ class ReportService:
     def validate(self, actor, report_id):
         with self.db.transaction(write=True, actor=actor) as conn:
             row = self._report(conn, actor, report_id, write=True)
+            self._assert_mapping_current(conn, row)
             if row["status"] not in {"draft", "validated"}:
                 raise AccountingError("当前报表状态不能核验", 409)
             content = json.loads(row["content_json"])
@@ -559,8 +561,16 @@ class ReportService:
         with self.db.transaction(actor=actor) as conn:
             return self._current_in_transaction(conn, actor, report_id)
 
+    def _assert_mapping_current(self, conn, row):
+        if row["mode"] != "formal" or not row["mapping_fingerprint"]:
+            return
+        book = conn.execute("SELECT firm_id FROM books WHERE id=?", (row["book_id"],)).fetchone()
+        if book and mapping_fingerprint(conn, book["firm_id"]) != row["mapping_fingerprint"]:
+            raise AccountingError("科目到报表行次的映射已变化，请重新生成报表", 409)
+
     def _current_in_transaction(self, conn, actor, report_id, trial=None):
         row = self._report(conn, actor, report_id)
+        self._assert_mapping_current(conn, row)
         book = self.accounting.access.book(conn, actor, row["book_id"], "read")
         template = conn.execute(
             "SELECT * FROM report_templates WHERE id=? AND version=? AND active=1",
@@ -637,6 +647,7 @@ class ReportService:
     def reconcile(self, actor, report_id, request):
         with self.db.transaction(actor=actor) as conn:
             row = self._report(conn, actor, report_id)
+            self._assert_mapping_current(conn, row)
             content = json.loads(row["content_json"])
             result = compare_reference(request.csv_text, content)
             result["report_id"] = report_id
@@ -645,8 +656,15 @@ class ReportService:
             return result
 
     def explain_difference(self, actor, report_id, request):
-        with self.db.transaction(write=True, actor=actor) as conn:
+        with self.db.transaction(actor=actor) as conn:
+            row = self._report(conn, actor, report_id)
+            book, _ = self._book(conn, actor, row["book_id"])
+            company_id = book["company_id"]
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
             row = self._report(conn, actor, report_id, write=True)
+            self._assert_mapping_current(conn, row)
             line = canonical_line(request.line_key)
             note_id = uuid4().hex
             conn.execute(
@@ -713,9 +731,7 @@ class ReportService:
             for row in rows:
                 report = dict(row)
                 report["trial_reasons"] = json.loads(report.get("trial_reasons_json") or "[]")
-                report["mode_label"] = (
-                    "试算，不可对外" if report.get("mode") == "trial" else "正式"
-                )
+                report["mode_label"] = "试算，不可对外" if report.get("mode") == "trial" else "正式"
                 reports.append(report)
             return reports
 

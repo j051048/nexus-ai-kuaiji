@@ -43,11 +43,13 @@ def archived_item(client, tmp_path, intent):
     )
 
 
-# The six original direct-upload consumers. Tax filing receipts have their own
-# consumer contract in test_next05_filing_evidence.py; keep it in the portable
-# recovery registry but exercise its HTTP path there.
+# The six original direct-upload consumers. Tax filing receipts and source
+# originals have dedicated HTTP contracts; keep them in the portable recovery
+# registry but exercise their HTTP paths in their own modules.
 LEGACY_CONSUMERS = {
-    key: value for key, value in BINDINGS.items() if key != "tax_filing_attachment"
+    key: value
+    for key, value in BINDINGS.items()
+    if key not in {"tax_filing_attachment", "source_original"}
 }
 
 
@@ -57,9 +59,10 @@ def test_six_runtime_consumers_are_policy3_compatible(client, tmp_path, purpose)
     assert LEGACY_CONSUMERS == {
         key: value
         for key, value in recovery.CONSUMED_TARGETS.items()
-        if key != "tax_filing_attachment"
+        if key not in {"tax_filing_attachment", "source_original"}
     }
     assert BINDINGS["tax_filing_attachment"] == recovery.CONSUMED_TARGETS["tax_filing_attachment"]
+    assert BINDINGS["source_original"] == recovery.CONSUMED_TARGETS["source_original"]
     exercise_consumer(client, purpose, attachment_table)
     intent = one_intent(client, purpose)
     binding = json.loads(intent["binding_json"])

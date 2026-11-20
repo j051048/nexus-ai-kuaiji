@@ -282,6 +282,7 @@ def test_migration_preserves_legacy_reference_without_fabricating_verified_bindi
                     and (
                         path.name.startswith("088_")
                         or path.name.startswith("127_")
+                        or path.name.startswith("213_")
                     )
                 )
             ],

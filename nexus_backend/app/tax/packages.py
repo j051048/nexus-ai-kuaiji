@@ -143,7 +143,9 @@ class RepairPackageService:
             ).fetchone()
         if request.valid_to < request.valid_from:
             raise AccountingError("合同结束期间不能早于开始期间", 422)
-        vehicles = sorted({str(value).strip() for value in request.vehicle_external_ids if str(value).strip()})
+        vehicles = sorted(
+            {str(value).strip() for value in request.vehicle_external_ids if str(value).strip()}
+        )
         if not vehicles:
             raise AccountingError("包干合同必须列明适用车辆", 422)
         version = int(previous["version"]) + 1 if previous else 1

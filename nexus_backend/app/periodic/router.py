@@ -129,9 +129,7 @@ def build_periodic_router(actor_dependency):
         return periodic.post(current, draft_id, payload)
 
     @router.get("/assets/{asset_id}/vehicle-link")
-    def vehicle_link(
-        asset_id: str, current=Depends(actor_dependency), links=Depends(link_service)
-    ):
+    def vehicle_link(asset_id: str, current=Depends(actor_dependency), links=Depends(link_service)):
         return {"link": links.summary(current, asset_id)}
 
     @router.post("/assets/{asset_id}/vehicle-link", status_code=201)

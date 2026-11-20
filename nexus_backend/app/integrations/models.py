@@ -1,3 +1,4 @@
+from datetime import date
 from typing import Literal
 from pydantic import Field, StrictStr, field_validator, model_validator
 from app.accounting.models import InputModel, money_to_cents, cents_to_money
@@ -80,12 +81,27 @@ class BridgeReturnImport(InputModel):
     batch_code: StrictStr = Field(min_length=1, max_length=100)
     content: StrictStr = Field(min_length=1, max_length=2_000_000)
 
+
 class BridgeManualReturn(InputModel):
     batch_code: StrictStr = Field(min_length=1, max_length=100)
     received: bool
     posted: bool = False
+    posted_date: StrictStr = Field(default="", max_length=10)
     evidence_ref: StrictStr = Field(min_length=1, max_length=500)
     note: StrictStr = Field(default="", max_length=500)
+
+    @field_validator("posted_date")
+    @classmethod
+    def valid_posted_date(cls, value):
+        value = value.strip()
+        if not value:
+            return ""
+        try:
+            date.fromisoformat(value)
+        except (ValueError, TypeError):
+            raise ValueError("对方过账日期必须是 YYYY-MM-DD")
+        return value
+
 
 class BridgeReturnRowHandle(InputModel):
     action: Literal["resolved", "ignored"]
