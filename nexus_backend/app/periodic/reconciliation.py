@@ -174,6 +174,7 @@ def generate(service, conn, actor, asset_id, request):
     )
     return result
 
+
 def _unsupported_history(conn, voucher_id, asset):
     """Asset lines carry the asset id in aux; other aux keys remain blocking."""
     rows = conn.execute(

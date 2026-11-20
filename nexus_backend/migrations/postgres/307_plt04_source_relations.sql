@@ -35,6 +35,7 @@ CREATE POLICY fee_source_relations_write ON accounting.fee_source_relations
 GRANT SELECT,INSERT ON accounting.fee_source_relations TO accounting_app;
 REVOKE ALL ON accounting.fee_source_relations FROM PUBLIC;
 
+DROP TRIGGER IF EXISTS batch2_company_write_gate ON accounting.fee_source_relations;
 CREATE TRIGGER batch2_company_write_gate
  BEFORE INSERT OR UPDATE OR DELETE ON accounting.fee_source_relations
  FOR EACH ROW EXECUTE FUNCTION accounting.company_write_table_guard();

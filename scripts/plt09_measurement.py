@@ -148,9 +148,9 @@ def summarize(rows: list[Cell]) -> dict[str, int | str]:
         "partial_rows": partial,
         "complete_rows": complete,
         "measured_zeroes": measured_zeroes,
-        "status": "未采集" if complete == 0 and partial == 0 else (
-            "已采集" if unknown == 0 and partial == 0 else "部分采集"
-        ),
+        "status": "未采集"
+        if complete == 0 and partial == 0
+        else ("已采集" if unknown == 0 and partial == 0 else "部分采集"),
     }
 
 

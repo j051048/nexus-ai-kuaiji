@@ -1,3 +1,4 @@
+-- compatibility: breaking
 -- G1: independent external-ledger evidence, append-only after verification.
 CREATE TABLE accounting.monthly_external_evidence(
  id TEXT PRIMARY KEY,
@@ -47,5 +48,6 @@ BEGIN
  END IF;
  RETURN NEW;
 END $$;
+DROP TRIGGER IF EXISTS monthly_external_evidence_guard ON accounting.monthly_external_evidence;
 CREATE TRIGGER monthly_external_evidence_guard BEFORE UPDATE OR DELETE ON accounting.monthly_external_evidence
 FOR EACH ROW EXECUTE FUNCTION accounting.guard_monthly_external_evidence();

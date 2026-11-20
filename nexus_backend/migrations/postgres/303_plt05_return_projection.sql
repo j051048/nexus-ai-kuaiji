@@ -36,9 +36,11 @@ END $bump$;
 
 REVOKE ALL ON FUNCTION accounting.bridge_return_projection_bump() FROM PUBLIC,accounting_app,accounting_worker;
 
+DROP TRIGGER IF EXISTS bridge_return_imports_projection_bump ON accounting.bridge_return_imports;
 CREATE TRIGGER bridge_return_imports_projection_bump
  AFTER INSERT ON accounting.bridge_return_imports
  FOR EACH ROW EXECUTE FUNCTION accounting.bridge_return_projection_bump();
+DROP TRIGGER IF EXISTS bridge_return_handlers_projection_bump ON accounting.bridge_return_row_handlers;
 CREATE TRIGGER bridge_return_handlers_projection_bump
  AFTER INSERT ON accounting.bridge_return_row_handlers
  FOR EACH ROW EXECUTE FUNCTION accounting.bridge_return_projection_bump();

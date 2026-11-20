@@ -1,10 +1,11 @@
+-- compatibility: breaking
 -- OPT03-B: per-firm append-only audit hash chain.
 ALTER TABLE accounting.audit_events ADD COLUMN prev_hash TEXT;
 ALTER TABLE accounting.audit_events ADD COLUMN row_hash TEXT;
 
 -- The append-only row trigger from 261 blocks the migration backfill. It is
 -- recreated below after every historical row has a chain position.
-DROP TRIGGER audit_events_append_only_row ON accounting.audit_events;
+DROP TRIGGER IF EXISTS audit_events_append_only_row ON accounting.audit_events;
 
 CREATE OR REPLACE FUNCTION accounting.audit_event_hash(
  prev text, event_id bigint, firm text, book text, company text, actor text,
@@ -57,6 +58,7 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION accounting.audit_events_chain_guard() FROM PUBLIC;
 
+DROP TRIGGER IF EXISTS audit_events_hash_chain ON accounting.audit_events;
 CREATE TRIGGER audit_events_hash_chain BEFORE INSERT ON accounting.audit_events
  FOR EACH ROW EXECUTE FUNCTION accounting.audit_events_chain_guard();
 

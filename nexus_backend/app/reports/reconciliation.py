@@ -210,9 +210,7 @@ def _drilldown(content: dict, section: str, kind: str) -> list[dict]:
             if matched:
                 return matched
             key, name = (
-                ("revenue_cents", "营业收入")
-                if kind == "income"
-                else ("expense_cents", "成本费用")
+                ("revenue_cents", "营业收入") if kind == "income" else ("expense_cents", "成本费用")
             )
             return [{"code": key, "name": name, "amount_cents": int(statement.get(key) or 0)}]
         if items:

@@ -28,7 +28,10 @@ def summary(rows):
         "total": len(rows),
         "ok": len(ok),
         "failed": len(rows) - len(ok),
-        "status_counts": {str(code): sum(1 for r in rows if r["status"] == code) for code in sorted({r["status"] for r in rows})},
+        "status_counts": {
+            str(code): sum(1 for r in rows if r["status"] == code)
+            for code in sorted({r["status"] for r in rows})
+        },
         "latency_ms": {
             "p50": percentile([r["ms"] for r in ok], 0.50),
             "p95": percentile([r["ms"] for r in ok], 0.95),
@@ -58,13 +61,21 @@ def main():
         tag = uuid4().hex[:8]
         companies, books = [], []
         for index in range(args.companies):
-            company = seed.post("/api/companies", headers=headers, json={"name": f"FSC12 {tag} {index}", "tax_id": ""})
+            company = seed.post(
+                "/api/companies",
+                headers=headers,
+                json={"name": f"FSC12 {tag} {index}", "tax_id": ""},
+            )
             company.raise_for_status()
             companies.append(company.json()["id"])
             created = seed.post(
                 "/api/books",
                 headers=headers,
-                json={"name": f"FSC12 {tag} {index} 2026-10", "company_id": companies[-1], "period": "2026-10"},
+                json={
+                    "name": f"FSC12 {tag} {index} 2026-10",
+                    "company_id": companies[-1],
+                    "period": "2026-10",
+                },
             )
             created.raise_for_status()
             books.append(created.json()["id"])
@@ -73,16 +84,32 @@ def main():
     def read_once(index):
         begin = time.perf_counter()
         try:
-            response = client.get(f"/api/books/{books[index % len(books)]}?summaries=true&limit=100", headers=headers)
-            return {"kind": "read", "status": response.status_code, "ok": response.status_code == 200, "ms": round((time.perf_counter() - begin) * 1000, 2)}
+            response = client.get(
+                f"/api/books/{books[index % len(books)]}?summaries=true&limit=100", headers=headers
+            )
+            return {
+                "kind": "read",
+                "status": response.status_code,
+                "ok": response.status_code == 200,
+                "ms": round((time.perf_counter() - begin) * 1000, 2),
+            }
         except Exception as error:
-            return {"kind": "read", "status": 0, "ok": False, "ms": round((time.perf_counter() - begin) * 1000, 2), "error": type(error).__name__}
+            return {
+                "kind": "read",
+                "status": 0,
+                "ok": False,
+                "ms": round((time.perf_counter() - begin) * 1000, 2),
+                "error": type(error).__name__,
+            }
 
     client = httpx.Client(
         base_url=args.base_url,
         trust_env=False,
         timeout=60.0,
-        limits=httpx.Limits(max_connections=max(100, args.concurrency), max_keepalive_connections=max(20, args.concurrency)),
+        limits=httpx.Limits(
+            max_connections=max(100, args.concurrency),
+            max_keepalive_connections=max(20, args.concurrency),
+        ),
     )
     read_rows = []
     with ThreadPoolExecutor(max_workers=args.concurrency) as pool:
@@ -95,11 +122,26 @@ def main():
             response = client.post(
                 "/api/books",
                 headers=headers,
-                json={"name": f"FSC12 {tag} write {index}", "company_id": companies[index % len(companies)], "period": "2026-11"},
+                json={
+                    "name": f"FSC12 {tag} write {index}",
+                    "company_id": companies[index % len(companies)],
+                    "period": "2026-11",
+                },
             )
-            return {"kind": "write", "status": response.status_code, "ok": response.status_code == 201, "ms": round((time.perf_counter() - begin) * 1000, 2)}
+            return {
+                "kind": "write",
+                "status": response.status_code,
+                "ok": response.status_code == 201,
+                "ms": round((time.perf_counter() - begin) * 1000, 2),
+            }
         except Exception as error:
-            return {"kind": "write", "status": 0, "ok": False, "ms": round((time.perf_counter() - begin) * 1000, 2), "error": type(error).__name__}
+            return {
+                "kind": "write",
+                "status": 0,
+                "ok": False,
+                "ms": round((time.perf_counter() - begin) * 1000, 2),
+                "error": type(error).__name__,
+            }
 
     write_rows = []
     with ThreadPoolExecutor(max_workers=args.concurrency) as pool:
@@ -108,6 +150,7 @@ def main():
 
     client.close()
     from scripts.release_candidate import candidate_fingerprint
+
     report = {
         "schema": "fsc12-http-v1",
         "base_url": args.base_url,

@@ -319,7 +319,9 @@ class FinancialBridgeService:
                 "evidence_attached": ev is not None,
                 "filename": ev["filename"] if ev else None,
                 "declared_by": last_manual_claim["created_by"],
-                "declared_by_name": declarer["name"] if declarer else last_manual_claim["created_by"],
+                "declared_by_name": declarer["name"]
+                if declarer
+                else last_manual_claim["created_by"],
             }
         first_artifact = artifacts[0] if artifacts else None
         statuses = {
@@ -1281,9 +1283,7 @@ class FinancialBridgeService:
             "FROM bridge_return_evidence WHERE import_id=?",
             (row["id"],),
         ).fetchone()
-        creator = conn.execute(
-            "SELECT name FROM users WHERE id=?", (row["created_by"],)
-        ).fetchone()
+        creator = conn.execute("SELECT name FROM users WHERE id=?", (row["created_by"],)).fetchone()
         ev_uploader = (
             conn.execute("SELECT name FROM users WHERE id=?", (ev["created_by"],)).fetchone()
             if ev
@@ -1293,9 +1293,7 @@ class FinancialBridgeService:
         posted_declared = bool(row["posted"])
         # 只有逐笔返回文件经过批次/凭证号/金额/科目/过账日期校验后才算正式确认外部已过账；
         # 手工回执附 PDF/图片仅代表“原件已收存、人工声明已过账”，不等同于逐笔核对入账。
-        posted_verified = (
-            (not is_manual) and posted_declared and bool(row["evidence_verified"])
-        )
+        posted_verified = (not is_manual) and posted_declared and bool(row["evidence_verified"])
         if not is_manual:
             if posted_verified:
                 verification_state = "file_posted_verified"

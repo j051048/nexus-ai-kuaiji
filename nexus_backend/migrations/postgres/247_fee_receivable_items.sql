@@ -1,3 +1,4 @@
+-- compatibility: breaking
 CREATE TABLE IF NOT EXISTS accounting.fee_receivable_items (
   id TEXT PRIMARY KEY,
   book_id TEXT NOT NULL REFERENCES accounting.books(id),
@@ -27,5 +28,6 @@ BEGIN
   END IF;
   RETURN NEW;
 END; $$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS fee_receivable_items_identity ON accounting.fee_receivable_items;
 CREATE TRIGGER fee_receivable_items_identity BEFORE UPDATE ON accounting.fee_receivable_items
 FOR EACH ROW EXECUTE FUNCTION accounting.fee_receivable_items_identity_guard();

@@ -79,9 +79,7 @@ def validate_file(path: Path, period: str, date_format: str) -> dict:
         result["errors"].append("缺少可识别的日期列")
     if "description" not in suggested:
         result["errors"].append("缺少可识别的摘要/用途列")
-    amount_ok = "amount" in suggested or (
-        "income" in suggested and "expense" in suggested
-    )
+    amount_ok = "amount" in suggested or ("income" in suggested and "expense" in suggested)
     if not amount_ok:
         result["errors"].append("缺少金额列，或收入/支出两列")
     if "amount" in suggested and "direction" not in suggested:
@@ -118,12 +116,8 @@ def validate_file(path: Path, period: str, date_format: str) -> dict:
                     continue
         else:
             try:
-                income = convert_money(
-                    raw[suggested["income"]] or "0", allow_grouping=True
-                )
-                expense = convert_money(
-                    raw[suggested["expense"]] or "0", allow_grouping=True
-                )
+                income = convert_money(raw[suggested["income"]] or "0", allow_grouping=True)
+                expense = convert_money(raw[suggested["expense"]] or "0", allow_grouping=True)
                 amount = income - expense
             except (IndexError, ValueError) as error:
                 result["errors"].append(f"第 {offset} 行金额无效：{error}")

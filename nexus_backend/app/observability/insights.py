@@ -258,8 +258,10 @@ class FirmInsightsService:
                 stage = "intake"
             else:
                 stage = "prepare"
-            report_mode = report["effective_mode"] if report else (
-                "trial" if book["id"] in draft_trial_books else "missing"
+            report_mode = (
+                report["effective_mode"]
+                if report
+                else ("trial" if book["id"] in draft_trial_books else "missing")
             )
             standard_kind = (
                 (report.get("standard_kind") or "unassessed") if report else "unassessed"
@@ -391,7 +393,9 @@ class FirmInsightsService:
             coverage_label += f" · 含 {legacy_books} 家门槛建立前历史报表"
         totals_comparable = not mixed_standards and known > 0
         if mixed_standards:
-            totals_notice = "已纳入单位存在多种会计准则口径，不建议直接混算合计，请查看下方分口径汇总。"
+            totals_notice = (
+                "已纳入单位存在多种会计准则口径，不建议直接混算合计，请查看下方分口径汇总。"
+            )
         elif not complete:
             totals_notice = "存在未复核或缺报单位，当前合计不完整（未按 0 元补齐）。"
         else:

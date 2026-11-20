@@ -612,7 +612,9 @@ class ReportService:
             eff_mode, _ = self.effective_mode(row)
             if eff_mode != "formal":
                 raise AccountingError(
-                    "历史未核定报表不能进入复核" if eff_mode == "legacy" else "试算报表不能进入复核",
+                    "历史未核定报表不能进入复核"
+                    if eff_mode == "legacy"
+                    else "试算报表不能进入复核",
                     409,
                 )
             self._current_in_transaction(conn, actor, report_id)

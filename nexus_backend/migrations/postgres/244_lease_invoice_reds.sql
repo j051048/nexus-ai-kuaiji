@@ -1,3 +1,4 @@
+-- compatibility: breaking
 CREATE TABLE IF NOT EXISTS accounting.lease_invoice_reds (
   id TEXT PRIMARY KEY,
   contract_id TEXT NOT NULL REFERENCES accounting.lease_contracts(id),
@@ -18,5 +19,6 @@ CREATE POLICY lease_invoice_reds_scope ON accounting.lease_invoice_reds
 GRANT SELECT,INSERT ON accounting.lease_invoice_reds TO accounting_app;
 CREATE OR REPLACE FUNCTION accounting.lease_invoice_reds_immutable_guard() RETURNS trigger AS $$
 BEGIN RAISE EXCEPTION 'lease invoice reds are immutable'; END; $$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS lease_invoice_reds_immutable ON accounting.lease_invoice_reds;
 CREATE TRIGGER lease_invoice_reds_immutable BEFORE UPDATE OR DELETE ON accounting.lease_invoice_reds
 FOR EACH ROW EXECUTE FUNCTION accounting.lease_invoice_reds_immutable_guard();

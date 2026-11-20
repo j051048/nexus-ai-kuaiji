@@ -47,6 +47,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS fee_variance_immutable_identity ON accounting.fee_receivable_variances;
 CREATE TRIGGER fee_variance_immutable_identity BEFORE UPDATE ON accounting.fee_receivable_variances
 FOR EACH ROW EXECUTE FUNCTION accounting.fee_variance_immutable_identity();
 
@@ -56,6 +57,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS fee_variance_no_delete ON accounting.fee_receivable_variances;
 CREATE TRIGGER fee_variance_no_delete BEFORE DELETE ON accounting.fee_receivable_variances
 FOR EACH ROW EXECUTE FUNCTION accounting.fee_variance_no_delete();
 

@@ -11,7 +11,6 @@ import base64
 import json
 import os
 import shutil
-import tempfile
 from pathlib import Path
 
 import psycopg
@@ -34,7 +33,12 @@ def counts(url):
             "SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace "
             "WHERE n.nspname='accounting' AND c.relkind='r'"
         ).fetchone()[0]
-    return {"companies": companies, "migrations": migrations[0], "max_version": migrations[1], "tables": tables}
+    return {
+        "companies": companies,
+        "migrations": migrations[0],
+        "max_version": migrations[1],
+        "tables": tables,
+    }
 
 
 def main():
@@ -83,7 +87,9 @@ def main():
         "serving_enabled": receipt["serving_enabled"],
         "outbound_disabled": receipt["outbound_disabled"],
     }
-    (root / "result.json").write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+    (root / "result.json").write_text(
+        json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
     print(json.dumps(result, ensure_ascii=False))
 
 

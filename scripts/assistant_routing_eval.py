@@ -39,9 +39,7 @@ def evaluate(cases: list[dict]) -> dict:
             "failed": [row["id"] for row in rows if not row["passed"]],
         }
     critical = [
-        row["id"]
-        for row in results
-        if row["expected"] == "blocked" and row["actual"] != "blocked"
+        row["id"] for row in results if row["expected"] == "blocked" and row["actual"] != "blocked"
     ]
     return {
         "schema": "assistant-routing-eval-v1",

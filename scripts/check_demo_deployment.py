@@ -244,7 +244,9 @@ def verify_database(env: Mapping[str, str], role: str) -> None:
             actual = {row["rolname"] for row in memberships}
             expected = {
                 "accounting_app",
-                "accounting_system" if role in {"api", "maintenance", "scheduler"} else "accounting_worker",
+                "accounting_system"
+                if role in {"api", "maintenance", "scheduler"}
+                else "accounting_worker",
             }
             _require(actual == expected)
             dangerous = conn.execute(
@@ -328,7 +330,8 @@ def inspect_online(env: Mapping[str, str], role: str) -> list[Check]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="部署只读自检，不迁移、不调用模型、不更改客户数据")
     parser.add_argument(
-        "--role", choices=("api", "worker", "assistant", "batch", "scheduler", "migration", "maintenance")
+        "--role",
+        choices=("api", "worker", "assistant", "batch", "scheduler", "migration", "maintenance"),
     )
     parser.add_argument("--env-file", help="显式加载该私密文件，不自动读取 .env")
     parser.add_argument(

@@ -181,6 +181,7 @@ def _plaintext_sha_for_item(manifest, original):
             return item.get("plaintext_sha256") if item.get("encrypted") else item["sha256"]
     raise ValueError("备份清单缺少原件身份")
 
+
 # Single registry for every database row that points at a private original.
 # A backup must cover all of them; a restore must verify the same set. New
 # attachment tables must be added here and to the restore verification test.
@@ -962,10 +963,7 @@ def verify(directory):
                 raise ValueError("备份解密失败：密钥错误或密文被篡改") from error
             if plaintext_size != item["size_bytes"] or digest != item["plaintext_sha256"]:
                 raise ValueError("备份解密后的明文哈希不符")
-        elif (
-            source.stat().st_size != item["size_bytes"]
-            or sha256(source) != item["sha256"]
-        ):
+        elif source.stat().st_size != item["size_bytes"] or sha256(source) != item["sha256"]:
             raise ValueError("备份文件缺失或哈希不符")
         if name.startswith("originals/") and manifest.get("originals_policy_version", 1) >= 3:
             if (
@@ -1103,15 +1101,15 @@ def restore(directory, destination, postgres_target=None, *, restore_permissions
         destination_file.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         if item.get("encrypted"):
             _decrypt_file(safe_child(source, item["path"]), destination_file, encryption_key)
-            if (
-                destination_file.stat().st_size != item["size_bytes"]
-                or sha256(destination_file) != item.get("plaintext_sha256")
-            ):
+            if destination_file.stat().st_size != item["size_bytes"] or sha256(
+                destination_file
+            ) != item.get("plaintext_sha256"):
                 raise ValueError("恢复文件解密后的明文哈希不符")
         else:
-            with safe_child(source, item["path"]).open("rb") as src, destination_file.open(
-                "xb"
-            ) as dst:
+            with (
+                safe_child(source, item["path"]).open("rb") as src,
+                destination_file.open("xb") as dst,
+            ):
                 shutil.copyfileobj(src, dst)
             destination_file.chmod(0o600)
             if sha256(destination_file) != item["sha256"]:

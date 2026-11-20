@@ -200,7 +200,10 @@ class SourceRelationService:
         fee_id = relation["fee_source_id"]
         if fee_id:
             fee = self._source(conn, book_id, fee_id, "规费流水")
-            if source_version(fee["fingerprint"], fee["latest_evidence"]) != relation["fee_version"]:
+            if (
+                source_version(fee["fingerprint"], fee["latest_evidence"])
+                != relation["fee_version"]
+            ):
                 return "规费流水"
         return ""
 

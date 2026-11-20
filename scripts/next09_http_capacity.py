@@ -11,7 +11,6 @@ import argparse
 from concurrent.futures import ThreadPoolExecutor
 import json
 from pathlib import Path
-import statistics
 import sys
 import time
 from uuid import uuid4

@@ -9,7 +9,7 @@ permissions:
   contents: read
 jobs:
   verify:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     services:
       postgres:
         image: postgres:16
@@ -76,7 +76,7 @@ jobs:
           --ignore=nexus_backend/tests/test_task_journey_postgres.py
 
   e2e:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
@@ -115,7 +115,7 @@ jobs:
 
   core-regression-gate:
     name: V07–V10 same-candidate dev and preview gate
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
@@ -143,7 +143,7 @@ jobs:
 
   ak05-postgres-gate:
     name: AK05 PostgreSQL ${{ matrix.postgres }} required gate
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 35
     strategy:
       fail-fast: false
@@ -290,7 +290,7 @@ jobs:
 
   n02-n03-postgres-gate:
     name: N02/N03 PostgreSQL ${{ matrix.postgres }} required gate
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -356,7 +356,7 @@ jobs:
 
   controlled-candidate-check:
     name: Same-candidate evidence check (no deployment)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     needs: [verify, e2e, core-regression-gate, ak05-postgres-gate, n02-n03-postgres-gate]
     if: always()

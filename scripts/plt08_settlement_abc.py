@@ -42,14 +42,22 @@ RESPONSES = {
     "B": {
         "v_missing_fee": {"decision": "partial_unresolved", "source_correct": True, "leak": False},
         "v_matched_fee": {"decision": "complete_fee", "source_correct": True, "leak": False},
-        "v_cross_period_fee": {"decision": "partial_mismatch", "source_correct": False, "leak": False},
+        "v_cross_period_fee": {
+            "decision": "partial_mismatch",
+            "source_correct": False,
+            "leak": False,
+        },
         "v_other_tenant": {"decision": "denied_404", "source_correct": True, "leak": False},
         "v_revoked": {"decision": "denied_403", "source_correct": True, "leak": False},
     },
     "C": {
         "v_missing_fee": {"decision": "partial_unresolved", "source_correct": True, "leak": False},
         "v_matched_fee": {"decision": "complete_fee", "source_correct": True, "leak": False},
-        "v_cross_period_fee": {"decision": "partial_cross_period", "source_correct": True, "leak": False},
+        "v_cross_period_fee": {
+            "decision": "partial_cross_period",
+            "source_correct": True,
+            "leak": False,
+        },
         "v_other_tenant": {"decision": "denied_404", "source_correct": True, "leak": False},
         "v_revoked": {"decision": "denied_403", "source_correct": True, "leak": False},
     },
@@ -87,7 +95,9 @@ def main():
         "selected": None,
         "note": "fixed scripted response tables; no model calls",
     }
-    (OUT / "freeze.json").write_text(json.dumps(freeze, ensure_ascii=False, indent=2), encoding="utf-8")
+    (OUT / "freeze.json").write_text(
+        json.dumps(freeze, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
 
     groups = {}
     for name, table in RESPONSES.items():
@@ -95,7 +105,9 @@ def main():
         for case in VALIDATION:
             answer = table[case["id"]]
             feasible = answer["decision"] == case["required"]
-            required_abstain = case["required"].startswith("partial_") or case["required"].startswith("denied_")
+            required_abstain = case["required"].startswith("partial_") or case[
+                "required"
+            ].startswith("denied_")
             rows.append(
                 {
                     **case,
@@ -130,7 +142,9 @@ def main():
         "human_check_minutes": None,
         "limitation": "A/B/C are fixed scripted response fixtures, not model outputs; no evidence that historical memory improves proposal quality. Human timing not measured.",
     }
-    (OUT / "report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    (OUT / "report.json").write_text(
+        json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
     lines = [
         "# PLT08 结算差额 A/B/C 对照",
         "",
@@ -154,7 +168,18 @@ def main():
         "人工核查分钟数：待测（无会计计时数据）。",
     ]
     (OUT / "REPORT.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
-    print(json.dumps({"freeze": freeze["candidates"], "selected": None, "groups": {k: {x: y for x, y in v.items() if x != "rows"} for k, v in groups.items()}}, ensure_ascii=False))
+    print(
+        json.dumps(
+            {
+                "freeze": freeze["candidates"],
+                "selected": None,
+                "groups": {
+                    k: {x: y for x, y in v.items() if x != "rows"} for k, v in groups.items()
+                },
+            },
+            ensure_ascii=False,
+        )
+    )
 
 
 if __name__ == "__main__":

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Fail when the active interpreter does not match nexus_backend/requirements.lock."""
+
 from __future__ import annotations
 
 import importlib.metadata as metadata

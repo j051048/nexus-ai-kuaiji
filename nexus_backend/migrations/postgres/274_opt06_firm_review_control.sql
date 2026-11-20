@@ -1,3 +1,4 @@
+-- compatibility: breaking
 -- OPT06-A: firm-level ban on single-operator review.
 CREATE TABLE accounting.firm_review_controls(
   firm_id TEXT PRIMARY KEY REFERENCES accounting.firms(id),
@@ -27,6 +28,7 @@ BEGIN
   END IF;
   RETURN NEW;
 END $$;
+DROP TRIGGER IF EXISTS ledger_review_policy_single_operator_guard ON accounting.ledger_review_policies;
 CREATE TRIGGER ledger_review_policy_single_operator_guard
 BEFORE INSERT ON accounting.ledger_review_policies
 FOR EACH ROW EXECUTE FUNCTION accounting.ledger_review_policy_single_operator_guard();
