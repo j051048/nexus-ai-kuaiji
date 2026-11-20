@@ -7,6 +7,7 @@ import './analysis-evidence.css';
 import { createReadGuard } from './scoped-read';
 import {
   AnalysisContractError,
+  describeSettlementDifference,
   parseAnalysis,
   type Analysis,
   type AnalysisScope,
@@ -19,6 +20,8 @@ const missingLabels: Record<string, string> = {
   fee_evidence: '手续费或扣款明细',
   fee_evidence_mismatch: '手续费与差额不一致',
   fee_evidence_coverage: '手续费明细的期间覆盖',
+  verified_source_relation: '已核对的三方来源关系',
+  verified_fee_relation: '已核对的手续费来源绑定',
 };
 
 export function AnalysisEvidencePanel(props: {
@@ -234,22 +237,20 @@ export function AnalysisEvidencePanel(props: {
             {result.summary} · 状态：{result.status === 'complete' ? '当前范围已核对' : '不完整'}
           </p>
           {result.kind === 'settlement_difference' ? (
-            <div>
-              <p>
-                结算单 {String(result.facts.settlement_total ?? '未知')} 元，银行到账{' '}
-                {String(result.facts.bank_total ?? '未知')} 元，差额{' '}
-                <strong>{String(result.facts.difference ?? '未知')} 元</strong>。
-              </p>
-              <p>
-                {result.facts.reason === 'fee_evidence'
-                  ? `已由手续费明细 ${String(result.facts.fee_total ?? '未知')} 元解释。`
-                  : result.facts.reason === 'fee_evidence_mismatch'
-                    ? '手续费明细与差额不一致，不能据此归因。'
-                    : result.facts.reason === 'cross_period_evidence'
-                      ? '手续费明细不在本期间，覆盖范围不足，不能据此归因。'
-                      : '原因待核对，缺手续费或扣款明细。'}
-              </p>
-            </div>
+            (() => {
+              const guidance = describeSettlementDifference(result.facts);
+              return (
+                <div>
+                  <p>
+                    结算单 {String(result.facts.settlement_total ?? '未知')} 元，银行到账{' '}
+                    {String(result.facts.bank_total ?? '未知')} 元，差额{' '}
+                    <strong>{String(result.facts.difference ?? '未知')} 元</strong>。
+                  </p>
+                  <p>{guidance.headline}</p>
+                  <p>{guidance.nextStep}</p>
+                </div>
+              );
+            })()
           ) : result.kind === 'expense_bridge' ? (
             <p>
               本期 {String(result.facts.current_total ?? '未知')} 元，上期{' '}

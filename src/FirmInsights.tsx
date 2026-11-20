@@ -67,6 +67,45 @@ type Insights = {
     unclassified_cash_cents: number;
     known_books: number;
     missing_books: number;
+    total_books?: number;
+    complete?: boolean;
+    coverage_label?: string;
+    mixed_standards?: boolean;
+    totals_comparable?: boolean;
+    totals_notice?: string;
+    legacy_books?: number;
+    trial_books?: number;
+    management_summary_notice?: string;
+    included_companies?: {
+      company_id: string;
+      company_name: string;
+      period: string;
+      report_status: string;
+      report_mode: string;
+      report_mode_label: string;
+      standard_kind: string;
+      standard_label: string;
+      as_of: string | null;
+    }[];
+    missing_companies?: {
+      company_id: string;
+      company_name: string;
+      owner_name: string;
+      top_blocker: string;
+      has_trial_draft: boolean;
+    }[];
+    standards_breakdown?: {
+      standard_kind: string;
+      standard_label: string;
+      books: number;
+      assets_cents: number;
+      liabilities_cents: number;
+      equity_cents: number;
+      revenue_cents: number;
+      expenses_cents: number;
+      profit_cents: number;
+      cash_closing_cents: number;
+    }[];
   };
   stages: Stage[];
   exceptions: Exception[];
@@ -449,14 +488,32 @@ export function FirmInsights({ session }: { session: Session }) {
             <article>
               <span>已归集收入</span>
               <strong>
-                {data.kpis.known_reports ? cny(data.financial.revenue_cents) : '暂无'}
+                {!data.kpis.known_reports
+                  ? '暂无'
+                  : data.financial.mixed_standards
+                    ? '见分口径'
+                    : cny(data.financial.revenue_cents)}
               </strong>
-              <small>{data.financial.known_books} 套已复核报表</small>
+              <small>
+                {data.financial.mixed_standards
+                  ? '存在多套会计准则，不直接混算'
+                  : `${data.financial.known_books} 套已复核报表`}
+              </small>
             </article>
             <article>
               <span>已归集利润</span>
-              <strong>{data.kpis.known_reports ? cny(data.financial.profit_cents) : '暂无'}</strong>
-              <small>不是全所净利润；未复核账套不含</small>
+              <strong>
+                {!data.kpis.known_reports
+                  ? '暂无'
+                  : data.financial.mixed_standards
+                    ? '见分口径'
+                    : cny(data.financial.profit_cents)}
+              </strong>
+              <small>
+                {data.financial.mixed_standards
+                  ? '请按下方不同准则分别查看'
+                  : '管理汇总，非合并报表；未复核账套不含'}
+              </small>
             </article>
             <article>
               <span>AI 已发生成本</span>
@@ -473,57 +530,113 @@ export function FirmInsights({ session }: { session: Session }) {
 
           <section className="firm-insights-finance" aria-label="已复核报表财务汇总">
             <div className="firm-insights-card-head">
-              <h2>已复核报表财务汇总</h2>
+              <h2>已复核报表财务汇总（管理汇总，非合并财务报表）</h2>
               <span>
-                {data.financial.known_books
-                  ? `${data.financial.known_books} 套账套已覆盖`
-                  : '暂无已复核报表，未按 0 元展示'}
+                {data.financial.coverage_label ??
+                  (data.financial.known_books
+                    ? `${data.financial.known_books} 套账套已覆盖`
+                    : '暂无已复核报表，未按 0 元展示')}
               </span>
             </div>
-            <dl>
-              <div>
-                <dt>资产</dt>
-                <dd>{data.financial.known_books ? cny(data.financial.assets_cents) : '未覆盖'}</dd>
+            {data.financial.totals_notice && (
+              <p className="field-help">{data.financial.totals_notice}</p>
+            )}
+            {data.financial.mixed_standards && data.financial.standards_breakdown?.length ? (
+              <div className="firm-insights-table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>会计准则口径</th>
+                      <th>纳入套数</th>
+                      <th>资产</th>
+                      <th>收入</th>
+                      <th>利润</th>
+                      <th>期末现金</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.financial.standards_breakdown.map((row) => (
+                      <tr key={row.standard_kind}>
+                        <td>{row.standard_label}</td>
+                        <td>{row.books} 套</td>
+                        <td>{cny(row.assets_cents)}</td>
+                        <td>{cny(row.revenue_cents)}</td>
+                        <td>{cny(row.profit_cents)}</td>
+                        <td>{cny(row.cash_closing_cents)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-              <div>
-                <dt>负债</dt>
-                <dd>
-                  {data.financial.known_books ? cny(data.financial.liabilities_cents) : '未覆盖'}
-                </dd>
-              </div>
-              <div>
-                <dt>权益</dt>
-                <dd>{data.financial.known_books ? cny(data.financial.equity_cents) : '未覆盖'}</dd>
-              </div>
-              <div>
-                <dt>收入</dt>
-                <dd>{data.financial.known_books ? cny(data.financial.revenue_cents) : '未覆盖'}</dd>
-              </div>
-              <div>
-                <dt>费用</dt>
-                <dd>
-                  {data.financial.known_books ? cny(data.financial.expenses_cents) : '未覆盖'}
-                </dd>
-              </div>
-              <div>
-                <dt>利润</dt>
-                <dd>{data.financial.known_books ? cny(data.financial.profit_cents) : '未覆盖'}</dd>
-              </div>
-              <div>
-                <dt>期末现金</dt>
-                <dd>
-                  {data.financial.known_books ? cny(data.financial.cash_closing_cents) : '未覆盖'}
-                </dd>
-              </div>
-              <div>
-                <dt>未分类现金</dt>
-                <dd>
-                  {data.financial.known_books
-                    ? cny(data.financial.unclassified_cash_cents)
-                    : '未覆盖'}
-                </dd>
-              </div>
-            </dl>
+            ) : (
+              <dl>
+                <div>
+                  <dt>资产</dt>
+                  <dd>
+                    {data.financial.known_books ? cny(data.financial.assets_cents) : '未覆盖'}
+                  </dd>
+                </div>
+                <div>
+                  <dt>负债</dt>
+                  <dd>
+                    {data.financial.known_books ? cny(data.financial.liabilities_cents) : '未覆盖'}
+                  </dd>
+                </div>
+                <div>
+                  <dt>权益</dt>
+                  <dd>
+                    {data.financial.known_books ? cny(data.financial.equity_cents) : '未覆盖'}
+                  </dd>
+                </div>
+                <div>
+                  <dt>收入</dt>
+                  <dd>
+                    {data.financial.known_books ? cny(data.financial.revenue_cents) : '未覆盖'}
+                  </dd>
+                </div>
+                <div>
+                  <dt>费用</dt>
+                  <dd>
+                    {data.financial.known_books ? cny(data.financial.expenses_cents) : '未覆盖'}
+                  </dd>
+                </div>
+                <div>
+                  <dt>利润</dt>
+                  <dd>
+                    {data.financial.known_books ? cny(data.financial.profit_cents) : '未覆盖'}
+                  </dd>
+                </div>
+                <div>
+                  <dt>期末现金</dt>
+                  <dd>
+                    {data.financial.known_books ? cny(data.financial.cash_closing_cents) : '未覆盖'}
+                  </dd>
+                </div>
+                <div>
+                  <dt>未分类现金</dt>
+                  <dd>
+                    {data.financial.known_books
+                      ? cny(data.financial.unclassified_cash_cents)
+                      : '未覆盖'}
+                  </dd>
+                </div>
+              </dl>
+            )}
+            {(data.financial.missing_companies?.length ?? 0) > 0 && (
+              <details className="firm-insights-table-fallback">
+                <summary>
+                  未纳入合计单位（{data.financial.missing_companies?.length} 家，未按 0 补齐）
+                </summary>
+                <ul>
+                  {data.financial.missing_companies?.map((m) => (
+                    <li key={m.company_id}>
+                      {m.company_name} · 负责人：{m.owner_name} · 当前阻断：{m.top_blocker}
+                      {m.has_trial_draft ? '（仅有试算/草稿，未入正式汇总）' : ''}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
           </section>
 
           <section className="firm-insights-grid">

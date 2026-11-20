@@ -198,7 +198,9 @@ test('手工登记回执在浏览器选择证据原件并留痕', async ({ page,
   expect(manualResponse.status()).toBe(201);
   const manualReturn = await manualResponse.json();
   await expect(page.getByText(/手工回执与证据原件已登记/)).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByText(/已接收 · 已过账/)).toBeVisible();
+  await expect(page.getByText(/人工声明已过账 · 已附原件（未逐笔核对凭证）/)).toBeVisible();
+  await expect(page.getByText(/原件 manual-receipt\.pdf/)).toBeVisible();
+  await expect(page.getByText(/对方已过账/)).toHaveCount(0);
   const evidence = await request.get(
     `${f.base}/artifacts/${artifact.id}/returns/${manualReturn.id}/evidence`,
     { headers: f.headers },

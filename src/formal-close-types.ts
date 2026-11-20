@@ -33,7 +33,7 @@ function bound(value: unknown, scope: CloseScope, legacy = false) {
     created_by: legacy && row.created_by === null ? '' : text(row.created_by),
   };
 }
-export type ReportMode = 'trial' | 'formal';
+export type ReportMode = 'trial' | 'formal' | 'legacy';
 export interface ReportRow {
   id: string;
   version: number;
@@ -125,16 +125,31 @@ export function parseReportRows(value: unknown, scope: CloseScope): ReportRow[] 
       throw new Error('报表状态未知。');
     const hash = text(row.content_hash);
     if (!/^[a-f0-9]{64}$/.test(hash)) throw new Error('报表指纹无效。');
-    const mode = row.mode === 'trial' ? 'trial' : 'formal';
-    if (row.mode !== undefined && row.mode !== 'trial' && row.mode !== 'formal')
+    const mode: ReportMode =
+      row.mode === 'trial' ? 'trial' : row.mode === 'legacy' ? 'legacy' : 'formal';
+    if (
+      row.mode !== undefined &&
+      row.mode !== 'trial' &&
+      row.mode !== 'formal' &&
+      row.mode !== 'legacy'
+    )
       throw new Error('报表模式未知，请重新读取。');
+    const defaultLabel =
+      mode === 'trial'
+        ? '试算，不可对外'
+        : mode === 'legacy'
+          ? String(row.status) === 'published'
+            ? '门槛建立前发布'
+            : '历史未核定，不可发布'
+          : '正式';
     return {
       ...identity,
       status: String(row.status),
       content_hash: hash,
       content: parseReportContent(row.content_json),
       mode,
-      mode_label: mode === 'trial' ? '试算，不可对外' : '正式',
+      mode_label:
+        typeof row.mode_label === 'string' && row.mode_label.trim() ? row.mode_label : defaultLabel,
       trial_reasons: Array.isArray(row.trial_reasons)
         ? row.trial_reasons.filter(
             (item): item is string => typeof item === 'string' && !!item.trim(),

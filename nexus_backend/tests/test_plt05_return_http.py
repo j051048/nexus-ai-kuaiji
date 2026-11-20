@@ -136,3 +136,16 @@ def test_manual_return_http_evidence_roundtrip(service, book):  # noqa: F811
         assert listed.status_code == 200, listed.text
         assert [item["id"] for item in listed.json()["returns"]] == [import_id]
         assert listed.json()["returns"][0]["evidence_verified"] is True
+
+
+def test_chinese_download_names_use_rfc5987_double_header():
+    """Non-ASCII file names must not break header encoding (500 on export bundle)."""
+    from urllib.parse import quote
+
+    from app.integrations.router import _attachment_disposition
+
+    for filename in ("客户回执.pdf", "凭证导出-2026-10.csv"):
+        header = _attachment_disposition(filename)
+        assert header.startswith('attachment; filename="')
+        assert "\r" not in header and "\n" not in header
+        assert f"filename*=UTF-8''{quote(filename, safe='')}" in header

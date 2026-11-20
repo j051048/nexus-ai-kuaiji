@@ -191,6 +191,9 @@ def test_xml_sqlite_upgrade_preserves_existing_originals_runs_and_foreign_keys(t
     monkeypatch.setattr(database, "migration_files", lambda dialect: [path for path in original(dialect) if int(path.name.split("_")[0]) < 58])
     # Build the historical 057 contract directly. Modern directory/ACL code
     # requires newer admin columns and must never run against an old schema.
+    # Building the historical 057 contract must not start from a head-schema
+    # template; that copy would already know every later migration.
+    monkeypatch.setenv("ACCOUNTING_TEST_SCHEMA_TEMPLATE", "0")
     legacy = database.Database(tmp_path / "pre-xml.db")
     storage = AttachmentStore(tmp_path / "pre-xml-originals")
     attachment = storage.put("synthetic-original.png", "image/png", attachment_bytes())

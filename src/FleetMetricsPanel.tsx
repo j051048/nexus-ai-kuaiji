@@ -94,7 +94,6 @@ export function FleetMetricsPanel({
 
   useEffect(() => {
     void load();
-     
   }, [bookId, period]);
 
   return (

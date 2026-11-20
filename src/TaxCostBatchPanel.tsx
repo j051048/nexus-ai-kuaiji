@@ -218,7 +218,7 @@ export function TaxCostBatchPanel({
     }
   }
   useEffect(() => {
-    void load();  
+    void load();
   }, [bookId, session]);
 
   function changeKind(next: Kind) {

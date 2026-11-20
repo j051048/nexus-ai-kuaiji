@@ -29,8 +29,9 @@ def test_external_evidence_row_survives_full_restore_without_originals(tmp_path)
         )
         conn.execute(
             "INSERT INTO report_runs(id,book_id,period,template_id,template_version,status,version,"
-            "inputs_fingerprint,content_json,content_hash,created_by,created_at) "
-            "VALUES('report-g1','book-g1','2026-10','synthetic',1,'published',1,?,?,?,?,?)",
+            "inputs_fingerprint,content_json,content_hash,created_by,created_at,"
+            "mode,standard_kind,policy_version,policy_approver) "
+            "VALUES('report-g1','book-g1','2026-10','synthetic',1,'published',1,?,?,?,?,?,'formal','small_enterprise',1,'reviewer-g1')",
             ("c" * 64, "{}", "d" * 64, "maker-g1", "2026-11-12T00:00:00Z"),
         )
         conn.execute(

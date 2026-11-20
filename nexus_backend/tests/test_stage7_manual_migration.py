@@ -12,6 +12,8 @@ def test_pre_stage7_manual_edit_is_backfilled_and_cannot_be_cleared(tmp_path,mon
     original=database.migration_files
     monkeypatch.setattr(database,'migration_files',lambda dialect:[path for path in original(dialect) if int(path.name.split('_')[0])<16])
     path=tmp_path/'before-manual-guard.db'
+    # A head-schema template cannot represent a pre-stage-7 database.
+    monkeypatch.setenv("ACCOUNTING_TEST_SCHEMA_TEMPLATE", "0")
     db=database.Database(path)
     # Build only records the historical schema understood. Calling today's
     # domain methods here would incorrectly query later case/learning tables.

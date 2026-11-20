@@ -46,6 +46,79 @@ const integer = (v: unknown): v is number =>
   typeof v === 'number' && Number.isSafeInteger(v) && v >= 0;
 const hash = (v: unknown): v is string => typeof v === 'string' && /^[a-f0-9]{64}$/.test(v);
 
+export const SETTLEMENT_DIFFERENCE_REASONS = [
+  'none',
+  'fee_evidence',
+  'fee_evidence_mismatch',
+  'cross_period_evidence',
+  'unverified_source_relation',
+  'fee_relation_mismatch',
+  'unresolved',
+] as const;
+
+export type SettlementDifferenceReason = (typeof SETTLEMENT_DIFFERENCE_REASONS)[number];
+
+function sourceLabel(source: unknown, fallback: string): string {
+  if (!record(source)) return fallback;
+  return String(source.source_name ?? source.description ?? source.id ?? fallback);
+}
+
+function sourceMonth(source: unknown): string {
+  if (!record(source) || typeof source.date !== 'string') return '';
+  return source.date.slice(0, 7);
+}
+
+export function describeSettlementDifference(facts: Record<string, unknown>): {
+  headline: string;
+  nextStep: string;
+} {
+  const reason = String(facts.reason ?? '');
+  const diff = String(facts.difference ?? '未知');
+  const feeTotal = String(facts.fee_total ?? '未知');
+  const settlementName = sourceLabel(facts.settlement_source, '结算单');
+  const bankName = sourceLabel(facts.bank_source, '银行到账');
+  const feeName = sourceLabel(facts.fee_source, '手续费凭据');
+  const feePeriod = sourceMonth(facts.fee_source);
+  switch (reason) {
+    case 'none':
+      return {
+        headline: '已对平，结算单与银行到账金额一致，无差额。',
+        nextStep: '无需补件或登记差额。',
+      };
+    case 'fee_evidence':
+      return {
+        headline: `已由手续费明细 ${feeTotal} 元解释（${feeName}）。`,
+        nextStep: '来源关系已核对，可在差异台账按政策生成草稿并交由另一人独立复核。',
+      };
+    case 'cross_period_evidence':
+      return {
+        headline: `手续费凭据属 ${feePeriod || '非本期间'}（跨期），覆盖范围不是本期间，不能据此归因。`,
+        nextStep: '请核查本期间对应扣费/退款原件，或在差异台账按跨期原因登记处理。',
+      };
+    case 'fee_evidence_mismatch':
+      return {
+        headline: `金额冲突：${settlementName}与${bankName}差额 ${diff} 元，所选${feeName}为 ${feeTotal} 元，两笔金额不一致，不能据此归因。`,
+        nextStep: '请对照两笔来源原件核查是否存在部分退款、多笔扣费或选错凭据。',
+      };
+    case 'unverified_source_relation':
+      return {
+        headline: `来源关系尚未核对：${feeName}金额与差额 ${diff} 元一致，但尚未将结算单、到账流水与该凭据绑定核对，不能据此确认归因。`,
+        nextStep:
+          '请先在规费差异中登记并核对三方来源关系，避免误把同月同额无关流水当成本笔手续费。',
+      };
+    case 'fee_relation_mismatch':
+      return {
+        headline: `所选${feeName}不在已核对的来源关系内，不能据此确认归因。`,
+        nextStep: '请对照已核对的结算与到账关系重新核实对应扣费凭据。',
+      };
+    default:
+      return {
+        headline: '原因待核对，缺手续费或扣款明细。',
+        nextStep: '请补充本期间对应手续费、退款或扣款原件后再核对，切勿盲目按金额归类。',
+      };
+  }
+}
+
 /** Validate the whole response before any fields reach React state. */
 export function parseAnalysis(v: unknown, scope: AnalysisScope): Analysis {
   const fail = () => {
@@ -110,9 +183,7 @@ export function parseAnalysis(v: unknown, scope: AnalysisScope): Analysis {
       typeof facts.settlement_total !== 'string' ||
       typeof facts.bank_total !== 'string' ||
       typeof facts.difference !== 'string' ||
-      !['unresolved', 'fee_evidence', 'fee_evidence_mismatch', 'none'].includes(
-        String(facts.reason),
-      )
+      !(SETTLEMENT_DIFFERENCE_REASONS as readonly string[]).includes(String(facts.reason))
     )
       return fail();
     return v as Analysis;

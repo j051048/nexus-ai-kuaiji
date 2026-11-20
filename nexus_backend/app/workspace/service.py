@@ -14,6 +14,15 @@ from .projection import (
     refresh_company_scoped,
     status_snapshot,
 )
+from .queue_lanes import (
+    DEFAULT_DUE_SOON_DAYS,
+    QUEUE_LANE_RULE_VERSION,
+    attribute_backlog,
+    classify_backlog_category,
+    classify_task_lane,
+    due_soon_cutoff,
+    partition_queue_lanes,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -1275,13 +1284,15 @@ class WorkspaceService:
     ):
         page_bounds(limit, offset)
         if (
-            bucket not in {"action", "waiting", "all"}
+            bucket not in {"action", "waiting", "due_soon", "all"}
             or kind is not None
             and kind not in KINDS
             or sort not in {"priority", "due", "amount", "updated"}
             or len(q) > 200
         ):
             raise AccountingError("待办筛选参数无效")
+        today = datetime.now(ZoneInfo("Asia/Shanghai")).date().isoformat()
+        cutoff = due_soon_cutoff(today, DEFAULT_DUE_SOON_DAYS)
         # _query resolves the active user and current firm role through the
         # review scope; do not repeat that identical authorization round trip.
         role_gates = self._task_gates(conn, actor)
@@ -1295,8 +1306,13 @@ class WorkspaceService:
             else self._query(conn, actor, role_gates)
         )
         where, filters = ["1=1"], []
+        if bucket == "due_soon":
+            where.append("bucket='action' AND due_on IS NOT NULL AND due_on<=?")
+            filters.append(cutoff)
+        elif bucket != "all":
+            where.append("bucket=?")
+            filters.append(bucket)
         for col, value in (
-            ("bucket", None if bucket == "all" else bucket),
             ("kind", kind),
             ("company_id", company_id),
             ("ref", ref),
@@ -1319,26 +1335,27 @@ class WorkspaceService:
         rows = conn.execute(
             query + ", filtered_tasks AS (SELECT *" + base + "), task_counts AS (SELECT "
             "COALESCE(SUM(CASE WHEN bucket='action' THEN 1 ELSE 0 END),0) AS _action_count,"
-            "COALESCE(SUM(CASE WHEN bucket='waiting' THEN 1 ELSE 0 END),0) AS _waiting_count "
+            "COALESCE(SUM(CASE WHEN bucket='waiting' THEN 1 ELSE 0 END),0) AS _waiting_count,"
+            "COALESCE(SUM(CASE WHEN bucket='action' AND due_on IS NOT NULL AND due_on<=? THEN 1 ELSE 0 END),0) AS _due_soon_count "
             "FROM tasks), matching_count AS (SELECT COUNT(*) AS _total FROM filtered_tasks),"
             " task_page AS (SELECT * FROM filtered_tasks ORDER BY "
             + order
             + ",kind,ref LIMIT ? OFFSET ?) "
-            "SELECT t.*,c.name AS company_name,n._total,k._action_count,k._waiting_count "
+            "SELECT t.*,c.name AS company_name,n._total,k._action_count,k._waiting_count,k._due_soon_count "
             "FROM matching_count n CROSS JOIN task_counts k LEFT JOIN task_page t ON 1=1 "
             "LEFT JOIN companies c ON c.id=t.company_id ORDER BY " + order + ",kind,ref",
-            [*params, *filters, limit, offset],
+            [*params, *filters, cutoff, limit, offset],
         ).fetchall()
         # A metadata row survives an empty page, including offset past the last
         # task. PostgreSQL materializes the reused authorized task projection
         # once rather than recomputing its RLS-heavy branches three times.
         total = rows[0]["_total"]
+        due_soon_total = int(rows[0]["_due_soon_count"] or 0)
         counts = {
-            bucket: rows[0]["_" + bucket + "_count"]
-            for bucket in ("action", "waiting")
-            if rows[0]["_" + bucket + "_count"]
+            b: rows[0]["_" + b + "_count"]
+            for b in ("action", "waiting")
+            if rows[0]["_" + b + "_count"]
         }
-        today = datetime.now(ZoneInfo("Asia/Shanghai")).date().isoformat()
         tasks = []
         for row in rows:
             if row["ref"] is None:
@@ -1356,9 +1373,21 @@ class WorkspaceService:
                 item["title"] = ALERTS.get(item["title"], "待处理运行告警")
             tasks.append(item)
         self._decorate_task_envelopes(conn, tasks)
+        for item in tasks:
+            item["lane"] = classify_task_lane(item, today=today)
+            item["backlog_category"] = classify_backlog_category(item)
+        lanes = partition_queue_lanes(tasks, today=today)
         return {
             "tasks": tasks,
             "counts": counts,
+            "queue_lanes": {
+                "rule_version": QUEUE_LANE_RULE_VERSION,
+                "today": today,
+                "due_soon_days": DEFAULT_DUE_SOON_DAYS,
+                "due_soon_total": due_soon_total,
+                "page_counts": lanes["counts"],
+            },
+            "backlog_summary": attribute_backlog(tasks),
             "pagination": {
                 "total": total,
                 "limit": limit,

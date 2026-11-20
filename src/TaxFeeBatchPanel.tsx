@@ -234,7 +234,6 @@ function ScopedTaxFeeBatchPanel({
     return () => {
       revision.current++;
     };
-     
   }, [bookId, session]);
 
   async function allocate(item: Receivable) {

@@ -9,6 +9,7 @@ from app.accounting.seed import LOCAL_ACTOR
 from app.accounting.service import Actor, AccountingError
 from app.main import create_app
 from test_accounting import service, book, row, add_actor
+from review_policy_fixtures import ensure_independent_reviewer
 
 
 def fill(service, book, count=45):
@@ -103,7 +104,8 @@ def test_missing_auxiliary_enters_exception_page_and_export_keeps_formula_safe_v
         if line["account_code"]=="6602.97": line["auxiliary_values"]={"project":"=1+1"}
     changed=service.update_draft(LOCAL_ACTOR,book,value["id"],DraftUpdate(expected_version=changed["version"],description=value["description"],lines=lines))
     assert not changed["issues"]
-    service.approve(LOCAL_ACTOR,book,value["id"],ApprovalRequest(expected_version=changed["version"]))
+    approver=ensure_independent_reviewer(service.db,LOCAL_ACTOR,book)
+    service.approve(approver,book,value["id"],ApprovalRequest(expected_version=changed["version"]))
     receipt=service.export(LOCAL_ACTOR,book,ExportRequest(draft_ids=[value["id"]],idempotency_key="stage7-auxiliary-export"))
     import csv, io
     rows=list(csv.reader(io.StringIO(receipt["csv"].lstrip("\ufeff"))))

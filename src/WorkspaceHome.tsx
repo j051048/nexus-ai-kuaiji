@@ -698,11 +698,31 @@ export function WorkspaceHome({
               </p>
             )}
             <h2>
-              {employee ? '继续办理' : bucket === 'action' ? '需要我处理' : '办理进度'}
+              {employee
+                ? '继续办理'
+                : bucket === 'action'
+                  ? '需要我处理'
+                  : bucket === 'due_soon'
+                    ? '即将到期'
+                    : '办理进度'}
               {!employee && visibleValue && <span>{visibleValue.pagination.total}</span>}
             </h2>
           </div>
           <div className="workspace-view-tools">
+            {!employee && visibleValue?.queue_lanes && (
+              <button
+                type="button"
+                className={`button ${bucket === 'due_soon' ? 'primary' : 'secondary'} small`}
+                aria-pressed={bucket === 'due_soon'}
+                disabled={locked}
+                onClick={() => {
+                  setBucket(bucket === 'due_soon' ? 'action' : 'due_soon');
+                  setOffset(0);
+                }}
+              >
+                快到期 {visibleValue.queue_lanes.due_soon_total}
+              </button>
+            )}
             {experience.simple && (
               <button
                 type="button"
@@ -843,7 +863,9 @@ export function WorkspaceHome({
                     ? taskKindLabel(view.kind, profileError ? null : profile)
                     : view.bucket === 'action'
                       ? '待处理'
-                      : '办理进度'}
+                      : view.bucket === 'due_soon'
+                        ? '即将到期'
+                        : '办理进度'}
                   {view.company_id ? ' · 指定企业' : ''}
                 </button>
                 <button
@@ -856,6 +878,15 @@ export function WorkspaceHome({
               </div>
             ))}
           </div>
+        )}
+        {!employee && !!visibleValue?.backlog_summary?.some((item) => item.count > 0) && (
+          <p className="workspace-view-notice" aria-label="积压归因汇总">
+            当前页卡点：
+            {visibleValue.backlog_summary
+              .filter((item) => item.count > 0)
+              .map((item) => `${item.label.split('（')[0]} ${item.count}`)
+              .join(' · ')}
+          </p>
         )}
         {viewNotice && (
           <p className="workspace-view-notice" role="status">
@@ -979,7 +1010,11 @@ export function WorkspaceHome({
             <div className="workspace-clear">
               <CheckCircle2 size={27} />
               <strong>
-                {bucket === 'action' ? '当前筛选下没有待处理事项' : '当前筛选下暂无等待事项'}
+                {bucket === 'action'
+                  ? '当前筛选下没有待处理事项'
+                  : bucket === 'due_soon'
+                    ? '当前筛选下没有 3 天内到期或已逾期事项'
+                    : '当前筛选下暂无等待事项'}
               </strong>
               <p>
                 {company

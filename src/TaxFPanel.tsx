@@ -245,7 +245,7 @@ export function TaxFPanel({
     }
   }
   useEffect(() => {
-    void load();  
+    void load();
   }, [bookId, period, session]);
 
   async function attachSourceOriginal(sourceRef: string, file: File | undefined) {

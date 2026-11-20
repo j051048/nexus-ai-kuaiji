@@ -180,6 +180,30 @@ class SourceRelationService:
             conn.execute("SELECT * FROM fee_source_relations WHERE id=?", (relation_id,)).fetchone()
         )
 
+    def staleness(self, conn, relation) -> str:
+        """Return the label of the first source whose version moved, else "".
+
+        A relation pins the version of every bound source.  Once a source is
+        re-imported the pinned amounts no longer describe today's evidence, so a
+        difference draft built from it would be attributed to a stale fact.
+        """
+        book_id = relation["book_id"]
+        checks = (
+            ("settlement_version", relation["settlement_source_id"], "结算流水"),
+            ("bank_version", relation["bank_source_id"], "银行流水"),
+        )
+        for column, source_id, label in checks:
+            source = self._source(conn, book_id, source_id, label)
+            current = source_version(source["fingerprint"], source["latest_evidence"])
+            if current != relation[column]:
+                return label
+        fee_id = relation["fee_source_id"]
+        if fee_id:
+            fee = self._source(conn, book_id, fee_id, "规费流水")
+            if source_version(fee["fingerprint"], fee["latest_evidence"]) != relation["fee_version"]:
+                return "规费流水"
+        return ""
+
     def find(self, conn, book_id, *, settlement_source_id, bank_source_id, fee_source_id=None):
         return conn.execute(
             "SELECT * FROM fee_source_relations WHERE book_id=? AND settlement_source_id=? "

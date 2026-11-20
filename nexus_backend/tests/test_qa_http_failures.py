@@ -87,6 +87,7 @@ def test_unexpected_failure_is_controlled_and_has_trace_security_headers(client)
     http = TestClient(
         client.app,
         base_url="http://127.0.0.1",
+        client=("127.0.0.1", 45678),
         raise_server_exceptions=False,
     )
     try:

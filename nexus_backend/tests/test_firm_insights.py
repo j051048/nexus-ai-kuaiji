@@ -83,14 +83,16 @@ def test_insights_uses_only_latest_reviewed_report_for_financials(tmp_path):
             user_id = conn.execute("SELECT id FROM users ORDER BY id LIMIT 1").fetchone()["id"]
             conn.execute(
                 "INSERT INTO report_runs(id,book_id,period,template_id,template_version,status,version,"
-                "inputs_fingerprint,content_json,content_hash,created_by,created_at) "
-                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+                "inputs_fingerprint,content_json,content_hash,created_by,created_at,"
+                "mode,standard_kind,policy_version,policy_approver) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,'formal','small_enterprise',1,?)",
                 (
                     "insight-report-1", book["id"], book["period"], "synthetic", 1,
                     "reviewed", 1, "input", '{"balance_sheet":{"assets":12300,"liabilities":2300,'
                     '"equity":10000},"profit_statement":{"revenue_cents":50000,"expense_cents":20000,'
                     '"profit_cents":30000},"cash_flow":{"closing_cash_cents":7000,'
                     '"unclassified_cents":100}}', "hash", user_id, "2026-10-31T00:00:00+00:00",
+                    user_id,
                 ),
             )
             conn.commit()
@@ -117,8 +119,9 @@ def test_phase_two_and_three_drilldowns_are_traceable(tmp_path):
             user_id = conn.execute("SELECT id FROM users ORDER BY id LIMIT 1").fetchone()["id"]
             conn.execute(
                 "INSERT INTO report_runs(id,book_id,period,template_id,template_version,status,version,"
-                "inputs_fingerprint,content_json,content_hash,created_by,created_at) "
-                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+                "inputs_fingerprint,content_json,content_hash,created_by,created_at,"
+                "mode,standard_kind,policy_version,policy_approver) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,'formal','small_enterprise',1,?)",
                 (
                     "insight-drill-report", book["id"], book["period"], "synthetic", 1,
                     "reviewed", 1, "input",
@@ -129,6 +132,7 @@ def test_phase_two_and_three_drilldowns_are_traceable(tmp_path):
                     '"items":[{"code":"6001","name":"收入","amount_cents":50000}]},'
                     '"cash_flow":{"closing_cash_cents":7000},"checks":{"unclassified_cash_cents":0}}',
                     "hash", user_id, "2026-10-31T00:00:00+00:00",
+                    user_id,
                 ),
             )
             conn.execute(
@@ -138,8 +142,9 @@ def test_phase_two_and_three_drilldowns_are_traceable(tmp_path):
             )
             conn.execute(
                 "INSERT INTO report_runs(id,book_id,period,template_id,template_version,status,version,"
-                "inputs_fingerprint,content_json,content_hash,created_by,created_at) "
-                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+                "inputs_fingerprint,content_json,content_hash,created_by,created_at,"
+                "mode,standard_kind,policy_version,policy_approver) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,'formal','small_enterprise',1,?)",
                 (
                     "insight-prev-report", "insight-prev-book", "2026-09", "synthetic", 1,
                     "reviewed", 1, "input",
@@ -147,6 +152,7 @@ def test_phase_two_and_three_drilldowns_are_traceable(tmp_path):
                     '"profit_statement":{"revenue_cents":40000,"expense_cents":15000,"profit_cents":25000,'
                     '"items":[]},"cash_flow":{"closing_cash_cents":0},"checks":{}}',
                     "hash", user_id, "2026-09-30T00:00:00+00:00",
+                    user_id,
                 ),
             )
             conn.commit()

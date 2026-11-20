@@ -15,6 +15,15 @@ from .models import (
 )
 
 
+def _attachment_disposition(filename: str) -> str:
+    """RFC 5987 double header: ASCII fallback plus the UTF-8 spelling."""
+    cleaned = str(filename)
+    for char in ("\\", '"', chr(13), chr(10)):
+        cleaned = cleaned.replace(char, "_")
+    fallback = cleaned.encode("ascii", "replace").decode("ascii")
+    return f"attachment; filename=\"{fallback}\"; filename*=UTF-8''{quote(cleaned, safe='')}"
+
+
 def build_integrations_router(actor_dependency):
     router = APIRouter(prefix="/api/books/{book_id}/integrations/tplus", tags=["T+ 文件接入底座"])
 
@@ -110,7 +119,7 @@ def build_integrations_router(actor_dependency):
         return Response(
             content=content,
             media_type="text/csv; charset=utf-8",
-            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+            headers={"Content-Disposition": _attachment_disposition(filename)},
         )
 
     @router.post("/artifacts/{artifact_id}/receipts", status_code=201)
@@ -175,13 +184,7 @@ def build_integrations_router(actor_dependency):
         svc=Depends(service),
     ):
         row = svc.evidence_for(actor, book_id, import_id, artifact_id)
-        filename = str(row["filename"])
-        for char in ("\\", '"', "\r", "\n"):
-            filename = filename.replace(char, "_")
-        disposition = (
-            f"attachment; filename=\"{filename.encode('ascii', 'replace').decode('ascii')}\"; "
-            f"filename*=UTF-8''{quote(filename, safe='')}"
-        )
+        disposition = _attachment_disposition(str(row["filename"]))
         return Response(
             content=bytes(row["content"]),
             media_type=row["media_type"],

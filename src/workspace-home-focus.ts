@@ -1,10 +1,10 @@
-import type { WorkspaceTask, WorkspaceTasks } from './workspace-types';
+import type { WorkspaceBucket, WorkspaceTask, WorkspaceTasks } from './workspace-types';
 
 /** Presentation only: open() re-authorizes the selected task before navigation. */
 export function currentHomeTask(
   state: {
     tasks: WorkspaceTasks | null;
-    bucket: 'action' | 'waiting';
+    bucket: WorkspaceBucket;
     offset: number;
     company: string;
     loading: boolean;
@@ -20,7 +20,7 @@ export function currentHomeTask(
     state.error ||
     !state.scopeMatches ||
     state.searchPending ||
-    state.bucket !== 'action' ||
+    (state.bucket !== 'action' && state.bucket !== 'due_soon') ||
     state.tasks.pagination.offset !== state.offset
   )
     return undefined;

@@ -8,6 +8,7 @@ from app.accounting.models import CompanyMemberGrant, ApprovalRequest, ExportReq
 from app.business.models import BusinessEventCreate, HandoffRequest, SubmissionPolicyUpdate
 from app.business.service import BusinessService
 from test_business import business, payload, attach
+from review_policy_fixtures import ensure_independent_reviewer
 
 
 def setup_direct(case):
@@ -42,10 +43,11 @@ def test_direct_submit_without_department_receive_review_export_and_idempotence(
     result = case.service.handoff(reviewer,row['id'],request)
     assert result['draft_id']==case.service.handoff(reviewer,row['id'],request)['draft_id']
     draft = case.ledger.get_draft(reviewer,case.book['id'],result['draft_id'])
+    approver = ensure_independent_reviewer(case.db, reviewer, case.book['id'])
     with pytest.raises(AccountingError):
-        case.ledger.export(reviewer,case.book['id'],ExportRequest(draft_ids=[draft['id']],idempotency_key=uuid4().hex))
-    draft = case.ledger.approve(reviewer,case.book['id'],draft['id'],ApprovalRequest(expected_version=draft['version']))
-    result = case.ledger.export(reviewer,case.book['id'],ExportRequest(draft_ids=[draft['id']],idempotency_key=uuid4().hex))
+        case.ledger.export(approver,case.book['id'],ExportRequest(draft_ids=[draft['id']],idempotency_key=uuid4().hex))
+    draft = case.ledger.approve(approver,case.book['id'],draft['id'],ApprovalRequest(expected_version=draft['version']))
+    result = case.ledger.export(approver,case.book['id'],ExportRequest(draft_ids=[draft['id']],idempotency_key=uuid4().hex))
     assert result['count']==1
 
 

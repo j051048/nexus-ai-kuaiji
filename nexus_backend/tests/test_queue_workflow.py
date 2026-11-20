@@ -20,8 +20,18 @@ from app.jobs.service import QueueService
 from app.jobs.worker import QueueExecution, QueueWorker
 from app.main import create_app
 from test_intelligence_workflow import (
-    FakeProvider, ai_case, create_event, draft, extract, handoff, http_auth,
-    http_create, http_handoff, http_independent_approval, invoice_document, propose,
+    FakeProvider,
+    ai_case,
+    create_event,
+    draft,
+    extract,
+    handoff,
+    http_auth,
+    http_create,
+    http_handoff,
+    http_independent_approval,
+    invoice_document,
+    propose,
 )
 
 
@@ -49,10 +59,18 @@ def queue_case(ai_case):
 
 
 def request(case, events, key="batch-synthetic-test-key", company_id=None):
-    return BatchRequest(company_id=company_id or case.company["id"], items=[
-        BatchItem(event_id=event["id"], attachment_id=event["attachments"][0]["id"], expected_version=event["version"])
-        for event in events
-    ], idempotency_key=key)
+    return BatchRequest(
+        company_id=company_id or case.company["id"],
+        items=[
+            BatchItem(
+                event_id=event["id"],
+                attachment_id=event["attachments"][0]["id"],
+                expected_version=event["version"],
+            )
+            for event in events
+        ],
+        idempotency_key=key,
+    )
 
 
 def enqueue(case, events, actor="employee", key="batch-synthetic-test-key", company_id=None):
@@ -65,21 +83,37 @@ def job(case, batch_id, actor="employee"):
 
 def raw_counts(case):
     with case.db.transaction() as conn:
-        return {table: conn.execute("SELECT COUNT(*) FROM " + table).fetchone()[0]
-                for table in ("ocr_batches", "ocr_jobs", "ocr_attempts", "ai_runs")}
+        return {
+            table: conn.execute("SELECT COUNT(*) FROM " + table).fetchone()[0]
+            for table in ("ocr_batches", "ocr_jobs", "ocr_attempts", "ai_runs")
+        }
 
 
 def create_other_event(case, company=None):
     company = company or case.other_company
     case.intelligence.company_settings(case.manager, company["id"], enabled=True)
-    event = case.business.create(case.actors["outsider"], BusinessEventCreate(company_id=company["id"], template_id="procurement_expense", payload={
-        "occurred_on": "2026-10-03", "description": "第二企业合成采购", "counterparty": "耗材商店",
-        "amount": "0.30", "direction": "expense", "payment_status": "unpaid", "category": "office",
-    }))
+    event = case.business.create(
+        case.actors["outsider"],
+        BusinessEventCreate(
+            company_id=company["id"],
+            template_id="procurement_expense",
+            payload={
+                "occurred_on": "2026-10-03",
+                "description": "第二企业合成采购",
+                "counterparty": "耗材商店",
+                "amount": "0.30",
+                "direction": "expense",
+                "payment_status": "unpaid",
+                "category": "office",
+            },
+        ),
+    )
     image = io.BytesIO()
     Image.new("RGB", (40, 20), "white").save(image, "PNG")
     attachment = case.storage.put("第二企业合成发票.png", "image/png", image.getvalue())
-    return case.business.add_attachment(case.actors["outsider"], event["id"], event["version"], attachment)
+    return case.business.add_attachment(
+        case.actors["outsider"], event["id"], event["version"], attachment
+    )
 
 
 def test_enqueue_is_persistent_and_does_not_call_model_or_change_business(queue_case):
@@ -91,9 +125,14 @@ def test_enqueue_is_persistent_and_does_not_call_model_or_change_business(queue_
     assert batch["jobs"][0]["attempt_count"] == 0
     assert case.provider.extract_calls == 0
     assert raw_counts(case) == {"ocr_batches": 1, "ocr_jobs": 1, "ocr_attempts": 0, "ai_runs": 0}
-    assert case.business.get_event(case.actors["employee"], event["id"])["payload"] == event["payload"]
+    assert (
+        case.business.get_event(case.actors["employee"], event["id"])["payload"] == event["payload"]
+    )
     restarted = QueueService(case.db, case.intelligence, clock=case.clock)
-    assert restarted.get_batch(case.actors["employee"], batch["id"])["jobs"][0]["id"] == batch["jobs"][0]["id"]
+    assert (
+        restarted.get_batch(case.actors["employee"], batch["id"])["jobs"][0]["id"]
+        == batch["jobs"][0]["id"]
+    )
 
 
 def test_enqueue_same_key_and_reordered_inputs_is_one_batch_and_no_extra_calls(queue_case):
@@ -125,12 +164,30 @@ def test_invalid_item_rejects_whole_batch_atomically(queue_case, fault):
     own, peer = create_event(case), create_event(case, actor="peer")
     body = request(case, [own])
     if fault == "peer":
-        body.items.append(BatchItem(event_id=peer["id"], attachment_id=peer["attachments"][0]["id"], expected_version=peer["version"]))
+        body.items.append(
+            BatchItem(
+                event_id=peer["id"],
+                attachment_id=peer["attachments"][0]["id"],
+                expected_version=peer["version"],
+            )
+        )
     elif fault == "attachment":
-        body.items.append(BatchItem(event_id=own["id"], attachment_id=peer["attachments"][0]["id"], expected_version=own["version"]))
+        body.items.append(
+            BatchItem(
+                event_id=own["id"],
+                attachment_id=peer["attachments"][0]["id"],
+                expected_version=own["version"],
+            )
+        )
     elif fault == "version":
         second = create_event(case)
-        body.items.append(BatchItem(event_id=second["id"], attachment_id=second["attachments"][0]["id"], expected_version=second["version"] + 1))
+        body.items.append(
+            BatchItem(
+                event_id=second["id"],
+                attachment_id=second["attachments"][0]["id"],
+                expected_version=second["version"] + 1,
+            )
+        )
     else:
         body.items.append(body.items[0])
     with pytest.raises(AccountingError):
@@ -142,7 +199,11 @@ def test_invalid_item_rejects_whole_batch_atomically(queue_case, fault):
 def test_authorized_cross_company_items_still_cannot_share_batch(queue_case):
     case = queue_case
     own, other = create_event(case), create_other_event(case)
-    case.directory.grant_company_member(case.manager, case.other_company["id"], CompanyMemberGrant(email="finance@example.test", role="finance"))
+    case.directory.grant_company_member(
+        case.manager,
+        case.other_company["id"],
+        CompanyMemberGrant(email="finance@example.test", role="finance"),
+    )
     with pytest.raises(AccountingError) as denied:
         enqueue(case, [own, other], actor="finance")
     assert denied.value.status == 409 and raw_counts(case)["ocr_jobs"] == 0
@@ -171,7 +232,9 @@ def test_batch_scope_filters_progress_and_never_leaks_peer_count_or_names(queue_
     assert employee["progress"]["total"] == 1
     assert [row["event_id"] for row in employee["jobs"]] == [own["id"]]
     assert peer["id"] not in str(employee) and "绝不能泄露" not in str(employee)
-    cancelled = case.queue.cancel_job(case.actors["employee"], employee["jobs"][0]["id"], "本人重复提交，人工取消")
+    cancelled = case.queue.cancel_job(
+        case.actors["employee"], employee["jobs"][0]["id"], "本人重复提交，人工取消"
+    )
     assert cancelled["status"] == "cancelled" and cancelled["progress"]["percent"] == 100
     finance = case.queue.get_batch(case.actors["finance"], full["id"])
     assert finance["progress"]["total"] == 2 and finance["progress"]["percent"] == 50
@@ -225,9 +288,20 @@ def test_worker_rechecks_scope_and_inputs_before_any_external_call(queue_case, c
     elif change == "disabled":
         case.intelligence.company_settings(case.manager, case.company["id"], enabled=False)
     elif change == "version":
-        case.business.update(case.actors["employee"], event["id"], BusinessEventUpdate(expected_version=event["version"], payload={**event["payload"], "amount": "0.40"}))
+        case.business.update(
+            case.actors["employee"],
+            event["id"],
+            BusinessEventUpdate(
+                expected_version=event["version"], payload={**event["payload"], "amount": "0.40"}
+            ),
+        )
     else:
-        case.provider.settings = AISettings(base_url="https://another-supplier.example.invalid/v1", api_key="synthetic-another-key", vision_model="synthetic-vision", journal_model="synthetic-journal")
+        case.provider.settings = AISettings(
+            base_url="https://another-supplier.example.invalid/v1",
+            api_key="synthetic-another-key",
+            vision_model="synthetic-vision",
+            journal_model="synthetic-journal",
+        )
     assert case.worker.run_once()
     finance = case.queue.get_batch(case.actors["finance"], batch["id"])
     assert finance["jobs"][0]["status"] == "stale" and case.provider.extract_calls == 0
@@ -246,7 +320,9 @@ def test_manual_retry_is_idempotent_keeps_history_and_uses_new_model_run(queue_c
     failed = job(case, batch["id"])
     assert failed["status"] == "failed" and failed["attempt_count"] == 1
     with case.db.transaction() as conn:
-        first_run = conn.execute("SELECT current_run_id FROM ocr_jobs WHERE id=?", (failed["id"],)).fetchone()[0]
+        first_run = conn.execute(
+            "SELECT current_run_id FROM ocr_jobs WHERE id=?", (failed["id"],)
+        ).fetchone()[0]
     case.provider.failure = None
     retry = case.queue.retry_job(case.actors["employee"], failed["id"], "manual-retry-one-key")
     repeat = case.queue.retry_job(case.actors["employee"], failed["id"], "manual-retry-one-key")
@@ -256,10 +332,19 @@ def test_manual_retry_is_idempotent_keeps_history_and_uses_new_model_run(queue_c
     assert final["status"] == "succeeded" and final["attempt_count"] == 2
     assert [row["status"] for row in final["attempts"]] == ["failed", "succeeded"]
     with case.db.transaction() as conn:
-        last_run = conn.execute("SELECT current_run_id FROM ocr_jobs WHERE id=?", (failed["id"],)).fetchone()[0]
-        retries = conn.execute("SELECT COUNT(*) FROM ocr_retries WHERE job_id=?", (failed["id"],)).fetchone()[0]
+        last_run = conn.execute(
+            "SELECT current_run_id FROM ocr_jobs WHERE id=?", (failed["id"],)
+        ).fetchone()[0]
+        retries = conn.execute(
+            "SELECT COUNT(*) FROM ocr_retries WHERE job_id=?", (failed["id"],)
+        ).fetchone()[0]
     assert first_run != last_run and retries == 1 and case.provider.extract_calls == 2
-    assert case.queue.retry_job(case.actors["employee"], failed["id"], "manual-retry-one-key")["progress"]["succeeded"] == 1
+    assert (
+        case.queue.retry_job(case.actors["employee"], failed["id"], "manual-retry-one-key")[
+            "progress"
+        ]["succeeded"]
+        == 1
+    )
     assert not case.worker.run_once() and case.provider.extract_calls == 2
 
 
@@ -270,7 +355,9 @@ def test_crash_before_sending_recovers_without_duplicating_a_supplier_call(queue
     claimed = case.queue.claim("crashed-before-send-worker", 180, 2)
     assert claimed and case.provider.extract_calls == 0
     case.clock.advance(181)
-    restarted = QueueWorker(case.queue, worker_id="restarted-worker", concurrency=2, lease_seconds=180)
+    restarted = QueueWorker(
+        case.queue, worker_id="restarted-worker", concurrency=2, lease_seconds=180
+    )
     assert restarted.recover() == 1
     assert job(case, batch["id"])["status"] == "retry_wait"
     assert restarted.run_once()
@@ -282,7 +369,9 @@ def test_two_workers_cannot_claim_same_task_or_parallelize_one_company(queue_cas
     case = queue_case
     batch = enqueue(case, [create_event(case), create_event(case)])
     with ThreadPoolExecutor(max_workers=2) as executor:
-        results = list(executor.map(lambda name: case.queue.claim(name, 180, 2), ("worker-a", "worker-b")))
+        results = list(
+            executor.map(lambda name: case.queue.claim(name, 180, 2), ("worker-a", "worker-b"))
+        )
     claimed = [row for row in results if row]
     assert len(claimed) == 1
     assert len({row["id"] for row in claimed}) == 1
@@ -295,7 +384,13 @@ def test_two_company_dispatch_round_robin_gives_small_queue_a_turn(queue_case):
     case = queue_case
     first = enqueue(case, [create_event(case), create_event(case), create_event(case)])
     second_event = create_other_event(case)
-    second = enqueue(case, [second_event], actor="outsider", key="second-company-batch-key", company_id=case.other_company["id"])
+    second = enqueue(
+        case,
+        [second_event],
+        actor="outsider",
+        key="second-company-batch-key",
+        company_id=case.other_company["id"],
+    )
     assert case.worker.run_once()
     assert case.worker.run_once()
     company_one = case.queue.get_batch(case.actors["employee"], first["id"])
@@ -310,9 +405,16 @@ def test_cancellation_prevents_queued_call_and_preserves_reason_in_audit(queue_c
     event = create_event(case)
     batch = enqueue(case, [event])
     job_id = batch["jobs"][0]["id"]
-    cancelled = case.queue.cancel_job(case.actors["employee"], job_id, "本人确认票据重复上传，请取消")
+    cancelled = case.queue.cancel_job(
+        case.actors["employee"], job_id, "本人确认票据重复上传，请取消"
+    )
     assert cancelled["jobs"][0]["status"] == "cancelled"
-    assert case.queue.cancel_job(case.actors["employee"], job_id, "重复请求取消")["progress"]["cancelled"] == 1
+    assert (
+        case.queue.cancel_job(case.actors["employee"], job_id, "重复请求取消")["progress"][
+            "cancelled"
+        ]
+        == 1
+    )
     assert not case.worker.run_once() and case.provider.extract_calls == 0
     with case.db.transaction() as conn:
         rows = conn.execute("SELECT * FROM audit_events WHERE object_id=?", (job_id,)).fetchall()
@@ -384,12 +486,30 @@ def bind_claimed_run(case, claimed, sent=False):
     actor = case.actors["employee"]
     execution = QueueExecution(case.queue, claimed)
     with case.db.transaction(write=True, actor=actor) as conn:
-        event, attachment = case.queue._input(conn, actor, claimed["event_id"], claimed["attachment_id"])
-        digest = fingerprint({"attachment_id": attachment["id"], "sha256": attachment["sha256"],
-                              "provider": case.provider.settings.base_url, "format": case.provider.settings.response_format,
-                              "model": case.provider.settings.vision_model, "prompt": "invoice-extraction-v1"})
-        run, execute = case.intelligence._claim(conn, actor, event, "ocr", f"queue:{claimed['id']}:{claimed['attempt_count']}", digest,
-                                               case.provider.settings.vision_model, "invoice-extraction-v1", attachment_id=attachment["id"])
+        event, attachment = case.queue._input(
+            conn, actor, claimed["event_id"], claimed["attachment_id"]
+        )
+        digest = fingerprint(
+            {
+                "attachment_id": attachment["id"],
+                "sha256": attachment["sha256"],
+                "provider": case.provider.settings.base_url,
+                "format": case.provider.settings.response_format,
+                "model": case.provider.settings.vision_model,
+                "prompt": "invoice-extraction-v1",
+            }
+        )
+        run, execute = case.intelligence._claim(
+            conn,
+            actor,
+            event,
+            "ocr",
+            f"queue:{claimed['id']}:{claimed['attempt_count']}",
+            digest,
+            case.provider.settings.vision_model,
+            "invoice-extraction-v1",
+            attachment_id=attachment["id"],
+        )
         assert execute
         execution.bind(conn, run)
         if sent:
@@ -410,7 +530,12 @@ def test_crash_after_marking_send_is_interrupted_until_explicit_manual_retry(que
     with case.db.transaction(actor=case.actors["employee"]) as conn:
         with pytest.raises(AccountingError):
             execution.check(conn)
-        assert conn.execute("SELECT status,result_json FROM ai_runs WHERE id=?", (run["id"],)).fetchone()["status"] == "stale"
+        assert (
+            conn.execute(
+                "SELECT status,result_json FROM ai_runs WHERE id=?", (run["id"],)
+            ).fetchone()["status"]
+            == "stale"
+        )
     case.queue.retry_job(case.actors["employee"], current["id"], "confirm-uncertain-retry-key")
     assert case.worker.run_once() and job(case, batch["id"])["status"] == "succeeded"
     assert case.provider.extract_calls == 1
@@ -459,7 +584,10 @@ def test_late_old_worker_cannot_publish_over_recovered_and_newly_claimed_job(que
     case.worker.process(new_claims[0])
     assert job(case, batch["id"])["status"] == "succeeded" and case.provider.extract_calls == 2
     with case.db.transaction() as conn:
-        runs = conn.execute("SELECT status,result_json FROM ai_runs WHERE event_id=? ORDER BY created_at,id", (event["id"],)).fetchall()
+        runs = conn.execute(
+            "SELECT status,result_json FROM ai_runs WHERE event_id=? ORDER BY created_at,id",
+            (event["id"],),
+        ).fetchall()
     assert sorted(row["status"] for row in runs) == ["stale", "succeeded"]
     assert next(row for row in runs if row["status"] == "stale")["result_json"] is None
 
@@ -467,22 +595,45 @@ def test_late_old_worker_cannot_publish_over_recovered_and_newly_claimed_job(que
 def test_revocation_during_running_model_call_discards_result_and_keeps_history(queue_case):
     case = queue_case
     batch = enqueue(case, [create_event(case)])
-    case.provider.extract_hook = lambda: case.directory.revoke_company_member(case.manager, case.company["id"], "employee")
+    case.provider.extract_hook = lambda: case.directory.revoke_company_member(
+        case.manager, case.company["id"], "employee"
+    )
     assert case.worker.run_once()
     current = case.queue.get_batch(case.actors["finance"], batch["id"])["jobs"][0]
     assert current["status"] == "stale" and case.provider.extract_calls == 1
     with case.db.transaction() as conn:
-        run = conn.execute("SELECT status,result_json FROM ai_runs WHERE id=(SELECT current_run_id FROM ocr_jobs WHERE id=?)", (current["id"],)).fetchone()
+        run = conn.execute(
+            "SELECT status,result_json FROM ai_runs WHERE id=(SELECT current_run_id FROM ocr_jobs WHERE id=?)",
+            (current["id"],),
+        ).fetchone()
     assert run["status"] == "stale" and run["result_json"] is None
 
 
 def test_three_company_round_robin_prevents_large_batch_monopolizing_first_turns(queue_case):
     case = queue_case
     first = enqueue(case, [create_event(case), create_event(case), create_event(case)])
-    second = enqueue(case, [create_other_event(case)], actor="outsider", key="three-company-second-key", company_id=case.other_company["id"])
-    third_company = case.directory.create_company(case.manager, CompanyCreate(name="第三合成客户企业"))
-    case.directory.grant_company_member(case.manager, third_company["id"], CompanyMemberGrant(email="outsider@example.test", role="employee"))
-    third = enqueue(case, [create_other_event(case, third_company)], actor="outsider", key="three-company-third-key", company_id=third_company["id"])
+    second = enqueue(
+        case,
+        [create_other_event(case)],
+        actor="outsider",
+        key="three-company-second-key",
+        company_id=case.other_company["id"],
+    )
+    third_company = case.directory.create_company(
+        case.manager, CompanyCreate(name="第三合成客户企业")
+    )
+    case.directory.grant_company_member(
+        case.manager,
+        third_company["id"],
+        CompanyMemberGrant(email="outsider@example.test", role="employee"),
+    )
+    third = enqueue(
+        case,
+        [create_other_event(case, third_company)],
+        actor="outsider",
+        key="three-company-third-key",
+        company_id=third_company["id"],
+    )
     for _ in range(3):
         assert case.worker.run_once()
     first_progress = case.queue.get_batch(case.actors["employee"], first["id"])["progress"]
@@ -502,13 +653,24 @@ def test_pending_queue_cannot_be_human_resolved_or_bypass_accounting_review(queu
     assert duplicate.value.status == 409 and case.provider.extract_calls == 1
     receipt = handoff(case, event)
     detail = case.intelligence.reconcile(case.actors["accountant"], event["id"])
-    pending_version = case.ledger.get_draft(case.actors["accountant"], case.book["id"], receipt["draft_id"])["version"]
+    pending_version = case.ledger.get_draft(
+        case.actors["accountant"], case.book["id"], receipt["draft_id"]
+    )["version"]
     pending = next(row for row in detail["findings"] if row["code"].startswith("queue_pending_"))
     with pytest.raises(AccountingError):
-        case.intelligence.resolve(case.actors["accountant"], pending["id"], "会计试图直接忽略未完成识别")
+        case.intelligence.resolve(
+            case.actors["accountant"], pending["id"], "会计试图直接忽略未完成识别"
+        )
     with pytest.raises(AccountingError):
-        case.ledger.approve(case.actors["accountant"], case.book["id"], receipt["draft_id"], ApprovalRequest(expected_version=pending_version))
-    cancelled = case.queue.cancel_job(case.actors["accountant"], batch["jobs"][0]["id"], "取消多余重识别，沿用已核对原件")
+        case.ledger.approve(
+            case.actors["accountant"],
+            case.book["id"],
+            receipt["draft_id"],
+            ApprovalRequest(expected_version=pending_version),
+        )
+    cancelled = case.queue.cancel_job(
+        case.actors["accountant"], batch["jobs"][0]["id"], "取消多余重识别，沿用已核对原件"
+    )
     assert cancelled["progress"]["cancelled"] == 1
     for finding in case.intelligence.reconcile(case.actors["accountant"], event["id"])["findings"]:
         if finding["severity"] == "blocking" and not finding["resolved"]:
@@ -517,7 +679,12 @@ def test_pending_queue_cannot_be_human_resolved_or_bypass_accounting_review(queu
                 finding["id"],
                 "已独立核对合成原件与业务事实，确认可继续复核",
             )
-    reviewed = case.ledger.approve(case.actors["accountant"], case.book["id"], receipt["draft_id"], ApprovalRequest(expected_version=pending_version))
+    reviewed = case.ledger.approve(
+        case.actors["accountant"],
+        case.book["id"],
+        receipt["draft_id"],
+        ApprovalRequest(expected_version=pending_version),
+    )
     assert reviewed["status"] == "approved" and case.provider.extract_calls == 1
 
 
@@ -527,7 +694,9 @@ def test_manual_retry_history_is_bounded_at_thirty_attempts(queue_case):
     case.provider.failure = ProviderError("schema_invalid", "合成不合规字段，交人工")
     for index in range(1, 31):
         if index > 1:
-            case.queue.retry_job(case.actors["employee"], batch["jobs"][0]["id"], f"bounded-manual-key-{index:02d}")
+            case.queue.retry_job(
+                case.actors["employee"], batch["jobs"][0]["id"], f"bounded-manual-key-{index:02d}"
+            )
         assert case.worker.run_once()
         assert job(case, batch["id"])["attempt_count"] == index
     final = job(case, batch["id"])
@@ -546,14 +715,26 @@ def test_batch_retry_only_mutates_current_visible_jobs_and_updates_execution_act
     case.provider.failure = ProviderError("schema_invalid", "合成字段失败")
     assert case.worker.run_once() and case.worker.run_once()
     assert case.queue.get_batch(case.actors["finance"], batch["id"])["progress"]["failed"] == 2
-    partial = case.queue.retry_batch(case.actors["employee"], batch["id"], "employee-partial-batch-retry")
+    partial = case.queue.retry_batch(
+        case.actors["employee"], batch["id"], "employee-partial-batch-retry"
+    )
     assert partial["progress"]["total"] == 1 and partial["progress"]["pending"] == 1
     finance = case.queue.get_batch(case.actors["finance"], batch["id"])
     assert finance["progress"]["failed"] == 1 and finance["progress"]["pending"] == 1
     with case.db.transaction() as conn:
-        own_job = conn.execute("SELECT id,execution_user_id FROM ocr_jobs WHERE event_id=?", (own["id"],)).fetchone()
-        peer_job = conn.execute("SELECT id,status,execution_user_id FROM ocr_jobs WHERE event_id=?", (peer["id"],)).fetchone()
-        retried = [row[0] for row in conn.execute("SELECT job_id FROM ocr_retries WHERE request_key=?", ("employee-partial-batch-retry",))]
+        own_job = conn.execute(
+            "SELECT id,execution_user_id FROM ocr_jobs WHERE event_id=?", (own["id"],)
+        ).fetchone()
+        peer_job = conn.execute(
+            "SELECT id,status,execution_user_id FROM ocr_jobs WHERE event_id=?", (peer["id"],)
+        ).fetchone()
+        retried = [
+            row[0]
+            for row in conn.execute(
+                "SELECT job_id FROM ocr_retries WHERE request_key=?",
+                ("employee-partial-batch-retry",),
+            )
+        ]
     assert own_job["execution_user_id"] == "employee" and retried == [own_job["id"]]
     assert peer_job["status"] == "failed" and peer_job["execution_user_id"] == "finance"
     case.provider.failure = None
@@ -565,8 +746,13 @@ def test_batch_retry_only_mutates_current_visible_jobs_and_updates_execution_act
 @pytest.fixture
 def queue_client(tmp_path):
     provider = FakeProvider()
-    app = create_app(tmp_path / "http-queue.db", seed=True, attachment_root=tmp_path / "http-private",
-                     intelligence_provider=provider, queue_worker_enabled=False)
+    app = create_app(
+        tmp_path / "http-queue.db",
+        seed=True,
+        attachment_root=tmp_path / "http-private",
+        intelligence_provider=provider,
+        queue_worker_enabled=False,
+    )
     with TestClient(app, base_url="http://127.0.0.1", client=("127.0.0.1", 6790)) as client:
         client.provider = provider
         yield client
@@ -574,18 +760,45 @@ def queue_client(tmp_path):
 
 def test_http_batch_worker_exception_resolution_proposal_review_and_export(queue_client):
     client = queue_client
-    employee, department, finance, accountant = [http_auth(client, role) for role in ("employee", "department", "finance", "accountant")]
+    employee, department, finance, accountant = [
+        http_auth(client, role) for role in ("employee", "department", "finance", "accountant")
+    ]
     event, company = http_create(client, employee)
-    client.provider.document = invoice_document(amount="0.30", net_amount="0.30", buyer_name=company["name"], buyer_tax_id=None)
-    assert client.put(f"/api/companies/{company['id']}/intelligence/settings", headers=accountant, json={"enabled": True}).status_code == 200
-    body = {"company_id": company["id"], "items": [{"event_id": event["id"], "attachment_id": event["attachments"][0]["id"], "expected_version": event["version"]}], "idempotency_key": "synthetic-http-queue-batch"}
+    client.provider.document = invoice_document(
+        amount="0.30", net_amount="0.30", buyer_name=company["name"], buyer_tax_id=None
+    )
+    assert (
+        client.put(
+            f"/api/companies/{company['id']}/intelligence/settings",
+            headers=accountant,
+            json={"enabled": True},
+        ).status_code
+        == 200
+    )
+    body = {
+        "company_id": company["id"],
+        "items": [
+            {
+                "event_id": event["id"],
+                "attachment_id": event["attachments"][0]["id"],
+                "expected_version": event["version"],
+            }
+        ],
+        "idempotency_key": "synthetic-http-queue-batch",
+    }
     assert client.post("/api/intelligence/batches", json=body).status_code == 401
     created = client.post("/api/intelligence/batches", headers=employee, json=body)
     assert created.status_code == 202, created.text
     batch = created.json()
     assert client.provider.extract_calls == 0 and batch["progress"]["pending"] == 1
-    assert client.post("/api/intelligence/batches", headers=employee, json=body).json()["id"] == batch["id"]
-    assert client.get(f"/api/intelligence/batches/{batch['id']}", headers=accountant).status_code == 404
+    assert (
+        client.post("/api/intelligence/batches", headers=employee, json=body).json()["id"]
+        == batch["id"]
+    )
+    assert (
+        client.get(f"/api/intelligence/batches/{batch['id']}", headers=accountant).status_code
+        == 404
+    )
     assert QueueWorker(client.app.state.queue, worker_id="http-synthetic-worker").run_once()
     status = client.get(f"/api/intelligence/batches/{batch['id']}", headers=employee)
     assert status.status_code == 200 and status.json()["progress"]["succeeded"] == 1
@@ -593,32 +806,75 @@ def test_http_batch_worker_exception_resolution_proposal_review_and_export(queue
     assert any(finding["severity"] == "blocking" for finding in detail.json()["findings"])
     for finding in detail.json()["findings"]:
         if finding["severity"] == "blocking" and not finding["resolved"]:
-            assert client.post(f"/api/intelligence/findings/{finding['id']}/resolve", headers=employee, json={"reason": "申请人尝试自审"}).status_code == 403
+            assert (
+                client.post(
+                    f"/api/intelligence/findings/{finding['id']}/resolve",
+                    headers=employee,
+                    json={"reason": "申请人尝试自审"},
+                ).status_code
+                == 403
+            )
     receipt, book = http_handoff(client, event, employee, department, finance)
-    proposal = client.post(f"/api/books/{book['id']}/drafts/{receipt['draft_id']}/ai-proposals", headers=accountant, json={"expected_version": receipt["initial_draft_version"], "idempotency_key": "synthetic-queue-proposal"})
+    proposal = client.post(
+        f"/api/books/{book['id']}/drafts/{receipt['draft_id']}/ai-proposals",
+        headers=accountant,
+        json={
+            "expected_version": receipt["initial_draft_version"],
+            "idempotency_key": "synthetic-queue-proposal",
+        },
+    )
     assert proposal.status_code == 200 and proposal.json()["status"] == "succeeded", proposal.text
     apply_url = f"/api/intelligence/proposals/{proposal.json()['id']}/apply"
-    applied = client.post(apply_url, headers=accountant, json={"expected_version": receipt["initial_draft_version"]})
+    applied = client.post(
+        apply_url, headers=accountant, json={"expected_version": receipt["initial_draft_version"]}
+    )
     if applied.status_code == 409:
-        refreshed = client.get(f"/api/business/events/{event['id']}/intelligence", headers=accountant).json()
+        refreshed = client.get(
+            f"/api/business/events/{event['id']}/intelligence", headers=accountant
+        ).json()
         for finding in refreshed["findings"]:
             if finding["severity"] == "blocking" and not finding["resolved"]:
-                reviewed = client.post(f"/api/intelligence/findings/{finding['id']}/resolve", headers=accountant, json={"reason": "合成测试已核对完整原件与业务，确认差异需人工处理"})
+                reviewed = client.post(
+                    f"/api/intelligence/findings/{finding['id']}/resolve",
+                    headers=accountant,
+                    json={"reason": "合成测试已核对完整原件与业务，确认差异需人工处理"},
+                )
                 assert reviewed.status_code == 200, reviewed.text
-        applied = client.post(apply_url, headers=accountant, json={"expected_version": receipt["initial_draft_version"]})
+        applied = client.post(
+            apply_url,
+            headers=accountant,
+            json={"expected_version": receipt["initial_draft_version"]},
+        )
     assert applied.status_code == 200 and applied.json()["status"] == "draft", applied.text
     export_body = {"draft_ids": [receipt["draft_id"]], "idempotency_key": "synthetic-queue-export"}
-    for finding in client.get(f"/api/business/events/{event['id']}/intelligence", headers=accountant).json()["findings"]:
+    for finding in client.get(
+        f"/api/business/events/{event['id']}/intelligence", headers=accountant
+    ).json()["findings"]:
         if finding["severity"] == "blocking" and not finding["resolved"]:
-            assert client.post(
-                f"/api/intelligence/findings/{finding['id']}/resolve",
-                headers=accountant,
-                json={"reason": "复核合成原件与业务事实后确认继续"},
-            ).status_code == 200
-    assert client.post(f"/api/books/{book['id']}/exports", headers=accountant, json=export_body).status_code == 409
-    approved = http_independent_approval(client, book['id'], receipt['draft_id'], applied.json()['version'], accountant, finance)
+            assert (
+                client.post(
+                    f"/api/intelligence/findings/{finding['id']}/resolve",
+                    headers=accountant,
+                    json={"reason": "复核合成原件与业务事实后确认继续"},
+                ).status_code
+                == 200
+            )
+    assert (
+        client.post(
+            f"/api/books/{book['id']}/exports", headers=accountant, json=export_body
+        ).status_code
+        == 409
+    )
+    approved = http_independent_approval(
+        client, book["id"], receipt["draft_id"], applied.json()["version"], finance, accountant
+    )
     assert approved.status_code == 200, approved.text
     exported = client.post(f"/api/books/{book['id']}/exports", headers=accountant, json=export_body)
     assert exported.status_code == 200 and "0.30" in exported.json()["csv"], exported.text
     assert client.provider.extract_calls == 1 and client.provider.proposal_calls == 1
-    assert client.get(f"/api/intelligence/batches/{batch['id']}", headers=accountant).json()["progress"]["succeeded"] == 1
+    assert (
+        client.get(f"/api/intelligence/batches/{batch['id']}", headers=accountant).json()[
+            "progress"
+        ]["succeeded"]
+        == 1
+    )

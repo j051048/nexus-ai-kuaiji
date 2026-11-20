@@ -12,6 +12,7 @@ from app.ledgers.models import AliasCreate, AliasDecision, EntityCreate, EntityU
 from app.ledgers.service import LedgersService
 from app.learning.models import RuleEvaluate, RulePublish
 from test_catalog import template
+from review_policy_fixtures import ensure_independent_reviewer
 
 
 @pytest.fixture
@@ -151,7 +152,8 @@ def approved_sample(accounting, learning, book, month, external, counterparty, c
     if corrected:
         lines = [{**line, 'account_code': '6602.99' if line['account_code'] != '1002' else '1002'} for line in draft['lines']]
         draft = accounting.update_draft(LOCAL_ACTOR, book, draft_id, DraftUpdate(expected_version=draft['version'], description='合同核实用途', lines=lines, correction_reason='真实业务合同用途核实'))
-    accounting.approve(LOCAL_ACTOR, book, draft_id, ApprovalRequest(expected_version=draft['version']))
+    approver = ensure_independent_reviewer(accounting.db, LOCAL_ACTOR, book)
+    accounting.approve(approver, book, draft_id, ApprovalRequest(expected_version=draft['version']))
     with accounting.db.transaction(actor=LOCAL_ACTOR) as conn:
         return conn.execute('SELECT id FROM learning_samples WHERE draft_id=?', (draft_id,)).fetchone()[0]
 

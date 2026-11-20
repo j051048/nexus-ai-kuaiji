@@ -86,10 +86,27 @@ export type WorkspaceTask = {
   bank_source?: string | null;
   assignee_id?: string | null;
   candidates?: { id: string; amount: string; counterparty: string }[];
+  lane?: string;
+  backlog_category?: string;
 };
+export type WorkspaceBucket = 'action' | 'waiting' | 'due_soon';
 export type WorkspaceTasks = {
   tasks: WorkspaceTask[];
   counts: Partial<Record<'action' | 'waiting', number>>;
+  queue_lanes?: {
+    rule_version: string;
+    today: string;
+    due_soon_days: number;
+    due_soon_total: number;
+    page_counts: Record<string, number>;
+  };
+  backlog_summary?: {
+    code: string;
+    label: string;
+    count: number;
+    eta_minutes: number | null;
+    eta_label: string;
+  }[];
   pagination: Pagination;
 };
 export type WorkspaceBootstrap = {
@@ -108,7 +125,7 @@ export type WorkspaceCompanies = {
 export type WorkspaceSort = 'priority' | 'due' | 'amount' | 'updated';
 export type WorkspaceDensity = 'list' | 'table';
 export type SavedWorkspaceView = {
-  bucket: 'action' | 'waiting';
+  bucket: WorkspaceBucket;
   kind: TaskKind | '';
   company_id: string;
   sort: WorkspaceSort;
@@ -129,7 +146,8 @@ export function savedWorkspaceViews(raw: string | null): SavedWorkspaceView[] {
     return parsed.slice(0, 3).flatMap((item) => {
       if (!item || typeof item !== 'object' || Array.isArray(item)) return [];
       const value = item as Record<string, unknown>;
-      if (value.bucket !== 'action' && value.bucket !== 'waiting') return [];
+      if (value.bucket !== 'action' && value.bucket !== 'waiting' && value.bucket !== 'due_soon')
+        return [];
       if (
         value.kind !== '' &&
         (typeof value.kind !== 'string' ||

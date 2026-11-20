@@ -329,7 +329,24 @@ def test_manual_posted_needs_date_and_verified_evidence(service, book):  # noqa:
         ),
     )
     verified = bridge.list_returns(LOCAL_ACTOR, book, artifact["id"])["returns"][0]
+    assert verified["source_kind"] == "manual"
+    assert verified["evidence_attached"] is True
     assert verified["evidence_verified"] is True
-    assert verified["posted"] is True
+    assert verified["manual_posted_claim"] is True
+    # 附原件仅证明文件收存与人工声明，不能冒充按批次/凭证号/金额逐笔核验外部过账
+    assert verified["posted"] is False
+    assert verified["verification_state"] == "manual_posted_claimed_with_evidence"
+    assert verified["evidence_attachment"]["filename"] == "客户回执.pdf"
+    assert verified["summary_breakdown"] == {
+        "confirmed_count": 0,
+        "pending_count": 0,
+        "handled_count": 0,
+    }
+    overview = bridge.overview(LOCAL_ACTOR, book)
+    outbox = next(item for item in overview["outbox"] if item["id"] == intent["id"])
+    assert outbox["statuses"]["posted"]["at"] is None
+    assert outbox["result_summary"] == "received"
+    assert outbox["manual_posted_claim"]["evidence_attached"] is True
+    assert outbox["manual_posted_claim"]["filename"] == "客户回执.pdf"
     assert verified["rows"][0]["posted_date"] == "2026-11-02"
     assert verified["rows"][0]["reason"] == "手工登记整批接收：客户邮件回执 2026-11-02"

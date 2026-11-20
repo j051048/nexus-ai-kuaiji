@@ -467,6 +467,23 @@ class ReportService:
             reasons.append("存在未分类现金流量")
         return reasons
 
+    @staticmethod
+    def effective_mode(row) -> tuple[str, str]:
+        raw = row["mode"] if "mode" in row.keys() else "formal"
+        policy_version = row["policy_version"] if "policy_version" in row.keys() else None
+        policy_approver = row["policy_approver"] if "policy_approver" in row.keys() else None
+        status = row["status"] if "status" in row.keys() else ""
+        if raw == "legacy" or (
+            raw == "formal" and (policy_version is None or not str(policy_approver or "").strip())
+        ):
+            return (
+                "legacy",
+                "门槛建立前发布" if status == "published" else "历史未核定，不可发布",
+            )
+        if raw == "trial":
+            return ("trial", "试算，不可对外")
+        return ("formal", "正式")
+
     def create(self, actor, book_id, period):
         with self.db.transaction(write=True, actor=actor) as conn:
             book, ledger_id = self._book(conn, actor, book_id)
@@ -474,15 +491,15 @@ class ReportService:
                 raise AccountingError("报表期间与账套期间不一致", 422)
             self._book(conn, actor, book_id, write=True)
             policy = self._active_policy(conn, ledger_id)
-            reasons = []
-            standard = policy["standard_kind"] if policy else "small_enterprise"
-            try:
-                template = self._template_for_standard(conn, standard)
-            except AccountingError as exc:
-                reasons.append(str(exc))
-                template = self._template_for_standard(conn, "small_enterprise")
+            if not policy:
+                raise AccountingError(
+                    "核算政策未核定，无法出表；请先建立并批准当前期间适用的核算政策",
+                    409,
+                )
+            standard = policy["standard_kind"]
+            template = self._template_for_standard(conn, standard)
             content, fingerprint = self._build_in_transaction(conn, actor, book, template=template)
-            reasons.extend(self._formal_reasons(conn, book, policy, template, content))
+            reasons = self._formal_reasons(conn, book, policy, template, content)
             mode = "formal" if not reasons else "trial"
             mapping = mapping_fingerprint(conn, actor.firm_id)
             version = conn.execute(
@@ -592,8 +609,12 @@ class ReportService:
     def review(self, actor, report_id, request: ReportCommand):
         with self.db.transaction(write=True, actor=actor) as conn:
             row = self._report(conn, actor, report_id, write=True)
-            if row["mode"] != "formal":
-                raise AccountingError("试算报表不能进入复核", 409)
+            eff_mode, _ = self.effective_mode(row)
+            if eff_mode != "formal":
+                raise AccountingError(
+                    "历史未核定报表不能进入复核" if eff_mode == "legacy" else "试算报表不能进入复核",
+                    409,
+                )
             self._current_in_transaction(conn, actor, report_id)
             if row["status"] != "validated":
                 raise AccountingError("只有核验通过的报表才能复核", 409)
@@ -610,12 +631,17 @@ class ReportService:
     def publish(self, actor, report_id, request: ReportCommand):
         with self.db.transaction(write=True, actor=actor) as conn:
             row = self._report(conn, actor, report_id, write=True)
-            if row["mode"] != "formal":
-                reasons = json.loads(row["trial_reasons_json"] or "[]")
-                raise AccountingError("试算报表不能发布：" + "；".join(reasons), 409)
-            self._current_in_transaction(conn, actor, report_id)
             if row["status"] == "published":
                 return self._view(conn, report_id)
+            eff_mode, _ = self.effective_mode(row)
+            if eff_mode != "formal":
+                reasons = json.loads(row["trial_reasons_json"] or "[]")
+                prefix = "历史未核定报表不能发布" if eff_mode == "legacy" else "试算报表不能发布"
+                raise AccountingError(
+                    prefix + ("：" + "；".join(reasons) if reasons else ""),
+                    409,
+                )
+            self._current_in_transaction(conn, actor, report_id)
             if row["status"] != "reviewed":
                 raise AccountingError("只有已复核的报表才能发布", 409)
             if int(row["version"]) != request.expected_version:
@@ -731,7 +757,9 @@ class ReportService:
             for row in rows:
                 report = dict(row)
                 report["trial_reasons"] = json.loads(report.get("trial_reasons_json") or "[]")
-                report["mode_label"] = "试算，不可对外" if report.get("mode") == "trial" else "正式"
+                eff_mode, mode_label = self.effective_mode(row)
+                report["mode"] = eff_mode
+                report["mode_label"] = mode_label
                 reports.append(report)
             return reports
 
@@ -739,7 +767,9 @@ class ReportService:
         row = conn.execute("SELECT * FROM report_runs WHERE id=?", (report_id,)).fetchone()
         report = dict(row)
         report["trial_reasons"] = json.loads(report.get("trial_reasons_json") or "[]")
-        report["mode_label"] = "试算，不可对外" if report.get("mode") == "trial" else "正式"
+        eff_mode, mode_label = self.effective_mode(row)
+        report["mode"] = eff_mode
+        report["mode_label"] = mode_label
         return {"report": report, "content": json.loads(row["content_json"])}
 
     @staticmethod

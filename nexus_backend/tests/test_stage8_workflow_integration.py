@@ -6,6 +6,7 @@ import io
 from uuid import uuid4
 import pytest
 from PIL import Image
+from native_text_fixtures import archived_text
 from app.accounting.domain import AccountingError
 from app.accounting.models import ApprovalRequest, ExportRequest
 from app.cases.models import CaseCreate, CaseCommand, CaseRespond, CaseReviewResponse
@@ -23,7 +24,7 @@ def command(task, model=CaseCommand, **changes):
 
 
 @pytest.fixture
-def replacement(ai_case):
+def replacement(ai_case, monkeypatch):
     c = ai_case
     c.cases = CaseService(c.db, c.business)
     c.ledger.cases = c.cases
@@ -32,6 +33,7 @@ def replacement(ai_case):
     c.queue = QueueService(c.db, c.intelligence)
     event = create_event(c)
     c.provider.document = invoice_document(amount="9.99", net_amount="9.99")
+    archived_text(monkeypatch, c)
     original_run = extract(c, event, key="stage8-original-incorrect-amount")
     c.mapping = handoff(c, event)
     reviewer, employee = c.actors["accountant"], c.actors["employee"]

@@ -8,6 +8,7 @@ from app.cases.models import CaseCreate, CaseCommand, CaseRespond, CaseReviewRes
 from app.cases.service import CaseService
 from app.jobs.requests import AutomationPolicyRequest
 from app.jobs.service import QueueService
+from native_text_fixtures import archived_text
 from test_stage7_proposal_queue import proposal_case, proposal_cost_case, current, draft, template
 from test_intelligence_workflow import ai_case, create_event, handoff, extract, invoice_document
 from test_model_cost_workflow import cost_case, policy
@@ -157,8 +158,9 @@ def test_budget_does_not_block_verified_ocr_and_template_with_no_new_external_ca
         assert stages["ocr_cache_reuse"]["samples"] == 1
 
 
-def test_budget_does_not_block_published_rule_on_verified_ocr(company_rules):
+def test_budget_does_not_block_published_rule_on_verified_ocr(company_rules, monkeypatch):
     c = company_rules; value = rule_event(c, 3)
+    archived_text(monkeypatch, c)
     c.provider.document = invoice_document(invoice_number="STAGE11-LOCAL-RULE")
     extract(c, value)
     c.meter = MeterService(c.db, pricing=Pricing(), clock=c.clock)
@@ -192,5 +194,8 @@ def test_case_created_after_enqueue_is_classified_before_send_when_opted_in(prop
     task = cases.create(c.actors["accountant"], CaseCreate(event_id=event["id"], kind="exception", title="核对用途", reason="暂缓模型处理先核实用途", idempotency_key=uuid4().hex))
     assert c.worker.run_once() and current(c, result)["error_code"] == "case_pending"
     command(cases, c.actors["accountant"], task, "close")
+    # case_pending parks the job in needs_attention; the opt-in automation
+    # re-queues it, and a bare claim never picks an attention item up.
+    assert c.queue.automation.resume_pending() == 1
     assert c.worker.run_once() and current(c, result)["status"] == "succeeded"
     assert c.provider.proposal_calls == 1

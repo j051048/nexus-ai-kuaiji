@@ -40,6 +40,14 @@ type Overview = {
       received: { at: string | null; evidence: string | null };
       posted: { at: string | null; evidence: string | null };
     };
+    manual_posted_claim?: {
+      at: string;
+      evidence: string;
+      evidence_attached: boolean;
+      filename: string | null;
+      declared_by: string;
+      declared_by_name: string;
+    } | null;
     result_summary: 'not_exported' | 'result_unknown' | 'received' | 'partial' | 'posted';
     partial_failure: boolean;
     result_unknown: boolean;
@@ -86,9 +94,27 @@ type ReturnRow = {
 type ReturnImport = {
   id: string;
   batch_code: string;
+  source_kind?: 'file' | 'manual';
   result_status: 'accepted' | 'partial';
   received: boolean;
   posted: boolean;
+  posted_declared?: boolean;
+  manual_posted_claim?: boolean;
+  evidence_attached?: boolean;
+  verification_state?: string;
+  verification_label?: string;
+  evidence_attachment?: {
+    filename: string;
+    sha256: string;
+    uploaded_by_name: string;
+    uploaded_at: string;
+  } | null;
+  summary_breakdown?: {
+    confirmed_count: number;
+    pending_count: number;
+    handled_count: number;
+  };
+  created_by_name?: string;
   row_count: number;
   counts: {
     accepted: number;
@@ -916,6 +942,15 @@ export function IntegrationWorkbench({
                     ? `对方已过账 · ${row.statuses.posted.at.slice(0, 10)}`
                     : '未过账'}
                 </span>
+                {!row.statuses.posted.at && row.manual_posted_claim && (
+                  <span className="integration-offline">
+                    人工声明已过账 ·{' '}
+                    {row.manual_posted_claim.evidence_attached
+                      ? `已附原件 ${row.manual_posted_claim.filename || ''}（未逐笔核对）`
+                      : '缺证据原件'}
+                    · {row.manual_posted_claim.declared_by_name}
+                  </span>
+                )}
                 {row.result_unknown && (
                   <span className="integration-offline">尚无对方结果，不自动重发</span>
                 )}
@@ -1129,13 +1164,16 @@ export function IntegrationWorkbench({
                       {returns.map((row) => (
                         <div className="integration-history" key={row.id}>
                           <span>
-                            {row.batch_code} · {row.result_status} · 接受 {row.counts.accepted} /
-                            差异 {row.counts.discrepancy} · {row.received ? '已接收' : '未接收'} ·{' '}
-                            {row.posted ? '已过账' : '未过账'}
+                            {row.batch_code} · {row.verification_label ?? row.result_status} ·{' '}
+                            {row.source_kind === 'manual'
+                              ? `${row.received ? '已接收' : '未接收'} · ${row.posted ? '已核验过账' : row.manual_posted_claim ? '人工声明已过账（未逐笔核对）' : '未过账'}`
+                              : `已确认 ${row.summary_breakdown?.confirmed_count ?? row.counts.accepted} / 待查 ${row.summary_breakdown?.pending_count ?? row.counts.discrepancy} / 已处置 ${row.summary_breakdown?.handled_count ?? 0} · ${row.received ? '已接收' : '未接收'} · ${row.posted ? '已过账' : '未过账'}`}
                           </span>
                           <span className="integration-offline">
-                            缺 {row.counts.missing} / 多 {row.counts.extra} / 金额科目{' '}
-                            {row.counts.mismatch}
+                            {row.created_by_name ? `登记人 ${row.created_by_name} · ` : ''}
+                            {row.evidence_attachment
+                              ? `原件 ${row.evidence_attachment.filename}（${row.evidence_attachment.sha256.slice(0, 8)}…）`
+                              : `缺 ${row.counts.missing} / 多 ${row.counts.extra} / 金额科目 ${row.counts.mismatch}`}
                           </span>
                           <details
                             className="integration-return-rows"

@@ -13,6 +13,8 @@ import json
 import math
 import os
 from pathlib import Path
+import threading
+import time
 import tempfile
 import time
 from typing import Any, Callable
@@ -569,6 +571,23 @@ def _validate(run: Investigation) -> None:
         raise InvestigationError("investigation_budget_invalid", "超时结果不能解决问题")
 
 
+# Windows refuses to replace a file another handle still has open (WinError 5/32).
+# Serialize in-process saves and retry the replace briefly instead of letting a
+# transient lock decide whether the snapshot lands.
+_SAVE_LOCK = threading.Lock()
+
+
+def _replace_atomically(temporary_name: str, target: Path, attempts: int = 6) -> None:
+    for attempt in range(attempts):
+        try:
+            os.replace(temporary_name, target)
+            return
+        except PermissionError:
+            if attempt + 1 >= attempts:
+                raise
+            time.sleep(0.02 * (attempt + 1))
+
+
 def save(investigation: Investigation, path: str | Path) -> None:
     _validate(investigation)
     payload = asdict(investigation)
@@ -582,7 +601,8 @@ def save(investigation: Investigation, path: str | Path) -> None:
             stream.write(encoded)
             stream.flush()
             os.fsync(stream.fileno())
-        os.replace(temporary_name, target)
+        with _SAVE_LOCK:
+            _replace_atomically(temporary_name, target)
     except BaseException:
         try:
             os.unlink(temporary_name)

@@ -30,6 +30,36 @@ def independent_reviewer(db, actor, book_id):
     raise AssertionError("Synthetic fixture must supply an existing independent reviewer")
 
 
+def ensure_independent_reviewer(db, actor, book_id):
+    """Return an existing second reviewer, or add one to a single-actor fixture.
+
+    Some legacy fixtures build a book with exactly one accountant, so no
+    independent person exists to approve the draft. The new policy forbids
+    self-approval, so the fixture supplies a second real person instead of
+    waiving the control.
+    """
+    try:
+        return independent_reviewer(db, actor, book_id)
+    except AssertionError:
+        pass
+    from uuid import uuid4
+
+    user_id = f"fixture-reviewer-{uuid4().hex[:12]}"
+    with db.transaction(write=True, actor=actor) as conn:
+        conn.execute(
+            "INSERT INTO users(id,name) VALUES(?,?)", (user_id, "独立复核会计")
+        )
+        conn.execute(
+            "INSERT INTO memberships(firm_id,user_id,role) VALUES(?,?,'reviewer')",
+            (actor.firm_id, user_id),
+        )
+        conn.execute(
+            "INSERT INTO book_access(book_id,firm_id,user_id,role) VALUES(?,?,?,'reviewer')",
+            (book_id, actor.firm_id, user_id),
+        )
+    return Actor(user_id, actor.firm_id)
+
+
 def reviewed_manual(posting, actor, request):
     service = ManualReviewService(posting.db)
     prepared = service.prepare(actor, request)["request"]

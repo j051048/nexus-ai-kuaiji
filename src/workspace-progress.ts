@@ -9,6 +9,7 @@ import {
   taskLabels,
   workspaceSortLabels,
   type TaskKind,
+  type WorkspaceBucket,
   type WorkspaceDensity,
   type WorkspaceSort,
 } from './workspace-types';
@@ -24,7 +25,7 @@ export interface InboxProgress {
 }
 
 export interface HomeProgress {
-  bucket: 'action' | 'waiting';
+  bucket: WorkspaceBucket;
   kind: TaskKind | '';
   companyId: string;
   offset: number;
@@ -85,7 +86,7 @@ export function homeProgress(value?: HomeProgress, companyId = ''): HomeProgress
   // Invalid scope must not become a match for the valid, all-authorized-companies scope ''.
   const match = validScope && isRecord(value) && value.companyId === companyId ? value : undefined;
   return {
-    bucket: match?.bucket === 'waiting' ? 'waiting' : 'action',
+    bucket: match?.bucket === 'waiting' || match?.bucket === 'due_soon' ? match.bucket : 'action',
     kind:
       typeof match?.kind === 'string' &&
       Object.prototype.hasOwnProperty.call(taskLabels, match.kind)

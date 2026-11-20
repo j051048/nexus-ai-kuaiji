@@ -242,6 +242,17 @@ class FinancialBridgeService:
         ).fetchone()
 
     @staticmethod
+    def _is_manual_return(row) -> bool:
+        raw = row["content"]
+        if isinstance(raw, memoryview):
+            raw = raw.tobytes()
+        if isinstance(raw, (bytes, bytearray)):
+            return raw.lstrip().startswith(b"{")
+        if isinstance(raw, str):
+            return raw.lstrip().startswith("{")
+        return False
+
+    @staticmethod
     def _external_state(conn, outbox_id, book_id):
         artifacts = conn.execute(
             "SELECT id,created_at FROM bridge_export_artifacts WHERE outbox_id=? AND book_id=? ORDER BY created_at,id",
@@ -260,7 +271,18 @@ class FinancialBridgeService:
         accepted = sum(int(row["accepted_count"]) for row in receipts)
         rejected = sum(int(row["rejected_count"]) for row in receipts)
         posted = [row for row in receipts if bool(row["external_posting"])]
-        posted += [row for row in returns if bool(row["posted"]) and bool(row["evidence_verified"])]
+        posted += [
+            row
+            for row in returns
+            if not FinancialBridgeService._is_manual_return(row)
+            and bool(row["posted"])
+            and bool(row["evidence_verified"])
+        ]
+        manual_posted_claims = [
+            row
+            for row in returns
+            if FinancialBridgeService._is_manual_return(row) and bool(row["posted"])
+        ]
         received_rows = [
             row
             for row in receipts
@@ -277,6 +299,28 @@ class FinancialBridgeService:
         last_posted = (
             sorted(posted, key=lambda row: (row["created_at"], row["id"]))[-1] if posted else None
         )
+        last_manual_claim = (
+            sorted(manual_posted_claims, key=lambda row: (row["created_at"], row["id"]))[-1]
+            if manual_posted_claims
+            else None
+        )
+        manual_claim_view = None
+        if last_manual_claim is not None:
+            ev = conn.execute(
+                "SELECT filename,sha256,created_by,created_at FROM bridge_return_evidence WHERE import_id=?",
+                (last_manual_claim["id"],),
+            ).fetchone()
+            declarer = conn.execute(
+                "SELECT name FROM users WHERE id=?", (last_manual_claim["created_by"],)
+            ).fetchone()
+            manual_claim_view = {
+                "at": last_manual_claim["created_at"],
+                "evidence": last_manual_claim["id"],
+                "evidence_attached": ev is not None,
+                "filename": ev["filename"] if ev else None,
+                "declared_by": last_manual_claim["created_by"],
+                "declared_by_name": declarer["name"] if declarer else last_manual_claim["created_by"],
+            }
         first_artifact = artifacts[0] if artifacts else None
         statuses = {
             "exported": {
@@ -304,6 +348,7 @@ class FinancialBridgeService:
             summary = "not_exported"
         return {
             "statuses": statuses,
+            "manual_posted_claim": manual_claim_view,
             "result_summary": summary,
             "partial_failure": bool(received and (rejected or discrepancy)),
             "result_unknown": bool(artifacts) and not receipts and not returns,
@@ -1228,16 +1273,99 @@ class FinancialBridgeService:
                 ).fetchone()
             ]
         ]
+        is_manual = FinancialBridgeService._is_manual_return(row) or (
+            len(rows) == 1 and rows[0]["voucher_code"] == "MANUAL"
+        )
+        ev = conn.execute(
+            "SELECT filename,media_type,sha256,size_bytes,created_by,created_at "
+            "FROM bridge_return_evidence WHERE import_id=?",
+            (row["id"],),
+        ).fetchone()
+        creator = conn.execute(
+            "SELECT name FROM users WHERE id=?", (row["created_by"],)
+        ).fetchone()
+        ev_uploader = (
+            conn.execute("SELECT name FROM users WHERE id=?", (ev["created_by"],)).fetchone()
+            if ev
+            else None
+        )
+        evidence_attached = ev is not None
+        posted_declared = bool(row["posted"])
+        # 只有逐笔返回文件经过批次/凭证号/金额/科目/过账日期校验后才算正式确认外部已过账；
+        # 手工回执附 PDF/图片仅代表“原件已收存、人工声明已过账”，不等同于逐笔核对入账。
+        posted_verified = (
+            (not is_manual) and posted_declared and bool(row["evidence_verified"])
+        )
+        if not is_manual:
+            if posted_verified:
+                verification_state = "file_posted_verified"
+                verification_label = "逐笔文件已核验过账"
+            elif int(row["discrepancy_count"]) > 0 or row["result_status"] != "accepted":
+                verification_state = "file_partial_discrepancy"
+                verification_label = "逐笔文件存在差异（待核对）"
+            else:
+                verification_state = "file_received_only"
+                verification_label = "逐笔文件已接收（未确认过账）"
+            confirmed_count = sum(1 for item in rows if item["status"] == "accepted")
+            handled_count = sum(
+                1
+                for item in rows
+                if item["status"] not in ("accepted", "duplicate") and item["handled"]
+            )
+            pending_count = sum(
+                1
+                for item in rows
+                if item["status"] not in ("accepted", "duplicate") and not item["handled"]
+            )
+        else:
+            if posted_declared and evidence_attached:
+                verification_state = "manual_posted_claimed_with_evidence"
+                verification_label = "人工声明已过账 · 已附原件（未逐笔核对凭证）"
+            elif posted_declared:
+                verification_state = "manual_posted_claimed_no_evidence"
+                verification_label = "人工声明已过账 · 缺证据原件"
+            elif evidence_attached:
+                verification_state = "manual_received_with_evidence"
+                verification_label = "人工声明已接收 · 已附原件（未过账）"
+            else:
+                verification_state = "manual_received_no_evidence"
+                verification_label = "人工声明已接收 · 缺证据原件"
+            confirmed_count = 0
+            handled_count = 0
+            pending_count = 0
         return {
             "id": row["id"],
             "artifact_id": row["artifact_id"],
             "batch_code": row["batch_code"],
             "content_sha256": row["content_sha256"],
+            "source_kind": "manual" if is_manual else "file",
             "result_status": row["result_status"],
             "received": bool(row["received"]),
-            "posted": bool(row["posted"]) and bool(row["evidence_verified"]),
-            "posted_declared": bool(row["posted"]),
+            "posted": posted_verified,
+            "posted_declared": posted_declared,
+            "manual_posted_claim": bool(is_manual and posted_declared),
+            "evidence_attached": evidence_attached,
             "evidence_verified": bool(row["evidence_verified"]),
+            "verification_state": verification_state,
+            "verification_label": verification_label,
+            "evidence_attachment": (
+                {
+                    "filename": ev["filename"],
+                    "media_type": ev["media_type"],
+                    "sha256": ev["sha256"],
+                    "size_bytes": ev["size_bytes"],
+                    "uploaded_by": ev["created_by"],
+                    "uploaded_by_name": ev_uploader["name"] if ev_uploader else ev["created_by"],
+                    "uploaded_at": ev["created_at"],
+                }
+                if ev
+                else None
+            ),
+            "summary_breakdown": {
+                "confirmed_count": confirmed_count,
+                "pending_count": pending_count,
+                "handled_count": handled_count,
+            },
             "row_count": row["row_count"],
             "counts": {
                 key: row[f"{key}_count"]
@@ -1252,9 +1380,15 @@ class FinancialBridgeService:
                     "discrepancy",
                 )
             },
+            "created_by": row["created_by"],
+            "created_by_name": creator["name"] if creator else row["created_by"],
             "created_at": row["created_at"],
             "rows": rows,
-            "note": "返回文件只登记客户软件结果；外发仍关闭，手工过账回执另行核验。",
+            "note": (
+                "手工登记与附件原件仅留存人工声明及文件摘要，不等同于按批次、凭证号与金额逐笔核验外部过账。"
+                if is_manual
+                else "返回文件只登记客户软件逐笔结果；外发仍关闭。"
+            ),
         }
 
     def record_return(self, actor, book_id, artifact_id, request: BridgeReturnImport):

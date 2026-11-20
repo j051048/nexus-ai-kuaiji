@@ -100,7 +100,10 @@ def test_snapshot_reuse_preserves_all_evidence_and_facts_with_fewer_roundtrips(a
         actual = assistant.detail(actor, thread["id"])["context"]
     assert actual == expected
     assert len(optimized) < len(baseline) - 10
-    assert len(optimized) <= 55
+    # 55 was measured before management-review separation and review
+    # delegation joins; each re-authorization adds a statement and the
+    # product deliberately keeps no authorization cache across calls.
+    assert len(optimized) <= 61
     assert all(sql.lstrip().upper().startswith("SELECT") for sql in optimized)
     print("stage25_snapshot_queries", len(baseline), len(optimized))
 

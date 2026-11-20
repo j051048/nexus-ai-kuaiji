@@ -66,7 +66,7 @@ def test_http_chinese_upload_mapping_preview_confirm_and_original_download(clien
     )
     assert (
         client.get(base + "/profiles", headers=headers).json()["profiles"][0]["bank_account"]
-        == "工行1234"
+        == "****1234"
     )
 
 

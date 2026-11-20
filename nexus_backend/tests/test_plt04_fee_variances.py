@@ -494,3 +494,76 @@ def test_variance_relation_binds_settlement_bank_and_amount(business):
     )
     assert item["relation_id"]
     assert item["bank_source_id"] == "variance-bank-2"
+
+
+def test_stale_relation_blocks_difference_draft_with_409(business):
+    """A relation pins its source versions; re-importing a source must stop the draft."""
+    case = business
+    _prepared(case)
+    _configure_reason(case)
+    service = FeeVarianceService(case.db)
+    with case.db.transaction(write=True, actor=case.manager) as conn:
+        _bank_source(conn, case.book["id"], "relation-stale-settle", 1_100, kind="business")
+        _bank_source(conn, case.book["id"], "relation-stale-bank", 800)
+    item = service.record(
+        case.manager,
+        case.book["id"],
+        kind="overpaid",
+        expected_cents=500,
+        actual_cents=800,
+        settlement_source_id="relation-stale-settle",
+        bank_source_id="relation-stale-bank",
+        idempotency_key="relation-stale",
+    )
+    assert item["relation_id"]
+    with case.db.transaction(write=True, actor=case.manager) as conn:
+        conn.execute(
+            "UPDATE sources SET fingerprint=? WHERE id=?",
+            ("reimported-fingerprint", "relation-stale-bank"),
+        )
+    with pytest.raises(AccountingError) as stale:
+        service.handle(
+            case.manager,
+            item["id"],
+            reason_code="bank_fee",
+            evidence_ref="synthetic://policy/stale",
+        )
+    assert stale.value.status == 409
+    assert "已换版" in str(stale.value)
+
+
+def test_same_month_same_amount_rows_keep_separate_relations(business):
+    """Two equal differences in one month must not share a source relation."""
+    case = business
+    _prepared(case)
+    service = FeeVarianceService(case.db)
+    with case.db.transaction(write=True, actor=case.manager) as conn:
+        _bank_source(conn, case.book["id"], "same-settle-a", 1_100, kind="business")
+        _bank_source(conn, case.book["id"], "same-bank-a", 800)
+        _bank_source(conn, case.book["id"], "same-settle-b", 1_100, kind="business")
+        _bank_source(conn, case.book["id"], "same-bank-b", 800)
+    first = service.record(
+        case.manager,
+        case.book["id"],
+        kind="overpaid",
+        expected_cents=500,
+        actual_cents=800,
+        settlement_source_id="same-settle-a",
+        bank_source_id="same-bank-a",
+        idempotency_key="same-row-a",
+    )
+    second = service.record(
+        case.manager,
+        case.book["id"],
+        kind="overpaid",
+        expected_cents=500,
+        actual_cents=800,
+        settlement_source_id="same-settle-b",
+        bank_source_id="same-bank-b",
+        idempotency_key="same-row-b",
+    )
+    assert first["id"] != second["id"]
+    assert first["relation_id"] and second["relation_id"]
+    assert first["relation_id"] != second["relation_id"]
+    assert first["bank_source_id"] == "same-bank-a"
+    assert second["bank_source_id"] == "same-bank-b"

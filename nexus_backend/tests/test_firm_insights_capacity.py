@@ -49,8 +49,9 @@ def test_insights_overview_stays_under_500ms_at_240_books(tmp_path):
                 if index % 2 == 0:
                     conn.execute(
                         "INSERT INTO report_runs(id,book_id,period,template_id,template_version,status,version,"
-                        "inputs_fingerprint,content_json,content_hash,created_by,created_at) "
-                        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+                        "inputs_fingerprint,content_json,content_hash,created_by,created_at,"
+                        "mode,standard_kind,policy_version,policy_approver) "
+                        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,'formal','small_enterprise',1,?)",
                         (
                             f"capacity-report-{index:03d}", book_id, period, "synthetic", 1,
                             "reviewed", 1, "input",
@@ -58,6 +59,7 @@ def test_insights_overview_stays_under_500ms_at_240_books(tmp_path):
                             '"profit_statement":{"revenue_cents":50000,"expense_cents":20000,"profit_cents":30000},'
                             '"cash_flow":{"closing_cash_cents":12000}}',
                             f"hash-{index:03d}", user_id, "2031-03-31T00:00:00+00:00",
+                            user_id,
                         ),
                     )
             conn.commit()

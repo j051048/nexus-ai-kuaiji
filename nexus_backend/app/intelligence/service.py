@@ -530,7 +530,13 @@ class IntelligenceService:
                 STRUCTURED_VERSION if structured else prompt_version(self.provider.settings),
                 attachment_id=attachment["id"],
                 input_version=request.expected_fact_version,
-                provider_name=STRUCTURED_PROVIDER if structured else None,
+                provider_name=(
+                    STRUCTURED_PROVIDER
+                    if structured
+                    else urlsplit(
+                        effective_settings(self.provider.settings, "ocr").base_url
+                    ).hostname
+                ),
             )
             if execution and execute:
                 execution.bind(conn, run)

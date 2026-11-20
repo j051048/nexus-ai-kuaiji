@@ -71,6 +71,10 @@ def test_profile_matches_domain_grants_without_loading_accounting_facts(business
         [None, "owner", "admin", "finance", "employee"],
         [None, "editor", "reviewer", "viewer"],
     ):
+        if book_role == "reviewer" and firm_role not in {"owner", "admin", "reviewer"}:
+            # The control forbids a formal reviewer without firm reviewer staff,
+            # so this combination has no legal profile to compare.
+            continue
         with c.db.transaction(write=True) as conn:
             conn.execute("DELETE FROM memberships WHERE user_id=?", (actor.user_id,))
             conn.execute("DELETE FROM company_memberships WHERE user_id=?", (actor.user_id,))

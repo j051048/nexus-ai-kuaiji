@@ -308,6 +308,19 @@ class FeeVarianceService:
                 raise AccountingError("已撤销差异不能处理", 409)
             if row["status"] == "handled":
                 raise AccountingError("差异已处理，不能重复生成凭证", 409)
+            relation_id = row["relation_id"] if "relation_id" in row.keys() else None
+            if relation_id:
+                relation = conn.execute(
+                    "SELECT * FROM fee_source_relations WHERE id=? AND book_id=?",
+                    (relation_id, row["book_id"]),
+                ).fetchone()
+                if not relation:
+                    raise AccountingError("差异绑定的来源关系不存在或已失效", 409)
+                stale = SourceRelationService(self.db).staleness(conn, dict(relation))
+                if stale:
+                    raise AccountingError(
+                        f"差异来源已换版（{stale}），请重新核对来源关系后再生成差异草稿", 409
+                    )
             policy = self._active_policy(conn, row["book_id"])
             reasons = _reasons(policy) if policy else []
             codes = {item["code"] for item in reasons}

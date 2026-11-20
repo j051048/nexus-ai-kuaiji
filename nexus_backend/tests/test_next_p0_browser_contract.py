@@ -60,6 +60,7 @@ def test_default_collection_needs_no_private_fixture_and_pg_suite_remains_requir
         )
     )
     env["P02_BROWSER_FIXTURE"] = str(fixture)
+    env["P02_EXPECTED_AUTH_LOCAL_ORIGIN"] = "http://127.0.0.1:25511"
     special = subprocess.run(
         command + ["--config=playwright.p02.config.ts"],
         cwd=ROOT,

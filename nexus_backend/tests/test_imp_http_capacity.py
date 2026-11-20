@@ -35,8 +35,16 @@ def test_capacity_passes_explicit_major_to_identity_fixture(tmp_path, monkeypatc
         raise ReachedFixture
 
     monkeypatch.setattr(p02_session_fixture, "create_session", session)
-    with pytest.raises(ReachedFixture):
-        capacity.run(config, major, tmp_path / "http-result")
+    from uuid import uuid4
+
+    output = capacity.ROOT / "tmp_test" / "rework" / f"capacity-{uuid4().hex}"
+    try:
+        with pytest.raises(ReachedFixture):
+            capacity.run(config, major, output)
+    finally:
+        import shutil
+
+        shutil.rmtree(output, ignore_errors=True)
 
 
 @pytest.mark.parametrize("major", [16, 17])

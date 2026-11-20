@@ -40,7 +40,8 @@
 | 批次 | 文件 | 核心主题 | 前置 | 主攻提分维度 |
 | :---: | :--- | :--- | :---: | :--- |
 | **Batch 01** | `docs/upgrade_85/UPG01_ENGINEERING_GATES.md` | 工程止血、回归清零与 PG 强制门禁（承接 RWK01-B/C/D + RWK02） | `RWK01-A` | 维度 8、6、9 |
-| **Batch 02** | `docs/upgrade_85/UPG02_REPORT_AND_WORKBENCH.md` | 报表合规封堵与多法人高频工作台三件套（承接 RWK03 + RWK04） | Batch 01 | 维度 1、2、4 |
+| **Batch 01B** | `docs/upgrade_85/UPG01B_GPT_AUDIT_P0_P1_CLOSURE.md` | GPT 审计 6 项 P0/P1 财务正确性残余闭环与同候选发布证据 | Batch 01 | 维度 2、4、6、1 |
+| **Batch 02** | `docs/upgrade_85/UPG02_REPORT_AND_WORKBENCH.md` | 报表合规封堵与多法人高频工作台三件套（承接 RWK03 + RWK04） | Batch 01B | 维度 1、2、4 |
 | **Batch 03** | `docs/upgrade_85/UPG03_AUDIT_AND_RECOVERY.md` | 验收包补全、有数据审计链验真与恢复后办单（承接 RWK05 + PLT06） | Batch 02 | 维度 2、6、7、8 |
 | **Batch 04** | `docs/upgrade_85/UPG04_TAX_AUTOMATION.md` | 四税种全闭环底稿、进项风控与电子税务局连接器沙箱 | Batch 02 | 维度 3、2 |
 | **Batch 05** | `docs/upgrade_85/UPG05_TREASURY_BANK_H2H.md` | 独立出纳、付款审批流与成都银行/工商银行双行适配器 | Batch 02 | 维度 5、2、1 |
