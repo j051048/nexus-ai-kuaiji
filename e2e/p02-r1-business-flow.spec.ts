@@ -128,13 +128,13 @@ for (const name of ['desktop', 'mobile'] as const) {
       balances
         .getByRole('row', { name: /1002 · 银行存款/ })
         .getByRole('cell')
-        .nth(3),
+        .nth(4),
     ).toHaveText('9,731.90');
     await expect(
       balances
         .getByRole('row', { name: /6602.02 · 管理费用/ })
         .getByRole('cell')
-        .nth(3),
+        .nth(4),
     ).toHaveText('268.10');
     const panel = await panelFor(reviewer.page);
     await expect(panel.getByRole('heading', { name: /银行对账 · 需处理/ })).toBeVisible();

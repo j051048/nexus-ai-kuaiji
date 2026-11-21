@@ -178,6 +178,19 @@ def run(config_dir, output, node="node"):
         except Exception as error:
             report["error_class"] = type(error).__name__
             report["failed_stage"] = stage
+            junit_path = output / "browser-private.xml"
+            if stage in {"browser", "junit"} and junit_path.is_file():
+                try:
+                    root = ET.parse(junit_path).getroot()
+                    report["failed_cases"] = sorted(
+                        case.get("name", "")
+                        for case in root.iter("testcase")
+                        if any(
+                            case.find(tag) is not None for tag in ("failure", "error", "skipped")
+                        )
+                    )
+                except (OSError, ET.ParseError):
+                    pass
         finally:
             if frontend is not None and frontend.poll() is None:
                 frontend.terminate()
