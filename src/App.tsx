@@ -1446,6 +1446,7 @@ export default function App() {
               inlineContext.current?.onClose();
               inlineContext.current = null;
               setInlineTarget(null);
+              setTaskVersion('');
               if (restore) {
                 setWorkCompany(restore.companyId);
                 setWorkPeriod(restore.period);

@@ -41,7 +41,7 @@ test('firm insights phase two and three views are reachable 1366', async ({ page
   await expect(main.getByRole('heading', { name: '经营看板', exact: true })).toBeVisible();
 
   await main.getByRole('button', { name: '企业画像', exact: true }).click();
-  await expect(main.getByRole('heading', { name: /虚构|企业|账套/ }).first()).toBeVisible();
+  await expect(main.locator('section[aria-label*="财务画像"] h2')).toBeVisible();
   await expect(main.getByText('资产负债结构', { exact: true })).toBeVisible();
   await expect(main.getByText('账龄', { exact: true })).toBeVisible();
   await page.screenshot({ path: 'tmp_test/firm-insights-company-1366.png', fullPage: true });

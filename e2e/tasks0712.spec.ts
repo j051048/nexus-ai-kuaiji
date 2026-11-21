@@ -92,7 +92,7 @@ for (const width of [1365, 390]) {
     await expect(page.locator('section[aria-label="办理积压与队列年龄"]')).toContainText('待复核凭证');
     await expect(page.locator('section[aria-label="FDE 价值基线"]')).toContainText('价值基线');
     await expect(page.locator('section[aria-label="持续结账雷达"]')).toContainText('持续结账雷达');
-    await expect(page.locator('section[aria-label="持续结账雷达"]')).toContainText('关账仍需人工判断');
+    await expect(page.locator('section[aria-label="持续结账雷达"]')).toContainText('仍需人工确认');
     await expect(page.locator('section[aria-label="FDE 价值基线"]')).toContainText('系统耗时不是人工工时');
     const fsc = page.locator('section[aria-label="五行业档案矩阵"]');
     await expect(fsc).toContainText('已确认');

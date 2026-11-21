@@ -159,8 +159,8 @@ for (const viewport of [
     await openNavigation(page);
     const nav = page.getByRole('navigation', { name: '主导航', exact: true });
     const primary = nav.locator(':scope > button.agent-primary-item');
-    await expect(primary).toHaveCount(4);
-    for (const name of ['全所概览', '客户企业', '月度交付', '异常与补件']) {
+    await expect(primary).toHaveCount(5);
+    for (const name of ['全所概览', '经营看板', '客户企业', '月度交付', '异常与补件']) {
       await expect(primary.filter({ hasText: name })).toHaveCount(1);
       await expect(nav.getByRole('button', { name, exact: true })).toHaveClass(
         /agent-primary-item/,

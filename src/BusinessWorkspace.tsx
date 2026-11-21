@@ -148,6 +148,7 @@ export function BusinessWorkspace({
   const [restoredPeriod, setRestoredPeriod] = useState('');
   const listPeriod = initialPeriod || restoredPeriod;
   const [selected, setSelected] = useState<BusinessEvent | null>(null);
+  const [revokedPreview, setRevokedPreview] = useState(false);
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailFailure, setDetailFailure] = useState<{ id: string; message: string } | null>(null);
@@ -212,11 +213,13 @@ export function BusinessWorkspace({
     };
   }, [session.scope_key]);
   useEffect(() => {
+    setRevokedPreview(false);
     const revoke = (event: Event) => {
       if ((event as CustomEvent).detail !== session.scope_key) return;
       selectionEpoch.current += 1;
       listEpoch.current += 1;
       setSelected(null);
+      setRevokedPreview(true);
       setEvents([]);
       setTotal(null);
       setCompanyBooks({ target: '', books: [], pagination: null });
@@ -444,6 +447,7 @@ export function BusinessWorkspace({
     if (busy) return;
     const epoch = ++selectionEpoch.current;
     setSelected(null);
+    setRevokedPreview(false);
     setDetailLoading(true);
     setDetailFailure(null);
     setCompletedEvent('');
@@ -1092,7 +1096,15 @@ export function BusinessWorkspace({
               正在读取事项…
             </div>
           ) : !selected ? (
-            <Empty title="选择一件业务事项" text="申请信息、附件与审批依据将在这里展示。" />
+            revokedPreview ? (
+              <section className="inline-evidence" aria-label="同屏原件预览">
+                <p className="permission-note" role="alert">
+                  当前原件授权已变化，已撤下原件并清空事项资料，请重新核对权限后再读取。
+                </p>
+              </section>
+            ) : (
+              <Empty title="选择一件业务事项" text="申请信息、附件与审批依据将在这里展示。" />
+            )
           ) : (
             <div className="business-detail-content">
               <div className="business-detail-title">

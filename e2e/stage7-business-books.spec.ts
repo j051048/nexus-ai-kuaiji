@@ -111,7 +111,7 @@ test('业务移交和会计复核使用独立授权账套列表，可打开工�
   );
   await page.getByLabel('交接到账套', { exact: true }).selectOption(target!.id);
   await page.getByRole('button', { name: '生成凭证草稿', exact: true }).click();
-  await expect(page.getByRole('status')).toContainText(
+  await expect(page.locator('.business-notice[role="status"]')).toContainText(
     '已交接并关联凭证草稿，仍需会计复核后导出。',
   );
   await expect(page.getByRole('button', { name: '查看关联凭证', exact: true })).toBeVisible();

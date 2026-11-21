@@ -31,11 +31,10 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-def audit(conn, c, book):
-    conn.execute(
-        "INSERT INTO audit_events(firm_id,book_id,user_id,action,object_id,details,created_at) VALUES(?,?,?,'synthetic.company.lock',?,'{}',CURRENT_TIMESTAMP::text)",
-        (c.actor.firm_id, book, c.actor.user_id, uuid4().hex),
-    )
+def company_touch(conn, book):
+    # audit_events 启用了全所串行哈希链（OPT03-B），此处改写同样挂有
+    # company_write_table_guard 的企业私有账套表，验证跨企业并发不互锁。
+    conn.execute("UPDATE books SET name=name WHERE id=?", (book,))
 
 
 def test_real_pg_distinct_company_writes_overlap_and_same_company_serializes(case):
@@ -47,7 +46,7 @@ def test_real_pg_distinct_company_writes_overlap_and_same_company_serializes(cas
         with c.db.transaction(
             write=True, actor=c.actor, company_id=company, write_scope="company"
         ) as conn:
-            audit(conn, c, book)
+            company_touch(conn, book)
             barrier.wait(3)  # A global lock would break this deterministic proof.
 
     with ThreadPoolExecutor(2) as pool:

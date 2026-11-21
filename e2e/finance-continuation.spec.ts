@@ -61,7 +61,7 @@ for (const width of [1365, 390]) {
     await panel.getByLabel('账龄截止日期').fill('2026-12-31');
     await panel.getByRole('button', { name: '查看并办理核销' }).click();
     const detail = page.getByRole('region', { name: '往来事项办理', exact: true });
-    await expect(detail).toContainText('当前未结 10000.00 元');
+    await expect(detail).toContainText('当前未结 10,000.00 元');
     await detail.getByLabel('收付款凭证', { exact: true }).selectOption(payment.voucher.id);
     await detail.getByRole('button', { name: '查看所选正式凭证' }).click();
     const voucherDialog = page.getByRole('region', { name: '正式凭证详情', exact: true });
@@ -72,18 +72,18 @@ for (const width of [1365, 390]) {
     await detail.getByLabel('核销或撤销理由').fill('核对该笔正式付款');
     await detail.getByRole('button', { name: '核对后登记核销' }).click();
     await detail.getByRole('button', { name: '确认办理', exact: true }).click();
-    await expect(detail).toContainText('当前未结 7000.00 元');
+    await expect(detail).toContainText('当前未结 7,000.00 元');
     await detail.getByLabel('核销或撤销理由').fill('人工发现需撤回核对');
     await detail.getByRole('button', { name: '撤销这笔核销' }).click();
     await detail.getByRole('button', { name: '确认办理', exact: true }).click();
-    await expect(detail).toContainText('当前未结 10000.00 元');
+    await expect(detail).toContainText('当前未结 10,000.00 元');
     await expect(detail).toContainText('撤销理由：人工发现需撤回核对');
     await detail.getByLabel('收付款凭证', { exact: true }).selectOption(payment.voucher.id);
     await detail.getByLabel('本次核销金额（元）').fill('2000.00');
     await detail.getByLabel('核销或撤销理由').fill('重新核对后部分核销');
     await detail.getByRole('button', { name: '核对后登记核销' }).click();
     await detail.getByRole('button', { name: '确认办理', exact: true }).click();
-    await expect(detail).toContainText('当前未结 8000.00 元');
+    await expect(detail).toContainText('当前未结 8,000.00 元');
     const final = await checked(
       await request.get(`/api/subledger/items/${item.id}/workspace?book_id=${f.book.id}`, {
         headers: f.headers,
