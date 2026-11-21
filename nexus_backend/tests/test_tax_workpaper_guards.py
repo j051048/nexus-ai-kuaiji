@@ -97,3 +97,20 @@ def test_review_requires_book_review_capability(tax):
     with pytest.raises(AccountingError) as error:
         tax.tax.review(tax.actors["employee"], tax.book["id"], paper["id"], "核对无误", 1)
     assert error.value.status in (403, 404)
+
+
+def test_mixed_output_rates_refuse_the_single_profile_rate(tax):
+    """不许用档案里的单一税率悄悄估算多档税率的销项。"""
+    tax.tax.set_profile(tax.manager, tax.book["id"], profile())
+    invoices(tax, [row("output", 100_000, 3_000), row("output", 100_000, 1_300)])
+    with pytest.raises(AccountingError) as error:
+        tax.tax.generate(tax.actor_accountant, tax.book["id"], "2026-10")
+    assert error.value.status == 409
+    assert "多档税率" in error.value.detail
+
+
+def test_single_rate_period_still_uses_the_profile_rate(tax):
+    tax.tax.set_profile(tax.manager, tax.book["id"], profile())
+    invoices(tax, [row("output", 100_000, 3_000), row("output", 50_000, 1_500)])
+    paper = tax.tax.generate(tax.actor_accountant, tax.book["id"], "2026-10")
+    assert paper["tax"] == "45.00"

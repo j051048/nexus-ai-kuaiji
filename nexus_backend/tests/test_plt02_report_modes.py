@@ -178,3 +178,48 @@ def test_policy_maker_cannot_approve_own_policy(business):
     )
     assert approver.user_id != case.manager.user_id
     assert approved["approved_by"] == approver.user_id
+
+
+def _migration_text(name):
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1] / "migrations" / "sqlite"
+    return (root / name).read_text(encoding="utf-8")
+
+
+def test_unassessed_policy_refuses_report_instead_of_small_enterprise(business):
+    """RWK04-A：没有生效政策就不出表，不得静默回落到小企业模板。"""
+    case = business
+    with case.db.transaction(write=True) as conn:
+        conn.execute(
+            "UPDATE accounting_policies SET status='retired' WHERE ledger_id="
+            "(SELECT ledger_id FROM ledger_periods WHERE book_id=?)",
+            (case.book["id"],),
+        )
+        before = conn.execute("SELECT COUNT(*) FROM report_runs").fetchone()[0]
+    with pytest.raises(AccountingError, match="核算政策未核定"):
+        ReportService(case.db).create(case.manager, case.book["id"], "2026-10")
+    with case.db.transaction() as conn:
+        assert conn.execute("SELECT COUNT(*) FROM report_runs").fetchone()[0] == before
+
+
+def test_pre_gate_rows_read_as_legacy_and_cannot_publish(business):
+    """RWK04-B：门槛建立前生成的存量行按 legacy 口径读取，且不可新发布。"""
+    case = business
+    _, policy = _prepared(case)
+    created = ReportService(case.db).create(case.manager, case.book["id"], "2026-10")
+    report_id = created["report"]["id"]
+    with case.db.transaction(write=True) as conn:
+        conn.execute(
+            "UPDATE report_runs SET mode='formal', policy_version=NULL, policy_approver=NULL "
+            "WHERE id=?",
+            (report_id,),
+        )
+    listed = next(
+        row for row in ReportService(case.db).list(case.manager, case.book["id"]) if row["id"] == report_id
+    )
+    assert listed["mode"] == "legacy"
+    assert "历史未核定" in listed["mode_label"]
+    with case.db.transaction(write=True) as conn:
+        with pytest.raises(sqlite3.IntegrityError, match="历史未核定报表同样不可新发布"):
+            conn.execute("UPDATE report_runs SET status='published' WHERE id=?", (report_id,))

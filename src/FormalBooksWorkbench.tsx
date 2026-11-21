@@ -1,5 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, apiBlob, ApiError, errorMessage } from './api';
+import { requestConfirm } from './confirm-dialog';
 import type { Session } from './types';
 const ManualVoucherReviewPanel = lazy(() =>
   import('./ManualVoucherReviewPanel').then((module) => ({
@@ -275,10 +276,15 @@ function FormalBooksContent({
     setAccountId(id);
     setKind('account_ledger');
   }
-  function closeVoucher() {
+  async function closeVoucher() {
     if (
       correction &&
-      !window.confirm('关闭更正办理前，请确认已提交并核对结果；未提交内容不会保存。')
+      !(await requestConfirm({
+        title: '关闭更正办理？',
+        description: '关闭前请确认已提交并核对结果。',
+        consequence: '未提交的内容不会保存。',
+        confirmLabel: '关闭办理',
+      }))
     )
       return;
     details.current.cancel();

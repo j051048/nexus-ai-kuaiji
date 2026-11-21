@@ -175,3 +175,22 @@ $ .venv/Scripts/python.exe -m pytest nexus_backend/tests/test_intelligence_http.
 - `test_migration_structure.py`：7 passed；新增 PG `306_batch01_write_gates.sql`（原 304 与他方 304 冲突后重编号），给 35 张已有 company_id 表补写门；历史缺 compatibility 头登记精确摘要；并发他方新增 `sqlite/218、219`、`postgres/304、305` 缺头也只登记摘要，未改他人文件。
 - `test_upload_reference_binding.py` legacy 用例排除 213 重建后 1 passed；`test_stage10_integrations_api.py` 改独立 reviewer + outbox 子集断言后 1 passed。
 - 剩余阻塞：`test_write_scope_baseline.py` 新增 30 个未声明 scope 的写事务，按测试规则需 owner 决策，已登记 `DECISIONS_NEEDED.md` D-002；未改 baseline。Batch01 仍部分完成。
+
+## RWK03/RWK04 Batch 02 覆盖（2026-11-21）
+
+- **RWK04-A 完成**：`reports/service.py` 已有 409 与缺模板错误；真实残留 `assistant/delivery_details.py` 的 `small_enterprise_basic` 硬编码改为按生效政策取模板，source 暴露 `standard_kind`/`template_id`；红测 `test_reconciliation_dependencies_bind_the_approved_standard_template` 16 passed。
+- **RWK04-B 完成（SQLite CHECK 扩展按理由不做）**：新增 `postgres/313_report_legacy_backfill.sql`（DO 块回填 + RAISE NOTICE）与 `sqlite/222_report_legacy_backfill.sql`（no-op，理由：CHECK 需重建表并重放十余个触发器）；读取侧 `service.py:471 effective_mode` 映射 legacy；`test_plt02_report_modes.py` 9 passed。
+- **RWK03-A 主功能完成**：`src/WorkspaceContextBar.tsx` 常驻展示单位/身份/期间/锁期，栏内可切换单位；未做：逐页移除重复月份输入、未保存离开拦截接线。
+- **RWK03-B 完成**：`src/confirm-dialog.tsx` 统一确认（不可逆须输入期间/对象），6 处 `window.confirm` 清零，复核抽屉 A 键 400ms 冷却。
+- **RWK03-C 完成**：月度交付矩阵视图（6 环节 × 单位，单元格同源投影、点击直达）。
+- 证据：vitest 160 文件/1437 passed；`cargo`—不适用；tsc/lint/format/build/budget 全绿；e2e 20 passed。
+
+
+## RWK05 Batch 03 覆盖（2026-11-21）
+
+- **RWK05-A 完成**：`scripts/opt_acceptance.py` 模块清单（OPT01–10、RWK01–05）+ 静态断言（`window.confirm`/`parseFloat`）+ `check_test_env.py` 前置门禁；无探针模块标 `none` 不计通过；run-1/run-2 稳定一致，负向探针可见失败。
+- **RWK05-B 完成**：`test_audit_chain_real_data.py` 以真实服务在 2 个事务所各造 ≥50 条审计行，三种篡改（改内容/删行/换序）均报出断点主键；全仓 55 处审计写点已盘点。
+- **PLT06-D 完成**：`test_plt06_recovery_business_continuation.py` 走通「加密备份 → 隔离恢复 → 保持隔离 → 审计解除 → 权限矩阵 → 真实办结一单」。
+- **未做**：PLT06-A/B/C 受限聚合与实时撤权用例；unknown 通知不自动补发的演练断言；`pg_restore` 跨主版本探测。
+
+- **补（第 2 轮）**：`pg_restore` 跨主版本守卫完成（`restore_version_conflict`，9 passed）；PLT06-B 三条（撤权即时生效 / 撤权复核不落写 / 制单人自审被拒）3 passed；PLT06-A/C 因模型不支持三级可见性，登记为产品缺口而非测试缺口。

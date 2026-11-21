@@ -192,3 +192,19 @@ def test_permission_denial_is_not_relabelled_missing_opening(execution_case, mon
     with pytest.raises(AccountingError) as error:
         project(execution_case)
     assert error.value.status == 403
+
+
+def test_reconciliation_dependencies_bind_the_approved_standard_template(close_case):
+    """批次02/RWK04-A：对账明细的关账依赖必须绑定账套生效政策对应的模板，
+    不能把「小企业基础表」当成任何账套的通用默认。"""
+    c = close_case
+    with c.db.transaction(write=True) as conn:
+        conn.execute(
+            "UPDATE accounting_policies SET standard_kind='enterprise' "
+            "WHERE ledger_id=? AND status='active'",
+            (c.opening["ledger_id"],),
+        )
+    view = project(c)
+    source = next(s for s in view["sources"] if s["kind"] == "reconciliation")
+    assert source["standard_kind"] == "enterprise"
+    assert source["template_id"] == "enterprise_general"

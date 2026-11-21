@@ -19,16 +19,24 @@ def _account(case, code, name, category, normal):
     account = opening.create_account(
         case.manager,
         AccountCreate(
-            ledger_id=ledger_of(case), code=code, name=name, category=category,
-            normal_balance=normal, effective_from="2026-01", effective_to="2026-12",
+            ledger_id=ledger_of(case),
+            code=code,
+            name=name,
+            category=category,
+            normal_balance=normal,
+            effective_from="2026-01",
+            effective_to="2026-12",
             reason="TAX15 利润下钻测试科目",
         ),
     )
     opening.create_mapping(
         case.manager,
         MappingCreate(
-            book_id=case.book["id"], book_account_code=code, account_id=account["id"],
-            account_version=account["version"], reason="TAX15 利润下钻映射",
+            book_id=case.book["id"],
+            book_account_code=code,
+            account_id=account["id"],
+            account_version=account["version"],
+            reason="TAX15 利润下钻映射",
         ),
     )
     return account
@@ -36,14 +44,21 @@ def _account(case, code, name, category, normal):
 
 def _post(case, external_id, amount, direction, voucher_date, command, debit, credit):
     case.ledger.import_sources(
-        case.manager, case.book["id"],
+        case.manager,
+        case.book["id"],
         ImportRequest(
             source_name="利润下钻测试",
-            rows=[SourceRow(
-                external_id=external_id, date=voucher_date, description=f"测试 {external_id}",
-                counterparty="虚构客户", amount=amount, direction=direction,
-                evidence_ref=f"证据-{external_id}",
-            )],
+            rows=[
+                SourceRow(
+                    external_id=external_id,
+                    date=voucher_date,
+                    description=f"测试 {external_id}",
+                    counterparty="虚构客户",
+                    amount=amount,
+                    direction=direction,
+                    evidence_ref=f"证据-{external_id}",
+                )
+            ],
         ),
     )
     case.ledger.suggestions(case.manager, case.book["id"])
@@ -51,9 +66,12 @@ def _post(case, external_id, amount, direction, voucher_date, command, debit, cr
     source = next(row for row in library["sources"] if row["external_id"] == external_id)
     draft = next(row for row in library["drafts"] if row["source_id"] == source["id"])
     draft = case.ledger.update_draft(
-        case.manager, case.book["id"], draft["id"],
+        case.manager,
+        case.book["id"],
+        draft["id"],
         DraftUpdate(
-            expected_version=draft["version"], description=f"测试 {external_id}",
+            expected_version=draft["version"],
+            description=f"测试 {external_id}",
             lines=[
                 DraftLine(account_code=debit, debit=amount, credit="0.00"),
                 DraftLine(account_code=credit, debit="0.00", credit=amount),
@@ -61,12 +79,18 @@ def _post(case, external_id, amount, direction, voucher_date, command, debit, cr
         ),
     )
     approved = case.ledger.approve(
-        case.actors["accountant"], case.book["id"], draft["id"],
+        case.actors["accountant"],
+        case.book["id"],
+        draft["id"],
         ApprovalRequest(expected_version=draft["version"]),
     )
     PostingService(case.db).post_draft(
-        case.manager, case.book["id"], approved["id"],
-        PostDraft(command_key=command, expected_version=approved["version"], voucher_date=voucher_date),
+        case.manager,
+        case.book["id"],
+        approved["id"],
+        PostDraft(
+            command_key=command, expected_version=approved["version"], voucher_date=voucher_date
+        ),
     )
     return approved
 
@@ -76,14 +100,34 @@ def test_profit_drilldown_maps_lines_and_keeps_unknown_tax_out_of_zero(business)
     opening = frozen_opening(case)
     binding = PostingService(case.db).bind_opening(
         case.manager,
-        OpeningBind(book_id=case.book["id"], package_version_id=opening["version_id"], reason="冻结期初"),
+        OpeningBind(
+            book_id=case.book["id"], package_version_id=opening["version_id"], reason="冻结期初"
+        ),
     )
     assert binding["binding"]["status"] == "active"
     _account(case, "1122", "应收账款", "asset", "debit")
     _account(case, "6001", "主营业务收入", "income", "credit")
 
-    _post(case, "profit-revenue-1", "5000.00", "income", "2026-10-10", "profit-revenue-1", "1002", "6001")
-    _post(case, "profit-expense-1", "1000.00", "expense", "2026-10-11", "profit-expense-1", "6602.02", "1002")
+    _post(
+        case,
+        "profit-revenue-1",
+        "5000.00",
+        "income",
+        "2026-10-10",
+        "profit-revenue-1",
+        "1002",
+        "6001",
+    )
+    _post(
+        case,
+        "profit-expense-1",
+        "1000.00",
+        "expense",
+        "2026-10-11",
+        "profit-expense-1",
+        "6602.02",
+        "1002",
+    )
 
     service = ProfitDrilldownService(case.db)
     mapping = service.mapping(case.manager, case.book["id"])
@@ -101,7 +145,12 @@ def test_profit_drilldown_maps_lines_and_keeps_unknown_tax_out_of_zero(business)
     assert revenue["amount_cents"] == 500000
     assert revenue["items_count"] == 1
     assert revenue["accounts"] == [
-        {"account_code": "6001", "account_name": "主营业务收入", "amount_cents": 500000, "items_count": 1}
+        {
+            "account_code": "6001",
+            "account_name": "主营业务收入",
+            "amount_cents": 500000,
+            "items_count": 1,
+        }
     ]
 
     detail = service.overview(case.manager, case.book["id"], "2026-10", "revenue")
@@ -168,9 +217,7 @@ def test_profit_drilldown_maps_lines_and_keeps_unknown_tax_out_of_zero(business)
         f"/api/books/{case.book['id']}/import-wizard/files/file-profit-revenue"
     )
 
-    impacts = service.impacts(
-        case.manager, case.book["id"], detail["items"][0]["voucher_id"]
-    )
+    impacts = service.impacts(case.manager, case.book["id"], detail["items"][0]["voucher_id"])
     # The voucher also debits 1122, which is intentionally outside the profit mapping.
     assert impacts["unmapped_line_count"] == 1
     assert impacts["lines"] == [
@@ -189,15 +236,44 @@ def test_profit_snapshot_freezes_line_amounts_and_reports_changes(business):
     opening = frozen_opening(case)
     PostingService(case.db).bind_opening(
         case.manager,
-        OpeningBind(book_id=case.book["id"], package_version_id=opening["version_id"], reason="冻结期初"),
+        OpeningBind(
+            book_id=case.book["id"], package_version_id=opening["version_id"], reason="冻结期初"
+        ),
     )
     _account(case, "1122", "应收账款", "asset", "debit")
     _account(case, "6001", "主营业务收入", "income", "credit")
-    _post(case, "profit-snapshot-revenue-1", "5000.00", "income", "2026-10-10", "profit-snapshot-revenue-1", "1002", "6001")
-    _post(case, "profit-snapshot-expense-1", "1000.00", "expense", "2026-10-11", "profit-snapshot-expense-1", "6602.02", "1002")
+    _post(
+        case,
+        "profit-snapshot-revenue-1",
+        "5000.00",
+        "income",
+        "2026-10-10",
+        "profit-snapshot-revenue-1",
+        "1002",
+        "6001",
+    )
+    _post(
+        case,
+        "profit-snapshot-expense-1",
+        "1000.00",
+        "expense",
+        "2026-10-11",
+        "profit-snapshot-expense-1",
+        "6602.02",
+        "1002",
+    )
 
     report = ReportService(case.db).create(case.manager, case.book["id"], "2026-10")["report"]
-    _post(case, "profit-snapshot-revenue-2", "3000.00", "income", "2026-10-12", "profit-snapshot-revenue-2", "1002", "6001")
+    _post(
+        case,
+        "profit-snapshot-revenue-2",
+        "3000.00",
+        "income",
+        "2026-10-12",
+        "profit-snapshot-revenue-2",
+        "1002",
+        "6001",
+    )
 
     service = ProfitDrilldownService(case.db)
     live = service.overview(case.manager, case.book["id"], "2026-10")
@@ -226,7 +302,9 @@ def test_profit_mapping_versions_and_permissions(business):
     opening = frozen_opening(case)
     PostingService(case.db).bind_opening(
         case.manager,
-        OpeningBind(book_id=case.book["id"], package_version_id=opening["version_id"], reason="冻结期初"),
+        OpeningBind(
+            book_id=case.book["id"], package_version_id=opening["version_id"], reason="冻结期初"
+        ),
     )
     _account(case, "1122", "应收账款", "asset", "debit")
     _account(case, "6001", "主营业务收入", "income", "credit")
@@ -235,34 +313,52 @@ def test_profit_mapping_versions_and_permissions(business):
         service.overview(case.actors["peer"], case.book["id"], "2026-10", "revenue")
 
     changed = service.save_mapping(
-        case.manager, case.book["id"],
-        ProfitMappingWrite(items=[
-            ProfitMappingItem(
-                line_code="revenue", line_name="营业收入", line_kind="revenue",
-                account_prefix="6001", sign=1,
-            )
-        ]),
+        case.manager,
+        case.book["id"],
+        ProfitMappingWrite(
+            items=[
+                ProfitMappingItem(
+                    line_code="revenue",
+                    line_name="营业收入",
+                    line_kind="revenue",
+                    account_prefix="6001",
+                    sign=1,
+                )
+            ]
+        ),
     )
     assert changed["version"] == 1
     changed = service.save_mapping(
-        case.manager, case.book["id"],
-        ProfitMappingWrite(items=[
-            ProfitMappingItem(
-                line_code="revenue", line_name="营业收入", line_kind="revenue",
-                account_prefix="6001", sign=1,
-            )
-        ]),
+        case.manager,
+        case.book["id"],
+        ProfitMappingWrite(
+            items=[
+                ProfitMappingItem(
+                    line_code="revenue",
+                    line_name="营业收入",
+                    line_kind="revenue",
+                    account_prefix="6001",
+                    sign=1,
+                )
+            ]
+        ),
     )
     assert changed["version"] == 2
     with pytest.raises(AccountingError):
         service.save_mapping(
-            case.actors["accountant"], case.book["id"],
-            ProfitMappingWrite(items=[
-                ProfitMappingItem(
-                    line_code="revenue", line_name="营业收入", line_kind="revenue",
-                    account_prefix="6001", sign=1,
-                )
-            ]),
+            case.actors["accountant"],
+            case.book["id"],
+            ProfitMappingWrite(
+                items=[
+                    ProfitMappingItem(
+                        line_code="revenue",
+                        line_name="营业收入",
+                        line_kind="revenue",
+                        account_prefix="6001",
+                        sign=1,
+                    )
+                ]
+            ),
         )
 
 
@@ -283,15 +379,28 @@ def test_profit_variance_is_arithmetic_with_evidence_anchors(business, monkeypat
             "book_id": book_id,
             "period": period,
             "lines": [
-                {"line_code": "revenue", "line_name": "营业收入", "line_kind": "revenue", "amount_cents": amount}
+                {
+                    "line_code": "revenue",
+                    "line_name": "营业收入",
+                    "line_kind": "revenue",
+                    "amount_cents": amount,
+                }
             ],
             "items": [
                 {
-                    "line_code": "revenue", "voucher_id": anchor, "voucher_no": 1,
-                    "voucher_date": period + "-10", "description": "测试", "line_no": 1,
-                    "account_code": "6001", "account_name": "收入", "debit_cents": 0,
-                    "credit_cents": amount, "net_cents": amount,
-                    "source_ref": "s-" + anchor, "evidence_ref": "e-" + anchor,
+                    "line_code": "revenue",
+                    "voucher_id": anchor,
+                    "voucher_no": 1,
+                    "voucher_date": period + "-10",
+                    "description": "测试",
+                    "line_no": 1,
+                    "account_code": "6001",
+                    "account_name": "收入",
+                    "debit_cents": 0,
+                    "credit_cents": amount,
+                    "net_cents": amount,
+                    "source_ref": "s-" + anchor,
+                    "evidence_ref": "e-" + anchor,
                 }
             ],
         }
@@ -302,3 +411,47 @@ def test_profit_variance_is_arithmetic_with_evidence_anchors(business, monkeypat
     assert result["checks"]["causal_claim"] is False
     assert result["contributors"]["revenue"]["current"][0]["evidence_ref"] == "e-v-current"
     assert result["contributors"]["revenue"]["baseline"][0]["voucher_id"] == "v-baseline"
+
+
+def test_profit_drilldown_pages_instead_of_silently_cutting_at_a_thousand(business):
+    case = business
+    opening = frozen_opening(case)
+    PostingService(case.db).bind_opening(
+        case.manager,
+        OpeningBind(
+            book_id=case.book["id"], package_version_id=opening["version_id"], reason="冻结期初"
+        ),
+    )
+    _account(case, "1122", "应收账款", "asset", "debit")
+    _account(case, "6001", "主营业务收入", "income", "credit")
+    for index in range(5):
+        _post(
+            case,
+            f"profit-page-{index}",
+            "100.00",
+            "income",
+            f"2026-10-{index + 10:02d}",
+            f"profit-page-{index}",
+            "1002",
+            "6001",
+        )
+
+    service = ProfitDrilldownService(case.db)
+    first = service.overview(case.manager, case.book["id"], "2026-10", "revenue", limit=2)
+    assert first["pagination"] == {
+        "offset": 0,
+        "limit": 2,
+        "total_count": 5,
+        "returned": 2,
+        "has_more": True,
+    }
+    assert first["drilldown_total_cents"] == 50000
+    assert len(first["items"]) == 2
+
+    last = service.overview(case.manager, case.book["id"], "2026-10", "revenue", offset=4, limit=2)
+    assert last["pagination"]["returned"] == 1
+    assert last["pagination"]["has_more"] is False
+    assert last["drilldown_total_cents"] == first["drilldown_total_cents"]
+
+    capped = service.overview(case.manager, case.book["id"], "2026-10", "revenue", limit=10_000)
+    assert capped["pagination"]["limit"] == 500

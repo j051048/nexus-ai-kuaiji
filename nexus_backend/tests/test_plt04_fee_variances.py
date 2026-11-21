@@ -567,3 +567,38 @@ def test_same_month_same_amount_rows_keep_separate_relations(business):
     assert first["relation_id"] != second["relation_id"]
     assert first["bank_source_id"] == "same-bank-a"
     assert second["bank_source_id"] == "same-bank-b"
+
+
+def test_a_source_row_cannot_explain_two_differences(business):
+    """One receipt row may only fund one difference, otherwise money counts twice."""
+    case = business
+    _prepared(case)
+    service = FeeVarianceService(case.db)
+    with case.db.transaction(write=True, actor=case.manager) as conn:
+        _bank_source(conn, case.book["id"], "shared-settle", 1_100, kind="business")
+        _bank_source(conn, case.book["id"], "shared-bank-a", 800)
+        _bank_source(conn, case.book["id"], "shared-bank-b", 700)
+    first = service.record(
+        case.manager,
+        case.book["id"],
+        kind="overpaid",
+        expected_cents=500,
+        actual_cents=800,
+        settlement_source_id="shared-settle",
+        bank_source_id="shared-bank-a",
+        idempotency_key="shared-row-a",
+    )
+    assert first["relation_id"]
+    with pytest.raises(AccountingError) as raised:
+        service.record(
+            case.manager,
+            case.book["id"],
+            kind="overpaid",
+            expected_cents=500,
+            actual_cents=700,
+            settlement_source_id="shared-settle",
+            bank_source_id="shared-bank-b",
+            idempotency_key="shared-row-b",
+        )
+    assert raised.value.status == 409
+    assert "重复解释差额" in raised.value.detail

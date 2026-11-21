@@ -52,6 +52,7 @@ def test_return_tasks_http_handler_success_and_idempotent(service, book):  # noq
         )
         body = {
             "action": "resolved",
+            "reason_code": "amount_mismatch",
             "reason": "已与客户确认差额并留痕",
             "evidence_ref": "synthetic://return/http-handle-1",
         }
@@ -69,6 +70,25 @@ def test_return_tasks_http_handler_success_and_idempotent(service, book):  # noq
         )
         assert empty.status_code == 200, empty.text
         assert empty.json()["tasks"] == []
+
+        # PLT05-B：处置必须带结构化原因码；只写自由文本不再收单。
+        missing = client.post(
+            url,
+            headers=headers,
+            json={"action": "ignored", "reason": "客户说不重要", "evidence_ref": "synthetic://x"},
+        )
+        assert missing.status_code == 422, missing.text
+        vague = client.post(
+            url,
+            headers=headers,
+            json={
+                "action": "ignored",
+                "reason_code": "other",
+                "reason": "无所谓",
+                "evidence_ref": "synthetic://x",
+            },
+        )
+        assert vague.status_code == 422, vague.text
 
 
 def test_manual_return_http_evidence_roundtrip(service, book):  # noqa: F811

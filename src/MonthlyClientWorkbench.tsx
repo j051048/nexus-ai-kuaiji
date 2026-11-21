@@ -11,6 +11,7 @@ import {
   FileText,
 } from 'lucide-react';
 import type { Session } from './types';
+import './monthly-matrix.css';
 import { durationLabel } from './efficiency-helpers';
 import { validMonthlyPeriod } from './monthly-helpers';
 import {
@@ -107,7 +108,7 @@ export function MonthlyClientWorkbench({
   const [focus, setFocus] = useState<MonthlyFocus>(initial.current?.focus ?? 'all');
   const [expandedRows, setExpandedRows] = useState<string[]>(initial.current?.expandedRows ?? []);
   const [batchOpen, setBatchOpen] = useState(false);
-  const [view, setView] = useState<'list' | 'annual'>('list');
+  const [view, setView] = useState<'list' | 'matrix' | 'annual'>('list');
   const [operationsOpen, setOperationsOpen] = useState(false);
   const [initialBatchId, setInitialBatchId] = useState<string | undefined>();
   const [handoffOpen, setHandoffOpen] = useState(false);
@@ -142,6 +143,7 @@ export function MonthlyClientWorkbench({
     });
     return () => cancelAnimationFrame(frame);
   }, [data, loading, revoked]);
+  const matrixColumns = ['资料收集', '差异核对', '凭证准备', '复核', '交付', '归档'];
   function open(
     row: MonthlyClientRow,
     view: MonthlyDestination['view'],
@@ -223,6 +225,9 @@ export function MonthlyClientWorkbench({
         <button type="button" aria-pressed={view === 'list'} onClick={() => setView('list')}>
           按月清单
         </button>
+        <button type="button" aria-pressed={view === 'matrix'} onClick={() => setView('matrix')}>
+          矩阵总览
+        </button>
         <button type="button" aria-pressed={view === 'annual'} onClick={() => setView('annual')}>
           年度矩阵
         </button>
@@ -240,6 +245,86 @@ export function MonthlyClientWorkbench({
             setExpandedRows([]);
           }}
         />
+      ) : view === 'matrix' ? (
+        <section className="monthly-matrix-table" role="table" aria-label="单位 × 办理环节总览">
+          <p className="monthly-matrix-hint">
+            行是单位、列是本月亮点环节；数字取自接口权威字段，点格子直接进入对应办理页。窄屏请用「按月清单」。
+          </p>
+          <div className="monthly-matrix-head" role="row">
+            <span role="columnheader">单位 · 期间</span>
+            {matrixColumns.map((label) => (
+              <span role="columnheader" key={label}>
+                {label}
+              </span>
+            ))}
+          </div>
+          {(data?.rows ?? []).map((row) => {
+            const stages = monthlyStages(row, (destination) => {
+              if (!revoked) onOpen(destination);
+            });
+            const status =
+              row.status === 'closed' ? '已锁期' : row.status === 'no_book' ? '待建账' : '开放期间';
+            return (
+              <div
+                className="monthly-matrix-line"
+                role="row"
+                key={row.row_key}
+                data-company={row.company_id}
+                data-book={row.book_id ?? ''}
+              >
+                <div role="cell" className="monthly-matrix-unit">
+                  <strong>{row.company_name}</strong>
+                  <small>
+                    {row.period} · {status}
+                  </small>
+                  {row.work?.target && (
+                    <button
+                      type="button"
+                      className="text-button"
+                      disabled={!nextAction(row)}
+                      onClick={nextAction(row)}
+                    >
+                      {row.work.label}
+                    </button>
+                  )}
+                </div>
+                {stages.map((stage) => (
+                  <button
+                    type="button"
+                    role="cell"
+                    key={stage.key}
+                    className={
+                      'monthly-matrix-cell' +
+                      (stage.attention ? ' attention' : '') +
+                      (stage.current ? ' current' : '') +
+                      (stage.done ? ' done' : '')
+                    }
+                    disabled={!stage.onOpen}
+                    onClick={stage.onOpen}
+                    title={stage.secondary}
+                    aria-label={`${row.company_name} ${stage.label}：${stage.primary}`}
+                  >
+                    <strong>{stage.primary}</strong>
+                    <small>
+                      {stage.current
+                        ? '当前'
+                        : stage.done
+                          ? '已完成'
+                          : stage.attention
+                            ? '待处理'
+                            : stage.onOpen
+                              ? '待办'
+                              : '未授权'}
+                    </small>
+                  </button>
+                ))}
+              </div>
+            );
+          })}
+          {!data?.rows.length && (
+            <p className="monthly-empty">本月在当前授权范围内没有匹配客户。</p>
+          )}
+        </section>
       ) : (
         <>
           <form

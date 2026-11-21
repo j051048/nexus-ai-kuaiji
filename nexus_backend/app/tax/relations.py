@@ -135,6 +135,30 @@ class SourceRelationService:
             if existing["relation_sha256"] != relation_sha:
                 raise AccountingError("来源关系已变化，请重新核对", 409)
             return dict(existing)
+        # ``fee_source_id`` is nullable, so an empty fee must not be compared as
+        # an equality — it would match every relation without a fee receipt.
+        reused_sql = (
+            "SELECT settlement_source_id, bank_source_id, COALESCE(fee_source_id,'') AS fee_id "
+            "FROM fee_source_relations WHERE book_id=? AND period=? AND (settlement_source_id=? "
+            "OR bank_source_id=?"
+        )
+        reused_args = [book["id"], book["period"], settlement_id, bank_id]
+        if fee_id:
+            reused_sql += " OR fee_source_id=?"
+            reused_args.append(fee_id)
+        reused_sql += ") AND NOT (settlement_source_id=? AND bank_source_id=?)"
+        reused_args += [settlement_id, bank_id]
+        if fee_id:
+            reused_sql += " AND COALESCE(fee_source_id,'')=?"
+            reused_args.append(fee_id)
+        else:
+            reused_sql += " AND fee_source_id IS NULL"
+        reused = conn.execute(reused_sql, tuple(reused_args)).fetchone()
+        if reused is not None:
+            # A receipt row can only explain one difference. Reusing it across
+            # relations would count the same incoming money twice while every
+            # single relation still looks internally consistent.
+            raise AccountingError("来源行已绑定到另一条来源关系，同一笔流水不能重复解释差额", 409)
         relation_id = uuid4().hex
         stamp = now()
         conn.execute(

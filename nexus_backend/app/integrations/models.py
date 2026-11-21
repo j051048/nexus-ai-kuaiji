@@ -103,8 +103,20 @@ class BridgeManualReturn(InputModel):
         return value
 
 
+REASON_CODES = (
+    "amount_mismatch",
+    "account_mismatch",
+    "date_mismatch",
+    "voucher_missing",
+    "other",
+)
+
+
 class BridgeReturnRowHandle(InputModel):
     action: Literal["resolved", "ignored"]
+    reason_code: Literal[
+        "amount_mismatch", "account_mismatch", "date_mismatch", "voucher_missing", "other"
+    ]
     reason: StrictStr = Field(min_length=3, max_length=500)
     evidence_ref: StrictStr = Field(min_length=5, max_length=500)
 

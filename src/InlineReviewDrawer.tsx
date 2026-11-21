@@ -85,7 +85,10 @@ export function InlineReviewDrawer({
   const [assistantOpen, setAssistantOpen] = useState(false);
   const assistantWasOpen = useRef(assistantOpen);
   const [evidenceFocus, setEvidenceFocus] = useState<EvidenceFocus | undefined>();
-  const panel = useRef<HTMLDivElement>(null),
+  // Pressing A right after the drawer opens is almost always a leftover
+  // keystroke from the list; approvals stay disabled for a beat.
+  const approveReadyAt = useRef(0),
+    panel = useRef<HTMLDivElement>(null),
     facts = useRef<HTMLElement>(null),
     evidenceColumn = useRef<HTMLDivElement>(null),
     assistantButton = useRef<HTMLButtonElement>(null),
@@ -105,6 +108,10 @@ export function InlineReviewDrawer({
     !!draft?.source_inactive ||
     detail?.book.period_status === 'closed';
   const position = queue.findIndex((row) => row.book_id === bookId && row.draft_id === draftId);
+
+  useEffect(() => {
+    approveReadyAt.current = Date.now() + 400;
+  }, [position, draftId]);
   let debit = 0n,
     credit = 0n,
     amountError = '';
@@ -554,6 +561,7 @@ export function InlineReviewDrawer({
       }
       if (event.key.toLowerCase() === 'a' && canApprove) {
         event.preventDefault();
+        if (Date.now() < approveReadyAt.current) return;
         void mutate('approve');
         return;
       }

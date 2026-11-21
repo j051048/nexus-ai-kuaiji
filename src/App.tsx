@@ -41,6 +41,9 @@ import { taskDestination } from './workspace-types';
 import { taskScope } from './task-scope';
 import { RoleQuickStart } from './RoleQuickStart';
 import { AccountIdentity } from './AccountIdentity';
+const WorkspaceContextBar = lazy(() =>
+  import('./WorkspaceContextBar').then((module) => ({ default: module.WorkspaceContextBar })),
+);
 import { accountIdentity } from './account-identity';
 import { roleHomeGuide } from './workspace-role-home';
 import { workspaceExperience } from './workspace-experience';
@@ -1805,6 +1808,23 @@ export default function App() {
             </div>
           </div>
         </header>
+        <Suspense fallback={null}>
+          <WorkspaceContextBar
+            session={session}
+            companyName={
+              profile?.companies.find((company) => company.id === workCompany)?.name ??
+              (workCompany
+                ? undefined
+                : profile?.companies.length === 1
+                  ? profile.companies[0].name
+                  : undefined)
+            }
+            period={workPeriod}
+            bookId={routeUsesBook ? bookId : undefined}
+            onPeriodChange={(next) => setWorkPeriod(next)}
+            onOpenBooks={() => navigate('accounting')}
+          />
+        </Suspense>
         <AccountIdentity session={session} profile={profile} me={me} unavailable={!!profileError} />
         <ActivityTimer
           key={session.scope_key}

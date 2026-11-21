@@ -1232,11 +1232,17 @@ class FinancialBridgeService:
     def evidence_for(self, actor, book_id, import_id, artifact_id=None):
         with self.db.transaction(actor=actor) as conn:
             self._scope(conn, actor, book_id, False)
+            # The artifact must belong to the same book/company/firm as the
+            # import. Without the join an import row pointing at another
+            # client's artifact would hand that file out under this book.
             sql = (
-                "SELECT e.* FROM bridge_return_evidence e JOIN bridge_return_imports i ON i.id=e.import_id "
-                "WHERE e.import_id=? AND e.book_id=?"
+                "SELECT e.* FROM bridge_return_evidence e "
+                "JOIN bridge_return_imports i ON i.id=e.import_id "
+                "JOIN bridge_export_artifacts a ON a.id=i.artifact_id "
+                "WHERE e.import_id=? AND e.book_id=? AND i.book_id=? "
+                "AND a.book_id=i.book_id AND a.company_id=i.company_id AND a.firm_id=i.firm_id"
             )
-            params = [import_id, book_id]
+            params = [import_id, book_id, book_id]
             if artifact_id:
                 sql += " AND i.artifact_id=?"
                 params.append(artifact_id)
@@ -1262,6 +1268,7 @@ class FinancialBridgeService:
                 "handler": (
                     {
                         "action": handler["action"],
+                        "reason_code": handler["reason_code"],
                         "reason": handler["reason"],
                         "evidence_ref": handler["evidence_ref"],
                         "handled_by": handler["handled_by"],
@@ -1696,8 +1703,11 @@ class FinancialBridgeService:
         company_id = self._company_for_book(actor, book_id)
         reason = request.reason.strip()
         evidence = request.evidence_ref.strip()
+        code = request.reason_code
         if len(reason) < 3:
             raise AccountingError("差异处置必须说明原因", 422)
+        if code == "other" and len(reason) < 10:
+            raise AccountingError("选择「其他」时必须把原因写到别人看得懂（至少 10 个字）", 422)
         if len(evidence) < 5:
             raise AccountingError("差异处置必须填写可核验的证据", 422)
         with self.db.transaction(
@@ -1731,13 +1741,14 @@ class FinancialBridgeService:
             if existing:
                 if (
                     existing["action"] != request.action
+                    or existing["reason_code"] != code
                     or existing["reason"] != reason
                     or existing["evidence_ref"] != evidence
                 ):
                     raise AccountingError("该凭证差异已处置，原记录不会覆盖", 409)
                 return self._return_view(conn, imported)
             conn.execute(
-                "INSERT INTO bridge_return_row_handlers(import_id,voucher_code,book_id,firm_id,company_id,action,reason,evidence_ref,handled_by,handled_at,fingerprint) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO bridge_return_row_handlers(import_id,voucher_code,book_id,firm_id,company_id,action,reason_code,reason,evidence_ref,handled_by,handled_at,fingerprint) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
                 (
                     import_id,
                     voucher_code,
@@ -1745,6 +1756,7 @@ class FinancialBridgeService:
                     imported["firm_id"],
                     imported["company_id"],
                     request.action,
+                    code,
                     reason,
                     evidence,
                     actor.user_id,
@@ -1754,6 +1766,7 @@ class FinancialBridgeService:
                             "import_id": import_id,
                             "voucher_code": voucher_code,
                             "action": request.action,
+                            "reason_code": code,
                             "reason": reason,
                             "evidence_ref": evidence,
                         }

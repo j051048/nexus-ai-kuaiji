@@ -4,6 +4,7 @@ import { useScopedQuery } from './useScopedQuery';
 import { TaxReadinessList } from './TaxReadinessList';
 import { TaxFilingRecords } from './TaxFilingRecords';
 import { PilotBoundaryPanel } from './PilotBoundaryPanel';
+import { TaxAccrualPanel } from './TaxAccrualPanel';
 import { TaxSourcePanel } from './TaxSourcePanel';
 import { ClosingAuthorityPanel } from './ClosingAuthorityPanel';
 import { TaxFeeBatchPanel } from './TaxFeeBatchPanel';
@@ -324,6 +325,7 @@ function TaxContent({
       <TaxReadinessList data={readiness} />
       <PilotBoundaryPanel session={session} companyId={companyId} />
       <TaxSourcePanel session={session} bookId={bookId} />
+      <TaxAccrualPanel session={session} bookId={bookId} period={period} />
       <ClosingAuthorityPanel session={session} bookId={bookId} />
       <TaxFeeBatchPanel session={session} bookId={bookId} period={period} />
       <FeeVariancePanel

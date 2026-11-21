@@ -1,0 +1,69 @@
+.monthly-matrix-table {
+  display: grid;
+  gap: 6px;
+  overflow-x: auto;
+}
+.monthly-matrix-hint {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+.monthly-matrix-head,
+.monthly-matrix-line {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.4fr) repeat(6, minmax(96px, 1fr));
+  gap: 6px;
+  min-width: 900px;
+}
+.monthly-matrix-head span {
+  padding: 4px 8px;
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+.monthly-matrix-unit {
+  display: grid;
+  gap: 2px;
+  align-content: start;
+  padding: 6px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+.monthly-matrix-unit small,
+.monthly-matrix-cell small {
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+.monthly-matrix-cell {
+  display: grid;
+  gap: 2px;
+  align-content: start;
+  justify-items: start;
+  min-height: 44px;
+  padding: 6px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.monthly-matrix-unit strong,
+.monthly-matrix-cell strong {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.monthly-matrix-cell.done {
+  background: var(--color-success-soft, #eaf7ee);
+}
+.monthly-matrix-cell.attention {
+  border-color: var(--color-warning, #d98800);
+}
+.monthly-matrix-cell.current {
+  border-color: var(--color-accent, #1f6f4a);
+  box-shadow: inset 0 0 0 1px var(--color-accent, #1f6f4a);
+}
+.monthly-matrix-cell:disabled {
+  cursor: default;
+  opacity: 0.55;
+}

@@ -214,7 +214,16 @@ class ProfitDrilldownService:
             totals[mapping["line_code"]] = totals.get(mapping["line_code"], 0) + sign * amount
         return totals
 
-    def overview(self, actor, book_id, period, line_code="", report_run_id=""):
+    def overview(
+        self,
+        actor,
+        book_id,
+        period,
+        line_code="",
+        report_run_id="",
+        offset: int = 0,
+        limit: int = 200,
+    ):
         period = validate_period(period)
         with self.db.transaction(actor=actor) as conn:
             book = self._book(conn, actor, book_id)
@@ -309,9 +318,12 @@ class ProfitDrilldownService:
             profit = revenue - cost + nonoperating
             net_profit = None if income_tax is None else profit - income_tax
             year_complete = period.endswith("-12")
-            visible_items = [item for item in details if not line_code or item["net_cents"] != 0][
-                :1000
-            ]
+            filtered = [item for item in details if not line_code or item["net_cents"] != 0]
+            total_count = len(filtered)
+            offset = max(0, int(offset))
+            limit = max(1, min(int(limit or 200), 500))
+            visible_items = filtered[offset : offset + limit]
+            drilldown_total_cents = sum(int(item["net_cents"]) for item in filtered)
             source_ids = sorted(
                 {item["source_ref"] for item in visible_items if item["source_ref"]}
             )
@@ -407,6 +419,7 @@ class ProfitDrilldownService:
                         line["line_code"] for line in lines if line["snapshot_changed"]
                     ),
                 }
+            has_more = offset + len(visible_items) < total_count
             return {
                 "book_id": book_id,
                 "period": period,
@@ -416,6 +429,14 @@ class ProfitDrilldownService:
                 "lines": lines,
                 "selected_line": line_code,
                 "items": visible_items,
+                "pagination": {
+                    "offset": offset,
+                    "limit": limit,
+                    "total_count": total_count,
+                    "returned": len(visible_items),
+                    "has_more": has_more,
+                },
+                "drilldown_total_cents": drilldown_total_cents,
                 "totals": {
                     "revenue_cents": revenue,
                     "cost_and_expense_cents": cost,

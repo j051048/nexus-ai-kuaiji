@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import sqlite3
@@ -686,6 +687,63 @@ def pg_environment(url):
     return env
 
 
+_RESTORE_SOURCE = re.compile(r"Dumped from database version (\d+)")
+_VERSION_MAJOR = re.compile(r"(\d+)(?:\.\d+)?")
+# pg_restore cannot read archives newer than its own major version and cannot
+# load settings introduced by a newer server (e.g. PG17's transaction_timeout
+# into a PG16 target). Both cases must stop before the target is touched.
+_VERSION_HINT = (
+    "请使用与备份来源同主版本或更新的 PostgreSQL 客户端与目标库；不得用过滤选项绕过该检查"
+)
+
+
+def tool_major_version(name):
+    executable = shutil.which(name)
+    if not executable:
+        raise ValueError(f"未找到 {name}，请安装与数据库兼容的 PostgreSQL 客户端")
+    result = subprocess.run(
+        [executable, "--version"], capture_output=True, text=True, timeout=60, shell=False
+    )
+    match = _VERSION_MAJOR.search(result.stdout or "")
+    if not match:
+        raise ValueError(f"无法识别 {name} 的版本{_VERSION_HINT}")
+    return int(match.group(1))
+
+
+def dump_source_major(dump_path, url):
+    executable = shutil.which("pg_restore")
+    if not executable:
+        raise ValueError("未找到 pg_restore，请安装与数据库兼容的 PostgreSQL 客户端")
+    result = subprocess.run(
+        [executable, "--list", str(dump_path)],
+        env=pg_environment(url),
+        capture_output=True,
+        text=True,
+        timeout=600,
+        shell=False,
+    )
+    if result.returncode:
+        # Newer archive format than the installed client, or a corrupt dump.
+        raise ValueError(f"本机 pg_restore 无法读取该归档{_VERSION_HINT}")
+    match = _RESTORE_SOURCE.search(result.stdout or "")
+    return int(match.group(1)) if match else None
+
+
+def restore_version_conflict(client_major, source_major, target_major):
+    """Return the reason to refuse, or None when the restore is supported."""
+    if source_major and target_major and source_major > target_major:
+        return (
+            f"备份来自 PostgreSQL {source_major}，目标服务器是 {target_major}："
+            f"低主版本无法还原高主版本设置（如 transaction_timeout）。{_VERSION_HINT}"
+        )
+    if source_major and client_major < source_major:
+        return (
+            f"本机 pg_restore 是 {client_major}，备份由 PostgreSQL {source_major} 生成。"
+            f"{_VERSION_HINT}"
+        )
+    return None
+
+
 def pg_tool(name, args, url):
     executable = shutil.which(name)
     if not executable:
@@ -1064,6 +1122,18 @@ def restore(directory, destination, postgres_target=None, *, restore_permissions
                 decrypted_dump = target / ".database.dump.restore"
                 _decrypt_file(dump_source, decrypted_dump, encryption_key)
                 dump_source = decrypted_dump
+            target_major = conn.execute("SELECT current_setting('server_version')").fetchone()[0]
+            target_major = int(str(target_major).split(".")[0])
+            conflict = restore_version_conflict(
+                tool_major_version("pg_restore"),
+                dump_source_major(dump_source, postgres_target),
+                target_major,
+            )
+            if conflict:
+                raise ValueError(conflict)
+            if decrypted_dump is not None:
+                decrypted_dump.unlink(missing_ok=True)
+                decrypted_dump = None
             pg_tool(
                 "pg_restore",
                 [

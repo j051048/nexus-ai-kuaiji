@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, apiBlob, errorMessage, ApiError } from './api';
+import { requestConfirm } from './confirm-dialog';
 import type { Session } from './types';
 import { CloseCheckAction } from './CloseCheckAction';
 import { SubledgerSetupPanel } from './SubledgerSetupPanel';
@@ -711,11 +712,17 @@ function CloseContent({ session, bookId, period, canReview, companyId, accountLa
                     <button
                       className="button"
                       disabled={needsReason}
-                      onClick={() => {
+                      onClick={async () => {
                         if (
-                          window.confirm(
-                            '确认锁定本账套本月份？锁期后不能直接更改正式账务，本次不支持重开。',
-                          )
+                          await requestConfirm({
+                            title: '确认正式锁期',
+                            description: '锁期后本月正式账务冻结。',
+                            subject: `${period} 月结`,
+                            period,
+                            consequence: '锁期后不能直接更改正式账务，本次不支持重开。',
+                            irreversible: true,
+                            confirmLabel: '确认正式锁期',
+                          })
                         )
                           void write(
                             `/b04-close/${close.id}/lock`,

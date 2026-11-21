@@ -31,8 +31,12 @@ def _run(argv: list[str], *, cwd: Path = ROOT, timeout: int = 600) -> tuple[int,
     started = time.monotonic()
     env = os.environ.copy()
     env["PYTHONDONTWRITEBYTECODE"] = "1"
-    env.setdefault("TMP", str(ROOT / "tmp_test/build-tmp"))
-    env.setdefault("TEMP", str(ROOT / "tmp_test/build-tmp"))
+    # Windows %TEMP% on this host denies mkdir for some tools (EPERM from
+    # vite-node), so every child process gets a repo-local scratch directory.
+    scratch = ROOT / "tmp_test/build-tmp"
+    scratch.mkdir(parents=True, exist_ok=True)
+    env["TMP"] = str(scratch)
+    env["TEMP"] = str(scratch)
     try:
         proc = subprocess.run(
             argv,
@@ -157,6 +161,78 @@ def _skip_counts() -> tuple[int, int, list[str], list[dict]]:
     return sum(current_by_file.values()), sum(baseline_by_file.values()), files, increases
 
 
+MODULES = [
+    "OPT01",
+    "OPT02",
+    "OPT03",
+    "OPT04",
+    "OPT05",
+    "OPT06",
+    "OPT07",
+    "OPT08",
+    "OPT09",
+    "OPT10",
+    "RWK01",
+    "RWK02",
+    "RWK03",
+    "RWK04",
+    "RWK05",
+]
+
+
+def _scan_sources(pattern: str, *, ignore_tests: bool = True) -> list[str]:
+    """Return source files that still match a forbidden pattern."""
+    hits: list[str] = []
+    for path in (ROOT / "src").rglob("*.ts*"):
+        if path.suffix not in {".ts", ".tsx"}:
+            continue
+        rel = path.relative_to(ROOT).as_posix()
+        if ignore_tests and (".test." in rel or rel.endswith(".d.ts")):
+            continue
+        if re.search(pattern, path.read_text(encoding="utf-8", errors="replace")):
+            hits.append(rel)
+    return sorted(hits)
+
+
+def _static_checks() -> list[dict]:
+    """Static assertions that do not need a subprocess.
+
+    Each row is a first-class result: a module is only counted as auto-checked
+    when at least one real probe (command or scan) ran for it.
+    """
+    started = time.monotonic()
+    rows: list[dict] = []
+
+    confirm_hits = _scan_sources(r"window\.confirm\(")
+    rows.append(
+        {
+            "module": "RWK03",
+            "source": "RWK05-A static: no window.confirm in business UI",
+            "command": "scan src/**/*.ts(x) for window.confirm(",
+            "exit_code": 0 if not confirm_hits else 1,
+            "seconds": round(time.monotonic() - started, 3),
+            "status": "passed" if not confirm_hits else "failed",
+            "skipped_tests": 0,
+            "tail": "" if not confirm_hits else "hits: " + ", ".join(confirm_hits),
+        }
+    )
+
+    money_hits = _scan_sources(r"parseFloat\(")
+    rows.append(
+        {
+            "module": "OPT01",
+            "source": "RWK05-A static: money never parsed through parseFloat",
+            "command": "scan src/**/*.ts(x) for parseFloat(",
+            "exit_code": 0 if not money_hits else 1,
+            "seconds": round(time.monotonic() - started, 3),
+            "status": "passed" if not money_hits else "failed",
+            "skipped_tests": 0,
+            "tail": "" if not money_hits else "hits: " + ", ".join(money_hits),
+        }
+    )
+    return rows
+
+
 def _commands() -> list[dict]:
     pytest = [PY, "-m", "pytest"]
     return [
@@ -277,6 +353,53 @@ def _commands() -> list[dict]:
             ],
             "cwd": ROOT / "nexus_backend",
         },
+        {
+            "module": "RWK01",
+            "source": "RWK01 test environment lock gate",
+            "display": "check_test_env.py",
+            "argv": [PY, "scripts/check_test_env.py"],
+            "cwd": ROOT,
+        },
+        {
+            "module": "RWK01",
+            "source": "RWK01-B PostgreSQL SQL hygiene",
+            "display": "pytest test_pg_sql_hygiene",
+            "argv": pytest + ["tests/test_pg_sql_hygiene.py", "-q"],
+            "cwd": ROOT / "nexus_backend",
+        },
+        {
+            "module": "RWK01",
+            "source": "RWK01-C migration structure and immutability",
+            "display": "pytest test_migration_structure",
+            "argv": pytest + ["tests/test_migration_structure.py", "-q"],
+            "cwd": ROOT / "nexus_backend",
+        },
+        {
+            "module": "RWK01",
+            "source": "RWK01 ruff zero errors",
+            "display": "ruff check nexus_backend/app",
+            "argv": [PY, "-m", "ruff", "check", "nexus_backend/app"],
+            "cwd": ROOT,
+        },
+        {
+            "module": "RWK02",
+            "source": "RWK02 write scopes",
+            "display": "pytest test_write_scope_baseline",
+            "argv": pytest + ["tests/test_write_scope_baseline.py", "-q"],
+            "cwd": ROOT / "nexus_backend",
+        },
+        {
+            "module": "RWK04",
+            "source": "RWK04 report mode compliance",
+            "display": "pytest test_plt02_report_modes + delivery details",
+            "argv": pytest
+            + [
+                "tests/test_plt02_report_modes.py",
+                "tests/test_assistant_delivery_details.py",
+                "-q",
+            ],
+            "cwd": ROOT / "nexus_backend",
+        },
     ]
 
 
@@ -360,6 +483,16 @@ def main() -> int:
     run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid4().hex[:8]
     out = Path(args.out) if args.out else ROOT / "tmp_test/pilot/PLT01-D" / run_id
     out.mkdir(parents=True, exist_ok=False)
+
+    env_code, env_output, _ = _run([PY, "scripts/check_test_env.py"], timeout=180)
+    if env_code != 0:
+        print(env_output)
+        print(
+            "check_test_env.py failed: the interpreter or lock file does not match; "
+            "refusing to run acceptance",
+            file=sys.stderr,
+        )
+        return 2
 
     sources = _source_files()
     source_rows = [
@@ -469,6 +602,7 @@ def main() -> int:
         "skip_files": skip_files,
         "audit_chain": audit,
     }
+    results = _static_checks() + results
     failures = [r for r in results if r["status"] in {"failed", "timeout", "zero-tests"}]
     blockers = release_blockers(results, require_pg=args.require_pg)
     status = (
@@ -492,7 +626,23 @@ def main() -> int:
         elif row["status"] == "skipped":
             bucket["skipped"] += 1
     for module, counts in by_module.items():
-        module_counts.append({"module": module, **counts})
+        module_counts.append({"module": module, **counts, "auto_checked": True})
+    for module in MODULES:
+        if module not in by_module:
+            # No machine probe exists for this module: it is reported as such and
+            # must never be counted as passed.
+            module_counts.append(
+                {
+                    "module": module,
+                    "commands": 0,
+                    "passed": 0,
+                    "failed": 0,
+                    "skipped": 0,
+                    "skipped_tests": 0,
+                    "auto_checked": False,
+                }
+            )
+    module_counts.sort(key=lambda row: row["module"])
     summary = {
         "run_id": run_id,
         "started_at": datetime.now(timezone.utc).isoformat(),
@@ -528,12 +678,12 @@ def main() -> int:
         f"- untracked migrations: {len(untracked_migrations)}",
         f"- audit chain: {audit['status']}",
         "",
-        "| module | commands | passed | failed | skipped commands | skipped tests |",
-        "| --- | --- | --- | --- | --- | --- |",
+        "| module | auto checks | commands | passed | failed | skipped commands | skipped tests |",
+        "| --- | --- | --- | --- | --- | --- | --- |",
     ]
     for row in module_counts:
         lines.append(
-            f"| {row['module']} | {row['commands']} | {row['passed']} | {row['failed']} | {row['skipped']} | {row['skipped_tests']} |"
+            f"| {row['module']} | {'yes' if row.get('auto_checked') else 'none'} | {row['commands']} | {row['passed']} | {row['failed']} | {row['skipped']} | {row['skipped_tests']} |"
         )
     lines.extend(
         [

@@ -58,3 +58,16 @@ python scripts/opt_acceptance.py --sqlite <path-to-accounting.db>
 
 - 未提交、未推送、未部署；工作区含本任务与既存未提交改动。
 - 本脚本不修改产品代码、数据库或迁移，只生成上述证据。
+
+## Batch 03（2026-11-21）
+
+验收包已扩为 15 个模块（OPT01–OPT10、RWK01–RWK05），并新增静态断言（`window.confirm(` 与 `parseFloat(` 零命中）。门槛与稳定字段：
+
+```text
+.venv/Scripts/python.exe scripts/opt_acceptance.py --out tmp_test/rework/RWK05-A/run-1
+.venv/Scripts/python.exe scripts/opt_acceptance.py --out tmp_test/rework/RWK05-A/run-2
+```
+
+- 首步强制 `scripts/check_test_env.py`，依赖/解释器不一致直接退出码 2；
+- 无机器探针的模块输出 `auto checks = none`，**不得**按通过计算（当前 RWK05 即为此状态）；
+- `run-1`/`run-2` 的 `source_digest` 必须一致（当前 `6f317c752927…`）；负向探针（业务文件写 `window.confirm`）必须使脚本返回 1。

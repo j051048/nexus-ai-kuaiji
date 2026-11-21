@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { CheckCircle2, FileCheck2, Paperclip, RefreshCw, Upload, X } from 'lucide-react';
 import { api, apiBlob, ApiError, errorMessage } from './api';
+import { requestConfirm } from './confirm-dialog';
 import { attachmentForm, prepareDirectUpload } from './upload-client';
 import { PageControls, Spinner } from './AppPrimitives';
 import { IntakeWizard } from './IntakeWizard';
@@ -88,10 +89,19 @@ export function ServicePlanMaterials({
     onDirtyChange?.(dirty);
     return () => onDirtyChange?.(false);
   }, [dirty, onDirtyChange]);
-  const canLeave = () =>
-    !dirty || window.confirm('资料说明尚未提交，离开会放弃本次编辑。是否继续？');
-  function choose(id: string) {
-    if (resource.busy || editingBusy || !canLeave()) return;
+  async function canLeave(): Promise<boolean> {
+    return (
+      !dirty ||
+      (await requestConfirm({
+        title: '放弃未提交的资料说明？',
+        description: '资料说明尚未提交。',
+        consequence: '离开会放弃本次编辑。',
+        confirmLabel: '放弃并离开',
+      }))
+    );
+  }
+  async function choose(id: string) {
+    if (resource.busy || editingBusy || !(await canLeave())) return;
     setDirty(false);
     setSelected(id);
     setSelectionScope(scope);
@@ -111,8 +121,8 @@ export function ServicePlanMaterials({
           type="button"
           className="button secondary small"
           disabled={resource.busy || editingBusy || resource.loading}
-          onClick={() => {
-            if (canLeave()) void resource.load();
+          onClick={async () => {
+            if (await canLeave()) void resource.load();
           }}
         >
           <RefreshCw size={14} />
@@ -191,8 +201,8 @@ export function ServicePlanMaterials({
             label="资料清单"
             page={resource.data.pagination}
             busy={resource.loading || resource.busy || editingBusy}
-            onPage={(next) => {
-              if (canLeave()) {
+            onPage={async (next) => {
+              if (await canLeave()) {
                 setSelected('');
                 setDirty(false);
                 setOffset(next);

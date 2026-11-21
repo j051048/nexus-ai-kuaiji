@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { requestConfirm } from './confirm-dialog';
 import {
   ArrowRight,
   CalendarDays,
@@ -80,8 +81,16 @@ export function ServicePlanPanel({
       enabled: !!onOpenStage,
     },
   );
-  function refresh() {
-    if (!dirty || window.confirm('服务单或资料说明尚未保存，刷新会放弃本次编辑。是否继续？')) {
+  async function refresh() {
+    if (
+      !dirty ||
+      (await requestConfirm({
+        title: '刷新月度服务单？',
+        description: '服务单或资料说明尚未保存。',
+        consequence: '刷新会放弃本次编辑。',
+        confirmLabel: '放弃并刷新',
+      }))
+    ) {
       setMaterialRevision((value) => value + 1);
       void resource.load();
     }

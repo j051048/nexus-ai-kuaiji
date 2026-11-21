@@ -179,7 +179,10 @@ def test_discrepancy_requires_evidence_and_is_idempotent(service, book):  # noqa
         ),
     )
     handle = BridgeReturnRowHandle(
-        action="resolved", reason="客户确认手续费", evidence_ref="客户邮件 2026-11-02",
+        action="resolved",
+        reason_code="amount_mismatch",
+        reason="客户确认手续费",
+        evidence_ref="客户邮件 2026-11-02",
     )
     handled = bridge.handle_return_row(
         LOCAL_ACTOR, book, artifact["id"], result["id"],
@@ -195,7 +198,12 @@ def test_discrepancy_requires_evidence_and_is_idempotent(service, book):  # noqa
         bridge.handle_return_row(
             LOCAL_ACTOR, book, artifact["id"], result["id"],
             f"T54-{voucher['external_code']}",
-            BridgeReturnRowHandle(action="ignored", reason="改为忽略", evidence_ref="客户邮件 2026-11-03"),
+            BridgeReturnRowHandle(
+                action="ignored",
+                reason_code="other",
+                reason="客户确认该差额无需调整，仅存档",
+                evidence_ref="客户邮件 2026-11-03",
+            ),
         )
 
 
@@ -350,3 +358,4 @@ def test_manual_posted_needs_date_and_verified_evidence(service, book):  # noqa:
     assert outbox["manual_posted_claim"]["filename"] == "客户回执.pdf"
     assert verified["rows"][0]["posted_date"] == "2026-11-02"
     assert verified["rows"][0]["reason"] == "手工登记整批接收：客户邮件回执 2026-11-02"
+

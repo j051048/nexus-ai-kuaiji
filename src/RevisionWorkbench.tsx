@@ -10,6 +10,7 @@ import {
   TriangleAlert,
 } from 'lucide-react';
 import { api, errorMessage } from './api';
+import { requestConfirm } from './confirm-dialog';
 import { formatMoney } from './csv';
 import type { Session } from './types';
 import type { BusinessPayload } from './business-types';
@@ -266,10 +267,15 @@ export function RevisionWorkbench({
           type="button"
           className="text-button revision-back"
           disabled={busy}
-          onClick={() => {
+          onClick={async () => {
             if (
               !unsaved ||
-              window.confirm('修订内容或原因尚未提交，返回会放弃本次编辑。是否继续？')
+              (await requestConfirm({
+                title: '放弃本次修订？',
+                description: '修订内容或原因尚未提交。',
+                consequence: '返回会放弃本次编辑。',
+                confirmLabel: '放弃并返回',
+              }))
             )
               onBack();
           }}

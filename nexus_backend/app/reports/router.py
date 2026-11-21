@@ -64,10 +64,14 @@ def build_report_router(actor_dependency):
         period: str = Query(min_length=7, max_length=7),
         line_code: str = Query(default="", max_length=40),
         report_run_id: str = Query(default="", max_length=100),
+        offset: int = Query(default=0, ge=0, le=1_000_000),
+        limit: int = Query(default=200, ge=1, le=500),
         current=Depends(actor_dependency),
         profit=Depends(profit),
     ):
-        return profit.overview(current, book_id, period, line_code, report_run_id)
+        return profit.overview(
+            current, book_id, period, line_code, report_run_id, offset=offset, limit=limit
+        )
 
     @router.get("/fleet")
     def fleet_overview(

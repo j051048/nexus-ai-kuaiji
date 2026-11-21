@@ -23,6 +23,25 @@ BANK_NEXT = (
 )
 
 
+def _approved_standard(conn, book_id):
+    """Resolve the approved accounting standard and its report template.
+
+    No fallback: an unassessed policy yields empty strings, because naming a
+    template would imply a basis the books do not have (RWK04-A).
+    """
+    from app.reports.service import ReportService
+
+    row = conn.execute(
+        "SELECT p.standard_kind FROM accounting_policies p "
+        "JOIN ledger_periods lp ON lp.ledger_id=p.ledger_id "
+        "WHERE lp.book_id=? AND p.status='active' ORDER BY p.version DESC LIMIT 1",
+        (book_id,),
+    ).fetchone()
+    standard = row["standard_kind"] if row else ""
+    spec = ReportService.TEMPLATES.get(standard) if standard else None
+    return standard, (spec["id"] if spec else "")
+
+
 def integer(value):
     if type(value) is not int:
         raise ValueError("reconciliation requires exact integer cents/counts")
@@ -59,6 +78,7 @@ def collect_details(db, conn, actor, book, checks=None, *, page_kind=None, offse
         or not 1 <= limit <= LIMIT
     ):
         raise AccountingError("明细分页参数无效", 422)
+    standard_kind, template_id = "", ""
     source = {
         "kind": "reconciliation",
         "version": 1,
@@ -81,7 +101,8 @@ def collect_details(db, conn, actor, book, checks=None, *, page_kind=None, offse
         if bank is None:
             bank = sub.bank_reconciliation_in_transaction(conn, actor, book["id"], trial=trial)
         adjustments = unresolved_adjustments(conn, book["id"])
-        dependencies = close_dependencies(conn, book["id"], "small_enterprise_basic")
+        standard_kind, template_id = _approved_standard(conn, book["id"])
+        dependencies = close_dependencies(conn, book["id"], template_id)
     except AccountingError as error:
         if error.status != 409:
             raise  # Authorization, database and programming failures are not missing facts.
@@ -89,6 +110,8 @@ def collect_details(db, conn, actor, book, checks=None, *, page_kind=None, offse
             status="unavailable", reason=str(error), inputs_fingerprint=fingerprint(str(error))
         )
         return source
+    source["standard_kind"] = standard_kind
+    source["template_id"] = template_id
     source["inputs_fingerprint"] = fingerprint(
         {
             "trial": trial,

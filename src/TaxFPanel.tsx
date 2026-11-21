@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { parseTaxFLink, taxFLinkUrl } from './taxf-link';
 import { api, apiBlob, ApiError } from './api';
 import type { Session } from './types';
 import { centsToApiString } from './money';
@@ -101,6 +102,20 @@ type ProfitImpact = {
   lines: { line_code: string; line_name: string; amount_cents: number; line_count: number }[];
   unmapped_line_count: number;
 };
+type DrillPagination = {
+  offset: number;
+  limit: number;
+  total_count: number;
+  returned: number;
+  has_more: boolean;
+};
+
+type DrillPage = {
+  items: Profit['items'];
+  pagination: DrillPagination;
+  total_cents: number;
+};
+
 type Profit = {
   period: string;
   mapping_version: number;
@@ -126,6 +141,8 @@ type Profit = {
     unmapped_line_count: number;
     mixed_voucher_contributions: number;
     net_profit_known: boolean;
+    pagination?: DrillPagination;
+    drilldown_total_cents?: number;
   };
 };
 
@@ -194,8 +211,18 @@ export function TaxFPanel({
   } | null>(null);
   const [varianceError, setVarianceError] = useState('');
   const [selectedLine, setSelectedLine] = useState('');
+  const [linkCopied, setLinkCopied] = useState('');
+  const [drill, setDrill] = useState<DrillPage | null>(null);
+  const [drillBusy, setDrillBusy] = useState('');
   const [failure, setFailure] = useState('');
   const [notice, setNotice] = useState('');
+
+  // A shared link should reopen the same drilldown instead of the empty panel.
+  useEffect(() => {
+    if (selectedLine || basis.length === 0 || typeof window === 'undefined') return;
+    const target = parseTaxFLink(window.location.search);
+    if (target) pickLine(target.line);
+  }, [basis, selectedLine]);
   const [busy, setBusy] = useState(false);
   const [reviewDraft, setReviewDraft] = useState('');
   const [exportingLease, setExportingLease] = useState<string | null>(null);
@@ -235,6 +262,8 @@ export function TaxFPanel({
       setSelectedLease((value) => value || leaseData.items[0]?.id || '');
       setBasis(basisData.items);
       setProfit(profitData);
+      // 换报表版本或刷新后，已选项目的下钻必须跟着重算，不能留着旧版本的凭证行。
+      if (selectedLine) void loadDrill(selectedLine, 0);
       const options = reportData.reports.filter((row) => row.period === period);
       setProfitReports(options);
       if (nextReportId && !options.some((row) => row.id === nextReportId)) {
@@ -450,11 +479,60 @@ export function TaxFPanel({
     }, '税费核定已独立复核。');
   }
 
-  const drillItems = selectedLine
-    ? (profit?.items.filter((row) => row.line_code === selectedLine) ?? [])
-    : [];
+  async function loadDrill(lineCode: string, offset = 0) {
+    if (!lineCode) {
+      setDrill(null);
+      return;
+    }
+    setDrillBusy(lineCode);
+    try {
+      const query = new URLSearchParams({
+        book_id: bookId,
+        period,
+        line_code: lineCode,
+        offset: String(offset),
+        limit: '200',
+      });
+      if (profitReportId) query.set('report_run_id', profitReportId);
+      const page = await api<{
+        items: Profit['items'];
+        pagination: DrillPagination;
+        drilldown_total_cents: number;
+      }>(`/reports/profit?${query.toString()}`, session);
+      setDrill((current) => ({
+        items: offset === 0 ? page.items : [...(current?.items ?? []), ...page.items],
+        pagination: page.pagination,
+        total_cents: page.drilldown_total_cents,
+      }));
+    } catch {
+      setDrill(null);
+    } finally {
+      setDrillBusy('');
+    }
+  }
+
+  async function copyLineLink() {
+    if (!selectedLine || typeof window === 'undefined') return;
+    const url = taxFLinkUrl(window.location.href, selectedLine, drill?.pagination.offset ?? 0);
+    try {
+      await navigator.clipboard.writeText(url);
+      setLinkCopied('已复制链接');
+    } catch {
+      setLinkCopied(url);
+    }
+    window.setTimeout(() => setLinkCopied(''), 4000);
+  }
+
+  function pickLine(lineCode: string) {
+    setSelectedLine(lineCode);
+    setDrill(null);
+    void loadDrill(lineCode);
+  }
+
+  const drillItems = drill?.items ?? [];
   const selectedProfitLine = profit?.lines.find((row) => row.line_code === selectedLine) ?? null;
-  const drillTotalCents = drillItems.reduce((sum, row) => sum + row.net_cents, 0);
+  // 金额一致性用服务端全量合计，不能用当前这一页的累加，否则分页越深越像“不一致”。
+  const drillTotalCents = drill?.total_cents ?? 0;
   const drillMismatch = Boolean(
     selectedProfitLine && drillTotalCents !== selectedProfitLine.amount_cents,
   );
@@ -1027,7 +1105,7 @@ export function TaxFPanel({
                         </td>
                         <td>{row.items_count}</td>
                         <td>
-                          <button type="button" onClick={() => setSelectedLine(row.line_code)}>
+                          <button type="button" onClick={() => pickLine(row.line_code)}>
                             查看依据
                           </button>
                         </td>
@@ -1036,10 +1114,24 @@ export function TaxFPanel({
                   </tbody>
                 </table>
               </div>
+              <div className="tax-f-drill-share">
+                <button
+                  type="button"
+                  className="button secondary"
+                  disabled={!selectedLine}
+                  onClick={() => void copyLineLink()}
+                >
+                  复制本行链接
+                </button>
+                {linkCopied ? <small>{linkCopied}</small> : null}
+              </div>
               <div className="tax-f-table-wrap" aria-label="利润下钻凭证行">
                 <table>
                   <caption>
                     {selectedLine ? `下钻：${selectedLine}` : '选择左侧项目查看凭证行'}
+                    {drill
+                      ? `（共 ${drill.pagination.total_count} 行，已显示 ${drill.items.length} 行）`
+                      : ''}
                   </caption>
                   <thead>
                     <tr>
@@ -1100,6 +1192,17 @@ export function TaxFPanel({
                     ))}
                   </tbody>
                 </table>
+                {drill?.pagination.has_more ? (
+                  <button
+                    type="button"
+                    disabled={drillBusy === selectedLine}
+                    onClick={() => void loadDrill(selectedLine, drill.items.length)}
+                  >
+                    {drillBusy === selectedLine
+                      ? '加载中…'
+                      : `加载更多（还剩 ${drill.pagination.total_count - drill.items.length} 行）`}
+                  </button>
+                ) : null}
               </div>
             </div>
             {profitImpact ? (

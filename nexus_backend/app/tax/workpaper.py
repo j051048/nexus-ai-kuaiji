@@ -299,6 +299,20 @@ def _snapshot(conn, book, period, profile, vat_accounts=None):
         },
     )
     if policy is None:
+        # A single blended rate from the profile is only honest when the period
+        # really carries one rate. With several rates it would silently mis-state
+        # the tax, so the paper refuses and asks for a reviewed rate policy.
+        rates = {
+            int(round(row["tax_cents"] * 10_000 / row["amount_cents"]))
+            for row in output
+            if row["amount_cents"] > 0
+        }
+        if len(rates) > 1:
+            raise AccountingError(
+                "本期销项发票存在多档税率，不能再用档案里的单一税率估算增值税；"
+                "请先核定分税目税率政策后再生成底稿",
+                409,
+            )
         tax = _ratio(output_net, profile["vat_rate_bp"])
         credit_carry = 0
         surtax = _ratio(tax, profile["surtax_rate_bp"])

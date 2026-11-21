@@ -1302,6 +1302,126 @@ def build_tax_router(actor_dependency):
     ):
         return service.handle(current, variance_id, **payload.model_dump())
 
+    def periods(request: Request):
+        from .periods import TaxPeriodService
+
+        tax = request.app.state.tax
+        return TaxPeriodService(tax.db, tax.access)
+
+    class PeriodRunIn(BaseModel):
+        model_config = ConfigDict(extra="forbid")
+        kind: str = Field(min_length=1, max_length=40)
+        period: str = Field(min_length=7, max_length=7)
+        payload: dict
+        source_digest: str = Field(default="", max_length=128)
+
+    class PeriodReviewIn(BaseModel):
+        model_config = ConfigDict(extra="forbid")
+        note: str = Field(min_length=1, max_length=500)
+        expected_version: int
+
+    class FourTaxIn(BaseModel):
+        model_config = ConfigDict(extra="forbid")
+        book_id: str = Field(min_length=1, max_length=100)
+        period: str = Field(min_length=7, max_length=7)
+        surtax_items: list[dict] = Field(default_factory=list)
+        cumulative_profit_cents: int | None = None
+        loss_carryforward_cents: int = 0
+        prepaid_cents: int = 0
+        cit_rate_bp: int = 2_500
+        halved: bool = False
+
+    @router.get("/period-runs")
+    def list_period_runs(
+        book_id: str = Query(min_length=1, max_length=100),
+        period: str | None = Query(default=None, max_length=7),
+        current=Depends(actor_dependency),
+        runs=Depends(periods),
+    ):
+        return runs.list(current, book_id, period=period)
+
+    @router.post("/period-runs")
+    def record_period_run(
+        payload: PeriodRunIn,
+        book_id: str = Query(min_length=1, max_length=100),
+        current=Depends(actor_dependency),
+        runs=Depends(periods),
+    ):
+        return runs.record(
+            current,
+            book_id,
+            period=payload.period,
+            kind=payload.kind,
+            payload=payload.payload,
+            source_digest=payload.source_digest,
+        )
+
+    @router.post("/period-runs/{run_id}/review")
+    def review_period_run(
+        run_id: str,
+        payload: PeriodReviewIn,
+        book_id: str = Query(min_length=1, max_length=100),
+        current=Depends(actor_dependency),
+        runs=Depends(periods),
+    ):
+        return runs.review(
+            current, book_id, run_id, note=payload.note, expected_version=payload.expected_version
+        )
+
+    @router.post("/accrual-preview")
+    def accrual_preview(
+        payload: FourTaxIn,
+        current=Depends(actor_dependency),
+        tax=Depends(service),
+    ):
+        """Preview the accrual entries for a period.
+
+        Read-only on purpose: the ledger has no "create a voucher from scratch"
+        API, and this endpoint must not become one. Persisting an accrual needs
+        a source kind plus the normal suggest -> review -> post path.
+        """
+        from . import accrual, four_tax
+
+        package = four_tax.package(
+            tax,
+            current,
+            payload.book_id,
+            payload.period,
+            surtax_items=payload.surtax_items,
+            cumulative_profit_cents=payload.cumulative_profit_cents,
+            loss_carryforward_cents=payload.loss_carryforward_cents,
+            prepaid_cents=payload.prepaid_cents,
+            cit_rate_bp=payload.cit_rate_bp,
+            halved=payload.halved,
+        )
+        preview = accrual.accrual_lines(package)
+        return {
+            **preview,
+            "posted": False,
+            "note": "预览仅供参考：本接口不写账，也不会生成草稿凭证。",
+        }
+
+    @router.post("/four-tax")
+    def four_tax_package(
+        payload: FourTaxIn,
+        current=Depends(actor_dependency),
+        tax=Depends(service),
+    ):
+        from . import four_tax
+
+        return four_tax.package(
+            tax,
+            current,
+            payload.book_id,
+            payload.period,
+            surtax_items=payload.surtax_items,
+            cumulative_profit_cents=payload.cumulative_profit_cents,
+            loss_carryforward_cents=payload.loss_carryforward_cents,
+            prepaid_cents=payload.prepaid_cents,
+            cit_rate_bp=payload.cit_rate_bp,
+            halved=payload.halved,
+        )
+
     @router.post("/fee-variances/{variance_id}/reverse")
     def reverse_fee_variance(
         variance_id: str,

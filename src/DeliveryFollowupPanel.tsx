@@ -5,6 +5,7 @@ import type { FollowupState } from './delivery-followups';
 import type { MonthlyDestination } from './monthly-workbench-types';
 import { MonthlyPackagePanel } from './MonthlyPackagePanel';
 import { DeliveryNotifications } from './DeliveryNotifications';
+import { requestConfirm } from './confirm-dialog';
 
 /** Thin task entry. Commands, independent review and package checks remain in their domain services. */
 export function DeliveryFollowupPanel({
@@ -85,8 +86,17 @@ export function DeliveryFollowupPanel({
         <button
           className="button secondary"
           disabled={busy}
-          onClick={() => {
-            if (!dirty || window.confirm('尚有未保存的说明，放弃编辑并返回待办？')) onBack();
+          onClick={async () => {
+            if (
+              !dirty ||
+              (await requestConfirm({
+                title: '放弃未保存的说明？',
+                description: '返回待办列表会放弃尚未提交的说明。',
+                consequence: '未保存的内容不会保留。',
+                confirmLabel: '放弃并返回',
+              }))
+            )
+              onBack();
           }}
         >
           返回待办列表

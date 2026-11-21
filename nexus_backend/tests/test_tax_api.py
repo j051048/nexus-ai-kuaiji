@@ -153,3 +153,48 @@ def test_http_readiness_blocks_before_estimating(tmp_path):
         assert "纳税人档案" in body["blocked_reason"]
         assert body["external_result"] == "none"
         assert body["kinds"][0]["readiness"] == "blocked"
+
+
+def test_http_period_runs_roundtrip_and_four_tax_gate(tmp_path):
+    app = create_app(tmp_path / "tax-four.db", seed=True)
+    with TestClient(app, base_url="http://127.0.0.1", client=("127.0.0.1", 45682)) as client:
+        token = client.get("/api/session").json()["token"]
+        headers = {"Authorization": "Bearer " + token}
+        book = _book(app)
+        created = client.post(
+            f"/api/tax/period-runs?book_id={book['id']}",
+            headers=headers,
+            json={
+                "kind": "vat",
+                "period": book["period"],
+                "payload": {"total_cents": 30_000},
+                "source_digest": "digest-0123456789abcdef",
+            },
+        )
+        assert created.status_code == 200, created.text
+        run = created.json()
+        assert run["kind"] == "vat" and run["version"] == 1
+        listed = client.get(f"/api/tax/period-runs?book_id={book['id']}", headers=headers)
+        assert listed.status_code == 200 and len(listed.json()) == 1
+        # No reviewed VAT workpaper yet: the package must refuse, not return zeros.
+        refused = client.post(
+            "/api/tax/four-tax",
+            headers=headers,
+            json={"book_id": book["id"], "period": book["period"], "surtax_items": []},
+        )
+        assert refused.status_code == 409
+        assert "已复核的增值税底稿" in refused.text
+        assert client.get("/api/tax/period-runs?book_id=" + book["id"]).status_code in (401, 403)
+        # The accrual preview is read-only and shares the same gate: no reviewed
+        # workpaper means no entries, and nothing is written to the ledger.
+        preview = client.post(
+            "/api/tax/accrual-preview",
+            headers=headers,
+            json={"book_id": book["id"], "period": book["period"], "surtax_items": []},
+        )
+        assert preview.status_code == 409
+        assert "已复核的增值税底稿" in preview.text
+        assert client.post(
+            "/api/tax/accrual-preview",
+            json={"book_id": book["id"], "period": book["period"], "surtax_items": []},
+        ).status_code in (401, 403)

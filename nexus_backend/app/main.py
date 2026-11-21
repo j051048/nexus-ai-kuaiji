@@ -147,6 +147,8 @@ from .periodic.service import PeriodicService
 from .reports.router import build_report_router
 from .reports.service import ReportService
 from .tax.router import build_tax_router
+from .treasury.router import build_treasury_router
+from .treasury.service import PaymentService
 from .tax.sources import TaxSourceAdapter
 from .tax.workpaper import TaxWorkpaperService
 from .tax.policy_items import TaxPolicyItemService
@@ -373,6 +375,7 @@ def create_app(
             application.state.profit = ProfitDrilldownService(database)
             application.state.fleet = FleetMetricsService(database)
             application.state.tax = TaxWorkpaperService(database)
+            application.state.payments = PaymentService(database)
             application.state.tax_policy_items = TaxPolicyItemService(database)
             application.state.tax_pilot = PilotBoundaryService(database)
             application.state.tax_sources = TaxSourceAdapter(database)
@@ -1239,6 +1242,7 @@ def create_app(
     app.include_router(build_periodic_router(actor))
     app.include_router(build_report_router(actor))
     app.include_router(build_tax_router(actor))
+    app.include_router(build_treasury_router(actor))
     app.include_router(build_close_router(actor))
     app.include_router(build_integrations_router(actor))
     app.include_router(build_sync_stub_router(actor))
