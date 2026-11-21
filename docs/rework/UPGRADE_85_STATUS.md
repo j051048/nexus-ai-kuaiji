@@ -163,7 +163,15 @@
   - `npm run build` -> 成功（Windows Temp ACL 故障时用 `TEMP=tmp_test/esbtemp` 规避）
   - `npm run test:frontend-budget` -> `status=passed, violations=[]`（预算未改）
   - Playwright PLT03/04/05 八条 spec -> `15 passed (2.1m)`
-  - 完整非 PG 后端全量：**进行中**（`tmp_test/rework/full-nonpg.log`），完成后回填本行。
+  - 完整非 PG 后端全量（第 1 次，19:33–21:10）：`2 failed, 5090 passed, 110 skipped in 5806.28s`
+    - 两例失败均不是产品缺陷，而是**同一工作树被并行任务中途修改**：`nexus_backend/tests/test_tax16_recovery.py` 的 mtime 为 21:08（运行窗口内），`nexus_backend/migrations/postgres/311_plt_report_legacy_mode.sql` 于 20:06 新增；失败信息 `sqlite3.IntegrityError: 正式报表必须绑定已批准的核算政策` 来自 221 触发器，而该用例当前版本单独运行 `1 passed`；`test_next_p0_browser_contract.py` 单独运行 `6 passed`（其断言调用 `node … playwright test --list`，同样受运行期间 `e2e/`、`playwright.config.ts` 变动影响）。
+    - 结论：该次运行不构成「同一最终工作区指纹」的有效候选证据，作废重跑。
+  - 完整非 PG 后端全量（第 2 次，21:16–08:48）：`2 failed, 5098 passed, 110 skipped in 41537.27s`
+    - `test_b04_pilot.py::test_report_requires_template_for_company_standard`（并行提交 `81d11c74` 新增）：期望「模板未启用」降级为 `mode=trial` 并写入 `trial_reasons`，实际 `app/reports/service.py:144` 抛 409「账套适用的报表模板未启用：enterprise」。**该用例与当前产品行为不一致，且属并行任务代码，未擅自改产品语义，待其负责人裁决。**
+    - `test_next_p0_browser_contract.py`：同第 1 次，`node … test --list` 返回 1；单独运行 `6 passed`。
+  - **并发说明（重要）**：本会话期间同一工作树被另一智能体连续提交：`6174786a` → `81d11c74`（feat(pilot) 路线A闭环）→ `43184b08`（fix(ci)），并有 6 个脏文件；两次全量运行都横跨了提交，**不构成「同一最终工作区指纹」的有效候选证据**。
+  - 当前树指纹（仅记录，非验收候选）：head `43184b08`、source 2515 `e2054a77…`、migration 519 `a64631fe…`、`worktree_clean=false`。
+  - 结论：Batch 01 与 Batch 01B 的代码/测试/双库证据已完成；**「同一候选终验 0 failed」被并行改动阻断**，需在无人并发提交的静默窗口内重跑一次全量才能结案。
 - 未做（不在本批授权内）：git commit / push / 部署；生产库仍停在 309，未应用 310。
 
 
