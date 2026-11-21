@@ -111,6 +111,7 @@ def _opening(client, h, ids, state):
         },
         201,
     ).json()
+    call(client, "POST", f"/api/opening/policies/{policy['id']}/approve", h["reviewer"])
     accounts = {}
     for code, name, category, normal in (
         ("1002", "银行存款", "asset", "debit"),

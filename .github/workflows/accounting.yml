@@ -208,6 +208,7 @@ jobs:
               'test_pg_package_roles_are_append_only_and_hash_guarded',
               'test_pg_customer_cannot_self_ack_or_forge_hash_and_revocation_is_current',
               'test_pg_read_only_client_can_ack_despite_staff_only_service_plan_rls',
+              'test_pg_external_evidence_requires_a_second_reviewer',
               'test_pg_first_not_applicable_declaration_is_accepted_with_no_supersedes',
               'test_pg_native_replacement_reference_accepts_same_ledger',
               'test_pg_native_replacement_reference_rejects_other_company_ledger',

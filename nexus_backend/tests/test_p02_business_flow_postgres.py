@@ -432,6 +432,11 @@ def test_b01_employee_to_customer_signoff(client, flow):
         json={"user_id": PEOPLE["manager"][0], "reason": "P02 期初独立核准授权"},
     )
     assert granted.status_code in {200, 201}, granted.text
+    approved_policy = client.post(
+        f"/api/opening/policies/{policy.json()['id']}/approve",
+        headers=manager,
+    )
+    assert approved_policy.status_code == 200, approved_policy.text
     approved_opening = client.post(
         f"/api/opening/versions/{version_id}/approve",
         headers=manager,
