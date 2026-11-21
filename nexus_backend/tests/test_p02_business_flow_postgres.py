@@ -352,6 +352,7 @@ def test_b01_employee_to_customer_signoff(client, flow):
             "ledger_id": ledger_id,
             "standard_kind": "small_enterprise",
             "taxpayer_kind": "small_scale",
+            "formal_book_system": "local",
             "effective_from": "2026-01",
             "effective_to": "2026-12",
             "reason": "P02 期初政策",

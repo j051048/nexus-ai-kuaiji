@@ -367,7 +367,7 @@ def test_pg_unposted_manual_is_explicit_close_blocker_and_withdrawal_can_release
 
     blocked = preflight()
     checks = {row["code"]: row for row in blocked["checks"]}
-    assert len(checks) == 7
+    assert len(checks) == 8
     assert checks["unposted_manual"]["status"] == "blocked"
     assert all(row["status"] == "pass" for code, row in checks.items() if code != "unposted_manual")
     assert blocked["close"]["status"] == "preflight_failed"

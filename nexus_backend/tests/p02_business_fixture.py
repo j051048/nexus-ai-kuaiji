@@ -105,6 +105,7 @@ def _opening(client, h, ids, state):
             "ledger_id": ledger,
             "standard_kind": "small_enterprise",
             "taxpayer_kind": "small_scale",
+            "formal_book_system": "local",
             "effective_from": "2026-01",
             "effective_to": "2026-12",
             "reason": REASON,
