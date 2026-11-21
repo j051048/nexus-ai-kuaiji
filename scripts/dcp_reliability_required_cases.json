@@ -11,6 +11,7 @@
         "nexus_backend.tests.test_stage10_settlements_postgres::test_pg_previews_replay_and_remaining_cannot_overallocate",
         "nexus_backend.tests.test_stage10_settlements_postgres::test_pg_force_rls_no_raw_insert_or_unknown_party_plan",
         "nexus_backend.tests.test_stage10_settlements_postgres::test_pg_independent_reversal_restores_balance_and_keeps_allocation",
+        "nexus_backend.tests.test_stage10_settlements_postgres::test_pg_custom_payable_role_flows_through_business_and_settlement",
         "nexus_backend.tests.test_settlement_company_lock_postgres::test_native_mutations_share_company_contract_and_preserve_acl[settlement_open_item]",
         "nexus_backend.tests.test_settlement_company_lock_postgres::test_native_mutations_share_company_contract_and_preserve_acl[settlement_make_preview]",
         "nexus_backend.tests.test_settlement_company_lock_postgres::test_native_mutations_share_company_contract_and_preserve_acl[settlement_confirm]",

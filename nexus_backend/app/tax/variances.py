@@ -53,6 +53,10 @@ class FeeVarianceService:
         self.ledgers = LedgersService(db)
 
     def _active_policy(self, conn, book_id):
+        if self.db.is_postgres:
+            return conn.execute(
+                "SELECT * FROM accounting.book_active_policy(?)", (book_id,)
+            ).fetchone()
         return conn.execute(
             "SELECT p.* FROM accounting_policies p "
             "JOIN ledger_periods lp ON lp.ledger_id=p.ledger_id "

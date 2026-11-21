@@ -108,6 +108,7 @@ def run(config_dir, output, node="node"):
                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
             )
 
+        stage = "fixture"
         try:
             host = start(
                 [
@@ -126,6 +127,7 @@ def run(config_dir, output, node="node"):
                 if host.poll() is not None or time.monotonic() > deadline:
                     raise RuntimeError("Local business fixture failed; inspect private host log")
                 time.sleep(0.25)
+            stage = "frontend"
             frontend = start(
                 [
                     node,
@@ -149,6 +151,7 @@ def run(config_dir, output, node="node"):
                     if frontend.poll() is not None or time.monotonic() > deadline:
                         raise RuntimeError("Local frontend failed") from None
                     time.sleep(0.25)
+            stage = "browser"
             with (output / "browser-private.log").open("xb") as log:
                 result = subprocess.run(
                     [
@@ -166,12 +169,15 @@ def run(config_dir, output, node="node"):
                 )
             if result.returncode:
                 raise RuntimeError("Browser validation failed; inspect private browser log")
+            stage = "junit"
             report.update(validate_result(output / "browser-private.xml"))
+            stage = "candidate"
             if candidate_fingerprint(ROOT) != before:
                 raise RuntimeError("Candidate changed during browser validation")
             report["status"] = "passed"
         except Exception as error:
             report["error_class"] = type(error).__name__
+            report["failed_stage"] = stage
         finally:
             if frontend is not None and frontend.poll() is None:
                 frontend.terminate()

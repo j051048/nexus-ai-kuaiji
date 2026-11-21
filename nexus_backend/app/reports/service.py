@@ -93,15 +93,19 @@ class ReportService:
             raise AccountingError("账套未关联长期账套", 409)
         return book, ledger["ledger_id"]
 
-    def _active_policy(self, conn, ledger_id):
+    def _active_policy(self, conn, ledger_id, book_id=None):
+        if self.db.is_postgres and book_id:
+            return conn.execute(
+                "SELECT * FROM accounting.book_active_policy(?)", (book_id,)
+            ).fetchone()
         return conn.execute(
             "SELECT * FROM accounting_policies WHERE ledger_id=? AND status='active' "
             "ORDER BY version DESC LIMIT 1",
             (ledger_id,),
         ).fetchone()
 
-    def _standard_kind(self, conn, ledger_id):
-        row = self._active_policy(conn, ledger_id)
+    def _standard_kind(self, conn, ledger_id, book_id=None):
+        row = self._active_policy(conn, ledger_id, book_id=book_id)
         return row["standard_kind"] if row else self.STANDARD_UNASSESSED
 
     def _validate_definition(self, definition):
@@ -167,7 +171,7 @@ class ReportService:
         ).fetchone()
         if not ledger:
             raise AccountingError("账套未关联长期账套", 409)
-        standard = self._standard_kind(conn, ledger["ledger_id"])
+        standard = self._standard_kind(conn, ledger["ledger_id"], book_id=book["id"])
         if standard == self.STANDARD_UNASSESSED:
             raise AccountingError(
                 "核算政策未核定，不能生成报表；请先批准当前期间适用的核算政策", 409
@@ -490,7 +494,7 @@ class ReportService:
             if period != book["period"]:
                 raise AccountingError("报表期间与账套期间不一致", 422)
             self._book(conn, actor, book_id, write=True)
-            policy = self._active_policy(conn, ledger_id)
+            policy = self._active_policy(conn, ledger_id, book_id=book["id"])
             if not policy:
                 raise AccountingError(
                     "核算政策未核定，无法出表；请先建立并批准当前期间适用的核算政策",

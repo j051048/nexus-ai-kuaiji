@@ -361,11 +361,18 @@ class FinancialBridgeService:
         with self.db.transaction(actor=actor) as conn:
             book, ledger_id = self._scope(conn, actor, book_id)
             config = self._configuration(conn, ledger_id)
-            policy = conn.execute(
-                "SELECT formal_book_system,formal_book_system_name,approved_by,version "
-                "FROM accounting_policies WHERE ledger_id=? AND status='active'",
-                (ledger_id,),
-            ).fetchone()
+            if self.db.is_postgres:
+                policy = conn.execute(
+                    "SELECT formal_book_system,formal_book_system_name,approved_by,version "
+                    "FROM accounting.book_active_policy(?)",
+                    (book_id,),
+                ).fetchone()
+            else:
+                policy = conn.execute(
+                    "SELECT formal_book_system,formal_book_system_name,approved_by,version "
+                    "FROM accounting_policies WHERE ledger_id=? AND status='active'",
+                    (ledger_id,),
+                ).fetchone()
             formal_book = {
                 "system": policy["formal_book_system"] if policy else "unassessed",
                 "name": policy["formal_book_system_name"] if policy else "",

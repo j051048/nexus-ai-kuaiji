@@ -258,14 +258,21 @@ class CloseService:
             return self._view(conn, run_id)
 
     def _unresolved_variance_is_advisory(self, conn, book_id, period):
-        policy = conn.execute(
-            "SELECT p.fee_variance_reasons_json FROM accounting_policies p "
-            "JOIN ledger_periods lp ON lp.ledger_id=p.ledger_id "
-            "WHERE lp.book_id=? AND p.status='active' "
-            "AND p.effective_from<=? AND (p.effective_to IS NULL OR p.effective_to>=?) "
-            "ORDER BY p.version DESC LIMIT 1",
-            (book_id, period, period),
-        ).fetchone()
+        if self.db.is_postgres:
+            policy = conn.execute(
+                "SELECT fee_variance_reasons_json FROM accounting.book_active_policy(?) "
+                "WHERE effective_from<=? AND (effective_to IS NULL OR effective_to>=?)",
+                (book_id, period, period),
+            ).fetchone()
+        else:
+            policy = conn.execute(
+                "SELECT p.fee_variance_reasons_json FROM accounting_policies p "
+                "JOIN ledger_periods lp ON lp.ledger_id=p.ledger_id "
+                "WHERE lp.book_id=? AND p.status='active' "
+                "AND p.effective_from<=? AND (p.effective_to IS NULL OR p.effective_to>=?) "
+                "ORDER BY p.version DESC LIMIT 1",
+                (book_id, period, period),
+            ).fetchone()
         if not policy:
             return False
         raw = policy["fee_variance_reasons_json"] or []
