@@ -4,6 +4,7 @@ import hashlib
 import json
 from uuid import uuid4
 
+from ..observability import metrics
 from ..accounting.domain import AccountingError
 from ..accounting.invariants import cents_to_money, money_to_cents
 from ..accounting.service import AccountingService, now
@@ -797,7 +798,11 @@ class PeriodicService:
             self._audit(
                 conn, actor, draft["book_id"], "periodic.post", draft_id, {"voucher_id": voucher_id}
             )
-            return self._draft_view(conn, draft_id)
+            view = self._draft_view(conn, draft_id)
+        # Counted only after the transaction commits: a rolled-back post must not
+        # leave a counter behind, and a replayed post returns before this line.
+        metrics.voucher_posted()
+        return view
 
     def _draft_view(self, conn, draft_id, replayed=False):
         draft = self._draft(conn, draft_id)

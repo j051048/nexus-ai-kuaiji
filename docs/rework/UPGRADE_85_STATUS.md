@@ -512,3 +512,98 @@
 - **没有配独立红测**：`bridge_return_imports.artifact_id` 有外键，损坏的指向在当前 schema 下构造不出来（试过改 artifact 的 `book_id` 触发 FK、试过新建第二账套挂他人 artifact 被账套名校验挡住）。加约束是为了「即使将来某条路径写坏了指针也不会跨客户泄露」，属于纵深防御，不虚构一个用 API 造不出来的失败态。
 - 回归：`test_plt05_return_import.py` + `test_plt05_return_http.py` **15 passed**，ruff 全绿。
 - 仍未做：仅确认失败且仍有权限的凭证可重走补导、unknown 禁重发（已有 N03 围栏覆盖）、跨期拦截、集团与月结预检的外部正式账三态提示。
+
+### Batch 07 · 1.4 凭据与依赖安全门禁（部分完成）
+
+- `scripts/check_secrets.py`：私钥块、AWS key、Slack token、带口令的 PG DSN、≥32 字硬编码密钥赋值五类规则；`# pragma: allowlist secret` 单行豁免；只报「可能被提交」的路径（候选路径逐个 `git check-ignore -q`），被忽略的本机 `.env` 不算泄漏。当前仓库扫描 `no secrets found`。
+- `nexus_backend/tests/test_check_secrets.py` 7 passed。测试必须用系统 temp 目录：仓库内临时目录被 `.gitignore` 覆盖，会被扫描器按设计跳过（首版用 `tmp_path` 时 5 例假红）。
+- CI 新增 `security` job：`check_secrets.py` 硬阻断；`bandit -q -lll`（high）硬阻断——`-ll` 现有 287 medium / 16 low，一次全开会让所有 PR 常红，medium 积压记为债务；`pip-audit` 观察态（`continue-on-error: true`），因为当前 `nexus_backend/requirements.txt` 有 23 条 GHSA 全部来自 pillow 12.3.0（需升到 ≥13.0.0），升级后去掉该开关。
+- 本机复跑 pip-audit 需 `PYTHONUTF8=1`：requirements 含中文注释，Windows 默认 GBK 解码报 `UnicodeDecodeError: 'gbk' codec can't decode byte 0xa1`。
+
+### Batch 07 · 1.3 多租户配额（部分完成）
+
+- 迁移 `nexus_backend/migrations/postgres/320_sec07_firm_quotas.sql`：`accounting.firm_quotas`（按 `firm_id` 主键，单次导入行数 / 单日异步任务数 / 原件容量 / 并发请求数，均带范围 CHECK 与默认值）；`ENABLE + FORCE RLS`，读写策略绑 `accounting.actor_firm()`，写还要求 `updated_by = accounting.actor_user()`，并对 `accounting_app` 收回 DELETE。
+- 迁移 `nexus_backend/migrations/sqlite/227_sec07_firm_quotas.sql`：同表同约束；SQLite 无 RLS，用「禁止删除」触发器保证本地数据与生产契约一致（配额只能改数值，不能靠删记录绕过）。
+- 缺失行即默认值：`nexus_backend/app/security/quotas.py` 的 `DEFAULTS` 是唯一来源（导入 5000 行/批、异步 500 个/日、原件 2 GiB、并发 32），新企业无需引导写入。
+- `QuotaService.quota/configure`（仅 `FIRM_MANAGERS`）与三条统一核验 `ensure_import_rows`（超限 413）、`ensure_daily_jobs`（429）、`ensure_storage`（413）；错误文案同时给出当前值与上限，不给「稍后重试」这种无用提示。
+- 拒绝路径**只记日志不写审计表**：核验发生在调用方事务内，抛错会回滚该事务，此时写 `audit_events` 会被一起回滚——写了等于没写。改为 `accounting.quotas` logger 的结构化告警（含 firm/actor/limit/requested），持久证据由调用方自己的审计链承担。这是取舍，不是遗漏。
+- `nexus_backend/tests/test_tenant_quotas.py` **10 passed**（默认值、仅管理者可改、部分更新持久化、四类非法值拒绝、413/429 边界与「等于上限仍放行」、按事务所隔离）。
+- 未完成：把三条核验接到导入 / 异步入队 / 原件上传入口（需先确认各自事务边界，避免把日志写进已回滚的事务），以及配额读写的 HTTP 入口与前端展示。
+
+### Batch 07 · 1.2 应用层信封加密（部分完成）
+
+- `nexus_backend/app/security/kms.py`：`KeyProvider` 协议 + `LocalEnvKeyProvider`（AES-256-GCM，12 字节随机 nonce）；`Envelope{key_id,nonce,ciphertext}` 自带 `to_json/from_json`（版本 1、算法 A256GCM、严格 base64 校验），密文可入库或写文件而不需要额外元数据列。
+- **轮换是数据操作而不是上线动作**：每条信封记录生成它的 `key_id`，`decrypt` 按 `key_id` 找密钥，`reencrypt` 把单条记录迁到当前活动密钥。旧密钥留在环里即可继续解历史数据；把旧密钥移出环会让解密**明确报错并点名缺哪把钥匙**，而不是返回垃圾字节。
+- 配置错误一律拒绝启动而不是降级明文：空密钥环、非 base64、缺冒号、标识重复、密钥长度不是 32 字节、`ACTIVE_KEY_ID` 不在环里，都会抛 `KmsError` 并说明期望格式。
+- `nexus_backend/tests/test_kms_envelope_encryption.py` **14 passed**（往返与 JSON 序列化、nonce 不重复、密文不含明文、篡改/换 AAD 被 `InvalidTag` 拦下、轮换后旧记录可读且可迁移、丢旧密钥报错、环境解析与活动密钥默认值、六类坏配置参数化、信封版本/字段垃圾拒绝）。
+- `nexus_backend/requirements.txt` 显式声明 `cryptography>=43,<52`：模块直接 import 它，不能靠 `PyJWT[crypto]` 的传递依赖（被别的依赖顺手升级或移除就会炸）。`scripts/check_test_env.py` 仍匹配 lock（36 packages）。
+- 未完成：把信封加密接到原件存取路径（需要先定「加密落盘 + 数据库只存信封」的存储契约）、云 KMS/国密适配器、密钥轮换的批处理入口与进度指标。
+
+### Batch 07 · 1.1 高危动作的 AAL2 守卫（部分完成）
+
+- 既有基础：`Identity.aal` 只取身份提供方验证过的声明（`app/auth/supabase.py:40`、`:335`），用户可编辑的 metadata 不参与判断；管理域已有 `requires_admin_mfa` 中间件。
+- 新增 `HIGH_RISK_ACTIONS`（`app/auth/admin_security.py`）五项：付款放款审批 `/api/treasury/payment-orders/{id}/approve`、月结锁期 `/api/b04-close/{id}/lock`、正式报表发布 `/api/reports/{id}/publish`、限时复核委托 `/api/books/{id}/review-delegations`、全量原件导出 `/api/firm/batch-operations/review-export`。它们不属于 admin 域，但爆炸半径相同，因此走同一道门。
+- **策略开关 `ACCOUNTING_MFA_ENFORCE`（off|warn|enforce，默认 warn）**：`enforce` 拒绝 aal1；`warn` 放行并记结构化告警；`off` 关闭。默认 warn 是刻意的——若直接 enforce，所有没绑定第二因子的真实用户会在发布瞬间失去锁期与发布能力，这不是安全加固而是事故。开关取值非法即拒绝启动。
+- 读请求与近似路径不受影响：`GET /api/reports/{id}/publish`、`review-export/preview`、`review-delegations/{id}`（撤销）等均放行；收件人接受邀请 `/api/admin/account-requests/{id}/accept` 仍豁免（那校验的是待审请求本身）。
+- `nexus_backend/tests/test_auth_oidc_mfa.py` **17 passed**（五类高危动作、七类近似路径与只读放行、尾斜杠归一、收件人豁免、动作清单恰为五项、开关默认与非法值）；与既有 `test_admin_security.py` 合跑 **51 passed**；`test_tax_api.py` 冒烟通过（本地模式不受影响）。
+- 未完成：真正的 OIDC IdP 本地测试替身（签名伪造/过期 token/低 AAL 的端到端登录流）、前端二步验证引导、`enforce` 前的用户 MFA 绑定率核查。
+
+### Batch 08 · 1.3 结构化脱敏故障日志（部分完成）
+
+- 新增 `nexus_backend/app/observability/failures.py`：`failure_record()` 输出单行 JSON，字段为 `event/request_id/trace_id/firm_id/method/route/error_class/sqlstate/safe_location`，每个值都过 `app/security/redaction.py:redact_sensitive`；`firm_of()` 从 `request.state.identity` 取事务所。
+- SQLSTATE 采集不引入驱动依赖：依次看 `sqlstate`/`pgcode`/`diag.sqlstate`，sqlite 退到 `sqlite_errorname`；只输出短码。
+- `safe_location` 取栈底帧的 `文件名:行号`（截断 160 字符），**不含参数与局部变量**——原来的 `class=DatatypeMismatch` 只知道坏了、不知道坏在哪，加参数又会把行值写进日志。
+- `app/main.py` 中间件把这条 JSON 打进 error 日志；响应体仍是既有的中文兜底文案（读请求 500 `internal_error`、写请求 500 `result_unknown`），不回显驱动原文。
+- `nexus_backend/tests/test_structured_failure_log.py` **6 passed**：字段齐全、驱动文本与卡号/口令绝不出现、`firm_of` 缺失时为空串、真实中间件路径产出恰好一条记录且 `X-Request-Id` 被回写、恶意 `X-Request-Id`（NUL、200 字符）被替换成 32 位十六进制。与 `test_qa_http_failures.py` 合跑 **14 passed**。
+- 未完成：`/metrics` Prometheus 指标（含四项财务业务 SLA）、OTLP 导出与 Worker 侧 trace 透传、`app/observability/alerting.py` 与 `docs/ops/PRODUCTION_RUNBOOK.md`、限流器 Redis 后端与对象存储抽象。
+
+### Batch 08 · 1.3 Prometheus 指标端点（部分完成）
+
+- 新增 `nexus_backend/app/observability/metrics.py`：手写注册表（dict + Lock + 文本格式），不引入 `prometheus_client`——理由和既有的手写 CSV 渲染、手写审计链一致，八十行不值得新增依赖。
+- 已导出：`http_requests_total{method,route,status}` 计数器与 `http_request_duration_seconds` 直方图（11 个桶 5ms–10s，`_bucket/_sum/_count` 齐全，`+Inf` 桶必出）。**`route` 用路由模板**（`/api/books/{book_id}`）而不是原始路径：每本书一个 label 会把基数打爆，这也是 Prometheus 的基本纪律。
+- `GET /metrics`（`include_in_schema=False`）访问控制：回环地址直连放行；设 `ACCOUNTING_METRICS_REQUIRE_TOKEN=1` 后必须携带 `x-metrics-token` 且与 `ACCOUNTING_METRICS_TOKEN` 用 `compare_digest` 比对。**不能用「回环即安全」蒙住代理场景**——反代后面的请求源地址可能就是回环。
+- 标签排序与整数格式化：同一组样本每次输出字节一致，便于抓取端 diff；`le="1"` 而非 `le="1.0"`。
+- `nexus_backend/tests/test_telemetry_and_metrics.py` **8 passed**：HELP/TYPE/计数、桶的累积语义与 `+Inf`、标签注入转义（引号/换行/反斜杠）、真实请求计数为 3、book id 不出现在标签里、REQUIRE_TOKEN 三种情形、无令牌时回环可抓、`text/plain; version=0.0.4`。
+- 未完成：四项财务业务 SLA 计数器（`accounting_vouchers_posted_total` / `tax_workpapers_generated_total` / `payment_orders_state_total` / `workspace_projection_lag_seconds`）尚未在业务动作里埋点；连接池与队列深度指标；OTLP 导出与 Worker 侧 trace 透传；告警分发与 Runbook；Redis 限流与 S3 对象存储。
+
+### Batch 08 · 1.3 财务业务 SLA 埋点（部分完成）
+
+- 计数器三处真实埋点：`app/periodic/service.py::post`（`accounting_vouchers_posted_total`，**只在该事务提交后递增**——回滚的过账不该留下计数，重放路径在 `status=='posted'` 时提前返回、也不计数）；`app/tax/workpaper.py::generate`（`tax_workpapers_generated_total`）；`app/treasury/service.py::_move`（`payment_orders_state_total{state}`，用状态标签而非九个计数器，新增状态时不会静默漏计）。
+- 未做：`workspace_projection_lag_seconds`（需要投影时间戳与抓取时刻的差，先得有可读的投影水位）、数据库连接池占用、异步队列深度。
+- `test_telemetry_and_metrics.py` **9 passed**；埋点后回归 `test_b05_payment_service.py` + `test_tax_workpaper.py` **15 passed**。
+
+### Batch 07 · 1.3 入口接线：导入配额（部分完成）
+
+- `nexus_backend/app/accounting/service.py::import_sources` 在**同一个写事务内**调用 `QuotaService(self.db, self.access).ensure_import_rows(conn, actor, len(request.rows))`。放在事务内是有意的：跨连接先查后写在并发下会被赛过，配额就只是装饰。
+- 命中上限 → 413「单次导入 N 行，超过本单位上限 M 行；请拆分文件后重试」，并且因为检查在写入前，账套不会留下半批流水。
+- `nexus_backend/tests/test_quota_import_wiring.py` **2 passed**（超限拒绝且 `sources` 为空、限内正常落库）；`test_tenant_quotas.py` + `test_accounting.py` 回归 **55 passed**；ruff 全绿。
+- 仍缺：异步任务配额（`ensure_daily_jobs`，需队列入口）、原件容量配额（`ensure_storage`，需原件上传入口）、`ensure_concurrent`（需请求级中间件）三处接线；配额只覆盖导入一条链路。
+
+### Batch 09–10 前置判定：不满足启动条件（阻塞）
+
+- `docs/upgrade_85/UPG09_WORKFLOW_AND_AGENT.md` 的前置写明「Batch 02 + Batch 05 完成」。当前两者均为**部分完成**：Batch 02 缺 1.3 的未保存拦截与逐页月份输入；Batch 05 缺出纳/财务经理角色、付款指令落库前端与 PG 实例实跑 318。按 `UPG00_MASTER.md` 的依赖关系（02 是 03/04/05/09 的前置，05 又是 06 的前置），此时启动 09 只会在别人的半成品上再造一层，版本化 DAG 会锁进未定的审批语义。
+- `docs/upgrade_85/UPG10_SHARED_QUEUE_AND_FINAL_GATE.md` 要求 01–09 全绿，同样不满足。
+- 处置：不启动 09/10，不写空壳的 workflow 表与引擎脚手架；把门禁与前置缺口写进本台账，等 02/05 收口后按序执行。Batch 04 的计提入账仍等你选 A（新增 `journal_entry` 来源）或 B（独立手工凭证），这条也卡着 06 的规费批次入账。
+
+## 升级 85 · 当前总览（2026-11-21 21:00 复核）
+
+| Batch | 状态 | 已完成的关键能力 | 主要缺口 |
+|---|---|---|---|
+| 02 报表合规与工作台 | 部分完成 | 模板回落消除、legacy 模式迁移+回填、顶部单位/身份/期间切换条、二次输入确认（替换全部 `window.confirm`）、单位×环节矩阵 | 1.3 未保存离开拦截、逐页月份输入、切换条的栏内切换 |
+| 03 审计与恢复 | 部分完成 | RWK05-A 全模块机器验收包、真实数据审计链三态篡改实证、PLT06-B 分级撤权、PLT06-D 恢复后办结、跨主版本 pg_restore 守卫 | PLT06-A/C 为产品缺口（无汇总/明细/原件三级分授） |
+| 04 税务自动化 | 部分完成 | 四税种确定性引擎、进项风控、申报包与状态机、period_runs 双库迁移+RLS、四税组合包、HTTP 入口、计提分录翻译与只读预览 | **计提凭证入账待定 A/B**、申报矩阵页、E2E、PG 端到端 |
+| 05 资金与银企直连 | 部分完成 | 回单五字段匹配、核销绑定流水行、付款内控纯函数、payment_orders 双库迁移（三权分立写进 CHECK）、服务层、HTTP、双适配器与导入预览 | 出纳/财务经理角色、落库前端、PG 实例实跑 318 |
+| 06 行业与 T+ | 部分完成 | 利润下钻分页（前后端）、来源行键绑定、深链分享、PLT05-B/C 原因码与 artifact 归属、B2 来源行键 | B1 规费批次受控记账、三家行业处理器、B7/B8 余项 |
+| 07 安全 SSO/KMS | 部分完成 | 信封加密（AES-256-GCM + 密钥版本）、五类高危动作 AAL2 守卫+开关、租户配额（双库+RLS）、CI 凭据扫描与 bandit 高严重度门禁 | OIDC IdP 替身、云 KMS 适配器、配额另三条链路接线、前端二步验证引导 |
+| 08 云原生可观测 | 部分完成 | 结构化故障日志（脱敏、SQLSTATE、栈底定位）、Prometheus 指标（低基数、令牌保护）、三处业务 SLA 计数 | OTLP/trace 透传、告警规则与 Runbook、Redis/S3、投影延迟 |
+| 09 工作流与调查助手 | **未启动（前置不满足）** | — | Batch 02 与 05 均未完成 |
+| 10 共享队列与终门 | **未启动（前置不满足）** | — | 需 01–09 全绿 |
+
+- 本轮复核证据：`scripts/check_test_env.py` 通过（36 包与 lock 一致）；八个新套件跨批回归 **77 passed**（53.66s）。
+- 阻塞清单：①计提入账 A/B 待决策（卡 04 与 06）；②需要真实外部依赖才能证明的部分（Redis/S3/OIDC IdP/PG17 四身份/云 KMS）不写成「已完成」；③其余为纯工作量缺口。
+
+## 推送前必须核查的事：生产迁移水位（2026-11-21 21:03 实测）
+
+- 实测（Supabase Management API 查 `accounting.schema_migrations`）：`max(version)=319`、`count=306`；310–319 全部在册。即已提交的 313/316–319 **已先于镜像进入生产**，不存在「代码带迁移、库没跟上」的崩溃窗口。
+- 本地未应用/未提交的只剩 `nexus_backend/migrations/postgres/320_sec07_firm_quotas.sql`（SQLite 侧 227 不涉生产）。这批如要推，先应用 320、核对台账，再推镜像。
+- 经验：判断「能不能推」不要看 git 里有没有 migrations 改动，要**直接查 max(version) 与本地最大版本比对**；靠推断会产生假警报（本轮就误报过一次）。

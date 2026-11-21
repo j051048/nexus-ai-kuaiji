@@ -3,6 +3,37 @@
 import re
 
 
+# Business actions that move money, freeze a period, publish a formal report,
+# hand review authority to someone else, or pull every original out in one go.
+# They are not "admin" endpoints, but they carry the same blast radius, so they
+# sit behind the same AAL2 gate: a stolen aal1 session must not be enough.
+HIGH_RISK_ACTIONS = (
+    r"/api/treasury/payment-orders/[^/]+/approve",
+    r"/api/b04-close/[^/]+/lock",
+    r"/api/reports/[^/]+/publish",
+    r"/api/books/[^/]+/review-delegations",
+    r"/api/firm/batch-operations/review-export",
+)
+
+
+MFA_MODES = ("off", "warn", "enforce")
+
+
+def mfa_enforcement(environ) -> str:
+    """How hard the AAL2 gate bites.
+
+    ``enforce`` rejects an aal1 session; ``warn`` lets it through and logs, so a
+    deploy cannot silently lock every user who never enrolled a second factor;
+    ``off`` disables the gate entirely (local/CI). The default is deliberately
+    ``warn``: turning enforcement on is an operations decision that needs the
+    firm's users to have MFA available first.
+    """
+    value = environ.get("ACCOUNTING_MFA_ENFORCE", "warn").strip().lower()
+    if value not in MFA_MODES:
+        raise RuntimeError("ACCOUNTING_MFA_ENFORCE 只能为 off、warn 或 enforce")
+    return value
+
+
 def requires_admin_mfa(path: str, method: str) -> bool:
     path = path.rstrip("/")
     if method == "OPTIONS":
@@ -15,6 +46,8 @@ def requires_admin_mfa(path: str, method: str) -> bool:
         return True
     if method in {"GET", "HEAD"}:
         return False
+    if any(re.fullmatch(pattern, path) for pattern in HIGH_RISK_ACTIONS):
+        return True
     return bool(
         # Legacy book creation can also initialize a company when no ID is supplied.
         path in {"/api/firms", "/api/companies", "/api/books"}

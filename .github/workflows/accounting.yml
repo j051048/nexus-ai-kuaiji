@@ -113,6 +113,33 @@ jobs:
           E2E_FRONTEND_MODE: preview
         run: npx playwright test e2e/next-p2-loading.spec.ts
 
+  security:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install security tooling
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install bandit==1.7.10 pip-audit==2.7.3
+      - name: Reject committed credentials
+        run: python scripts/check_secrets.py
+      # High severity only: the medium backlog is 287 findings and would block
+      # every PR on day one; high is the bar a release must not cross.
+      - name: Static application security scan
+        run: python -m bandit -q -lll -r nexus_backend/app
+      # Known debt: 23 GHSA advisories, all from pillow 12.3.0 (fix needs >=13.0.0).
+      # This step reports only; it becomes blocking once the pillow bump lands.
+      - name: Dependency audit
+        continue-on-error: true
+        env:
+          PYTHONUTF8: "1"
+        run: python -m pip_audit -r nexus_backend/requirements.txt --no-deps
+
   core-regression-gate:
     name: V07–V10 same-candidate dev and preview gate
     runs-on: ubuntu-24.04

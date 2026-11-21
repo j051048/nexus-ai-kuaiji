@@ -1,6 +1,7 @@
 """Local demo or PostgreSQL accounting with verified Supabase identity."""
 
 import ipaddress
+import json
 import logging
 import os
 import re
@@ -13,7 +14,7 @@ from pathlib import Path
 from urllib.parse import urlsplit, parse_qs
 
 import psycopg
-from fastapi import Depends, FastAPI, Header, Request, Query
+from fastapi import Depends, FastAPI, Header, Request, Query, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
@@ -21,7 +22,11 @@ from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from .auth import AuthSettings, AuthError, Identity, SupabaseAuthenticator
-from .auth.admin_security import allow_firm_signup, requires_admin_mfa
+from .auth.admin_security import (
+    allow_firm_signup,
+    mfa_enforcement,
+    requires_admin_mfa,
+)
 from .security.rate_limit import RateLimitMiddleware, limiter_from_environment
 from .accounting.database import Database, DatabaseCapacityError
 from .accounting.db_diagnostics import log_database_unavailable
@@ -115,6 +120,8 @@ from .observability.router import build_observability_router
 from .observability.service import FirmObservabilityService
 from .observability.value import ValueBaselineService
 from .observability.closing import ClosingRadarService
+from .observability import metrics
+from .observability.failures import failure_record, firm_of
 from .observability.insights import FirmInsightsService
 from .observability.insights_extra import FirmInsightsExtraService
 from .fsc.organization import FscOrganizationService
@@ -732,18 +739,29 @@ def create_app(
                     requires_admin_mfa(request.url.path, request.method)
                     and request.state.identity.aal != "aal2"
                 ):
-                    return JSONResponse(
-                        {
-                            "detail": "管理操作需要二次验证，请进入管理后台完成验证",
-                            "code": "admin_mfa_required",
-                        },
-                        status_code=403,
-                        headers={"Cache-Control": "no-store"},
-                    )
+                    mode = mfa_enforcement(os.environ)
+                    if mode == "enforce":
+                        return JSONResponse(
+                            {
+                                "detail": "该操作需要二次验证，请完成验证后重试",
+                                "code": "admin_mfa_required",
+                            },
+                            status_code=403,
+                            headers={"Cache-Control": "no-store"},
+                        )
+                    if mode == "warn":
+                        # Allowed on purpose: see mfa_enforcement's docstring.
+                        logger.warning(
+                            "aal2 missing for high-risk request %s %s (user=%s)",
+                            request.method,
+                            request.url.path,
+                            request.state.identity.user_id,
+                        )
         return await call_next(request)
 
     @app.middleware("http")
     async def trace_request(request: Request, call_next):
+        started = time.perf_counter()
         trace_id = request.headers.get("x-request-id", "").strip()
         if not re.fullmatch(r"[A-Za-z0-9_.:-]{1,120}", trace_id):
             trace_id = uuid4().hex
@@ -754,9 +772,17 @@ def create_app(
             # Never echo raw driver/provider errors or claim an unknown write
             # rolled back. The correlation ID is restricted to safe characters.
             logging.getLogger(__name__).error(
-                "Unhandled request failure request_id=%s class=%s",
-                trace_id,
-                type(error).__name__,
+                json.dumps(
+                    failure_record(
+                        trace_id=trace_id,
+                        method=request.method,
+                        route=request.url.path,
+                        error=error,
+                        firm_id=firm_of(request),
+                    ),
+                    ensure_ascii=False,
+                    sort_keys=True,
+                )
             )
             read_only = request.method in {"GET", "HEAD", "OPTIONS"}
             response = JSONResponse(
@@ -768,6 +794,13 @@ def create_app(
                 },
                 status_code=500,
             )
+        route = request.scope.get("route")
+        metrics.record_http(
+            request.method,
+            getattr(route, "path", "") or "unmatched",
+            response.status_code,
+            time.perf_counter() - started,
+        )
         response.headers["X-Request-Id"] = trace_id
         # Outermost middleware also covers authentication/origin early returns.
         private = "private" in {
@@ -912,6 +945,27 @@ def create_app(
             "storage": request.app.state.service.db.dialect,
             "auth": settings.mode,
         }
+
+    @app.get("/metrics", include_in_schema=False)
+    def prometheus_metrics(request: Request):
+        """Scrape endpoint: loopback or a shared token, never the open internet."""
+        client = request.client.host if request.client else ""
+        token = os.environ.get("ACCOUNTING_METRICS_TOKEN", "").strip()
+        require_token = os.environ.get("ACCOUNTING_METRICS_REQUIRE_TOKEN", "").strip() == "1"
+        supplied = request.headers.get("x-metrics-token", "")
+        # Loopback is the local/CI default; operators behind a proxy set
+        # REQUIRE_TOKEN=1 so the scrape must present the shared secret even when
+        # the request arrives from the pod's own address.
+        allowed = (is_loopback(client) and not require_token) or (
+            bool(token) and secrets.compare_digest(token, supplied)
+        )
+        if not allowed:
+            return JSONResponse({"detail": "指标端点仅限本机或携带访问令牌"}, status_code=403)
+        return Response(
+            metrics.render(),
+            media_type="text/plain; version=0.0.4; charset=utf-8",
+            headers={"Cache-Control": "no-store"},
+        )
 
     @app.get("/api/session")
     async def session(request: Request, persona: str = "accountant"):

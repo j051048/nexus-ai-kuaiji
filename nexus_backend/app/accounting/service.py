@@ -16,6 +16,7 @@ from .access import AccessControl
 from .review_policy import ReviewPolicyService
 from .account_roles import AccountRoleService
 from .queries import health_cte, book_filter, page_bounds, inactive_source_sql
+from ..security.quotas import QuotaService
 from .models import (
     ApprovalRequest,
     BookCreate,
@@ -852,6 +853,9 @@ class AccountingService:
         ) as conn:
             book = self._book(conn, actor, book_id, edit=True)
             self._open(book)
+            # Same transaction as the insert on purpose: a quota that is checked
+            # on one connection and written on another can be raced past.
+            QuotaService(self.db, self.access).ensure_import_rows(conn, actor, len(request.rows))
             imported = duplicates = 0
             if request.namespace:
                 result = self._bank_import_guard().import_in_transaction(conn, actor, book, request)

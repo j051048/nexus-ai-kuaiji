@@ -13,6 +13,7 @@ from datetime import date
 from uuid import uuid4
 
 from ..accounting.access import AccessControl
+from ..observability import metrics
 from ..accounting.domain import AccountingError
 from ..accounting.invariants import (
     MAX_CENTS,
@@ -538,6 +539,7 @@ class TaxWorkpaperService:
                     "note": str(reason or "")[:200],
                 },
             )
+        metrics.tax_workpaper_generated()
         return self.get(actor, book_id, workpaper_id)
 
     def review(self, actor, book_id, workpaper_id, reason, expected_version):

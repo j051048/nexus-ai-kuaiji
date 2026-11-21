@@ -7,6 +7,7 @@ from uuid import uuid4
 
 from ..accounting.access import AccessControl
 from ..accounting.database import Database
+from ..observability import metrics
 from ..accounting.domain import AccountingError
 from ..accounting.domain import Actor
 from .payments import PaymentRuleError, advance, check_separation, needs_escalation, same_payment
@@ -165,7 +166,9 @@ class PaymentService:
             actor=actor, company_id=company_id, write=True, write_scope="company"
         ) as conn:
             order = self._order(conn, actor, order_id)
-            return self._apply(conn, actor, order, target, reason)
+            view = self._apply(conn, actor, order, target, reason)
+        metrics.payment_state(target)
+        return view
 
     def _apply(self, conn, actor: Actor, order: dict, target: str, reason: str) -> dict:
         try:

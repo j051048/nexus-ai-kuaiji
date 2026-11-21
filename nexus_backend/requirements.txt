@@ -9,6 +9,8 @@ pytest>=9,<10
 psycopg[binary]>=3.2,<4
 psycopg_pool>=3.2,<4
 defusedxml==0.7.1
+# 信封加密直接用 AES-GCM；PyJWT[crypto] 已间接拉入，这里显式声明避免被别的依赖顺带升级/移除。
+cryptography>=43,<52
 PyJWT[crypto]>=2.10,<3
 python-dotenv>=1.0,<2
 python-multipart>=0.0.22,<0.1
