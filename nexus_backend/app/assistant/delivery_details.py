@@ -23,7 +23,7 @@ BANK_NEXT = (
 )
 
 
-def _approved_standard(conn, book_id):
+def _approved_standard(db, conn, book_id):
     """Resolve the approved accounting standard and its report template.
 
     No fallback: an unassessed policy yields empty strings, because naming a
@@ -31,12 +31,17 @@ def _approved_standard(conn, book_id):
     """
     from app.reports.service import ReportService
 
-    row = conn.execute(
-        "SELECT p.standard_kind FROM accounting_policies p "
-        "JOIN ledger_periods lp ON lp.ledger_id=p.ledger_id "
-        "WHERE lp.book_id=? AND p.status='active' ORDER BY p.version DESC LIMIT 1",
-        (book_id,),
-    ).fetchone()
+    if getattr(db, "is_postgres", False):
+        row = conn.execute(
+            "SELECT standard_kind FROM accounting.book_active_policy(?)", (book_id,)
+        ).fetchone()
+    else:
+        row = conn.execute(
+            "SELECT p.standard_kind FROM accounting_policies p "
+            "JOIN ledger_periods lp ON lp.ledger_id=p.ledger_id "
+            "WHERE lp.book_id=? AND p.status='active' ORDER BY p.version DESC LIMIT 1",
+            (book_id,),
+        ).fetchone()
     standard = row["standard_kind"] if row else ""
     spec = ReportService.TEMPLATES.get(standard) if standard else None
     return standard, (spec["id"] if spec else "")
@@ -101,7 +106,7 @@ def collect_details(db, conn, actor, book, checks=None, *, page_kind=None, offse
         if bank is None:
             bank = sub.bank_reconciliation_in_transaction(conn, actor, book["id"], trial=trial)
         adjustments = unresolved_adjustments(conn, book["id"])
-        standard_kind, template_id = _approved_standard(conn, book["id"])
+        standard_kind, template_id = _approved_standard(db, conn, book["id"])
         dependencies = close_dependencies(conn, book["id"], template_id)
     except AccountingError as error:
         if error.status != 409:

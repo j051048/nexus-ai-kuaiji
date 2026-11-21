@@ -24,7 +24,7 @@ class TaxPeriodService:
 
     def _company(self, actor, book_id):
         """Resolve the company up front so the write takes a company-scoped lock."""
-        with self.db.transaction() as conn:
+        with self.db.transaction(actor=actor) as conn:
             return self.access.book(conn, actor, book_id, "read")["company_id"]
 
     def record(self, actor, book_id, *, period, kind, payload, source_digest):
@@ -68,7 +68,7 @@ class TaxPeriodService:
         return self.get(actor, book_id, run_id)
 
     def list(self, actor, book_id, *, period=None):
-        with self.db.transaction() as conn:
+        with self.db.transaction(actor=actor) as conn:
             book = self.access.book(conn, actor, book_id, "read")
             sql = "SELECT * FROM tax_period_runs WHERE book_id=?"
             args = [book["id"]]
@@ -79,7 +79,7 @@ class TaxPeriodService:
         return [self._json(row) for row in rows]
 
     def get(self, actor, book_id, run_id):
-        with self.db.transaction() as conn:
+        with self.db.transaction(actor=actor) as conn:
             book = self.access.book(conn, actor, book_id, "read")
             row = conn.execute(
                 "SELECT * FROM tax_period_runs WHERE id=? AND book_id=?",
@@ -116,7 +116,8 @@ class TaxPeriodService:
 
     def _json(self, row):
         data = dict(row)
-        data["payload"] = json.loads(data.pop("payload_json"))
+        raw_payload = data.pop("payload_json")
+        data["payload"] = json.loads(raw_payload) if isinstance(raw_payload, str) else raw_payload
         data["total_cents"] = int(data["total_cents"])
         data["version"] = int(data["version"])
         return data

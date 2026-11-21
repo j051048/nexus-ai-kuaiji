@@ -66,11 +66,11 @@ class PaymentService:
 
     # -- commands --------------------------------------------------------
     def _company(self, actor, book_id):
-        with self.db.transaction() as conn:
+        with self.db.transaction(actor=actor) as conn:
             return self._book(conn, actor, book_id, write=False)["company_id"]
 
     def _company_for_order(self, actor, order_id):
-        with self.db.transaction() as conn:
+        with self.db.transaction(actor=actor) as conn:
             return self._order(conn, actor, order_id)["company_id"]
 
     def create(
