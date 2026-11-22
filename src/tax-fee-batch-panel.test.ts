@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { canPostBatch } from './TaxFeeBatchPanel';
+import { canPostBatch, chainSummary, segmentState } from './TaxFeeBatchPanel';
+import type { FeeChain } from './TaxFeeBatchPanel';
 
 const reviewed = {
   id: 'batch-1',
@@ -63,5 +64,51 @@ describe('fee batch posting gate', () => {
     expect(canPostBatch({ ...reviewed, status: 'invalidated' })).toBe(false);
     expect(canPostBatch({ ...reviewed, draft: null })).toBe(false);
     expect(canPostBatch(null)).toBe(false);
+  });
+});
+
+describe('fee chain drawer', () => {
+  const chain: FeeChain = {
+    book_id: 'book-1',
+    period: '2026-10',
+    batch_id: 'batch-1',
+    segments: [
+      { key: 'batch', label: '规费批次', state: 'present', count: 1, items: [], reason: '' },
+      {
+        key: 'receivables',
+        label: '驾驶员应收',
+        state: 'present',
+        count: 3,
+        items: [],
+        reason: '',
+      },
+      {
+        key: 'vouchers',
+        label: '正式凭证',
+        state: 'missing',
+        count: 0,
+        items: [],
+        reason: '银行来源草稿尚未记账（或尚未生成）',
+      },
+    ],
+    gaps: ['正式凭证：银行来源草稿尚未记账（或尚未生成）'],
+    pending_drafts: [{ draft_id: 'draft-1', draft_status: 'draft' }],
+    readonly: true,
+    note: '只读链路视图',
+  };
+
+  it('states each segment and never claims a missing one is ready', () => {
+    expect(segmentState('present')).toBe('已就绪');
+    expect(segmentState('missing')).toBe('缺失');
+    expect(segmentState('degraded')).toBe('degraded');
+  });
+
+  it('summarises gaps with their reasons instead of hiding them in the table', () => {
+    expect(chainSummary(chain)).toContain('2/3 段已就绪');
+    expect(chainSummary(chain)).toContain('尚未记账');
+    expect(chainSummary({ ...chain, segments: chain.segments.slice(0, 2), gaps: [] })).toBe(
+      '2/2 段已就绪',
+    );
+    expect(chainSummary(null)).toBe('');
   });
 });

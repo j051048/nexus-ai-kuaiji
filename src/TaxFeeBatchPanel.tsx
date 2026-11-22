@@ -118,6 +118,39 @@ const labels: Record<string, string> = {
   invalidated: '已失效',
 };
 
+type ChainSegment = {
+  key: string;
+  label: string;
+  state: 'present' | 'missing';
+  count: number;
+  items: Record<string, unknown>[];
+  reason: string;
+};
+export type FeeChain = {
+  book_id: string;
+  period: string;
+  batch_id: string;
+  segments: ChainSegment[];
+  gaps: string[];
+  pending_drafts: { draft_id: string; draft_status: string }[];
+  readonly: true;
+  note: string;
+};
+
+/** 只读链路视图的段状态文案：present/missing 之外的值原样显示，不猜。 */
+export const segmentState = (state: string) =>
+  state === 'present' ? '已就绪' : state === 'missing' ? '缺失' : state;
+
+/** 缺失段摘要：链路视图的全部价值就在这一行，别让它只出现在详情里。 */
+export const chainSummary = (chain: FeeChain | null) => {
+  if (!chain) return '';
+  const ready = chain.segments.filter((item) => item.state === 'present').length;
+  const gaps = chain.segments.length - ready;
+  return gaps
+    ? `${ready}/${chain.segments.length} 段已就绪，缺 ${gaps} 段：${chain.gaps.join('；')}`
+    : `${chain.segments.length}/${chain.segments.length} 段已就绪`;
+};
+
 const monthEnd = (period: string) => {
   const [year, month] = period.split('-').map(Number);
   return `${period}-${new Date(Date.UTC(year, month, 0)).getUTCDate()}`;
@@ -174,6 +207,7 @@ function ScopedTaxFeeBatchPanel({
   const [allocBasis, setAllocBasis] = useState('');
   const [selected, setSelected] = useState<string[]>([]);
   const [batch, setBatch] = useState<Batch | null>(null);
+  const [chain, setChain] = useState<FeeChain | null>(null);
   const [policyVersion, setPolicyVersion] = useState('fee-v1');
   const [receivable, setReceivable] = useState('1122');
   const [revenue, setRevenue] = useState('6001');
@@ -469,6 +503,19 @@ function ScopedTaxFeeBatchPanel({
       );
     } finally {
       setBusy(false);
+    }
+  }
+  async function loadChain() {
+    if (!batch) return;
+    try {
+      const data = await api<FeeChain>(
+        `/tax/books/${encodeURIComponent(bookId)}/fee-chain/${encodeURIComponent(batch.id)}`,
+        session,
+      );
+      setChain(data);
+    } catch (error) {
+      setChain(null);
+      setFailure(error instanceof ApiError ? error.message : '业务链路读取失败。');
     }
   }
   async function invalidate() {
@@ -998,6 +1045,50 @@ function ScopedTaxFeeBatchPanel({
             </div>
           )}
         </div>
+      )}
+      {batch && (
+        <details
+          className="tax-fee-history"
+          onToggle={(event) => event.currentTarget.open && void loadChain()}
+        >
+          <summary>查看业务链路（只读：批次 → 应收 → 银行核销 → 凭证 → 报表）</summary>
+          {chain ? (
+            <>
+              <p className="tax-fee-note">{chainSummary(chain)}</p>
+              <div className="tax-fee-table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>环节</th>
+                      <th>状态</th>
+                      <th>条数</th>
+                      <th>说明</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {chain.segments.map((segment) => (
+                      <tr key={segment.key}>
+                        <td>{segment.label}</td>
+                        <td>{segmentState(segment.state)}</td>
+                        <td>{segment.count}</td>
+                        <td>{segment.reason || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {chain.pending_drafts.length ? (
+                <p className="tax-fee-note">
+                  尚未记账的银行草稿：
+                  {chain.pending_drafts.map((item) => item.draft_id.slice(0, 8)).join('、')}
+                </p>
+              ) : null}
+              <p className="tax-fee-note">{chain.note}</p>
+            </>
+          ) : (
+            <p className="tax-fee-note">展开后读取；缺段会写清缺在哪，不会自动补凭证。</p>
+          )}
+        </details>
       )}
       <details className="tax-fee-history">
         <summary>历史批次（{batches.length}）</summary>

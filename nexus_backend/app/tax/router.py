@@ -16,6 +16,7 @@ from .context import tax_context
 from .pilot import PilotBoundaryService
 from .sources import TaxSourceAdapter
 from .fees import TaxFeeService
+from .chain import FeeChainView
 from .variances import FeeVarianceService
 from .packages import (
     PackageConsume,
@@ -945,6 +946,19 @@ def build_tax_router(actor_dependency):
         fees=Depends(fee_service),
     ):
         return fees.list_bank_sources(current, book_id, period, direction)
+
+    def chain_view(request: Request) -> FeeChainView:
+        return request.app.state.fee_chain
+
+    @router.get("/books/{book_id}/fee-chain/{batch_id}")
+    def fee_chain(
+        book_id: str,
+        batch_id: str,
+        current=Depends(actor_dependency),
+        chains: FeeChainView = Depends(chain_view),
+    ):
+        """只读：规费批次 → 应收 → 银行核销 → 正式凭证 → 报表快照。"""
+        return chains.chain(current, book_id, batch_id)
 
     @router.post("/books/{book_id}/fee-receivables/{receivable_id}/refunds")
     def refund_fee_receivable(

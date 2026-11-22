@@ -4,6 +4,7 @@ from .advertising import AdvertisingDraftWrite
 from .contracts import ContractConfirm, ContractWrite
 from .evidence import EvidenceEvaluate, EvidencePolicyWrite, EvidenceRequest, PolicyConfirm
 from .imports import ImportConfirm, ImportEnvelopeWrite
+from .industry import IndustryDraftWrite
 from .profiles import ProfileConfirm, ProfileWrite
 
 
@@ -190,5 +191,55 @@ def build_fsc_router(actor_dependency):
     @router.get("/books/{book_id}/advertising/drafts")
     def advertising_drafts(request: Request, book_id: str, actor=Depends(actor_dependency)):
         return advertising(request).list(actor, book_id)
+
+    def property_service(request: Request):
+        return request.app.state.fsc_property
+
+    def trade_inventory(request: Request):
+        return request.app.state.fsc_trade
+
+    def hospital_summary(request: Request):
+        return request.app.state.fsc_hospital
+
+    @router.post("/books/{book_id}/property/drafts")
+    def property_drafts(
+        request: Request,
+        book_id: str,
+        payload: IndustryDraftWrite,
+        kind: str = "property_amortization",
+        actor=Depends(actor_dependency),
+    ):
+        return property_service(request).generate(actor, book_id, payload, kind=kind)
+
+    @router.get("/books/{book_id}/property/drafts")
+    def list_property_drafts(request: Request, book_id: str, actor=Depends(actor_dependency)):
+        return property_service(request).list(actor, book_id)
+
+    @router.post("/books/{book_id}/trade/drafts")
+    def trade_drafts(
+        request: Request,
+        book_id: str,
+        payload: IndustryDraftWrite,
+        kind: str = "trade_purchase_match",
+        actor=Depends(actor_dependency),
+    ):
+        return trade_inventory(request).generate(actor, book_id, payload, kind=kind)
+
+    @router.get("/books/{book_id}/trade/drafts")
+    def list_trade_drafts(request: Request, book_id: str, actor=Depends(actor_dependency)):
+        return trade_inventory(request).list(actor, book_id)
+
+    @router.post("/books/{book_id}/hospital/drafts")
+    def hospital_drafts(
+        request: Request,
+        book_id: str,
+        payload: IndustryDraftWrite,
+        actor=Depends(actor_dependency),
+    ):
+        return hospital_summary(request).generate(actor, book_id, payload)
+
+    @router.get("/books/{book_id}/hospital/drafts")
+    def list_hospital_drafts(request: Request, book_id: str, actor=Depends(actor_dependency)):
+        return hospital_summary(request).list(actor, book_id)
 
     return router

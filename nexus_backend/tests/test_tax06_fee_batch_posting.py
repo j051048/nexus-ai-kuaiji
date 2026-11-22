@@ -137,7 +137,7 @@ def _frozen_opening(case):
     opening.freeze_version(
         admin, version_id, OpeningCommand(expected_version=1, reason="冻结规费记账期初")
     )
-    for row in (receivable, revenue):
+    for row in (bank, receivable, revenue):
         opening.create_mapping(
             case.manager,
             MappingCreate(

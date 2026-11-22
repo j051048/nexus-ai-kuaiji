@@ -788,3 +788,134 @@
 3. **恢复授权审计补齐（`nexus_backend/app/treasury/roles.py`）**：在撤销后重新授予（`state='active'` 恢复分支）补写 `payment_role.grant` 审计事件，与首次授予保持一致。
 4. **远端 Supabase 生产库（`qgzketopnkzquotddwha`）同步实证**：已依次应用 `321_b05_payment_roles.sql` 与 `322_b05_bank_statement_persist.sql` 并写入 `accounting.schema_migrations`（`total_migrations=309`、`latest_version=322`），实测验证 `book_payment_roles` 存在且 `accounting_app` 仅具备 `SELECT/INSERT/UPDATE`（禁 `DELETE`）、`batch2_company_write_gate` 触发器生效、`bank_statement_lines.external_ref` 就绪。
 
+
+## Step 3a · Batch 06 三家行业专用台账处理器（完成）
+
+- 工程状态：**完成**（三家处理器 + 患者隐私红线 + 双库迁移 `323`/`230` + 13 例测试全部落地）
+- 外部状态：无需外部
+- 与提示词要求的差异：一致（沿用 `contracts.py` 既有 `PROCESSORS`/`CAPABILITIES` 枚举，未重命名任何既有契约）
+
+### 迁移（双库，均 `-- compatibility: incremental`）
+
+- `nexus_backend/migrations/postgres/323_b06_industry_drafts.sql` / `sqlite/230_b06_industry_drafts.sql`：新增 `fsc_industry_drafts`，用 `processor_code + kind` 判别三种产物（`property_amortization` / `grocery_movement` / `trade_purchase_match` / `trade_cost_carry` / `hospital_department_summary`），`UNIQUE(envelope_id,contract_id,processor_code,kind)` 保证同一信封同一契约同一产物只有一份草稿；PG 侧 `ENABLE + FORCE RLS`、读写分离策略（读 `company_visible`，写还要求 `created_by=actor_user()`）、`REVOKE ALL ... FROM PUBLIC, accounting_worker, accounting_system, accounting_projection` 后显式 `GRANT SELECT,INSERT TO accounting_app`、挂 `batch2_company_write_gate`；SQLite 侧禁改禁删触发器（草稿只能追加）。
+- **为什么用一张表而不是三张**：三家的产物形状完全一致（绑定信封 + 契约 + 行号 + fingerprint 的可复核投影），拆三张只会把同一份 RLS/策略/写门抄三遍、把漏挂一处门禁的风险放大三倍；`processor_code` + `kind` 的 CHECK 白名单与唯一键给出的约束是等价的。这是取舍，不是图省事。
+
+### 三家处理器（`nexus_backend/app/fsc/industry.py`）
+
+共同纪律沿用 `AdvertisingRevenueService`：只消费**已确认**信封、必须有一条**生效**的同处理器契约、产物带 `fingerprint`（信封指纹 + 契约指纹 + 源版本 + 行明细）、同键重放、信封或契约失效即 `stale`、全程整数分、不写凭证不生成应收。
+
+1. **物业与食材集采 `PropertyServiceDrafts`**：
+   - `property_amortization`：只收 `target_kind='service_contract'` 的摊销行，按合同汇总金额并保留来源行号与最大摊销月数；缺目标/负金额/非法月数 422。
+   - `grocery_movement`：按动作（收货/退货/价差）分组，退货取负号；收货与退货必须 `quantity_milli>0` 且 `unit_price_cents` 为非负整数分，并校验 `amount_cents ≈ round(单价×数量/1000)`（容差 1 分）——**不允许用金额倒推单价**；价差行可数量为 0。跨期行在信封入口即 422。
+2. **贸易存货 `TradeInventoryDrafts`**：
+   - 三单核对：同一 `match_key` 必须同时有 contract / inbound（可多批到货，按合计参与核对）/ invoice / outbound；缺一类 409「三单核对不全」，合同/入库合计/发票的数量或金额不一致 409「三单核对不一致」，出库数量必须 > 0。
+   - 成本结转：计价方法**只能取自生效契约的 `evidence_policy.inventory_costing_method`**，取值必须为 `moving_weighted_average` / `fifo`，否则**直接 409**「企业尚未批准存货计价方法」并且不留下任何草稿（有断言）。`moving_weighted_average` 按入库合计加权，`fifo` 按入库批行号先进先出逐批取数，出库超过入库合计 409。
+3. **内部医院 `HospitalSummaryDrafts`**：只收 `target_kind='department'` 的科室汇总，按科室汇总金额与工作量；非科室目标 422、负金额 422；生成前对每一行再跑一次隐私拦截（第二层）。
+
+### 患者隐私红线（`nexus_backend/app/fsc/privacy.py`）
+
+- 拦截器 `assert_no_patient_privacy()` 挂在 **`FscImportService.import_envelope()` 的第一行**——早于任何事务与任何写入，因此不存在「先落盘再回滚、日志/审计已经带过敏感值」的窗口；`HospitalSummaryDrafts.generate()` 再校验一次（纵深防御，覆盖历史数据或迁移脚本绕过入口的情形）。
+- 判定口径：字段名命中 `patient_name/patient_id/id_card/medical_record/visit_card/diagnosis/insurance_detail/患者/病人/病历/就诊卡/身份证/医保明细/诊断`（聚合计数类后缀 `_count/_total/_sum/quantity/amount/cents` 豁免，避免误伤「患者人次」这类汇总数）；值命中 18 位公民身份号码正则（前后不紧邻数字）或 `身份证号/病历号/就诊卡号/患者姓名/医保明细` 等字样即拒收。命中位置写进错误文案，**命中值一律不回显**。
+- 拒收为 **422 整包**，且对**任何来源**都生效——把患者明细伪装成 `property_service` 来源同样被拦。
+
+### 测试（`nexus_backend/tests/test_fsc06_industry_processors.py` **13 passed**）
+
+- 物业正例：摊销两合同合计 500.00、食材三动作（价差 +15.00 / 收货 +200.00 / 退货 −50.00）净额 165.00，重复生成 `replayed=True` 且 id 与 fingerprint 一致。
+- 物业阻断：负单价 422「单价」、金额与单价×数量不一致 422、跨期行在信封 422；未确认信封 409、无生效契约 409。
+- 贸易：未批准计价方法 409「计价方法」且草稿表为空；同一批数据下 `moving_weighted_average=750.00` 与 `fifo=800.00` 各自正确（先建契约再失效、逐个方法验证）；缺发票 409「三单核对不全」、发票金额差 1 分 409「不一致」。
+- 医院：两科室汇总（内科 2000.00/50、外科 600.00/15）合计 2600.00；绕过入口手工插入含「患者姓名」的已确认信封后，处理器仍 422 且文案不含患者姓名。
+- 隐私强负向 5 组参数化（`patient_name` / `id_card` / `病历号` / `就诊卡号` / 摘要里的身份证号）：均 422、文案含「整包已拒收」但**不含患者姓名与身份证号**、`fsc_import_envelopes` / `fsc_import_envelope_events` / `audit_events` / `fsc_industry_drafts` 四张表计数与调用前完全一致（0 落盘）、`caplog` 中不含患者姓名/身份证号/病历号（0 日志泄漏）。
+- 伪装来源：把身份证号写进 `property_service` 来源的备注，同样 422 且零落盘。
+
+### Step 3a 门禁（真实输出）
+
+| 命令 | 结果 |
+| --- | --- |
+| `pytest test_fsc06_industry_processors.py` | **13 passed** |
+| `pytest -k fsc`（全量 FSC 域回归） | **42 passed, 15 skipped**（skip 为无 PG DSN 的 PG 用例） |
+| `pytest test_migration_structure.py test_pg_sql_hygiene.py test_write_scope_baseline.py` | **12 passed** |
+| `ruff check nexus_backend/app services/api_gateway scripts` | `All checks passed!` |
+| `ruff format --check nexus_backend/app services/api_gateway scripts` | `466 files already formatted` |
+
+## Step 3b 精确起点（未开始）
+
+1. **B8 只读统一链路视图**：在 `app/tax/fees.py` 旁新增只读聚合（建议 `fee_chain(actor, book_id, batch_id)`），一线串联 `tax_fee_batches → fee_receivable_items → fee_receivable_allocations（含 317 的 bank_statement_line_id）→ bank_source 的 draft → voucher_sources(source_kind='draft') 对应正式凭证 → 当期报表快照`，逐段给出「有/缺失」与 evidence ref；HTTP 建议 `GET /api/tax/books/{book_id}/fee-chain/{batch_id}`；前端在 `src/TaxFeeBatchPanel.tsx`（已是懒加载块）里用 `<details>` 折叠查看，**复用 `tax-fee-*` 既有类，禁止新增首屏 CSS**。
+2. **PLT05-C/D/E**：先读 `docs/pilot/PLT05_EXTERNAL_ROUNDTRIP.md` 与 `app/integrations/service.py`；C 为「仅确认失败且仍有权限的凭证可重走预览补导」，D 为「状态未知禁止重发」，E 为「跨期/错法人拦截 + 集团汇总与月结预检接入外部正式账三态提示」。
+3. Step 4（Batch 02 交互、Batch 07 三条配额接线、Batch 08 告警与 Runbook）尚未开始，起点见本文档 Step 4 相关条目与 `docs/upgrade_85/UPG02/07/08`。
+
+## Step 3b-1 · Batch 06 B8 规费链路只读统一视图（完成）
+
+- 工程状态：**完成**
+- 外部状态：无需外部
+- 与提示词要求的差异：一致（只读聚合 API + 懒加载前端折叠入口，未增加首屏 JS/CSS）
+
+### 后端 `nexus_backend/app/tax/chain.py`
+
+- `FeeChainView.chain(actor, book_id, batch_id)` 在**一个只读事务**里串联六段：
+  `tax_fee_batches`（批次）→ `fee_receivable_items`（驾驶员应收）→ `fee_receivable_allocations`
+  （核销，含 317 的 `bank_statement_line_id`）→ `bank_statement_lines`（流水行）→
+  `sources JOIN drafts LEFT JOIN voucher_sources/vouchers`（正式凭证）→ `report_runs`（报表快照）。
+- 每一段返回 `{key,label,state:present|missing,count,items,reason}`；缺失段必须写清原因
+  （「批次尚未复核，驾驶员应收还未生成」/「还没有登记任何银行到账核销」/「核销没有绑定银行流水行…」/
+  「银行来源草稿尚未记账（或尚未生成）」/「本期还没有报表运行记录」），并在 `gaps` 里汇总。
+  另返回 `pending_drafts`（未记账的银行草稿清单）与固定 `readonly: true`。
+- **不做推断连接**：段与段之间只用真实外键/证据引用（`bank_source_id`、`bank_statement_line_id`、
+  `voucher_sources.source_kind='draft'`），不按金额相近「猜」匹配——那会把两笔相似业务连成假链路。
+- HTTP：`GET /api/tax/books/{book_id}/fee-chain/{batch_id}`；跨账套批次 404。
+
+### 前端（`src/TaxFeeBatchPanel.tsx`，已在懒加载块内）
+
+- 批次摘要下新增 `<details className="tax-fee-history">`「查看业务链路（只读：批次 → 应收 → 银行核销 → 凭证 → 报表）」，展开时才请求链路；表格列出「环节 / 状态 / 条数 / 说明」，并在标题行用 `chainSummary()` 给出「N/M 段已就绪，缺 K 段：…」；未记账银行草稿单列。
+- 纯函数 `segmentState()` / `chainSummary()` 导出以便单测；**零新增 CSS**（复用 `tax-fee-history` / `tax-fee-note` / `tax-fee-table-scroll`），生产包 `initial` 闭包不变。
+
+### 测试
+
+| 层 | 文件 | 结果 |
+| --- | --- | --- |
+| 后端链路 | `nexus_backend/tests/test_b06_fee_chain.py` | **3 passed** |
+| 前端单测 | `src/tax-fee-batch-panel.test.ts` | **8 passed**（新增段状态与缺失摘要两组） |
+
+- 链路用例：六段顺序与状态、核销绑定的 `bank_statement_line_id` 出现在流水行段、未记账时凭证段 `missing` 且 `pending_drafts` 点名、`gaps` 恰为 2 条；银行草稿经独立复核并 `post_draft` 后凭证段转 `present` 且 `pending_drafts` 清空；跨账套 404。
+- 顺带修正夹具：`test_tax06_fee_batch_posting.py::_frozen_opening` 补上 `1002` 科目映射（原夹具只映射 1122/6001，导致银行草稿无法记账；只增映射，不改任何断言）。
+
+### Step 3b-1 门禁（真实输出）
+
+| 命令 | 结果 |
+| --- | --- |
+| `scripts/check_migration_idempotency.py` | exit 0 |
+| `scripts/check_secrets.py` | `no secrets found` |
+| `uvx ruff==0.17.0 check nexus_backend/app services/api_gateway scripts` | `All checks passed!` |
+| `uvx ruff==0.17.0 format --check nexus_backend/app services/api_gateway scripts` | `467 files already formatted` |
+| `pytest test_stage25_assistant_efficiency.py test_stage19_request_reads.py` | **14 passed**（AccessControl.book 仍为单条 SELECT，未触发 SQL 预算回归） |
+| `pytest test_b06_fee_chain.py test_tax06_fee_batch_posting.py` | **6 passed** |
+| `pytest test_migration_structure.py test_pg_sql_hygiene.py test_write_scope_baseline.py` | **12 passed** |
+| `npm run typecheck / lint / build` | 全部 exit 0（✓ built in 3.54s） |
+| `npm test` | **163 files / 1467 passed** |
+| `npm run test:frontend-budget` | `status: passed`、`violations: []`（initialJs 567,460/570,000、initialGzip 175,881/176,000、initialCss 98,906/110,000、homeJs 601,201/625,000、homeGzip 189,247/195,000、homeCss 144,715/145,000） |
+
+## Step 3b-2 精确起点（未开始）
+
+**PLT05-C/D/E**（见 `docs/pilot/PLT05_EXTERNAL_ROUNDTRIP.md` 与 `app/integrations/service.py`）：
+
+1. **C**：仅「确认失败 + 当前仍有权限」的凭证可重走预览补导；重走前重新取权限与来源指纹（撤权后立即 403/404）。
+2. **D**：状态 `unknown` 一律禁止重发，必须人工核定回执终态（现有 N03 围栏需与预览补导入口打通，避免从补导旁路绕过）。
+3. **E**：跨期与错法人严格拦截；集团汇总与月结预检接入「外部正式账三态」（未接入 / 已接入一致 / 已接入有差异）提示。
+4. 每项都要补单测与回归；参照既有 `test_plt05_return_import.py` / `test_plt05_return_http.py` 的断言风格。
+
+## Step 4 精确起点（未开始）
+
+- **4a Batch 02**：`src/WorkspaceContextBar.tsx` 切换单位/期间要接入「未保存离开拦截 + 在途请求中止」；逐页清理与顶部重复的月份输入（需在台账列出逐页移除/保留清单）；E2E 覆盖延迟响应防串数、不可逆锁期二次确认、`A` 键 400ms 防误触。
+- **4b Batch 07**：`QuotaService.ensure_daily_jobs`（异步入队）、`ensure_storage`（原件上传）、`ensure_concurrent`（请求级）三条接线，沿用「事务内校验 + 结构化告警日志、不写审计表」的既有取舍。
+- **4c Batch 08**：新增 `app/observability/alerting.py`（Webhook/钉钉/企业微信负载、指纹去重、静默窗口、退避重试，测试只用本地桩）+ `docs/ops/PRODUCTION_RUNBOOK.md`（500 故障秒级定位、连接池打满与慢查询、银行/税局 unknown 冻结、PG 备份还原与跨版本回滚检查表）。
+
+### Step 3a + Step 3b-1 独立验收加固与远端 PostgreSQL 同步（封账基线）
+
+1. **隐私拦截器安全漏洞修复（`nexus_backend/app/fsc/privacy.py`）**：
+   - 修复原实现中“敏感词（如 `医保明细`）若同时伴随 15 位数字会被错误 `continue` 放行”的绕过漏洞，以及 15 位旧版身份证号在身份键语境下未被拦截的漏检问题；
+   - 收紧键名后缀豁免，仅对宽泛词（`patient/患者/病人`）的纯数字计数后缀（`count/qty/quantity`）放行，强标识词（身份证/病历/就诊卡/诊断/医保明细）与非数字取值一律不豁免；补齐列表内原始字符串元素扫描；新增 4 组绕过负向测试 + `patient_count=30` 合法计数正例。
+2. **贸易存货移动加权法负库存阻断（`nexus_backend/app/fsc/industry.py`）**：`moving_weighted_average` 分支补齐 `required > total_quantity` 拦截（409），与 `fifo` 分支一致禁止超库存结转，并新增回归用例。
+3. **B8 规费链路视图衔接 B1 批次过账凭证（`nexus_backend/app/tax/chain.py`）**：`vouchers` 段同时串联 `batch.draft_id`（`source_role="fee_batch"`）与银行核销来源草稿（`source_role="bank_receipt"`）过账生成的正式凭证，保留 `pending_drafts` 既有口径，新增 B1 过账可见性测试。
+4. **PostgreSQL 323 纵深加固与远端 Supabase 生产库（`qgzketopnkzquotddwha`）同步实证**：
+   - `nexus_backend/migrations/postgres/323_b06_industry_drafts.sql` 补齐 6 条外键约束，将 `SELECT`/`INSERT` RLS 策略收紧至 `firm_id=actor_firm() AND company_visible(company_id)` + `book_allowed(book_id)` / `book_review_allowed(book_id)`，并补齐 `fsc_industry_drafts_append_only` 禁改禁删触发器（与 SQLite `230` 对齐）。
+   - 已应用至远端生产库并实测验证：`total_migrations=310`、`latest_version=323`、`checksum=9dd47a92bbfc9d1d201e4283fa7be5dc3966933d1dbcdee0cf57f8db80fb9ff4`、`rls_enabled=true`、`force_rls=true`、`policy_count=2`、`trigger_count=2`、`fk_count=6`、`accounting_app` 仅具 `SELECT/INSERT`（禁 `UPDATE/DELETE`）。
+

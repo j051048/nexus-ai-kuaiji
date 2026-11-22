@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 
 from ..accounting.access import AccessControl
 from ..accounting.domain import AccountingError
+from .privacy import assert_no_patient_privacy
 
 DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 HEX = re.compile(r"^[0-9a-f]{64}$")
@@ -67,6 +68,16 @@ class FscImportService:
         self.access = access or AccessControl()
 
     def import_envelope(self, actor, book_id: str, request: ImportEnvelopeWrite):
+        # 患者隐私红线必须在**开事务写库之前**判定：一旦落库再回滚，日志、审计
+        # 与信封事件都可能已经带着敏感值走了一遭。这里是整包拒收的唯一入口，
+        # 处理器侧还会再校验一次（纵深防御，不是重复劳动）。
+        if request.source_system == "hospital_summary" or request.source_object == (
+            "department_summary"
+        ):
+            assert_no_patient_privacy(request.model_dump(), subject="内部医院汇总导入")
+        else:
+            # 其它域也扫身份号码：把患者明细伪装成别的来源同样必须拒收。
+            assert_no_patient_privacy(request.model_dump(), subject="行业台账导入")
         if not isinstance(request.source_version, int) or request.source_version < 1:
             raise AccountingError("来源版本必须为正整数", 422)
         for field_name in (

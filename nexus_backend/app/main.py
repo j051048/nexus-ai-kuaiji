@@ -129,6 +129,7 @@ from .fsc.profiles import FscProfileService
 from .fsc.contracts import FscContractService
 from .scheduler.service import SchedulerService
 from .fsc.advertising import AdvertisingRevenueService
+from .fsc.industry import HospitalSummaryDrafts, PropertyServiceDrafts, TradeInventoryDrafts
 from .fsc.imports import FscImportService
 from .fsc.evidence import FscEvidenceService
 from .fsc.router import build_fsc_router
@@ -160,6 +161,7 @@ from .tax.sources import TaxSourceAdapter
 from .tax.workpaper import TaxWorkpaperService
 from .tax.policy_items import TaxPolicyItemService
 from .tax.fees import TaxFeeService
+from .tax.chain import FeeChainView
 from .tax.variances import FeeVarianceService
 from .tax.costs import RepairRateService, TaxCostService
 from .tax.packages import RepairPackageService
@@ -541,6 +543,10 @@ def create_app(
             application.state.fsc_imports = FscImportService(database)
             application.state.fsc_evidence = FscEvidenceService(database)
             application.state.fsc_advertising = AdvertisingRevenueService(database)
+            application.state.fee_chain = FeeChainView(database)
+            application.state.fsc_property = PropertyServiceDrafts(database)
+            application.state.fsc_trade = TradeInventoryDrafts(database)
+            application.state.fsc_hospital = HospitalSummaryDrafts(database)
             application.state.scheduler = SchedulerService(database)
             # Deliberately code-level off: the receive/consumer loop is not
             # complete. Enabling it requires a reviewed code change, not a
