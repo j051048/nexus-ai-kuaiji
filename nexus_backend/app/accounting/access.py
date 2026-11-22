@@ -80,7 +80,14 @@ class AccessControl:
             "SELECT b.*,m.role AS _access_firm_role,a.role AS _access_book_role,"
             "cm.role AS _access_company_role,"
             "frc.management_review_separation AS _access_separation,"
-            "rd.id AS _access_delegation_id FROM users u "
+            "rd.id AS _access_delegation_id,"
+            "EXISTS(SELECT 1 FROM book_payment_roles bpr WHERE bpr.book_id=b.id "
+            "AND bpr.firm_id=b.firm_id AND bpr.user_id=u.id AND bpr.role='cashier' "
+            "AND bpr.state='active') AS _access_pay_cashier,"
+            "EXISTS(SELECT 1 FROM book_payment_roles bpr WHERE bpr.book_id=b.id "
+            "AND bpr.firm_id=b.firm_id AND bpr.user_id=u.id AND bpr.role='treasury_approver' "
+            "AND bpr.state='active') AS _access_pay_approver "
+            "FROM users u "
             "LEFT JOIN memberships m ON m.user_id=u.id AND m.firm_id=? "
             "LEFT JOIN firm_review_controls frc ON frc.firm_id=m.firm_id "
             "LEFT JOIN (SELECT b.*,c.name AS company_name,p.status AS period_status FROM books b "
@@ -100,12 +107,21 @@ class AccessControl:
         if not book["id"]:
             raise AccountingError("账套不存在或无权访问", 404)
         delegated = bool(book["_access_delegation_id"])
+        payment_roles = tuple(
+            role
+            for role, flag in (
+                ("cashier", book["_access_pay_cashier"]),
+                ("treasury_approver", book["_access_pay_approver"]),
+            )
+            if flag
+        )
         permissions = self.permissions(
             book["_access_firm_role"],
             book["_access_book_role"],
             book["_access_company_role"],
             management_review_separation=bool(book["_access_separation"]),
             delegated_reviewer=delegated,
+            payment_roles=payment_roles,
         )
         if not permissions[capability]:
             if not permissions["read"] and capability != "manage":
@@ -146,6 +162,22 @@ class AccessControl:
         ).fetchone()
 
     @staticmethod
+    def payment_roles(conn, actor: Actor, book_id):
+        """Active payment duties for this actor on this book.
+
+        Kept apart from ledger access on purpose: a cashier may read the book and
+        initiate payments while holding no ledger editing right, and a treasury
+        approver may release funds without ever posting a voucher. Both duties
+        still require *some* book grant, so this never becomes a back door.
+        """
+        rows = conn.execute(
+            "SELECT role FROM book_payment_roles WHERE book_id=? AND firm_id=? "
+            "AND user_id=? AND state='active'",
+            (book_id, actor.firm_id, actor.user_id),
+        ).fetchall()
+        return frozenset(row["role"] for row in rows)
+
+    @staticmethod
     def permissions(
         firm_role,
         book_role,
@@ -153,6 +185,7 @@ class AccessControl:
         *,
         management_review_separation=False,
         delegated_reviewer=False,
+        payment_roles=(),
     ):
         manager = firm_role in FIRM_MANAGERS
         auto_manage = manager and not management_review_separation
@@ -180,10 +213,25 @@ class AccessControl:
             and firm_role in FIRM_REVIEWERS
             and not (manager and management_review_separation)
         )
+        # Payment duties are their own axis: an explicit grant is required, and it
+        # never widens ledger rights. Cashiers initiate, approvers release; the
+        # database still enforces maker ≠ approver.
+        cashier = "cashier" in set(payment_roles or ())
+        treasury = "treasury_approver" in set(payment_roles or ())
+        company_ledger = not firm_role and company_role in COMPANY_LEDGER_ROLES
+        pay = edit or (read and cashier and (firm_role in FIRM_EDITORS or company_ledger))
+        approve_payment = review or (
+            read
+            and treasury
+            and (firm_role in FIRM_REVIEWERS or company_ledger)
+            and not (manager and management_review_separation)
+        )
         return {
             "read": read,
             "edit": edit,
             "review": review,
             "export": export,
             "manage": manager or company_role in {"owner", "admin"},
+            "pay": pay,
+            "approve_payment": approve_payment,
         }

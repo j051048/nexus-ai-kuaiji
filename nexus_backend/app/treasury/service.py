@@ -27,7 +27,8 @@ class PaymentService:
 
     # -- helpers ---------------------------------------------------------
     def _book(self, conn, actor: Actor, book_id: str, *, write: bool) -> dict:
-        return self.access.book(conn, actor, book_id, "edit" if write else "read")
+        # 制单/提交/推进走付钱能力（出纳或账套编辑者），不是账套编辑权本身。
+        return self.access.book(conn, actor, book_id, "pay" if write else "read")
 
     def _order(self, conn, actor: Actor, order_id: str) -> dict:
         row = conn.execute("SELECT * FROM payment_orders WHERE id=?", (order_id,)).fetchone()
@@ -148,6 +149,9 @@ class PaymentService:
             actor=actor, company_id=company_id, write=True, write_scope="company"
         ) as conn:
             order = self._order(conn, actor, order_id)
+            # 放款是独立岗位：只有资金审批人（或已有复核权的人）能批，
+            # 而「谁能批」与「谁制单」由同一张表的 maker/approver 分开保证。
+            self.access.book(conn, actor, order["book_id"], "approve_payment")
             try:
                 check_separation(order["maker_user_id"], actor.user_id, voucher_reviewer)
             except PaymentRuleError as error:
@@ -166,6 +170,9 @@ class PaymentService:
             actor=actor, company_id=company_id, write=True, write_scope="company"
         ) as conn:
             order = self._order(conn, actor, order_id)
+            # 推进状态同样是付钱动作（提交、送银行、记退回），必须走付钱能力；
+            # 只校验 read 会让被撤销的出纳继续推进别人的付款。
+            self.access.book(conn, actor, order["book_id"], "pay")
             view = self._apply(conn, actor, order, target, reason)
         metrics.payment_state(target)
         return view
@@ -200,3 +207,31 @@ class PaymentService:
                 params.append(status)
             sql += " ORDER BY created_at DESC LIMIT 200"
             return [dict(row) for row in conn.execute(sql, params).fetchall()]
+
+    def desk(self, actor: Actor, book_id: str) -> dict:
+        """出纳台口径：本账套的付款岗位、我能不能制单/审批、以及指令清单。
+
+        单独一个只读投影，而不是把 roles 塞进 list_orders 的返回——列表的契约
+        已经是数组，改成对象会让既有调用方静默读错。
+        """
+        with self.db.transaction(actor=actor) as conn:
+            book = self.access.book(conn, actor, book_id, "read")
+            roles = sorted(self.access.payment_roles(conn, actor, book_id))
+            orders = [
+                dict(row)
+                for row in conn.execute(
+                    "SELECT * FROM payment_orders WHERE book_id=? ORDER BY created_at DESC LIMIT 200",
+                    (book_id,),
+                ).fetchall()
+            ]
+        return {
+            "book_id": book["id"],
+            "period": book["period"],
+            "roles": roles,
+            "permissions": {
+                "pay": bool(book["permissions"].get("pay")),
+                "approve_payment": bool(book["permissions"].get("approve_payment")),
+            },
+            "orders": orders,
+            "separation": "制单人与资金审批人必须是不同的人；出纳与资金审批人都不能代替独立复核。",
+        }

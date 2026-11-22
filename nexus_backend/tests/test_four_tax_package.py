@@ -69,6 +69,14 @@ def test_cit_uses_the_supplied_profit_not_the_ledger():
     assert other["cit_prepayment"]["due_cents"] == 0
 
 
+def test_cit_without_a_stated_profit_is_refused_instead_of_using_the_ledger_tax():
+    # ledger_cents 是账载税额，不是利润；拿它当所得税计税基础会记出一笔假税。
+    with pytest.raises(AccountingError) as error:
+        run(cumulative_profit_cents=None)
+    assert error.value.status == 409
+    assert "累计利润" in error.value.detail
+
+
 def test_unreviewed_or_missing_workpaper_is_refused():
     with pytest.raises(AccountingError) as error:
         run(row=None)

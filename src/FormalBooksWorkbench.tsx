@@ -10,6 +10,9 @@ const ManualVoucherReviewPanel = lazy(() =>
 const FinanceOperationsPanel = lazy(() =>
   import('./FinanceOperationsPanel').then((module) => ({ default: module.FinanceOperationsPanel })),
 );
+const CashierPaymentDesk = lazy(() =>
+  import('./CashierPaymentDesk').then((module) => ({ default: module.CashierPaymentDesk })),
+);
 import { financeSection } from './finance-operations';
 import { correctionSeed, type CorrectionSeed } from './voucher-correction';
 const LegacyReviewPanel = lazy(() =>
@@ -478,6 +481,14 @@ function FormalBooksContent({
               onChanged={() => setRevision((value) => value + 1)}
             />
           )}
+        </details>
+      )}
+      {companyId && period && (
+        <details className="review-section" aria-label="出纳付款审批">
+          <summary>出纳付款审批（制单 / 资金审批 / 银行回执）</summary>
+          <Suspense fallback={<p role="status">正在打开出纳付款审批台…</p>}>
+            <CashierPaymentDesk session={session} bookId={bookId} />
+          </Suspense>
         </details>
       )}
       <div hidden={taskOpen}>

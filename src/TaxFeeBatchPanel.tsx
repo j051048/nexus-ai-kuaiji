@@ -71,6 +71,13 @@ type Refund = {
   created_at: string;
   receivable_status: string;
 };
+type BatchDraft = {
+  id: string;
+  status: string;
+  version: number;
+  posted_voucher_id: string | null;
+  voucher_no: number | null;
+};
 type Batch = {
   id: string;
   book_id: string;
@@ -78,6 +85,7 @@ type Batch = {
   status: string;
   version: number;
   draft_id: string;
+  draft: BatchDraft | null;
   total_cents: number;
   row_count: number;
   skipped_count: number;
@@ -109,6 +117,22 @@ const labels: Record<string, string> = {
   reviewed: '已复核',
   invalidated: '已失效',
 };
+
+const monthEnd = (period: string) => {
+  const [year, month] = period.split('-').map(Number);
+  return `${period}-${new Date(Date.UTC(year, month, 0)).getUTCDate()}`;
+};
+
+/**
+ * A fee batch may only be posted when an *independent* review approved its
+ * draft, the source fingerprint still matches, and no voucher exists yet.
+ * Anything else must stay blocked — posting is not a retry button.
+ */
+export function canPostBatch(batch: Batch | null): boolean {
+  if (!batch || batch.status !== 'reviewed' || batch.stale) return false;
+  const draft = batch.draft;
+  return Boolean(draft && draft.status === 'approved' && !draft.posted_voucher_id);
+}
 
 type Props = { session: Session; bookId: string; period: string };
 export function TaxFeeBatchPanel(props: Props) {
@@ -411,6 +435,38 @@ function ScopedTaxFeeBatchPanel({
       await load();
     } catch (error) {
       setFailure(error instanceof ApiError ? `${error.message}（${error.status}）` : '复核失败。');
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function postBatch() {
+    if (!batch || !batch.draft) return;
+    setBusy(true);
+    setFailure('');
+    setNotice('');
+    try {
+      const data = await api<{ voucher: { id: string; voucher_no: number } }>(
+        `/books/${encodeURIComponent(bookId)}/drafts/${encodeURIComponent(batch.draft_id)}/post`,
+        session,
+        {
+          method: 'POST',
+          body: {
+            // 同一批次同一草稿版本共用命令键：连点两次是重放，不是两张凭证。
+            command_key: `fee-batch:${batch.id}:${batch.draft.version}`.slice(0, 120),
+            expected_version: batch.draft.version,
+            voucher_date: monthEnd(period),
+            description: `规费批次记账（${period}）`,
+          },
+        },
+      );
+      setNotice(
+        `已生成正式凭证第 ${data.voucher.voucher_no} 号；正式凭证不能直接修改，记错须另开冲销。`,
+      );
+      await load();
+    } catch (error) {
+      setFailure(
+        error instanceof ApiError ? `${error.message}（${error.status}）` : '规费批次记账失败。',
+      );
     } finally {
       setBusy(false);
     }
@@ -916,6 +972,29 @@ function ScopedTaxFeeBatchPanel({
               >
                 标记失效
               </button>
+            </div>
+          )}
+          {batch.status === 'reviewed' && (
+            <div className="tax-fee-review">
+              {batch.draft?.posted_voucher_id ? (
+                <p role="status">
+                  已生成正式凭证第 {batch.draft.voucher_no ?? '—'} 号；一张草稿只能记账一次，
+                  记错须另开冲销凭证。
+                </p>
+              ) : (
+                <>
+                  <p>
+                    已独立复核。记账不再复核一次，金额与来源版本会在记账时重新校验；未复核、已失效或已关闭期间都会被阻断。
+                  </p>
+                  <button
+                    type="button"
+                    disabled={busy || !canPostBatch(batch)}
+                    onClick={() => void postBatch()}
+                  >
+                    生成正式凭证
+                  </button>
+                </>
+              )}
             </div>
           )}
         </div>

@@ -1,10 +1,12 @@
 import base64
+import calendar
 import hashlib
+from datetime import date
 from typing import Literal
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Query, Request, Response
-from pydantic import BaseModel, ConfigDict, Field, StrictInt
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator
 
 from . import filings
 from .readiness import filing_readiness
@@ -115,6 +117,7 @@ class FeeAllocationWrite(BaseModel):
     idempotency_key: str = Field(min_length=1, max_length=100)
     payer_name: str | None = Field(default=None, max_length=100)
     collection_basis: str | None = Field(default=None, max_length=500)
+    bank_statement_line_id: str | None = Field(default=None, max_length=100)
 
 
 class FeeAllocationReverse(BaseModel):
@@ -274,6 +277,12 @@ class FeeVarianceAssign(BaseModel):
     reason: str = Field(min_length=3, max_length=500)
 
 
+def _period_end(period):
+    """Last calendar day of ``YYYY-MM``; vch date defaults must stay in period."""
+    year, month = int(period[:4]), int(period[5:7])
+    return f"{period}-{calendar.monthrange(year, month)[1]:02d}"
+
+
 def build_tax_router(actor_dependency):
     router = APIRouter(prefix="/api/tax", tags=["B05税务底稿"])
 
@@ -282,6 +291,72 @@ def build_tax_router(actor_dependency):
 
     def variances(request: Request) -> FeeVarianceService:
         return request.app.state.fee_variances
+
+    def poster(request: Request):
+        return request.app.state.posting
+
+    def manual_reviews(request: Request):
+        from ..posting.manual_review import ManualReviewService
+
+        return ManualReviewService(request.app.state.service.db)
+
+    def four_tax_package_for(posting, tax, actor, payload, book):
+        """Compose the four-tax package the same way for preview and for posting.
+
+        Preview and request must never show different numbers: both derive the
+        surtax basis the same way, and both refuse when that basis cannot
+        reproduce what the reviewed workpaper already recorded.
+        """
+        from ..accounting.domain import AccountingError
+        from . import four_tax
+
+        with posting.db.transaction(actor=actor) as conn:
+            profile = tax._profile(conn, book, book["period"])
+
+        def compose(surtax_items):
+            return four_tax.package(
+                tax,
+                actor,
+                payload.book_id,
+                payload.period,
+                surtax_items=surtax_items,
+                cumulative_profit_cents=payload.cumulative_profit_cents,
+                loss_carryforward_cents=payload.loss_carryforward_cents,
+                prepaid_cents=payload.prepaid_cents,
+                cit_rate_bp=payload.cit_rate_bp,
+                halved=payload.halved,
+            )
+
+        if payload.surtax_items:
+            basis = {"source": "request", "rate_bp": None, "items": len(payload.surtax_items)}
+            package = compose(payload.surtax_items)
+        elif profile is not None:
+            # The registered profile supplies the very rate the workpaper used, and
+            # the response says so. Inventing a rate would be guessing.
+            rate = int(profile["surtax_rate_bp"])
+            basis = {
+                "source": "tax_profile",
+                "rate_bp": rate,
+                "profile_id": profile["id"],
+                "effective_from": profile["effective_from"],
+            }
+            package = compose([{"code": "profile_surtax", "rate_bp": rate}])
+        else:
+            # Neither an explicit item list nor a registered profile. Let the
+            # package's own guards speak in their natural order: the missing
+            # reviewed workpaper is the real blocker when there is none, and
+            # otherwise the missing surtax policy items are.
+            compose([])
+            raise AssertionError("unreachable: compose([]) 必然抛出 409")
+        recorded = int(package["vat"]["surtax_cents_recorded"])
+        computed = int(package["surtax"]["total_cents"])
+        if computed != recorded:
+            raise AccountingError(
+                f"本次计提的附加税 {computed} 分与已复核底稿登记的 {recorded} 分不一致；"
+                "请核对附加税政策条目后再提交，不能按两套依据入账",
+                409,
+            )
+        return package, basis
 
     @router.get("/context")
     def preparation_context(
@@ -858,6 +933,7 @@ def build_tax_router(actor_dependency):
             idempotency_key=payload.idempotency_key,
             payer_name=payload.payer_name,
             collection_basis=payload.collection_basis,
+            bank_statement_line_id=payload.bank_statement_line_id,
         )
 
     @router.get("/books/{book_id}/fee-bank-sources")
@@ -1331,6 +1407,25 @@ def build_tax_router(actor_dependency):
         cit_rate_bp: int = 2_500
         halved: bool = False
 
+    class AccrualManualRequestIn(FourTaxIn):
+        """Same four-tax request plus the two facts a voucher needs.
+
+        ``voucher_date`` is optional; it defaults to the last day of the period.
+        Validated here so a bad date is a 422 from the request model, not a
+        Pydantic ``ValidationError`` escaping from the service layer as a 500.
+        """
+
+        voucher_date: str | None = Field(default=None, min_length=10, max_length=10)
+        description: str | None = Field(default=None, max_length=500)
+        reason: str | None = Field(default=None, max_length=1000)
+
+        @field_validator("voucher_date")
+        @classmethod
+        def valid_optional_date(cls, value):
+            if value is not None:
+                date.fromisoformat(value)
+            return value
+
     @router.get("/period-runs")
     def list_period_runs(
         book_id: str = Query(min_length=1, max_length=100),
@@ -1370,35 +1465,103 @@ def build_tax_router(actor_dependency):
 
     @router.post("/accrual-preview")
     def accrual_preview(
-        payload: FourTaxIn,
+        payload: AccrualManualRequestIn,
         current=Depends(actor_dependency),
         tax=Depends(service),
+        posting=Depends(poster),
     ):
         """Preview the accrual entries for a period.
 
-        Read-only on purpose: the ledger has no "create a voucher from scratch"
-        API, and this endpoint must not become one. Persisting an accrual needs
-        a source kind plus the normal suggest -> review -> post path.
+        Read-only on purpose: this endpoint never writes a voucher. It shares the
+        exact package composition with ``/accrual-manual-request`` so the preview
+        cannot show amounts the request would refuse.
         """
-        from . import accrual, four_tax
+        from ..accounting.domain import AccountingError
+        from . import accrual
 
-        package = four_tax.package(
-            tax,
-            current,
-            payload.book_id,
-            payload.period,
-            surtax_items=payload.surtax_items,
-            cumulative_profit_cents=payload.cumulative_profit_cents,
-            loss_carryforward_cents=payload.loss_carryforward_cents,
-            prepaid_cents=payload.prepaid_cents,
-            cit_rate_bp=payload.cit_rate_bp,
-            halved=payload.halved,
-        )
+        with posting.db.transaction(actor=current) as conn:
+            book, _ = posting._book(conn, current, payload.book_id)
+        if payload.period != book["period"]:
+            raise AccountingError(
+                f"计提预览只能针对账套当前会计期间（当前 {book['period']}，请求 {payload.period}）",
+                409,
+            )
+        package, basis = four_tax_package_for(posting, tax, current, payload, book)
         preview = accrual.accrual_lines(package)
         return {
             **preview,
+            "surtax_basis": basis,
             "posted": False,
             "note": "预览仅供参考：本接口不写账，也不会生成草稿凭证。",
+        }
+
+    @router.post("/accrual-manual-request", status_code=201)
+    def accrual_manual_request(
+        payload: AccrualManualRequestIn,
+        current=Depends(actor_dependency),
+        tax=Depends(service),
+        posting=Depends(poster),
+        reviews=Depends(manual_reviews),
+    ):
+        """Turn the reviewed four-tax accrual into a manual-voucher request.
+
+        This does not open a second posting path: it builds the voucher the
+        existing contract already accepts and hands it to
+        ``ManualReviewService.prepare``, so independent review, the idempotent
+        ``command_key`` and the month-end ``unposted_manual`` gate all apply.
+        """
+        from ..accounting.domain import AccountingError
+        from ..posting.models import ManualVoucher
+        from . import accrual, accrual_posting
+
+        # Account identities are resolved *as of the book's period*, so a posting
+        # can never land on an account version that was rewritten later.
+        with posting.db.transaction(actor=current) as conn:
+            book, ledger_id = posting._book(conn, current, payload.book_id)
+            accounts = posting._accounts(conn, ledger_id, book["period"])
+        if payload.period != book["period"]:
+            raise AccountingError(
+                f"计提入账只能针对账套当前会计期间（当前 {book['period']}，请求 {payload.period}）",
+                409,
+            )
+        by_code = {
+            meta["code"]: {"id": account_id, "version": int(meta["version"])}
+            for account_id, meta in accounts.items()
+        }
+        package, surtax_basis = four_tax_package_for(posting, tax, current, payload, book)
+        surtax_cents = int(package["surtax"]["total_cents"])
+        package = {**package, "source": accrual_posting.normalize_source(package.get("source"))}
+        # No ``chart=`` here: it would demand every default rail code to exist even
+        # for taxes that are zero this period (a client without a stamp-duty
+        # account could not accrue surtax). ``manual_voucher`` resolves each code
+        # it is actually about to post and names the one that is missing.
+        lines = accrual.accrual_lines(package)
+        voucher_date = payload.voucher_date or _period_end(book["period"])
+        body = accrual_posting.manual_voucher(
+            package,
+            lines["entries"],
+            by_code,
+            book_id=book["id"],
+            voucher_date=voucher_date,
+            description=payload.description or "",
+            reason=payload.reason or "",
+        )
+        prepared = reviews.prepare(current, ManualVoucher(**body))
+        return {
+            "request": prepared["request"],
+            "voucher": {
+                "command_key": body["command_key"],
+                "voucher_date": body["voucher_date"],
+                "line_count": len(body["lines"]),
+                "debit_cents": lines["debit_cents"],
+                "credit_cents": lines["credit_cents"],
+            },
+            "refund_note": lines["refund_note"],
+            "surtax_basis": surtax_basis,
+            "surtax_cents": surtax_cents,
+            "posted": False,
+            "note": "已生成待复核的手工凭证申请：须由另一名有复核权的人批准后才能过账，"
+            "本接口不会直接记账。",
         }
 
     @router.post("/four-tax")

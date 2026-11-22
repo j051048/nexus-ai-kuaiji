@@ -464,6 +464,7 @@ class TaxFeeService:
         idempotency_key,
         payer_name=None,
         collection_basis=None,
+        bank_statement_line_id=None,
     ):
         """Apply one bank receipt to one driver receivable, preserving partial balances."""
         amount_cents = int(amount_cents)
@@ -531,6 +532,7 @@ class TaxFeeService:
                 raise AccountingError("规费应收只能由收入方向银行流水核销", 409)
             if str(bank["date"])[:7] != str(item["period"]):
                 raise AccountingError("银行流水不属于驾驶员应收期间", 409)
+            statement_line_id = self._statement_line_for(conn, book, bank, bank_statement_line_id)
             effective_payer = payer_name or str(bank["counterparty"] or "").strip()
             driver_name = str(item["driver_name"] or "").strip()
             if not _payer_matches(effective_payer, driver_name) and len(collection_basis) < 5:
@@ -547,9 +549,11 @@ class TaxFeeService:
                 raise AccountingError("核销金额超过银行到账余额", 409)
             allocation_id = uuid4().hex
             conn.execute(
-                "INSERT INTO fee_receivable_allocations(id,book_id,firm_id,company_id,receivable_id,bank_source_id,"
-                "amount_cents,bank_draft_version,bank_amount_cents,created_by,created_at,idempotency_key,request_fingerprint,"
-                "payer_name,collection_basis) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO fee_receivable_allocations(id,book_id,firm_id,company_id,receivable_id,"
+                "bank_source_id,bank_statement_line_id,"
+                "amount_cents,bank_draft_version,bank_amount_cents,created_by,created_at,idempotency_key,"
+                "request_fingerprint,payer_name,collection_basis) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (
                     allocation_id,
                     book_id,
@@ -557,6 +561,7 @@ class TaxFeeService:
                     book["company_id"],
                     receivable_id,
                     bank_source_id,
+                    statement_line_id,
                     amount_cents,
                     int(bank["draft_version"]),
                     int(bank["amount_cents"]),
@@ -685,11 +690,46 @@ class TaxFeeService:
                 ]
             }
 
+    def _statement_line_for(self, conn, book, bank, explicit_id):
+        """Resolve the bank statement line this receipt settles, or refuse to guess.
+
+        显式 id 必须属于同一账套、同一期间，且流水方向金额与银行来源一致；
+        没给 id 时只接受「已被这条银行来源绑定过」的那一行。同一笔到账在两份
+        流水里出现两次时，宁可留空也不挑一条记账。
+        """
+        if explicit_id:
+            line = conn.execute(
+                "SELECT * FROM bank_statement_lines WHERE id=? AND book_id=?",
+                (explicit_id, book["id"]),
+            ).fetchone()
+            if not line:
+                raise AccountingError("银行流水行不存在或不属于当前账套", 404)
+            if line["status"] == "excluded":
+                raise AccountingError("已排除的银行流水行不能用于核销", 409)
+            signed = (
+                -int(bank["amount_cents"])
+                if bank["direction"] == "expense"
+                else int(bank["amount_cents"])
+            )
+            if int(line["amount_cents"]) != signed:
+                raise AccountingError("银行流水行金额与银行来源不一致", 409)
+            if str(line["line_date"])[:7] != str(bank["date"])[:7]:
+                raise AccountingError("银行流水行日期与银行来源不同期", 409)
+            return line["id"]
+        linked = conn.execute(
+            "SELECT id FROM bank_statement_lines WHERE book_id=? AND source_id=?",
+            (book["id"], bank["id"]),
+        ).fetchone()
+        return linked["id"] if linked else None
+
     def _allocation_view(self, conn, row):
         return {
             "allocation_id": row["id"],
             "receivable_id": row["receivable_id"],
             "bank_source_id": row["bank_source_id"],
+            "bank_statement_line_id": row["bank_statement_line_id"]
+            if "bank_statement_line_id" in row.keys()
+            else None,
             "amount_cents": int(row["amount_cents"]),
             "payer_name": row["payer_name"] if "payer_name" in row.keys() else None,
             "collection_basis": row["collection_basis"]
@@ -1108,6 +1148,17 @@ class TaxFeeService:
                 totals.values(), key=lambda item: (item["name"] or item["id"], item["id"])
             )
 
+        draft_row = conn.execute(
+            "SELECT id,status,version FROM drafts WHERE id=? AND book_id=?",
+            (batch["draft_id"], batch["book_id"]),
+        ).fetchone()
+        # 记账回执不在 drafts 上：post_draft 只写 voucher_sources。界面要判断
+        # 「这张草稿是否已经生成过正式凭证」，只能从这张关联表读。
+        posted = conn.execute(
+            "SELECT v.id,v.voucher_no FROM voucher_sources s JOIN vouchers v ON v.id=s.voucher_id "
+            "WHERE s.source_kind='draft' AND s.source_id=?",
+            (batch["draft_id"],),
+        ).fetchone()
         return {
             "id": batch["id"],
             "book_id": batch["book_id"],
@@ -1115,6 +1166,15 @@ class TaxFeeService:
             "status": batch["status"],
             "version": int(batch["version"]),
             "draft_id": batch["draft_id"],
+            "draft": {
+                "id": draft_row["id"],
+                "status": draft_row["status"],
+                "version": int(draft_row["version"]),
+                "posted_voucher_id": posted["id"] if posted else None,
+                "voucher_no": int(posted["voucher_no"]) if posted else None,
+            }
+            if draft_row
+            else None,
             "total_cents": int(batch["total_cents"]),
             "row_count": int(batch["row_count"]),
             "skipped_count": int(batch["skipped_count"]),

@@ -61,7 +61,15 @@ def test_member_identity_and_book_authorization_are_both_required(case):
     assert error.value.status == 404
     case.directory.grant_book_member(case.actor, case.book["id"], operator.user_id, BookMemberGrant(role="editor"))
     permissions = case.service.get_book(actor, case.book["id"])["book"]["permissions"]
-    assert permissions == {"edit": True, "review": False, "export": False, "manage": False}
+    assert permissions == {
+        "edit": True,
+        "review": False,
+        "export": False,
+        "manage": False,
+        # 账套编辑者可以制单（与既有行为一致），但没有付款岗位就仍然不能放款。
+        "pay": True,
+        "approve_payment": False,
+    }
 
 
 @pytest.mark.parametrize("firm_role,book_role,edit,review", [

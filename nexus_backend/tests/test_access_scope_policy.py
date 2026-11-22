@@ -135,6 +135,9 @@ def test_all_firm_read_is_explicit_and_covers_new_books(business):
         "review": False,
         "export": False,
         "manage": False,
+        # 付款岗位是与账套权限正交的第二条轴：新账套上默认也没有任何付钱能力。
+        "pay": False,
+        "approve_payment": False,
     }
 
 

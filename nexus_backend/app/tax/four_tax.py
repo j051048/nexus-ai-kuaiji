@@ -8,8 +8,8 @@ it takes the authoritative reviewed cents and derives the dependent taxes:
 * CIT     — prepayment on the caller-supplied cumulative profit,
 * stamp   — per-contract, refusing duplicates.
 
-Anything missing (no reviewed workpaper, no surtax policy item) is refused
-with a 409 that says what to fix, never a silent zero.
+Anything missing (no reviewed workpaper, no surtax policy item, no cumulative
+profit) is refused with a 409 that says what to fix, never a silent zero.
 """
 
 from ..accounting.domain import AccountingError
@@ -57,9 +57,16 @@ def package(
         )
     vat_cents = int(row["tax_cents"])
     surtax = engines.surtax(vat_cents, surtax_items, halved=halved)
-    profit = int(
-        row["ledger_cents"] if cumulative_profit_cents is None else cumulative_profit_cents
-    )
+    if cumulative_profit_cents is None:
+        # ``ledger_cents`` on the workpaper is the *tax amount on the books*, not a
+        # profit. Using it as the CIT base would accrue income tax on a number that
+        # was never a profit, so the caller must state the cumulative profit.
+        raise AccountingError(
+            "计提企业所得税预缴必须提供本期累计利润（cumulative_profit_cents）；"
+            "底稿的账载税额不能代替利润",
+            409,
+        )
+    profit = int(cumulative_profit_cents)
     cit = engines.cit_prepayment(
         cumulative_profit_cents=profit,
         adjustments=adjustments,

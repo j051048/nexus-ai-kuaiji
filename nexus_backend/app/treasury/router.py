@@ -4,7 +4,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field, StrictInt
 
 from .adapters import AdapterError, parse_bank_csv, parse_receipt_json
+from .imports import BankStatementImportService
 from .receipt_matcher import Receipt, StatementLine, match as match_receipts
+from .roles import PaymentRoleService
 from .service import DEFAULT_DAILY_LIMIT_CENTS, DEFAULT_SINGLE_LIMIT_CENTS, PaymentService
 
 
@@ -42,6 +44,27 @@ class BankLineImport(BaseModel):
     receipts: list[dict] | None = None
     statement_lines: list[dict] | None = None
     source: str = ""
+
+
+class PaymentRoleGrant(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    role: str = Field(pattern="^(cashier|treasury_approver)$")
+    reason: str = Field(min_length=3, max_length=1000)
+
+
+class PaymentRoleRevoke(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str = Field(min_length=3, max_length=1000)
+
+
+class BankLineImportConfirm(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    book_id: str = Field(min_length=1, max_length=100)
+    csv_text: str = Field(min_length=1, max_length=2_000_000)
+    bank_account_id: str = Field(default="", max_length=100)
 
 
 def _matcher_inputs(rows: list[dict]) -> list[Receipt] | list[StatementLine]:
@@ -156,5 +179,57 @@ def build_treasury_router(actor_dependency):
         payments: PaymentService = Depends(service),
     ):
         return payments.advance_external(current, order_id, body.target, reason=body.reason)
+
+    @router.post("/bank-lines/import")
+    def import_bank_lines(
+        body: BankLineImportConfirm,
+        current=Depends(actor_dependency),
+        request: Request = None,
+    ):
+        return BankStatementImportService(request.app.state.service.db).confirm(
+            current,
+            body.book_id,
+            csv_text=body.csv_text,
+            bank_account_id=body.bank_account_id,
+        )
+
+    def roles(request: Request) -> PaymentRoleService:
+        return PaymentRoleService(request.app.state.service.db)
+
+    @router.get("/payment-roles")
+    def list_payment_roles(
+        book_id: str = Query(min_length=1, max_length=100),
+        current=Depends(actor_dependency),
+        roles_service: PaymentRoleService = Depends(roles),
+    ):
+        return roles_service.list(current, book_id)
+
+    @router.put("/payment-roles/{user_id}")
+    def grant_payment_role(
+        user_id: str,
+        body: PaymentRoleGrant,
+        book_id: str = Query(min_length=1, max_length=100),
+        current=Depends(actor_dependency),
+        roles_service: PaymentRoleService = Depends(roles),
+    ):
+        return roles_service.grant(current, book_id, user_id, role=body.role, reason=body.reason)
+
+    @router.post("/payment-roles/{role_id}/revoke")
+    def revoke_payment_role(
+        role_id: str,
+        body: PaymentRoleRevoke,
+        book_id: str = Query(min_length=1, max_length=100),
+        current=Depends(actor_dependency),
+        roles_service: PaymentRoleService = Depends(roles),
+    ):
+        return roles_service.revoke(current, book_id, role_id, reason=body.reason)
+
+    @router.get("/payment-desk")
+    def payment_desk(
+        book_id: str = Query(min_length=1, max_length=100),
+        current=Depends(actor_dependency),
+        payments: PaymentService = Depends(service),
+    ):
+        return payments.desk(current, book_id)
 
     return router

@@ -607,3 +607,184 @@
 - 实测（Supabase Management API 查 `accounting.schema_migrations`）：`max(version)=319`、`count=306`；310–319 全部在册。即已提交的 313/316–319 **已先于镜像进入生产**，不存在「代码带迁移、库没跟上」的崩溃窗口。
 - 本地未应用/未提交的只剩 `nexus_backend/migrations/postgres/320_sec07_firm_quotas.sql`（SQLite 侧 227 不涉生产）。这批如要推，先应用 320、核对台账，再推镜像。
 - 经验：判断「能不能推」不要看 git 里有没有 migrations 改动，要**直接查 max(version) 与本地最大版本比对**；靠推断会产生假警报（本轮就误报过一次）。
+
+### Step 1a · 四税计提接入手工凭证复核流（翻译层完成）
+
+- 路线按用户拍板执行：不新建表、不重造界面，直接落到既有 `POST /api/posting/manual-requests` → `approve` → `post`（`app/accounting/review_policy_router.py` + `app/posting/manual_review.py`）。
+- 新增 `nexus_backend/app/tax/accrual_posting.py`：`command_key_for(source)` 用 `workpaper_id:version:source_digest` 的 sha256 前 40 位做 `tax-accrual:` 键——同一底稿点两次是重放，换版本必换键；`manual_voucher(package, entries, accounts, ...)` 产出 `ManualVoucher` 载荷，每条分录带 `account_version`（对旧版本科目过账必须失败而不是落到改过的科目），借贷合计按整数分校验后不平衡即拒。
+- `nexus_backend/tests/test_tax_accrual_posting.py` **6 passed**：金额格式化、键稳定性与版本敏感、缺身份拒绝、未知科目拒绝、空分录拒绝、不平衡拒绝。
+- 已按用户核验修正两处：①`manual_voucher()` 先按 `(account_id, side)` 合并同科目同方向金额（附加税与印花税默认同借 `6403`，而 `ManualVoucher.unique_account_aux` 禁止同科目重复；同一科目同时出现在借贷两方则 409，不做净额抵销）；②`_money` 改用 `app.accounting.invariants.cents_to_money`，不经浮点。
+- 用例增至 **8 passed**：新增「附加税+印花税同月计提合并 6403 并通过 `ManualVoucher(**payload)` 契约校验」与「同科目借贷两方被拒」；与 `test_tax_accrual.py` 合跑 **15 passed**。
+- 未做：HTTP 入口（复用 `PostingService._accounts(conn, ledger_id, period)` 解析 code→id/version 后注入 `ManualReviewService.prepare`）、前端「生成计提手工凭证申请」按钮、E2E。
+
+## Step 1a · 四税计提接入手工凭证复核流（完成）
+
+- 工程状态：**完成**（HTTP 入口 + 前端按钮 + 后端集成测试 + Playwright E2E 全部落地；零新表、零新迁移）
+- 外部状态：无需外部
+- 与提示词要求的差异：一致（按要求复用 `PostingService._accounts(conn, ledger_id, period)` 解析 `code → (id, version)`，经 `accrual_posting.manual_voucher(...)` 构造 `ManualVoucher(**payload)` 后直接调 `ManualReviewService.prepare`，未新建第二套凭证入口）
+
+### 新增入口 `POST /api/tax/accrual-manual-request`
+
+- 体沿用 `FourTaxIn` 并扩展三个可选字段（`voucher_date` / `description` / `reason`，仍 `extra="forbid"`）；`voucher_date` 缺省取期间最后一天（`_period_end()`，`calendar.monthrange`，不用 SQLite 日期函数）。
+- 科目版本按**期间**解析：`posting.db.transaction(actor=current)` → `_book(conn, actor, book_id)` 取 `ledger_id` → `_accounts(conn, ledger_id, book["period"])`；每条分录带 `account_version`，对旧版本科目过账会失败而不是落到改过的科目。
+- 期间必须等于账套当前期间，否则 409 并同时报出期望值与请求值。
+- 返回 `request`（待复核视图）+ `voucher{command_key,voucher_date,line_count,debit_cents,credit_cents}` + `surtax_basis` + `refund_note` + 固定 `posted:false`，文案写明「须由另一名有复核权的人批准后才能过账，本接口不会直接记账」。
+
+### 接线过程中发现并修掉的四个真问题
+
+1. **`accrual.accrual_lines(chart=...)` 过严**：它要求默认科目表**全部**存在，于是「本期没有印花税合同」的账套也会因为缺 `2221.04` 而无法计提附加税。改为不传 `chart`，由 `manual_voucher()` 对**真正要记的** code 逐个解析并点名缺失项（测试里这条以「没有 2221.04 也能计提」的断言固化）。
+2. **`four_tax.package` 拿账载税额当利润**：`ledger_cents` 是底稿的**账载税额**（`variance = tax - ledger`），原代码在 `cumulative_profit_cents is None` 时用它当企业所得税计税基础——会记出一笔以「税额×25%」为基数的假所得税。改为缺利润直接 409（「底稿的账载税额不能代替利润」）。没有既有测试依赖旧的回落行为。
+3. **附加税计征依据两套口径**：新增 `four_tax_package_for()` 统一 preview 与入账两个入口——显式 `surtax_items` 优先；否则取本期税务档案 `surtax_rate_bp`（正是底稿 `_ratio(tax, profile["surtax_rate_bp"])` 用的同一税率）并在 `surtax_basis` 里写明来源与档案 id；两者都没有时让包自身的守卫按自然顺序报错（先报缺已复核底稿，再报缺政策条目）。另加一道**一致性校验**：本次算出的附加税必须等于已复核底稿登记的 `surtax_cents`，否则 409「不能按两套依据入账」。
+4. **计提面板此前是死面板**：`src/TaxAccrualPanel.tsx` 的 `Entry` 按 `{label,debit_cents,credit_cents}` 渲染，而 `accrual_lines()` 返回的是 `{account,side,cents,memo}`；且请求体固定 `surtax_items: []` → `engines.surtax` 必然 409「缺少附加税政策条目」。已按真实契约改为 `{account,side,cents,memo}` 渲染，请求体改为 `{book_id, period, cumulative_profit_cents}` 并由服务端回报计征依据。
+
+### 前端
+
+- `src/TaxAccrualPanel.tsx`：新增「本期累计利润（元）」输入（`yuanToCents()` 纯字符串解析成整数分，不经浮点；非法输入返回 `null` 使按钮不可用）、「生成计提手工凭证申请」按钮、「刷新申请状态」按钮（读 `/books/{id}/manual-review-requests`）、`AccrualRequestView` 展示申请号/状态/凭证日期/行数/借贷合计/附加税计征依据；固定提示「到「正式账簿 → 手工凭证办理」由另一名有复核权限的人批准后才能记账」。
+- 已过账状态**不由请求状态推断**：`manual_review_requests.status` 只有 `pending|approved`，过账后仍是 `approved`，因此界面以 `posted_voucher_id`（来自列表视图，挂在 `vouchers.review_request_id` 上）判定「已过账」。
+- 未新增任何 CSS 类（复用 `tax-accrual-preview` / `tax-accrual-note` / `tax-accrual-blocked`），组件仍只在 `TaxWorkpaperPanel` 的懒加载分块内：`initial` 闭包仍只有 `assets/index-*.js`，体积预算未被触碰。
+
+### 测试
+
+| 层 | 文件 | 结果 |
+| --- | --- | --- |
+| 翻译层单测 | `nexus_backend/tests/test_tax_accrual_posting.py` | **10 passed**（原 8 + 两种来源写法同键 + 凭证日期越期拒绝） |
+| HTTP 集成 | `nexus_backend/tests/test_tax_accrual_posting_http.py` | **2 passed** |
+| 四税包 | `nexus_backend/tests/test_four_tax_package.py` | **6 passed**（+1 缺利润拒绝） |
+| 前端单测 | `src/tax-accrual-panel.test.ts` | **12 passed** |
+| E2E | `e2e/tax-accrual-posting.spec.ts` | **1 passed (39.2s)** |
+
+- HTTP 集成用例覆盖：首次成功（`surtax_basis.source=tax_profile`、`rate_bp=1200`、借=贷=25360 分、4 行、凭证日期=期间末）→ 重复点击幂等（同一 request id、同一 command_key、账套内仅一条 `tax-accrual:` 申请）→ 制单人自审 **403** 且申请状态与版本不变 → 独立复核人批准（`independent=true`）→ 过账（`voucher.review_request_id == request.id`，正是月结 `unposted_manual` 门禁用的关联键）→ 试算平衡 `6403=360 / 6801=25000 / 2221.03=-360 / 2221.05=-25000`。
+- 负向用例：跨期间 409、非法日期 422、科目表无 6801 时 409 且点名 `6801`、显式附加税条目与底稿登记值不一致 409、缺累计利润 409。
+- E2E 链路：真实身份建账 → 生成并独立复核增值税底稿 → 页面填累计利润（1000 元）→ 预览出现 6403/2221.03 与借 253.60 → 生成申请（`posted:false`、借=贷、4 行、`surtax_basis` 为档案 12%）→ 连点两次仍只有一条 `tax-accrual:` 申请 → 另一身份经 API 批准后点「刷新申请状态」显示「已复核，待过账」→ 过账后再刷新显示「已过账」。
+
+## Step 1b · Batch 06 B1 规费批次受控记账（完成）
+
+- 工程状态：**完成**
+- 外部状态：无需外部
+- 与提示词要求的差异：一致（接入既有 `POST /api/books/{book_id}/drafts/{draft_id}/post` → `PostingService.post_draft`，未新增记账通道）
+
+### 后端
+
+- `nexus_backend/app/tax/fees.py::_view` 新增 `draft{id,status,version,posted_voucher_id,voucher_no}` 投影：`post_draft` **不改** `drafts` 状态，只在 `voucher_sources` 留下 `source_kind='draft'` 的关联，界面要判断「这张草稿是否已经记过账」只能从这张表读——否则按钮会一直可点，点了才报 409。
+- 记账本体完全复用既有服务：`draft.status ∈ {approved, exported}`（未复核 → 409「只有已审核或已导出的草稿才能正式记账」）、`expected_version` 与草稿版本一致、`_book(write=True)` 拒绝已关闭/已内锁期间（403）、`command_key` 幂等重放、`voucher_sources` 保证一张草稿只生成一张凭证。
+
+### 前端 `src/TaxFeeBatchPanel.tsx`
+
+- 新增纯函数 `canPostBatch(batch)`：仅当 `status='reviewed'` 且 `stale=false` 且 `draft.status='approved'` 且无 `posted_voucher_id` 时才放行；导出以便单测直接断言门禁（按钮的 `disabled` 用的就是它）。
+- 已复核批次展示「生成正式凭证」按钮（`command_key = fee-batch:{batch.id}:{draft.version}`，同一批次同一草稿版本连点是重放；`voucher_date = monthEnd(period)`）；已记账后改为只读提示「已生成正式凭证第 N 号；一张草稿只能记账一次，记错须另开冲销凭证」。
+
+### 测试
+
+- `nexus_backend/tests/test_tax06_fee_batch_posting.py` **3 passed**：①未复核草稿记账被拒且不留下任何 `vouchers` 行；②复核后记账得到借=贷=22500 分（=批次总额）、`command_key` 重放返回同一凭证、换键再记被拒（`已经生成过`）、视图投影 `posted_voucher_id`/`voucher_no` 正确；③期间关闭（`restore_period_state`，与内部锁期同一个 `_book(write=True)` 门禁）时记账被拒且无凭证落库。
+- `src/tax-fee-batch-panel.test.ts` **6 passed**：已复核放行、未复核阻断、来源已变化阻断、草稿未批准阻断、已记账阻断、已失效 / 草稿缺失 / 空批次阻断。
+
+## Step 1 门禁与回归（真实输出）
+
+| 命令 | 结果 |
+| --- | --- |
+| `.venv/Scripts/python.exe scripts/check_test_env.py` | `environment matches lock`（36 packages），exit 0 |
+| `.venv/Scripts/python.exe scripts/check_migration_idempotency.py` | exit 0（本步零新迁移；312/313/314/316/318 的 `EXECUTE`/`DO $$` 仍按既有白名单记「需专检」） |
+| `pytest nexus_backend/tests/test_migration_structure.py test_pg_sql_hygiene.py test_write_scope_baseline.py -q` | **12 passed** |
+| `pytest nexus_backend/tests -q -k "tax or posting or fee"` | **367 passed, 98 skipped, 1 error**（error 为 `test_task_evidence_postgres.py` 需 `ACCOUNTING_ADMIN_DATABASE_URL`，本机无 PG DSN，属环境缺失且与本次改动无关） |
+| `pytest` 新增/相关套件 | `test_tax_accrual_posting(10)` + `test_tax_accrual_posting_http(2)` + `test_tax06_fee_batch_posting(3)` + `test_tax_api(3)` = **18 passed** |
+| `ruff check nexus_backend/app services/api_gateway scripts` | `All checks passed!` |
+| `ruff format --check nexus_backend/app services/api_gateway scripts` | `462 files already formatted`（与 CI 口径一致；`nexus_backend/tests` 全仓历史上未格式化，本步只格式化新增/改动的测试文件，未做全仓格式化） |
+| `npm run typecheck` | exit 0 |
+| `npm run lint` | exit 0 |
+| `npx prettier --check`（改动文件） | 全部通过 |
+| `npm test`（全量 vitest） | **163 files / 1460 passed** |
+| `npm run build` | ✓ built in 3.62s（`TaxWorkpaperPanel-*.js` 138.31 kB） |
+| `npm run test:frontend-budget` | `status: passed`、`violations: []`；initialJs 567,460/570,000、initialGzip 175,876/176,000、initialCss 98,906/110,000、homeJs 601,201/625,000、homeGzip 189,236/195,000、homeCss 144,715/145,000（未放宽任何上限；initial 闭包仍只有 `assets/index-*.js`，本次前端改动全在懒加载分块内） |
+| `E2E_FRONTEND_MODE=preview npx playwright test e2e/tax-accrual-posting.spec.ts` | **1 passed (39.2s)** |
+
+- 本机环境小坑（记录备查）：`npm run build` 在系统临时目录被安全软件占用时会报 `[vite:esbuild-transpile] remove ... Access is denied`。改用 `TMP/TEMP=<仓库>/.tmp-build` 即通过；这是本机 Windows 临时目录锁的问题，不是代码问题（同一命令在 E2E 的 preview 服务里也成功过三次）。
+
+## Step 1 剩余未决项
+
+- 计提入账目前只有「按已复核底稿 + 会计输入的累计利润」一条路径；累计利润仍靠人工输入，尚未从报表模块（利润表）自动取数。
+- 印花税计提需要调用方显式传 `contracts`（合同幂等键 + 税目），面板暂未提供合同录入，故当前 UI 生成的计提里印花税恒为 0。
+- 附加税与底稿登记值的一致性校验会在「档案税率在底稿生成之后被改过」时拒绝入账——这是有意的（宁可拒绝也不按两套依据记账），但需要运维口径知道：改档案后应重生成并重复核底稿。
+
+## Step 2 · Batch 05 出纳与付款审批台闭环（完成）
+
+- 工程状态：**完成**（角色/RLS、银行流水落库与核销绑定、懒加载出纳台与 E2E 全部落地；新增迁移 PG `321`/`322`、SQLite `228`/`229`）
+- 外部状态：无需外部（真实银行前置机/云 KMS 仍不在本阶段）
+- 与提示词要求的差异：一致
+
+### 2a 出纳（cashier）与资金审批人（treasury_approver）接入访问控制与 RLS
+
+**为什么不是往 `book_access.role` 里加两个值**：账套访问角色（editor/reviewer/viewer）回答「能不能看/改这本账」，付款岗位回答「能不能发起/放款」，两条轴正交。往 `book_access` 加值还要重建 SQLite 的核心身份表（CHECK 无法 ALTER），风险远大于收益。因此新增独立表 `book_payment_roles`：
+
+- **迁移** `nexus_backend/migrations/postgres/321_b05_payment_roles.sql` / `sqlite/228_b05_payment_roles.sql`（均 `-- compatibility: incremental`）：`(book_id,user_id,role)` 唯一、`role ∈ cashier|treasury_approver`、`state ∈ active|revoked`、`CHECK(state='active' OR (revoked_by IS NOT NULL AND revoked_at IS NOT NULL))`；PG 侧 `ENABLE + FORCE RLS`、三条策略（读 `book_allowed(book_id)`；写与撤销要求 `firm_manager(firm_id) OR company_manager(company_id)`，插入还要求 `granted_by=actor_user()`）、`REVOKE ALL ... FROM PUBLIC/worker/system/projection` 后显式 `GRANT SELECT,INSERT,UPDATE TO accounting_app`、挂 `batch2_company_write_gate` 触发器（该表带 `company_id`）、**禁删触发器**（撤销只能改状态）。SQLite 侧镜像同表同约束 + 禁删触发器。
+- **RLS 谓词函数**：`accounting.book_payment_role(book_id, role)` 与 `accounting.book_payment_member(book_id)`（SECURITY DEFINER，`REVOKE` 后仅授权 `accounting_app`）。`payment_orders` 读/插/改与 `payment_events` 读/插五条策略改为「账套权限 **或** 付款岗位」：制单只认 cashier（或账套编辑者），状态推进认任一付款岗位，`maker_user_id=actor_user()` 等既有约束不变。
+- **Python 授权层** `app/accounting/access.py`：新增 `payment_roles(conn, actor, book_id)` 与两个能力 `pay` / `approve_payment`。`pay = edit or (read and cashier and 主体身份)`；`approve_payment = review or (read and treasury and 复核主体 and 未启用管理者分离)`。岗位**不**放宽账套编辑/复核权，且仍需要一条账套访问授权（否则 `read=false`，连书都看不到）。
+- **付款服务** `app/treasury/service.py`：制单/提交/推进改用 `pay`，放款改用 `approve_payment`。修掉一个真漏洞：`_move()` 原先只校验 `read`，被撤销的出纳仍能推进别人的付款；现在提交/送银行/记退回都要 `pay`。
+- **岗位授权服务** `app/treasury/roles.py`：`list/grant/revoke`，管理者专属；被授权人须已有账套访问（否则 409「请先授予账套访问再加付款岗位」）；重复授权返回原记录，撤销后再授权是**恢复同一条**（不会留下两条互相矛盾的有效授权），每次授权/撤销写 `audit_events`。
+- **HTTP**：`GET /api/treasury/payment-roles?book_id=`、`PUT /api/treasury/payment-roles/{user_id}`、`POST /api/treasury/payment-roles/{role_id}/revoke`、`GET /api/treasury/payment-desk?book_id=`（岗位 + 能力 + 指令清单，只读投影；**没有**改 `payment-orders` 列表的返回形状，避免既有调用方静默读错）。
+
+### 2b 银行导入落库与 `fee_receivable_allocations.bank_statement_line_id` 接线
+
+- **迁移** `322_b05_bank_statement_persist.sql` / `229_b05_bank_statement_persist.sql`：`bank_statement_lines` 增 `source_id`（指向同一次导入生成的正式来源行）与 `external_ref`（`账号|流水号`），两个部分唯一索引保证「同一账套同一笔流水只落一次」「一个来源行只对应一条流水行」。
+- **落库** `app/treasury/imports.py::BankStatementImportService.confirm` + `POST /api/treasury/bank-lines/import`：CSV 归一化后写入 `bank_statement_lines`（方向转符号、`external_ref` 幂等、坏文件整批 400 且一行都不落）。落库状态是 `unmatched`——流水行是银行事实，勾对是会计动作，不能为了好看直接标 matched。
+- **核销绑定** `app/tax/fees.py`：`allocate_receivable(..., bank_statement_line_id=None)`；显式 id 必须属于同一账套（否则 404）、非 `excluded`、且流水行金额符号与银行来源一致、月份同期间（否则 409）；未给 id 时只接受「已由该银行来源绑定过」的那一行（`source_id` 反查），**同一笔到账有两份候选时留空而不猜**。写入列并把 `bank_statement_line_id` 加进分配视图。HTTP 侧 `FeeAllocationWrite` 增同名可选字段。
+
+### 2c 懒加载出纳付款审批台 + E2E
+
+- 新增 `src/CashierPaymentDesk.tsx`：读 `/api/treasury/payment-desk`，展示我的岗位与两项能力、创建付款指令（`idempotency_key` 由 账套+收款人+账号+金额 生成，连点即重放）、提交审批、批准放款；纯函数 `canApprove()` / `canSubmit()` 是按钮的唯一判据（本人制单不出现「批准放款」，而显示「本人制单，须由他人审批」）。
+- 挂载：`src/FormalBooksWorkbench.tsx` 里用 `lazy()` + `<details className="review-section">`（沿用既有样式，**未新增任何 CSS 条目**）；`initial` 闭包仍只有 `assets/index-*.js`，本次前端改动全在懒加载分块内。
+- `src/types.ts` 未改（`BookPermissions` 仍是 edit/review/export/manage，新能力只在本组件内从付款台接口读），避免影响其他调用方。
+
+### 测试
+
+| 层 | 文件 | 结果 |
+| --- | --- | --- |
+| 岗位/RLS/能力 | `nexus_backend/tests/test_b05_payment_roles.py` | **7 passed** |
+| 银行流水落库与核销绑定 | `nexus_backend/tests/test_b05_bank_import_persist.py` | **5 passed** |
+| 既有付款套件回归 | `test_b05_payment_service/http/tables/adapters` | **25 passed** |
+| 规费套件回归 | `test_tax06_fees.py` | **21 passed** |
+| 前端单测 | `src/cashier-payment-desk.test.ts` | **5 passed** |
+| E2E | `e2e/cashier-payment-desk.spec.ts` | **1 passed (34.7s)** |
+
+- 岗位用例覆盖：出纳能制单不能放款（`pay=true/edit=false/review=false/approve_payment=false`）；出纳与资金审批人是两个岗位且资金审批人不能制单；管理者分离政策下管理者不能靠岗位给自己解锁放款（纯函数断言）；撤销后**下一次请求**即失效且记录不删、再授权恢复同一条；非管理者（含账套编辑者）不能发岗位；没有账套授权的人即使被写进岗位表也读不到这本书。
+- HTTP 用例覆盖：管理者发岗位 200 → 出纳台 `roles=['cashier']`、`permissions={pay:true,approve_payment:false}` → 出纳制单 200 → 自审 403 → 撤销后 `pay=false` 且制单 403 → 非管理者发岗位 403。
+- 银行用例覆盖：CSV 落库两条并返回 `inserted=2`、重复导入 `inserted=0/skipped=2`（表内仍是 2 行）、坏方向整批 400 且零落库；核销显式绑定校验（金额不符 409、跨账套 404、被拒后不留分配行）、已绑定来源的流水行自动挂接。
+- E2E 链路：真实身份建账 → 管理者把 cashier 授予独立复核身份 → 出纳身份在页面创建 1200.00 付款指令并提交（页面出现「本人制单，须由他人审批」，且**没有**批准按钮）→ 切换到管理者身份批准放款 → 页面显示「已批准」→ 接口复核 `approver_user_id != maker_user_id` 且状态为 `approved`。
+
+### Step 2 门禁与回归（真实输出）
+
+| 命令 | 结果 |
+| --- | --- |
+| `scripts/check_migration_idempotency.py` | exit 0（新增 321/322 与既有 316/318 同样记「dynamic_ddl 需专检」，该标记由 `EXECUTE FUNCTION` 字样触发，属已知口径） |
+| `pytest test_migration_structure.py test_pg_sql_hygiene.py test_write_scope_baseline.py -q` | **12 passed** |
+| `ruff check / format --check nexus_backend/app services/api_gateway scripts` | 全部通过（`464 files already formatted`） |
+| `npm run typecheck` / `npm run lint` | exit 0 |
+| `npm test`（全量 vitest） | **163 files / 1465 passed** |
+| `npm run build` | ✓ built in 3.52s |
+| `npm run test:frontend-budget` | `status: passed`、`violations: []`；initialJs 567,460/570,000、initialGzip 175,865/176,000、initialCss 98,906/110,000、homeJs 601,201/625,000、homeGzip 189,226/195,000、homeCss 144,715/145,000（未放宽任何上限） |
+| `E2E_FRONTEND_MODE=preview npx playwright test e2e/cashier-payment-desk.spec.ts` | **1 passed (34.7s)** |
+
+## Step 2 剩余未决项
+
+- **PG 实例实跑未做**：321/322 只过了静态结构与 SQL 卫生检查，本机无 DSN。新增的 `book_payment_role`/`book_payment_member` 谓词与五条付款策略改写，必须在真实 PostgreSQL 上跑一次「出纳写入 / 撤销后拒绝 / 管理者发岗位」才算实证。
+- 银行导入目前只落 **流水侧（CSV）**；电子回单（receipts）没有独立落表，仍只做「五字段唯一匹配」的预览与核销绑定。导入向导（`import_wizard`）确认时**没有**同时生成 `bank_statement_lines`——那会给每个既有导入流程新增待勾对流水，进而改变月结银企对账结果；这条要连同「勾对工作台」一起做，不能只补一半。
+- `fee_receivable_allocations.bank_statement_line_id` 只在调用方显式给 id 或流水行已由该银行来源绑定时写入；**不会**按金额/日期自动挑一条（同一到账两份候选时留空）。
+- 出纳台尚未提供「银行结果推进（送银行/成功/退票）」与付款批量的前端入口，后端 `advance` 已按 `pay` 能力受控。
+
+### Step 2 追加：既有断言的同步与最终回归
+
+- `permissions` 字典新增 `pay` / `approve_payment` 两键后，三处**精确相等**断言同步扩展到新契约（不是放宽）：
+  - `nexus_backend/tests/test_access_scope_policy.py::test_all_firm_read_is_explicit_and_covers_new_books`：新账套上 `pay=False`/`approve_payment=False`；
+  - `nexus_backend/tests/test_directory.py::test_member_identity_and_book_authorization_are_both_required`：账套编辑者 `pay=True`、`approve_payment=False`；
+  - `nexus_backend/tests/test_n04_tax_contract.py` **未改**：`/api/tax/context` 本来就只投影 `edit/review/export/manage` 四键（`app/tax/context.py:77`），付款岗位不进税务上下文。
+- 口径说明（有意保留的既有行为）：`pay = edit or cashier`，即**账套编辑者仍可制单**（与改造前一致），出纳岗位解决的是「没有账套编辑权的人如何合法制单」；`approve_payment` 才真正收紧——改造前任何人只要有读权限且不是制单人都能批款，现在必须同时具备复核权或资金审批人岗位。
+- 最终相关回归：`test_n04_tax_contract.py + test_directory.py + test_access_scope_policy.py` **42 passed**；`test_b05_payment_*` **25 passed**；`test_tax06_fees.py` **21 passed**；迁移三件套 **12 passed**；`test_b05_payment_roles.py` **7 passed**；`test_b05_bank_import_persist.py` **5 passed**。
+- 运行方式提醒：`pytest.ini` 的 `pythonpath = nexus_backend` 要求从**仓库根目录**跑；在 `nexus_backend/` 目录里跑会让 `from tools... import` 的既有模块收集失败（20 个 collection error，与本次改动无关）。
+- 已知与本步无关的环境性失败：任何需要 `ACCOUNTING_ADMIN_DATABASE_URL` / `ACCOUNTING_TEST_POSTGRES_URL` 的 PG 用例在本机无 DSN 时报 **error**（不是 skip），例如 `test_access_scope_postgres.py`、`test_task_evidence_postgres.py`。
+
+### Step 1 + Step 2 独立验收加固与远端 PostgreSQL 同步（封账基线）
+
+1. **查询预算修复（`nexus_backend/app/accounting/access.py`）**：将 `AccessControl.book()` 中额外调用 `payment_roles()` 产生的第 2 条 SQL 合并为单条 `SELECT` 内的两个 `EXISTS(...)` 子查询（`_access_pay_cashier` / `_access_pay_approver`），修复 `test_stage25_assistant_efficiency.py` 与 `test_stage19_request_reads.py` 的请求语句数预算回归。
+2. **PostgreSQL 321 纵深加固（`nexus_backend/migrations/postgres/321_b05_payment_roles.sql`）**：在 `accounting.book_payment_role()` 中补齐 `b.company_id = r.company_id` 跨法人绑定校验；将两个 `SECURITY DEFINER` 函数的 `REVOKE ALL` 显式覆盖至 `PUBLIC, accounting_worker, accounting_system, accounting_projection`。
+3. **恢复授权审计补齐（`nexus_backend/app/treasury/roles.py`）**：在撤销后重新授予（`state='active'` 恢复分支）补写 `payment_role.grant` 审计事件，与首次授予保持一致。
+4. **远端 Supabase 生产库（`qgzketopnkzquotddwha`）同步实证**：已依次应用 `321_b05_payment_roles.sql` 与 `322_b05_bank_statement_persist.sql` 并写入 `accounting.schema_migrations`（`total_migrations=309`、`latest_version=322`），实测验证 `book_payment_roles` 存在且 `accounting_app` 仅具备 `SELECT/INSERT/UPDATE`（禁 `DELETE`）、`batch2_company_write_gate` 触发器生效、`bank_statement_lines.external_ref` 就绪。
+
