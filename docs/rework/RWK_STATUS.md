@@ -194,3 +194,12 @@ $ .venv/Scripts/python.exe -m pytest nexus_backend/tests/test_intelligence_http.
 - **未做**：PLT06-A/B/C 受限聚合与实时撤权用例；unknown 通知不自动补发的演练断言；`pg_restore` 跨主版本探测。
 
 - **补（第 2 轮）**：`pg_restore` 跨主版本守卫完成（`restore_version_conflict`，9 passed）；PLT06-B 三条（撤权即时生效 / 撤权复核不落写 / 制单人自审被拒）3 passed；PLT06-A/C 因模型不支持三级可见性，登记为产品缺口而非测试缺口。
+
+## RWK06 Batch 09/10 覆盖（2026-11-23）
+
+- **RWK06-A/F（PLT07 收口）完成**：三段式队列、四类积压归因、诚实 ETA 复用既有 `queue_lanes.py`；受控转派复用 `HandoffService.candidates/assign`（只列已有账套权限者、制单人不可复核、写 `handoff.assign` 审计，不因转派授权）；新增 `test_plt07_peak_season.py`（6 例）覆盖两家同日结账、复核人请假代班、银行流水只阻断本家、代班人不可自审、积压归因、集团汇总声明与非管理拒访。
+- **RWK05 追加（合并试算）完成**：新增 `postgres/328` + `sqlite/235`（`group_related_parties`、只追加 `consolidation_eliminations`，双库禁改禁删触发器、PG 双表 FORCE RLS + 写门）、`app/reports/consolidation.py` 与路由；`consolidation_eliminations` 强制 `maker ≠ reviewer`（列 CHECK + 服务层 403），只有独立复核后的分录进入试算；合并底稿只读生成，`test_consolidation_worksheet.py`（10 例）含「worksheet 零写事务」断言。
+- **PLT08（Batch 09-1.2）完成**：六段固定结构 + 服务端防幻觉改写、三类确定路径、失效即清除、三类受控记忆五条硬约束、64 条封存留出集与 A/B/C 三组独立候选盲评；`test_plt08_full_suite.py` 32 例、`test_plt08_bounded_actions.py` 4 例全绿。
+- **PLT09（Batch 10-1.3）完成**：`scripts/plt09_measurement.py` 新增 `Aggregate`/`coverage`/`unknown_as_zero`/`evaluate`，把 SCORECARD 七条反作弊规则逐条自动化，任一条成立即输出「不能判定为成功」并列出原因；`result["reduction_reportable"]` 恒为 `False`，测试 10 例覆盖七条规则与「不输出节省比例」。
+- **跨期 cohort 修复**：`app/observability/value.py` 的 `approved_drafts` 原先把「上期事项本期审批」的草稿计入本期分子（分母仍按当期创建对象固定）→ 增加「草稿必须源自本期创建事项」的 `EXISTS` 约束；`test_value_baseline.py` 三例全绿并新增该断言。
+- **文案扫描**：`docs/` 与 `src/` 命中的「全面合规/已通过认证/减员」等词全部出现在「禁止这样说」的任务书与测试断言里，无实际夸大表述；新增 `DECISIONS_NEEDED.md` D-003/D-004 与 `CUSTOMER_INPUTS.md` 第 7–9 条，登记合并试算与转派的待客户输入。

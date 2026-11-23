@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import argparse
 import csv
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 COMPANIES = (
@@ -178,3 +178,152 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+# --- 反作弊判定（SCORECARD.md「反作弊判定」1-7 条） -------------------------
+#
+# 这一段只做判定，不做表扬：任何一条成立就返回「不能判定为成功」，并且
+# 永远不计算减员比例、节省工时或节省金额。基线口径不同的两个时期不能
+# 直接相减，因此判定要求调用方显式提供同一口径的基线与当期汇总。
+
+VERDICT_CANNOT_JUDGE = "不能判定为成功"
+VERDICT_MANUAL_REVIEW = "可提交人工复核"
+DEFAULT_COVERAGE_FLOOR = 0.8
+
+
+@dataclass(frozen=True)
+class Aggregate:
+    """One period of already-aggregated measurements (same scope as baseline)."""
+
+    period: str
+    review_backlog: int | None = None
+    error_post_count: int | None = None
+    transferred_minutes: int | None = None
+    business_volume: int | None = None
+    duty_scope: str | None = None
+    external_support_minutes: int | None = None
+    external_support_recorded: bool = True
+    denominator_changed: bool = False
+    denominator_note: str = ""
+
+
+def _per_object(minutes: int | None, volume: int | None) -> float | None:
+    """Time per object, used so that a bigger period is not called slower."""
+    if minutes is None or volume is None or volume <= 0:
+        return None
+    return minutes / volume
+
+
+def coverage(rows: list[Cell]) -> dict[str, float | int]:
+    """Collected cells over expected cells; unknown is never treated as zero."""
+    expected = len(rows) * len(NUMERIC_FIELDS)
+    known = sum(1 for row in rows for field in NUMERIC_FIELDS if getattr(row, field) is not None)
+    ratio = (known / expected) if expected else 0.0
+    return {
+        "expected_cells": expected,
+        "known_cells": known,
+        "coverage": round(ratio, 4),
+    }
+
+
+def unknown_as_zero(rows: list[Cell]) -> list[str]:
+    """Rows that claim to be uncollected but carry a measured zero."""
+    offenders: list[str] = []
+    for row in rows:
+        if row.source != "未采集":
+            continue
+        if any(getattr(row, field) == 0 for field in NUMERIC_FIELDS):
+            offenders.append(f"{row.company_code}/{row.role_code}/{row.period}")
+    return offenders
+
+
+def evaluate(
+    current: Aggregate,
+    baseline: Aggregate,
+    *,
+    rows: list[Cell] | None = None,
+    coverage_floor: float = DEFAULT_COVERAGE_FLOOR,
+) -> dict[str, object]:
+    """Apply the seven anti-cheat rules and return a verdict with reasons."""
+    reasons: list[dict[str, str]] = []
+
+    def flag(code: str, message: str) -> None:
+        reasons.append({"code": code, "message": message})
+
+    if (
+        current.review_backlog is not None
+        and baseline.review_backlog is not None
+        and current.review_backlog > baseline.review_backlog
+    ):
+        flag(
+            "review_backlog_up",
+            f"复核积压较基线上升：{baseline.review_backlog} → {current.review_backlog}",
+        )
+
+    if (
+        current.error_post_count is not None
+        and baseline.error_post_count is not None
+        and current.error_post_count > baseline.error_post_count
+    ):
+        flag(
+            "post_error_up",
+            f"事后发现差错较基线上升：{baseline.error_post_count} → {current.error_post_count}",
+        )
+
+    current_per_object = _per_object(current.transferred_minutes, current.business_volume)
+    baseline_per_object = _per_object(baseline.transferred_minutes, baseline.business_volume)
+    if (
+        current_per_object is not None
+        and baseline_per_object is not None
+        and current_per_object > baseline_per_object
+    ):
+        flag(
+            "transfer_time_up",
+            "转移给业务人员的时间上升："
+            f"每对象 {round(baseline_per_object, 2)} 分钟 → {round(current_per_object, 2)} 分钟",
+        )
+    elif (
+        current_per_object is None
+        and current.transferred_minutes is not None
+        and current.transferred_minutes > 0
+    ):
+        flag("transfer_time_unknown", "转移给业务人员的时间缺少业务量口径，无法比较")
+
+    if current.duty_scope != baseline.duty_scope:
+        flag(
+            "scope_mismatch",
+            f"职责范围口径不同：{baseline.duty_scope!r} → {current.duty_scope!r}",
+        )
+
+    if not current.external_support_recorded or current.external_support_minutes is None:
+        flag("external_support_unrecorded", "存在未记录的外部援助，或外部投入未采集")
+
+    unknown_cells = 0
+    if rows is not None:
+        stats = coverage(rows)
+        if float(stats["coverage"]) < coverage_floor:
+            flag(
+                "coverage_insufficient",
+                f"采集覆盖不足：已采集 {stats['known_cells']} / 应有 {stats['expected_cells']} 格",
+            )
+        offenders = unknown_as_zero(rows)
+        if offenders:
+            unknown_cells = len(offenders)
+            flag(
+                "unknown_as_zero",
+                f"把未采集当零：{unknown_cells} 行标记「未采集」却填了 0（例：{offenders[0]}）",
+            )
+    else:
+        flag("coverage_missing", "没有提供采集明细，无法核对覆盖与未采集当零")
+
+    if current.denominator_changed and not current.denominator_note.strip():
+        flag("denominator_change_undisclosed", "变更了分母但报告未披露变更口径")
+
+    verdict = VERDICT_CANNOT_JUDGE if reasons else VERDICT_MANUAL_REVIEW
+    return {
+        "verdict": verdict,
+        "reasons": reasons,
+        "current_period": current.period,
+        "baseline_period": baseline.period,
+        "reduction_reportable": False,
+        "note": "记分表不计算减员比例、节省工时或节省金额；结论必须由人工复核。",
+    }

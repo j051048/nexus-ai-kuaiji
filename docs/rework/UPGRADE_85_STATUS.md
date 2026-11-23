@@ -1188,7 +1188,7 @@
 - Batch 01/01B（工程门禁、PG 强制门禁）、02（报表合规 + 工作台 + 三件套 + 本轮上下文守卫）、03（验收包/审计链/恢复办单，PLT06-A/C 另行拍板延后二期）、04（四税引擎 + 计提入账）、05（出纳/付款审批/银行 H2H/核销绑定）、06（行业处理器 + B8 链路 + PLT05-B/C/D/E）、07（SSO 钩子/KMS/配额三条链路/CI 安全门禁）、08（结构化日志/指标/告警分发/Runbook）均已落地并有可复跑的门禁与测试。
 - **Batch 09 前置条件（Batch 02 + Batch 05 完成）正式解锁**。
 
-## Step 5a 精确起点（本轮未开启，按纪律干净停手）
+## Step 5a 精确起点（**已由下方「Batch 09-1.1」落地完成，读到本节请直接进 5b**）
 
 1. 读 `docs/upgrade_85/UPG09_WORKFLOW_AND_AGENT.md` 1.1 节与 `docs/rework/UPGRADE_85_STATUS.md` 末尾。
 2. 双库前向迁移 **PG `325` / SQLite `232`**（`-- compatibility: incremental`）：`workflow_definitions`（`firm_id/company_id/process_kind` 版本化 DAG，`status ∈ draft|active|archived`，节点规则 JSONB/TEXT、内容指纹、发布人、已发布版本不可篡改）、`workflow_instances`（锁定启动 `definition_version`、当前节点、状态、挂起原因）、`workflow_step_logs`（只追加，含接管/回退留痕）。PG 侧全套红线：`SET LOCAL search_path=accounting,pg_catalog;`、完整外键、`ENABLE + FORCE RLS`、`actor_firm()` + `company_visible`/`firm_manager`、`REVOKE ALL ... FROM PUBLIC, accounting_worker, accounting_system, accounting_projection` 后显式 `GRANT`、`batch2_company_write_gate`、`workflow_step_logs` 禁改禁删触发器。
@@ -1200,4 +1200,261 @@
 1. **三防线防串数与句柄释放（`src/request-scope.ts`、`src/WorkspaceContextBar.tsx`）**：为 `scopedController()` 补齐 `release()` 并在请求 `.finally()` 释放已完成句柄避免全局集合累积；同时恢复局部 `active` 标记（`!active || !isCurrentScope(scope.epoch)`），覆盖浏览器前进/后退或左侧导航未经过 `beginScope()` 的切换路径。
 2. **确认对话框展示人类可读公司名称（`src/WorkspaceContextBar.tsx`）**：切换单位弹窗的 `company` 字段由原始 UUID `companyId` 改为匹配中文单位名。
 3. **E2E 补齐真实在途竞态（`e2e/b02-context-switch-guard.spec.ts`）**：延迟响应防串数用例由“等旧请求落地后再切换”改为“确认旧期间请求已发出、仍在 1.5s 延迟飞行中即刻切到新期间”，真正验证在途延迟回执不覆盖新期间锁期状态。
+
+## Batch 09-1.1：声明式工作流编排与版本管理中台（Step 5a）完成
+
+> 本节即上文「Step 5a 精确起点」的落地记录，后续会话读到该标题时**跳过 5a 直接进 5b**（起点见本节末）。
+
+### 1. 双库前向迁移（PG `325` / SQLite `232`）
+
+- 新增 `nexus_backend/migrations/postgres/325_workflow_definition_engine.sql` 与 `nexus_backend/migrations/sqlite/232_workflow_definition_engine.sql`，首行均为 `-- compatibility: incremental`，编号严格顺延（原水位 PG 324 / SQLite 231）。
+- 三张表：
+  - `workflow_definitions`：`firm_id / company_id / process_kind ∈ ('expense_reimbursement','payment_approval','fee_variance','monthly_close') / version>0 / status ∈ ('draft','active','archived') / nodes_json / routing_json / content_fingerprint(len=64) / note / rollback_from_version / created_by / created_at / published_by / published_at`；`UNIQUE(firm_id,company_id,process_kind,version)` + 部分唯一索引 `idx_workflow_definition_active ... WHERE status='active'`（同一企业同一流程至多一条生效版本）。
+  - `workflow_instances`：锁定 `definition_id / definition_version`，含 `book_id / process_kind / subject_type / subject_id / amount_cents（BIGINT，整数分）/ current_node / path_json / status ∈ ('running','suspended','completed','rejected','escalated') / suspended_reason / terminal_external_locked / irreversible_reached / approvals_json / created_by / created_at / updated_at` + 队列索引 `(firm_id,company_id,status,process_kind,updated_at)`。
+  - `workflow_step_logs`：只追加步骤与人工接管/回退留痕（`instance_id / node_id / action ∈ 9 种 / from_node / to_node / actor_user_id / reason / metadata_json / created_at`）。
+- PG 红线逐条落实：`SET LOCAL search_path=accounting,pg_catalog;`、`CREATE TABLE/INDEX IF NOT EXISTS`、完整外键（`firms/companies/books/users` 与表间）、`ENABLE + FORCE ROW LEVEL SECURITY`、读写分离策略（定义读 `firm_id=actor_firm() AND company_visible(company_id)`；写/发布追加 `(firm_manager(firm_id) OR company_manager(company_id))` 且插入要求 `created_by=actor_user()`；实例三个策略都带 `book_allowed(book_id)`；日志用 `EXISTS` 绑定到同事务所实例）、`REVOKE ALL ... FROM PUBLIC, accounting_worker, accounting_system, accounting_projection` 后显式 `GRANT SELECT,INSERT,UPDATE TO accounting_app`（日志仅 `SELECT,INSERT`，无 `DELETE`）、三表均挂 `batch2_company_write_gate`。
+- 不可篡改防线（双库同构）：`workflow_definition_guard()` 全拒 `DELETE`，且 `OLD.status IN ('active','archived')` 时任何 `nodes_json/routing_json/content_fingerprint/version/process_kind/firm_id/company_id/created_by/created_at` 变动 → `RAISE ... USING ERRCODE='55000'`「published workflow versions are immutable」；`workflow_instance_lock_guard()` 锁定启动快照列（`definition_id/definition_version/process_kind/subject_*/amount_cents/path_json/firm_id/company_id/book_id/created_*`）；`workflow_step_log_append_only()` 拒改拒删。PG 三个函数均带 `SET search_path=accounting,pg_catalog` 并对函数 `REVOKE ALL ... FROM PUBLIC, accounting_worker, accounting_system, accounting_projection`；SQLite 侧用 `workflow_definitions_published_frozen`（`WHEN OLD.status IN ('active','archived') AND (NEW.x IS NOT OLD.x ...)`）等六个 `CREATE TRIGGER IF NOT EXISTS` 等效实现。
+
+### 2. 引擎与路由（`nexus_backend/app/workflow/`）
+
+- `engine.py`（纯规则层，无 DB 依赖）：四类内置模板（含条件分支与默认门槛）；`normalize_nodes` 做 id 唯一/`label` 1..60/角色枚举/布尔标志/唯一 start/≥1 终点/终点无边/非终点必有边/条件边在前且至多一条兜底边/三色 DFS 无环/全部可达；`normalize_routing` 拒绝未知字段、`escalate_after_hours ∈ 1..720`、`auto_approve_below_cents <= dual_approval_from_cents`；`_strict_amount` 拒绝布尔、浮点与负数（**金额一律整数分**）；`content_fingerprint` 为规范化 JSON 的 SHA-256；`route_path`/`approval_node_ids`/`auto_approved`/`dual_required`/`escalation_deadline`/`escalation_due`/`next_node`/`diff_definitions`。
+- `models.py`：`DefinitionWrite / DefinitionPublish / DefinitionRollback / InstanceStart（amount_cents: StrictInt ge=0）/ InstanceAction / EscalationSweep`，均 `extra="forbid"`。
+- `service.py`（`WorkflowService`）：`overview / definition / create_version / publish / rollback / diff / instances / start / act / sweep_escalations`，`routing_rule_version="b09-workflow-v1"`；定义级动作写 `audit_events`（`workflow.definition.create|publish|rollback`），实例动作写 `workflow_step_logs`。
+- 关键规则取舍（都有测试锁死）：
+  - **发起即视为发起人节点完成**：非直通实例 `status='running'`、`current_node=path[1]`，日志 `node_id=path[0]`、`to_node=current_node`（否则任何审批都会撞「当前节点不是审批节点」）。
+  - **审批人 ≠ 发起人**：`actor.user_id == created_by` → 403「不能审批自己发起的流程」，零状态变更。
+  - **金额分流**：低于 `auto_approve_below_cents` 直通完成（`status='completed'`、`current_node=path[0]`、`approvals_json.outcome='draft'`、仅一条 `auto_approve` 日志）；达到 `dual_approval_from_cents` 时若路径审批节点不足 2 个 → 422「该金额区间要求双人审批，当前流程定义不满足，请先补齐审批节点」。
+  - **终态硬红线**：回退时先算 `locked = terminal_external_locked OR irreversible_reached OR 已离开节点中任一 irreversible/external_locked`，命中直接 409「该流程已过账或已提交银行/税局，无法回退，请走冲销流程」，**先于**「已结束不能回退」判定，保证终态实例拿到冲销指引；零状态变更。
+  - **版本隔离**：实例启动锁定 `definition_id/definition_version` 与 `path_json`，发版后存量实例继续按旧版走完；新实例取新 active。**回滚 = 复制历史版本内容生成新版本号**（`rollback_from_version` 记录来源），先归档旧 active 再插新行，绝不 `UPDATE` 历史行；回滚前复算指纹，不一致 → 409「历史版本内容与指纹不一致，拒绝回滚」。
+  - **人工接管/安全回退**：`suspend/resume/rollback/reject` 强制原因 ≥2 字（422）；回退一步并把**目标节点自身**与之后的审批作废；退回起点后允许发起人以 `start` 动作重新提交（`reason` 必须填写，日志 `metadata.resubmitted=True`），不因此获得其它权限。
+  - **超时升级**：`escalate_timeout` 与 `sweep_escalations` 均可注入 `moment` 做确定性测试；未到点 → 409「尚未到升级时限」。
+- `router.py`：`APIRouter(prefix="/api/workflow", tags=["流程编排中台"])`，10 个端点（`GET /overview`、`GET /definitions/{id}`、`POST /definitions`、`POST /definitions/{id}/publish`、`POST /definitions/{id}/rollback`、`GET /diff`、`GET /instances`、`POST /instances`、`POST /instances/{id}/actions`、`POST /escalations`）。
+- `nexus_backend/app/main.py` 三处接线：import（`build_workflow_router` / `WorkflowService`）、lifespan（`application.state.workflow = WorkflowService(database, application.state.service)`）、`app.include_router(build_workflow_router(actor))`。**未改动 `AccessControl.book()`**（仍单条 SELECT）。
+
+### 3. 测试（`nexus_backend/tests/test_workflow_engine_versioning.py`，**28 passed / 34.1s**）
+
+覆盖：四类模板合法性与指纹可复算；拒环（三色 DFS 报「流程存在环」）/悬空边/浮点条件/布尔门槛/双起点/不可达/悬空终点；门槛反串与越界；金额分流与双人计数；发布归档旧版且仅一条 active、重复发布 409；已发布版本 `UPDATE/DELETE` 被触发器拒；回滚生成新版本且历史行指纹与状态不变、回滚 active 409；篡改指纹 409；非管理员写定义 403；存量实例锁 v1 并在发版后继续走 v1、新实例走 v2；审批人＝发起人 403；双人审批完成且 `irreversible_reached=True` 后回退 409 且日志数不变；付款模板提交银行后 `terminal_external_locked=True` 回退 409；安全回退逐步退回并裁剪审批、起点再退 409；挂起/恢复/超时升级（注入时刻，未到点 409）与 `sweep_escalations` 只升级逾期那条；低风险直通；无 active 409；双人门槛但审批节点不足 422；实例快照列与步骤日志改删被拒；账套与企业不匹配 422；跨事务所 404；实例列表按企业隔离；`diff` 报告变化、自身对比 identical。
+
+### 4. 前端（懒加载工作台，零首屏 CSS 增量）
+
+- `src/workflow-studio.ts`：纯函数与类型（`formatCents` 整数分→「100,000.00」纯整除+千分位、`centsFromYuanInput` 正则校验后字符串拼接，**未引入 `parseFloat`**、`conditionLabel`、`routingIssues`、`rollbackBlockReason`、`layoutWorkflow`（最长路径分层 + 贝塞尔连线 + 条件标签）、`diffLines`）。
+- `src/WorkflowStudioPanel.tsx`：默认导出 `WorkflowStudioPanel`（四类流程页签、原生 SVG 画布、版本历史与发布/回滚、门槛与审批角色编辑、版本 Diff、实例挂起/接管/安全回退；**未发布过版本时以内置模板为编辑底稿**），另导出 `WorkflowDiagram` / `DiffList` 两个纯展示组件供 SSR 单测；无 `window.confirm`。
+- `src/workflow-studio.css`：随懒加载 chunk 加载，**未进入首屏**（homeCss 仍 144,715）。
+- `src/AdminWorkspace.tsx`：新增 `const WorkflowStudioPanel = lazy(() => import('./WorkflowStudioPanel'));`、`initialTab` 白名单加 `'workflow'`、页签按钮「流程编排」、`tab === 'workflow'` 分支（`<Suspense>` 包裹）。
+- 单测 `src/workflow-studio.test.ts`（9 passed）与全量 `npm test -- --run` → **166 files / 1485 passed**。
+- E2E `e2e/workflow-studio.spec.ts` → **2 passed / 15.9s**：1366 用例走「用模板发布 v1 → API 建实例并挂起 → 页面人工接管恢复 → 改门槛发布 v2（v1 转已归档、实例仍锁 v1）→ Diff 报出「双人审批门槛：5,000.00 元 → 3,000.00 元」」；390 用例验证窄屏可读、无横向溢出。
+
+### 5. 门禁（真实输出）
+
+| 命令 | 结果 |
+| --- | --- |
+| `scripts/check_migration_idempotency.py` | exit 0（325 与 324/323/321/318 一样被列为「需专项检查：dynamic_ddl（`EXECUTE`）」，属既有静态扫描口径） |
+| `scripts/check_secrets.py` | `no secrets found` |
+| `uvx ruff==0.17.0 check nexus_backend/app services/api_gateway scripts` | `All checks passed!` |
+| `uvx ruff==0.17.0 format --check ...` | `473 files already formatted` |
+| `pytest test_migration_structure / test_pg_sql_hygiene / test_write_scope_baseline / test_stage25_assistant_efficiency / test_stage19_request_reads / test_workflow_engine_versioning` | **54 passed / 59.9s** |
+| `npm run typecheck` / `npm run lint` | exit 0 |
+| `npm run format:check` | `All matched files use Prettier code style!` |
+| `npm test -- --run` | **166 files / 1485 passed** |
+| `npm run build`（`TEMP/TMP` 指向 `tmp_test/tmp`） | ✓ built in 3.56s |
+| `npm run test:frontend-budget` | `status: passed`、`violations: []`（initialJs 567,571/570,000、**initialGzip 175,931/176,000**、initialCss 98,906/110,000、homeJs 601,312/625,000、homeGzip 189,298/195,000、**homeCss 144,715/145,000**） |
+| `npx playwright test e2e/workflow-studio.spec.ts`（dev 模式） | **2 passed / 15.9s** |
+
+### 6. 本轮踩到的两个真实缺陷（诚实记录）
+
+1. **默认「办理原因」只填了 DOM 没进 state**：输入框用 `reasons[id] ?? '人工接管：核对异常节点'` 显示默认值，但 `act()` 只读 `reasons[id]`，导致点「人工接管并恢复」被前端自己拦成「该动作必须填写原因」——E2E 首次跑出。修复为常量 `DEFAULT_ACTION_REASON` 同时用于显示与提交。
+2. **版本列表按 `version DESC` 返回**：Diff 下拉用 `selectOption({index})` 会选反（v2→v1 得「3,000.00 元 → 5,000.00 元」），改为按可见标签 `'v1 · 已归档' / 'v2 · 生效中'` 选择。
+
+### 7. Step 5b 精确起点（下一步从这里开始，5a 已完成勿重做）
+
+1. 读 `docs/upgrade_85/UPG09_WORKFLOW_AND_AGENT.md` 1.2 节、`docs/pilot/PLT08_ASSISTANT.md`，并盘点现有 `nexus_backend/app/assistant/`（`investigation.py`、`fact_validation.py`、`actions.py`、`scope.py`、`delivery_*`）、`nexus_backend/app/learning/`（`service.py`/`memory.py`/`governance.py`/`evidence.py`）、`tools/assistant_replay/` 已实现点位，在现有架构上补齐，**不另起 Agent 框架**。
+2. PLT08-A 六段固定结构 + 服务端防幻觉改写（结算单 100,000.00 元 vs 银行 99,650.00 元、无扣费凭据时不得输出「手续费」断定，须改写「存在差异，原因未确认」；伪造对象 ID/错误金额被拦；无依据弃答）。
+3. PLT08-B/C：三类确定调查路径、无权范围显式进「未检查的范围」、依赖对象版本/权限失效即清除旧结论（撤权拒访不泄露）、结果未知不自动重试且零写副作用；`actions.py` 既有「不可变预览 + 64 位指纹 + 显式确认 + 幂等键」护栏下新增两类有界动作卡。
+4. PLT08-D 三类受控记忆五条硬约束（必要时新迁移 PG `326` / SQLite `233`，全套 PG 红线）。
+5. PLT08-E：`nexus_backend/tests/evals/plt08_holdout/` ≥60 条封存样本（4 类各 ≥15 条）+ `tools/assistant_replay/` 只读可重复评测器（A/B/C 记忆配置组各自独立生成候选、统一盲评、5 项独立指标）+ `nexus_backend/tests/test_plt08_full_suite.py`，指标写回 `docs/pilot/PLT_STATUS.md` 与本台账。
+
+## Batch 09-1.2：PLT08 调查助手防幻觉与 60 样本留出评测（Step 5b）完成
+
+### 1. 交付物（全部本机真实跑过）
+
+| 位置 | 内容 |
+| --- | --- |
+| `nexus_backend/migrations/postgres/326_plt08_assistant_memory_and_answers.sql`、`sqlite/233_…sql` | `assistant_answers`（回答快照，双库禁改禁删）、`assistant_preferences`（个人偏好，仅本人可见可删）、`assistant_rule_proposals`（企业规则版本 + 单条 approved 偏唯一索引）；PG 三表 RLS + `batch2_company_write_gate` + `REVOKE/GRANT` |
+| `nexus_backend/migrations/postgres/327_plt08_bounded_cards.sql`、`sqlite/234_…sql` | 有界动作卡的 `assistant_card_plans` / `assistant_card_receipts` / `assistant_card_execution_claims`；同护栏（不可变预览、64 位指纹、30 分钟过期、请求键幂等），旧 `assistant_action_plans` 三类校验证明未改 |
+| `nexus_backend/app/assistant/answer_contract.py` | 六段固定结构 + 服务端防幻觉改写（归因词、金额、对象标识三类校验） |
+| `nexus_backend/app/assistant/paths.py` | 三类确定调查路径 + `BookReader`/`SampleReader` 双读取端口 |
+| `nexus_backend/app/assistant/answer_store.py`、`answer_router.py` | 回答保存、依赖版本重算、失效即隐藏、撤权拒访、复用不重复计费、重新调查；`/api/assistant` 端点 |
+| `nexus_backend/app/assistant/memory.py` | 三类受控记忆与五条硬约束（偏好归属个人、规则需第二人批准、禁金额字段、按时生效期、只读当前事实） |
+| `nexus_backend/app/assistant/actions.py` | 两类有界动作卡：`review_queue_pull`（高风险复核清单）、`missing_evidence_draft`（缺件催办草稿），确认只落回执 |
+| `nexus_backend/tests/evals/plt08_holdout/` | `make_dataset.py` + `dataset.json`：64 条封存样本（四类各 16），文件头注明合成数据 |
+| `tools/assistant_replay/plt08.py` | 只读可重复评测器：A/B/C 三组独立生成候选 + 统一盲评 + 5 项独立指标 |
+| `nexus_backend/tests/test_plt08_full_suite.py`、`test_plt08_bounded_actions.py` | 32 + 4 例：A 防幻觉红绿、B 三路径与无权、C 失效/撤权/计费、D 五条硬约束、E 留出集与评测器、动作卡护栏 |
+
+### 2. 关键设计取舍
+
+1. **六段由服务端组装，模型只提供可选散文**：`build_answer` 先填结论/依据/差额/未检查/处理人/入口，模型散文只有通过金额与标识白名单才并入结论段；弃答时散文整体丢弃，防止「无依据却写出结论」。
+2. **归因词用「断定句式」判定而非裸词**：`缺手续费凭据`这类缺件说明必须留在「未检查的范围」，不能被判成归因，也不能被抹掉。
+3. **读取端口抽象**：真实账套（SQL）与评测样本（内存 dict）共用同一套组装代码，因此 64 条留出样本检验的正是线上那份契约代码。
+4. **失效即清除靠依赖版本快照**：来源用 `sha256(fingerprint|latest_evidence)`、凭证用 `content_fingerprint`、月结/交付包用 `MAX(version)`、规则用 approved 版本；读取时逐项重算，任一不符即标 `invalid` 并隐藏正文。
+5. **规则与判断分离**：企业规则只影响「依据」里引用哪条规则，不参与金额与结论，因此 A/B 两组五项指标相同是设计结果，不造差异。
+
+### 3. 真实门禁输出
+
+| 命令 | 结果 |
+| --- | --- |
+| `pytest test_plt08_full_suite.py test_plt08_bounded_actions.py test_stage15_assistant_actions.py test_migration_structure.py test_pg_sql_hygiene.py test_write_scope_baseline.py test_stage25_assistant_efficiency.py test_stage19_request_reads.py test_workflow_engine_versioning.py -q` | **120 passed / 157.28s** |
+| `python tools/assistant_replay/plt08.py --out tmp_test/pilot/PLT08-E/dev-run-6` | 事实正确率 1.0 / 引用准确率 1.0 / 漏报阻断率 0.0 / 阻断项完整列出率 1.0 / 应弃答而未弃答率 0.0 / 单次有效诊断回放成本 2.2188（64 样本，模型调用 0） |
+| `scripts/check_migration_idempotency.py` | exit 0（326/327 列入「需专项检查：dynamic_ddl」） |
+| `scripts/check_secrets.py` | `no secrets found` |
+| `uvx ruff==0.17.0 check nexus_backend/app …` | All checks passed |
+| `uvx ruff==0.17.0 format --check nexus_backend/app services/api_gateway scripts` | 478 files already formatted |
+
+### 4. 本轮踩到的真实缺陷（诚实记录）
+
+1. **`has_attribution_claim` 误判缺件说明**：原实现扫六段全部行，把「手续费/扣款凭据（本期未提供）」判成归因断定，红绿测试必然假阳性——改为只扫结论段 + 断定句式正则。
+2. **弃答被模型散文升级成结论**：`build_answer` 原本无条件并入合法散文，弃答样本因此被计成「应弃答而未弃答」——改为弃答时丢弃散文。
+3. **阻断项只在 `facts` 里**：六段正文没有阻断信息，评测的「阻断项完整列出率」恒为 0——改为在结论段逐项列出 `阻断项 code：next_action`。
+4. **`audit_events` 不接受外部 id**：`memory._audit` 传 uuid 导致 `sqlite3.IntegrityError: datatype mismatch`——改为不传 id 并使用真实列。
+5. **金额字段校验顺序**：原先把「未知字段」判在「像金额的字段」之前，`threshold_cents` 只报未知字段；改为先做金额检查，让拒绝理由明确。
+6. **动作卡被旧表 CHECK 挡住**：`assistant_action_plans.kind` 只允许三类，新增两种卡片会在 `INSERT` 处 `CHECK constraint failed`——选择新增独立卡片表而不是重写 067 的校验证明，避免动到 ocr/proposal/bank 的既有护栏。
+
+### 5. 边界（未验证，如实记录）
+
+- 无 PostgreSQL 环境：326/327 未在 PG16/17 应用，RLS 与卡片触发器仅通过静态卫生检查。
+- 留出样本与实现同一作者编写，1.0 只说明自洽，不构成泛化证据；真实模型仍待接入。
+- 前端未新增 PLT08 面板：本轮交付为服务端契约、持久化与评测闭环，UI 复用既有「经营看板/助手」入口。
+- 有界动作卡只在服务端产出清单与催办文本，未接通知发送（发送属外部通道，需客户签认）。
+
+### 6. Step 6a 精确起点（下一步从这里开始，5b 已完成勿重做）
+
+1. 读 `docs/upgrade_85/UPG10_SHARED_QUEUE_AND_FINAL_GATE.md` 1.1/1.2 节、`docs/pilot/PLT07_QUEUE_SUMMARY.md`，并复盘 `nexus_backend/app/workspace/queue_lanes.py`（已实现三段式分道、四类积压归因、诚实 ETA）、`nexus_backend/app/workspace/service.py:1379` 附近 `list_in_connection()`、`src/WorkspaceHome.tsx:712` 已消费的 `queue_lanes`/`backlog_summary`。
+2. PLT07 收口缺口：**受控转派（transfer）后端尚未实现**（候选人只含对该对象已有权限者、绝不因转派授权、复核不可转给制单人、写审计）；PLT07-C 月末高峰场景测试缺失；PLT07-D 集团汇总要在现有 `test_plt07_queue_and_insights.py` 基础上补「缺报点名 + 多准则不静默相加 + legacy/formal 分列 + 固定标注管理汇总非合并报表 + 非管理角色拒访」。
+3. 多法人内部往来对账与集团管理合并试算：双库前向迁移（下一号 PG `328/329`、SQLite `235/236`）建关联方映射与只追加 `consolidation_eliminations`（maker ≠ reviewer，绝不改单体账簿），实现 `nexus_backend/app/reports/consolidation.py` + 路由，逐笔对平与未达差额（整数分），所有响应与导出标注「集团管理合并试算（非经审计法定合并报表）」，不同准则分口径不混加。
+
+## Batch 10-1.1 / 10-1.2：五人共享总控队列收口与集团管理合并试算（Step 6a）完成
+
+### 1. 本阶段交付
+
+| 交付项 | 落点 | 关键约束 |
+| --- | --- | --- |
+| 三段式队列（PLT07-A） | `nexus_backend/app/workspace/queue_lanes.py`（既有） | 纯函数按 `Asia/Shanghai` 划分五段（今天必须办 / 即将逾期 / 等待别人 / 无截止日 / 计划内），互不重复，不使用模型打分 |
+| 积压四类归因 + 诚实 ETA（PLT07-B） | 同上（既有） | 按当前真实处理方归类；样本 < 5 时 `eta_minutes=None` + 「样本不足」，不编造 |
+| 受控转派（PLT07-B） | `nexus_backend/app/handoff/service.py`（既有 `candidates`/`assign`） | 候选人只含已有账套权限者；`assignee == workpaper.created_by` → 409；无权限 → 403「指派不会授予权限」；写 `handoff.assign` 审计 |
+| 月末高峰场景测试（PLT07-C） | `nexus_backend/tests/test_plt07_peak_season.py`（新，6 例） | 两家同日结账、复核人请假代班、银行流水只阻断本家、代班人不可自审、积压归因清晰 |
+| 集团汇总核验（PLT07-D） | `nexus_backend/app/observability/insights.py`（核验，未改实现） | 缺报点名、`legacy`/`formal` 分列、固定标注「管理汇总，非合并财务报表（无内部往来抵销）」、非管理拒访 |
+| 关联方映射 + 只追加抵消分录 | PG `328_group_consolidation.sql` / SQLite `235_group_consolidation.sql` | `group_related_parties`、`consolidation_eliminations`；PG 双表 RLS（FORCE）+ `company_write_table_guard` 写门 + 禁改禁删触发器；SQLite 同名触发器；`maker ≠ reviewer` 双重保障（列 CHECK + 服务层 403） |
+| 合并试算服务与路由 | `nexus_backend/app/reports/consolidation.py`、`consolidation_router.py`、`main.py` | 只读事务生成底稿，绝不改单体账簿；跨准则进 `not_merged_pairs` 不静默相加；缺报/无权法人点名；抵消分录需第二人复核才进试算；固定声明「集团管理合并试算（非经审计法定合并报表）」 |
+| 单测 | `nexus_backend/tests/test_consolidation_worksheet.py`（新，10 例） | 对平、未达差额、单边未达、未映射/方向跳过、多准则不混加、自审 403、独立复核生效、pending 不进试算、无权法人点名、worksheet 零写事务、触发器拒改 |
+
+### 2. 设计取舍
+
+1. **转派复用既有 handoff 通道**：队列是权限拼出的 CTE 投影，没有 `tasks` 表可改负责人；已有 `handoff_tasks`（含 `assignee_id`/`role`/`superseded_at`）与 `HandoffService.assign` 已实现「只授予已有权限的人 + 制单人不可复核 + 审计留痕」，因此不新增转派表、不造第二套授权逻辑。
+2. **合并试算独立成表、独立成服务**：抵消分录写 `consolidation_eliminations`，试算只读聚合单体账簿；`worksheet()` 全程 `write=False`，测试用 monkeypatch 记录 `db.transaction(write=...)` 断言零写事务。
+3. **准则口径先分组再对平**：`standards_by_company` 分组后只在同准则内配对，跨准则对平对列入 `not_merged_pairs`（`standard_mismatch`），响应里带 `standard_groups` 与 `totals_comparable` 语义。
+4. **金额全程整数分**：`money(cents)` 用 `divmod` 格式化，`amount_cents` 只接受 `int`（拒绝 bool/float），差额与合计都以整数分比较。
+
+### 3. 真实门禁输出
+
+| 命令 | 结果 |
+| --- | --- |
+| `pytest test_consolidation_worksheet.py test_plt07_peak_season.py -q` | **16 passed in 20.41s** |
+| `pytest test_migration_structure.py test_pg_sql_hygiene.py test_write_scope_baseline.py test_stage25_assistant_efficiency.py test_stage19_request_reads.py test_consolidation_worksheet.py test_plt07_peak_season.py test_plt07_queue_and_insights.py -q` | **45 passed in 62.80s** |
+| `scripts/check_migration_idempotency.py` | exit 0（326 / 327 / 328 均列入「需专项检查：dynamic_ddl（EXECUTE）」，与 324/325 同口径） |
+| `scripts/check_secrets.py` | `no secrets found` |
+| `uvx ruff==0.17.0 check nexus_backend/app services/api_gateway scripts` | `All checks passed!` |
+| `uvx ruff==0.17.0 format --check nexus_backend/app services/api_gateway scripts` | `480 files already formatted` |
+
+### 4. 本轮修掉的真实缺陷
+
+1. `consolidation._now` 误写 `from ..service import now`（该模块无 `now`）→ 改为 `datetime.now(timezone.utc).isoformat()`，否则所有写入路径 `ModuleNotFoundError`。
+2. 合并试算测试按 `pairs["internal_receivable"]` 取值，但配对方向由两家企业 id 大小决定（uuid 随机序）→ 断言改为按 `{kind, counterpart_kind}` 集合匹配，不假定法人顺序。
+3. 月末高峰用例三处与实际契约不符：`attribute_backlog` 返回 **list**（不是 dict）；`book_review_delegations` 无 `created_by` 列（用 `requested_by` + `duty='reviewer'`）；`users` 必须先于 `memberships` 插入（否则 FK 失败）→ 均按真实 schema 修正断言与插入顺序。
+4. 非管理角色拒访用例原用「另一事务所 owner」验证 403，实际 owner 能读自己事务所的空汇总（`kpis.companies == 0`）→ 改为「跨所只能看到自己空汇总 + 复核人（非管理）403」，两条语义都测到。
+
+### 5. 边界与未验证项
+
+- PG 真实库未连接：`328`/`235` 的 RLS 与触发器只在 SQLite 上执行验证，PG 侧仅通过静态卫生检查（`test_pg_sql_hygiene.py`）。
+- 合并试算前端面板未新增（本阶段未在本令中要求 UI）；所有响应与导出均带 `statement` 声明字段，供后续面板直接展示。
+- 缺报/无权法人的「缺报」原因目前来自 `accounting_policies` 与 `access.company` 的组合判断，未接客户真实多法人账套做端到端联调。
+
+### 6. Step 6b 精确起点
+
+1. `nexus_backend/tests/test_value_baseline.py`：补跨期 cohort 回归（上期事项本期映射、退回不混入本期分子），先读现有用例再追加，不改既有断言。
+2. `scripts/plt09_measurement.py` + `nexus_backend/tests/test_plt09_measurement.py`：为 `docs/pilot/SCORECARD.md` 七条反作弊规则逐条补自动化测试，任一触发都必须输出「不能判定为成功」及具体原因。
+3. 核对 `docs/pilot/CUSTOMER_INPUTS.md` 与 `docs/rework/DECISIONS_NEEDED.md`，把本轮新增的待客户输入/待裁决项补齐（合并试算的关联方映射口径、抵消分录复核权限归属）。
+4. 全仓合规文案扫描：`docs/` 与 `src/` 中「全面合规」「已通过等保」「已通过认证」「保证减员至 5 人」「预计可节省」等表述逐一改客观描述（测试断言中的禁用词示例保留）。
+5. 同一干净工作树顺序跑全套终验（`check_test_env.py`、`check_migration_idempotency.py`、`check_secrets.py`、ruff check/format、`pytest nexus_backend/tests -q --ignore-glob="*_postgres.py"`、`opt_acceptance.py`、前端六项门禁），产出 `docs/rework/FINAL_85_READINESS_REPORT.md` 并同步 `UPGRADE_85_STATUS.md` / `RWK_STATUS.md` / `PLT_STATUS.md`。
+
+## Batch 10-1.3 / 10-1.4：PLT09 反作弊、合规文案与同候选全仓终验（Step 6b）完成
+
+> 本节记录本轮最后一个阶段的交付、真实门禁输出与收口结论。**本轮未执行 `git commit` / `git push`，也未连接或改动远端生产库**（红线要求由本侧独立审计后推送）。
+
+### 1. 交付清单
+
+| 交付 | 位置 | 要点 |
+| --- | --- | --- |
+| 反作弊判定层 | `scripts/plt09_measurement.py` | 新增 `Aggregate` / `coverage` / `unknown_as_zero` / `evaluate`，把 `SCORECARD.md` 七条规则变成可执行判定；任一触发即输出「不能判定为成功」并附原因码，永不给减员/节省比例 |
+| 反作弊自动化测试 | `nexus_backend/tests/test_plt09_measurement.py` | 3 例扩到 13 例，逐条覆盖：复核积压上升、事后差错上升、转移给业务时间上升（按每对象分钟，业务量放大不算上升）、口径不一致、未记录外部援助、覆盖不足、未采集当零、缺明细、分母变更未披露/已披露、不输出节省结论 |
+| 跨期 cohort 回归 | `nexus_backend/tests/test_value_baseline.py` + `nexus_backend/app/observability/value.py` | approved 分子增加 `business_mappings`/`business_events` 的当期事件月份约束，杜绝「上期事项本期映射/审批」虚增分子；补 `approved_drafts == 0`、`review_conversion_rate is None` 断言 |
+| 待裁决/待客户输入 | `docs/rework/DECISIONS_NEEDED.md`、`docs/pilot/CUSTOMER_INPUTS.md` | 新增 D-003（抵消分录复核人归属）、D-004（转派候选人是否含有效代班人）；客户输入 E 节新增 7–9 条（关联方标识口径、内部往来匹配规则与容忍区间、抵消生效时点） |
+| 合规文案扫描 | `docs/`、`src/` 全仓 | `grep` 夸大表述（全面合规/已通过等保/已通过认证/保证减员/预计可节省/减员至）命中全部位于「禁止这样说」的任务书、测试断言与本报告条目内，**无实际夸大表述，未改任何文件** |
+| 最终就绪报告 | `docs/rework/FINAL_85_READINESS_REPORT.md` | 106 行，含同候选指纹、14 条命令真实输出、并发假失败原样记录、十维度 8.5+ 证据、外部签认 13 条、边界声明 |
+
+### 2. 同候选终验真实输出（日志：`tmp_test/rework/FINAL_85/`）
+
+| 命令 | 结果 |
+| --- | --- |
+| `scripts/check_test_env.py` | `environment matches lock`，exit 0 |
+| `scripts/check_migration_idempotency.py` | exit 0（新迁移 325–328 与既有 324 同列「需专项检查：dynamic_ddl（EXECUTE）」，为 `EXECUTE FUNCTION` 触发的既有分类） |
+| `scripts/check_secrets.py` | `no secrets found` |
+| `ruff check nexus_backend/app services/api_gateway scripts` | All checks passed |
+| `ruff format --check` 同上路径 | `480 files already formatted` |
+| `pytest nexus_backend/tests -q -p no:cacheprovider --ignore-glob="*_postgres.py"` | **5455 passed, 110 skipped, 3 warnings in 8158.83s (2:15:58)**，exit 0 |
+| `scripts/opt_acceptance.py --out tmp_test/rework/FINAL_85/acceptance` | `status: passed`，run_id `20261123T071003Z-2e11e283`，25 条探针 0 失败，`release_blockers: []` |
+| `npm run typecheck` / `lint` / `format:check` | 全部 exit 0；format `All matched files use Prettier code style!` |
+| `npm test -- --run` | 166 files / **1485 tests passed**，4.07s |
+| `npm run build`（`TEMP/TMP=tmp_test/tmp`） | `✓ built in 3.85s`，入口 567.57 kB / gzip 175.93 kB |
+| `npm run test:frontend-budget` | `status: passed`、`violations: []`、initialGzip 175,931/176,000、homeCss 144,715/145,000 |
+| `npx playwright test e2e/workflow-studio.spec.ts` | 2 passed（1366 与 390 双视口，含发布新版本、存量实例保旧版、异常挂起实例人工接管） |
+
+同候选指纹：`source_digest d509213fb37cb28c0804e4ed9f4c605f86003634fce4ca763a5a2b1364920093`（2554 文件）、`migration_digest 8de9d393e3b881429da7ad94bda0809cd07d2d818ee116038f8a8801af1a8a93`（549 文件 = PG 315 + SQLite 234）、HEAD `3e782a81`、迁移水位 PG `328` / SQLite `235`。
+
+### 3. 设计取舍
+
+- **反作弊判定不做加权总分**：七条规则各自独立给原因码，`reduction_reportable` 恒为 `False`；即使七条全过也只输出「可提交人工复核」，把「能否对外宣称减员」留在人手里。
+- **转移时间按每对象分钟比较**：业务量翻倍会把总时长抬高，直接比总分钟会误判恶化，所以 `transfer_time_up` 用 `minutes / volume`，并在缺任一侧业务量时降级为 `transfer_time_unknown` 而不是默认通过。
+- **未采集不当零**：`source == "未采集"` 且填 0 的行单独报 `unknown_as_zero`，同时用覆盖率（已知单元/应有单元，默认门槛 0.8）兜住整表空白。
+- **concurrent 假失败不改断言**：第一次全量跑的 1 failed 已定位为我在同一时间并发跑验收探针造成的 Playwright `--list` 竞争，处理方式是「记录 + 单独重跑」，既不删断言也不加 skip。
+
+### 4. 本轮真实修复（非文档性）
+
+1. `value.py` approved 分子缺当期事件约束 → 跨期映射会虚增转化分子（已修 + 回归断言）。
+2. `plt09_measurement.py` 原先只有采集/汇总，没有任何规则判定 → 七条规则全部落地为可执行函数。
+3. `plt07_peak_season.py` 首次运行时对 `attribute_backlog` 返回结构、`book_review_delegations` 列名、`users`/`memberships` 外键顺序、insights 声明键位置四处假设全错 → 全部按真实契约修正。
+4. `test_consolidation_worksheet.py` 假设 `pair_up` 的归并方向固定 → 改为按 `{kind, counterpart_kind}` 集合匹配（方向由企业 id 排序决定）。
+
+### 5. 边界与未验证项
+
+- **未连接真实 PostgreSQL**：所有 PG 迁移只做静态结构/卫生检查（`test_migration_structure.py`、`test_pg_sql_hygiene.py`）与幂等脚本检查，未在真库上执行；`*_postgres.py` 用例在无 PG 时按既有约定跳过（skip 增量 9 条全部属于此类，本轮未新增 skip/xfail）。
+- **未调用真实模型**：PLT08 全部评测走确定性回放桩，模型与网络调用恒为 0；报告里的五项指标只证明「实现与样本自洽」，不构成泛化证据。
+- **未执行任何版本控制写操作**：HEAD 仍为 `3e782a81`，42 项工作区改动全部留在本地，等待独立审计与推送。
+- **`opt_acceptance` 的 RWK05 模块无机器探针**（工具标记 `none`，不计通过），其覆盖证据在 `docs/rework/RWK_STATUS.md`。
+
+### 6. 收口结论
+
+Batch 09（工作流编排中台 + PLT08 调查助手）与 Batch 10（共享总控队列收口 + 集团管理合并试算 + PLT09 反作弊与终验）在本轮全部落地并自验通过；工程侧 `source_digest` 与 `migration_digest` 已固定，可交付独立审计。**8.5+ 就绪的边界仍受三条外部前提约束**：客户对规则/口径类事项的书面裁决（D-001~D-004 与 CUSTOMER_INPUTS E 节）、银行与税局的现场联调（`ROUNDTRIP_RUNBOOK.md`、`ETAX_LIVE_HANDOFF.md`）、生产 PostgreSQL 上的迁移实跑（`PRODUCTION_RUNBOOK.md`）。这三项在本环境无法验证，已如实列入 `FINAL_85_READINESS_REPORT.md` 第 3 节。
+
+### Batch 09 + Batch 10 最终独立验收加固与远端 PostgreSQL 同步（总封账基线）
+
+1. **修复 `327_plt08_bounded_cards.sql` 四处真实 PG 生产故障隐患**：
+   - 将 `assistant_card_plans.snapshot_json` 与 `assistant_card_receipts.result_json` 由 `JSONB` 改为与 `067_assistant_actions.sql` 同构的 `TEXT NOT NULL CHECK(jsonb_typeof(...::jsonb)='object')`，消除 PG 下 `PLAN_UNION`/`RECEIPT_UNION` 报 `DatatypeMismatch` 以及触发器 `convert_to(jsonb, 'UTF8')` 报 `UndefinedFunction` 的致命崩溃；
+   - 补齐 `GRANT EXECUTE ON FUNCTION accounting.assistant_card_begin(TEXT,TEXT,TEXT) TO accounting_app;`；
+   - 撤销 `accounting_app` 对 `assistant_card_execution_claims` 的直接读写权限并补齐 `BEFORE UPDATE OR DELETE` 不可变触发器（防止绕过 `assistant_card_begin` 伪造 claim）；
+   - 将 `assistant_card_plans`/`assistant_card_receipts` 的 RLS 收紧至会话私有边界 `created_by=accounting.actor_user() AND accounting.assistant_conversation_allowed(conversation_id)`。
+2. **修复工作流布尔列 PG 类型冲突（`nexus_backend/app/workflow/service.py`）**：将 `workflow_instances` 写入/更新的 `terminal_external_locked` 与 `irreversible_reached` 由整数 `0/1` 与 `int(bool(...))` 改为双库原生兼容的 `FALSE` 与 Python `bool(...)`，消除 PG 下 `DatatypeMismatch`。
+3. **修复企业规则记忆写门作用域冲突（`nexus_backend/app/assistant/memory.py`）**：`approve_rule()` 与 `retire_rule()` 先只读解析 `company_id`，再以 `write=True, actor=actor, company_id=company_id, write_scope="company"` 开启写事务，避免被 `assistant_rule_proposals` 的 `batch2_company_write_gate` 在 PG 下拒写。
+4. **加固 `328_group_consolidation.sql` 与 `consolidation.py`**：全部对象补显式 `accounting.` schema 前缀、`batch2_company_write_gate` 补齐 `DELETE`、`group_related_parties` 增加禁删触发器、`group_related_parties_update` 与 `consolidation_eliminations_review` 补齐对方公司可见性校验（同步补齐 `consolidation.py::review_elimination` 对 `counterparty_company_id` 校验）；并修正 `FINAL_85_READINESS_REPORT.md` 两处文档路径笔误。
+5. **远端 Supabase 生产库（`qgzketopnkzquotddwha`）全量实证（v325–v328）**：
+   - 已依次应用 `325`/`326`/`327`/`328` 并写入 `accounting.schema_migrations`（`total_migrations=315`、`latest_version=328`，校验和与本地逐字节一致）；
+   - 实测 11 张新表全部 `rls=true`、`force_rls=true`、`accounting_app` 权限矩阵与触发器全部符合预期，`assistant_card_begin` 可执行，`PLAN_UNION`/`RECEIPT_UNION` 真实 `UNION ALL` 查询零报错通过。
 

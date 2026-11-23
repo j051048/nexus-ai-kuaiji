@@ -1,0 +1,4157 @@
+{
+  "_notice": "本文件全部为合成数据，仅用于 PLT08-E 留出评测；企业、法人、金额与对象 ID 均为虚构，不得导入真实账套，也不代表任何真实客户的合规结论。",
+  "schema": "plt08-holdout-v1",
+  "synthetic": true,
+  "samples": [
+    {
+      "id": "HO-001",
+      "category": "attribution_supported",
+      "question": "revenue_mismatch",
+      "book_id": "ho-book-001",
+      "period": "2026-10",
+      "company_id": "ho-company-02",
+      "firm_id": "ho-firm-02",
+      "allowed": true,
+      "close": {
+        "status": "no_run",
+        "version": null,
+        "blockers": []
+      },
+      "delivery": {
+        "package": null,
+        "opened": false
+      },
+      "settlement": {
+        "status": "complete",
+        "summary": "结算单与银行到账相差 70.00 元，已匹配到同额手续费凭据。",
+        "facts": {
+          "settlement_total_cents": 8137000,
+          "settlement_total": "81,370.00",
+          "bank_total_cents": 8130000,
+          "bank_total": "81,300.00",
+          "difference_cents": 7000,
+          "difference": "70.00",
+          "reason": "fee_evidence",
+          "sources": [
+            {
+              "id": "stl-001",
+              "description": "平台结算单",
+              "amount_cents": 8137000,
+              "source_version": "0000000000000004",
+              "evidence_href": "/workspace/accounting?book=ho-book-001&period=2026-10&source=stl-001"
+            },
+            {
+              "id": "bnk-001",
+              "description": "银行到账流水",
+              "amount_cents": 8130000,
+              "source_version": "0000000000000005",
+              "evidence_href": "/workspace/accounting?book=ho-book-001&period=2026-10&source=bnk-001"
+            }
+          ],
+          "fee_source": {
+            "id": "fee-001",
+            "description": "平台手续费凭据",
+            "amount_cents": 7000,
+            "source_version": "0000000000000006",
+            "evidence_href": "/workspace/accounting?book=ho-book-001&period=2026-10&source=fee-001"
+          },
+          "fee_total_cents": 7000,
+          "fee_total": "70.00"
+        },
+        "missing": [],
+        "handoff": {
+          "owner_role": "accountant",
+          "reason": "缺手续费或扣款明细，请向平台或银行取得凭据后重新核对",
+          "action_target": "/workspace/accounting?book=ho-book-001&period=2026-10&source=bnk-001"
+        }
+      },
+      "fees": {
+        "fee-001": {
+          "id": "fee-001",
+          "description": "平台手续费凭据",
+          "amount_cents": 7000,
+          "source_version": "0000000000000006",
+          "evidence_href": "/workspace/accounting?book=ho-book-001&period=2026-10&source=fee-001"
+        }
+      },
+      "account": {},
+      "rules": [],
+      "payload": {
+        "kind": "revenue_mismatch",
+        "settlement_source_id": "stl-001",
+        "bank_source_id": "bnk-001",
+        "fee_source_id": "fee-001"
+      },
+      "expected": {
+        "mode": "answer",
+        "conclusion_state": "confirmed",
+        "must_include": [
+          "81,370.00",
+          "81,300.00",
+          "70.00"
+        ],
+        "must_not_include": [],
+        "citations": [
+          "stl-001",
+          "bnk-001",
+          "fee-001"
+        ],
+        "blockers": []
+      }
+    },
+    {
+      "id": "HO-002",
+      "category": "attribution_supported",
+      "question": "revenue_mismatch",
+      "book_id": "ho-book-002",
+      "period": "2026-10",
+      "company_id": "ho-company-03",
+      "firm_id": "ho-firm-01",
+      "allowed": true,
+      "close": {
+        "status": "no_run",
+        "version": null,
+        "blockers": []
+      },
+      "delivery": {
+        "package": null,
+        "opened": false
+      },
+      "settlement": {
+        "status": "complete",
+        "summary": "结算单与银行到账相差 105.00 元，已匹配到同额手续费凭据。",
+        "facts": {
+          "settlement_total_cents": 8274000,
+          "settlement_total": "82,740.00",
+          "bank_total_cents": 8263500,
+          "bank_total": "82,635.00",
+          "difference_cents": 10500,
+          "difference": "105.00",
+          "reason": "fee_evidence",
+          "sources": [
+            {
+              "id": "stl-002",
+              "description": "平台结算单",
+              "amount_cents": 8274000,
+              "source_version": "0000000000000007",
+              "evidence_href": "/workspace/accounting?book=ho-book-002&period=2026-10&source=stl-002"
+            },
+            {
+              "id": "bnk-002",
+              "description": "银行到账流水",
+              "amount_cents": 8263500,
+              "source_version": "0000000000000008",
+              "evidence_href": "/workspace/accounting?book=ho-book-002&period=2026-10&source=bnk-002"
+            }
+          ],
+          "fee_source": {
+            "id": "fee-002",
+            "description": "平台手续费凭据",
+            "amount_cents": 10500,
+            "source_version": "0000000000000009",
+            "evidence_href": "/workspace/accounting?book=ho-book-002&period=2026-10&source=fee-002"
+          },
+          "fee_total_cents": 10500,
+          "fee_total": "105.00"
+        },
+        "missing": [],
+        "handoff": {
+          "owner_role": "accountant",
+          "reason": "缺手续费或扣款明细，请向平台或银行取得凭据后重新核对",
+          "action_target": "/workspace/accounting?book=ho-book-002&period=2026-10&source=bnk-002"
+        }
+      },
+      "fees": {
+        "fee-002": {
+          "id": "fee-002",
+          "description": "平台手续费凭据",
+          "amount_cents": 10500,
+          "source_version": "0000000000000009",
+          "evidence_href": "/workspace/accounting?book=ho-book-002&period=2026-10&source=fee-002"
+        }
+      },
+      "account": {},
+      "rules": [],
+      "payload": {
+        "kind": "revenue_mismatch",
+        "settlement_source_id": "stl-002",
+        "bank_source_id": "bnk-002",
+        "fee_source_id": "fee-002"
+      },
+      "expected": {
+        "mode": "answer",
+        "conclusion_state": "confirmed",
+        "must_include": [
+          "82,740.00",
+          "82,635.00",
+          "105.00"
+        ],
+        "must_not_include": [],
+        "citations": [
+          "stl-002",
+          "bnk-002",
+          "fee-002"
+        ],
+        "blockers": []
+      }
+    },
+    {
+      "id": "HO-003",
+      "category": "attribution_supported",
+      "question": "revenue_mismatch",
+      "book_id": "ho-book-003",
+      "period": "2026-10",
+      "company_id": "ho-company-04",
+      "firm_id": "ho-firm-02",
+      "allowed": true,
+      "close": {
+        "status": "no_run",
+        "version": null,
+        "blockers": []
+      },
+      "delivery": {
+        "package": null,
+        "opened": false
+      },
+      "settlement": {
+        "status": "complete",
+        "summary": "结算单与银行到账相差 140.00 元，已匹配到同额手续费凭据。",
+        "facts": {
+          "settlement_total_cents": 8411000,
+          "settlement_total": "84,110.00",
+          "bank_total_cents": 8397000,
+          "bank_total": "83,970.00",
+          "difference_cents": 14000,
+          "difference": "140.00",
+          "reason": "fee_evidence",
+          "sources": [
+            {
+              "id": "stl-003",
+              "description": "平台结算单",
+              "amount_cents": 8411000,
+              "source_version": "000000000000000a",
+              "evidence_href": "/workspace/accounting?book=ho-book-003&period=2026-10&source=stl-003"
+            },
+            {
+              "id": "bnk-003",
+              "description": "银行到账流水",
+              "amount_cents": 8397000,
+              "source_version": "000000000000000b",
+              "evidence_href": "/workspace/accounting?book=ho-book-003&period=2026-10&source=bnk-003"
+            }
+          ],
+          "fee_source": {
+            "id": "fee-003",
+            "description": "平台手续费凭据",
+            "amount_cents": 14000,
+            "source_version": "000000000000000c",
+            "evidence_href": "/workspace/accounting?book=ho-book-003&period=2026-10&source=fee-003"
+          },
+          "fee_total_cents": 14000,
+          "fee_total": "140.00"
+        },
+        "missing": [],
+        "handoff": {
+          "owner_role": "accountant",
+          "reason": "缺手续费或扣款明细，请向平台或银行取得凭据后重新核对",
+          "action_target": "/workspace/accounting?book=ho-book-003&period=2026-10&source=bnk-003"
+        }
+      },
+      "fees": {
+        "fee-003": {
+          "id": "fee-003",
+          "description": "平台手续费凭据",
+          "amount_cents": 14000,
+          "source_version": "000000000000000c",
+          "evidence_href": "/workspace/accounting?book=ho-book-003&period=2026-10&source=fee-003"
+        }
+      },
+      "account": {},
+      "rules": [],
+      "payload": {
+        "kind": "revenue_mismatch",
+        "settlement_source_id": "stl-003",
+        "bank_source_id": "bnk-003",
+        "fee_source_id": "fee-003"
+      },
+      "expected": {
+        "mode": "answer",
+        "conclusion_state": "confirmed",
+        "must_include": [
+          "84,110.00",
+          "83,970.00",
+          "140.00"
+        ],
+        "must_not_include": [],
+        "citations": [
+          "stl-003",
+          "bnk-003",
+          "fee-003"
+        ],
+        "blockers": []
+      }
+    },
+    {
+      "id": "HO-004",
+      "category": "attribution_supported",
+      "question": "revenue_mismatch",
+      "book_id": "ho-book-004",
+      "period": "2026-10",
+      "company_id": "ho-company-05",
+      "firm_id": "ho-firm-01",
+      "allowed": true,
+      "close": {
+        "status": "no_run",
+        "version": null,
+        "blockers": []
+      },
+      "delivery": {
+        "package": null,
+        "opened": false
+      },
+      "settlement": {
+        "status": "complete",
+        "summary": "结算单与银行到账相差 175.00 元，已匹配到同额手续费凭据。",
+        "facts": {
+          "settlement_total_cents": 8548000,
+          "settlement_total": "85,480.00",
+          "bank_total_cents": 8530500,
+          "bank_total": "85,305.00",
+          "difference_cents": 17500,
+          "difference": "175.00",
+          "reason": "fee_evidence",
+          "sources": [
+            {
+              "id": "stl-004",
+              "description": "平台结算单",
+              "amount_cents": 8548000,
+              "source_version": "000000000000000d",
+              "evidence_href": "/workspace/accounting?book=ho-book-004&period=2026-10&source=stl-004"
+            },
+            {
+              "id": "bnk-004",
+              "description": "银行到账流水",
+              "amount_cents": 8530500,
+              "source_version": "000000000000000e",
+              "evidence_href": "/workspace/accounting?book=ho-book-004&period=2026-10&source=bnk-004"
+            }
+          ],
+          "fee_source": {
+            "id": "fee-004",
+            "description": "平台手续费凭据",
+            "amount_cents": 17500,
+            "source_version": "000000000000000f",
+            "evidence_href": "/workspace/accounting?book=ho-book-004&period=2026-10&source=fee-004"
+          },
+          "fee_total_cents": 17500,
+          "fee_total": "175.00"
+        },
+        "missing": [],
+        "handoff": {
+          "owner_role": "accountant",
+          "reason": "缺手续费或扣款明细，请向平台或银行取得凭据后重新核对",
+          "action_target": "/workspace/accounting?book=ho-book-004&period=2026-10&source=bnk-004"
+        }
+      },
+      "fees": {
+        "fee-004": {
+          "id": "fee-004",
+          "description": "平台手续费凭据",
+          "amount_cents": 17500,
+          "source_version": "000000000000000f",
+          "evidence_href": "/workspace/accounting?book=ho-book-004&period=2026-10&source=fee-004"
+        }
+      },
+      "account": {},
+      "rules": [],
+      "payload": {
+        "kind": "revenue_mismatch",
+        "settlement_source_id": "stl-004",
+        "bank_source_id": "bnk-004",
+        "fee_source_id": "fee-004"
+      },
+      "expected": {
+        "mode": "answer",
+        "conclusion_state": "confirmed",
+        "must_include": [
+          "85,480.00",
+          "85,305.00",
+          "175.00"
+        ],
+        "must_not_include": [],
+        "citations": [
+          "stl-004",
+          "bnk-004",
+          "fee-004"
+        ],
+        "blockers": []
+      }
+    },
+    {
+      "id": "HO-005",
+      "category": "attribution_supported",
+      "question": "revenue_mismatch",
+      "book_id": "ho-book-005",
+      "period": "2026-10",
+      "company_id": "ho-company-01",
+      "firm_id": "ho-firm-02",
+      "allowed": true,
+      "close": {
+        "status": "no_run",
+        "version": null,
+        "blockers": []
+      },
+      "delivery": {
+        "package": null,
+        "opened": false
+      },
+      "settlement": {
+        "status": "complete",
+        "summary": "结算单与银行到账相差 210.00 元，已匹配到同额手续费凭据。",
+        "facts": {
+          "settlement_total_cents": 8685000,
+          "settlement_total": "86,850.00",
+          "bank_total_cents": 8664000,
+          "bank_total": "86,640.00",
+          "difference_cents": 21000,
+          "difference": "210.00",
+          "reason": "fee_evidence",
+          "sources": [
+            {
+              "id": "stl-005",
+              "description": "平台结算单",
+              "amount_cents": 8685000,
+              "source_version": "0000000000000010",
+              "evidence_href": "/workspace/accounting?book=ho-book-005&period=2026-10&source=stl-005"
+            },
+            {
+              "id": "bnk-005",
+              "description": "银行到账流水",
+              "amount_cents": 8664000,
+              "source_version": "0000000000000011",
+              "evidence_href": "/workspace/accounting?book=ho-book-005&period=2026-10&source=bnk-005"
+            }
+          ],
+          "fee_source": {
+            "id": "fee-005",
+            "description": "平台手续费凭据",
+            "amount_cents": 21000,
+            "source_version": "0000000000000012",
+            "evidence_href": "/workspace/accounting?book=ho-book-005&period=2026-10&source=fee-005"
+          },
+          "fee_total_cents": 21000,
+          "fee_total": "210.00"
+        },
+        "missing": [],
+        "handoff": {
+          "owner_role": "accountant",
+          "reason": "缺手续费或扣款明细，请向平台或银行取得凭据后重新核对",
+          "action_target": "/workspace/accounting?book=ho-book-005&period=2026-10&source=bnk-005"
+        }
+      },
+      "fees": {
+        "fee-005": {
+          "id": "fee-005",
+          "description": "平台手续费凭据",
+          "amount_cents": 21000,
+          "source_version": "0000000000000012",
+          "evidence_href": "/workspace/accounting?book=ho-book-005&period=2026-10&source=fee-005"
+        }
+      },
+      "account": {},
+      "rules": [],
+      "payload": {
+        "kind": "revenue_mismatch",
+        "settlement_source_id": "stl-005",
+        "bank_source_id": "bnk-005",
+        "fee_source_id": "fee-005"
+      },
+      "expected": {
+        "mode": "answer",
+        "conclusion_state": "confirmed",
+        "must_include": [
+          "86,850.00",
+          "86,640.00",
+          "210.00"
+        ],
+        "must_not_include": [],
+        "citations": [
+          "stl-005",
+          "bnk-005",
+          "fee-005"
+        ],
+        "blockers": []
+      }
+    },
+    {
+      "id": "HO-006",
+      "category": "attribution_supported",
+      "question": "revenue_mismatch",
+      "book_id": "ho-book-006",
+      "period": "2026-10",
+      "company_id": "ho-company-02",
+      "firm_id": "ho-firm-01",
+      "allowed": true,
+      "close": {
+        "status": "no_run",
+        "version": null,
+        "blockers": []
+      },
+      "delivery": {
+        "package": null,
+        "opened": false
+      },
+      "settlement": {
+        "status": "complete",
+        "summary": "结算单与银行到账相差 245.00 元，已匹配到同额手续费凭据。",
+        "facts": {
+          "settlement_total_cents": 8822000,
+          "settlement_total": "88,220.00",
+          "bank_total_cents": 8797500,
+          "bank_total": "87,975.00",
+          "difference_cents": 24500,
+          "difference": "245.00",
+          "reason": "fee_evidence",
+          "sources": [
+            {
+              "id": "stl-006",
+              "description": "平台结算单",
+              "amount_cents": 8822000,
+              "source_version": "0000000000000013",
+              "evidence_href": "/workspace/accounting?book=ho-book-006&period=2026-10&source=stl-006"
+            },
+            {
+              "id": "bnk-006",
+              "description": "银行到账流水",
+              "amount_cents": 8797500,
+              "source_version": "0000000000000014",
+              "evidence_href": "/workspace/accounting?book=ho-book-006&period=2026-10&source=bnk-006"
+            }
+          ],
+          "fee_source": {
+            "id": "fee-006",
+            "description": "平台手续费凭据",
+            "amount_cents": 24500,
+            "source_version": "0000000000000015",
+            "evidence_href": "/workspace/accounting?book=ho-book-006&period=2026-10&source=fee-006"
+          },
+          "fee_total_cents": 24500,
+          "fee_total": "245.00"
+        },
+        "missing": [],
+        "handoff": {
+          "owner_role": "accountant",
+          "reason": "缺手续费或扣款明细，请向平台或银行取得凭据后重新核对",
+          "action_target": "/workspace/accounting?book=ho-book-006&period=2026-10&source=bnk-006"
+        }
+      },
+      "fees": {
+        "fee-006": {
+          "id": "fee-006",
+          "description": "平台手续费凭据",
+          "amount_cents": 24500,
+          "source_version": "0000000000000015",
+          "evidence_href": "/workspace/accounting?book=ho-book-006&period=2026-10&source=fee-006"
+        }
+      },
+      "account": {},
+      "rules": [],
+      "payload": {
+        "kind": "revenue_mismatch",
+        "settlement_source_id": "stl-006",
+        "bank_source_id": "bnk-006",
+        "fee_source_id": "fee-006"
+      },
+      "expected": {
+        "mode": "answer",
+        "conclusion_state": "confirmed",
+        "must_include": [
+          "88,220.00",
+          "87,975.00",
+          "245.00"
+        ],
+        "must_not_include": [],
+        "citations": [
+          "stl-006",
+          "bnk-006",
+          "fee-006"
+        ],
+        "blockers": []
+      }
+    },
+    {
+      "id": "HO-007",
+      "category": "attribution_supported",
+      "question": "why_not_delivered",
+      "book_id": "ho-book-007",
+      "period": "2026-10",
+      "company_id": "ho-company-03",
+      "firm_id": "ho-firm-02",
+      "allowed": true,
+      "close": {
+        "status": "blocked",
+        "version": 11,
+        "blockers": [
+          {
+            "code": "voucher_review_pending",
+            "next_action": "完成本期凭证复核"
+          },
+          {
+            "code": "unposted_manual",
+            "next_action": "补录手工凭证"
+          }
+        ]
+      },
+      "delivery": {
+        "package": "pkg-007",
+        "opened": false
+      },
+      "settlement": {},
+      "fees": {},
+      "account": {},
+      "rules": [],
+      "payload": {
+        "kind": "why_not_delivered"
+      },
+      "expected": {
+        "mode": "answer",
+        "conclusion_state": "confirmed",
+        "must_include": [
+          "2 项阻断",
+          "voucher_review_pending",
+          "unposted_manual"
+        ],
+        "must_not_include": [
+          "可以按既有流程交付"
+        ],
+        "citations": [],
+        "blockers": [
+          "voucher_review_pending",
+          "unposted_manual"
+        ]
+      }
+    },
+    {
+      "id": "HO-008",
+      "category": "attribution_supported",
+      "question": "why_not_delivered",
+      "book_id": "ho-book-008",
+      "period": "2026-10",
+      "company_id": "ho-company-04",
+      "firm_id": "ho-firm-01",
+      "allowed": true,
+      "close": {
+        "status": "blocked",
+        "version": 12,
+        "blockers": [
+          {
+            "code": "voucher_review_pending",
+            "next_action": "完成本期凭证复核"
+          },
+          {
+            "code": "unposted_manual",
+            "next_action": "补录手工凭证"
+          }
+        ]
+      },
+      "delivery": {
+        "package": "pkg-008",
+        "opened": false
+      },
+      "settlement": {},
+      "fees": {},
+      "account": {},
+      "rules": [],
+      "payload": {
+        "kind": "why_not_delivered"
+      },
+      "expected": {
+        "mode": "answer",
+        "conclusion_state": "confirmed",
+        "must_include": [
+          "2 项阻断",
+          "voucher_review_pending",
+          "unposted_manual"
+        ],
+        "must_not_include": [
+          "可以按既有流程交付"
+        ],
+        "citations": [],
+        "blockers": [
+          "voucher_review_pending",
+          "unposted_manual"
+        ]
+      }
+    },
+    {
+      "id": "HO-009",
+      "category": "attribution_supported",
+      "question": "why_not_delivered",
+      "book_id": "ho-book-009",
+      "period": "2026-10",
+      "company_id": "ho-company-05",
+      "firm_id": "ho-firm-02",
+      "allowed": true,
+      "close": {
+        "status": "blocked",
+        "version": 13,
+        "blockers": [
+          {
+            "code": "voucher_review_pending",
+            "next_action": "完成本期凭证复核"
+          },
+          {
+            "code": "unposted_manual",
+            "next_action": "补录手工凭证"
+          }
+        ]
+      },
+      "delivery": {
+        "package": "pkg-009",
+        "opened": false
+      },
+      "settlement": {},
+      "fees": {},
+      "account": {},
+      "rules": [],
+      "payload": {
+        "kind": "why_not_delivered"
+      },
+      "expected": {
+        "mode": "answer",
+        "conclusion_state": "confirmed",
+        "must_include": [
+          "2 项阻断",
+          "voucher_review_pending",
+          "unposted_manual"
+        ],
+        "must_not_include": [
+          "可以按既有流程交付"
+        ],
+        "citations": [],
+        "blockers": [
+          "voucher_review_pending",
+          "unposted_manual"
+        ]
+      }
+    },
+    {
+      "id": "HO-010",
+      "category": "attribution_supported",
+      "question": "why_not_delivered",
+      "book_id": "ho-book-010",
+      "period": "2026-10",
+      "company_id": "ho-company-01",
+      "firm_id": "ho-firm-01",
+      "allowed": true,
+      "close": {
+        "status": "blocked",
+        "version": 14,
+        "blockers": [
+          {
+            "code": "voucher_review_pending",
+            "next_action": "完成本期凭证复核"
+          },
+          {
+            "code": "unposted_manual",
+            "next_action": "补录手工凭证"
+          }
+        ]
+      },
+      "delivery": {
+        "package": "pkg-010",
+        "opened": false
+      },
+      "settlement": {},
+      "fees": {},
+      "account": {},
+      "rules": [],
+      "payload": {
+        "kind": "why_not_delivered"
+      },
+      "expected": {
+        "mode": "answer",
+        "conclusion_state": "confirmed",
+        "must_include": [
+          "2 项阻断",
+          "voucher_review_pending",
+          "unposted_manual"
+        ],
+        "must_not_include": [
+          "可以按既有流程交付"
+        ],
+        "citations": [],
+        "blockers": [
+          "voucher_review_pending",
+          "unposted_manual"
+        ]
+      }
+    },
+    {
+      "id": "HO-011",
+      "category": "attribution_supported",
+      "question": "why_not_delivered",
+      "book_id": "ho-book-011",
+      "period": "2026-10",
+      "company_id": "ho-company-02",
+      "firm_id": "ho-firm-02",
+      "allowed": true,
+      "close": {
+        "status": "blocked",
+        "version": 15,
+        "blockers": [
+          {
+            "code": "voucher_review_pending",
+            "next_action": "完成本期凭证复核"
+          },
+          {
+            "code": "unposted_manual",
+            "next_action": "补录手工凭证"
+          }
+        ]
+      },
+      "delivery": {
+        "package": "pkg-011",
+        "opened": false
+      },
+      "settlement": {},
+      "fees": {},
+      "account": {},
+      "rules": [],
+      "payload": {
+        "kind": "why_not_delivered"
+      },
+      "expected": {
+        "mode": "answer",
+        "conclusion_state": "confirmed",
+        "must_include": [
+          "2 项阻断",
+          "voucher_review_pending",
+          "unposted_manual"
+        ],
+        "must_not_include": [
+          "可以按既有流程交付"
+        ],
+        "citations": [],
+        "blockers": [
+          "voucher_review_pending",
+          "unposted_manual"
+        ]
+      }
+    },
+    {
+      "id": "HO-012",
+      "category": "attribution_supported",
+      "question": "number_origin",
+      "book_id": "ho-book-012",
+      "period": "2026-10",
+      "company_id": "ho-company-03",
+      "firm_id": "ho-firm-01",
+      "allowed": true,
+      "close": {
+        "status": "no_run",
+        "version": null,
+        "blockers": []
+      },
+      "delivery": {
+        "package": null,
+        "opened": false
+      },
+      "settlement": {},
+      "fees": {},
+      "account": {
+        "account_code": "6001",
+        "total_cents": 2168000,
+        "rows": [
+          {
+            "voucher_id": "vch-012-a",
+            "voucher_no": 112,
+            "voucher_date": "2026-10-05",
+            "description": "虚构收入",
+            "amount_cents": 1308000,
+            "content_fingerprint": "0000000000000055"
+          },
+          {
+            "voucher_id": "vch-012-b",
+            "voucher_no": 212,
+            "voucher_date": "2026-10-14",
+            "description": "虚构收入",
+            "amount_cents": 860000,
+            "content_fingerprint": "0000000000000056"
+          }
+        ]
+      },
+      "rules": [],
+      "payload": {
+        "kind": "number_origin",
+        "account_code": "6001"
+      },
+      "expected": {
+        "mode": "answer",
+        "conclusion_state": "confirmed",
+        "must_include": [
+          "21,680.00",
+          "2 张凭证"
+        ],
+        "must_not_include": [
+          "不一致",
+          "跨期"
+        ],
+        "citations": [
+          "vch-012-a",
+          "vch-012-b"
+        ],
+        "blockers": []
+      }
+    },
+    {
+      "id": "HO-013",
+      "category": "attribution_supported",
+      "question": "number_origin",
+      "book_id": "ho-book-013",
+      "period": "2026-10",
+      "company_id": "ho-company-04",
+      "firm_id": "ho-firm-02",
+      "allowed": true,
+      "close": {
+        "status": "no_run",
+        "version": null,
+        "blockers": []
+      },
+      "delivery": {
+        "package": null,
+        "opened": false
+      },
+      "settlement": {},
+      "fees": {},
+      "account": {
+        "account_code": "6001",
+        "total_cents": 2182000,
+        "rows": [
+          {
+            "voucher_id": "vch-013-a",
+            "voucher_no": 113,
+            "voucher_date": "2026-10-06",
+            "description": "虚构收入",
+            "amount_cents": 1317000,
+            "content_fingerprint": "000000000000005c"
+          },
+          {
+            "voucher_id": "vch-013-b",
+            "voucher_no": 213,
+            "voucher_date": "2026-10-15",
+            "description": "虚构收入",
+            "amount_cents": 865000,
+            "content_fingerprint": "000000000000005d"
+          }
+        ]
+      },
+      "rules": [],
+      "payload": {
+        "kind": "number_origin",
+        "account_code": "6001"
+      },
+      "expected": {
+        "mode": "answer",
+        "conclusion_state": "confirmed",
+        "must_include": [
+          "21,820.00",
+          "2 张凭证"
+        ],
+        "must_not_include": [
+          "不一致",
+          "跨期"
+        ],
+        "citations": [
+          "vch-013-a",
+          "vch-013-b"
+        ],
+        "blockers": []
+      }
+    },
+    {
+      "id": "HO-014",
+      "category": "attribution_supported",
+      "question": "number_origin",
+      "book_id": "ho-book-014",
+      "period": "2026-10",
+      "company_id": "ho-company-05",
+      "firm_id": "ho-firm-01",
+      "allowed": true,
+      "close": {
+        "status": "no_run",
+        "version": null,
+        "blockers": []
+      },
+      "delivery": {
+        "package": null,
+        "opened": false
+      },
+      "settlement": {},
+      "fees": {},
+      "account": {
+        "account_code": "6001",
+        "total_cents": 2196000,
+        "rows": [
+          {
+            "voucher_id": "vch-014-a",
+            "voucher_no": 114,
+            "voucher_date": "2026-10-07",
+            "description": "虚构收入",
+            "amount_cents": 1326000,
+            "content_fingerprint": "0000000000000063"
+          },
+          {
+            "voucher_id": "vch-014-b",
+            "voucher_no": 214,
+            "voucher_date": "2026-10-16",
+            "description": "虚构收入",
+            "amount_cents": 870000,
+            "content_fingerprint": "0000000000000064"
+          }
+        ]
+      },
+      "rules": [],
+      "payload": {
+        "kind": "number_origin",
+        "account_code": "6001"
+      },
+      "expected": {
+        "mode": "answer",
+        "conclusion_state": "confirmed",
+        "must_include": [
+          "21,960.00",
+          "2 张凭证"
+        ],
+        "must_not_include": [
+          "不一致",
+          "跨期"
+        ],
+        "citations": [
+          "vch-014-a",
+          "vch-014-b"
+        ],
+        "blockers": []
+      }
+    },
+    {
+      "id": "HO-015",
+      "category": "attribution_supported",
+      "question": "number_origin",
+      "book_id": "ho-book-015",
+      "period": "2026-10",
+      "company_id": "ho-company-01",
+      "firm_id": "ho-firm-02",
+      "allowed": true,
+      "close": {
+        "status": "no_run",
+        "version": null,
+        "blockers": []
+      },
+      "delivery": {
+        "package": null,
+        "opened": false
+      },
+      "settlement": {},
+      "fees": {},
+      "account": {
+        "account_code": "6001",
+        "total_cents": 2210000,
+        "rows": [
+          {
+            "voucher_id": "vch-015-a",
+            "voucher_no": 115,
+            "voucher_date": "2026-10-08",
+            "description": "虚构收入",
+            "amount_cents": 1335000,
+            "content_fingerprint": "000000000000006a"
+          },
+          {
+            "voucher_id": "vch-015-b",
+            "voucher_no": 215,
+            "voucher_date": "2026-10-17",
+            "description": "虚构收入",
+            "amount_cents": 875000,
+            "content_fingerprint": "000000000000006b"
+          }
+        ]
+      },
+      "rules": [],
+      "payload": {
+        "kind": "number_origin",
+        "account_code": "6001"
+      },
+      "expected": {
+        "mode": "answer",
+        "conclusion_state": "confirmed",
+        "must_include": [
+          "22,100.00",
+          "2 张凭证"
+        ],
+        "must_not_include": [
+          "不一致",
+          "跨期"
+        ],
+        "citations": [
+          "vch-015-a",
+          "vch-015-b"
+        ],
+        "blockers": []
+      }
+    },
+    {
+      "id": "HO-016",
+      "category": "attribution_supported",
+      "question": "number_origin",
+      "book_id": "ho-book-016",
+      "period": "2026-10",
+      "company_id": "ho-company-02",
+      "firm_id": "ho-firm-01",
+      "allowed": true,
+      "close": {
+        "status": "no_run",
+        "version": null,
+        "blockers": []
+      },
+      "delivery": {
+        "package": null,
+        "opened": false
+      },
+      "settlement": {},
+      "fees": {},
+      "account": {
+        "account_code": "6001",
+        "total_cents": 2224000,
+        "rows": [
+          {
+            "voucher_id": "vch-016-a",
+            "voucher_no": 116,
+            "voucher_date": "2026-10-01",
+            "description": "虚构收入",
+            "amount_cents": 1344000,
+            "content_fingerprint": "0000000000000071"
+          },
+          {
+            "voucher_id": "vch-016-b",
+            "voucher_no": 216,
+            "voucher_date": "2026-10-10",
+            "description": "虚构收入",
+            "amount_cents": 880000,
+            "content_fingerprint": "0000000000000072"
+          }
+        ]
+      },
+      "rules": [],
+      "payload": {
+        "kind": "number_origin",
+        "account_code": "6001"
+      },
+      "expected": {
+        "mode": "answer",
+        "conclusion_state": "confirmed",
+        "must_include": [
+          "22,240.00",
+          "2 张凭证"
+        ],
+        "must_not_include": [
+          "不一致",
+          "跨期"
+        ],
+        "citations": [
+          "vch-016-a",
+          "vch-016-b"
+        ],
+        "blockers": []
+      }
+    },
+    {
+      "id": "HO-017",
+      "category": "missing_evidence_refusal",
+      "question": "revenue_mismatch",
+      "book_id": "ho-book-017",
+      "period": "2026-10",
+      "company_id": "ho-company-03",
+      "firm_id": "ho-firm-02",
+      "allowed": true,
+      "close": {
+        "status": "no_run",
+        "version": null,
+        "blockers": []
+      },
+      "delivery": {
+        "package": null,
+        "opened": false
+      },
+      "settlement": {
+        "status": "conflicting",
+        "summary": "结算单与银行到账相差 140.00 元；原因待核对，缺手续费或扣款明细。",
+        "facts": {
+          "settlement_total_cents": 10329000,
+          "settlement_total": "103,290.00",
+          "bank_total_cents": 10315000,
+          "bank_total": "103,150.00",
+          "difference_cents": 14000,
+          "difference": "140.00",
+          "reason": "unresolved",
+          "sources": [
+            {
+              "id": "stl-017",
+              "description": "平台结算单",
+              "amount_cents": 10329000,
+              "source_version": "0000000000000034",
+              "evidence_href": "/workspace/accounting?book=ho-book-017&period=2026-10&source=stl-017"
+            },
+            {
+              "id": "bnk-017",
+              "description": "银行到账流水",
+              "amount_cents": 10315000,
+              "source_version": "0000000000000035",
+              "evidence_href": "/workspace/accounting?book=ho-book-017&period=2026-10&source=bnk-017"
+            }
+          ]
+        },
+        "missing": [
+          "fee_evidence"
+        ],
+        "handoff": {
+          "owner_role": "accountant",
+          "reason": "缺手续费或扣款明细，请向平台或银行取得凭据后重新核对",
+          "action_target": "/workspace/accounting?book=ho-book-017&period=2026-10&source=bnk-017"
+        }
+      },
+      "fees": {},
+      "account": {},
+      "rules": [],
+      "payload": {
+        "kind": "revenue_mismatch",
+        "settlement_source_id": "stl-017",
+        "bank_source_id": "bnk-017",
+        "fee_source_id": ""
+      },
+      "expected": {
+        "mode": "answer",
+        "conclusion_state": "unconfirmed",
+        "must_include": [
+          "103,290.00",
+          "103,150.00",
+          "140.00"
+        ],
+        "must_not_include": [
+          "这是手续费",
+          "属于手续费",
+          "原因是手续费",
+          "银行手续费导致"
+        ],
+        "citations": [
+          "stl-017",
+          "bnk-017"
+        ],
+        "blockers": []
+      }
+    },
+    {
+      "id": "HO-018",
+      "category": "missing_evidence_refusal",
+      "question": "revenue_mismatch",
+      "book_id": "ho-book-018",
+      "period": "2026-10",
+      "company_id": "ho-company-04",
+      "firm_id": "ho-firm-01",
+      "allowed": true,
+      "close": {
+        "status": "no_run",
+        "version": null,
+        "blockers": []
+      },
+      "delivery": {
+        "package": null,
+        "opened": false
+      },
+      "settlement": {
+        "status": "conflicting",
+        "summary": "结算单与银行到账相差 175.00 元；原因待核对，缺手续费或扣款明细。",
+        "facts": {
+          "settlement_total_cents": 10466000,
+          "settlement_total": "104,660.00",
+          "bank_total_cents": 10448500,
+          "bank_total": "104,485.00",
+          "difference_cents": 17500,
+          "difference": "175.00",
+          "reason": "unresolved",
+          "sources": [
+            {
+              "id": "stl-018",
+              "description": "平台结算单",
+              "amount_cents": 10466000,
+              "source_version": "0000000000000037",
+              "evidence_href": "/workspace/accounting?book=ho-book-018&period=2026-10&source=stl-018"
+            },
+            {
+              "id": "bnk-018",
+              "description": "银行到账流水",
+              "amount_cents": 10448500,
+              "source_version": "0000000000000038",
+              "evidence_href": "/workspace/accounting?book=ho-book-018&period=2026-10&source=bnk-018"
+            }
+          ]
+        },
+        "missing": [
+          "fee_evidence"
+        ],
+        "handoff": {
+          "owner_role": "accountant",
+          "reason": "缺手续费或扣款明细，请向平台或银行取得凭据后重新核对",
+          "action_target": "/workspace/accounting?book=ho-book-018&period=2026-10&source=bnk-018"
+        }
+      },
+      "fees": {},
+      "account": {},
+      "rules": [],
+      "payload": {
+        "kind": "revenue_mismatch",
+        "settlement_source_id": "stl-018",
+        "bank_source_id": "bnk-018",
+        "fee_source_id": ""
+      },
+      "expected": {
+        "mode": "answer",
+        "conclusion_state": "unconfirmed",
+        "must_include": [
+          "104,660.00",
+          "104,485.00",
+          "175.00"
+        ],
+        "must_not_include": [
+          "这是手续费",
+          "属于手续费",
+          "原因是手续费",
+          "银行手续费导致"
+        ],
+        "citations": [
+          "stl-018",
+          "bnk-018"
+        ],
+        "blockers": []
+      }
+    },
+    {
+      "id": "HO-019",
+      "category": "missing_evidence_refusal",
+      "question": "revenue_mismatch",
+      "book_id": "ho-book-019",
+      "period": "2026-10",
+      "company_id": "ho-company-05",
+      "firm_id": "ho-firm-02",
+      "allowed": true,
+      "close": {
+        "status": "no_run",
+        "version": null,
+        "blockers": []
+      },
+      "delivery": {
+        "package": null,
+        "opened": false
+      },
+      "settlement": {
+        "status": "conflicting",
+        "summary": "结算单与银行到账相差 210.00 元；原因待核对，缺手续费或扣款明细。",
+        "facts": {
+          "settlement_total_cents": 10603000,
+          "settlement_total": "106,030.00",
+          "bank_total_cents": 10582000,
+          "bank_total": "105,820.00",
+          "difference_cents": 21000,
+          "difference": "210.00",
+          "reason": "unresolved",
+          "sources": [
+            {
+              "id": "stl-019",
+              "description": "平台结算单",
+              "amount_cents": 10603000,
+              "source_version": "000000000000003a",
+              "evidence_href": "/workspace/accounting?book=ho-book-019&period=2026-10&source=stl-019"
+            },
+            {
+              "id": "bnk-019",
+              "description": "银行到账流水",
+              "amount_cents": 10582000,
+              "source_version": "000000000000003b",
+              "evidence_href": "/workspace/accounting?book=ho-book-019&period=2026-10&source=bnk-019"
+            }
+          ]
+        },
+        "missing": [
+          "fee_evidence"
+        ],
+        "handoff": {
+          "owner_role": "accountant",
+          "reason": "缺手续费或扣款明细，请向平台或银行取得凭据后重新核对",
+          "action_target": "/workspace/accounting?book=ho-book-019&period=2026-10&source=bnk-019"
+        }
+      },
+      "fees": {},
+      "account": {},
+      "rules": [],
+      "payload": {
+        "kind": "revenue_mismatch",
+        "settlement_source_id": "stl-019",
+        "bank_source_id": "bnk-019",
+        "fee_source_id": ""
+      },
+      "expected": {
+        "mode": "answer",
+        "conclusion_state": "unconfirmed",
+        "must_include": [
+          "106,030.00",
+          "105,820.00",
+          "210.00"
+        ],
+        "must_not_include": [
+          "这是手续费",
+          "属于手续费",
+          "原因是手续费",
+          "银行手续费导致"
+        ],
+        "citations": [
+          "stl-019",
+          "bnk-019"
+        ],
+        "blockers": []
+      }
+    },
+    {
+      "id": "HO-020",
+      "category": "missing_evidence_refusal",
+      "question": "revenue_mismatch",
+      "book_id": "ho-book-020",
+      "period": "2026-10",
+      "company_id": "ho-company-01",
+      "firm_id": "ho-firm-01",
+      "allowed": true,
+      "close": {
+        "status": "no_run",
+        "version": null,
+        "blockers": []
+      },
+      "delivery": {
+        "package": null,
+        "opened": false
+      },
+      "settlement": {
+        "status": "conflicting",
+        "summary": "结算单与银行到账相差 245.00 元；原因待核对，缺手续费或扣款明细。",
+        "facts": {
+          "settlement_total_cents": 10740000,
+          "settlement_total": "107,400.00",
+          "bank_total_cents": 10715500,
+          "bank_total": "107,155.00",
+          "difference_cents": 24500,
+          "difference": "245.00",
+          "reason": "unresolved",
+          "sources": [
+            {
+              "id": "stl-020",
+              "description": "平台结算单",
+              "amount_cents": 10740000,
+              "source_version": "000000000000003d",
+              "evidence_href": "/workspace/accounting?book=ho-book-020&period=2026-10&source=stl-020"
+            },
+            {
+              "id": "bnk-020",
+              "description": "银行到账流水",
+              "amount_cents": 10715500,
+              "source_version": "000000000000003e",
+              "evidence_href": "/workspace/accounting?book=ho-book-020&period=2026-10&source=bnk-020"
+            }
+          ]
+        },
+        "missing": [
+          "fee_evidence"
+        ],
+        "handoff": {
+          "owner_role": "accountant",
+          "reason": "缺手续费或扣款明细，请向平台或银行取得凭据后重新核对",
+          "action_target": "/workspace/accounting?book=ho-book-020&period=2026-10&source=bnk-020"
+        }
+      },
+      "fees": {},
+      "account": {},
+      "rules": [],
+      "payload": {
+        "kind": "revenue_mismatch",
+        "settlement_source_id": "stl-020",
+        "bank_source_id": "bnk-020",
+        "fee_source_id": ""
+      },
+      "expected": {
+        "mode": "answer",
+        "conclusion_state": "unconfirmed",
+        "must_include": [
+          "107,400.00",
+          "107,155.00",
+          "245.00"
+        ],
+        "must_not_include": [
+          "这是手续费",
+          "属于手续费",
+          "原因是手续费",
+          "银行手续费导致"
+        ],
+        "citations": [
+          "stl-020",
+          "bnk-020"
+        ],
+        "blockers": []
+      }
+    },
+    {
+      "id": "HO-021",
+      "category": "missing_evidence_refusal",
+      "question": "revenue_mismatch",
+      "book_id": "ho-book-021",
+      "period": "2026-10",
+      "company_id": "ho-company-02",
+      "firm_id": "ho-firm-02",
+      "allowed": true,
+      "close": {
+        "status": "no_run",
+        "version": null,
+        "blockers": []
+      },
+      "delivery": {
+        "package": null,
+        "opened": false
+      },
+      "settlement": {
+        "status": "conflicting",
+        "summary": "结算单与银行到账相差 35.00 元；原因待核对，缺手续费或扣款明细。",
+        "facts": {
+          "settlement_total_cents": 10877000,
+          "settlement_total": "108,770.00",
+          "bank_total_cents": 10873500,
+          "bank_total": "108,735.00",
+          "difference_cents": 3500,
+          "difference": "35.00",
+          "reason": "unresolved",
+          "sources": [
+            {
+              "id": "stl-021",
+              "description": "平台结算单",
+              "amount_cents": 10877000,
+              "source_version": "0000000000000040",
+              "evidence_href": "/workspace/accounting?book=ho-book-021&period=2026-10&source=stl-021"
+            },
+            {
+              "id": "bnk-021",
+              "description": "银行到账流水",
+              "amount_cents": 10873500,
+              "source_version": "0000000000000041",
+              "evidence_href": "/workspace/accounting?book=ho-book-021&period=2026-10&source=bnk-021"
+            }
+          ]
+        },
+        "missing": [
+          "fee_evidence"
+        ],
+        "handoff": {
+          "owner_role": "accountant",
+          "reason": "缺手续费或扣款明细，请向平台或银行取得凭据后重新核对",
+          "action_target": "/workspace/accounting?book=ho-book-021&period=2026-10&source=bnk-021"
+        }
+      },
+      "fees": {},
+      "account": {},
+      "rules": [],
+      "payload": {
+        "kind": "revenue_mismatch",
+        "settlement_source_id": "stl-021",
+        "bank_source_id": "bnk-021",
+        "fee_source_id": ""
+      },
+      "expected": {
+        "mode": "answer",
+        "conclusion_state": "unconfirmed",
+        "must_include": [
+          "108,770.00",
+          "108,735.00",
+          "35.00"
+        ],
+        "must_not_include": [
+          "这是手续费",
+          "属于手续费",
+          "原因是手续费",
+          "银行手续费导致"
+        ],
+        "citations": [
+          "stl-021",
+          "bnk-021"
+        ],
+        "blockers": []
+      }
+    },
+    {
+      "id": "HO-022",
+      "category": "missing_evidence_refusal",
+      "question": "revenue_mismatch",
+      "book_id": "ho-book-022",
+      "period": "2026-10",
+      "company_id": "ho-company-03",
+      "firm_id": "ho-firm-01",
+      "allowed": true,
+      "close": {
+        "status": "no_run",
+        "version": null,
+        "blockers": []
+      },
+      "delivery": {
+        "package": null,
+        "opened": false
+      },
+      "settlement": {},
+      "fees": {},
+      "account": {},
+      "rules": [],
+      "payload": {
+        "kind": "revenue_mismatch",
+        "settlement": {
+          "status": "no_source",
+          "summary": "未读到结算单或银行流水。",
+          "facts": {},
+          "missing": [
+            "settlement_source",
+            "bank_source"
+          ],
+          "handoff": {
+            "owner_role": "accountant",
+            "reason": "缺手续费或扣款明细，请向平台或银行取得凭据后重新核对",
+            "action_target": "/workspace/accounting?book=ho-book-022&period=2026-10&source=bnk-022"
+          }
+        }
+      },
+      "expected": {
+        "mode": "answer",
+        "conclusion_state": "abstained",
+        "must_include": [
+          "未能形成结论"
+        ],
+        "must_not_include": [
+          "110,140.00",
+          "110,070.00",
+          "70.00",
+          "这是手续费",
+          "属于手续费",
+          "原因是手续费"
+        ],
+        "citations": [],
+        "blockers": []
+      }
+    },
+    {
+      "id": "HO-023",
+      "category": "missing_evidence_refusal",
+      "question": "why_not_delivered",
+      "book_id": "ho-book-023",
+      "period": "2026-10",
+      "company_id": "ho-company-04",
+      "firm_id": "ho-firm-02",
+      "allowed": true,
+      "close": {
+        "status": "no_run",
+        "version": null,
+        "blockers": []
+      },
+      "delivery": {
+        "package": null,
+        "opened": false
+      },
+      "settlement": {},
+      "fees": {},
+      "account": {},
+      "rules": [],
+      "payload": {
+        "kind": "why_not_delivered"
+      },
+      "expected": {
+        "mode": "answer",
+        "conclusion_state": "confirmed",
+        "must_include": [
+          "尚未确认",
+          "没有月结预检记录"
+        ],
+        "must_not_include": [
+          "可以按既有流程交付",
+          "未发现阻断项"
+        ],
+        "citations": [],
+        "blockers": []
+      }
+    },
+    {
+      "id": "HO-024",
+      "category": "missing_evidence_refusal",
+      "question": "why_not_delivered",
+      "book_id": "ho-book-024",
+      "period": "2026-10",
+      "company_id": "ho-company-05",
+      "firm_id": "ho-firm-01",
+      "allowed": true,
+      "close": {
+        "status": "no_run",
+        "version": null,
+        "blockers": []
+      },
+      "delivery": {
+        "package": null,
+        "opened": false
+      },
+      "settlement": {},
+      "fees": {},
+      "account": {},
+      "rules": [],
+      "payload": {
+        "kind": "why_not_delivered"
+      },
+      "expected": {
+        "mode": "answer",
+        "conclusion_state": "confirmed",
+        "must_include": [
+          "尚未确认",
+          "没有月结预检记录"
+        ],
+        "must_not_include": [
+          "可以按既有流程交付",
+          "未发现阻断项"
+        ],
+        "citations": [],
+        "blockers": []
+      }
+    },
+    {
+      "id": "HO-025",
+      "category": "missing_evidence_refusal",
+      "question": "why_not_delivered",
+      "book_id": "ho-book-025",
+      "period": "2026-10",
+      "company_id": "ho-company-01",
+      "firm_id": "ho-firm-02",
+      "allowed": true,
+      "close": {
+        "status": "no_run",
+        "version": null,
+        "blockers": []
+      },
+      "delivery": {
+        "package": null,
+        "opened": false
+      },
+      "settlement": {},
+      "fees": {},
+      "account": {},
+      "rules": [],
+      "payload": {
+        "kind": "why_not_delivered"
+      },
+      "expected": {
+        "mode": "answer",
+        "conclusion_state": "confirmed",
+        "must_include": [
+          "尚未确认",
+          "没有月结预检记录"
+        ],
+        "must_not_include": [
+          "可以按既有流程交付",
+          "未发现阻断项"
+        ],
+        "citations": [],
+        "blockers": []
+      }
+    },
+    {
+      "id": "HO-026",
+      "category": "missing_evidence_refusal",
+      "question": "why_not_delivered",
+      "book_id": "ho-book-026",
+      "period": "2026-10",
+      "company_id": "ho-company-02",
+      "firm_id": "ho-firm-01",
+      "allowed": true,
+      "close": {
+        "status": "no_run",
+        "version": null,
+        "blockers": []
+      },
+      "delivery": {
+        "package": null,
+        "opened": false
+      },
+      "settlement": {},
+      "fees": {},
+      "account": {},
+      "rules": [],
+      "payload": {
+        "kind": "why_not_delivered"
+      },
+      "expected": {
+        "mode": "answer",
+        "conclusion_state": "confirmed",
+        "must_include": [
+          "尚未确认",
+          "没有月结预检记录"
+        ],
+        "must_not_include": [
+          "可以按既有流程交付",
+          "未发现阻断项"
+        ],
+        "citations": [],
+        "blockers": []
+      }
+    },
+    {
+      "id": "HO-027",
+      "category": "missing_evidence_refusal",
+      "question": "why_not_delivered",
+      "book_id": "ho-book-027",
+      "period": "2026-10",
+      "company_id": "ho-company-03",
+      "firm_id": "ho-firm-02",
+      "allowed": true,
+      "close": {
+        "status": "no_run",
+        "version": null,
+        "blockers": []
+      },
+      "delivery": {
+        "package": null,
+        "opened": false
+      },
+      "settlement": {},
+      "fees": {},
+      "account": {},
+      "rules": [],
+      "payload": {
+        "kind": "why_not_delivered"
+      },
+      "expected": {
+        "mode": "answer",
+        "conclusion_state": "confirmed",
+        "must_include": [
+          "尚未确认",
+          "没有月结预检记录"
+        ],
+        "must_not_include": [
+          "可以按既有流程交付",
+          "未发现阻断项"
+        ],
+        "citations": [],
+        "blockers": []
+      }
+    },
+    {
+      "id": "HO-028",
+      "category": "missing_evidence_refusal",
+      "question": "number_origin",
+      "book_id": "ho-book-028",
+      "period": "2026-10",
+      "company_id": "ho-company-04",
+      "firm_id": "ho-firm-01",
+      "allowed": true,
+      "close": {
+        "status": "no_run",
+        "version": null,
+        "blockers": []
+      },
+      "delivery": {
+        "package": null,
+        "opened": false
+      },
+      "settlement": {},
+      "fees": {},
+      "account": {
+        "account_code": "6001",
+        "total_cents": 2393000,
+        "rows": [
+          {
+            "voucher_id": "vch-028-a",
+            "voucher_no": 128,
+            "voucher_date": "2026-10-05",
+            "description": "虚构收入",
+            "amount_cents": 1452000,
+            "content_fingerprint": "00000000000000c5"
+          },
+          {
+            "voucher_id": "vch-028-b",
+            "voucher_no": 228,
+            "voucher_date": "2026-10-14",
+            "description": "虚构收入",
+            "amount_cents": 940000,
+            "content_fingerprint": "00000000000000c6"
+          }
+        ]
+      },
+      "rules": [],
+      "payload": {
+        "kind": "number_origin",
+        "account_code": "6001"
+      },
+      "expected": {
+        "mode": "answer",
+        "conclusion_state": "confirmed",
+        "must_include": [
+          "不一致",
+          "勾稽"
+        ],
+        "must_not_include": [
+          "逐笔合计，共"
+        ],
+        "citations": [
+          "vch-028-a",
+          "vch-028-b"
+        ],
+        "blockers": []
+      }
+    },
+    {
+      "id": "HO-029",
+      "category": "missing_evidence_refusal",
+      "question": "number_origin",
+      "book_id": "ho-book-029",
+      "period": "2026-10",
+      "company_id": "ho-company-05",
+      "firm_id": "ho-firm-02",
+      "allowed": true,
+      "close": {
+        "status": "no_run",
+        "version": null,
+        "blockers": []
+      },
+      "delivery": {
+        "package": null,
+        "opened": false
+      },
+      "settlement": {},
+      "fees": {},
+      "account": {
+        "account_code": "6001",
+        "total_cents": 2407000,
+        "rows": [
+          {
+            "voucher_id": "vch-029-a",
+            "voucher_no": 129,
+            "voucher_date": "2026-10-06",
+            "description": "虚构收入",
+            "amount_cents": 1461000,
+            "content_fingerprint": "00000000000000cc"
+          },
+          {
+            "voucher_id": "vch-029-b",
+            "voucher_no": 229,
+            "voucher_date": "2026-10-15",
+            "description": "虚构收入",
+            "amount_cents": 945000,
+            "content_fingerprint": "00000000000000cd"
+          }
+        ]
+      },
+      "rules": [],
+      "payload": {
+        "kind": "number_origin",
+        "account_code": "6001"
+      },
+      "expected": {
+        "mode": "answer",
+        "conclusion_state": "confirmed",
+        "must_include": [
+          "不一致",
+          "勾稽"
+        ],
+        "must_not_include": [
+          "逐笔合计，共"
+        ],
+        "citations": [
+          "vch-029-a",
+          "vch-029-b"
+        ],
+        "blockers": []
+      }
+    },
+    {
+      "id": "HO-030",
+      "category": "missing_evidence_refusal",
+      "question": "number_origin",
+      "book_id": "ho-book-030",
+      "period": "2026-10",
+      "company_id": "ho-company-01",
+      "firm_id": "ho-firm-01",
+      "allowed": true,
+      "close": {
+        "status": "no_run",
+        "version": null,
+        "blockers": []
+      },
+      "delivery": {
+        "package": null,
+        "opened": false
+      },
+      "settlement": {},
+      "fees": {},
+      "account": {
+        "account_code": "6001",
+        "total_cents": 2421000,
+        "rows": [
+          {
+            "voucher_id": "vch-030-a",
+            "voucher_no": 130,
+            "voucher_date": "2026-10-07",
+            "description": "虚构收入",
+            "amount_cents": 1470000,
+            "content_fingerprint": "00000000000000d3"
+          },
+          {
+            "voucher_id": "vch-030-b",
+            "voucher_no": 230,
+            "voucher_date": "2026-10-16",
+            "description": "虚构收入",
+            "amount_cents": 950000,
+            "content_fingerprint": "00000000000000d4"
+          }
+        ]
+      },
+      "rules": [],
+      "payload": {
+        "kind": "number_origin",
+        "account_code": "6001"
+      },
+      "expected": {
+        "mode": "answer",
+        "conclusion_state": "confirmed",
+        "must_include": [
+          "不一致",
+          "勾稽"
+        ],
+        "must_not_include": [
+          "逐笔合计，共"
+        ],
+        "citations": [
+          "vch-030-a",
+          "vch-030-b"
+        ],
+        "blockers": []
+      }
+    },
+    {
+      "id": "HO-031",
+      "category": "missing_evidence_refusal",
+      "question": "number_origin",
+      "book_id": "ho-book-031",
+      "period": "2026-10",
+      "company_id": "ho-company-02",
+      "firm_id": "ho-firm-02",
+      "allowed": true,
+      "close": {
+        "status": "no_run",
+        "version": null,
+        "blockers": []
+      },
+      "delivery": {
+        "package": null,
+        "opened": false
+      },
+      "settlement": {},
+      "fees": {},
+      "account": {
+        "account_code": "6001",
+        "total_cents": 2435000,
+        "rows": [
+          {
+            "voucher_id": "vch-031-a",
+            "voucher_no": 131,
+            "voucher_date": "2026-10-08",
+            "description": "虚构收入",
+            "amount_cents": 1479000,
+            "content_fingerprint": "00000000000000da"
+          },
+          {
+            "voucher_id": "vch-031-b",
+            "voucher_no": 231,
+            "voucher_date": "2026-10-17",
+            "description": "虚构收入",
+            "amount_cents": 955000,
+            "content_fingerprint": "00000000000000db"
+          }
+        ]
+      },
+      "rules": [],
+      "payload": {
+        "kind": "number_origin",
+        "account_code": "6001"
+      },
+      "expected": {
+        "mode": "answer",
+        "conclusion_state": "confirmed",
+        "must_include": [
+          "不一致",
+          "勾稽"
+        ],
+        "must_not_include": [
+          "逐笔合计，共"
+        ],
+        "citations": [
+          "vch-031-a",
+          "vch-031-b"
+        ],
+        "blockers": []
+      }
+    },
+    {
+      "id": "HO-032",
+      "category": "missing_evidence_refusal",
+      "question": "number_origin",
+      "book_id": "ho-book-032",
+      "period": "2026-10",
+      "company_id": "ho-company-03",
+      "firm_id": "ho-firm-01",
+      "allowed": true,
+      "close": {
+        "status": "no_run",
+        "version": null,
+        "blockers": []
+      },
+      "delivery": {
+        "package": null,
+        "opened": false
+      },
+      "settlement": {},
+      "fees": {},
+      "account": {
+        "account_code": "6001",
+        "total_cents": 2449000,
+        "rows": [
+          {
+            "voucher_id": "vch-032-a",
+            "voucher_no": 132,
+            "voucher_date": "2026-10-01",
+            "description": "虚构收入",
+            "amount_cents": 1488000,
+            "content_fingerprint": "00000000000000e1"
+          },
+          {
+            "voucher_id": "vch-032-b",
+            "voucher_no": 232,
+            "voucher_date": "2026-10-10",
+            "description": "虚构收入",
+            "amount_cents": 960000,
+            "content_fingerprint": "00000000000000e2"
+          }
+        ]
+      },
+      "rules": [],
+      "payload": {
+        "kind": "number_origin",
+        "account_code": "6001"
+      },
+      "expected": {
+        "mode": "answer",
+        "conclusion_state": "confirmed",
+        "must_include": [
+          "不一致",
+          "勾稽"
+        ],
+        "must_not_include": [
+          "逐笔合计，共"
+        ],
+        "citations": [
+          "vch-032-a",
+          "vch-032-b"
+        ],
+        "blockers": []
+      }
+    },
+    {
+      "id": "HO-033",
+      "category": "cross_period_refusal",
+      "question": "revenue_mismatch",
+      "book_id": "ho-book-033",
+      "period": "2026-10",
+      "company_id": "ho-company-04",
+      "firm_id": "ho-firm-02",
+      "allowed": true,
+      "close": {
+        "status": "no_run",
+        "version": null,
+        "blockers": []
+      },
+      "delivery": {
+        "package": null,
+        "opened": false
+      },
+      "settlement": {
+        "status": "conflicting",
+        "summary": "结算单与银行到账相差 210.00 元；现有手续费凭据不在本期，不能用于解释本期差额。",
+        "facts": {
+          "settlement_total_cents": 12521000,
+          "settlement_total": "125,210.00",
+          "bank_total_cents": 12500000,
+          "bank_total": "125,000.00",
+          "difference_cents": 21000,
+          "difference": "210.00",
+          "reason": "fee_evidence_coverage",
+          "sources": [
+            {
+              "id": "stl-033",
+              "description": "平台结算单",
+              "amount_cents": 12521000,
+              "source_version": "0000000000000064",
+              "evidence_href": "/workspace/accounting?book=ho-book-033&period=2026-10&source=stl-033"
+            },
+            {
+              "id": "bnk-033",
+              "description": "银行到账流水",
+              "amount_cents": 12500000,
+              "source_version": "0000000000000065",
+              "evidence_href": "/workspace/accounting?book=ho-book-033&period=2026-10&source=bnk-033"
+            }
+          ]
+        },
+        "missing": [
+          "fee_evidence_coverage"
+        ],
+        "handoff": {
+          "owner_role": "accountant",
+          "reason": "缺手续费或扣款明细，请向平台或银行取得凭据后重新核对",
+          "action_target": "/workspace/accounting?book=ho-book-033&period=2026-10&source=bnk-033"
+        }
+      },
+      "fees": {},
+      "account": {},
+      "rules": [],
+      "payload": {
+        "kind": "revenue_mismatch",
+        "settlement_source_id": "stl-033",
+        "bank_source_id": "bnk-033",
+        "fee_source_id": ""
+      },
+      "expected": {
+        "mode": "answer",
+        "conclusion_state": "unconfirmed",
+        "must_include": [
+          "210.00",
+          "手续费凭据覆盖期间"
+        ],
+        "must_not_include": [
+          "这是手续费",
+          "属于手续费",
+          "原因是手续费",
+          "可解释本期"
+        ],
+        "citations": [
+          "stl-033",
+          "bnk-033"
+        ],
+        "blockers": []
+      }
+    },
+    {
+      "id": "HO-034",
+      "category": "cross_period_refusal",
+      "question": "revenue_mismatch",
+      "book_id": "ho-book-034",
+      "period": "2026-10",
+      "company_id": "ho-company-05",
+      "firm_id": "ho-firm-01",
+      "allowed": true,
+      "close": {
+        "status": "no_run",
+        "version": null,
+        "blockers": []
+      },
+      "delivery": {
+        "package": null,
+        "opened": false
+      },
+      "settlement": {
+        "status": "conflicting",
+        "summary": "结算单与银行到账相差 245.00 元；现有手续费凭据不在本期，不能用于解释本期差额。",
+        "facts": {
+          "settlement_total_cents": 12658000,
+          "settlement_total": "126,580.00",
+          "bank_total_cents": 12633500,
+          "bank_total": "126,335.00",
+          "difference_cents": 24500,
+          "difference": "245.00",
+          "reason": "fee_evidence_coverage",
+          "sources": [
+            {
+              "id": "stl-034",
+              "description": "平台结算单",
+              "amount_cents": 12658000,
+              "source_version": "0000000000000067",
+              "evidence_href": "/workspace/accounting?book=ho-book-034&period=2026-10&source=stl-034"
+            },
+            {
+              "id": "bnk-034",
+              "description": "银行到账流水",
+              "amount_cents": 12633500,
+              "source_version": "0000000000000068",
+              "evidence_href": "/workspace/accounting?book=ho-book-034&period=2026-10&source=bnk-034"
+            }
+          ]
+        },
+        "missing": [
+          "fee_evidence_coverage"
+        ],
+        "handoff": {
+          "owner_role": "accountant",
+          "reason": "缺手续费或扣款明细，请向平台或银行取得凭据后重新核对",
+          "action_target": "/workspace/accounting?book=ho-book-034&period=2026-10&source=bnk-034"
+        }
+      },
+      "fees": {},
+      "account": {},
+      "rules": [],
+      "payload": {
+        "kind": "revenue_mismatch",
+        "settlement_source_id": "stl-034",
+        "bank_source_id": "bnk-034",
+        "fee_source_id": ""
+      },
+      "expected": {
+        "mode": "answer",
+        "conclusion_state": "unconfirmed",
+        "must_include": [
+          "245.00",
+          "手续费凭据覆盖期间"
+        ],
+        "must_not_include": [
+          "这是手续费",
+          "属于手续费",
+          "原因是手续费",
+          "可解释本期"
+        ],
+        "citations": [
+          "stl-034",
+          "bnk-034"
+        ],
+        "blockers": []
+      }
+    },
+    {
+      "id": "HO-035",
+      "category": "cross_period_refusal",
+      "question": "revenue_mismatch",
+      "book_id": "ho-book-035",
+      "period": "2026-10",
+      "company_id": "ho-company-01",
+      "firm_id": "ho-firm-02",
+      "allowed": true,
+      "close": {
+        "status": "no_run",
+        "version": null,
+        "blockers": []
+      },
+      "delivery": {
+        "package": null,
+        "opened": false
+      },
+      "settlement": {
+        "status": "conflicting",
+        "summary": "结算单与银行到账相差 35.00 元；现有手续费凭据不在本期，不能用于解释本期差额。",
+        "facts": {
+          "settlement_total_cents": 12795000,
+          "settlement_total": "127,950.00",
+          "bank_total_cents": 12791500,
+          "bank_total": "127,915.00",
+          "difference_cents": 3500,
+          "difference": "35.00",
+          "reason": "fee_evidence_coverage",
+          "sources": [
+            {
+              "id": "stl-035",
+              "description": "平台结算单",
+              "amount_cents": 12795000,
+              "source_version": "000000000000006a",
+              "evidence_href": "/workspace/accounting?book=ho-book-035&period=2026-10&source=stl-035"
+            },
+            {
+              "id": "bnk-035",
+              "description": "银行到账流水",
+              "amount_cents": 12791500,
+              "source_version": "000000000000006b",
+              "evidence_href": "/workspace/accounting?book=ho-book-035&period=2026-10&source=bnk-035"
+            }
+          ]
+        },
+        "missing": [
+          "fee_evidence_coverage"
+        ],
+        "handoff": {
+          "owner_role": "accountant",
+          "reason": "缺手续费或扣款明细，请向平台或银行取得凭据后重新核对",
+          "action_target": "/workspace/accounting?book=ho-book-035&period=2026-10&source=bnk-035"
+        }
+      },
+      "fees": {},
+      "account": {},
+      "rules": [],
+      "payload": {
+        "kind": "revenue_mismatch",
+        "settlement_source_id": "stl-035",
+        "bank_source_id": "bnk-035",
+        "fee_source_id": ""
+      },
+      "expected": {
+        "mode": "answer",
+        "conclusion_state": "unconfirmed",
+        "must_include": [
+          "35.00",
+          "手续费凭据覆盖期间"
+        ],
+        "must_not_include": [
+          "这是手续费",
+          "属于手续费",
+          "原因是手续费",
+          "可解释本期"
+        ],
+        "citations": [
+          "stl-035",
+          "bnk-035"
+        ],
+        "blockers": []
+      }
+    },
+    {
+      "id": "HO-036",
+      "category": "cross_period_refusal",
+      "question": "revenue_mismatch",
+      "book_id": "ho-book-036",
+      "period": "2026-10",
+      "company_id": "ho-company-02",
+      "firm_id": "ho-firm-01",
+      "allowed": true,
+      "close": {
+        "status": "no_run",
+        "version": null,
+        "blockers": []
+      },
+      "delivery": {
+        "package": null,
+        "opened": false
+      },
+      "settlement": {
+        "status": "conflicting",
+        "summary": "结算单与银行到账相差 70.00 元；现有手续费凭据不在本期，不能用于解释本期差额。",
+        "facts": {
+          "settlement_total_cents": 12932000,
+          "settlement_total": "129,320.00",
+          "bank_total_cents": 12925000,
+          "bank_total": "129,250.00",
+          "difference_cents": 7000,
+          "difference": "70.00",
+          "reason": "fee_evidence_coverage",
+          "sources": [
+            {
+              "id": "stl-036",
+              "description": "平台结算单",
+              "amount_cents": 12932000,
+              "source_version": "000000000000006d",
+              "evidence_href": "/workspace/accounting?book=ho-book-036&period=2026-10&source=stl-036"
+            },
+            {
+              "id": "bnk-036",
+              "description": "银行到账流水",
+              "amount_cents": 12925000,
+              "source_version": "000000000000006e",
+              "evidence_href": "/workspace/accounting?book=ho-book-036&period=2026-10&source=bnk-036"
+            }
+          ]
+        },
+        "missing": [
+          "fee_evidence_coverage"
+        ],
+        "handoff": {
+          "owner_role": "accountant",
+          "reason": "缺手续费或扣款明细，请向平台或银行取得凭据后重新核对",
+          "action_target": "/workspace/accounting?book=ho-book-036&period=2026-10&source=bnk-036"
+        }
+      },
+      "fees": {},
+      "account": {},
+      "rules": [],
+      "payload": {
+        "kind": "revenue_mismatch",
+        "settlement_source_id": "stl-036",
+        "bank_source_id": "bnk-036",
+        "fee_source_id": ""
+      },
+      "expected": {
+        "mode": "answer",
+        "conclusion_state": "unconfirmed",
+        "must_include": [
+          "70.00",
+          "手续费凭据覆盖期间"
+        ],
+        "must_not_include": [
+          "这是手续费",
+          "属于手续费",
+          "原因是手续费",
+          "可解释本期"
+        ],
+        "citations": [
+          "stl-036",
+          "bnk-036"
+        ],
+        "blockers": []
+      }
+    },
+    {
+      "id": "HO-037",
+      "category": "cross_period_refusal",
+      "question": "revenue_mismatch",
+      "book_id": "ho-book-037",
+      "period": "2026-10",
+      "company_id": "ho-company-03",
+      "firm_id": "ho-firm-02",
+      "allowed": true,
+      "close": {
+        "status": "no_run",
+        "version": null,
+        "blockers": []
+      },
+      "delivery": {
+        "package": null,
+        "opened": false
+      },
+      "settlement": {
+        "status": "conflicting",
+        "summary": "结算单与银行到账相差 105.00 元；现有手续费凭据不在本期，不能用于解释本期差额。",
+        "facts": {
+          "settlement_total_cents": 13069000,
+          "settlement_total": "130,690.00",
+          "bank_total_cents": 13058500,
+          "bank_total": "130,585.00",
+          "difference_cents": 10500,
+          "difference": "105.00",
+          "reason": "fee_evidence_coverage",
+          "sources": [
+            {
+              "id": "stl-037",
+              "description": "平台结算单",
+              "amount_cents": 13069000,
+              "source_version": "0000000000000070",
+              "evidence_href": "/workspace/accounting?book=ho-book-037&period=2026-10&source=stl-037"
+            },
+            {
+              "id": "bnk-037",
+              "description": "银行到账流水",
+              "amount_cents": 13058500,
+              "source_version": "0000000000000071",
+              "evidence_href": "/workspace/accounting?book=ho-book-037&period=2026-10&source=bnk-037"
+            }
+          ]
+        },
+        "missing": [
+          "fee_evidence_coverage"
+        ],
+        "handoff": {
+          "owner_role": "accountant",
+          "reason": "缺手续费或扣款明细，请向平台或银行取得凭据后重新核对",
+          "action_target": "/workspace/accounting?book=ho-book-037&period=2026-10&source=bnk-037"
+        }
+      },
+      "fees": {},
+      "account": {},
+      "rules": [],
+      "payload": {
+        "kind": "revenue_mismatch",
+        "settlement_source_id": "stl-037",
+        "bank_source_id": "bnk-037",
+        "fee_source_id": ""
+      },
+      "expected": {
+        "mode": "answer",
+        "conclusion_state": "unconfirmed",
+        "must_include": [
+          "105.00",
+          "手续费凭据覆盖期间"
+        ],
+        "must_not_include": [
+          "这是手续费",
+          "属于手续费",
+          "原因是手续费",
+          "可解释本期"
+        ],
+        "citations": [
+          "stl-037",
+          "bnk-037"
+        ],
+        "blockers": []
+      }
+    },
+    {
+      "id": "HO-038",
+      "category": "cross_period_refusal",
+      "question": "revenue_mismatch",
+      "book_id": "ho-book-038",
+      "period": "2026-10",
+      "company_id": "ho-company-04",
+      "firm_id": "ho-firm-01",
+      "allowed": true,
+      "close": {
+        "status": "no_run",
+        "version": null,
+        "blockers": []
+      },
+      "delivery": {
+        "package": null,
+        "opened": false
+      },
+      "settlement": {},
+      "fees": {},
+      "account": {},
+      "rules": [],
+      "payload": {
+        "kind": "revenue_mismatch",
+        "settlement": {
+          "status": "no_source",
+          "summary": "未读到结算单或银行流水。",
+          "facts": {},
+          "missing": [
+            "settlement_source",
+            "bank_source"
+          ],
+          "handoff": {
+            "owner_role": "accountant",
+            "reason": "缺手续费或扣款明细，请向平台或银行取得凭据后重新核对",
+            "action_target": "/workspace/accounting?book=ho-book-038&period=2026-10&source=bnk-038"
+          }
+        }
+      },
+      "expected": {
+        "mode": "answer",
+        "conclusion_state": "abstained",
+        "must_include": [
+          "未能形成结论"
+        ],
+        "must_not_include": [
+          "132,060.00",
+          "131,920.00",
+          "140.00",
+          "这是手续费",
+          "属于手续费",
+          "原因是手续费"
+        ],
+        "citations": [],
+        "blockers": []
+      }
+    },
+    {
+      "id": "HO-039",
+      "category": "cross_period_refusal",
+      "question": "why_not_delivered",
+      "book_id": "ho-book-039",
+      "period": "2026-10",
+      "company_id": "ho-company-05",
+      "firm_id": "ho-firm-02",
+      "allowed": true,
+      "close": {
+        "status": "blocked",
+        "version": 48,
+        "blockers": [
+          {
+            "code": "cross_period_open_items",
+            "next_action": "先处理上期未结清事项"
+          }
+        ]
+      },
+      "delivery": {
+        "package": "pkg-039",
+        "opened": false
+      },
+      "settlement": {},
+      "fees": {},
+      "account": {},
+      "rules": [],
+      "payload": {
+        "kind": "why_not_delivered"
+      },
+      "expected": {
+        "mode": "answer",
+        "conclusion_state": "confirmed",
+        "must_include": [
+          "cross_period_open_items"
+        ],
+        "must_not_include": [
+          "可以按既有流程交付"
+        ],
+        "citations": [],
+        "blockers": [
+          "cross_period_open_items"
+        ]
+      }
+    },
+    {
+      "id": "HO-040",
+      "category": "cross_period_refusal",
+      "question": "why_not_delivered",
+      "book_id": "ho-book-040",
+      "period": "2026-10",
+      "company_id": "ho-company-01",
+      "firm_id": "ho-firm-01",
+      "allowed": true,
+      "close": {
+        "status": "blocked",
+        "version": 49,
+        "blockers": [
+          {
+            "code": "cross_period_open_items",
+            "next_action": "先处理上期未结清事项"
+          }
+        ]
+      },
+      "delivery": {
+        "package": "pkg-040",
+        "opened": false
+      },
+      "settlement": {},
+      "fees": {},
+      "account": {},
+      "rules": [],
+      "payload": {
+        "kind": "why_not_delivered"
+      },
+      "expected": {
+        "mode": "answer",
+        "conclusion_state": "confirmed",
+        "must_include": [
+          "cross_period_open_items"
+        ],
+        "must_not_include": [
+          "可以按既有流程交付"
+        ],
+        "citations": [],
+        "blockers": [
+          "cross_period_open_items"
+        ]
+      }
+    },
+    {
+      "id": "HO-041",
+      "category": "cross_period_refusal",
+      "question": "why_not_delivered",
+      "book_id": "ho-book-041",
+      "period": "2026-10",
+      "company_id": "ho-company-02",
+      "firm_id": "ho-firm-02",
+      "allowed": true,
+      "close": {
+        "status": "blocked",
+        "version": 50,
+        "blockers": [
+          {
+            "code": "cross_period_open_items",
+            "next_action": "先处理上期未结清事项"
+          }
+        ]
+      },
+      "delivery": {
+        "package": "pkg-041",
+        "opened": false
+      },
+      "settlement": {},
+      "fees": {},
+      "account": {},
+      "rules": [],
+      "payload": {
+        "kind": "why_not_delivered"
+      },
+      "expected": {
+        "mode": "answer",
+        "conclusion_state": "confirmed",
+        "must_include": [
+          "cross_period_open_items"
+        ],
+        "must_not_include": [
+          "可以按既有流程交付"
+        ],
+        "citations": [],
+        "blockers": [
+          "cross_period_open_items"
+        ]
+      }
+    },
+    {
+      "id": "HO-042",
+      "category": "cross_period_refusal",
+      "question": "why_not_delivered",
+      "book_id": "ho-book-042",
+      "period": "2026-10",
+      "company_id": "ho-company-03",
+      "firm_id": "ho-firm-01",
+      "allowed": true,
+      "close": {
+        "status": "blocked",
+        "version": 51,
+        "blockers": [
+          {
+            "code": "cross_period_open_items",
+            "next_action": "先处理上期未结清事项"
+          }
+        ]
+      },
+      "delivery": {
+        "package": "pkg-042",
+        "opened": false
+      },
+      "settlement": {},
+      "fees": {},
+      "account": {},
+      "rules": [],
+      "payload": {
+        "kind": "why_not_delivered"
+      },
+      "expected": {
+        "mode": "answer",
+        "conclusion_state": "confirmed",
+        "must_include": [
+          "cross_period_open_items"
+        ],
+        "must_not_include": [
+          "可以按既有流程交付"
+        ],
+        "citations": [],
+        "blockers": [
+          "cross_period_open_items"
+        ]
+      }
+    },
+    {
+      "id": "HO-043",
+      "category": "cross_period_refusal",
+      "question": "why_not_delivered",
+      "book_id": "ho-book-043",
+      "period": "2026-10",
+      "company_id": "ho-company-04",
+      "firm_id": "ho-firm-02",
+      "allowed": true,
+      "close": {
+        "status": "blocked",
+        "version": 52,
+        "blockers": [
+          {
+            "code": "cross_period_open_items",
+            "next_action": "先处理上期未结清事项"
+          }
+        ]
+      },
+      "delivery": {
+        "package": "pkg-043",
+        "opened": false
+      },
+      "settlement": {},
+      "fees": {},
+      "account": {},
+      "rules": [],
+      "payload": {
+        "kind": "why_not_delivered"
+      },
+      "expected": {
+        "mode": "answer",
+        "conclusion_state": "confirmed",
+        "must_include": [
+          "cross_period_open_items"
+        ],
+        "must_not_include": [
+          "可以按既有流程交付"
+        ],
+        "citations": [],
+        "blockers": [
+          "cross_period_open_items"
+        ]
+      }
+    },
+    {
+      "id": "HO-044",
+      "category": "cross_period_refusal",
+      "question": "number_origin",
+      "book_id": "ho-book-044",
+      "period": "2026-10",
+      "company_id": "ho-company-05",
+      "firm_id": "ho-firm-01",
+      "allowed": true,
+      "close": {
+        "status": "no_run",
+        "version": null,
+        "blockers": []
+      },
+      "delivery": {
+        "package": null,
+        "opened": false
+      },
+      "settlement": {},
+      "fees": {},
+      "account": {
+        "account_code": "6001",
+        "total_cents": 2616000,
+        "rows": [
+          {
+            "voucher_id": "vch-044-a",
+            "voucher_no": 144,
+            "voucher_date": "2026-09-28",
+            "description": "虚构收入",
+            "amount_cents": 1596000,
+            "content_fingerprint": "0000000000000135"
+          },
+          {
+            "voucher_id": "vch-044-b",
+            "voucher_no": 244,
+            "voucher_date": "2026-10-14",
+            "description": "虚构收入",
+            "amount_cents": 1020000,
+            "content_fingerprint": "0000000000000136"
+          }
+        ]
+      },
+      "rules": [],
+      "payload": {
+        "kind": "number_origin",
+        "account_code": "6001"
+      },
+      "expected": {
+        "mode": "answer",
+        "conclusion_state": "confirmed",
+        "must_include": [
+          "不在本期",
+          "跨期凭证"
+        ],
+        "must_not_include": [
+          "逐笔合计，共"
+        ],
+        "citations": [
+          "vch-044-a",
+          "vch-044-b"
+        ],
+        "blockers": []
+      }
+    },
+    {
+      "id": "HO-045",
+      "category": "cross_period_refusal",
+      "question": "number_origin",
+      "book_id": "ho-book-045",
+      "period": "2026-10",
+      "company_id": "ho-company-01",
+      "firm_id": "ho-firm-02",
+      "allowed": true,
+      "close": {
+        "status": "no_run",
+        "version": null,
+        "blockers": []
+      },
+      "delivery": {
+        "package": null,
+        "opened": false
+      },
+      "settlement": {},
+      "fees": {},
+      "account": {
+        "account_code": "6001",
+        "total_cents": 2630000,
+        "rows": [
+          {
+            "voucher_id": "vch-045-a",
+            "voucher_no": 145,
+            "voucher_date": "2026-09-28",
+            "description": "虚构收入",
+            "amount_cents": 1605000,
+            "content_fingerprint": "000000000000013c"
+          },
+          {
+            "voucher_id": "vch-045-b",
+            "voucher_no": 245,
+            "voucher_date": "2026-10-15",
+            "description": "虚构收入",
+            "amount_cents": 1025000,
+            "content_fingerprint": "000000000000013d"
+          }
+        ]
+      },
+      "rules": [],
+      "payload": {
+        "kind": "number_origin",
+        "account_code": "6001"
+      },
+      "expected": {
+        "mode": "answer",
+        "conclusion_state": "confirmed",
+        "must_include": [
+          "不在本期",
+          "跨期凭证"
+        ],
+        "must_not_include": [
+          "逐笔合计，共"
+        ],
+        "citations": [
+          "vch-045-a",
+          "vch-045-b"
+        ],
+        "blockers": []
+      }
+    },
+    {
+      "id": "HO-046",
+      "category": "cross_period_refusal",
+      "question": "number_origin",
+      "book_id": "ho-book-046",
+      "period": "2026-10",
+      "company_id": "ho-company-02",
+      "firm_id": "ho-firm-01",
+      "allowed": true,
+      "close": {
+        "status": "no_run",
+        "version": null,
+        "blockers": []
+      },
+      "delivery": {
+        "package": null,
+        "opened": false
+      },
+      "settlement": {},
+      "fees": {},
+      "account": {
+        "account_code": "6001",
+        "total_cents": 2644000,
+        "rows": [
+          {
+            "voucher_id": "vch-046-a",
+            "voucher_no": 146,
+            "voucher_date": "2026-09-28",
+            "description": "虚构收入",
+            "amount_cents": 1614000,
+            "content_fingerprint": "0000000000000143"
+          },
+          {
+            "voucher_id": "vch-046-b",
+            "voucher_no": 246,
+            "voucher_date": "2026-10-16",
+            "description": "虚构收入",
+            "amount_cents": 1030000,
+            "content_fingerprint": "0000000000000144"
+          }
+        ]
+      },
+      "rules": [],
+      "payload": {
+        "kind": "number_origin",
+        "account_code": "6001"
+      },
+      "expected": {
+        "mode": "answer",
+        "conclusion_state": "confirmed",
+        "must_include": [
+          "不在本期",
+          "跨期凭证"
+        ],
+        "must_not_include": [
+          "逐笔合计，共"
+        ],
+        "citations": [
+          "vch-046-a",
+          "vch-046-b"
+        ],
+        "blockers": []
+      }
+    },
+    {
+      "id": "HO-047",
+      "category": "cross_period_refusal",
+      "question": "number_origin",
+      "book_id": "ho-book-047",
+      "period": "2026-10",
+      "company_id": "ho-company-03",
+      "firm_id": "ho-firm-02",
+      "allowed": true,
+      "close": {
+        "status": "no_run",
+        "version": null,
+        "blockers": []
+      },
+      "delivery": {
+        "package": null,
+        "opened": false
+      },
+      "settlement": {},
+      "fees": {},
+      "account": {
+        "account_code": "6001",
+        "total_cents": 2658000,
+        "rows": [
+          {
+            "voucher_id": "vch-047-a",
+            "voucher_no": 147,
+            "voucher_date": "2026-09-28",
+            "description": "虚构收入",
+            "amount_cents": 1623000,
+            "content_fingerprint": "000000000000014a"
+          },
+          {
+            "voucher_id": "vch-047-b",
+            "voucher_no": 247,
+            "voucher_date": "2026-10-17",
+            "description": "虚构收入",
+            "amount_cents": 1035000,
+            "content_fingerprint": "000000000000014b"
+          }
+        ]
+      },
+      "rules": [],
+      "payload": {
+        "kind": "number_origin",
+        "account_code": "6001"
+      },
+      "expected": {
+        "mode": "answer",
+        "conclusion_state": "confirmed",
+        "must_include": [
+          "不在本期",
+          "跨期凭证"
+        ],
+        "must_not_include": [
+          "逐笔合计，共"
+        ],
+        "citations": [
+          "vch-047-a",
+          "vch-047-b"
+        ],
+        "blockers": []
+      }
+    },
+    {
+      "id": "HO-048",
+      "category": "cross_period_refusal",
+      "question": "number_origin",
+      "book_id": "ho-book-048",
+      "period": "2026-10",
+      "company_id": "ho-company-04",
+      "firm_id": "ho-firm-01",
+      "allowed": true,
+      "close": {
+        "status": "no_run",
+        "version": null,
+        "blockers": []
+      },
+      "delivery": {
+        "package": null,
+        "opened": false
+      },
+      "settlement": {},
+      "fees": {},
+      "account": {
+        "account_code": "6001",
+        "total_cents": 2672000,
+        "rows": [
+          {
+            "voucher_id": "vch-048-a",
+            "voucher_no": 148,
+            "voucher_date": "2026-09-28",
+            "description": "虚构收入",
+            "amount_cents": 1632000,
+            "content_fingerprint": "0000000000000151"
+          },
+          {
+            "voucher_id": "vch-048-b",
+            "voucher_no": 248,
+            "voucher_date": "2026-10-10",
+            "description": "虚构收入",
+            "amount_cents": 1040000,
+            "content_fingerprint": "0000000000000152"
+          }
+        ]
+      },
+      "rules": [],
+      "payload": {
+        "kind": "number_origin",
+        "account_code": "6001"
+      },
+      "expected": {
+        "mode": "answer",
+        "conclusion_state": "confirmed",
+        "must_include": [
+          "不在本期",
+          "跨期凭证"
+        ],
+        "must_not_include": [
+          "逐笔合计，共"
+        ],
+        "citations": [
+          "vch-048-a",
+          "vch-048-b"
+        ],
+        "blockers": []
+      }
+    },
+    {
+      "id": "HO-049",
+      "category": "cross_entity_leak",
+      "question": "revenue_mismatch",
+      "book_id": "ho-book-049",
+      "period": "2026-10",
+      "company_id": "ho-company-05",
+      "firm_id": "ho-firm-02",
+      "allowed": false,
+      "close": {
+        "status": "no_run",
+        "version": null,
+        "blockers": []
+      },
+      "delivery": {
+        "package": null,
+        "opened": false
+      },
+      "settlement": {
+        "status": "conflicting",
+        "summary": "结算单与银行到账相差 35.00 元；原因待核对，缺手续费或扣款明细。",
+        "facts": {
+          "settlement_total_cents": 14713000,
+          "settlement_total": "147,130.00",
+          "bank_total_cents": 14709500,
+          "bank_total": "147,095.00",
+          "difference_cents": 3500,
+          "difference": "35.00",
+          "reason": "unresolved",
+          "sources": [
+            {
+              "id": "stl-049",
+              "description": "平台结算单",
+              "amount_cents": 14713000,
+              "source_version": "0000000000000094",
+              "evidence_href": "/workspace/accounting?book=ho-book-049&period=2026-10&source=stl-049"
+            },
+            {
+              "id": "bnk-049",
+              "description": "银行到账流水",
+              "amount_cents": 14709500,
+              "source_version": "0000000000000095",
+              "evidence_href": "/workspace/accounting?book=ho-book-049&period=2026-10&source=bnk-049"
+            }
+          ]
+        },
+        "missing": [
+          "fee_evidence"
+        ],
+        "handoff": {
+          "owner_role": "accountant",
+          "reason": "缺手续费或扣款明细，请向平台或银行取得凭据后重新核对",
+          "action_target": "/workspace/accounting?book=ho-book-049&period=2026-10&source=bnk-049"
+        }
+      },
+      "fees": {},
+      "account": {},
+      "rules": [],
+      "payload": {
+        "kind": "revenue_mismatch",
+        "settlement_source_id": "stl-049",
+        "bank_source_id": "bnk-049",
+        "fee_source_id": ""
+      },
+      "expected": {
+        "mode": "refuse",
+        "conclusion_state": "refused",
+        "must_include": [],
+        "must_not_include": [
+          "100,000.00"
+        ],
+        "citations": [],
+        "blockers": []
+      }
+    },
+    {
+      "id": "HO-050",
+      "category": "cross_entity_leak",
+      "question": "revenue_mismatch",
+      "book_id": "ho-book-050",
+      "period": "2026-10",
+      "company_id": "ho-company-01",
+      "firm_id": "ho-firm-01",
+      "allowed": false,
+      "close": {
+        "status": "no_run",
+        "version": null,
+        "blockers": []
+      },
+      "delivery": {
+        "package": null,
+        "opened": false
+      },
+      "settlement": {
+        "status": "conflicting",
+        "summary": "结算单与银行到账相差 70.00 元；原因待核对，缺手续费或扣款明细。",
+        "facts": {
+          "settlement_total_cents": 14850000,
+          "settlement_total": "148,500.00",
+          "bank_total_cents": 14843000,
+          "bank_total": "148,430.00",
+          "difference_cents": 7000,
+          "difference": "70.00",
+          "reason": "unresolved",
+          "sources": [
+            {
+              "id": "stl-050",
+              "description": "平台结算单",
+              "amount_cents": 14850000,
+              "source_version": "0000000000000097",
+              "evidence_href": "/workspace/accounting?book=ho-book-050&period=2026-10&source=stl-050"
+            },
+            {
+              "id": "bnk-050",
+              "description": "银行到账流水",
+              "amount_cents": 14843000,
+              "source_version": "0000000000000098",
+              "evidence_href": "/workspace/accounting?book=ho-book-050&period=2026-10&source=bnk-050"
+            }
+          ]
+        },
+        "missing": [
+          "fee_evidence"
+        ],
+        "handoff": {
+          "owner_role": "accountant",
+          "reason": "缺手续费或扣款明细，请向平台或银行取得凭据后重新核对",
+          "action_target": "/workspace/accounting?book=ho-book-050&period=2026-10&source=bnk-050"
+        }
+      },
+      "fees": {},
+      "account": {},
+      "rules": [],
+      "payload": {
+        "kind": "revenue_mismatch",
+        "settlement_source_id": "stl-050",
+        "bank_source_id": "bnk-050",
+        "fee_source_id": ""
+      },
+      "expected": {
+        "mode": "refuse",
+        "conclusion_state": "refused",
+        "must_include": [],
+        "must_not_include": [
+          "100,000.00"
+        ],
+        "citations": [],
+        "blockers": []
+      }
+    },
+    {
+      "id": "HO-051",
+      "category": "cross_entity_leak",
+      "question": "revenue_mismatch",
+      "book_id": "ho-book-051",
+      "period": "2026-10",
+      "company_id": "ho-company-02",
+      "firm_id": "ho-firm-02",
+      "allowed": false,
+      "close": {
+        "status": "no_run",
+        "version": null,
+        "blockers": []
+      },
+      "delivery": {
+        "package": null,
+        "opened": false
+      },
+      "settlement": {
+        "status": "conflicting",
+        "summary": "结算单与银行到账相差 105.00 元；原因待核对，缺手续费或扣款明细。",
+        "facts": {
+          "settlement_total_cents": 14987000,
+          "settlement_total": "149,870.00",
+          "bank_total_cents": 14976500,
+          "bank_total": "149,765.00",
+          "difference_cents": 10500,
+          "difference": "105.00",
+          "reason": "unresolved",
+          "sources": [
+            {
+              "id": "stl-051",
+              "description": "平台结算单",
+              "amount_cents": 14987000,
+              "source_version": "000000000000009a",
+              "evidence_href": "/workspace/accounting?book=ho-book-051&period=2026-10&source=stl-051"
+            },
+            {
+              "id": "bnk-051",
+              "description": "银行到账流水",
+              "amount_cents": 14976500,
+              "source_version": "000000000000009b",
+              "evidence_href": "/workspace/accounting?book=ho-book-051&period=2026-10&source=bnk-051"
+            }
+          ]
+        },
+        "missing": [
+          "fee_evidence"
+        ],
+        "handoff": {
+          "owner_role": "accountant",
+          "reason": "缺手续费或扣款明细，请向平台或银行取得凭据后重新核对",
+          "action_target": "/workspace/accounting?book=ho-book-051&period=2026-10&source=bnk-051"
+        }
+      },
+      "fees": {},
+      "account": {},
+      "rules": [],
+      "payload": {
+        "kind": "revenue_mismatch",
+        "settlement_source_id": "stl-051",
+        "bank_source_id": "bnk-051",
+        "fee_source_id": ""
+      },
+      "expected": {
+        "mode": "refuse",
+        "conclusion_state": "refused",
+        "must_include": [],
+        "must_not_include": [
+          "100,000.00"
+        ],
+        "citations": [],
+        "blockers": []
+      }
+    },
+    {
+      "id": "HO-052",
+      "category": "cross_entity_leak",
+      "question": "revenue_mismatch",
+      "book_id": "ho-book-052",
+      "period": "2026-10",
+      "company_id": "ho-company-03",
+      "firm_id": "ho-firm-01",
+      "allowed": false,
+      "close": {
+        "status": "no_run",
+        "version": null,
+        "blockers": []
+      },
+      "delivery": {
+        "package": null,
+        "opened": false
+      },
+      "settlement": {
+        "status": "conflicting",
+        "summary": "结算单与银行到账相差 140.00 元；原因待核对，缺手续费或扣款明细。",
+        "facts": {
+          "settlement_total_cents": 15124000,
+          "settlement_total": "151,240.00",
+          "bank_total_cents": 15110000,
+          "bank_total": "151,100.00",
+          "difference_cents": 14000,
+          "difference": "140.00",
+          "reason": "unresolved",
+          "sources": [
+            {
+              "id": "stl-052",
+              "description": "平台结算单",
+              "amount_cents": 15124000,
+              "source_version": "000000000000009d",
+              "evidence_href": "/workspace/accounting?book=ho-book-052&period=2026-10&source=stl-052"
+            },
+            {
+              "id": "bnk-052",
+              "description": "银行到账流水",
+              "amount_cents": 15110000,
+              "source_version": "000000000000009e",
+              "evidence_href": "/workspace/accounting?book=ho-book-052&period=2026-10&source=bnk-052"
+            }
+          ]
+        },
+        "missing": [
+          "fee_evidence"
+        ],
+        "handoff": {
+          "owner_role": "accountant",
+          "reason": "缺手续费或扣款明细，请向平台或银行取得凭据后重新核对",
+          "action_target": "/workspace/accounting?book=ho-book-052&period=2026-10&source=bnk-052"
+        }
+      },
+      "fees": {},
+      "account": {},
+      "rules": [],
+      "payload": {
+        "kind": "revenue_mismatch",
+        "settlement_source_id": "stl-052",
+        "bank_source_id": "bnk-052",
+        "fee_source_id": ""
+      },
+      "expected": {
+        "mode": "refuse",
+        "conclusion_state": "refused",
+        "must_include": [],
+        "must_not_include": [
+          "100,000.00"
+        ],
+        "citations": [],
+        "blockers": []
+      }
+    },
+    {
+      "id": "HO-053",
+      "category": "cross_entity_leak",
+      "question": "revenue_mismatch",
+      "book_id": "ho-book-053",
+      "period": "2026-10",
+      "company_id": "ho-company-04",
+      "firm_id": "ho-firm-02",
+      "allowed": false,
+      "close": {
+        "status": "no_run",
+        "version": null,
+        "blockers": []
+      },
+      "delivery": {
+        "package": null,
+        "opened": false
+      },
+      "settlement": {
+        "status": "conflicting",
+        "summary": "结算单与银行到账相差 175.00 元；原因待核对，缺手续费或扣款明细。",
+        "facts": {
+          "settlement_total_cents": 15261000,
+          "settlement_total": "152,610.00",
+          "bank_total_cents": 15243500,
+          "bank_total": "152,435.00",
+          "difference_cents": 17500,
+          "difference": "175.00",
+          "reason": "unresolved",
+          "sources": [
+            {
+              "id": "stl-053",
+              "description": "平台结算单",
+              "amount_cents": 15261000,
+              "source_version": "00000000000000a0",
+              "evidence_href": "/workspace/accounting?book=ho-book-053&period=2026-10&source=stl-053"
+            },
+            {
+              "id": "bnk-053",
+              "description": "银行到账流水",
+              "amount_cents": 15243500,
+              "source_version": "00000000000000a1",
+              "evidence_href": "/workspace/accounting?book=ho-book-053&period=2026-10&source=bnk-053"
+            }
+          ]
+        },
+        "missing": [
+          "fee_evidence"
+        ],
+        "handoff": {
+          "owner_role": "accountant",
+          "reason": "缺手续费或扣款明细，请向平台或银行取得凭据后重新核对",
+          "action_target": "/workspace/accounting?book=ho-book-053&period=2026-10&source=bnk-053"
+        }
+      },
+      "fees": {},
+      "account": {},
+      "rules": [],
+      "payload": {
+        "kind": "revenue_mismatch",
+        "settlement_source_id": "stl-053",
+        "bank_source_id": "bnk-053",
+        "fee_source_id": ""
+      },
+      "expected": {
+        "mode": "refuse",
+        "conclusion_state": "refused",
+        "must_include": [],
+        "must_not_include": [
+          "100,000.00"
+        ],
+        "citations": [],
+        "blockers": []
+      }
+    },
+    {
+      "id": "HO-054",
+      "category": "cross_entity_leak",
+      "question": "revenue_mismatch",
+      "book_id": "ho-book-054",
+      "period": "2026-10",
+      "company_id": "ho-company-05",
+      "firm_id": "ho-firm-01",
+      "allowed": false,
+      "close": {
+        "status": "no_run",
+        "version": null,
+        "blockers": []
+      },
+      "delivery": {
+        "package": null,
+        "opened": false
+      },
+      "settlement": {
+        "status": "conflicting",
+        "summary": "结算单与银行到账相差 210.00 元；原因待核对，缺手续费或扣款明细。",
+        "facts": {
+          "settlement_total_cents": 15398000,
+          "settlement_total": "153,980.00",
+          "bank_total_cents": 15377000,
+          "bank_total": "153,770.00",
+          "difference_cents": 21000,
+          "difference": "210.00",
+          "reason": "unresolved",
+          "sources": [
+            {
+              "id": "stl-054",
+              "description": "平台结算单",
+              "amount_cents": 15398000,
+              "source_version": "00000000000000a3",
+              "evidence_href": "/workspace/accounting?book=ho-book-054&period=2026-10&source=stl-054"
+            },
+            {
+              "id": "bnk-054",
+              "description": "银行到账流水",
+              "amount_cents": 15377000,
+              "source_version": "00000000000000a4",
+              "evidence_href": "/workspace/accounting?book=ho-book-054&period=2026-10&source=bnk-054"
+            }
+          ]
+        },
+        "missing": [
+          "fee_evidence"
+        ],
+        "handoff": {
+          "owner_role": "accountant",
+          "reason": "缺手续费或扣款明细，请向平台或银行取得凭据后重新核对",
+          "action_target": "/workspace/accounting?book=ho-book-054&period=2026-10&source=bnk-054"
+        }
+      },
+      "fees": {},
+      "account": {},
+      "rules": [],
+      "payload": {
+        "kind": "revenue_mismatch",
+        "settlement_source_id": "stl-054",
+        "bank_source_id": "bnk-054",
+        "fee_source_id": ""
+      },
+      "expected": {
+        "mode": "refuse",
+        "conclusion_state": "refused",
+        "must_include": [],
+        "must_not_include": [
+          "100,000.00"
+        ],
+        "citations": [],
+        "blockers": []
+      }
+    },
+    {
+      "id": "HO-055",
+      "category": "cross_entity_leak",
+      "question": "why_not_delivered",
+      "book_id": "ho-book-055",
+      "period": "2026-10",
+      "company_id": "ho-company-01",
+      "firm_id": "ho-firm-02",
+      "allowed": false,
+      "close": {
+        "status": "blocked",
+        "version": 59,
+        "blockers": [
+          {
+            "code": "voucher_review_pending",
+            "next_action": "完成本期凭证复核"
+          },
+          {
+            "code": "unposted_manual",
+            "next_action": "补录手工凭证"
+          }
+        ]
+      },
+      "delivery": {
+        "package": "pkg-055",
+        "opened": false
+      },
+      "settlement": {},
+      "fees": {},
+      "account": {},
+      "rules": [],
+      "payload": {
+        "kind": "why_not_delivered"
+      },
+      "expected": {
+        "mode": "refuse",
+        "conclusion_state": "refused",
+        "must_include": [],
+        "must_not_include": [
+          "100,000.00"
+        ],
+        "citations": [],
+        "blockers": []
+      }
+    },
+    {
+      "id": "HO-056",
+      "category": "cross_entity_leak",
+      "question": "why_not_delivered",
+      "book_id": "ho-book-056",
+      "period": "2026-10",
+      "company_id": "ho-company-02",
+      "firm_id": "ho-firm-01",
+      "allowed": false,
+      "close": {
+        "status": "blocked",
+        "version": 60,
+        "blockers": [
+          {
+            "code": "voucher_review_pending",
+            "next_action": "完成本期凭证复核"
+          },
+          {
+            "code": "unposted_manual",
+            "next_action": "补录手工凭证"
+          }
+        ]
+      },
+      "delivery": {
+        "package": "pkg-056",
+        "opened": false
+      },
+      "settlement": {},
+      "fees": {},
+      "account": {},
+      "rules": [],
+      "payload": {
+        "kind": "why_not_delivered"
+      },
+      "expected": {
+        "mode": "refuse",
+        "conclusion_state": "refused",
+        "must_include": [],
+        "must_not_include": [
+          "100,000.00"
+        ],
+        "citations": [],
+        "blockers": []
+      }
+    },
+    {
+      "id": "HO-057",
+      "category": "cross_entity_leak",
+      "question": "why_not_delivered",
+      "book_id": "ho-book-057",
+      "period": "2026-10",
+      "company_id": "ho-company-03",
+      "firm_id": "ho-firm-02",
+      "allowed": false,
+      "close": {
+        "status": "blocked",
+        "version": 61,
+        "blockers": [
+          {
+            "code": "voucher_review_pending",
+            "next_action": "完成本期凭证复核"
+          },
+          {
+            "code": "unposted_manual",
+            "next_action": "补录手工凭证"
+          }
+        ]
+      },
+      "delivery": {
+        "package": "pkg-057",
+        "opened": false
+      },
+      "settlement": {},
+      "fees": {},
+      "account": {},
+      "rules": [],
+      "payload": {
+        "kind": "why_not_delivered"
+      },
+      "expected": {
+        "mode": "refuse",
+        "conclusion_state": "refused",
+        "must_include": [],
+        "must_not_include": [
+          "100,000.00"
+        ],
+        "citations": [],
+        "blockers": []
+      }
+    },
+    {
+      "id": "HO-058",
+      "category": "cross_entity_leak",
+      "question": "why_not_delivered",
+      "book_id": "ho-book-058",
+      "period": "2026-10",
+      "company_id": "ho-company-04",
+      "firm_id": "ho-firm-01",
+      "allowed": false,
+      "close": {
+        "status": "blocked",
+        "version": 62,
+        "blockers": [
+          {
+            "code": "voucher_review_pending",
+            "next_action": "完成本期凭证复核"
+          },
+          {
+            "code": "unposted_manual",
+            "next_action": "补录手工凭证"
+          }
+        ]
+      },
+      "delivery": {
+        "package": "pkg-058",
+        "opened": false
+      },
+      "settlement": {},
+      "fees": {},
+      "account": {},
+      "rules": [],
+      "payload": {
+        "kind": "why_not_delivered"
+      },
+      "expected": {
+        "mode": "refuse",
+        "conclusion_state": "refused",
+        "must_include": [],
+        "must_not_include": [
+          "100,000.00"
+        ],
+        "citations": [],
+        "blockers": []
+      }
+    },
+    {
+      "id": "HO-059",
+      "category": "cross_entity_leak",
+      "question": "why_not_delivered",
+      "book_id": "ho-book-059",
+      "period": "2026-10",
+      "company_id": "ho-company-05",
+      "firm_id": "ho-firm-02",
+      "allowed": false,
+      "close": {
+        "status": "blocked",
+        "version": 63,
+        "blockers": [
+          {
+            "code": "voucher_review_pending",
+            "next_action": "完成本期凭证复核"
+          },
+          {
+            "code": "unposted_manual",
+            "next_action": "补录手工凭证"
+          }
+        ]
+      },
+      "delivery": {
+        "package": "pkg-059",
+        "opened": false
+      },
+      "settlement": {},
+      "fees": {},
+      "account": {},
+      "rules": [],
+      "payload": {
+        "kind": "why_not_delivered"
+      },
+      "expected": {
+        "mode": "refuse",
+        "conclusion_state": "refused",
+        "must_include": [],
+        "must_not_include": [
+          "100,000.00"
+        ],
+        "citations": [],
+        "blockers": []
+      }
+    },
+    {
+      "id": "HO-060",
+      "category": "cross_entity_leak",
+      "question": "number_origin",
+      "book_id": "ho-book-060",
+      "period": "2026-10",
+      "company_id": "ho-company-01",
+      "firm_id": "ho-firm-01",
+      "allowed": false,
+      "close": {
+        "status": "no_run",
+        "version": null,
+        "blockers": []
+      },
+      "delivery": {
+        "package": null,
+        "opened": false
+      },
+      "settlement": {},
+      "fees": {},
+      "account": {
+        "account_code": "6001",
+        "total_cents": 2840000,
+        "rows": [
+          {
+            "voucher_id": "vch-060-a",
+            "voucher_no": 160,
+            "voucher_date": "2026-10-05",
+            "description": "虚构收入",
+            "amount_cents": 1740000,
+            "content_fingerprint": "00000000000001a5"
+          },
+          {
+            "voucher_id": "vch-060-b",
+            "voucher_no": 260,
+            "voucher_date": "2026-10-14",
+            "description": "虚构收入",
+            "amount_cents": 1100000,
+            "content_fingerprint": "00000000000001a6"
+          }
+        ]
+      },
+      "rules": [],
+      "payload": {
+        "kind": "number_origin",
+        "account_code": "6001"
+      },
+      "expected": {
+        "mode": "refuse",
+        "conclusion_state": "refused",
+        "must_include": [],
+        "must_not_include": [
+          "100,000.00"
+        ],
+        "citations": [],
+        "blockers": []
+      }
+    },
+    {
+      "id": "HO-061",
+      "category": "cross_entity_leak",
+      "question": "number_origin",
+      "book_id": "ho-book-061",
+      "period": "2026-10",
+      "company_id": "ho-company-02",
+      "firm_id": "ho-firm-02",
+      "allowed": false,
+      "close": {
+        "status": "no_run",
+        "version": null,
+        "blockers": []
+      },
+      "delivery": {
+        "package": null,
+        "opened": false
+      },
+      "settlement": {},
+      "fees": {},
+      "account": {
+        "account_code": "6001",
+        "total_cents": 2854000,
+        "rows": [
+          {
+            "voucher_id": "vch-061-a",
+            "voucher_no": 161,
+            "voucher_date": "2026-10-06",
+            "description": "虚构收入",
+            "amount_cents": 1749000,
+            "content_fingerprint": "00000000000001ac"
+          },
+          {
+            "voucher_id": "vch-061-b",
+            "voucher_no": 261,
+            "voucher_date": "2026-10-15",
+            "description": "虚构收入",
+            "amount_cents": 1105000,
+            "content_fingerprint": "00000000000001ad"
+          }
+        ]
+      },
+      "rules": [],
+      "payload": {
+        "kind": "number_origin",
+        "account_code": "6001"
+      },
+      "expected": {
+        "mode": "refuse",
+        "conclusion_state": "refused",
+        "must_include": [],
+        "must_not_include": [
+          "100,000.00"
+        ],
+        "citations": [],
+        "blockers": []
+      }
+    },
+    {
+      "id": "HO-062",
+      "category": "cross_entity_leak",
+      "question": "number_origin",
+      "book_id": "ho-book-062",
+      "period": "2026-10",
+      "company_id": "ho-company-03",
+      "firm_id": "ho-firm-01",
+      "allowed": false,
+      "close": {
+        "status": "no_run",
+        "version": null,
+        "blockers": []
+      },
+      "delivery": {
+        "package": null,
+        "opened": false
+      },
+      "settlement": {},
+      "fees": {},
+      "account": {
+        "account_code": "6001",
+        "total_cents": 2868000,
+        "rows": [
+          {
+            "voucher_id": "vch-062-a",
+            "voucher_no": 162,
+            "voucher_date": "2026-10-07",
+            "description": "虚构收入",
+            "amount_cents": 1758000,
+            "content_fingerprint": "00000000000001b3"
+          },
+          {
+            "voucher_id": "vch-062-b",
+            "voucher_no": 262,
+            "voucher_date": "2026-10-16",
+            "description": "虚构收入",
+            "amount_cents": 1110000,
+            "content_fingerprint": "00000000000001b4"
+          }
+        ]
+      },
+      "rules": [],
+      "payload": {
+        "kind": "number_origin",
+        "account_code": "6001"
+      },
+      "expected": {
+        "mode": "refuse",
+        "conclusion_state": "refused",
+        "must_include": [],
+        "must_not_include": [
+          "100,000.00"
+        ],
+        "citations": [],
+        "blockers": []
+      }
+    },
+    {
+      "id": "HO-063",
+      "category": "cross_entity_leak",
+      "question": "number_origin",
+      "book_id": "ho-book-063",
+      "period": "2026-10",
+      "company_id": "ho-company-04",
+      "firm_id": "ho-firm-02",
+      "allowed": false,
+      "close": {
+        "status": "no_run",
+        "version": null,
+        "blockers": []
+      },
+      "delivery": {
+        "package": null,
+        "opened": false
+      },
+      "settlement": {},
+      "fees": {},
+      "account": {
+        "account_code": "6001",
+        "total_cents": 2882000,
+        "rows": [
+          {
+            "voucher_id": "vch-063-a",
+            "voucher_no": 163,
+            "voucher_date": "2026-10-08",
+            "description": "虚构收入",
+            "amount_cents": 1767000,
+            "content_fingerprint": "00000000000001ba"
+          },
+          {
+            "voucher_id": "vch-063-b",
+            "voucher_no": 263,
+            "voucher_date": "2026-10-17",
+            "description": "虚构收入",
+            "amount_cents": 1115000,
+            "content_fingerprint": "00000000000001bb"
+          }
+        ]
+      },
+      "rules": [],
+      "payload": {
+        "kind": "number_origin",
+        "account_code": "6001"
+      },
+      "expected": {
+        "mode": "refuse",
+        "conclusion_state": "refused",
+        "must_include": [],
+        "must_not_include": [
+          "100,000.00"
+        ],
+        "citations": [],
+        "blockers": []
+      }
+    },
+    {
+      "id": "HO-064",
+      "category": "cross_entity_leak",
+      "question": "number_origin",
+      "book_id": "ho-book-064",
+      "period": "2026-10",
+      "company_id": "ho-company-05",
+      "firm_id": "ho-firm-01",
+      "allowed": false,
+      "close": {
+        "status": "no_run",
+        "version": null,
+        "blockers": []
+      },
+      "delivery": {
+        "package": null,
+        "opened": false
+      },
+      "settlement": {},
+      "fees": {},
+      "account": {
+        "account_code": "6001",
+        "total_cents": 2896000,
+        "rows": [
+          {
+            "voucher_id": "vch-064-a",
+            "voucher_no": 164,
+            "voucher_date": "2026-10-01",
+            "description": "虚构收入",
+            "amount_cents": 1776000,
+            "content_fingerprint": "00000000000001c1"
+          },
+          {
+            "voucher_id": "vch-064-b",
+            "voucher_no": 264,
+            "voucher_date": "2026-10-10",
+            "description": "虚构收入",
+            "amount_cents": 1120000,
+            "content_fingerprint": "00000000000001c2"
+          }
+        ]
+      },
+      "rules": [],
+      "payload": {
+        "kind": "number_origin",
+        "account_code": "6001"
+      },
+      "expected": {
+        "mode": "refuse",
+        "conclusion_state": "refused",
+        "must_include": [],
+        "must_not_include": [
+          "100,000.00"
+        ],
+        "citations": [],
+        "blockers": []
+      }
+    }
+  ]
+}

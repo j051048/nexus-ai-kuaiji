@@ -1050,3 +1050,30 @@
   - `npx playwright test e2e/stage10-integrations.spec.ts e2e/plt04-fee-variance-target.spec.ts --reporter=line` → **4 passed/50.2s**（返回差异待办处置、手工登记、原集成底座、规费差异桌面+手机）。
 - 未验证/边界：无 PG 环境，**304/305/307（及外部 308）未在 PG16/17 应用或实跑，RLS 用例仅 skip**；真实 T+ 契约仍未联调；P1-4 的旧正式报表失效按“拒绝继续复核/对账/解释”处理，未回写报表状态列；PLT05-D 前端增量已由重建后的预算门禁覆盖，但后续新增代码仍受同一预算约束。
 - 候选：HEAD `074c7ad1f80797f3a194632ebf2c4d224a3882c7`；source **2411/`39f21b945a4da9914fb02d5b9fc753b2e02984fc19cdef6bbadcc0977888f374`**、migration **514/`046d9ac0baf39faf734145c9030b171e093263b749ba1f88786db436d8b76533`**。本包改动与既有 120+ 项工作区改动混存，未提交/推送/部署。
+- PLT08 调查助手防幻觉与 60 样本留出评测（已完成本机验证，Batch 09-1.2 / Step 5b）：
+  - 新增 `nexus_backend/app/assistant/answer_contract.py`：六段固定结构（结论 / 依据 / 差额或数字 / 未检查的范围 / 由谁处理 / 办理入口），空段显式填「无」；`guard_narrative` 只接受服务端已核验的金额与对象标识，命中未获证据支持的归因词（手续费/服务费/银行扣费/汇兑损失/坏账/舞弊/挪用）时整段改写成「存在差异，原因未确认」，并记 `plt08_attribution_rewritten`；模型散文里的金额或 ID 与证据不符则丢弃散文并记 `plt08_unknown_amount` / `plt08_unknown_reference`；无依据时 `plt08_abstained` 弃答，模型多写一句不能把弃答升级成结论。`has_attribution_claim` 只扫结论段并用「这是/属于/原因是…手续费」这类断定句式，避免把「缺手续费凭据」这种缺件说明误判成归因。
+  - 新增 `nexus_backend/app/assistant/paths.py`：三类确定调查路径——「本月为什么不能交付」（阻断项严格等于月结权威预检 `close["blockers"]`，不多不少；无预检记录/交付包缺失进「未检查的范围」，已批准企业规则以 `rule` 对象进「依据」并带版本）、「这笔收入为什么与回款不一致」（结算单/银行到账/差额/手续费凭据四组数字 + 来源版本 + 未确认原因）、「这个数字来自哪里」（逐笔凭证构成，跨期凭证与超限明细显式降级为 `partial`，结论写明「其中 N 张不在本期」）。三类共用 `BookReader`（真实库）与 `SampleReader`（样本）两个读取端口，评测与线上走同一套组装逻辑。
+  - 新增 `nexus_backend/app/assistant/memory.py` + 双库迁移 PG `326` / SQLite `233`（`assistant_answers`、`assistant_preferences`、`assistant_rule_proposals`）：个人偏好只在本人名下、可删除且删除留审计；企业规则必须另一人批准（提议人自审 403「不能批准自己提议的企业规则」）、payload 拒绝任何金额/阈值/费率字段（422「企业规则不能包含金额、阈值或费率字段」）、按单位隔离、撤销或过期立即失效、引用时在「依据」写明规则 ID 与版本；「当前事实」不落库，每次重读来源。回答快照与规则版本双库都加禁改禁删触发器。
+  - 新增 `nexus_backend/app/assistant/answer_store.py` + `answer_router.py`（`/api/assistant` 下 `answers` 与 `preferences`、`rules` 端点）：回答落库时记录依赖对象及版本，读取时逐项重算；任一依据换版即标 `invalid` 并隐藏旧结论（返回 `visible=false` +「结论已失效并隐藏，请重新调查」+ `reinvestigate`），撤权直接 403「当前账号已无权查看该账套的调查回答」且不泄露原结论与金额；同问题同指纹复用不重复计费，结果未知记 `cost_state="unknown"` 且**不自动重试**；调查全程零写业务数据。
+  - 有界动作卡：`nexus_backend/app/assistant/actions.py` 新增 `review_queue_pull`（拉起高风险复核清单）与 `missing_evidence_draft`（生成缺件催办草稿），沿用「不可变预览 + 64 位指纹 + 显式确认 + 请求键幂等 + 30 分钟过期」，确认只写回执（`created=0`、`exceptions=0`），不审批、不发送、不授予权限；预览与回执落在双库新迁移 PG `327` / SQLite `234` 的 `assistant_card_plans`/`assistant_card_receipts`（RLS + `company_write_table_guard` + 禁改禁删触发器），旧 `assistant_action_plans` 的三类校验证明保持原样未重写。
+  - PLT08-E 留出集：`nexus_backend/tests/evals/plt08_holdout/dataset.json` 64 条封存样本（归因正确/missing_evidence_refusal/cross_period_refusal/cross_entity_leak 各 16 条），文件头 `_notice` 注明全部为合成数据、`synthetic=true`、与开发样本分目录；`tools/assistant_replay/plt08.py` 为只读可重复评测器，A/B/C 三组各自独立生成候选、用 `sha256(group:sample)` 盲标签统一计分，输出 5 项独立指标、不设达标线、不合成总分、拒绝覆盖已存在目录。
+  - 本机真实指标（`tmp_test/pilot/PLT08-E/dev-run-6/report.json`）：三组 事实正确率 1.0 / 引用准确率 1.0 / 漏报阻断率 0.0 / 阻断项完整列出率 1.0 / 应弃答而未弃答率 0.0 / 单次有效诊断回放成本 2.2188；B 组规则依据引用 15 条（A/C 为 0），C 组叙述被改写 12 条、残留归因断定 0 条；模型与网络调用恒 0。B 与 A 的五项指标相同，是因为企业规则按设计只增加「依据」引用、不影响金额与判断，不人为造差异。
+  - 门禁真实输出：`pytest test_plt08_full_suite.py test_plt08_bounded_actions.py test_stage15_assistant_actions.py test_migration_structure.py test_pg_sql_hygiene.py test_write_scope_baseline.py test_stage25_assistant_efficiency.py test_stage19_request_reads.py test_workflow_engine_versioning.py -q` → **120 passed / 157.28s**；`check_migration_idempotency.py` exit 0（326/327 与 324/325 同列「需专项检查：dynamic_ddl」）；`check_secrets.py` → `no secrets found`；`ruff check` All checks passed；`ruff format --check nexus_backend/app services/api_gateway scripts` → 478 files already formatted。
+  - 未验证/边界：无 PostgreSQL 环境，326/327 未在 PG16/17 应用，RLS 与卡片触发器只做了静态卫生检查；留出样本与实现由同一作者编写，高分只说明二者自洽、不构成泛化证据；真实模型仍待接入评测（本轮所有 AI 环节为确定性桩与回放）；前端未新增 PLT08 面板，本次交付为服务端契约与评测闭环。
+
+## PLT07 收口（Batch 10-1.1，2026-11-23）
+
+- 状态：**完成（服务端纯函数与场景测试）**。
+- 三段式队列：`app/workspace/queue_lanes.py` 按 `Asia/Shanghai` 划分「今天必须办 / 即将逾期 / 等待别人（含无截止日 / 计划内）」五段，互不重复、排序可测，不使用模型打分（`plt07-lanes-v1`）。
+- 四类积压归因 + 诚实 ETA：按当前真实处理方归入业务部门 / 共享中心 / 外部系统 / 未分配；同类样本 < 5 时 `eta_minutes=None` 且显示「样本不足」。
+- 受控转派：复用 `app/handoff/service.py::HandoffService.candidates/assign`——候选人只含已有账套权限者，`assignee == 制单人` 直接 409，无权限者 403「指派不会授予权限」，转派写 `handoff.assign` 审计并 supersede 旧行。
+- 场景证据：`nexus_backend/tests/test_plt07_peak_season.py` 6 例（两家同日结账互不重复、复核人请假且代班授权按时间生效、代班人在 `management_review_separation` 下不可自审、银行流水迟到只阻断本家、积压归因与 ETA 诚实、集团汇总缺报点名 + 固定标注 + 非管理拒访）。
+- 未验证：真实客户在月末高峰的实际队列数据、真实代班审批流程；本阶段只用合成企业。
+
+## PLT09 反作弊判定（Batch 10-1.3，2026-11-23）
+
+- 状态：**工具就绪，未采集真实数据**。
+- `scripts/plt09_measurement.py` 新增 `Aggregate`、`coverage()`、`unknown_as_zero()`、`evaluate()`：把 `docs/pilot/SCORECARD.md` 七条反作弊规则逐条落地——复核积压上升、事后差错上升、转移给业务人员时间上升（按每对象时间比较，避免业务量放大误判）、职责范围口径不一致、未记录外部援助、覆盖不足或未采集当零、分母变更未披露。
+- 任一条成立：`verdict="不能判定为成功"` 并逐条给出原因；`reduction_reportable` 恒为 `False`，函数从不计算减员比例、节省工时或节省金额。
+- 证据：`nexus_backend/tests/test_plt09_measurement.py` 13 例（3 例原空白台账 + 10 例反作弊），含「干净期间也只能提交人工复核」「不输出节省/减员结论」。
+- 未验证：真实双月数据的判定结果；七条规则的阈值（覆盖下限 0.8）需客户确认。

@@ -14,18 +14,45 @@ from pydantic import Field, StrictStr, field_validator
 from ..accounting.domain import AccountingError
 from ..accounting.models import InputModel
 from ..accounting.queries import inactive_source_sql
+from ..accounting.review_risk import grade_review_risk
 from ..accounting.service import fingerprint
 from ..intelligence.current_evidence import current_attachments
 from ..jobs.requests import BatchItem, BatchRequest
 from ..jobs.visibility import event_scope
 
 
-ActionKind = Literal["ocr_batch", "proposal_batch", "bank_drafts"]
+ActionKind = Literal[
+    "ocr_batch",
+    "proposal_batch",
+    "bank_drafts",
+    "review_queue_pull",
+    "missing_evidence_draft",
+]
 LABELS = {
     "ocr_batch": "识别当前范围的新票据",
     "proposal_batch": "生成业务事项分录建议",
     "bank_drafts": "生成流水凭证草稿",
+    "review_queue_pull": "拉起高风险复核清单",
+    "missing_evidence_draft": "生成缺件催办草稿",
 }
+
+# 这两类动作卡只产出清单/催办文本，落在独立的预约表里，
+# 以免改动 ocr/proposal/bank 三种既有动作的校验证明（052/067 的触发器逐项验证已执行结果）。
+CARD_KINDS = frozenset({"review_queue_pull", "missing_evidence_draft"})
+PLAN_UNION = "(SELECT * FROM assistant_action_plans UNION ALL SELECT * FROM assistant_card_plans)"
+RECEIPT_UNION = (
+    "(SELECT * FROM assistant_action_receipts UNION ALL SELECT * FROM assistant_card_receipts)"
+)
+
+
+def plan_table(kind):
+    return "assistant_card_plans" if kind in CARD_KINDS else "assistant_action_plans"
+
+
+def receipt_table(kind):
+    return "assistant_card_receipts" if kind in CARD_KINDS else "assistant_action_receipts"
+
+
 MAX_ITEMS = 100
 
 
@@ -223,6 +250,41 @@ class AssistantActionService:
                     raise
                 blocked.append(self._blocked("book_unavailable", str(error)))
         allowed_books = {book["id"] for book in books_basis}
+        if kind in {"review_queue_pull", "missing_evidence_draft"}:
+            if kind == "review_queue_pull":
+                items = self._review_queue_items(conn, actor, allowed_books)
+            else:
+                items = self._missing_evidence_items(conn, actor, allowed_books)
+            if not items and not blocked:
+                blocked.append(
+                    self._blocked(
+                        "no_eligible_items"
+                        if kind == "review_queue_pull"
+                        else "no_missing_evidence",
+                        "当前明确范围内没有符合条件的待办；助手不会自行扩大范围"
+                        if kind == "review_queue_pull"
+                        else "当前明确范围内没有缺件事项，无需催办",
+                    )
+                )
+            blocked = list({(row["code"], row["message"]): row for row in blocked}.values())
+            context = self.conversations.snapshot_in_transaction(conn, actor, conversation)
+            basis = (
+                conn.execute(
+                    "SELECT accounting.assistant_input_basis(?)", (conversation["id"],)
+                ).fetchone()[0]
+                if self.db.is_postgres
+                else context["input_fingerprint"]
+            )
+            return {
+                "kind": kind,
+                "scope": self._scope(conversation),
+                "scope_version": conversation["scope_version"],
+                "items": items,
+                "books": books_basis,
+                "blocked": blocked,
+                "input_basis": basis,
+                "configuration_fingerprint": "",
+            }
         if kind == "bank_drafts":
             for book_id in sorted(allowed_books):
                 remaining = MAX_ITEMS + 1 - len(items)
@@ -457,9 +519,94 @@ class AssistantActionService:
             else "",
         }
 
+    def _review_queue_items(self, conn, actor, allowed_books):
+        """高风险复核清单：只按已核事实分级，不把「高风险」当审批结论。"""
+        items = []
+        for book_id in sorted(allowed_books):
+            remaining = MAX_ITEMS - len(items)
+            if remaining <= 0:
+                break
+            rows = conn.execute(
+                "SELECT d.id AS draft_id,d.book_id,d.version,s.id AS source_id,"
+                "s.description AS source_description,COALESCE(p.status,'') AS period_status,"
+                "COALESCE(e.template_id,'bank') AS business_template,"
+                "COALESCE(e.applicant_id,'') AS applicant_id,"
+                "(SELECT COUNT(*) FROM source_evidence ev "
+                "WHERE ev.source_id=s.id AND ev.book_id=s.book_id) AS evidence_count "
+                "FROM drafts d "
+                "JOIN sources s ON s.id=d.source_id AND s.book_id=d.book_id "
+                "JOIN books b ON b.id=d.book_id "
+                "LEFT JOIN periods p ON p.book_id=d.book_id AND p.period=b.period "
+                "LEFT JOIN business_mappings m ON m.draft_id=d.id AND m.book_id=d.book_id "
+                "LEFT JOIN business_events e ON e.id=m.event_id AND e.firm_id=m.firm_id "
+                "AND e.company_id=m.company_id "
+                "WHERE d.book_id=? AND d.status='draft' ORDER BY d.id LIMIT ?",
+                (book_id, remaining),
+            ).fetchall()
+            for row in rows:
+                issues = []
+                if not row["evidence_count"]:
+                    issues.append("缺少原始凭据")
+                risk = grade_review_risk(
+                    issues=issues,
+                    period_open=row["period_status"] == "open",
+                    self_applicant=row["applicant_id"] == actor.user_id,
+                    business_template=row["business_template"],
+                )
+                if risk["grade"] != "high":
+                    continue
+                items.append(
+                    {
+                        "title": "高风险草稿："
+                        + str(row["source_description"])
+                        + "（"
+                        + "；".join(risk["reasons"])
+                        + "）",
+                        "book_id": book_id,
+                        "draft_id": row["draft_id"],
+                        "source_id": row["source_id"],
+                    }
+                )
+                if len(items) >= MAX_ITEMS:
+                    break
+        return items
+
+    def _missing_evidence_items(self, conn, actor, allowed_books):
+        """缺件催办草稿：只列出确实没有原始凭据的来源，不生成对外发送动作。"""
+        items = []
+        for book_id in sorted(allowed_books):
+            remaining = MAX_ITEMS - len(items)
+            if remaining <= 0:
+                break
+            rows = conn.execute(
+                "SELECT s.id AS source_id,s.book_id,s.description,s.date "
+                "FROM sources s WHERE s.book_id=? AND COALESCE(s.evidence_ref,'')='' "
+                "AND NOT EXISTS(SELECT 1 FROM source_evidence ev "
+                "WHERE ev.source_id=s.id AND ev.book_id=s.book_id) "
+                "AND NOT " + inactive_source_sql(self.db.dialect) + " ORDER BY s.date,s.id LIMIT ?",
+                (book_id, remaining),
+            ).fetchall()
+            for row in rows:
+                items.append(
+                    {
+                        "title": "缺件催办："
+                        + str(row["description"])
+                        + "（"
+                        + str(row["date"])
+                        + "，缺原始凭据）",
+                        "book_id": book_id,
+                        "source_id": row["source_id"],
+                    }
+                )
+                if len(items) >= MAX_ITEMS:
+                    break
+        return items
+
     def _plan(self, conn, actor, conversation, plan_id):
         row = conn.execute(
-            "SELECT * FROM assistant_action_plans WHERE id=? AND conversation_id=? AND firm_id=? AND created_by=?",
+            "SELECT * FROM "
+            + PLAN_UNION
+            + " WHERE id=? AND conversation_id=? AND firm_id=? AND created_by=?",
             (plan_id, conversation["id"], actor.firm_id, actor.user_id),
         ).fetchone()
         if not row:
@@ -468,7 +615,7 @@ class AssistantActionService:
 
     def _receipt_row(self, conn, plan):
         return conn.execute(
-            "SELECT * FROM assistant_action_receipts WHERE plan_id=?", (plan["id"],)
+            "SELECT * FROM " + RECEIPT_UNION + " WHERE plan_id=?", (plan["id"],)
         ).fetchone()
 
     def _receipt_json(self, conn, actor, row):
@@ -581,7 +728,9 @@ class AssistantActionService:
                 {"conversation_id": conversation_id, "kind": request.kind, "reason": request.reason}
             )
             existing = conn.execute(
-                "SELECT * FROM assistant_action_plans WHERE conversation_id=? AND created_by=? AND request_key=?",
+                "SELECT * FROM "
+                + PLAN_UNION
+                + " WHERE conversation_id=? AND created_by=? AND request_key=?",
                 (conversation_id, actor.user_id, request.idempotency_key),
             ).fetchone()
             if existing:
@@ -592,7 +741,9 @@ class AssistantActionService:
             plan_id, stamp = uuid4().hex, self._stamp(conn)
             expiry = (datetime.fromisoformat(stamp) + timedelta(minutes=30)).isoformat()
             conn.execute(
-                "INSERT INTO assistant_action_plans(id,conversation_id,firm_id,company_id,created_by,kind,snapshot_json,fingerprint,item_count,reason,request_key,request_fingerprint,created_at,expires_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO "
+                + plan_table(request.kind)
+                + "(id,conversation_id,firm_id,company_id,created_by,kind,snapshot_json,fingerprint,item_count,reason,request_key,request_fingerprint,created_at,expires_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (
                     plan_id,
                     conversation_id,
@@ -653,9 +804,7 @@ class AssistantActionService:
         # Receipt progress is still read live under that transaction's RLS scope.
         self.validate_page(limit, offset)
         conversation_id = conversation["id"]
-        where = (
-            " FROM assistant_action_plans WHERE conversation_id=? AND firm_id=? AND created_by=?"
-        )
+        where = " FROM " + PLAN_UNION + " WHERE conversation_id=? AND firm_id=? AND created_by=?"
         args = (conversation_id, actor.firm_id, actor.user_id)
         total = conn.execute("SELECT COUNT(*)" + where, args).fetchone()[0]
         rows = conn.execute(
@@ -670,7 +819,7 @@ class AssistantActionService:
             receipts = {
                 row["plan_id"]: row
                 for row in conn.execute(
-                    "SELECT * FROM assistant_action_receipts WHERE conversation_id=? "
+                    "SELECT * FROM " + RECEIPT_UNION + " WHERE conversation_id=? "
                     "AND firm_id=? AND created_by=? AND plan_id IN ("
                     + ",".join("?" for _ in rows)
                     + ")",
@@ -718,8 +867,13 @@ class AssistantActionService:
             if fingerprint(current) != plan["fingerprint"]:
                 raise AccountingError("权限、资料、草稿、期间或模型配置已改变，请重新生成预览", 409)
             if self.db.is_postgres:
+                begin = (
+                    "accounting.assistant_card_begin"
+                    if plan["kind"] in CARD_KINDS
+                    else "accounting.assistant_begin_action"
+                )
                 conn.execute(
-                    "SELECT accounting.assistant_begin_action(?,?,?)",
+                    "SELECT " + begin + "(?,?,?)",
                     (plan_id, request.fingerprint, request.idempotency_key),
                 )
             items, result = (
@@ -757,6 +911,13 @@ class AssistantActionService:
                         for job in batch["jobs"]
                     ],
                 )
+            elif plan["kind"] in {"review_queue_pull", "missing_evidence_draft"}:
+                # 这两类动作卡只产出清单/草稿文本：不改单据状态、不发送、不授予权限。
+                result["created"] = 0
+                result["exceptions"] = 0
+                result["items"] = [
+                    {"title": item["title"], "book_id": item["book_id"]} for item in items
+                ]
             elif plan["kind"] == "proposal_batch":
                 for item in items:
                     event, book, draft = self.queue.proposals._input(
@@ -783,7 +944,9 @@ class AssistantActionService:
                     result["draft_ids"].extend(created["draft_ids"])
             receipt_id, stamp = uuid4().hex, self._stamp(conn)
             conn.execute(
-                "INSERT INTO assistant_action_receipts(id,plan_id,conversation_id,firm_id,company_id,created_by,request_key,request_fingerprint,result_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO "
+                + receipt_table(plan["kind"])
+                + "(id,plan_id,conversation_id,firm_id,company_id,created_by,request_key,request_fingerprint,result_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
                 (
                     receipt_id,
                     plan_id,

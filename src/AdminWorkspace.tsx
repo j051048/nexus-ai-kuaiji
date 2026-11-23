@@ -33,6 +33,7 @@ import './admin.css';
 
 const AdminAIControls = lazy(() => import('./AdminAIControls'));
 const AdminOnboarding = lazy(() => import('./AdminOnboarding'));
+const WorkflowStudioPanel = lazy(() => import('./WorkflowStudioPanel'));
 
 export default function AdminWorkspace({
   session,
@@ -435,9 +436,15 @@ function CompanyDetail({
   const location = useLocation();
   const navigate = useNavigate();
   const requestedTab = new URLSearchParams(location.search).get('tab') ?? 'members';
-  const initialTab = ['setup', 'members', 'departments', 'books', 'ai', 'audit'].includes(
-    requestedTab,
-  )
+  const initialTab = [
+    'setup',
+    'members',
+    'departments',
+    'books',
+    'workflow',
+    'ai',
+    'audit',
+  ].includes(requestedTab)
     ? requestedTab
     : 'members';
   const [detail, setDetail] = useState<AdminCompanyDetail>();
@@ -641,6 +648,7 @@ function CompanyDetail({
                 ['members', '人员与权限'],
                 ['departments', '部门与审批'],
                 ['books', '账套分工'],
+                ['workflow', '流程编排'],
                 ['ai', firmManager ? 'AI用量与控制' : '智能识别与隐私'],
                 ['audit', '操作记录'],
               ].map(([key, label]) => (
@@ -678,6 +686,24 @@ function CompanyDetail({
                 </Suspense>
               ) : tab === 'audit' ? (
                 <AdminAudit session={session} companyId={companyId} />
+              ) : tab === 'workflow' ? (
+                <Suspense
+                  fallback={
+                    <div className="loading-block">
+                      <Spinner />
+                      正在打开流程编排中台…
+                    </div>
+                  }
+                >
+                  <WorkflowStudioPanel
+                    key={`${session.scope_key}:${companyId}`}
+                    session={session}
+                    companyId={companyId}
+                    companyName={detail.company.name}
+                    onBusy={changedBusy}
+                    onAudit={() => changeTab('audit')}
+                  />
+                </Suspense>
               ) : tab === 'ai' ? (
                 <Suspense
                   fallback={

@@ -191,5 +191,8 @@ def test_value_baseline_does_not_mix_prior_period_mapping_or_return(tmp_path):
         body = response.json()
         assert body["counts"]["submitted_events"] == 0
         assert body["counts"]["mapped_drafts"] == 0
+        # 上期事项本期审批也不能进本期分子：分母仍按当期创建对象固定。
+        assert body["counts"]["approved_drafts"] == 0
+        assert body["rates"]["review_conversion_rate"] is None
         assert body["counts"]["returned_events"] == 0
         assert body["counts"]["return_actions"] == 0

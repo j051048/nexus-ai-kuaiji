@@ -39,7 +39,9 @@ class TurnCancel(InputModel):
 
 
 class AssistantProposal(OutputModel):
-    kind: Literal["ocr_batch", "proposal_batch", "bank_drafts"]
+    kind: Literal[
+        "ocr_batch", "proposal_batch", "bank_drafts", "review_queue_pull", "missing_evidence_draft"
+    ]
     reason: StrictStr = Field(min_length=1, max_length=1000)
 
 

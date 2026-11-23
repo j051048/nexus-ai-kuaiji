@@ -38,6 +38,8 @@ from .assistant.meter import AssistantMeter
 from .assistant.actions import AssistantActionService
 from .assistant.worker import AssistantWorker
 from .assistant.router import build_assistant_router
+from .assistant.answer_router import build_plt08_router
+from .assistant.answer_store import AnswerStore
 from .accounting.directory import DirectoryService
 from .accounting.admin_service import AdminService
 from .accounting.admin_router import build_admin_router
@@ -112,6 +114,8 @@ from .batch_ops.service import BatchOperationsService
 from .batch_ops.worker import BatchWorker
 from .cockpit.router import build_cockpit_router
 from .cockpit.service import FirmCockpitService
+from .workflow.router import build_workflow_router
+from .workflow.service import WorkflowService
 from .firm_tasks.router import build_firm_tasks_router
 from .firm_tasks.service import FirmTasksService
 from .onboarding.router import build_onboarding_router
@@ -152,6 +156,8 @@ from .periodic.router import build_periodic_router
 from .periodic.authority import ClosingAuthorityService
 from .periodic.links import AssetVehicleLinkService
 from .periodic.service import PeriodicService
+from .reports.consolidation import ConsolidationService
+from .reports.consolidation_router import build_consolidation_router
 from .reports.router import build_report_router
 from .reports.service import ReportService
 from .tax.router import build_tax_router
@@ -382,6 +388,9 @@ def create_app(
             application.state.asset_vehicle_links = AssetVehicleLinkService(database)
             application.state.reports = ReportService(database)
             application.state.profit = ProfitDrilldownService(database)
+            application.state.consolidation = ConsolidationService(
+                database, application.state.service
+            )
             application.state.fleet = FleetMetricsService(database)
             application.state.tax = TaxWorkpaperService(database)
             application.state.payments = PaymentService(database)
@@ -527,6 +536,7 @@ def create_app(
             application.state.handoff = HandoffService(database)
             application.state.review_packs = ReviewPackService(database, application.state.review)
             application.state.firm_cockpit = FirmCockpitService(database, application.state.service)
+            application.state.workflow = WorkflowService(database, application.state.service)
             application.state.firm_tasks = FirmTasksService(
                 database, application.state.service, application.state.workspace
             )
@@ -595,6 +605,7 @@ def create_app(
                 provider=application.state.assistant_provider,
                 intelligence=application.state.intelligence,
             )
+            application.state.assistant_answers = AnswerStore(database, application.state.service)
             application.state.assistant_actions = AssistantActionService(
                 database,
                 application.state.assistant,
@@ -1263,6 +1274,7 @@ def create_app(
     app.include_router(build_invoice_imports_router(actor))
     app.include_router(build_agent_workspace_router(actor))
     app.include_router(build_assistant_router(actor))
+    app.include_router(build_plt08_router(actor))
     app.include_router(build_legacy_migration_router(actor))
     app.include_router(build_intelligence_router(actor))
     app.include_router(build_ai_policy_router(actor))
@@ -1271,6 +1283,7 @@ def create_app(
     app.include_router(build_handoff_router(actor))
     app.include_router(build_review_packs_router(actor))
     app.include_router(build_cockpit_router(actor))
+    app.include_router(build_workflow_router(actor))
     app.include_router(build_firm_tasks_router(actor))
     app.include_router(build_observability_router(actor))
     app.include_router(build_fsc_router(actor))
@@ -1301,6 +1314,7 @@ def create_app(
     app.include_router(build_subledger_router(actor))
     app.include_router(build_periodic_router(actor))
     app.include_router(build_report_router(actor))
+    app.include_router(build_consolidation_router(actor))
     app.include_router(build_tax_router(actor))
     app.include_router(build_treasury_router(actor))
     app.include_router(build_close_router(actor))

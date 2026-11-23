@@ -49,11 +49,18 @@ class ValueBaselineService:
                 (actor.firm_id, company_id, period, period),
             ).fetchone()[0]
             # Once approved, an exported draft must stay in the approved cohort.
+            # The draft must still belong to an object created in this period:
+            # a prior-period event mapped and approved now would otherwise
+            # inflate the numerator while the denominator stays on this period.
             approved = conn.execute(
                 "SELECT count(DISTINCT d.id) FROM drafts d JOIN books b ON b.id=d.book_id "
                 f"WHERE b.firm_id=? AND b.company_id=? AND b.period=? "
-                f"AND d.approved_at IS NOT NULL AND {approved_month}=?",
-                (actor.firm_id, company_id, period, period),
+                f"AND d.approved_at IS NOT NULL AND {approved_month}=? "
+                "AND EXISTS (SELECT 1 FROM business_mappings m "
+                "JOIN business_events e ON e.id=m.event_id "
+                "WHERE m.draft_id=d.id AND e.firm_id=b.firm_id "
+                f"AND e.company_id=b.company_id AND {event_month}=?)",
+                (actor.firm_id, company_id, period, period, period),
             ).fetchone()[0]
             returned = conn.execute(
                 "SELECT count(DISTINCT e.id) FROM business_actions a JOIN business_events e ON e.id=a.event_id "
