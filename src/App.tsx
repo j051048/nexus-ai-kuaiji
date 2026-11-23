@@ -1821,6 +1821,11 @@ export default function App() {
             }
             period={workPeriod}
             bookId={routeUsesBook ? bookId : undefined}
+            unsavedLabels={[
+              ...(reviewDirty ? ['凭证复核编辑'] : []),
+              ...(drawerDirty ? ['复核抽屉编辑'] : []),
+              ...(monthlyDirty ? ['月度办理说明'] : []),
+            ]}
             onPeriodChange={(next) => setWorkPeriod(next)}
             onOpenBooks={() => navigate('accounting')}
           />

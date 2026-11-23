@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from './api';
+import { confirmLeaveIfDirty, registerUnsavedGuard } from './unsaved-guard';
+import { beginScope, isCurrentScope, scopedController } from './request-scope';
 import type { Session } from './types';
 import './workspace-context-bar.css';
 
@@ -34,6 +36,7 @@ export function WorkspaceContextBar({
   companyId,
   period,
   bookId,
+  unsavedLabels,
   onPeriodChange,
   onCompanyChange,
   onOpenBooks,
@@ -44,39 +47,51 @@ export function WorkspaceContextBar({
   companyId?: string;
   period: string;
   bookId?: string;
+  /** 工作区里当前有未保存编辑的来源标签（由 App 汇总，纯字符串，避免把守卫模块打进首屏）。 */
+  unsavedLabels?: string[];
   onPeriodChange: (period: string) => void;
   onCompanyChange?: (companyId: string) => void;
   onOpenBooks: () => void;
 }) {
   const [close, setClose] = useState<CloseRow | null>(null);
   const [error, setError] = useState('');
+  const labelsKey = (unsavedLabels ?? []).join('|');
+
+  useEffect(() => {
+    const disposers = labelsKey
+      ? labelsKey.split('|').map((label, index) => registerUnsavedGuard(`ctx-${index}`, label))
+      : [];
+    return () => disposers.forEach((off) => off());
+  }, [labelsKey]);
 
   useEffect(() => {
     if (!bookId || !/^\d{4}-(0[1-9]|1[0-2])$/.test(period)) {
       setClose(null);
       return;
     }
-    let live = true;
-    const controller = new AbortController();
+    // 局部激活标记 + 全局 epoch + AbortController 三重保险：无论通过顶部条还是浏览器导航切上下文，旧响应绝不写回。
+    let active = true;
+    const scope = scopedController();
     const query = new URLSearchParams({ book_id: bookId, period });
     void api<{ closes: CloseRow[] }>(`/b04-close?${query}`, session, {
-      signal: controller.signal,
+      signal: scope.signal,
     })
       .then((data) => {
-        if (!live) return;
+        if (!active || !isCurrentScope(scope.epoch)) return;
         setError('');
         setClose(data.closes.find((row) => row.period === period) ?? null);
       })
       .catch(() => {
-        if (!live) return;
+        if (!active || !isCurrentScope(scope.epoch)) return;
         // The strip never blocks the page: an unreadable lock state is shown as
         // unknown instead of being guessed as open.
         setClose(null);
         setError('锁期状态待核实');
-      });
+      })
+      .finally(() => scope.release());
     return () => {
-      live = false;
-      controller.abort();
+      active = false;
+      scope.abort();
     };
   }, [bookId, period, session]);
 
@@ -102,7 +117,21 @@ export function WorkspaceContextBar({
           <select
             aria-label="当前办理单位"
             value={companyId ?? ''}
-            onChange={(event) => onCompanyChange(event.target.value)}
+            onChange={(event) => {
+              const next = event.target.value;
+              if (next === (companyId ?? '')) return;
+              const nextName = companies.find((item) => item.id === next)?.name;
+              void (async () => {
+                const proceed = await confirmLeaveIfDirty({
+                  title: '切换办理单位？',
+                  description: '切换单位会重新加载该单位的账套与任务',
+                  company: nextName ?? (next || undefined),
+                });
+                if (!proceed) return;
+                beginScope();
+                onCompanyChange(next);
+              })();
+            }}
           >
             <option value="">未选择</option>
             {companies.map((company) => (
@@ -114,7 +143,21 @@ export function WorkspaceContextBar({
         ) : (
           <strong>{companyName ?? '未选择'}</strong>
         )}
-        <button type="button" className="text-button" onClick={onOpenBooks}>
+        <button
+          type="button"
+          className="text-button"
+          onClick={() => {
+            void (async () => {
+              const proceed = await confirmLeaveIfDirty({
+                title: '离开当前办理单位？',
+                description: '去会计工作台重新选择单位会替换当前单位的数据',
+              });
+              if (!proceed) return;
+              beginScope();
+              onOpenBooks();
+            })();
+          }}
+        >
           切换
         </button>
       </div>
@@ -131,8 +174,18 @@ export function WorkspaceContextBar({
           max="2099-12"
           value={period}
           onChange={(event) => {
-            if (/^\d{4}-(0[1-9]|1[0-2])$/.test(event.target.value))
-              onPeriodChange(event.target.value);
+            const next = event.target.value;
+            if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(next) || next === period) return;
+            void (async () => {
+              const proceed = await confirmLeaveIfDirty({
+                title: '切换会计期间？',
+                description: '切换期间会重新加载当前账套在该期间的数据',
+                period: next,
+              });
+              if (!proceed) return;
+              beginScope();
+              onPeriodChange(next);
+            })();
           }}
         />
       </label>

@@ -1122,3 +1122,82 @@
    - `nexus_backend/migrations/postgres/324_plt05_reissue_batches.sql` 将 `INSERT` RLS 策略收紧为 `accounting.ai_book_reviewer(book_id)`（与同域 `bridge_*` 及 Python 写权限 100% 对齐），为 `bridge_reissue_append_only()` 补全 `SET search_path=accounting,pg_catalog`、`ERRCODE='55000'` 与全角色 `REVOKE ALL`。
    - 已应用至远端生产库并实测验证：`total_migrations=311`、`latest_version=324`、`checksum=e29292cf68834a94a5f5408ae919c752e3d3ef1b602e1d7605255d951505ab27`、`rls_enabled=true`、`force_rls=true`、`policy_count=2`、`trigger_count=2`、`fk_count=7`、`accounting_app` 仅具 `SELECT/INSERT`（禁 `UPDATE/DELETE`）。
 
+
+## Step 4a · Batch 02 最终收官：上下文切换守卫 + 期间输入审查 + E2E（完成）
+
+- 工程状态：**完成**
+- 外部状态：无需外部
+- 与提示词要求的差异：**逐页月份输入审查结论为「无可移除的同义重复项」**（逐条理由见下），其余三项（未保存拦截、在途中止/序号、E2E）全部落地
+
+### 1. 未保存离开拦截（新增 `src/unsaved-guard.ts`）
+
+- `registerUnsavedGuard(id, label)` 返回注销函数（空标识直接抛错，避免拼写错误静默关掉守卫）；`unsavedLabels()/hasUnsavedEdits()/resetUnsavedGuards()`；`confirmLeaveIfDirty(request)` 复用既有确认对话框（**零 `window.confirm`**），把「未保存：来源标签」写进说明，取消标签为「留在当前单位/期间」。
+- **守卫生效点**：`WorkspaceContextBar` 的期间输入、单位下拉、`切换` 按钮，均先 `await confirmLeaveIfDirty(...)`，取消则**不**调 `onPeriodChange/onCompanyChange/onOpenBooks`，页面与表单原样保留。
+- **首屏预算防线（关键取舍）**：守卫模块与确认对话框都**不进入首屏入口包**——`unsaved-guard.ts` 用 `await import('./confirm-dialog')` 动态取对话框（否则 `confirm-dialog.css` 会被拉进 initial：实测 homeCss 145,696 超限 145,000、initialGzip 177,254 超限）；`App.tsx` 只把脏状态汇总成**纯字符串数组** `unsavedLabels` 传给懒加载的 `WorkspaceContextBar`，由它在自己的分块里注册。改完 initialGzip 175,936/176,000、homeCss 144,715/145,000，均未新增 CSS。
+
+### 2. 在途请求中止 + 序号防串数（新增 `src/request-scope.ts`）
+
+- `beginScope()` 推进 epoch 并 abort 上一轮全部控制器；`scopedController()` 返回 `{epoch, signal, abort}`；`isCurrentScope(epoch)` 用于丢弃迟到响应。
+- `WorkspaceContextBar` 的锁期状态请求改用 `scopedController()`，响应写回前先 `isCurrentScope(scope.epoch)`；切换期间/单位时先 `beginScope()` 再改上下文，因此**旧期间的迟到回执不会把新期间画成「已锁期」**（E2E 用 `page.route` 人为延迟 1.5s 并谎报 locked 验证）。
+- 单测覆盖：epoch 递增、切换即 abort、切换后新注册不被误 abort、迟到响应可识别为旧 epoch（`src/context-switch-guard.test.ts` **8 passed**）。
+
+### 3. 逐页期间/月份输入审查清单（17 处，全部保留并说明理由）
+
+| 文件 | 控件 | 结论 | 理由 |
+| --- | --- | --- | --- |
+| `WorkspaceContextBar.tsx` | 当前会计期间 | **保留（唯一权威入口，已接守卫）** | 顶部条即上下文来源，本次新增拦截与中止 |
+| `ReviewWorkbench.tsx` | 复核期间 | **保留** | 复核清单是**跨账套**列表，期间来自自带 `useReviewFilters` 持久化筛选器，不由顶部 `workPeriod` 驱动；实测移除会让列表取不到数据（尝试后已回滚，见下方「回滚记录」） |
+| `MonthlyClientWorkbench.tsx` | 客户进度月份 | 保留 | 组合视图（全部客户）的独立筛选，与当前账套无关 |
+| `FinanceOperationsPanel.tsx` | 开始计提月份 | 保留 | 新建资产/摊销的**业务字段**（起始计提月），不是页面期间 |
+| `TaxCostBatchPanel.tsx` | 开始月 / 结束月 | 保留 | 成本批次**区间查询**，两个端点缺一不可 |
+| `RecurringEntries.tsx` | 固定事项开始月份 / 结束月份 | 保留 | 事项有效期区间 |
+| `FirmCockpit.tsx` | 服务月份 | 保留 | 事务所服务组合视图筛选 |
+| `FirmInsights.tsx` / `FirmObservability.tsx` / `OperationsWorkbench.tsx` / `EfficiencyPortfolio.tsx` | 各统计月份 | 保留 | 全所统计/运行记录的独立时间窗 |
+| `ClientAccessTools.tsx` | 部门费用月份 | 保留 | 部门费用统计筛选 |
+| `AdminAIControls.tsx` / `AdminOnboarding.tsx` / `FirmOnboarding.tsx` | 各类管理月份 | 保留 | 管理域配置项（生效月/起始月），非页面期间 |
+| `LedgerWorkspace.tsx` | 新期间 | 保留 | 新增账期的**业务输入**（创建动作的一部分） |
+| `LegacyMigrationWorkspace.tsx` | 三处期间 | 保留 | 迁移历史区间与目标期间，属迁移参数 |
+| `AppDialogs.tsx` | 对话框内月份 | 保留 | 对话框内业务字段 |
+
+**回滚记录（诚实）**：最初把 `ReviewWorkbench` 的「复核期间」判为与顶部同义并删除，同时把 4 个 E2E 的 `复核期间` 选择器改成 `当前会计期间`；实跑后 `workbench-focus` / `opt09` 等复核清单用例取不到数据——复核清单的期间来自自带筛选器，顶部条改的是账套上下文，两者并不同义。已 `git checkout` 回滚该删除与 4 个 E2E 的改动，改为保留并在上表写明理由。
+
+### 4. E2E（`e2e/b02-context-switch-guard.spec.ts`，preview 模式 **3 passed / 44.4s**）
+
+1. **未保存取消保留原表单**：复核抽屉里改「同屏凭证摘要」→ 顶部期间改 2026-11 → 出现「切换会计期间？」确认（含「未保存：复核抽屉编辑」）→ 点「留在当前单位/期间」→ 期间仍 2026-10、抽屉文字未丢；再走一次「丢弃修改并切换」→ 期间真正变 2026-11（放行路径也验证）。
+2. **旧期间延迟响应不串数**：`page.route('**/api/b04-close?**')` 对 2026-10 延迟 1.5s 并返回 `locked`，对其它期间立即返回空；先在 2026-10 看到「已锁期」，切到 2026-11 后等 2s，锁状态**不得**为「已锁期」（实测为「未锁期」）。
+3. **不可逆锁期二次输入**：API 造到「预检已独立复核」→ 页面点「确认正式锁期」→ 对话框要求输入期间：不输入/输错（`2026-13`）时确认按钮**禁用**，输对（`2026-10`）后**放行**并出现「本月已正式锁期」。（`A` 键 400ms 防误触已由既有 `e2e/v07-role-help.spec.ts` 覆盖：打开抽屉后立刻按 `a` 不产生任何写请求。）
+
+### 门禁（真实输出）
+
+| 命令 | 结果 |
+| --- | --- |
+| `npm run typecheck` / `lint` / `format:check` | 全部 exit 0 |
+| `npm test` | **165 files / 1475 passed** |
+| `npm run build` | ✓ |
+| `npm run test:frontend-budget` | `status: passed`、`violations: []`（initialJs 567,571/570,000、initialGzip 175,936/176,000、initialCss 98,906/110,000、homeJs 601,312/625,000、homeGzip 189,312/195,000、homeCss 144,715/145,000） |
+| `E2E_FRONTEND_MODE=preview npx playwright test e2e/b02-context-switch-guard.spec.ts` | **3 passed (44.4s)** |
+| `scripts/check_migration_idempotency.py` / `check_secrets.py` | exit 0 / `no secrets found` |
+| `pytest test_migration_structure / pg_sql_hygiene / write_scope_baseline` | **12 passed** |
+
+### 已知与环境相关（非本轮引入）
+
+`e2e/workbench-focus.spec.ts` 的「复核清单直接看证据」两例（1440/390）与「管理台搜索…390」在本机 **preview** 模式失败；已用 `git diff` 暂存/回滚法验证：**把我本轮全部前端改动回滚后同样失败**（`2 failed`），因此属既有失败/环境抖动，本轮未改该 spec，也不把它的失败算作回归。
+
+## 里程碑：Batch 01–08 全部可控闭环达成
+
+- Batch 01/01B（工程门禁、PG 强制门禁）、02（报表合规 + 工作台 + 三件套 + 本轮上下文守卫）、03（验收包/审计链/恢复办单，PLT06-A/C 另行拍板延后二期）、04（四税引擎 + 计提入账）、05（出纳/付款审批/银行 H2H/核销绑定）、06（行业处理器 + B8 链路 + PLT05-B/C/D/E）、07（SSO 钩子/KMS/配额三条链路/CI 安全门禁）、08（结构化日志/指标/告警分发/Runbook）均已落地并有可复跑的门禁与测试。
+- **Batch 09 前置条件（Batch 02 + Batch 05 完成）正式解锁**。
+
+## Step 5a 精确起点（本轮未开启，按纪律干净停手）
+
+1. 读 `docs/upgrade_85/UPG09_WORKFLOW_AND_AGENT.md` 1.1 节与 `docs/rework/UPGRADE_85_STATUS.md` 末尾。
+2. 双库前向迁移 **PG `325` / SQLite `232`**（`-- compatibility: incremental`）：`workflow_definitions`（`firm_id/company_id/process_kind` 版本化 DAG，`status ∈ draft|active|archived`，节点规则 JSONB/TEXT、内容指纹、发布人、已发布版本不可篡改）、`workflow_instances`（锁定启动 `definition_version`、当前节点、状态、挂起原因）、`workflow_step_logs`（只追加，含接管/回退留痕）。PG 侧全套红线：`SET LOCAL search_path=accounting,pg_catalog;`、完整外键、`ENABLE + FORCE RLS`、`actor_firm()` + `company_visible`/`firm_manager`、`REVOKE ALL ... FROM PUBLIC, accounting_worker, accounting_system, accounting_projection` 后显式 `GRANT`、`batch2_company_write_gate`、`workflow_step_logs` 禁改禁删触发器。
+3. 引擎 `app/workflow/engine.py` + 路由 + `test_workflow_engine_versioning.py`：四类流程（`expense_reimbursement` / `payment_approval` / `fee_variance` / `monthly_close`）、金额整数分、金额条件分流、超时升级、异常挂起与人工接管/安全回退（**已过账或已提交银行/税局的终态节点禁止回退 → 409 走冲销流**）、版本隔离（存量实例走启动版本、新实例走新版本）与「回滚 = 生成新激活版本」。
+4. 前端 `WorkflowStudioPanel.tsx` 与 PLT08 60 样本评测留待后续会话。
+
+### Step 4a 独立验收加固（封账基线）
+
+1. **三防线防串数与句柄释放（`src/request-scope.ts`、`src/WorkspaceContextBar.tsx`）**：为 `scopedController()` 补齐 `release()` 并在请求 `.finally()` 释放已完成句柄避免全局集合累积；同时恢复局部 `active` 标记（`!active || !isCurrentScope(scope.epoch)`），覆盖浏览器前进/后退或左侧导航未经过 `beginScope()` 的切换路径。
+2. **确认对话框展示人类可读公司名称（`src/WorkspaceContextBar.tsx`）**：切换单位弹窗的 `company` 字段由原始 UUID `companyId` 改为匹配中文单位名。
+3. **E2E 补齐真实在途竞态（`e2e/b02-context-switch-guard.spec.ts`）**：延迟响应防串数用例由“等旧请求落地后再切换”改为“确认旧期间请求已发出、仍在 1.5s 延迟飞行中即刻切到新期间”，真正验证在途延迟回执不覆盖新期间锁期状态。
+
