@@ -84,6 +84,12 @@ def test_mapping_change_after_export_blocks_receipt_and_stays_visible(service, b
     assert after["confirmation_required"] is True
     assert after["mapping_version"] == 1
     assert after["current_mapping_version"] == 2
+    # overview() 列表也必须透传 mapping_changed，前端工作台才能真实渲染提示。
+    overview_row = bridge.overview(LOCAL_ACTOR, book)["outbox"][0]
+    assert overview_row["mapping_changed"] is True
+    assert overview_row["confirmation_required"] is True
+    assert overview_row["mapping_version"] == 1
+    assert overview_row["current_mapping_version"] == 2
     # 只导出的事实不能被说成“已接收/已过账”。
     assert after["statuses"]["received"]["at"] is None
     assert after["statuses"]["posted"]["at"] is None

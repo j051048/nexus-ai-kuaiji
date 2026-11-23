@@ -985,3 +985,140 @@
 3. **补齐端到端回归测试（`nexus_backend/tests/test_plt05_export_change_guards.py`）**：新增 `record_return` / `record_manual_return` 映射变更 409 拦截、已接收后变更映射保持已接收且 `confirmation_required=False`、以及走真实 `PostingService.post_draft` + `reverse_reviewed` 独立复核反向冲销后经 `bridge.list_returns()` 端到端断言 `voided_after_export=True`（原“无端到端夹具”的诚实边界已补齐）。
 4. **PLT05-C 补导方案拍板**：**禁止修改或放宽现有 `bridge_outbox` 唯一约束及 `bridge_scope_guard()` 触发器**；下一轮新建独立只追加子集补导表 `bridge_reissue_batches`（PG `324` / SQLite `231`，含 `FORCE RLS`、`batch2_company_write_gate`、外键绑定父交付包与父导出文件、append-only 触发器），仅抽取失败/差异且未 `resolved` 的凭证子集并复用 `tplus54.render` 生成补导 CSV，实现零削弱旧守卫的受控补导闭环。
 
+
+## Step 3b-2 收尾 · PLT05-C 受控子集补导 + D 前端收口 + E 联调手册（完成）
+
+- 工程状态：**完成**（迁移 PG `324` / SQLite `231` + 补导服务与 HTTP + 前端两处提示 + 联调手册；旧守卫零改动）
+- 外部状态：`工具就绪待客户输入`（未与任何真实 T+ 联调，不宣称已完成）
+- 与提示词要求的差异：一致
+
+### 架构取舍（与拍板一致，未削弱旧守卫）
+
+`bridge_outbox.export_id` / `external_code` 唯一约束与 `accounting.bridge_scope_guard()` **一行未改**；补导写独立的只追加表 `bridge_reissue_batches`，因此「一次导出=一份交付意图=全量冻结清单」的旧不变量继续成立。
+
+- `nexus_backend/migrations/postgres/324_plt05_reissue_batches.sql`：`SET LOCAL search_path=accounting,pg_catalog;`、六个外键（`firms/companies/books/ledgers/bridge_outbox/bridge_export_artifacts/users`）、`ENABLE + FORCE ROW LEVEL SECURITY`、读策略 `firm_id=actor_firm() AND book_allowed(book_id)`、写策略再加 `book_allowed(book_id,true) AND created_by=actor_user()`、`REVOKE ALL ... FROM PUBLIC, accounting_worker, accounting_system, accounting_projection` 后 `GRANT SELECT, INSERT TO accounting_app`、`bridge_reissue_batches_no_change` 禁改禁删触发器、`batch2_company_write_gate` 写门；`UNIQUE(firm_id,idempotency_key)` 与 `UNIQUE(parent_artifact_id,content_sha256)` 提供双幂等。
+- `nexus_backend/migrations/sqlite/231_plt05_reissue_batches.sql`：同结构镜像 + 禁改禁删触发器。
+
+### 服务层（`app/integrations/service.py`）
+
+- `create_reissue(actor, book_id, artifact_id, request)`：**先** `_compound(book)` 再在同一写事务内 `_scope(..., True)` 实时重验权限（撤权即 403/404，跨账套 404）；`_frozen_package()` 校验冻结清单与规费来源仍有效；三条硬边界：
+  1. 父批次 `_external_state().result_unknown` → 409「尚无对方结果…禁止补导与重发」；
+  2. 没有**逐笔**返回文件 → 409「仅凭回执计数不能补导」；
+  3. 只取最近一份返回文件中 `status ∈ rejected|missing|amount_mismatch|account_mismatch` 且未被 `bridge_return_row_handlers` 处置为 `resolved` 的凭证；为空 → 409。
+- 失败凭证必须在冻结清单内（`T54-` 前缀与裸码两种写法都能查到）；映射变更时用**旧版本映射反查本地值 + 新版本映射正查**重映科目与辅助项（`_remap_voucher`），缺科目/辅助项 409 而不是猜。
+- `tplus54.render()` 产出补导 CSV 与 `content_sha256`；`UNIQUE(parent_artifact_id,content_sha256)` 让「换键但内容相同」也重放；`audit_events` 写 `bridge.reissue.create`（含父批次、失败码、两个映射版本、排除笔数、原因）。
+- 只读接口 `list_reissues()` / `download_reissue()`（带 `X-Content-Sha256`、`no-store`、`nosniff`）。
+
+### HTTP（`app/integrations/router.py`）
+
+`POST /api/books/{book_id}/integrations/tplus/artifacts/{artifact_id}/reissues`（201）、`GET .../reissues`、`GET /reissues`、`GET /reissues/{reissue_id}/download`。
+
+### PLT05-D 前端小收口（`src/IntegrationWorkbench.tsx`，懒加载块内）
+
+- 导出意图行新增「映射已变更（导出用 vN，当前 vM）」提示，已接收批次追加「已接收批次不受影响」，未接收批次追加「需确认后重新导出，不能直接登记接收」。
+- 逐笔返回行新增「导出后已冲销，须按冲销后的凭证重新核对」提示。
+- **零新增 CSS**（复用 `integration-offline`），`initial` 闭包与 `homeCss` 均未变化（见门禁数据）。
+- 「仅导出/仅接收不得显示成已过账」由既有 `e2e/stage10-integrations.spec.ts` 覆盖（`对方已过账` 计数断言为 0，两处）。
+
+### PLT05-E（`docs/pilot/ROUNDTRIP_RUNBOOK.md`，状态：工具就绪待客户输入）
+
+按 PLT05-E 要求写全：C1–C7 客户待确认事项表（含「为什么必须先确认」「由谁确认」「记录位置」）、六步联调流程（准备/导出/客户导入/取回结果/逐笔核对/收口，每步要求记录人、时间与文件 SHA-256）、四类必演练情形（重复导入、部分失败+补导、映射变更、无结果）及期望行为与补导三条硬边界、返回文件格式差异登记模板（RT-DIFF 编号、编码/列名/金额/日期/枚举差异与临时处置原则「现场不改代码、不手改原件」）、联调记录表与签认栏。全文明确「未与真实 T+ 联调」。
+
+### 测试
+
+| 层 | 文件 | 结果 |
+| --- | --- | --- |
+| 补导 | `nexus_backend/tests/test_plt05_reissue.py` | **5 passed** |
+| 既有 PLT05 域 | `pytest -k "plt05 or integrations or bridge or tplus"` | **67 passed, 19 skipped, 3 errors**（error 均为无 PG DSN 的 `test_c01_remaining_postgres.py` 夹具，环境性） |
+| 迁移三件套 | `test_migration_structure / pg_sql_hygiene / write_scope_baseline` | **12 passed** |
+
+- 补导用例：①部分失败（一笔 accepted 一笔 rejected）→ 补导只含失败那笔、引用父批次、`voucher_count` 与失败数一致、文件里不含成功凭证、同键重放、换键同内容按内容指纹重放、列表只有一条、且原 `bridge_outbox` 仍是 1 条（旧守卫未被动）；②父批次 `result_unknown` → 409；③全部 accepted → 409「没有确认失败」；④跨账套补导被拒且 `bridge_reissue_batches` 零落盘；⑤映射变更后补导 `remapped=True`、`source=1/current=2`、文件里出现新外部科目 `100299` 而不是旧的 `100201`。
+
+### Step 3b-2 门禁（真实输出）
+
+| 命令 | 结果 |
+| --- | --- |
+| `scripts/check_migration_idempotency.py` / `check_secrets.py` | exit 0 / `no secrets found` |
+| `uvx ruff==0.17.0 check` / `format --check nexus_backend/app services/api_gateway scripts` | `All checks passed!` / `467 files already formatted`（新增 324 后为 468，见下） |
+| `npm run typecheck` / `lint` / `format:check` | 全部 exit 0 |
+| `npm test` | **164 files / 1467 passed** |
+| `npm run build` / `test:frontend-budget` | ✓ / `status: passed`、`violations: []`（initialJs 567,460/570,000、initialGzip 175,864/176,000、initialCss 98,906/110,000、homeJs 601,201/625,000、homeGzip 189,224/195,000、homeCss 144,715/145,000） |
+
+## Step 4 起点（本轮随后开始，见下条记录）
+
+## Step 4b · Batch 07 三条配额链路接线（完成）
+
+- 工程状态：**完成**（异步任务、在途并发、原件容量三条全部接到真实业务入口）
+- 外部状态：无需外部
+- 与提示词要求的差异：并发配额接在**异步入队入口**（同一事务内），未做 ASGI 请求级中间件——理由见下「为什么不是请求中间件」
+
+### 实现
+
+1. **`ensure_daily_jobs`（单日异步任务数）** → `app/jobs/service.py::enqueue_in_transaction`，新增 `_quota_checks(conn, actor, additional)` 在**批次/任务 INSERT 之前**调用；计数 `_queued_today()` 为 `ocr_jobs` 上按 `firm_id + created_at` 当日聚合。超限 429「今日已入队 N 个异步任务，上限 M 个」，且**不会留下任何批次或任务行**。
+2. **`ensure_concurrent`（在途并发）**（本轮新增方法，此前只存在于台账文字）→ 同一 `_quota_checks` 里核验，计数 `_in_flight()` 为 `ocr_jobs` 中 `queued/running/retry_wait` 的行数；超限 429「当前在途任务 N 个，上限 M 个」。与单日配额**各自独立生效**（单测分别放宽其一以证明互不遮蔽）。
+3. **`ensure_storage`（原件容量）** → `app/uploads.py::UploadIntentService.create`，在**已有写事务内**、`INSERT INTO upload_intents` 之前核验；`_stored_bytes()` 为该企业 `upload_intents.size_bytes` 合计。超限 413「原件容量已用 X 字节…」，且零意图行落库。
+4. 口径沿用导入链路：拒绝发生在事务内 → 抛错回滚 → 只写 `accounting.quotas` 结构化告警日志（`quota exceeded: ... requested/limit/firm/actor`），**不写会被一起回滚的审计表**。
+
+**为什么并发守卫不放在 HTTP 中间件**：ASGI 中间件在认证之前运行，拿不到 `firm_id`；若要按企业限流必须在每个请求里额外读一次 `firm_quotas`，会直接冲掉 `test_stage25_assistant_efficiency.py` / `test_stage19_request_reads.py` 的 SQL 预算（`AccessControl.book()` 单条 SELECT 的红线也是同一类约束）。因此把「在途并发」定义在**异步任务入队**这一真实并发面上：同一企业的在途任务数受配额约束，超限即 429，不需要每请求一次额外查询。
+
+### 测试（`nexus_backend/tests/test_quota_jobs_storage_wiring.py` **6 passed**）
+
+- `_quota_checks` 的调用位置**早于** `INSERT INTO ocr_batches`（源码顺序断言），证明拒绝时不会有半批数据；
+- 单日配额边界：今日已入队 3 / 上限 3 → 429 且文案含「异步任务」；上限放宽到 4 后同条件放行（等于上限仍放行）；
+- 在途并发边界：在途 2 / 上限 2 → 429 且文案含「在途任务」；只放宽并发配额即放行（与单日配额互不遮蔽）；
+- 计数器是 `ocr_jobs` 上的真实聚合（空企业为 0，且源码里确为 `FROM ocr_jobs`）；
+- 原件容量：4 MB 上限下申请 2 MB → 413 且 `upload_intents` 计数与已用字节均为 0；限内 1 KB → 成功且 `_stored_bytes` 变为 1024。
+
+### 回归
+
+`test_quota_import_wiring / test_tenant_quotas / test_queue_api / test_uploads* / test_stage25_assistant_efficiency / test_stage19_request_reads` 合跑 **54 passed**（两条 SQL 预算门禁均未回归）。
+
+## Step 4c · Batch 08 告警分发与生产应急手册（完成）
+
+- 工程状态：**完成**（`alerting.py` + 13 例本地桩测试 + `PRODUCTION_RUNBOOK.md`）
+- 外部状态：`工具就绪待客户输入`（真实钉钉/企业微信/Webhook 群机器人需客户提供并单独授权，测试**只用本地桩**）
+- 与提示词要求的差异：一致
+
+### `nexus_backend/app/observability/alerting.py`
+
+- `Alert`（名称/级别/摘要/标签/详情）自校验；`fingerprint()` = sha256(名称+级别+排序标签)，**摘要变化不换指纹**（同一告警重复发生），级别或标签变化才换。
+- 三种负载：`webhook`（`schema=accounting.alert.v1` 信封，含 `occurred_at`）、`dingtalk`（`msgtype=text`，critical 才 `isAtAll`）、`wecom`（`msgtype=markdown`，含标签行）。
+- `AlertDispatcher(sender, ...)`：**必须注入 sender**（不内置任何真实网络发送，`None` 直接 `ValueError`）；静默窗口内同指纹返回 `silenced` 并给出剩余秒数；失败按 `backoff * 2**(n-1)` 退避重试（休眠函数可注入，测试不真等）；**发送失败永不抛给调用方**（返回 `failed` + `attempts` + `error`），且失败不写静默时间戳（通道恢复后下一次会真正发出）。
+- 配置边界：未知通道 / 负静默窗口 / `max_attempts<1` / 负退避基数一律 `ValueError`。
+
+### `docs/ops/PRODUCTION_RUNBOOK.md`
+
+七个部分：①用 `X-Request-Id` + 结构化故障日志 30 秒定位（字段判读、`sqlstate` 速查、`result_unknown` 的「可能已提交」处置）；②写请求 `result_unknown` 三步核对（业务对象反查 → 幂等键反查 → 同一键重试一次）；③连接池打满与慢查询（`pg_stat_activity` 查询、长事务持锁、缺索引走迁移而不是线上建索引）；④5xx 告警按 `route` 聚合定位；⑤银行/税局 `unknown` 冻结核查（铁律：任何入口都不得重发，三态判定 + 证据挂接 + 解除冻结留痕）；⑥PG 备份/还原/跨主版本回滚检查表（六项检查、四类「永远不要」操作）；⑦告警通道自身故障处置与值班交接模板。
+
+### 测试（`nexus_backend/tests/test_observability_alerting.py` **13 passed**）
+
+指纹稳定性与标签顺序无关 / 摘要变化不改指纹 / 空名称与未知级别拒绝 / webhook 信封可 JSON 序列化 / dingtalk 与 wecom 文案与 @所有人规则 / 未知通道拒绝 / dispatcher 注入与配置边界 / 静默窗口内只发一次且窗口过后重发 / 不同标签不被误静默 / 退避序列 `[1.0, 2.0]` 且 attempts=3 / 永久失败不抛且不写静默 / 通道选择决定负载形状。**全部使用本地 `Stub`，无任何网络调用。**
+
+### Step 4b/4c 门禁（真实输出）
+
+| 命令 | 结果 |
+| --- | --- |
+| `scripts/check_migration_idempotency.py` / `check_secrets.py` | exit 0 / `no secrets found` |
+| `uvx ruff==0.17.0 check` / `format --check nexus_backend/app services/api_gateway scripts` | `All checks passed!` / `468 files already formatted` |
+| `pytest test_migration_structure / pg_sql_hygiene / write_scope_baseline` | **12 passed** |
+| `pytest test_quota_jobs_storage_wiring.py` | **6 passed** |
+| `pytest test_observability_alerting.py` | **13 passed** |
+| 配额/队列/上传/效率回归 | **54 passed** |
+
+## Step 4a 精确起点（未开始，本轮按上下文余量主动停手）
+
+1. **文件**：`src/WorkspaceContextBar.tsx`（切换单位/期间）、`src/App.tsx`（在途请求与页面状态）、`src/confirm-dialog.tsx`（`requestConfirm` 复用，禁新增 `window.confirm`）。
+2. **未保存离开拦截**：为「有未保存改动」的页面注册守卫（建议 `src/unsaved-guard.ts` 提供 `registerUnsavedGuard(fn)` + `hasUnsaved()`），切换单位/期间时先 `requestConfirm`；E2E 断言取消后仍停在原单位且表单内容未丢。
+3. **在途请求中止 / 序号防串数**：切换上下文时 `AbortController.abort()` 并递增请求序号，响应回来比对序号，旧单位的延迟响应**直接丢弃**（E2E 用 `page.route` 延迟旧单位接口响应，断言新单位画面不被覆盖）。
+4. **逐页重复月份输入清单**：需先盘点 `src/*.tsx` 里自带月份输入的页面（`ServicePlanPanel` 的 `due_on`、`TaxFPanel`/`TaxWorkpaperPanel` 的期间、`FinanceOperationsPanel` 的期间等），逐页判定「与顶部同义则移除、区间查询则保留并改标签」，清单写入台账。
+5. **不可逆锁期二次输入确认 + `A` 键 400ms 防误触**：锁期/发布等不可逆动作要求二次输入（如输入期间字符串）并在 `A` 键等危险快捷键上加 400ms 防抖；E2E 覆盖误触不生效、二次输入错误被拒。
+6. 门禁：`npm run typecheck && lint && format:check && npm test -- --run && build && test:frontend-budget`（`homeCss` 仅剩 285B，**不得新增首屏 CSS**），以及 `E2E_FRONTEND_MODE=preview npx playwright test <新 spec>`。
+
+### Step 3b-2 收尾 + Step 4b/4c 独立验收加固与远端 PostgreSQL 同步（封账基线）
+
+1. **修复工作台列表漏传 `mapping_changed` 导致提示永不显示（`nexus_backend/app/integrations/service.py`、`src/IntegrationWorkbench.tsx`）**：`overview()` 原先未合并映射版本变更字段，仅 `get_outbox()` 返回，导致前端列表的 `{row.mapping_changed && ...}` 永远为 `undefined`；已直接复用 `overview()` 已查询的 `config` 计算并注入四个映射状态字段（零额外 SQL），顺手统一中文全角右括号，并在 `test_plt05_export_change_guards.py` 补齐 `overview()` 断言。
+2. **修复原件容量配额误计入已丢弃意图（`nexus_backend/app/uploads.py`）**：`_stored_bytes()` 增加 `AND state<>'discarded'`，确保丢弃/清理历史上传意图后真实释放存储配额，并在 `test_quota_jobs_storage_wiring.py` 补齐回归断言。
+3. **PostgreSQL 324 纵深加固与远端 Supabase 生产库（`qgzketopnkzquotddwha`）同步实证**：
+   - `nexus_backend/migrations/postgres/324_plt05_reissue_batches.sql` 将 `INSERT` RLS 策略收紧为 `accounting.ai_book_reviewer(book_id)`（与同域 `bridge_*` 及 Python 写权限 100% 对齐），为 `bridge_reissue_append_only()` 补全 `SET search_path=accounting,pg_catalog`、`ERRCODE='55000'` 与全角色 `REVOKE ALL`。
+   - 已应用至远端生产库并实测验证：`total_migrations=311`、`latest_version=324`、`checksum=e29292cf68834a94a5f5408ae919c752e3d3ef1b602e1d7605255d951505ab27`、`rls_enabled=true`、`force_rls=true`、`policy_count=2`、`trigger_count=2`、`fk_count=7`、`accounting_app` 仅具 `SELECT/INSERT`（禁 `UPDATE/DELETE`）。
+

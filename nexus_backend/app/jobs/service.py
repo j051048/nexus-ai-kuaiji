@@ -8,6 +8,7 @@ from uuid import uuid4
 
 from ..accounting.domain import AccountingError
 from ..accounting.service import fingerprint
+from ..security.quotas import QuotaService
 from ..intelligence.provider import EXTRACTION_PROMPT_VERSION, ProviderError, effective_settings
 
 ACTIVE = {"queued", "running", "retry_wait"}
@@ -125,6 +126,7 @@ class QueueService:
                 raise AccountingError("批次幂等键已用于不同的票据集合", 409)
             return self._batch_json(conn, actor, existing)
         self._capacity(conn, actor, request.company_id, len(inputs))
+        self._quota_checks(conn, actor, len(inputs))
         for event, attachment in inputs:
             if conn.execute(
                 "SELECT 1 FROM ocr_jobs WHERE event_id=? AND attachment_id=? AND status IN ('queued','running','retry_wait')",
@@ -178,6 +180,35 @@ class QueueService:
             conn,
             actor,
             conn.execute("SELECT * FROM ocr_batches WHERE id=?", (batch_id,)).fetchone(),
+        )
+
+    def _quota_checks(self, conn, actor, additional: int) -> None:
+        """Batch 07：单日任务数与在途并发数在同一个事务里核验。
+
+        必须在 INSERT 之前调用：超限 429 时不会留下任何批次/任务行。
+        """
+        quotas = QuotaService(self.db, self.access)
+        quotas.ensure_daily_jobs(conn, actor, self._queued_today(conn, actor.firm_id), additional)
+        quotas.ensure_concurrent(conn, actor, self._in_flight(conn, actor.firm_id), additional)
+
+    @staticmethod
+    def _queued_today(conn, firm_id) -> int:
+        today = datetime.now(timezone.utc).date().isoformat()
+        return int(
+            conn.execute(
+                "SELECT COUNT(*) FROM ocr_jobs WHERE firm_id=? AND substr(created_at,1,10)=?",
+                (firm_id, today),
+            ).fetchone()[0]
+        )
+
+    @staticmethod
+    def _in_flight(conn, firm_id) -> int:
+        return int(
+            conn.execute(
+                "SELECT COUNT(*) FROM ocr_jobs WHERE firm_id=? "
+                "AND status IN ('queued','running','retry_wait')",
+                (firm_id,),
+            ).fetchone()[0]
         )
 
     def _capacity(self, conn, actor, company_id, additional):

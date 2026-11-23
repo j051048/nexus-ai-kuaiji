@@ -9,6 +9,7 @@ from .models import (
     BridgeImportConfirm,
     BridgeManualReturn,
     BridgeReceiptImport,
+    BridgeReissueCreate,
     BridgeReturnEvidence,
     BridgeReturnImport,
     BridgeReturnRowHandle,
@@ -227,5 +228,51 @@ def build_integrations_router(actor_dependency):
         book_id: str, intent_id: str, actor=Depends(actor_dependency), svc=Depends(service)
     ):
         return svc.dispatch(actor, book_id, intent_id)
+
+    @router.post("/artifacts/{artifact_id}/reissues", status_code=201)
+    def artifact_reissue(
+        book_id: str,
+        artifact_id: str,
+        payload: BridgeReissueCreate,
+        actor=Depends(actor_dependency),
+        svc=Depends(service),
+    ):
+        return svc.create_reissue(actor, book_id, artifact_id, payload)
+
+    @router.get("/artifacts/{artifact_id}/reissues")
+    def artifact_reissues(
+        book_id: str,
+        artifact_id: str,
+        actor=Depends(actor_dependency),
+        svc=Depends(service),
+    ):
+        return svc.list_reissues(actor, book_id, artifact_id)
+
+    @router.get("/reissues")
+    def book_reissues(
+        book_id: str,
+        actor=Depends(actor_dependency),
+        svc=Depends(service),
+    ):
+        return svc.list_reissues(actor, book_id)
+
+    @router.get("/reissues/{reissue_id}/download")
+    def reissue_download(
+        book_id: str,
+        reissue_id: str,
+        actor=Depends(actor_dependency),
+        svc=Depends(service),
+    ):
+        row = svc.download_reissue(actor, book_id, reissue_id)
+        return Response(
+            content=row["content"],
+            media_type=row["media_type"],
+            headers={
+                "Content-Disposition": _attachment_disposition(row["filename"]),
+                "Cache-Control": "no-store",
+                "X-Content-Type-Options": "nosniff",
+                "X-Content-Sha256": row["content_sha256"],
+            },
+        )
 
     return router

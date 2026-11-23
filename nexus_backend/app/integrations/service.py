@@ -22,6 +22,7 @@ from .models import (
     BridgeManualReturn,
     BridgeRecord,
     BridgeReceiptImport,
+    BridgeReissueCreate,
     BridgeReturnImport,
     BridgeReturnRowHandle,
 )
@@ -463,12 +464,26 @@ class FinancialBridgeService:
                     (book_id, limit, offset),
                 )
             ]
+            current_cfg_version = int(config["version"]) if config else None
             intents = []
             for r in conn.execute(
                 "SELECT id,export_id,configuration_version,state,created_at,external_code FROM bridge_outbox WHERE book_id=? ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?",
                 (book_id, limit, offset),
             ):
-                intents.append({**dict(r), **self._external_state(conn, r["id"], book_id)})
+                ext = self._external_state(conn, r["id"], book_id)
+                frozen_version = int(r["configuration_version"])
+                changed = current_cfg_version != frozen_version
+                already_received = ext["statuses"]["received"]["at"] is not None
+                intents.append(
+                    {
+                        **dict(r),
+                        "mapping_changed": changed,
+                        "mapping_version": frozen_version,
+                        "current_mapping_version": current_cfg_version,
+                        "confirmation_required": bool(changed and not already_received),
+                        **ext,
+                    }
+                )
             intent_count = conn.execute(
                 "SELECT COUNT(*) FROM bridge_outbox WHERE book_id=?", (book_id,)
             ).fetchone()[0]
@@ -1883,6 +1898,289 @@ class FinancialBridgeService:
                 },
             )
             return self._return_view(conn, imported)
+
+    # -- PLT05-C 受控子集补导 -------------------------------------------
+    FAILED_ROW_STATES = ("rejected", "missing", "amount_mismatch", "account_mismatch")
+
+    @staticmethod
+    def _reissue_view(row) -> dict:
+        codes = row["failed_voucher_codes_json"]
+        codes = codes if isinstance(codes, list) else json.loads(codes or "[]")
+        return {
+            "id": row["id"],
+            "book_id": row["book_id"],
+            "period": row["period"],
+            "parent_outbox_id": row["parent_outbox_id"],
+            "parent_artifact_id": row["parent_artifact_id"],
+            "batch_code": row["batch_code"],
+            "failed_voucher_codes": sorted(str(code) for code in codes),
+            "source_configuration_version": int(row["source_configuration_version"]),
+            "configuration_version": int(row["configuration_version"]),
+            "remapped": int(row["source_configuration_version"])
+            != int(row["configuration_version"]),
+            "content_sha256": row["content_sha256"],
+            "row_count": int(row["row_count"]),
+            "voucher_count": int(row["voucher_count"]),
+            "reason": row["reason"],
+            "created_by": row["created_by"],
+            "created_at": row["created_at"],
+            "live_enabled": False,
+            "synthetic": True,
+            "native_tplus_format": False,
+            "note": "补导文件只包含确认失败的凭证；对方已接收/已过账仍以返回文件或登记证据为准",
+        }
+
+    @staticmethod
+    def _remap_voucher(voucher, old_payload, new_payload):
+        """按当前已核定映射重映一张冻结凭证（科目与辅助项都逆查回本地值再映射）。"""
+        old_accounts = {
+            item["external_code"]: item["local_code"] for item in old_payload["accounts"]
+        }
+        new_accounts = {
+            item["local_code"]: item["external_code"] for item in new_payload["accounts"]
+        }
+        old_aux = {
+            (item["kind"], item["external_code"]): item["local_value"]
+            for item in old_payload.get("auxiliaries", [])
+        }
+        new_aux = {
+            (item["kind"], item["local_value"]): item["external_code"]
+            for item in new_payload.get("auxiliaries", [])
+        }
+        lines = []
+        for line in voucher["lines"]:
+            local_code = line.get("local_account_code") or old_accounts.get(
+                line.get("account_code")
+            )
+            if not local_code or local_code not in new_accounts:
+                raise AccountingError("新映射缺少该科目，不能自动重映补导文件；请先补齐映射", 409)
+            remapped = {}
+            for kind, value in (line.get("auxiliary_values") or {}).items():
+                local_value = old_aux.get((kind, value))
+                if local_value is None or (kind, local_value) not in new_aux:
+                    raise AccountingError(
+                        "新映射缺少该辅助核算项，不能自动重映补导文件；请先补齐映射", 409
+                    )
+                remapped[kind] = new_aux[(kind, local_value)]
+            lines.append(
+                {
+                    **line,
+                    "local_account_code": local_code,
+                    "account_code": new_accounts[local_code],
+                    "auxiliary_values": remapped,
+                }
+            )
+        return {**voucher, "lines": lines}
+
+    def create_reissue(self, actor, book_id, artifact_id, request: BridgeReissueCreate):
+        """受控子集补导：旧守卫一律不动，补导只写独立只追加表。
+
+        三条硬边界：①实时重验写权限；②父批次仍 result_unknown 一律拒绝；
+        ③只取最近一份返回文件里确认失败且未被处置为 resolved 的凭证，绝不含已成功项。
+        """
+        company_id = self._company_for_book(actor, book_id)
+        with self.db.transaction(
+            write=True, actor=actor, company_id=company_id, write_scope="company"
+        ) as conn:
+            book, ledger_id = self._scope(conn, actor, book_id, True)
+            artifact = conn.execute(
+                "SELECT * FROM bridge_export_artifacts WHERE id=? AND book_id=?",
+                (artifact_id, book_id),
+            ).fetchone()
+            if not artifact:
+                raise AccountingError("适配文件不存在或无权访问", 404)
+            parent = conn.execute(
+                "SELECT * FROM bridge_outbox WHERE id=? AND book_id=?",
+                (artifact["outbox_id"], book_id),
+            ).fetchone()
+            if not parent:
+                raise AccountingError("交付意图不存在或无权访问", 404)
+            package = self._frozen_package(conn, actor, book_id, parent)
+            state = self._external_state(conn, parent["id"], book_id)
+            if state["result_unknown"]:
+                raise AccountingError(
+                    "尚无对方结果（result_unknown），禁止补导与重发；"
+                    "请先导入返回结果文件或登记证据后再判断失败项",
+                    409,
+                )
+            latest = conn.execute(
+                "SELECT * FROM bridge_return_imports WHERE artifact_id=? AND book_id=? "
+                "ORDER BY created_at DESC,id DESC LIMIT 1",
+                (artifact_id, book_id),
+            ).fetchone()
+            if not latest:
+                raise AccountingError(
+                    "没有逐笔返回结果文件，无法确定失败凭证；仅凭回执计数不能补导", 409
+                )
+            placeholders = ",".join("?" for _ in self.FAILED_ROW_STATES)
+            failed = [
+                row["voucher_code"]
+                for row in conn.execute(
+                    "SELECT r.voucher_code FROM bridge_return_rows r "
+                    "LEFT JOIN bridge_return_row_handlers h ON h.import_id=r.import_id "
+                    "AND h.voucher_code=r.voucher_code "
+                    f"WHERE r.import_id=? AND r.status IN ({placeholders}) "
+                    "AND (h.action IS NULL OR h.action<>'resolved') "
+                    "ORDER BY r.voucher_code",
+                    (latest["id"], *self.FAILED_ROW_STATES),
+                ).fetchall()
+            ]
+            if not failed:
+                raise AccountingError("最近一份返回文件里没有确认失败且未处置的凭证，无需补导", 409)
+            current = self._configuration(conn, ledger_id)
+            if not current:
+                raise AccountingError("没有已生效的外部映射，不能补导", 409)
+            source_version = int(parent["configuration_version"])
+            current_version = int(current["version"])
+            # 返回文件里的凭证标识带 T54- 前缀，包内是裸码：两种写法都要能查到。
+            parent_by_code = {}
+            for item in package["vouchers"]:
+                code = str(item.get("external_code") or "")
+                if code:
+                    parent_by_code[code] = item
+                    parent_by_code[f"T54-{code}"] = item
+            missing = [code for code in failed if code not in parent_by_code]
+            if missing:
+                raise AccountingError(
+                    "返回文件的失败凭证不在冻结清单内，拒绝补导：" + "、".join(sorted(missing)),
+                    409,
+                )
+            selected = [parent_by_code[code] for code in failed]
+            remapped = False
+            if source_version != current_version:
+                old_row = conn.execute(
+                    "SELECT payload_json FROM bridge_configurations WHERE ledger_id=? AND version=?",
+                    (ledger_id, source_version),
+                ).fetchone()
+                if not old_row:
+                    raise AccountingError("导出时使用的映射版本已不存在，不能自动重映", 409)
+                old_payload = json.loads(old_row["payload_json"])
+                new_payload = json.loads(current["payload_json"])
+                selected = [
+                    self._remap_voucher(voucher, old_payload, new_payload) for voucher in selected
+                ]
+                remapped = True
+            subset = {
+                **package,
+                "configuration_version": current_version,
+                "source_configuration_version": source_version,
+                "vouchers": selected,
+                "reissue": {
+                    "of_outbox": parent["id"],
+                    "of_artifact": artifact_id,
+                    "failed_voucher_codes": sorted(failed),
+                    "excluded_voucher_count": len(package["vouchers"]) - len(selected),
+                },
+            }
+            content, _codes, voucher_count = tplus54.render(subset)
+            digest = tplus54.content_hash(content)
+            evidence = {
+                "parent_outbox_id": parent["id"],
+                "parent_artifact_id": artifact_id,
+                "failed_voucher_codes": sorted(failed),
+                "source_configuration_version": source_version,
+                "configuration_version": current_version,
+                "content_sha256": digest,
+            }
+            evidence_fingerprint = fingerprint(evidence)
+            prior = conn.execute(
+                "SELECT * FROM bridge_reissue_batches WHERE firm_id=? AND idempotency_key=?",
+                (actor.firm_id, request.idempotency_key),
+            ).fetchone()
+            if prior:
+                if prior["fingerprint"] != evidence_fingerprint:
+                    raise AccountingError("补导幂等键已用于另一组内容，不会覆盖原记录", 409)
+                return {**self._reissue_view(prior), "replayed": True}
+            same = conn.execute(
+                "SELECT * FROM bridge_reissue_batches WHERE parent_artifact_id=? "
+                "AND content_sha256=?",
+                (artifact_id, digest),
+            ).fetchone()
+            if same:
+                return {**self._reissue_view(same), "replayed": True}
+            identifier = uuid4().hex
+            text = content.decode("utf-8")
+            conn.execute(
+                "INSERT INTO bridge_reissue_batches(id,firm_id,company_id,book_id,ledger_id,period,"
+                "parent_outbox_id,parent_artifact_id,batch_code,failed_voucher_codes_json,"
+                "source_configuration_version,configuration_version,content,content_sha256,row_count,"
+                "voucher_count,idempotency_key,reason,fingerprint,created_by,created_at) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (
+                    identifier,
+                    actor.firm_id,
+                    book["company_id"],
+                    book_id,
+                    ledger_id,
+                    str(book["period"]),
+                    parent["id"],
+                    artifact_id,
+                    latest["batch_code"],
+                    json.dumps(sorted(failed), ensure_ascii=False),
+                    source_version,
+                    current_version,
+                    text,
+                    digest,
+                    len(text.splitlines()) - 1,
+                    voucher_count,
+                    request.idempotency_key,
+                    request.reason,
+                    evidence_fingerprint,
+                    actor.user_id,
+                    now(),
+                ),
+            )
+            self.delivery._audit(
+                conn,
+                actor,
+                book_id,
+                "bridge.reissue.create",
+                identifier,
+                {
+                    **evidence,
+                    "remapped": remapped,
+                    "excluded_voucher_count": len(package["vouchers"]) - len(selected),
+                    "reason": request.reason,
+                },
+            )
+            row = conn.execute(
+                "SELECT * FROM bridge_reissue_batches WHERE id=?", (identifier,)
+            ).fetchone()
+            return {**self._reissue_view(row), "replayed": False}
+
+    def list_reissues(self, actor, book_id, artifact_id=None):
+        with self.db.transaction(actor=actor) as conn:
+            self._scope(conn, actor, book_id)
+            sql = "SELECT * FROM bridge_reissue_batches WHERE book_id=? AND firm_id=?"
+            params: list = [book_id, actor.firm_id]
+            if artifact_id:
+                sql += " AND parent_artifact_id=?"
+                params.append(artifact_id)
+            sql += " ORDER BY created_at DESC,id DESC LIMIT 100"
+            return {
+                "reissues": [
+                    self._reissue_view(row) for row in conn.execute(sql, tuple(params)).fetchall()
+                ],
+                "note": "补导批次只追加；对方结果仍以返回文件或登记证据为准",
+            }
+
+    def download_reissue(self, actor, book_id, reissue_id):
+        with self.db.transaction(actor=actor) as conn:
+            self._scope(conn, actor, book_id)
+            row = conn.execute(
+                "SELECT * FROM bridge_reissue_batches WHERE id=? AND book_id=? AND firm_id=?",
+                (reissue_id, book_id, actor.firm_id),
+            ).fetchone()
+            if not row:
+                raise AccountingError("补导批次不存在或无权访问", 404)
+            content = row["content"]
+            return {
+                "filename": f"tplus54-reissue-{row['content_sha256'][:12]}.csv",
+                "media_type": "text/csv; charset=utf-8",
+                "content": content.encode("utf-8") if isinstance(content, str) else bytes(content),
+                "content_sha256": row["content_sha256"],
+                "voucher_count": int(row["voucher_count"]),
+            }
 
     def list_returns(self, actor, book_id, artifact_id):
         with self.db.transaction(actor=actor) as conn:

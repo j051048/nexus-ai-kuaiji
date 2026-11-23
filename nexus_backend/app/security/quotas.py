@@ -193,6 +193,24 @@ class QuotaService:
             )
         return quota
 
+    def ensure_concurrent(self, conn, actor: Actor, in_flight: int, adding: int = 1) -> Quota:
+        """在途并发任务守卫。
+
+        接在异步入队入口：`in_flight` 是该企业当前排队/运行中的任务数，
+        超限即 429，绝不先落库再回滚（避免半批数据）。
+        """
+        quota = self._quota_on(conn, actor)
+        if in_flight + adding > quota.concurrent_requests:
+            self._refuse(
+                actor, "concurrent_requests", in_flight + adding, quota.concurrent_requests
+            )
+            raise AccountingError(
+                f"本单位当前在途任务 {in_flight} 个，上限 {quota.concurrent_requests} 个；"
+                "请等待已有任务完成或申请提高并发配额",
+                status=_STATUS["concurrent_requests"],
+            )
+        return quota
+
     # -- internals -----------------------------------------------------
     def _quota_on(self, conn, actor: Actor) -> Quota:
         row = conn.execute(

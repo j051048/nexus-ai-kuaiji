@@ -18,6 +18,7 @@ from fastapi import APIRouter, Depends, Request
 
 from .accounting.access import AccessControl
 from .accounting.domain import AccountingError
+from .security.quotas import QuotaService
 from .accounting.service import now
 from .business.storage import MAX_FILE_BYTES, validate_attachment
 from .upload_bindings import reference, resolve_target
@@ -109,6 +110,10 @@ class UploadIntentService:
         ).isoformat()
         with self.db.transaction(write=True, actor=actor) as conn:
             self.access.require_user(conn, actor.user_id)
+            # 配额（Batch 07）：原件容量在同一个写事务里核验，超限 413 且不留意图行。
+            QuotaService(self.db, self.access).ensure_storage(
+                conn, actor, self._stored_bytes(conn, actor.firm_id), request.size_bytes
+            )
             conn.execute(
                 "INSERT INTO upload_intents(id,firm_id,user_id,purpose,filename,media_type,size_bytes,"
                 "sha256,storage_key,state,created_at,expires_at,consumed_ref) "
@@ -135,6 +140,15 @@ class UploadIntentService:
             "expires_at": expires_at,
             "max_bytes": MAX_FILE_BYTES,
         }
+
+    @staticmethod
+    def _stored_bytes(conn, firm_id) -> int:
+        row = conn.execute(
+            "SELECT COALESCE(SUM(size_bytes),0) FROM upload_intents "
+            "WHERE firm_id=? AND state<>'discarded'",
+            (firm_id,),
+        ).fetchone()
+        return int(row[0])
 
     def _owned(self, conn, actor, upload_id):
         if not isinstance(upload_id, str) or not re.fullmatch(r"[0-9a-f]{32}", upload_id):

@@ -51,6 +51,10 @@ type Overview = {
     result_summary: 'not_exported' | 'result_unknown' | 'received' | 'partial' | 'posted';
     partial_failure: boolean;
     result_unknown: boolean;
+    mapping_changed?: boolean;
+    mapping_version?: number;
+    current_mapping_version?: number | null;
+    confirmation_required?: boolean;
   }[];
   formal_book: {
     system: 'unassessed' | 'local' | 'external';
@@ -82,6 +86,7 @@ type ReturnRow = {
   actual_cents: number | null;
   expected_accounts: string[];
   actual_accounts: string[];
+  voided_after_export?: boolean;
   handled?: boolean;
   handler?: {
     action: string;
@@ -954,6 +959,14 @@ export function IntegrationWorkbench({
                 {row.result_unknown && (
                   <span className="integration-offline">尚无对方结果，不自动重发</span>
                 )}
+                {row.mapping_changed && (
+                  <span className="integration-offline">
+                    映射已变更（导出用 v{row.mapping_version}，当前 v{row.current_mapping_version}）
+                    {row.confirmation_required
+                      ? '，需确认后重新导出，不能直接登记接收'
+                      : '，已接收批次不受影响'}
+                  </span>
+                )}
                 {row.partial_failure && (
                   <span className="integration-offline">部分失败，请逐笔核对</span>
                 )}
@@ -1202,7 +1215,14 @@ export function IntegrationWorkbench({
                                         : `¥${(item.actual_cents / 100).toFixed(2)}`}
                                     </td>
                                     <td data-label="过账日期">{item.posted_date ?? '未提供'}</td>
-                                    <td data-label="原因">{item.reason || '—'}</td>
+                                    <td data-label="原因">
+                                      {item.reason || '—'}
+                                      {item.voided_after_export ? (
+                                        <span className="integration-offline">
+                                          导出后已冲销，须按冲销后的凭证重新核对
+                                        </span>
+                                      ) : null}
+                                    </td>
                                     <td data-label="处置">
                                       {item.handled ? (
                                         <span>

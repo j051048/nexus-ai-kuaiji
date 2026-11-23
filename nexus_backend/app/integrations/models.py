@@ -82,6 +82,13 @@ class BridgeReturnImport(InputModel):
     content: StrictStr = Field(min_length=1, max_length=2_000_000)
 
 
+class BridgeReissueCreate(InputModel):
+    """受控子集补导：只为确认失败的凭证生成新一批文件。"""
+
+    idempotency_key: StrictStr = Field(min_length=1, max_length=100)
+    reason: StrictStr = Field(min_length=3, max_length=1000)
+
+
 class BridgeManualReturn(InputModel):
     batch_code: StrictStr = Field(min_length=1, max_length=100)
     received: bool
