@@ -57,6 +57,7 @@ def _handle(bridge, book_id, artifact_id, result):
         row["voucher_code"],
         BridgeReturnRowHandle(
             action="resolved",
+            reason_code="amount_mismatch",
             reason="已与客户确认差额并留痕",
             evidence_ref="synthetic://return/workspace-handle-1",
         ),

@@ -242,6 +242,80 @@ class FinancialBridgeService:
         ).fetchone()
 
     @staticmethod
+    def _mapping_state(conn, ledger_id, outbox_row, *, already_received: bool = False) -> dict:
+        """导出后科目映射是否已变更（PLT05-C）。
+
+        只比对配置版本，不做金额/科目推断：版本没变就说明映射没变；
+        已导出未接收且版本变了就必须由人确认，不能悄悄拿旧文件当新映射的证据；
+        已接收的批次不受影响，但版本差异仍常驻可查。
+        """
+        config = FinancialBridgeService._configuration(conn, ledger_id)
+        current = int(config["version"]) if config else None
+        frozen = int(outbox_row["configuration_version"])
+        changed = current != frozen
+        return {
+            "mapping_changed": changed,
+            "mapping_version": frozen,
+            "current_mapping_version": current,
+            "confirmation_required": bool(changed and not already_received),
+        }
+
+    @staticmethod
+    def _assert_mapping_valid_for_receipt(conn, intent, book_id) -> None:
+        state = FinancialBridgeService._external_state(conn, intent["id"], book_id)
+        already_received = state["statuses"]["received"]["at"] is not None
+        mapping = FinancialBridgeService._mapping_state(
+            conn, intent["ledger_id"], intent, already_received=already_received
+        )
+        if mapping["confirmation_required"]:
+            raise AccountingError(
+                "导出后科目映射已变更（导出用版本 "
+                f"{mapping['mapping_version']}，当前 {mapping['current_mapping_version']}）："
+                "请先确认映射变化并重新准备导出，不能直接登记接收",
+                409,
+            )
+
+    @staticmethod
+    def _voided_draft_ids(conn, book_id) -> dict:
+        """已被冲销的草稿 → 冲销凭证 id（PLT05-C：导出后被冲销的那笔要标出来）。"""
+        return {
+            row["source_id"]: row["voucher_id"]
+            for row in conn.execute(
+                "SELECT vs.source_id,rel.related_voucher_id AS voucher_id "
+                "FROM voucher_sources vs "
+                "JOIN voucher_relations rel ON rel.original_voucher_id=vs.voucher_id "
+                "AND rel.kind='reversal' "
+                "JOIN drafts d ON d.id=vs.source_id AND d.book_id=? "
+                "WHERE vs.source_kind='draft'",
+                (book_id,),
+            ).fetchall()
+        }
+
+    @staticmethod
+    def _draft_by_voucher_code(conn, artifact_id, book_id) -> dict:
+        artifact = conn.execute(
+            "SELECT * FROM bridge_export_artifacts WHERE id=? AND book_id=?",
+            (artifact_id, book_id),
+        ).fetchone()
+        if not artifact:
+            return {}
+        outbox = conn.execute(
+            "SELECT package_json FROM bridge_outbox WHERE id=?", (artifact["outbox_id"],)
+        ).fetchone()
+        if not outbox:
+            return {}
+        raw = outbox["package_json"]
+        package = raw if isinstance(raw, dict) else json.loads(raw)
+        mapping: dict[str, str] = {}
+        for item in package.get("vouchers", []):
+            code = str(item.get("external_code") or "")
+            draft_id = item.get("draft_id")
+            if code and draft_id:
+                mapping[code] = draft_id
+                mapping[f"T54-{code}"] = draft_id
+        return mapping
+
+    @staticmethod
     def _is_manual_return(row) -> bool:
         raw = row["content"]
         if isinstance(raw, memoryview):
@@ -882,7 +956,17 @@ class FinancialBridgeService:
             ).fetchone()
             if not row:
                 raise AccountingError("交付意图不存在或无权访问", 404)
-            return {**self._outbox(row), **self._external_state(conn, intent_id, book_id)}
+            external_state = self._external_state(conn, intent_id, book_id)
+            return {
+                **self._outbox(row),
+                **self._mapping_state(
+                    conn,
+                    row["ledger_id"],
+                    row,
+                    already_received=external_state["statuses"]["received"]["at"] is not None,
+                ),
+                **external_state,
+            }
 
     def _frozen_package(self, conn, actor, book_id, outbox_row):
         package = json.loads(outbox_row["package_json"])
@@ -1067,6 +1151,7 @@ class FinancialBridgeService:
             if not intent:
                 raise AccountingError("交付意图不存在或无权访问", 404)
             package = self._frozen_package(conn, actor, book_id, intent)
+            self._assert_mapping_valid_for_receipt(conn, intent, book_id)
             current, _, _ = tplus54.render(package)
             if tplus54.content_hash(current) != artifact["content_sha256"]:
                 raise AccountingError("来源或冻结清单已变化，不能接纳旧文件回执", 409)
@@ -1253,6 +1338,10 @@ class FinancialBridgeService:
 
     @staticmethod
     def _return_view(conn, row):
+        draft_by_code = FinancialBridgeService._draft_by_voucher_code(
+            conn, row["artifact_id"], row["book_id"]
+        )
+        voided = FinancialBridgeService._voided_draft_ids(conn, row["book_id"])
         rows = [
             {
                 "voucher_code": item["voucher_code"],
@@ -1264,6 +1353,11 @@ class FinancialBridgeService:
                 "actual_cents": item["actual_cents"],
                 "expected_accounts": json.loads(item["expected_accounts_json"] or "[]"),
                 "actual_accounts": json.loads(item["actual_accounts_json"] or "[]"),
+                "voided_after_export": bool(
+                    draft_by_code.get(item["voucher_code"]) in voided
+                    if item["voucher_code"]
+                    else False
+                ),
                 "handled": handler is not None,
                 "handler": (
                     {
@@ -1426,6 +1520,7 @@ class FinancialBridgeService:
             if request.batch_code.strip() != str(intent["external_code"]):
                 raise AccountingError("批次标识与冻结交付批次不一致，拒绝登记", 422)
             package = self._frozen_package(conn, actor, book_id, intent)
+            self._assert_mapping_valid_for_receipt(conn, intent, book_id)
             current, _, _ = tplus54.render(package)
             if tplus54.content_hash(current) != artifact["content_sha256"]:
                 raise AccountingError("来源或冻结清单已变化，不能接纳旧返回文件", 409)
@@ -1587,6 +1682,7 @@ class FinancialBridgeService:
             if request.batch_code.strip() != intent["external_code"]:
                 raise AccountingError("批次标识与冻结交付包不一致", 422)
             package = self._frozen_package(conn, actor, book_id, intent)
+            self._assert_mapping_valid_for_receipt(conn, intent, book_id)
             current, _, _ = tplus54.render(package)
             if tplus54.content_hash(current) != artifact["content_sha256"]:
                 raise AccountingError("来源或冻结清单已变化，不能登记旧交付结果", 409)

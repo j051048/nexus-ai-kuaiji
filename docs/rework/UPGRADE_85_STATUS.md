@@ -919,3 +919,69 @@
    - `nexus_backend/migrations/postgres/323_b06_industry_drafts.sql` 补齐 6 条外键约束，将 `SELECT`/`INSERT` RLS 策略收紧至 `firm_id=actor_firm() AND company_visible(company_id)` + `book_allowed(book_id)` / `book_review_allowed(book_id)`，并补齐 `fsc_industry_drafts_append_only` 禁改禁删触发器（与 SQLite `230` 对齐）。
    - 已应用至远端生产库并实测验证：`total_migrations=310`、`latest_version=323`、`checksum=9dd47a92bbfc9d1d201e4283fa7be5dc3966933d1dbcdee0cf57f8db80fb9ff4`、`rls_enabled=true`、`force_rls=true`、`policy_count=2`、`trigger_count=2`、`fk_count=6`、`accounting_app` 仅具 `SELECT/INSERT`（禁 `UPDATE/DELETE`）。
 
+
+## Step 3b-2 · PLT05-C/D/E（部分完成，诚实边界如下）
+
+- 工程状态：**部分完成**（映射变更拦截与冲销标注已交付并通过测试；**补导未实现**，原因见下）
+- 外部状态：无需外部
+- 与提示词要求的差异：**补导（只重发失败凭证）本轮未交付**、`ROUNDTRIP_RUNBOOK.md` 未写、前端未新增标记；其余已按现有点位核对后交付
+
+### 已交付：PLT05-C 映射变更（`mapping_changed`）
+
+- `app/integrations/service.py` 新增 `_mapping_state(conn, ledger_id, outbox_row)`：只比对 `bridge_configurations` 当前版本与导出时冻结的 `configuration_version`，不做金额/科目推断。
+- `get_outbox()` 返回 `mapping_changed / mapping_version / current_mapping_version / confirmation_required`；**已导出未接收**时 `record_receipt()` 直接 409「导出后科目映射已变更（导出用版本 N，当前 M）：请先确认映射变化并重新准备导出，不能直接登记接收」；已接收批次不受影响，变更仍可查（版本字段常驻）。
+- 测试 `nexus_backend/tests/test_plt05_export_change_guards.py::test_mapping_change_after_export_blocks_receipt_and_stays_visible`：导出后 `mapping_changed=False` → 重新核定映射（版本 1→2）→ `mapping_changed=True`、`confirmation_required=True`、`mapping_version=1 / current=2`、`statuses.received/posted` 仍为 `None`、`result_unknown=True`（**只导出不会被读成已接收/已过账**）→ 直接登记接收被拒且文案含「映射已变更」「不能直接登记接收」。
+
+### 已交付：PLT05-C 导出后被冲销凭证标注
+
+- 新增 `_voided_draft_ids(conn, book_id)`（`drafts → voucher_sources(source_kind='draft') → vouchers → voucher_relations(kind='reversal')`）与 `_draft_by_external_code(conn, artifact_id, book_id)`（从冻结包的 `vouchers[].external_code → draft_id` 反查）；`_return_view()` 的逐笔行新增 `voided_after_export`，核对时可直接看到「这笔在导出后被冲销」。
+- 测试 `test_voided_draft_annotation_query_contract`：用最小内存库验证只认「导出草稿 → 正式凭证 → 反向冲销」这条链，`adjustment` 不算冲销、另一账套的草稿不会被串进来。
+- **诚实边界**：该标注的 True 分支目前只有查询级单测，没有端到端夹具（既有 tplus 夹具只走到「草稿已审核并导出」，没有已记账凭证可冲销）；端到端断言需要一个「已记账 + 已导出 + 已冲销」的夹具，留给下一轮。
+
+### 未交付：PLT05-C 补导（只重发失败凭证），及为什么不能在本轮硬做
+
+`bridge_outbox` 的两个唯一约束与冻结清单守卫堵死了服务层的子集补导：
+
+1. `bridge_outbox.export_id TEXT NOT NULL UNIQUE`——一次导出（delivery export）只能对应一份交付意图，补导必须新建第二份意图；
+2. `bridge_outbox.external_code TEXT NOT NULL UNIQUE`——同一导出的外部编号也会撞；
+3. `accounting.bridge_scope_guard()` 在写入时按冻结清单逐条校验 `vouchers` 行与映射，**子集包会直接违反守卫**。
+
+因此补导必须先做一次结构性迁移（放宽 `export_id` 唯一性为 `(export_id, reissue_seq)` 或引入 `reissue_of`/`root_export_id` 并相应改写 `bridge_scope_guard`，同时同步 SQLite 侧与 RLS/写门/外键），属于「改安全守卫」级别的工作，不适合在上下文余量不足时开工。**下一轮起点**：新建 PG `324` / SQLite `231`，把上述三项落成迁移 + 守卫改写 + `reissue()` 服务方法（只收 `bridge_return_rows.status IN ('rejected','missing','amount_mismatch','account_mismatch')` 且未被 `bridge_return_row_handlers` 处置为 `resolved` 的凭证编码；重走前实时重验 `_scope(write=True)` 权限、`_frozen_package` 指纹与 `mapping_changed`；`result_unknown` 一律 409），并补「新批次引用原批次且不含已成功凭证」的断言。
+
+### PLT05-D 核对结论（无需重复造轮子）
+
+- 现有 `src/IntegrationWorkbench.tsx` 已按三个独立事实显示：`对方已接收 · 日期`、`对方已过账 · 日期`、`人工声明已过账（未逐笔核对）`，并在 `result_unknown` 时显示「尚无对方结果，不自动重发」；逐笔差异清单与处置入口（`bridge_return_row_handlers`）已存在。
+- 「仅导出不得显示成已入账/已过账」由既有 `test_plt05_external_states.py` 逐状态断言（本轮一并回归通过）。**因此 PLT05-D 本轮未改前端**，避免重复实现与触碰 `homeCss` 余量（仅 285B）。
+- 未做的 D 残余：把本轮新增的 `mapping_changed` / `voided_after_export` 显示到工作台（属小改，需复用 `integration-*` 既有类）。
+
+### PLT05-E（未交付）
+
+`docs/pilot/ROUNDTRIP_RUNBOOK.md` 未写。起点已定：客户待确认清单（哪套系统是正式账、谁导入谁过账、哪份结果是最终依据、对方能导出什么格式）、测试账套联调步骤（导出 → 客户导入 → 取回结果 → 逐笔核对，每步记人/时间/文件摘要）、四类必演练情形（重复导入、部分失败、映射变更、无结果）、格式差异记录法；状态最高写「工具就绪待客户输入」。
+
+### 顺带修复（既有红测）
+
+- `nexus_backend/tests/test_plt05_return_workspace.py` 构造 `BridgeReturnRowHandle` 时缺必填 `reason_code`（PLT05-B 加字段后遗留），补 `reason_code="amount_mismatch"`；该文件 **3 passed**。
+
+### Step 3b-2 门禁（真实输出）
+
+| 命令 | 结果 |
+| --- | --- |
+| `pytest test_plt05_export_change_guards.py test_plt05_external_states.py` | **7 passed** |
+| `pytest -k "plt05 or integrations or bridge or tplus"` | **61 passed, 19 skipped, 3 errors**（error 均为无 PG DSN 的 `test_c01_remaining_postgres.py` 夹具，环境性） |
+| `check_migration_idempotency.py` / `check_secrets.py` | exit 0 / `no secrets found` |
+| `uvx ruff==0.17.0 check` / `format --check nexus_backend/app services/api_gateway scripts` | `All checks passed!` / `467 files already formatted` |
+
+## Step 4 精确起点（未开始，按序执行）
+
+1. **4a Batch 02**：`src/WorkspaceContextBar.tsx` 切换单位/期间接入未保存离开拦截（复用 `requestConfirm`，禁新增 `window.confirm`）与在途请求中止/序号防串数；逐页清理与顶部重复的月份输入并出清单；E2E 覆盖延迟响应防串数、锁期二次确认、`A` 键 400ms 防误触。
+2. **4b Batch 07**：`QuotaService.ensure_daily_jobs`（异步入队）、`ensure_storage`（原件上传）、`ensure_concurrent`（请求级）三条接线，保持「事务内校验 + 结构化告警日志、不写回滚审计表」。
+3. **4c Batch 08**：`app/observability/alerting.py`（Webhook/钉钉/企业微信负载、指纹去重、静默窗口、退避重试，全部本地桩）+ `docs/ops/PRODUCTION_RUNBOOK.md`。
+4. 红线提醒：`AccessControl.book()` 保持单条 SELECT；每步跑 `test_stage25_assistant_efficiency.py` 与 `test_stage19_request_reads.py`。
+
+### Step 3b-2（第一块）独立验收加固（封账基线）
+
+1. **堵死映射变更拦截旁路（`nexus_backend/app/integrations/service.py`）**：抽统一守卫 `_assert_mapping_valid_for_receipt()`，将未接收批次的映射变更 409 拦截同步覆盖至 `record_receipt()`、`record_return()`、`record_manual_return()` 三条接收入口；同时依据 `_external_state()["statuses"]["received"]["at"]` 判定已接收状态，确保已接收批次在后续变更映射时 `mapping_changed=True` 常驻可查但 `confirmation_required=False`、不受影响。
+2. **修复 `voided_after_export` 永远为 `False` 的键列错配**：`_return_view()` 原先拿对方外部凭证号 `item["external_code"]` 去查冻结包哈希字典导致永不命中；已改为 `_draft_by_voucher_code()`（兼容 PG `JSONB`/`TEXT` 并同时映射原编码与 `T54-{code}`），并用 `item["voucher_code"]` 精准匹配。
+3. **补齐端到端回归测试（`nexus_backend/tests/test_plt05_export_change_guards.py`）**：新增 `record_return` / `record_manual_return` 映射变更 409 拦截、已接收后变更映射保持已接收且 `confirmation_required=False`、以及走真实 `PostingService.post_draft` + `reverse_reviewed` 独立复核反向冲销后经 `bridge.list_returns()` 端到端断言 `voided_after_export=True`（原“无端到端夹具”的诚实边界已补齐）。
+4. **PLT05-C 补导方案拍板**：**禁止修改或放宽现有 `bridge_outbox` 唯一约束及 `bridge_scope_guard()` 触发器**；下一轮新建独立只追加子集补导表 `bridge_reissue_batches`（PG `324` / SQLite `231`，含 `FORCE RLS`、`batch2_company_write_gate`、外键绑定父交付包与父导出文件、append-only 触发器），仅抽取失败/差异且未 `resolved` 的凭证子集并复用 `tplus54.render` 生成补导 CSV，实现零削弱旧守卫的受控补导闭环。
+
