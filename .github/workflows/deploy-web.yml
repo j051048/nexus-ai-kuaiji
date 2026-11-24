@@ -39,6 +39,7 @@ jobs:
         run: tar -czf dist.tar.gz -C dist .
 
       - name: Upload & deploy to Coolify host
+        id: deploy
         env:
           SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           SSH_HOST: ${{ secrets.DEPLOY_HOST }}
@@ -53,6 +54,7 @@ jobs:
           scp -i ~/.ssh/id_deploy -o StrictHostKeyChecking=yes dist.tar.gz "$SSH_USER@$SSH_HOST:/tmp/kuaiji-dist.tar.gz"
 
           TAG="$(date +%Y%m%d-%H%M%S)"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           ssh -i ~/.ssh/id_deploy -o StrictHostKeyChecking=yes "$SSH_USER@$SSH_HOST" \
             "sudo /data/kuaiji-build/deploy.sh $TAG"
 
@@ -66,3 +68,28 @@ jobs:
             sleep 15
           done
           echo "health check failed"; exit 1
+
+      # 部署是异步的，/api/health 200 可能还是旧容器在响应，必须核对镜像 tag
+      - name: Verify shipped image tag
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          SSH_HOST: ${{ secrets.DEPLOY_HOST }}
+          SSH_USER: ${{ secrets.DEPLOY_USER }}
+          APP_UUID: pncfvk346jz2qzam9gzvnnml
+          TAG: ${{ steps.deploy.outputs.tag }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+          echo "expecting tag: $TAG"
+          for i in $(seq 1 8); do
+            IMG=$(ssh -i ~/.ssh/id_deploy -o StrictHostKeyChecking=yes "$SSH_USER@$SSH_HOST" \
+              "sudo docker ps --filter name=$APP_UUID --format '{{.Image}}'")
+            echo "attempt $i -> $IMG"
+            case "$IMG" in *"$TAG"*) echo "shipped: $IMG"; exit 0 ;; esac
+            sleep 15
+          done
+          echo "new image tag $TAG never came up"; exit 1
