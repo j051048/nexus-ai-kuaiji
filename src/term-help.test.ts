@@ -65,7 +65,8 @@ describe('V07 术语在原操作附近解释，不形成新业务入口', () => 
       expect(render('payment_status')).toContain('员工垫付');
       expect(render('payment_status')).toContain('企业是否已付款');
       expect(render('debit_credit')).toContain('不能直接当成收入和支出');
-      expect(render('debit_credit')).toContain('虚构示例');
+      expect(render('debit_credit')).toContain('例如：');
+      expect(render('debit_credit')).not.toContain('虚构示例');
       expect(render('export_receipt')).toContain('不代表外部财务软件已接收');
       expect(render('export_receipt')).toContain('结果未知');
       expect(render('draft')).toContain('不代表已记账');

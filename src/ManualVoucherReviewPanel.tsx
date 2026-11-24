@@ -4,7 +4,13 @@ import { moneyToCents } from './csv';
 import type { Session } from './types';
 import './review-policy.css';
 import { reviewModeLabel } from './review-policy';
+import { QuickPhraseChips } from './QuickPhraseChips';
 import type { CorrectionSeed } from './voucher-correction';
+
+const MANUAL_REVIEW_PHRASES = [
+  '已核对原始附件与借贷科目，同意入账',
+  '已核对金额、摘要及辅助核算，复核通过',
+] as const;
 import {
   manualCanReview,
   parseManualReviewList,
@@ -552,6 +558,15 @@ function ManualReviewContentPanel({ session, bookId, companyId, correction }: Pr
                   }
                 />
               </label>
+              {item.mode !== 'single_operator' && (
+                <QuickPhraseChips
+                  label="常用审核说明"
+                  phrases={MANUAL_REVIEW_PHRASES}
+                  value={reviewReason[item.id] || ''}
+                  disabled={busy}
+                  onSelect={(phrase) => setReviewReason((old) => ({ ...old, [item.id]: phrase }))}
+                />
+              )}
               <button
                 className="button secondary"
                 disabled={

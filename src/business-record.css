@@ -33,6 +33,24 @@
 .business-original-preview .inline-document-frame iframe {
   min-height: 300px;
 }
+.business-digest-fold {
+  margin-top: var(--space-1);
+}
+.business-digest-fold > summary {
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+}
+.business-digest-fold > code {
+  display: block;
+  margin-top: var(--space-1);
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--surface-subtle);
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  overflow-wrap: anywhere;
+}
 @media (max-width: 740px) {
   .business-record-link-actions .button,
   .business-original-preview > .button {

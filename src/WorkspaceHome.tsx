@@ -427,6 +427,7 @@ export function WorkspaceHome({
   const role = presentationRole(profile);
   const employee = role === 'employee';
   const finance = role === 'finance';
+  const manager = role === 'manager';
   const professional = finance || role === 'accountant' || role === 'reviewer';
   const copy = roleHome(role);
   const guide = profile ? roleHomeGuide(profile) : null;
@@ -435,6 +436,8 @@ export function WorkspaceHome({
     ['manager', 'finance', 'accountant', 'reviewer', 'firm_owner', 'admin'].includes(role)
       ? (profile.briefings ?? [])
       : [];
+  const visibleBriefings = briefings.filter((item) => !company || item.company_id === company);
+  const latestBriefing = visibleBriefings[0] ?? null;
   const visibleValue =
     dataScope.current === session.scope_key && dataFilter.current === filterKey ? value : null;
   const rows = visibleValue?.tasks ?? [];
@@ -644,6 +647,71 @@ export function WorkspaceHome({
               </button>
             )}
           </div>
+        </section>
+      )}
+      {manager && profile && !profileError && (
+        <section className="workspace-primary-manager" aria-label="企业经营与交付速览">
+          <div className="workspace-manager-head">
+            <div>
+              <h2>本月经营与财务简报</h2>
+              <p>
+                {latestBriefing
+                  ? `${latestBriefing.company_name} · ${latestBriefing.period} 财务简报已发布，可直接查看收支概览与月度资料包。`
+                  : '会计正在核算本期账务；报表经独立复核并发布后，将在这里展示经营收支与待签收资料包。'}
+              </p>
+            </div>
+            <div className="workspace-primary-actions">
+              {latestBriefing && onBriefing && (
+                <button
+                  type="button"
+                  className="button primary"
+                  disabled={locked}
+                  onClick={() => onBriefing(latestBriefing)}
+                >
+                  查看 {latestBriefing.period} 财务简报
+                  <ArrowRight size={15} />
+                </button>
+              )}
+              {onMaterials && (
+                <button
+                  type="button"
+                  className="button secondary"
+                  disabled={locked}
+                  onClick={onMaterials}
+                >
+                  查看月度资料清单
+                </button>
+              )}
+            </div>
+          </div>
+          <dl className="workspace-manager-metrics">
+            <div>
+              <dt>财务简报</dt>
+              <dd>
+                {visibleBriefings.length ? `${visibleBriefings.length} 期已发布` : '会计核算中'}
+              </dd>
+            </div>
+            <div>
+              <dt>待我确认</dt>
+              <dd>
+                {visibleValue?.counts.action != null
+                  ? `${visibleValue.counts.action} 项`
+                  : error
+                    ? '暂不可用'
+                    : '读取中'}
+              </dd>
+            </div>
+            <div>
+              <dt>服务办理中</dt>
+              <dd>
+                {visibleValue?.counts.waiting != null
+                  ? `${visibleValue.counts.waiting} 项`
+                  : error
+                    ? '暂不可用'
+                    : '读取中'}
+              </dd>
+            </div>
+          </dl>
         </section>
       )}
       <section className="workspace-summary" aria-label="我的工作概览">

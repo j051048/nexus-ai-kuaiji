@@ -97,7 +97,25 @@
 .admin-shell > .account-identity {
   padding-inline: max(24px, calc((100vw - 1240px) / 2));
 }
+.client-portal > .account-identity {
+  background: var(--surface-subtle);
+  padding-block: 0;
+  font-size: var(--font-size-xs);
+}
+.client-portal > .account-identity summary {
+  min-height: 36px;
+  padding: 2px 0;
+  gap: var(--space-2);
+}
+.client-portal > .account-identity .account-identity-role {
+  padding: 2px 7px;
+  font-weight: var(--weight-medium);
+}
 @media (max-width: 640px) {
+  .client-portal > .account-identity summary {
+    min-height: var(--control-height-touch);
+    padding: 4px 0;
+  }
   .account-identity,
   .admin-shell > .account-identity {
     padding-inline: 14px;

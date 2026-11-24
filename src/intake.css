@@ -167,7 +167,7 @@
 }
 .intake-upload {
   background: var(--surface-subtle);
-  border: 1px dashed var(--control-border);
+  border: 1.5px dashed var(--brand);
   border-radius: var(--radius-md);
   padding: var(--space-5) var(--space-4);
   display: flex;
@@ -176,6 +176,18 @@
   text-align: center;
   gap: var(--space-3);
   color: var(--brand);
+}
+.intake-upload .intake-upload-primary {
+  border-color: var(--brand);
+  background: var(--brand-soft);
+  color: var(--brand);
+  font-weight: var(--weight-strong);
+}
+.intake-field-hint {
+  margin-left: var(--space-2);
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-regular);
+  color: var(--text-muted);
 }
 .intake-upload > strong {
   font-size: var(--font-size-base);

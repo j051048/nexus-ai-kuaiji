@@ -100,4 +100,52 @@ describe('同一展示身份贯通首页和客户门户', () => {
     expect(html).toContain(`<span>${home}</span>`);
     expect(html).toContain(`<span>${action}</span>`);
   });
+
+  it('企业负责人首页无已发布简报时诚实提示会计核算中，有简报时直接提供入口', () => {
+    const pendingHtml = renderToStaticMarkup(
+      createElement(WorkspaceHome, {
+        session,
+        profile: profile('manager'),
+        profileError: '',
+        onRetryProfile: noop,
+        onOpen: noop,
+        onNew: noop,
+        onAccounting: noop,
+        onReview: noop,
+        onBriefing: noop,
+        revision: 0,
+      }),
+    );
+    expect(pendingHtml).toContain('本月经营与财务简报');
+    expect(pendingHtml).toContain('会计核算中');
+
+    const readyProfile: WorkspaceProfile = {
+      ...profile('manager'),
+      briefings: [
+        {
+          book_id: 'book-1',
+          book_name: '2026 年总账',
+          period: '2026-10',
+          company_id: 'company-a',
+          company_name: '虚构企业 A',
+        },
+      ],
+    };
+    const readyHtml = renderToStaticMarkup(
+      createElement(WorkspaceHome, {
+        session,
+        profile: readyProfile,
+        profileError: '',
+        onRetryProfile: noop,
+        onOpen: noop,
+        onNew: noop,
+        onAccounting: noop,
+        onReview: noop,
+        onBriefing: noop,
+        revision: 0,
+      }),
+    );
+    expect(readyHtml).toContain('1 期已发布');
+    expect(readyHtml).toContain('查看 2026-10 财务简报');
+  });
 });

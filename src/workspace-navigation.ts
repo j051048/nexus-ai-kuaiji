@@ -33,7 +33,7 @@ const definitions = {
   review: { label: '跨企业批量复核', hint: '原件与凭证一起核对', gate: 'review' },
   revision: { label: '事实修订与调整', hint: '保留历史并更正事实', gate: 'accounting' },
   messages: { label: '消息', hint: '通知与沟通', gate: 'always' },
-  briefing: { label: '报告', hint: '获授权结果', gate: 'always' },
+  briefing: { label: '报告', hint: '月度财务简报', gate: 'always' },
   admin: { label: '企业与人员管理', hint: '开户、权限与企业资料', gate: 'admin' },
   access: { label: '成员与账套授权', hint: '事务所成员与账套职责', gate: 'access' },
   ingestion: { label: '数据接入', hint: '连接与导入失败', gate: 'operations' },
@@ -103,8 +103,8 @@ const roleCopy: Partial<Record<PresentationRole, Partial<Record<NavigationId, Pa
     cases: { hint: '交付阻塞' },
   },
   viewer: {
-    home: { label: '首页', hint: '获授权事项' },
-    materials: { hint: '获授权资料' },
+    home: { label: '首页', hint: '企业事项' },
+    materials: { hint: '企业资料' },
   },
 };
 

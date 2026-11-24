@@ -12,6 +12,7 @@ import { FeeVariancePanel } from './FeeVariancePanel';
 import { TaxCostBatchPanel } from './TaxCostBatchPanel';
 import { OaSnapshotPanel } from './OaSnapshotPanel';
 import { TaxFPanel } from './TaxFPanel';
+import { QuickPhraseChips } from './QuickPhraseChips';
 import { parseReadiness, type FilingReadiness } from './tax-readiness';
 import type { Session } from './types';
 import { taxEvidence } from './tax-evidence';
@@ -30,6 +31,16 @@ import {
   type TaxWorkpaper,
 } from './tax-workpapers';
 import './tax-workpapers.css';
+
+const TAX_GENERATE_PHRASES = [
+  '已核对本期发票台账与账面科目，生成税务测算底稿',
+  '已核对销项进项发票与税务档案口径，生成底稿',
+] as const;
+
+const TAX_REVIEW_PHRASES = [
+  '已核对发票来源、科目用途及账表差异，复核通过',
+  '已独立复核计税依据与差异说明，同意定稿',
+] as const;
 
 type Props = {
   session: Session;
@@ -456,6 +467,13 @@ function TaxContent({
                     onChange={(e) => setGenerationReason(e.target.value)}
                   />
                 </label>
+                <QuickPhraseChips
+                  label="常用底稿生成说明"
+                  phrases={TAX_GENERATE_PHRASES}
+                  value={generationReason}
+                  disabled={!!busy}
+                  onSelect={setGenerationReason}
+                />
                 <button
                   className="button primary"
                   disabled={!!busy || !supported || !mapped || !!context.blocking_reasons.length}
@@ -528,6 +546,13 @@ function TaxContent({
                         onChange={(e) => setReviewReason(e.target.value)}
                       />
                     </label>
+                    <QuickPhraseChips
+                      label="常用独立复核说明"
+                      phrases={TAX_REVIEW_PHRASES}
+                      value={reviewReason}
+                      disabled={!!busy}
+                      onSelect={setReviewReason}
+                    />
                     <label className="tax-confirm">
                       <input
                         type="checkbox"
@@ -761,9 +786,6 @@ function TaxPaperDetails({ paper: p }: { paper: TaxWorkpaper }) {
       </section>
       <details>
         <summary>查看本版来源证据（{p.lines.length} 行发票）</summary>
-        <p>
-          来源摘要：<code className="tax-digest">{p.source_digest}</code>
-        </p>
         <div className="tax-evidence">
           {evidence.invoices.map((invoice) => (
             <dl key={JSON.stringify([invoice.batch_id, invoice.row_index])}>
@@ -802,16 +824,34 @@ function TaxPaperDetails({ paper: p }: { paper: TaxWorkpaper }) {
                 </dd>
               </div>
               <div>
-                <dt>原件摘要</dt>
-                <dd>{invoice.original_sha256}</dd>
-              </div>
-              <div>
-                <dt>来源行摘要</dt>
-                <dd>{invoice.row_fingerprint}</dd>
+                <dt>存证状态</dt>
+                <dd>已防篡改存证</dd>
               </div>
             </dl>
           ))}
         </div>
+        <details className="tax-tech-digest">
+          <summary>技术校验码（供审计核对）</summary>
+          <p>
+            来源摘要：<code className="tax-digest">{p.source_digest}</code>
+          </p>
+          {evidence.invoices.map((invoice) => (
+            <dl key={`digest:${invoice.batch_id}:${invoice.row_index}`}>
+              <div>
+                <dt>发票 {invoice.number} 原件摘要</dt>
+                <dd>
+                  <code>{invoice.original_sha256}</code>
+                </dd>
+              </div>
+              <div>
+                <dt>来源行摘要</dt>
+                <dd>
+                  <code>{invoice.row_fingerprint}</code>
+                </dd>
+              </div>
+            </dl>
+          ))}
+        </details>
         <p className="field-help">
           这是生成时冻结的证据；复核和导出时会重新检查来源，读取本页不代表来源仍有效。
         </p>

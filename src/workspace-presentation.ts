@@ -49,11 +49,11 @@ const labels: Record<PresentationRole, { name: string; focus: string; action: st
     focus: '先处理本人被退回、待补件和待提交事项。',
     action: '提交业务',
   },
-  approver: { name: '部门审批', focus: '先处理本部门获授权待审批和超期事项。', action: '处理审批' },
+  approver: { name: '部门审批', focus: '先处理本部门待审批和超期事项。', action: '处理审批' },
   finance: { name: '财务核验', focus: '核验资料完整性，再移交会计处理。', action: '核验并移交' },
   manager: {
     name: '企业工作台',
-    focus: '关注获授权财务结果、服务进度和待确认问题。',
+    focus: '查看本月经营结果、财务服务进度和待确认事项。',
     action: '查看报告',
   },
   accountant: {
@@ -159,7 +159,7 @@ export function contextTitle(profile: WorkspaceProfile | null, companyName = '')
   if (role === 'firm_owner') return '全所范围';
   if (role === 'admin') return '系统管理';
   if (contextMode(profile) === 'single_company' && companyName) return companyName;
-  return companyName ? `${companyName}（获授权企业）` : '当前获授权企业';
+  return companyName || '当前企业';
 }
 
 export function canSeeSurface(profile: WorkspaceProfile | null, surface: WorkSurface) {

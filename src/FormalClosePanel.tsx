@@ -5,6 +5,7 @@ import type { Session } from './types';
 import { CloseCheckAction } from './CloseCheckAction';
 import { SubledgerSetupPanel } from './SubledgerSetupPanel';
 import { formatFormalCents } from './formal-books-types';
+import { QuickPhraseChips } from './QuickPhraseChips';
 import {
   canIndependentlyReview,
   parseCloseRows,
@@ -16,6 +17,12 @@ import {
   type ReportRow,
 } from './formal-close-types';
 import './formal-close.css';
+
+const FORMAL_CLOSE_PHRASES = [
+  '已核对原件、银行流水与科目余额，确认办理',
+  '已核对报表勾稽与账实一致性，同意复核通过',
+  '已核对全部月结前置项与凭证，确认锁期',
+] as const;
 
 interface Props {
   session: Session;
@@ -535,6 +542,15 @@ function CloseContent({ session, bookId, period, canReview, companyId, accountLa
               placeholder="说明已核对的原件、金额与本次处理依据"
             />
           </label>
+          {canReview && (
+            <QuickPhraseChips
+              label="常用月结办理说明"
+              phrases={FORMAL_CLOSE_PHRASES}
+              value={reason}
+              disabled={busy}
+              onSelect={setReason}
+            />
+          )}
           <article id="formal-close-report">
             <h3>3. 报表独立复核</h3>
             <label>

@@ -1500,8 +1500,11 @@ export function BusinessWorkspace({
                       <ul>
                         {version.attachment_snapshot.map((attachment) => (
                           <li key={attachment.id}>
-                            {attachment.filename}
-                            <span>SHA-256 {attachment.sha256}</span>
+                            <span>{attachment.filename}</span>
+                            <details className="business-digest-fold">
+                              <summary>原件已存证 · 查看校验码</summary>
+                              <code>SHA-256 {attachment.sha256}</code>
+                            </details>
                           </li>
                         ))}
                       </ul>

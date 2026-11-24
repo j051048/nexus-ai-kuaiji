@@ -7,7 +7,14 @@ import type { BusinessContext } from './business-types';
 import type { Session } from './types';
 import { formatCents } from './money';
 import { expenseSummary } from './access-policy';
+import { QuickPhraseChips } from './QuickPhraseChips';
 import './access-policy.css';
+
+const QUICK_SIGN_PHRASES = [
+  '已核对本月报表与资料，确认收到',
+  '已核对月份与版本，确认签收',
+  '已查收本期全部交付文件',
+] as const;
 
 type PackageRef = {
   id: string;
@@ -27,7 +34,7 @@ export function ClientAccessTools({
 }) {
   const [open, setOpen] = useState(false);
   return (
-    <section className="client-access-tools" aria-label="获授权资料与部门费用">
+    <section className="client-access-tools" aria-label="企业资料与部门费用">
       <details onToggle={(event) => setOpen(event.currentTarget.open)}>
         <summary>我需要签收的资料包</summary>
         {open && <RecipientPackages key={session.scope_key} session={session} />}
@@ -123,7 +130,7 @@ function RecipientPackages({ session }: { session: Session }) {
       {query.loading ? (
         <p role="status">正在读取待签收资料…</p>
       ) : !query.data?.packages.length ? (
-        <p>当前没有获授权的资料包。请联系本企业负责人或会计确认签收联系人。</p>
+        <p>当前暂无待签收的资料包。如有需要请联系本企业负责人或服务会计。</p>
       ) : (
         <ul>
           {query.data.packages.map((row) => (
@@ -182,6 +189,13 @@ function RecipientPackages({ session }: { session: Session }) {
                           onChange={(event) => setReason(event.target.value)}
                         />
                       </label>
+                      <QuickPhraseChips
+                        label="常用签收说明"
+                        phrases={QUICK_SIGN_PHRASES}
+                        value={reason}
+                        disabled={busy}
+                        onSelect={setReason}
+                      />
                       <button
                         className="button primary"
                         disabled={busy || !confirmed || reason.trim().length < 3}
@@ -255,13 +269,13 @@ function DepartmentExpenseForm({ session }: { session: Session }) {
   return (
     <div>
       <label>
-        获授权部门
+        所属部门
         <select
           aria-label="费用查询部门"
           value={selection}
           onChange={(event) => setSelection(event.target.value)}
         >
-          <option value="">选择获授权部门</option>
+          <option value="">请选择部门</option>
           {choices.map((choice) => (
             <option
               key={choice.department_id}

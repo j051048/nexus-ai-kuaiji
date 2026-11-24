@@ -76,9 +76,7 @@ export function FilingList({
                 <button type="button" className="link-button" onClick={() => void download(row)}>
                   下载原件 {row.attachment.filename}
                 </button>{' '}
-                <span title={row.attachment.sha256}>
-                  SHA-256 {row.attachment.sha256.slice(0, 12)}…
-                </span>
+                <span title={`校验码 SHA-256 ${row.attachment.sha256}`}>原件已防篡改存证</span>
               </p>
             ) : (
               <p className="tax-filing-meta">未绑定回执原件</p>

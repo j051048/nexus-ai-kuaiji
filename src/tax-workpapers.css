@@ -543,3 +543,30 @@
 .tax-workpaper > * {
   min-width: 0;
 }
+.tax-tech-digest {
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md, 8px);
+  background: var(--surface-subtle);
+}
+.tax-tech-digest > summary {
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-medium);
+}
+.tax-tech-digest dl {
+  margin: var(--space-2) 0 0;
+  display: grid;
+  gap: var(--space-1);
+}
+.tax-tech-digest dt {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+.tax-tech-digest dd {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  overflow-wrap: anywhere;
+}

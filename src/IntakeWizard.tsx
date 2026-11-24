@@ -838,14 +838,17 @@ export function IntakeWizard({
             </h3>
             <div className="intake-upload">
               <Upload size={27} />
-              <strong>把发票、收据或业务凭据放在这里</strong>
-              <p>PDF、JPG、PNG、WebP · 单个 {directUploadLimitLabel()}，合计 50 MB</p>
-              <p>数电票 XML 支持本地解析，单份解析上限 1 MB。</p>
+              <strong>先拍照或上传发票，系统帮您自动识别填表</strong>
+              <p>
+                支持电子发票 PDF / 数电票 XML / 手机拍纸质票（单张 {directUploadLimitLabel()}，合计
+                50 MB）
+              </p>
+              <p>数电票 XML 本地解析，单份解析上限 1 MB。</p>
               <div>
                 <button
                   ref={uploadButton}
                   type="button"
-                  className="button secondary"
+                  className="button secondary intake-upload-primary"
                   disabled={accessLost || !!busy || (!direct && !departmentId)}
                   onClick={() => fileInput.current?.click()}
                 >
@@ -1038,7 +1041,10 @@ export function IntakeWizard({
             <div className="business-form-grid">
               <div className="term-field">
                 <label>
-                  <span className="field-label">发生日期</span>
+                  <span className="field-label">
+                    发生日期
+                    <small className="intake-field-hint">消费或业务实际日期</small>
+                  </span>
                   <input
                     type="date"
                     aria-label="发生日期"
@@ -1072,20 +1078,23 @@ export function IntakeWizard({
                   aria-label="事项摘要"
                   value={fields.description}
                   maxLength={500}
-                  placeholder="例如：客户拜访交通费"
+                  placeholder="例如：客户拜访交通费、办公文具采购"
                   disabled={fieldsDisabled}
                   onChange={(event) => field('description', event.target.value)}
                 />
               </label>
               <div className="wide-field term-field">
                 <label>
-                  <span className="field-label">交易对方</span>
+                  <span className="field-label">
+                    交易对方
+                    <small className="intake-field-hint">开票商户或收款方，非报销人本人</small>
+                  </span>
                   <input
                     aria-label="交易对方"
                     aria-describedby={`${fieldHelpId}-counterparty`}
                     value={fields.counterparty}
                     maxLength={200}
-                    placeholder="供应商、客户或实际收款人"
+                    placeholder="填写供应商、开票商户或实际收款方"
                     disabled={fieldsDisabled}
                     onChange={(event) => field('counterparty', event.target.value)}
                   />
@@ -1110,7 +1119,14 @@ export function IntakeWizard({
               ) : (
                 <div className="term-field">
                   <label>
-                    <span className="field-label">企业付款状态</span>
+                    <span className="field-label">
+                      企业付款状态
+                      <small className="intake-field-hint">
+                        {template === 'reimbursement'
+                          ? '员工垫付默认待企业打款'
+                          : '按企业是否已付款选择'}
+                      </small>
+                    </span>
                     <select
                       aria-label="企业付款状态"
                       aria-describedby={`${fieldHelpId}-payment-status`}

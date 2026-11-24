@@ -162,8 +162,8 @@ export function EvidenceViewer({
           {file && (
             <div className="inline-file-meta">
               <strong className="inline-file-name">{file.filename}</strong>
-              <span>
-                {(file.size_bytes / 1024).toFixed(0)} KB · SHA-256 {file.sha256.slice(0, 12)}…
+              <span title={`校验码 SHA-256 ${file.sha256}`}>
+                {(file.size_bytes / 1024).toFixed(0)} KB · 原件已防篡改存证
               </span>
               {visibleUrl && (
                 <a className="text-button" href={visibleUrl} download={file.filename}>

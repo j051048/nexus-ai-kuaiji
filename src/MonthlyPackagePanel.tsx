@@ -25,7 +25,20 @@ import {
   selectPackage,
   type ReadRecovery,
 } from './monthly-package-read';
+import { QuickPhraseChips } from './QuickPhraseChips';
 import './monthly-package.css';
+
+const CLIENT_SIGN_PHRASES = [
+  '已核对本月报表与资料，确认收到',
+  '已核对本月账务资料包，同意签收',
+  '已查收本期财务交付资料',
+] as const;
+
+const ACCOUNTANT_DELIVERY_PHRASES = [
+  '本月账务、报表与原件已核对齐全，冻结交付',
+  '已核对本期正式报表与底稿，准予交付客户',
+  '本期账套已结账并完成报表复核，生成交付包',
+] as const;
 
 type MonthlyPackagePanelProps = {
   session: Session;
@@ -41,7 +54,7 @@ function packageError(failure: unknown, command = false): string {
   if (failure instanceof ApiError && failure.status < 500)
     return readRecovery(failure.status, failure.code).message;
   return command
-    ? '操作结果尚未确认，请重新读取签收状态；不会自动再次提交签收。持续失败请联系本企业获授权会计。'
+    ? '操作结果尚未确认，请重新读取签收状态；不会自动再次提交签收。持续失败请联系本企业服务会计。'
     : readRecovery(failure instanceof ApiError ? failure.status : undefined).message;
 }
 export function MonthlyPackagePanel(props: MonthlyPackagePanelProps) {
@@ -418,7 +431,7 @@ function MonthlyPackageContent({
       {loading && <p role="status">正在检查本月交付条件…</p>}
       {error && (
         <div role="alert" className="inline-error">
-          {error} 请重新检查，或联系本企业获授权会计。
+          {error} 请重新检查，或联系本企业服务会计。
         </div>
       )}
       {trackError && (
@@ -447,7 +460,7 @@ function MonthlyPackageContent({
       )}
       {value && (
         <>
-          <p className="monthly-package-scope">月份 {value.period} · 当前获授权企业</p>
+          <p className="monthly-package-scope">月份 {value.period} · 当前企业</p>
           {!clientOnly &&
             value.permissions.generate &&
             value.contact.user_id &&
@@ -561,6 +574,13 @@ function MonthlyPackageContent({
                   }
                 />
               </label>
+              <QuickPhraseChips
+                label={clientOnly ? '常用签收说明' : '常用交付或签收说明'}
+                phrases={clientOnly ? CLIENT_SIGN_PHRASES : ACCOUNTANT_DELIVERY_PHRASES}
+                value={reason}
+                disabled={!!busy}
+                onSelect={setReason}
+              />
               <label className="monthly-package-check">
                 <input
                   type="checkbox"
