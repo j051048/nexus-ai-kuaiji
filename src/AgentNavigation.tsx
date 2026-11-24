@@ -12,8 +12,10 @@ import {
   LayoutDashboard,
   Menu,
   ShieldCheck,
+  Smartphone,
   X,
 } from 'lucide-react';
+import { isStandalonePwa, openPwaInstallGuide } from './pwa-install-trigger';
 import type { Session } from './types';
 import {
   workspaceNavigation,
@@ -284,6 +286,19 @@ export function AgentNavigation({
             </details>
           )}
         </nav>
+        {!isStandalonePwa() && (
+          <button
+            type="button"
+            className="nav-item"
+            onClick={() => {
+              setMobileOpen(false);
+              openPwaInstallGuide();
+            }}
+          >
+            <Smartphone size={16} aria-hidden="true" />
+            <span>添加到桌面</span>
+          </button>
+        )}
         <div className="agent-sidebar-note">
           <ShieldCheck size={14} />
           <span>原件留存 · 会计复核后导出</span>

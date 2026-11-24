@@ -7,8 +7,10 @@ import {
   LoaderCircle,
   LockKeyhole,
   ShieldCheck,
+  Smartphone,
   TriangleAlert,
 } from 'lucide-react';
+import { isStandalonePwa, openPwaInstallGuide } from './pwa-install-trigger';
 import type { AuthConfig } from './types';
 
 export function AuthScreen({
@@ -152,9 +154,17 @@ export function AuthScreen({
             </button>
           )}
           <p className="auth-footer">中国大陆企业 · 人民币 · 辅助记账验证</p>
-          <Link className="text-button" to={admin ? '/' : '/admin'}>
-            {admin ? '返回工作台登录' : '管理员入口'}
-          </Link>
+          <div className="auth-bottom-links">
+            <Link className="text-button" to={admin ? '/' : '/admin'}>
+              {admin ? '返回工作台登录' : '管理员入口'}
+            </Link>
+            {!isStandalonePwa() && (
+              <button type="button" className="text-button" onClick={openPwaInstallGuide}>
+                <Smartphone size={14} aria-hidden="true" />
+                添加到手机桌面
+              </button>
+            )}
+          </div>
         </div>
       </section>
     </div>

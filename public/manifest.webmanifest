@@ -1,0 +1,52 @@
+{
+  "id": "/workspace/home",
+  "name": "衡账 · 企业财税工作台",
+  "short_name": "衡账",
+  "description": "清晰可核的企业财税协同工作台：拍照报销、审批核验、凭证复核与月度简报。",
+  "lang": "zh-CN",
+  "dir": "ltr",
+  "start_url": "/workspace/home?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "portrait-primary",
+  "background_color": "#f6f8f3",
+  "theme_color": "#183f35",
+  "categories": ["business", "finance", "productivity"],
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "工作台首页",
+      "short_name": "首页",
+      "description": "查看待办事项与本月进度",
+      "url": "/workspace/home?source=pwa-shortcut",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "提交报销与业务",
+      "short_name": "提交报销",
+      "description": "快速拍照上传票据并发起审批",
+      "url": "/workspace/business?source=pwa-shortcut",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    }
+  ]
+}

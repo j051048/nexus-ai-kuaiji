@@ -1,8 +1,17 @@
 import type { ReactNode } from 'react';
-import { FileCheck2, FileText, Home, LogOut, MessageSquareText, PieChart } from 'lucide-react';
+import {
+  FileCheck2,
+  FileText,
+  Home,
+  LogOut,
+  MessageSquareText,
+  PieChart,
+  Smartphone,
+} from 'lucide-react';
 import type { Me, Session } from './types';
 import type { WorkspaceProfile } from './workspace-types';
 import { clientPortalNav } from './workspace-presentation';
+import { isStandalonePwa, openPwaInstallGuide } from './pwa-install-trigger';
 import { AccountIdentity } from './AccountIdentity';
 import './client-portal.css';
 
@@ -94,6 +103,16 @@ export function ClientPortalShell({
                 )}
               </div>
             </details>
+          )}
+          {!isStandalonePwa() && (
+            <button
+              type="button"
+              aria-label="添加到手机桌面"
+              title="添加到手机桌面"
+              onClick={openPwaInstallGuide}
+            >
+              <Smartphone size={16} aria-hidden="true" />
+            </button>
           )}
           <button type="button" aria-label="退出登录" onClick={onLogout}>
             <LogOut size={16} />
