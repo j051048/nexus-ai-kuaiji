@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, ApiError } from './api';
 import { scheduleSubpanel } from './subpanel-scheduler';
 import type { Session } from './types';
@@ -69,32 +69,40 @@ export function PilotBoundaryPanel({
   const base = `/tax/pilot/companies/${encodeURIComponent(companyId)}`;
   const target = readiness?.target;
   const blockers = useMemo(() => deps.filter((d) => d.status === 'unresolved'), [deps]);
+  const loadSequence = useRef(0);
+  const dirtyRef = useRef(false);
 
   async function load(signal?: AbortSignal) {
+    const sequence = ++loadSequence.current;
     setError('');
     try {
       const data = await scheduleSubpanel(
         () => api<Readiness>(`${base}/readiness`, session, { signal }),
         signal,
       );
-      if (signal?.aborted) return;
+      if (sequence !== loadSequence.current || signal?.aborted) return;
       setReadiness(data);
-      if (data.target) {
+      if (data.target && (!signal || !dirtyRef.current)) {
         setMode((data.target.authority_mode as typeof mode) || 'internal');
         setDeps(data.target.dependencies.length ? data.target.dependencies : DEFAULT_CODES);
       }
     } catch (e) {
-      if (signal?.aborted) return;
+      if (sequence !== loadSequence.current || signal?.aborted) return;
       setError(failure(e));
     }
   }
   useEffect(() => {
+    dirtyRef.current = false;
     const controller = new AbortController();
     void load(controller.signal);
-    return () => controller.abort();
+    return () => {
+      loadSequence.current += 1;
+      controller.abort();
+    };
   }, [base, session.scope_key]);
 
   function setDependency(code: string, patch: Partial<Dependency>) {
+    dirtyRef.current = true;
     setDeps((current) => current.map((d) => (d.code === code ? { ...d, ...patch } : d)));
   }
 
@@ -102,19 +110,23 @@ export function PilotBoundaryPanel({
     setBusy('save');
     setError('');
     setNotice('');
+    loadSequence.current += 1;
     try {
-      await api(`${base}/draft`, session, {
-        method: 'POST',
-        body: {
-          expected_version: target?.version ?? 0,
-          config: { authority_mode: mode },
-          dependencies: deps.map(({ code, status, evidence_ref }) => ({
-            code,
-            status,
-            evidence_ref,
-          })),
-        },
-      });
+      await scheduleSubpanel(() =>
+        api(`${base}/draft`, session, {
+          method: 'POST',
+          body: {
+            expected_version: target?.version ?? 0,
+            config: { authority_mode: mode },
+            dependencies: deps.map(({ code, status, evidence_ref }) => ({
+              code,
+              status,
+              evidence_ref,
+            })),
+          },
+        }),
+      );
+      dirtyRef.current = false;
       setNotice('已保存试点草稿；确认前不会生成正式预览。');
       await load();
     } catch (e) {
@@ -129,11 +141,14 @@ export function PilotBoundaryPanel({
     setBusy('confirm');
     setError('');
     setNotice('');
+    loadSequence.current += 1;
     try {
-      await api(`${base}/confirm`, session, {
-        method: 'POST',
-        body: { expected_version: target.version },
-      });
+      await scheduleSubpanel(() =>
+        api(`${base}/confirm`, session, {
+          method: 'POST',
+          body: { expected_version: target.version },
+        }),
+      );
       setNotice('边界已由当前负责人确认。');
       await load();
     } catch (e) {
@@ -147,10 +162,12 @@ export function PilotBoundaryPanel({
     setBusy('preview');
     setError('');
     try {
-      const result = await api<{ id: string; fingerprint: string }>(`${base}/preview`, session, {
-        method: 'POST',
-        body: {},
-      });
+      const result = await scheduleSubpanel(() =>
+        api<{ id: string; fingerprint: string }>(`${base}/preview`, session, {
+          method: 'POST',
+          body: {},
+        }),
+      );
       setPreview(result);
       setNotice('已生成绑定当前确认版本的预览。');
     } catch (e) {
@@ -180,7 +197,13 @@ export function PilotBoundaryPanel({
       )}
       <label>
         业务权威边界
-        <select value={mode} onChange={(e) => setMode(e.target.value as typeof mode)}>
+        <select
+          value={mode}
+          onChange={(e) => {
+            dirtyRef.current = true;
+            setMode(e.target.value as typeof mode);
+          }}
+        >
           <option value="internal">内部核算，暂不交付 T+</option>
           <option value="tplus_voucher">交付 T+ 凭证（需模板）</option>
           <option value="hybrid">混合：内部核算 + T+ 凭证</option>

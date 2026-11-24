@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api, ApiError } from './api';
 import { scheduleSubpanel } from './subpanel-scheduler';
 import type { Session } from './types';
@@ -52,8 +52,10 @@ export function OaSnapshotPanel({
   const [account, setAccount] = useState('6602.02');
   const [amount, setAmount] = useState('');
   const [reason, setReason] = useState('');
+  const loadSequence = useRef(0);
 
   async function load(signal?: AbortSignal) {
+    const sequence = ++loadSequence.current;
     try {
       const [a, b] = await Promise.all([
         scheduleSubpanel(
@@ -70,43 +72,49 @@ export function OaSnapshotPanel({
           signal,
         ),
       ]);
-      if (signal?.aborted) return;
+      if (sequence !== loadSequence.current || signal?.aborted) return;
       setSnapshots(a.items);
       setRequests(b.items);
       setError('');
     } catch (err) {
-      if (signal?.aborted) return;
+      if (sequence !== loadSequence.current || signal?.aborted) return;
       setError(err instanceof ApiError ? err.message : 'OA 快照读取失败');
     }
   }
   useEffect(() => {
     const controller = new AbortController();
     void load(controller.signal);
-    return () => controller.abort();
+    return () => {
+      loadSequence.current += 1;
+      controller.abort();
+    };
   }, [bookId, period]);
 
   async function register() {
     setBusy(true);
     setError('');
+    loadSequence.current += 1;
     try {
-      await api(`/books/${bookId}/oa-snapshots`, session, {
-        method: 'POST',
-        body: {
-          oa_event_id: eventId.trim(),
-          oa_version: Number(version),
-          period,
-          title: title.trim(),
-          approved_by: approvedBy.trim(),
-          approved_at: new Date(approvedAt).toISOString(),
-          lines: [
-            {
-              account_code: account.trim(),
-              amount_cents: cents(amount),
-              description: title.trim(),
-            },
-          ],
-        },
-      });
+      await scheduleSubpanel(() =>
+        api(`/books/${bookId}/oa-snapshots`, session, {
+          method: 'POST',
+          body: {
+            oa_event_id: eventId.trim(),
+            oa_version: Number(version),
+            period,
+            title: title.trim(),
+            approved_by: approvedBy.trim(),
+            approved_at: new Date(approvedAt).toISOString(),
+            lines: [
+              {
+                account_code: account.trim(),
+                amount_cents: cents(amount),
+                description: title.trim(),
+              },
+            ],
+          },
+        }),
+      );
       setEventId('');
       setTitle('');
       setAmount('');
@@ -121,15 +129,18 @@ export function OaSnapshotPanel({
   async function request(snapshot: Snapshot) {
     setBusy(true);
     setError('');
+    loadSequence.current += 1;
     try {
-      await api(`/books/${bookId}/oa-snapshots/material-requests`, session, {
-        method: 'POST',
-        body: {
-          snapshot_id: snapshot.id,
-          title: snapshot.title,
-          reason: reason.trim() || '补交审批依据与原始附件',
-        },
-      });
+      await scheduleSubpanel(() =>
+        api(`/books/${bookId}/oa-snapshots/material-requests`, session, {
+          method: 'POST',
+          body: {
+            snapshot_id: snapshot.id,
+            title: snapshot.title,
+            reason: reason.trim() || '补交审批依据与原始附件',
+          },
+        }),
+      );
       setReason('');
       await load();
     } catch (err) {

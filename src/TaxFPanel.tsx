@@ -363,7 +363,7 @@ export function TaxFPanel({
     setFailure('');
     setNotice('');
     try {
-      await action();
+      await scheduleSubpanel(action);
       setNotice(success);
     } catch (error) {
       setFailure(error instanceof ApiError ? error.message : '操作失败，请重新核对后再试。');

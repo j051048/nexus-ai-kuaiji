@@ -154,6 +154,13 @@ function FormalBooksContent({
     { bookId, companyId, period },
   );
   const [financeOpen, setFinanceOpen] = useState(!!initialFinanceTab);
+  const autoOpenedFinance = useRef(!!initialFinanceTab);
+  useEffect(() => {
+    if (initialFinanceTab && !autoOpenedFinance.current) {
+      autoOpenedFinance.current = true;
+      setFinanceOpen(true);
+    }
+  }, [initialFinanceTab]);
   const [closeOpen, setCloseOpen] = useState(false);
   const taskOpen = financeOpen || closeOpen || manualOpen || setupOpen || legacyOpen;
   function returnToBooks() {
