@@ -172,4 +172,34 @@ describe('集团合并试算底稿视图', () => {
     expect(html).not.toContain('<tfoot>');
     expect(html).not.toContain('80,000.00');
   });
+
+  it('明确区分应报、可见、已开账与已报齐法人，不把档案可见误读成已报齐', () => {
+    const scoped: WorksheetSheet = {
+      ...sheet,
+      scope_summary: {
+        requested_companies: 5,
+        accessible_companies: 5,
+        denied_companies: 0,
+        opened_companies: 4,
+        reported_companies: 2,
+        partial_companies: 1,
+        unopened_companies: [{ company_id: 'c-e', name: '合并戊公司' }],
+        unreported_companies: [
+          {
+            company_id: 'c-a',
+            name: '合并甲公司',
+            reporting_status: 'partial',
+            book_count: 2,
+            reviewed_book_count: 1,
+          },
+        ],
+      },
+    };
+    const html = renderToStaticMarkup(
+      createElement(ConsolidationWorksheetView, { sheet: scoped, error: '', loading: false }),
+    );
+    expect(html).toContain('应报 5 家 / 可见 5 家 / 已开账 4 家 / 已报齐 2 家');
+    expect(html).toContain('本期未开账法人 1 家：合并戊公司');
+    expect(html).toContain('已开账未报齐法人 1 家：合并甲公司（已复核 1/2 套）');
+  });
 });

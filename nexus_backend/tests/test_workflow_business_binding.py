@@ -336,3 +336,201 @@ def test_dual_approval_rejects_same_person_approving_both_department_and_finance
         case.service.approve_finance(case.actors["finance"], event["id"], step["version"])
     assert failure.value.status == 403
     assert "两位不同审批人" in failure.value.detail
+
+
+def test_sqlite_236_upgrades_legacy_db_with_old_business_event_instances(tmp_path, monkeypatch):
+    """旧库含三类历史记录（在办旧 business_event 无 subject_version、已完成、普通在办）可无损升级并续办。"""
+    import sqlite3
+    from app.accounting import database as database_mod
+    from app.accounting.database import Database
+
+    db_path = tmp_path / "legacy_235.db"
+    real_files = database_mod.migration_files
+
+    # 第一步：完全走真实迁移器建一个停留在 235 的旧库。
+    monkeypatch.setattr(
+        database_mod,
+        "migration_files",
+        lambda dialect: [p for p in real_files(dialect) if int(p.name.split("_", 1)[0]) < 236],
+    )
+    Database(str(db_path))
+    monkeypatch.undo()
+
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys=ON")
+    # 写入三类历史流程记录：旧版带 book_id 的 business_event（无 subject_version）、已完成记录、普通记录。
+    conn.execute("INSERT INTO users(id,name,active,email) VALUES('u1','员工甲',1,'u1@test')")
+    conn.execute("INSERT INTO firms(id,name,created_by) VALUES('f1','测试所','u1')")
+    conn.execute("INSERT INTO companies(id,name,tax_id) VALUES('c1','测试公司','t1')")
+    conn.execute("INSERT INTO firm_clients(firm_id,company_id,status) VALUES('f1','c1','active')")
+    conn.execute(
+        "INSERT INTO books(id,firm_id,company_id,name,period) VALUES('b1','f1','c1','2026-11账套','2026-11')"
+    )
+    conn.execute(
+        "INSERT INTO workflow_definitions(id,firm_id,company_id,process_kind,version,status,"
+        "nodes_json,routing_json,content_fingerprint,note,created_by,created_at) "
+        "VALUES('d1','f1','c1','expense_reimbursement',1,'active','[]','{}',?,'','u1','2026-11-01')",
+        ("a" * 64,),
+    )
+    legacy_rows = [
+        ("inst-old-biz", "business_event", "ev-old-1", "running"),
+        ("inst-old-done", "expense_reimbursement", "ev-old-2", "completed"),
+        ("inst-old-open", "expense_reimbursement", "ev-old-3", "running"),
+    ]
+    for iid, stype, sid, status in legacy_rows:
+        conn.execute(
+            "INSERT INTO workflow_instances(id,firm_id,company_id,book_id,definition_id,"
+            "definition_version,process_kind,subject_type,subject_id,amount_cents,current_node,"
+            "path_json,status,suspended_reason,terminal_external_locked,irreversible_reached,"
+            "approvals_json,created_by,created_at,updated_at) "
+            "VALUES(?,'f1','c1','b1','d1',1,'expense_reimbursement',?,?,10000,'finance_review',"
+            "'[\"draft\",\"finance_review\"]',?,'',0,0,'{}','u1','2026-11-01','2026-11-01')",
+            (iid, stype, sid, status),
+        )
+        conn.execute(
+            "INSERT INTO workflow_step_logs(id,firm_id,company_id,instance_id,node_id,action,"
+            "from_node,to_node,actor_user_id,reason,metadata_json,created_at) "
+            "VALUES(?,'f1','c1',?,'draft','start','','finance_review','u1','','{}','2026-11-01')",
+            ("log-" + iid, iid),
+        )
+    conn.commit()
+    conn.close()
+
+    # 执行真实升级（含 236），验证三类旧记录完整保留且不补造历史 subject_version。
+    Database(str(db_path))
+    check = sqlite3.connect(db_path)
+    check.row_factory = sqlite3.Row
+    check.execute("PRAGMA foreign_keys=ON")
+    assert check.execute("PRAGMA foreign_key_check").fetchall() == []
+    rows = {
+        row["id"]: dict(row)
+        for row in check.execute("SELECT * FROM workflow_instances ORDER BY id").fetchall()
+    }
+    assert set(rows) == {"inst-old-biz", "inst-old-done", "inst-old-open"}
+    assert rows["inst-old-biz"]["subject_version"] is None
+    assert rows["inst-old-biz"]["status"] == "running"
+    assert rows["inst-old-done"]["status"] == "completed"
+    assert check.execute("SELECT COUNT(*) FROM workflow_step_logs").fetchone()[0] == 3
+
+    # 升级后：存量单可正常更新完成，新建无 book_id 的业务单必须带 subject_version。
+    check.execute(
+        "UPDATE workflow_instances SET status='completed',updated_at='2026-11-02' WHERE id='inst-old-biz'"
+    )
+    check.execute(
+        "INSERT INTO workflow_instances(id,firm_id,company_id,book_id,definition_id,"
+        "definition_version,process_kind,subject_type,subject_id,subject_version,amount_cents,"
+        "current_node,path_json,status,suspended_reason,terminal_external_locked,"
+        "irreversible_reached,approvals_json,created_by,created_at,updated_at) "
+        "VALUES('inst-new','f1','c1',NULL,'d1',1,'expense_reimbursement','business_event',"
+        "'ev-new',2,50000,'finance_review','[\"draft\",\"finance_review\"]','running','',0,0,"
+        "'{}','u1','2026-11-02','2026-11-02')"
+    )
+    with pytest.raises(sqlite3.IntegrityError):
+        check.execute(
+            "INSERT INTO workflow_instances(id,firm_id,company_id,book_id,definition_id,"
+            "definition_version,process_kind,subject_type,subject_id,subject_version,amount_cents,"
+            "current_node,path_json,status,suspended_reason,terminal_external_locked,"
+            "irreversible_reached,approvals_json,created_by,created_at,updated_at) "
+            "VALUES('inst-bad','f1','c1',NULL,'d1',1,'expense_reimbursement','business_event',"
+            "'ev-bad',NULL,50000,'finance_review','[\"draft\",\"finance_review\"]','running','',0,0,"
+            "'{}','u1','2026-11-02','2026-11-02')"
+        )
+    check.close()
+
+
+def test_handoff_blocks_until_final_multilevel_approver_completes_and_creates_single_draft(bound):
+    """三级审批链：财务审批后尚余最后审批节点时移交必被 409 拦截；终审完成后移交且仅生成 1 笔草稿。"""
+    from app.business.models import HandoffRequest
+    from app.workflow.models import InstanceAction
+
+    case = bound
+    nodes = [
+        {
+            "id": "draft",
+            "label": "提交报销",
+            "role": "creator",
+            "start": True,
+            "edges": [{"to": "manager_review"}],
+        },
+        {
+            "id": "manager_review",
+            "label": "部门主管审批",
+            "role": "manager",
+            "approval": True,
+            "edges": [{"to": "finance_review"}],
+        },
+        {
+            "id": "finance_review",
+            "label": "财务初审",
+            "role": "finance",
+            "approval": True,
+            "edges": [{"to": "director_review"}],
+        },
+        {
+            "id": "director_review",
+            "label": "总经理终审",
+            "role": "reviewer",
+            "approval": True,
+            "terminal": True,
+            "edges": [],
+        },
+    ]
+    _publish(
+        case,
+        changes={
+            "nodes": nodes,
+            "routing": {
+                "auto_approve_below_cents": 0,
+                "dual_approval_from_cents": 500_000,
+                "escalate_after_hours": 24,
+            },
+        },
+    )
+    event = _submitted(case, amount="6000.00")
+    after_dept = case.service.approve_department(case.actors["approver"], event["id"], event["version"])
+    after_fin = case.service.approve_finance(case.actors["finance"], event["id"], after_dept["version"])
+    assert after_fin["status"] == "finance_approved"
+    # 财务只推进了一个节点，流程尚停在总经理终审。
+    mid_inst = _instance(case, after_fin)
+    assert mid_inst["status"] == "running"
+    assert mid_inst["current_node"] == "director_review"
+
+    # 最后一名必要审批人完成前，严禁移交会计！
+    with pytest.raises(AccountingError) as blocked:
+        case.service.handoff(
+            case.actors["finance"],
+            event["id"],
+            HandoffRequest(
+                book_id=case.book["id"],
+                expected_version=after_fin["version"],
+                idempotency_key="handoff-too-early",
+            ),
+        )
+    assert blocked.value.status == 409
+    assert "尚未办结" in blocked.value.detail
+
+    # 总经理（manager 角色）完成终审节点后，工作流进入 completed。
+    done = case.workflow.act(
+        case.manager, mid_inst["id"], InstanceAction(action="approve", reason="终审同意")
+    )
+    assert done["status"] == "completed"
+
+    # 此时才放行移交会计，生成唯一草稿并锁定实例为不可逆终态。
+    receipt = case.service.handoff(
+        case.actors["finance"],
+        event["id"],
+        HandoffRequest(
+            book_id=case.book["id"],
+            expected_version=after_fin["version"],
+            idempotency_key="handoff-after-final",
+        ),
+    )
+    assert receipt["draft_id"]
+    with case.db.transaction(actor=case.manager) as conn:
+        draft_count = conn.execute(
+            "SELECT COUNT(*) FROM business_mappings WHERE event_id=?", (event["id"],)
+        ).fetchone()[0]
+    assert draft_count == 1
+    locked_inst = _instance(case, after_fin)
+    assert locked_inst["irreversible_reached"] == 1 or locked_inst["irreversible_reached"] is True

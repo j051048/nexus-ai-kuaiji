@@ -27,8 +27,10 @@ CREATE TABLE IF NOT EXISTS workflow_instances_n01(
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   CHECK(book_id IS NOT NULL OR subject_type='business_event'),
-  CHECK(NOT (subject_type='business_event' AND (subject_version IS NULL OR subject_version<=0))),
-  CHECK(NOT (subject_type<>'business_event' AND subject_version IS NOT NULL))
+  CHECK(
+    (book_id IS NULL AND subject_type='business_event' AND subject_version IS NOT NULL AND subject_version>0)
+    OR (book_id IS NOT NULL AND (subject_version IS NULL OR (subject_type='business_event' AND subject_version>0)))
+  )
 );
 INSERT INTO workflow_instances_n01(
   id,firm_id,company_id,book_id,definition_id,definition_version,process_kind,subject_type,
@@ -45,7 +47,7 @@ CREATE INDEX IF NOT EXISTS idx_workflow_instance_queue
   ON workflow_instances(firm_id,company_id,status,process_kind,updated_at);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_workflow_instance_business_subject
   ON workflow_instances(firm_id,company_id,subject_type,subject_id,subject_version)
-  WHERE subject_type='business_event';
+  WHERE subject_type='business_event' AND subject_version IS NOT NULL;
 
 CREATE TRIGGER IF NOT EXISTS workflow_instances_no_delete
  BEFORE DELETE ON workflow_instances

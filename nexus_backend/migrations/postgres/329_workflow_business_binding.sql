@@ -12,14 +12,15 @@ ALTER TABLE accounting.workflow_instances
 ALTER TABLE accounting.workflow_instances DROP CONSTRAINT IF EXISTS workflow_instance_subject_version_scope;
 ALTER TABLE accounting.workflow_instances
   ADD CONSTRAINT workflow_instance_subject_version_scope CHECK (
-    (subject_type = 'business_event' AND subject_version IS NOT NULL AND subject_version > 0)
-    OR (subject_type <> 'business_event' AND subject_version IS NULL)
+    (book_id IS NULL AND subject_type = 'business_event' AND subject_version IS NOT NULL AND subject_version > 0)
+    OR (book_id IS NOT NULL AND (subject_version IS NULL OR (subject_type = 'business_event' AND subject_version > 0)))
   );
 
--- 同一张业务单据的同一个提交版本最多只生成一条实例：重复提交或并发提交由唯一索引拦截。
+-- 同一张业务单据的同一个提交版本最多只生成一条实例；历史有账套但无 subject_version 的记录保留原义不误伤。
+DROP INDEX IF EXISTS accounting.idx_workflow_instance_business_subject;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_workflow_instance_business_subject
   ON accounting.workflow_instances(firm_id, company_id, subject_type, subject_id, subject_version)
-  WHERE subject_type = 'business_event';
+  WHERE subject_type = 'business_event' AND subject_version IS NOT NULL;
 
 DROP POLICY IF EXISTS workflow_instance_read ON accounting.workflow_instances;
 CREATE POLICY workflow_instance_read ON accounting.workflow_instances

@@ -20,6 +20,7 @@ from app.accounting.models import (
 from app.accounting.service import AccountingService
 from app.reports import consolidation
 from app.reports.consolidation import ConsolidationService
+from test_business import business  # noqa: F401
 
 
 @pytest.fixture
@@ -299,6 +300,54 @@ def test_worksheet_totals_recompute_on_five_company_scope():
         "enterprise": 35_000,
     }
     assert not_merged["matched_cents"] == 9_000_000
+
+
+def test_consolidation_worksheet_distinguishes_accessible_opened_and_reported(business):
+    """五家公司扩面口径：1 家未开账、1 家已开账未报、1 家双账套仅报 1 套、2 家异准则已报齐。"""
+    from app.accounting.models import BookCreate, CompanyCreate
+    from app.reports.consolidation import ConsolidationService
+    from test_plt07_queue_and_insights import _prepare_reviewed_book
+
+    case = business
+    # 1. 甲公司：双账套，仅报 1 套（partial）
+    _prepare_reviewed_book(case, case.company, case.book, "2026-10", "small_enterprise")
+    case.ledger.create_book(
+        case.manager,
+        BookCreate(name="甲第二账套", period="2026-10", company_id=case.company["id"]),
+    )
+    # 2. 乙公司：企业准则，已报齐
+    _prepare_reviewed_book(case, case.other, case.other_book, "2026-10", "enterprise")
+    # 3. 丙公司：小企业准则，已报齐
+    comp_c = case.directory.create_company(case.manager, CompanyCreate(name="合并丙公司"))
+    book_c = case.ledger.create_book(
+        case.manager, BookCreate(name="丙账套", period="2026-10", company_id=comp_c["id"])
+    )
+    _prepare_reviewed_book(case, comp_c, book_c, "2026-10", "small_enterprise")
+    # 4. 丁公司：已开账未报送
+    comp_d = case.directory.create_company(case.manager, CompanyCreate(name="合并丁公司"))
+    case.ledger.create_book(
+        case.manager, BookCreate(name="丁账套", period="2026-10", company_id=comp_d["id"])
+    )
+    # 5. 戊公司：本期未开账
+    comp_e = case.directory.create_company(case.manager, CompanyCreate(name="合并戊公司"))
+
+    service = ConsolidationService(case.db)
+    sheet = service.worksheet(
+        case.manager,
+        "2026-10",
+        [case.company["id"], case.other["id"], comp_c["id"], comp_d["id"], comp_e["id"]],
+    )
+    summary = sheet["scope_summary"]
+    assert summary["requested_companies"] == 5
+    assert summary["accessible_companies"] == 5
+    assert summary["opened_companies"] == 4
+    assert summary["reported_companies"] == 2
+    assert summary["partial_companies"] == 1
+    assert [row["company_id"] for row in summary["unopened_companies"]] == [comp_e["id"]]
+    unreported_by_id = {row["company_id"]: row for row in summary["unreported_companies"]}
+    assert set(unreported_by_id) == {case.company["id"], comp_d["id"]}
+    assert unreported_by_id[case.company["id"]]["reporting_status"] == "partial"
+    assert unreported_by_id[comp_d["id"]]["reporting_status"] == "not_reported"
 
 
 def test_elimination_requires_an_independent_reviewer(group):

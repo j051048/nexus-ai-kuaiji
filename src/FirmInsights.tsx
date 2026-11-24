@@ -24,8 +24,15 @@ type Trend = {
   books: number;
   closed: number;
   reviewed_reports: number;
-  revenue_cents: number;
-  profit_cents: number;
+  managed_companies?: number;
+  opened_companies?: number;
+  reported_companies?: number;
+  mixed_standards?: boolean;
+  comparable?: boolean;
+  status?: 'missing' | 'mixed_standards' | 'partial' | 'complete' | string;
+  status_label?: string;
+  revenue_cents: number | null;
+  profit_cents: number | null;
   ai_cost_micro: number;
 };
 type Risk = {
@@ -149,12 +156,16 @@ function TrendChart({ rows }: { rows: Trend[] }) {
   const height = 190;
   const pad = { left: 42, right: 14, top: 14, bottom: 28 };
   const maxBooks = Math.max(1, ...rows.map((row) => row.books));
+  const trendComparable = (row: Trend) =>
+    row.comparable !== undefined
+      ? row.comparable && row.revenue_cents !== null && row.profit_cents !== null
+      : row.reviewed_reports > 0 && row.revenue_cents !== null && row.profit_cents !== null;
   const maxMoney = Math.max(
     1,
     ...rows.map((row) =>
       Math.max(
-        row.reviewed_reports ? Math.abs(row.revenue_cents) : 0,
-        row.reviewed_reports ? Math.abs(row.profit_cents) : 0,
+        trendComparable(row) && row.revenue_cents !== null ? Math.abs(row.revenue_cents) : 0,
+        trendComparable(row) && row.profit_cents !== null ? Math.abs(row.profit_cents) : 0,
       ),
     ),
   );
@@ -205,7 +216,7 @@ function TrendChart({ rows }: { rows: Trend[] }) {
             label: '已复核收入',
             color: '#2f6f5e',
             points: linePoints(
-              (row) => (row.reviewed_reports ? row.revenue_cents : null),
+              (row) => (trendComparable(row) ? row.revenue_cents : null),
               maxMoney,
             ),
           },
@@ -213,10 +224,10 @@ function TrendChart({ rows }: { rows: Trend[] }) {
             key: 'profit',
             label: '已复核利润',
             color: '#b1782f',
-            points: linePoints((row) => (row.reviewed_reports ? row.profit_cents : null), maxMoney),
+            points: linePoints((row) => (trendComparable(row) ? row.profit_cents : null), maxMoney),
           },
         ];
-  const financeKnown = rows.some((row) => row.reviewed_reports > 0);
+  const financeKnown = rows.some((row) => trendComparable(row));
   return (
     <div className="firm-insights-chart">
       <div className="firm-insights-chart-toggle" role="group" aria-label="趋势口径">
@@ -479,11 +490,11 @@ export function FirmInsights({ session }: { session: Session }) {
           <section className="firm-insights-kpis" aria-label="全所关键指标">
             <article>
               <Building2 size={18} />
-              <span>应报法人（已纳管）</span>
+              <span>服务企业</span>
               <strong>{data.kpis.managed_companies ?? data.kpis.companies}</strong>
               <small>
                 已开账 {data.kpis.opened_companies ?? data.kpis.companies} 家 · 已报送{' '}
-                {data.kpis.reported_companies ?? data.kpis.known_reports} 家
+                {data.kpis.reported_companies ?? data.kpis.known_reports} 家（{data.kpis.books} 套）
               </small>
             </article>
             <article>
@@ -692,21 +703,51 @@ export function FirmInsights({ session }: { session: Session }) {
                       <th>期间</th>
                       <th>账套</th>
                       <th>已关账</th>
-                      <th>已复核报表</th>
+                      <th>实报/应报法人</th>
+                      <th>口径状态</th>
                       <th>已归集收入</th>
+                      <th>已归集利润</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {data.trends.map((row) => (
-                      <tr key={row.period}>
-                        <td>{row.period}</td>
-                        <td>{row.books}</td>
-                        <td>{row.closed}</td>
-                        <td>{row.reviewed_reports}</td>
-                        <td>{row.reviewed_reports ? cny(row.revenue_cents) : '—'}</td>
-                        <td>{row.reviewed_reports ? cny(row.profit_cents) : '—'}</td>
-                      </tr>
-                    ))}
+                    {data.trends.map((row) => {
+                      const comparable =
+                        row.comparable !== undefined
+                          ? row.comparable
+                          : row.reviewed_reports > 0 && !row.mixed_standards;
+                      const statusText =
+                        row.status_label ??
+                        (row.mixed_standards
+                          ? '异准则不可混加'
+                          : row.reviewed_reports > 0
+                            ? '已复核'
+                            : '缺报');
+                      const fallbackCell = row.mixed_standards ? '异准则不可混加' : '缺报';
+                      return (
+                        <tr key={row.period}>
+                          <td>{row.period}</td>
+                          <td>{row.books}</td>
+                          <td>{row.closed}</td>
+                          <td>
+                            {row.reported_companies !== undefined &&
+                            row.managed_companies !== undefined
+                              ? `${row.reported_companies}/${row.managed_companies} 家`
+                              : `${row.reviewed_reports} 套`}
+                          </td>
+                          <td>{statusText}</td>
+                          <td>
+                            {comparable && row.revenue_cents !== null
+                              ? cny(row.revenue_cents)
+                              : fallbackCell}
+                          </td>
+                          <td>
+                            {comparable && row.profit_cents !== null
+                              ? cny(row.profit_cents)
+                              : fallbackCell}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </details>

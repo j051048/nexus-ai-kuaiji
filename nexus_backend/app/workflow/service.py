@@ -538,6 +538,17 @@ class WorkflowService:
             current = instance["current_node"]
             if action == "escalate_timeout":
                 self.access.company(conn, actor, instance["company_id"], manage=True)
+            elif instance["book_id"] is None and instance["subject_type"] == "business_event":
+                # 企业级未移交业务单的流程动作（多级终审或人工接管）按企业管理/财务权限核验。
+                self.access.company(conn, actor, instance["company_id"])
+                can_act = (
+                    self.access.firm_role(conn, actor) in FIRM_MANAGERS
+                    or self.access.company_role(conn, actor, instance["company_id"])
+                    in {"owner", "admin", "finance"}
+                    or (action == "start" and actor.user_id == instance["created_by"])
+                )
+                if not can_act:
+                    raise AccountingError("需要企业管理员、负责人或财务审批权限才能办理该流程", 403)
             elif action == "start" and actor.user_id == instance["created_by"]:
                 # 退回起点的实例由发起人补正后重新提交，不因此获得其他权限。
                 self.access.book(conn, actor, instance["book_id"], "edit")
@@ -556,7 +567,8 @@ class WorkflowService:
                 if actor.user_id == instance["created_by"]:
                     raise AccountingError("不能审批自己发起的流程", 403)
                 approvals = instance["approvals"] or {}
-                approvals.setdefault("approvals", []).append(
+                recorded = list(approvals.get("approvals") or [])
+                recorded.append(
                     {
                         "node_id": current,
                         "user_id": actor.user_id,
@@ -565,6 +577,15 @@ class WorkflowService:
                     }
                 )
                 following = engine.next_node(path, current)
+                if following is None and engine.dual_required(
+                    routing, int(instance["amount_cents"])
+                ):
+                    distinct = {item.get("user_id") for item in recorded if item.get("user_id")}
+                    if len(distinct) < 2:
+                        raise AccountingError(
+                            "该金额区间要求两位不同审批人审批，不能由同一人审完所有节点", 403
+                        )
+                approvals["approvals"] = recorded
                 # 节点自身声明的外部/不可逆终态，在离开该节点时就已构成事实。
                 locked = bool(
                     instance["terminal_external_locked"]

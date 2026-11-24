@@ -110,38 +110,60 @@ export const stampDutyLabel = (status?: string, notice?: string) => {
   return '';
 };
 
-/** 累计利润参考来源：服务端只返回可追溯的报表快照，没有来源时金额为 null。 */
+export interface ProfitMonthSource {
+  period: string;
+  book_id: string;
+  report_run_id: string;
+  version: number;
+  status: string;
+  reviewed: boolean;
+  profit_cents: number;
+}
+
+/** 累计利润参考来源：服务端只返回按年度逐月齐全且可追溯的报表快照，来源不全时金额为 null。 */
 export interface ProfitSource {
   suggested_profit_cents: number | null;
   source_kind: 'reviewed_report' | 'trial_report' | null;
   source_label: string | null;
   source_period: string | null;
+  period_range?: string | null;
+  month_count?: number;
+  months?: ProfitMonthSource[];
+  missing_months?: string[];
+  ambiguous_months?: string[];
   source_version: number | null;
   is_final_report: boolean;
   report_run_id: string | null;
   notice: string | null;
 }
 
-/** 累计利润的来源说明：必须让人看出这是哪一份报表、哪个期间、哪一版。 */
+/** 累计利润的来源说明：必须让人看出累计期间、包含月份与版本号。 */
 export const profitSourceLabel = (source: ProfitSource | null) => {
   if (!source) return '';
   if (source.suggested_profit_cents === null) return source.notice || '没有可用的利润表快照';
+  const versions =
+    source.months && source.months.length > 1
+      ? source.months.map((item) => `${item.period} v${item.version}`).join(' / ')
+      : `版本 ${source.source_version ?? '未知'}`;
+  const rangeText = source.period_range || source.source_period || '未知';
   const parts = [
     `来源：${source.source_label ?? '利润表快照'}`,
-    `期间 ${source.source_period ?? '未知'}`,
-    `版本 ${source.source_version ?? '未知'}`,
+    `累计期间 ${rangeText}${source.month_count && source.month_count > 1 ? `（共 ${source.month_count} 个月）` : ''}`,
+    versions,
   ];
-  if (!source.is_final_report) parts.push('正式报表尚未复核');
+  if (!source.is_final_report) parts.push('含未复核试算报表');
   return parts.join(' · ');
 };
 
 /**
- * 人工改过的累计利润必须留下原因；不改就不要求填，避免多一步无意义操作。
+ * 人工改过预填值，或服务端来源不全时手工填报累计利润，都必须留下依据并由服务端记录。
  */
-export const needsAdjustReason = (cents: number | null, source: ProfitSource | null) =>
-  source?.suggested_profit_cents !== null &&
-  source?.suggested_profit_cents !== undefined &&
-  cents !== source.suggested_profit_cents;
+export const needsAdjustReason = (cents: number | null, source: ProfitSource | null) => {
+  if (cents === null || !source) return false;
+  if (source.suggested_profit_cents === null || source.suggested_profit_cents === undefined)
+    return true;
+  return cents !== source.suggested_profit_cents;
+};
 
 /** 分转成输入框里的元，仍走字符串拼接，不引入浮点乘法。 */
 export const centsToYuanInput = (cents: number) => {

@@ -49,6 +49,23 @@ export interface WorksheetTotals {
 export type WorksheetCompanyRef =
   string | { company_id: string; company_name?: string; name?: string; reason?: string };
 
+export interface WorksheetScopeSummary {
+  requested_companies: number;
+  accessible_companies: number;
+  denied_companies: number;
+  opened_companies: number;
+  reported_companies: number;
+  partial_companies: number;
+  unopened_companies: { company_id: string; name: string }[];
+  unreported_companies: {
+    company_id: string;
+    name: string;
+    reporting_status: string;
+    book_count: number;
+    reviewed_book_count: number;
+  }[];
+}
+
 export interface WorksheetSheet {
   period: string;
   statement: string;
@@ -58,9 +75,15 @@ export interface WorksheetSheet {
     name?: string;
     company_name?: string;
     standard_kind?: string;
+    opened?: boolean;
+    book_count?: number;
+    reviewed_book_count?: number;
+    reporting_status?: string;
+    reporting_label?: string;
   }[];
   missing_companies: WorksheetCompanyRef[];
   denied_companies?: WorksheetCompanyRef[];
+  scope_summary?: WorksheetScopeSummary;
   totals: WorksheetTotals;
   totals_by_standard: WorksheetStandardTotal[];
   not_merged_totals?: {
@@ -116,8 +139,12 @@ export function consolidationHighlights(
   sheet: WorksheetSheet,
   companyNames?: Record<string, string>,
 ): string[] {
+  const scope = sheet.scope_summary;
+  const headerLine = scope
+    ? `${sheet.statement} · ${sheet.period} · 应报 ${scope.requested_companies} 家 / 可见 ${scope.accessible_companies} 家 / 已开账 ${scope.opened_companies} 家 / 已报齐 ${scope.reported_companies} 家`
+    : `${sheet.statement} · ${sheet.period} · 纳入 ${sheet.included_companies.length} 家法人`;
   const lines: string[] = [
-    `${sheet.statement} · ${sheet.period} · 纳入 ${sheet.included_companies.length} 家法人`,
+    headerLine,
     sheet.totals.comparable && sheet.totals.matched !== null && sheet.totals.difference !== null
       ? `${sheet.totals.scope}：匹配 ${sheet.totals.matched} 元，未达差额 ${sheet.totals.difference} 元（${sheet.totals.open_pairs} 对未平）`
       : `${sheet.totals.scope}（${sheet.totals.pairs} 对同口径往来，${sheet.totals.open_pairs} 对未平）`,
@@ -131,6 +158,16 @@ export function consolidationHighlights(
     lines.push(
       `${sheet.not_merged_totals.label}：匹配 ${sheet.not_merged_totals.matched} 元（${sheet.not_merged_totals.pairs} 对）`,
     );
+  }
+  if (scope?.unopened_companies?.length) {
+    const names = scope.unopened_companies.map((c) => c.name).join('、');
+    lines.push(`本期未开账法人 ${scope.unopened_companies.length} 家：${names}`);
+  }
+  if (scope?.unreported_companies?.length) {
+    const names = scope.unreported_companies
+      .map((c) => `${c.name}（已复核 ${c.reviewed_book_count}/${c.book_count} 套）`)
+      .join('、');
+    lines.push(`已开账未报齐法人 ${scope.unreported_companies.length} 家：${names}`);
   }
   if (sheet.missing_companies.length) {
     const names = sheet.missing_companies

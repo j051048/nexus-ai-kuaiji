@@ -876,6 +876,9 @@ class BusinessService:
 
         if event["template_id"] != "reimbursement":
             return
+        # 直接提交通道免部门与企业财务前置审批（直接待授权会计接收），不挂起多级员工审批流。
+        if event["submission_mode"] == "direct":
+            return
         definition = workflow_binding.active_definition(conn, actor.firm_id, event["company_id"])
         if not definition:
             return
@@ -1043,6 +1046,9 @@ class BusinessService:
         self._version(event, request.expected_version)
         if event["status"] != ("submitted" if direct else "finance_approved"):
             raise AccountingError("事项必须完成部门与财务审批后才能移交", 409)
+        workflow_instance = workflow_binding.ensure_completed_for_handoff(
+            conn, actor.firm_id, event_id
+        )
         if book["period_status"] != "open":
             raise AccountingError("目标会计期间已关闭，不可移交", 403)
         snapshot = conn.execute(
@@ -1154,6 +1160,8 @@ class BusinessService:
             )
         self._bump(conn, actor, event, "handed_off")
         self._action(conn, actor, event, "handoff", "handoff")
+        if workflow_instance:
+            workflow_binding.lock_handed_off(conn, actor, workflow_instance, request.book_id, now())
         self._audit(
             conn,
             actor,

@@ -1552,13 +1552,14 @@ def build_tax_router(actor_dependency):
         """
         from ..accounting.domain import AccountingError
         from ..posting.models import ManualVoucher
-        from . import accrual, accrual_posting
+        from . import accrual, accrual_posting, profit_source
 
         # Account identities are resolved *as of the book's period*, so a posting
         # can never land on an account version that was rewritten later.
         with posting.db.transaction(actor=current) as conn:
             book, ledger_id = posting._book(conn, current, payload.book_id)
             accounts = posting._accounts(conn, ledger_id, book["period"])
+            profit_basis = profit_source.suggest(conn, book, book["period"])
         if payload.period != book["period"]:
             raise AccountingError(
                 f"计提入账只能针对账套当前会计期间（当前 {book['period']}，请求 {payload.period}）",
@@ -1577,6 +1578,26 @@ def build_tax_router(actor_dependency):
         # it is actually about to post and names the one that is missing.
         lines = accrual.accrual_lines(package)
         voucher_date = payload.voucher_date or _period_end(book["period"])
+        user_reason = (payload.reason or "").strip()
+        suggested = profit_basis.get("suggested_profit_cents")
+        if suggested is not None and payload.cumulative_profit_cents == suggested:
+            versions = "/".join(
+                f"{item['period']}v{item['version']}" for item in profit_basis.get("months") or []
+            )
+            basis_tag = f"累计利润来源：{profit_basis['period_range']}（{versions}）"
+            profit_mode = "from_reports"
+        else:
+            basis_tag = (
+                f"累计利润人工填报/调整依据：{user_reason}"
+                if user_reason
+                else "累计利润人工填报（未匹配完整报表快照）"
+            )
+            profit_mode = "manual_adjusted" if suggested is not None else "manual_entered"
+        merged_reason = (
+            f"{user_reason}；{basis_tag}"
+            if user_reason and user_reason not in basis_tag
+            else basis_tag
+        )
         body = accrual_posting.manual_voucher(
             package,
             lines["entries"],
@@ -1584,7 +1605,7 @@ def build_tax_router(actor_dependency):
             book_id=book["id"],
             voucher_date=voucher_date,
             description=payload.description or "",
-            reason=payload.reason or "",
+            reason=merged_reason[:500],
         )
         prepared = reviews.prepare(current, ManualVoucher(**body))
         return {
@@ -1602,6 +1623,15 @@ def build_tax_router(actor_dependency):
             "notices": lines["notices"],
             "surtax_basis": surtax_basis,
             "surtax_cents": surtax_cents,
+            "profit_basis": {
+                "mode": profit_mode,
+                "period_range": profit_basis.get("period_range"),
+                "suggested_profit_cents": suggested,
+                "recorded_profit_cents": payload.cumulative_profit_cents,
+                "reason": user_reason or None,
+                "months": profit_basis.get("months") or [],
+                "missing_months": profit_basis.get("missing_months") or [],
+            },
             "posted": False,
             "note": "已生成待复核的手工凭证申请：须由另一名有复核权的人批准后才能过账，"
             "本接口不会直接记账。",

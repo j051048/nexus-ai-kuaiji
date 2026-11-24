@@ -226,41 +226,75 @@ describe('stamp duty three states', () => {
 
 describe('累计利润来源与人工调整原因', () => {
   const reviewed: ProfitSource = {
-    suggested_profit_cents: 1_234_500,
+    suggested_profit_cents: 800_000,
     source_kind: 'reviewed_report',
-    source_label: '已复核利润表快照',
-    source_period: '2026-10',
-    source_version: 3,
+    source_label: '已复核利润表本年累计',
+    source_period: '2026-01..2026-02',
+    period_range: '2026-01..2026-02',
+    month_count: 2,
+    months: [
+      {
+        period: '2026-01',
+        book_id: 'b1',
+        report_run_id: 'r1',
+        version: 2,
+        status: 'reviewed',
+        reviewed: true,
+        profit_cents: 1_000_000,
+      },
+      {
+        period: '2026-02',
+        book_id: 'b2',
+        report_run_id: 'r2',
+        version: 1,
+        status: 'reviewed',
+        reviewed: true,
+        profit_cents: -200_000,
+      },
+    ],
+    source_version: 1,
     is_final_report: true,
-    report_run_id: 'run-1',
+    report_run_id: 'r2',
     notice: null,
   };
 
-  it('来源说明写清口径、期间与版本', () => {
-    expect(profitSourceLabel(reviewed)).toBe('来源：已复核利润表快照 · 期间 2026-10 · 版本 3');
+  it('来源说明写清累计期间、月数与逐月版本', () => {
+    const label = profitSourceLabel(reviewed);
+    expect(label).toContain('来源：已复核利润表本年累计');
+    expect(label).toContain('累计期间 2026-01..2026-02（共 2 个月）');
+    expect(label).toContain('2026-01 v2 / 2026-02 v1');
     expect(
-      profitSourceLabel({ ...reviewed, is_final_report: false, source_label: '试算利润表快照' }),
-    ).toContain('正式报表尚未复核');
+      profitSourceLabel({
+        ...reviewed,
+        is_final_report: false,
+        source_label: '含试算利润表本年累计',
+      }),
+    ).toContain('含未复核试算报表');
   });
 
-  it('没有来源时明确说明，而不是显示 0', () => {
+  it('没有完整来源时明确说明且人工填报必须写依据', () => {
     const empty: ProfitSource = {
       ...reviewed,
       suggested_profit_cents: null,
       source_kind: null,
       source_label: null,
+      month_count: 1,
+      months: [],
+      missing_months: ['2026-01'],
       is_final_report: false,
-      notice: '本期没有可用的利润表快照',
+      notice: '缺少 2026-01 的有效利润表快照，无法汇总本年累计利润',
     };
-    expect(profitSourceLabel(empty)).toBe('本期没有可用的利润表快照');
+    expect(profitSourceLabel(empty)).toContain('缺少 2026-01');
     expect(needsAdjustReason(null, empty)).toBe(false);
+    // 来源不全时会计手填了累计利润，必须填人工依据并由服务端记录。
+    expect(needsAdjustReason(800_000, empty)).toBe(true);
   });
 
-  it('人工改成不同金额时必须填原因，保持一致则不要求', () => {
-    expect(needsAdjustReason(1_234_500, reviewed)).toBe(false);
-    expect(needsAdjustReason(1_200_000, reviewed)).toBe(true);
-    expect(needsAdjustReason(null, reviewed)).toBe(true);
-    expect(needsAdjustReason(1_200_000, null)).toBe(false);
+  it('人工改成不同金额时必须填原因，与预填一致则不要求', () => {
+    expect(needsAdjustReason(800_000, reviewed)).toBe(false);
+    expect(needsAdjustReason(750_000, reviewed)).toBe(true);
+    expect(needsAdjustReason(null, reviewed)).toBe(false);
+    expect(needsAdjustReason(750_000, null)).toBe(false);
   });
 
   it('分转元仍用字符串拼接，不引入浮点误差', () => {

@@ -669,12 +669,31 @@ class ConsolidationService:
                 f"WHERE firm_id=? AND company_id IN ({marks}) AND status='active'",
                 (actor.firm_id, *visible_ids),
             ).fetchall()
+            book_rows = conn.execute(
+                "SELECT id,company_id FROM books "
+                f"WHERE firm_id=? AND period=? AND company_id IN ({marks})",
+                (actor.firm_id, period, *visible_ids),
+            ).fetchall()
+            reviewed_rows = conn.execute(
+                "SELECT DISTINCT b.company_id,rr.book_id FROM report_runs rr "
+                "JOIN books b ON b.id=rr.book_id "
+                f"WHERE b.firm_id=? AND rr.period=? AND b.company_id IN ({marks}) "
+                "AND rr.status IN ('reviewed','published')",
+                (actor.firm_id, period, *visible_ids),
+            ).fetchall()
             standards = standards_by_company([dict(row) for row in policy_rows])
             parties = self._party_index(conn, actor, visible_ids)
             rows = self._internal_lines(conn, actor, period, visible_ids, parties)
             eliminations = [
                 dict(row) for row in self._eliminations(conn, actor, period, visible_ids)
             ]
+        books_by_company: dict[str, set[str]] = {}
+        for row in book_rows:
+            books_by_company.setdefault(row["company_id"], set()).add(row["id"])
+        reviewed_by_company: dict[str, set[str]] = {}
+        for row in reviewed_rows:
+            reviewed_by_company.setdefault(row["company_id"], set()).add(row["book_id"])
+
         balances, skipped = classify_lines(rows)
         pairs = pair_up(balances)
         sheet = build_worksheet(
@@ -684,8 +703,74 @@ class ConsolidationService:
             pairs=pairs,
             eliminations=eliminations,
         )
+        # 明确区分「档案可见」与「当期已开账 / 已报齐」，防止负责人把可见误读成已报齐。
+        unopened_companies = []
+        unreported_companies = []
+        opened_count = 0
+        reported_count = 0
+        partial_count = 0
+        for item in sheet["included_companies"]:
+            cid = item["company_id"]
+            total_books = len(books_by_company.get(cid, set()))
+            reviewed_books = len(
+                reviewed_by_company.get(cid, set()) & books_by_company.get(cid, set())
+            )
+            opened = total_books > 0
+            if not opened:
+                reporting_status = "not_opened"
+                reporting_label = "本期未开账"
+                unopened_companies.append({"company_id": cid, "name": item["name"]})
+            elif reviewed_books >= total_books:
+                reporting_status = "reported"
+                reporting_label = "已报齐"
+                opened_count += 1
+                reported_count += 1
+            elif reviewed_books > 0:
+                reporting_status = "partial"
+                reporting_label = f"部分待复核（{reviewed_books}/{total_books} 套）"
+                opened_count += 1
+                partial_count += 1
+                unreported_companies.append(
+                    {
+                        "company_id": cid,
+                        "name": item["name"],
+                        "reporting_status": reporting_status,
+                        "book_count": total_books,
+                        "reviewed_book_count": reviewed_books,
+                    }
+                )
+            else:
+                reporting_status = "not_reported"
+                reporting_label = "已开账未报送"
+                opened_count += 1
+                unreported_companies.append(
+                    {
+                        "company_id": cid,
+                        "name": item["name"],
+                        "reporting_status": reporting_status,
+                        "book_count": total_books,
+                        "reviewed_book_count": 0,
+                    }
+                )
+            item.update(
+                opened=opened,
+                book_count=total_books,
+                reviewed_book_count=reviewed_books,
+                reporting_status=reporting_status,
+                reporting_label=reporting_label,
+            )
         sheet["period"] = period
         sheet["denied_companies"] = denied
+        sheet["scope_summary"] = {
+            "requested_companies": len(company_ids),
+            "accessible_companies": len(companies),
+            "denied_companies": len(denied),
+            "opened_companies": opened_count,
+            "reported_companies": reported_count,
+            "partial_companies": partial_count,
+            "unopened_companies": unopened_companies,
+            "unreported_companies": unreported_companies,
+        }
         sheet["balances"] = balances
         sheet["unmapped_lines"] = skipped
         sheet["standards"] = [

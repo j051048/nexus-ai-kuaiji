@@ -507,6 +507,48 @@ def supersede_for_amount_change(conn, actor, row, new_amount_cents, stamp):
     ).fetchone()
 
 
+def ensure_completed_for_handoff(conn, firm_id, subject_id):
+    """移交会计门禁：若报销单绑定了工作流实例，必须全部必要审批人办结（completed）才允许移交。"""
+
+    from ..accounting.domain import AccountingError
+
+    row = instance_for(conn, firm_id, subject_id)
+    if not row:
+        return None
+    if row["status"] != "completed":
+        raise AccountingError("绑定的审批流程尚未办结，最后一名必要审批人完成前不能移交会计", 409)
+    return row
+
+
+def lock_handed_off(conn, actor, row, book_id, stamp):
+    """移交会计后把已办结的流程实例标为不可逆终态并留痕，防止再回退或二次推进。"""
+
+    if not row or row["irreversible_reached"]:
+        return row
+    _log(
+        conn,
+        actor,
+        row["company_id"],
+        row["id"],
+        row["current_node"],
+        "external_submit",
+        row["current_node"],
+        row["current_node"],
+        {"reason": "报销单已移交会计入账草稿", "book_id": book_id},
+        stamp,
+    )
+    return _update(
+        conn,
+        actor,
+        row,
+        current_node=row["current_node"],
+        status=row["status"],
+        approvals=_json(row["approvals_json"]) or {},
+        lock_flags=(bool(row["terminal_external_locked"]), True),
+        stamp=stamp,
+    )
+
+
 __all__ = [
     "ACTIVE_STATUSES",
     "BUSINESS_SUBJECT",
@@ -514,7 +556,9 @@ __all__ = [
     "active_definition",
     "advance",
     "bind",
+    "ensure_completed_for_handoff",
     "instance_for",
+    "lock_handed_off",
     "resume_after_resubmit",
     "summary",
     "supersede_for_amount_change",

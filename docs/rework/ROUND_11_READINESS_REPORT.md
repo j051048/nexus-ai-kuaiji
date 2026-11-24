@@ -124,4 +124,17 @@ E2E（2）：`e2e/task-unavailable-terminal.spec.ts`（新）、`e2e/reimburseme
 - 后端规范与核心回归：`ruff check` / `format --check` 全绿（482 files）；受影响 10 个核心后端测试文件 **134 passed**（含新增双人审批 403、退回改金额重路由、多准则不混加与双账套完备性断言）。
 - 前端规范、单测、构建与预算：`typecheck` / `lint` / `format:check` 全绿；`vitest` **168 文件 / 1504 用例通过**；`build` + `test:frontend-budget` 通过（`initialGzip 165,044 / 176,000 B` 余量 `10,956 B`，`homeCss 130,426 / 145,000 B` 余量 `14,574 B`，`violations: []`）。
 - 浏览器端到端：`npx playwright test` 三组双视口（1366/390）**6 passed (24.6s)**。
-- 远端 Supabase 生产库（项目 `qgzketopnkzquotddwha`）：已事务原子同步 `v329`（累计 `316` 条迁移，校验和 `d52a24881db906ba3432a8def99528cf00bd01cc4b8888a9acf0153ff37dc18f` 逐字节一致），实测 `book_id` 可空、`subject_version` 字段、2 条 `CHECK`、唯一索引 `idx_workflow_instance_business_subject`、`FORCE RLS`、3 条收紧策略及 `workflow_instance_subject_lock` 触发器全部就位，且策略引用的 7 个函数均对 `accounting_app` 具备执行权限。
+- 远端 Supabase 生产库（项目 `qgzketopnkzquotddwha`）：已事务原子同步 `v329`（累计 `316` 条迁移，校验和 `372b8af7289c5262b6268cdd31d98431016d230ce2130c28c2aab07fa4b898a7` 逐字节一致），实测 `book_id` 可空、`subject_version` 字段、2 条 `CHECK`、唯一索引 `idx_workflow_instance_business_subject`、`FORCE RLS`、3 条收紧策略及 `workflow_instance_subject_lock` 触发器全部就位，且策略引用的 7 个函数均对 `accounting_app` 具备执行权限。
+
+## 首家试点前 4 项关键缺陷收口记录（2026-11-24）
+
+1. **所得税本年累计利润预填（`app/tax/profit_source.py`、`app/tax/router.py`、`src/TaxAccrualPanel.tsx`）**：由单月取数彻底改为按同一法人、同一会计年度（`YYYY-01` 至目标月）逐月汇总，覆盖跨月、跨年、报表换版、缺月留空点名与同月多账套拒绝自动合并；人工填报/调整在前端强制说明依据并由后端持久化记录在计提申请 `reason` 与 `profit_basis` 回执中。
+2. **存量老库升级兼容（`postgres/329_*.sql`、`sqlite/236_*.sql`）**：`workflow_instance_subject_version_scope` 仅对 `book_id IS NULL` 的新建企业级绑定强制要求正整数 `subject_version`，保留历史 `book_id IS NOT NULL` 的旧 `business_event` 记录（允许 `subject_version IS NULL`、不补造历史版本），部分唯一索引同步附加 `AND subject_version IS NOT NULL`；已用真实停留在 `235` 水位且含三类历史记录的旧库实跑升级到 `236` 并验证续办，同时已同步修正远端库 `v329` 约束与校验和。
+3. **报销单移交终态门禁与三角色真实界面闭环（`app/business/service.py`、`app/workflow/binding.py`、`app/workflow/service.py`、`e2e/reimbursement-workflow-binding.spec.ts`）**：`handoff` 强制校验绑定工作流实例为 `completed`（否则 `409` 拦截）并在移交后锁定不可逆终态；`direct` 直接提交通道不挂起员工多级审批流；`WorkflowService.act()` 补齐无 `book_id` 业务单据的多级终审权限与双人审批校验；新增员工/部门/财务三角色真实浏览器界面操作大额报销（提交 → 退回 → 界面改大金额跨门槛重提 → 双人审批 → 移交唯一草稿）端到端测试。
+4. **首页、六个月趋势、合并试算三页口径统一（`app/observability/insights.py`、`app/reports/consolidation.py`、`src/FirmInsights.tsx`、`src/firm-insights-consolidation.tsx`）**：趋势表无报表月与异准则混杂月金额置空（显示「缺报」或「异准则不可混加」，绝不算 `0` 元）并补齐缺失的利润表头与实报/应报列；合并试算显式输出 `scope_summary`（应报 / 可见 / 已开账 / 已报齐 / 未开账 / 未报齐），不再把“档案可见”混同为“已报齐”。
+
+### 冻结候选终验结果
+
+- 后端规范与核心回归：`ruff check` / `format --check` 全绿（`482` 文件）；核心后端套件含新增累计利润（`7` 例）、旧库 `235 → 236` 升级与三级审批移交门禁（`13` 例）、五家公司趋势与合并口径回归全部通过。
+- 前端规范、单测、构建与预算：`typecheck` / `lint` / `format:check` 全绿；`vitest` **`168` 文件 / `1505` 用例通过**；`initialGzip 165,048 / 176,000 B`（余量 `10,952 B`）、`homeCss 130,426 / 145,000 B`（余量 `14,574 B`），零违例。
+- 浏览器端到端：`firm-insights`、`reimbursement-workflow-binding`（含三角色真实界面大额报销）、`task-unavailable-terminal`、`workflow-studio` 四组 **`11` 项全通过**（`46.2s`）。

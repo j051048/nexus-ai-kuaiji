@@ -294,6 +294,18 @@ def test_firm_insights_keeps_unopened_company_in_denominator_and_splits_standard
     assert fin["complete"] is False
     assert any(row["book_id"] == second_book["id"] for row in fin["pending_book_reports"])
 
+    # 六个月趋势与首页同口径：缺报月份金额为 None（显示缺报而非 0），多准则月份金额置空（不可混加）。
+    by_month = {row["period"]: row for row in data["trends"]}
+    assert by_month["2026-09"]["status"] == "missing"
+    assert by_month["2026-09"]["revenue_cents"] is None
+    assert by_month["2026-09"]["profit_cents"] is None
+    assert by_month["2026-10"]["status"] == "mixed_standards"
+    assert by_month["2026-10"]["comparable"] is False
+    assert by_month["2026-10"]["revenue_cents"] is None
+    assert by_month["2026-10"]["profit_cents"] is None
+    assert by_month["2026-10"]["managed_companies"] == 5
+    assert by_month["2026-10"]["reported_companies"] == 2
+
 
 def test_firm_insights_marks_missing_mixed_standards_legacy_and_blocks_non_manager(business):
     case = business

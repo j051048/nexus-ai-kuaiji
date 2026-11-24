@@ -186,6 +186,7 @@ class FirmInsightsService:
                 row["period"]: dict(row)
                 for row in conn.execute(
                     "SELECT b.period,COUNT(*) AS books,"
+                    "COUNT(DISTINCT b.company_id) AS opened_companies,"
                     "SUM(CASE WHEN p.status='closed' THEN 1 ELSE 0 END) AS closed "
                     "FROM books b LEFT JOIN periods p ON p.book_id=b.id AND p.period=b.period "
                     "WHERE b.firm_id=? AND b.period BETWEEN ? AND ? GROUP BY b.period",
@@ -455,23 +456,62 @@ class FirmInsightsService:
             totals_notice = "管理汇总，非合并财务报表（无内部往来抵销）。"
         _ = item_by_book
         trends = []
+        managed_total = len(company_names)
         for month in months:
             reviewed = trend_reports.get(month, [])
-            revenue = sum(
-                _int(_json(row.get("profit_statement")).get("revenue_cents")) for row in reviewed
-            )
-            profit_value = sum(
-                _int(_json(row.get("profit_statement")).get("profit_cents")) for row in reviewed
-            )
             counts = trend_periods.get(month, {})
+            month_books = _int(counts.get("books"))
+            month_opened = _int(counts.get("opened_companies"))
+            month_reported_companies = len({row["company_id"] for row in reviewed})
+            month_standards = {row["standard_kind"] for row in reviewed}
+            month_mixed = len(month_standards) > 1
+            if not reviewed:
+                trend_status = "missing"
+                trend_status_label = "缺报"
+                revenue_cents = None
+                profit_cents = None
+                trend_comparable = False
+            elif month_mixed:
+                trend_status = "mixed_standards"
+                trend_status_label = "异准则不可混加"
+                revenue_cents = None
+                profit_cents = None
+                trend_comparable = False
+            else:
+                revenue_cents = sum(
+                    _int(_json(row["content"].get("profit_statement")).get("revenue_cents"))
+                    for row in reviewed
+                )
+                profit_cents = sum(
+                    _int(_json(row["content"].get("profit_statement")).get("profit_cents"))
+                    for row in reviewed
+                )
+                trend_comparable = True
+                if (
+                    managed_total > 0
+                    and month_reported_companies >= managed_total
+                    and len(reviewed) >= month_books
+                ):
+                    trend_status = "complete"
+                    trend_status_label = "已报齐"
+                else:
+                    trend_status = "partial"
+                    trend_status_label = f"部分缺报（已报 {month_reported_companies}/{max(managed_total, month_opened)} 家）"
             trends.append(
                 {
                     "period": month,
-                    "books": _int(counts.get("books")),
+                    "books": month_books,
                     "closed": _int(counts.get("closed")),
                     "reviewed_reports": len(reviewed),
-                    "revenue_cents": revenue,
-                    "profit_cents": profit_value,
+                    "managed_companies": max(managed_total, month_opened),
+                    "opened_companies": month_opened,
+                    "reported_companies": month_reported_companies,
+                    "mixed_standards": month_mixed,
+                    "comparable": trend_comparable,
+                    "status": trend_status,
+                    "status_label": trend_status_label,
+                    "revenue_cents": revenue_cents,
+                    "profit_cents": profit_cents,
                     "ai_cost_micro": trend_costs.get(month, 0),
                 }
             )
@@ -590,7 +630,8 @@ class FirmInsightsService:
     @staticmethod
     def _reports_between(conn, firm_id: str, first: str, last: str) -> dict[str, list[dict]]:
         rows = conn.execute(
-            "SELECT rr.period,rr.book_id,rr.version,rr.status,rr.content_json FROM report_runs rr "
+            "SELECT rr.period,rr.book_id,b.company_id,rr.version,rr.status,"
+            "rr.standard_kind,rr.content_json FROM report_runs rr "
             "JOIN books b ON b.id=rr.book_id WHERE b.firm_id=? AND rr.period BETWEEN ? AND ? "
             "AND rr.status IN ('reviewed','published') ORDER BY rr.book_id,rr.version DESC",
             (firm_id, first, last),
@@ -600,15 +641,17 @@ class FirmInsightsService:
             latest.setdefault(
                 (row["book_id"], row["period"]),
                 {
+                    "book_id": row["book_id"],
+                    "company_id": row["company_id"],
                     "version": row["version"],
                     "status": row["status"],
+                    "standard_kind": row["standard_kind"] or "unassessed",
                     "content": _json(row["content_json"]),
                 },
             )
         result: dict[str, list[dict]] = {}
-        for (book_id, period), value in latest.items():
-            content = value["content"]
-            result.setdefault(period, []).append(content)
+        for (_book_id, period), value in latest.items():
+            result.setdefault(period, []).append(value)
         return result
 
     @staticmethod
@@ -631,6 +674,25 @@ class FirmInsightsService:
         coverage_label = (
             "本期无在办账套" if not names else f"已纳入 0/{len(names)} 家（不完整：全部未开账）"
         )
+        empty_trends = [
+            {
+                "period": month,
+                "books": 0,
+                "closed": 0,
+                "reviewed_reports": 0,
+                "managed_companies": len(names),
+                "opened_companies": 0,
+                "reported_companies": 0,
+                "mixed_standards": False,
+                "comparable": False,
+                "status": "missing",
+                "status_label": "缺报",
+                "revenue_cents": None,
+                "profit_cents": None,
+                "ai_cost_micro": 0,
+            }
+            for month in _months(period)
+        ]
         return {
             "period": period,
             "generated_on": today,
@@ -680,7 +742,7 @@ class FirmInsightsService:
                 {"code": key, "label": STAGE_LABELS[key], "count": 0} for key in STAGE_ORDER
             ],
             "exceptions": [],
-            "trends": [],
+            "trends": empty_trends,
             "risk": [],
             "staff": [],
         }
