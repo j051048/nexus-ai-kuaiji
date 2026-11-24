@@ -88,18 +88,30 @@ async function prepare(request: Parameters<typeof taxFullFixture>[0], f: FormalF
         source_name: '虚构规费到账银行文件',
         rows: [
           {
-            external_id: 'FEE-BANK-UI-1', date: '2026-10-10', description: '张师傅规费到账',
-            counterparty: '规费辅助-张师傅', amount: '90.00', direction: 'income',
+            external_id: 'FEE-BANK-UI-1',
+            date: '2026-10-10',
+            description: '张师傅规费到账',
+            counterparty: '规费辅助-张师傅',
+            amount: '90.00',
+            direction: 'income',
             evidence_ref: '虚构规费到账回单，仅验证分配',
           },
           {
-            external_id: 'FEE-BANK-UI-2', date: '2026-10-10', description: '李师傅规费到账',
-            counterparty: '规费辅助-李师傅', amount: '100.00', direction: 'income',
+            external_id: 'FEE-BANK-UI-2',
+            date: '2026-10-10',
+            description: '李师傅规费到账',
+            counterparty: '规费辅助-李师傅',
+            amount: '100.00',
+            direction: 'income',
             evidence_ref: '虚构李师傅规费到账回单',
           },
           {
-            external_id: 'FEE-BANK-UI-3', date: '2026-10-11', description: '多收规费退款',
-            counterparty: '规费辅助-李师傅', amount: '50.00', direction: 'expense',
+            external_id: 'FEE-BANK-UI-3',
+            date: '2026-10-11',
+            description: '多收规费退款',
+            counterparty: '规费辅助-李师傅',
+            amount: '50.00',
+            direction: 'expense',
             evidence_ref: '虚构退款银行回单',
           },
         ],
@@ -193,19 +205,42 @@ for (const viewport of [
     await expect(panel.getByText('张师傅').first()).toBeVisible();
     const zhangRow = panel.locator('tbody tr').filter({ hasText: '张师傅' }).first();
     await zhangRow.getByRole('button', { name: '登记到账核销' }).click();
-    await panel.getByLabel('银行到账').selectOption({ index: 0 });
+    const zhangChoices = await panel
+      .getByLabel('银行到账')
+      .locator('option')
+      .evaluateAll((options) =>
+        options.map((option) => ({
+          value: (option as HTMLOptionElement).value,
+          text: option.textContent ?? '',
+        })),
+      );
+    const zhangBank =
+      zhangChoices.find((choice) => choice.value && choice.text.includes('张师傅')) ??
+      zhangChoices.find((choice) => choice.value);
+    expect(zhangBank?.value).toBeTruthy();
+    await panel.getByLabel('银行到账').selectOption(zhangBank!.value);
     await panel.getByRole('button', { name: '确认核销' }).click();
     await expect(panel.getByText(/已登记 张师傅 的到账核销/)).toBeVisible();
     await expect(panel.getByText('到账核销记录')).toBeVisible();
     const liRow = panel.locator('tbody tr').filter({ hasText: '李师傅' }).first();
     await liRow.getByRole('button', { name: '登记到账核销' }).click();
-    const choices = await panel.getByLabel('银行到账').locator('option').evaluateAll((options) =>
-      options.map((option) => ({
-        value: (option as HTMLOptionElement).value,
-        remaining: Number(((option.textContent ?? '').match(/余额 ¥([\d,]+\.\d{2})/)?.[1] ?? '0').replaceAll(',', '')),
-      })),
-    );
-    const best = choices.filter((choice) => choice.value).sort((a, b) => b.remaining - a.remaining)[0];
+    const choices = await panel
+      .getByLabel('银行到账')
+      .locator('option')
+      .evaluateAll((options) =>
+        options.map((option) => ({
+          value: (option as HTMLOptionElement).value,
+          remaining: Number(
+            ((option.textContent ?? '').match(/余额 ¥([\d,]+\.\d{2})/)?.[1] ?? '0').replaceAll(
+              ',',
+              '',
+            ),
+          ),
+        })),
+      );
+    const best = choices
+      .filter((choice) => choice.value)
+      .sort((a, b) => b.remaining - a.remaining)[0];
     await panel.getByLabel('银行到账').selectOption(best.value);
     await panel.getByLabel('代收依据').fill('同一银行合并到账，按驾驶员分配表拆分');
     await panel.getByRole('button', { name: '确认核销' }).click();
@@ -217,7 +252,12 @@ for (const viewport of [
     await expect(panel.getByText(/已登记 李师傅 的退款/)).toBeVisible();
     await expect(panel.getByText('退款记录')).toBeVisible();
     await expect(panel.getByText('多收退回驾驶员')).toBeVisible();
-    await panel.getByRole('row').filter({ hasText: '张师傅' }).getByRole('button', { name: '撤销核销' }).first().click();
+    await panel
+      .getByRole('row')
+      .filter({ hasText: '张师傅' })
+      .getByRole('button', { name: '撤销核销' })
+      .first()
+      .click();
     await panel.getByLabel('撤销原因').fill('银行退回');
     const reverseResponse = page.waitForResponse((response) => response.url().includes('/reverse'));
     await panel.getByRole('button', { name: '确认撤销' }).click();

@@ -672,7 +672,7 @@ class TaxFeeService:
             if period:
                 sql += " AND substr(s.date,1,7)=?"
                 params.append(period)
-            sql += " ORDER BY s.date,s.id"
+            sql += " ORDER BY s.date,s.external_id,s.id"
             items = [dict(row) for row in conn.execute(sql, tuple(params)).fetchall()]
             return {
                 "items": [

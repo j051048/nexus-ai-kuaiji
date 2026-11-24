@@ -1,5 +1,6 @@
 """DCP closing gates: real restricted PostgreSQL, never production or models."""
 
+import os
 from uuid import uuid4
 import pytest
 
@@ -8,6 +9,11 @@ from app.handoff.service import HandoffService
 from app.tax import filings
 from app.assistant import investigation
 from test_tax_workpaper_postgres import pg, case, native  # noqa: F401
+
+pytestmark = pytest.mark.skipif(
+    os.getenv("ACCOUNTING_AK05_ISOLATED_TARGET") != "1",
+    reason="需要显式 AK05 四角色隔离 PostgreSQL 运行器",
+)
 
 
 def payload(c, **changes):
@@ -392,11 +398,6 @@ def test_package_commit_loss_recovered_without_new_package(package_case, worker_
 from test_business_postgres import business_case, business_postgres  # noqa: F401
 from test_intelligence_workflow_postgres import pg_ai  # noqa: F401
 from c01_bank_fixture import reviewed_export_draft
-
-pytestmark = pytest.mark.skipif(
-    os.getenv("ACCOUNTING_AK05_ISOLATED_TARGET") != "1",
-    reason="需要显式 AK05 四角色隔离 PostgreSQL 运行器",
-)
 
 
 @pytest.mark.parametrize(

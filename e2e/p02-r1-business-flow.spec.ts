@@ -208,10 +208,13 @@ for (const name of ['desktop', 'mobile'] as const) {
       makerPanel.getByRole('button', { name: '独立复核月结预检', exact: true }),
       `/api/b04-close/${ready.close.id}/review`,
     );
-    maker.page.once('dialog', (dialog) => dialog.accept());
+    await makerPanel.getByRole('button', { name: '确认正式锁期', exact: true }).click();
+    const lockDialog = maker.page.getByRole('dialog', { name: '确认正式锁期', exact: true });
+    await expect(lockDialog).toBeVisible();
+    await lockDialog.locator('.confirm-phrase input').fill(s.period);
     const locked = await post(
       maker.page,
-      makerPanel.getByRole('button', { name: '确认正式锁期', exact: true }),
+      lockDialog.getByRole('button', { name: '确认正式锁期', exact: true }),
       `/api/b04-close/${ready.close.id}/lock`,
     );
     expect(locked.close.status).toBe('locked');

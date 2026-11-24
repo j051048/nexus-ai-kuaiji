@@ -185,10 +185,16 @@ for (const viewport of [
     await pinPersona(page, 'accountant');
     await openTax(page, f);
     const managerPanel = page.getByRole('region', { name: '税务底稿', exact: true });
-    await managerPanel.getByRole('button', { name: '刷新' }).first().click();
-    const stale = managerPanel.locator('.tax-f-stale');
-    await expect(stale).toContainText('合同已改版');
-    await expect(managerPanel.getByRole('button', { name: '导出租赁凭证' })).toBeDisabled();
+    const taxF = managerPanel.locator('.tax-f-panel');
+    await expect(taxF).toBeVisible();
+    await taxF.getByRole('button', { name: '刷新', exact: true }).first().click();
+    await expect(taxF.getByRole('button', { name: new RegExp(customer) })).toBeVisible({
+      timeout: 15_000,
+    });
+    await taxF.getByRole('button', { name: new RegExp(customer) }).click();
+    const stale = taxF.locator('.tax-f-stale');
+    await expect(stale).toContainText('合同已改版', { timeout: 15_000 });
+    await expect(taxF.getByRole('button', { name: '导出租赁凭证' })).toBeDisabled();
     await stale.scrollIntoViewIfNeeded();
     await page.screenshot({
       path: `tmp_test/tax-f-lease-stale-${viewport.width}.png`,
