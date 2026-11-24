@@ -43,8 +43,6 @@ jobs:
           SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           SSH_HOST: ${{ secrets.DEPLOY_HOST }}
           SSH_USER: ${{ secrets.DEPLOY_USER }}
-          COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
-          APP_UUID: pncfvk346jz2qzam9gzvnnml
         run: |
           set -euo pipefail
           mkdir -p ~/.ssh
@@ -55,20 +53,8 @@ jobs:
           scp -i ~/.ssh/id_deploy -o StrictHostKeyChecking=yes dist.tar.gz "$SSH_USER@$SSH_HOST:/tmp/kuaiji-dist.tar.gz"
 
           TAG="$(date +%Y%m%d-%H%M%S)"
-          ssh -i ~/.ssh/id_deploy -o StrictHostKeyChecking=yes "$SSH_USER@$SSH_HOST" "set -e
-            sudo rm -rf /data/kuaiji-build/dist
-            sudo mkdir -p /data/kuaiji-build/dist
-            sudo tar -xzf /tmp/kuaiji-dist.tar.gz -C /data/kuaiji-build/dist
-            cd /data/kuaiji-build
-            sudo docker build -q -t 10.0.1.1:5000/kuaiji-web:$TAG .
-            sudo docker push 10.0.1.1:5000/kuaiji-web:$TAG >/dev/null
-            curl -sS -X PATCH 'http://127.0.0.1:8000/api/v1/applications/$APP_UUID' \
-              -H 'Authorization: Bearer $COOLIFY_TOKEN' \
-              -H 'Content-Type: application/json' \
-              -d '{\"docker_registry_image_tag\":\"$TAG\"}' >/dev/null
-            curl -sS -X POST 'http://127.0.0.1:8000/api/v1/deploy?uuid=$APP_UUID' \
-              -H 'Authorization: Bearer $COOLIFY_TOKEN' >/dev/null
-            echo \"deployed image tag: $TAG\""
+          ssh -i ~/.ssh/id_deploy -o StrictHostKeyChecking=yes "$SSH_USER@$SSH_HOST" \
+            "sudo /data/kuaiji-build/deploy.sh $TAG"
 
       - name: Smoke test
         run: |
