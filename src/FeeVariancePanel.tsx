@@ -112,6 +112,7 @@ export function FeeVariancePanel({
 
   async function load(signal?: AbortSignal) {
     setError('');
+    const priority = initialVarianceId ? 'high' : 'background';
     try {
       const [rows, catalog] = await Promise.all([
         scheduleSubpanel(
@@ -122,6 +123,7 @@ export function FeeVariancePanel({
               { signal },
             ),
           signal,
+          priority,
         ),
         scheduleSubpanel(
           () =>
@@ -129,6 +131,7 @@ export function FeeVariancePanel({
               signal,
             }),
           signal,
+          priority,
         ),
       ]);
       if (signal?.aborted) return;

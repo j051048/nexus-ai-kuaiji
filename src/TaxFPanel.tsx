@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { parseTaxFLink, taxFLinkUrl } from './taxf-link';
 import { api, apiBlob, ApiError } from './api';
 import { scheduleSubpanel } from './subpanel-scheduler';
@@ -245,8 +245,10 @@ export function TaxFPanel({
   const [manualEvidence, setManualEvidence] = useState('客户申报表与完税凭证复印件，专员人工核定');
 
   const current = leases.find((row) => row.id === selectedLease) ?? null;
+  const loadSequence = useRef(0);
 
   async function load(nextReportId = profitReportId, signal?: AbortSignal) {
+    const sequence = ++loadSequence.current;
     setFailure('');
     try {
       const reportQuery = nextReportId ? `&report_run_id=${encodeURIComponent(nextReportId)}` : '';
@@ -280,7 +282,7 @@ export function TaxFPanel({
           signal,
         ),
       ]);
-      if (signal?.aborted) return;
+      if (sequence !== loadSequence.current || signal?.aborted) return;
       setLeases(leaseData.items);
       setSelectedLease((value) => value || leaseData.items[0]?.id || '');
       setBasis(basisData.items);
@@ -293,14 +295,17 @@ export function TaxFPanel({
         setProfitReportId('');
       }
     } catch (error) {
-      if (signal?.aborted) return;
+      if (sequence !== loadSequence.current || signal?.aborted) return;
       setFailure(error instanceof ApiError ? error.message : '租赁、税费与利润数据读取失败。');
     }
   }
   useEffect(() => {
     const controller = new AbortController();
     void load(profitReportId, controller.signal);
-    return () => controller.abort();
+    return () => {
+      loadSequence.current += 1;
+      controller.abort();
+    };
   }, [bookId, period, session]);
 
   async function attachSourceOriginal(sourceRef: string, file: File | undefined) {

@@ -66,14 +66,53 @@ const bookLabels: Record<FormalBookKind, string> = {
 export function FormalBooksWorkbench(props: FormalBooksWorkbenchProps) {
   // A new identity renders a new workspace before effects run: old values never
   // flash under a newly selected company, even if a transport ignores abort.
-  const identity = JSON.stringify([
+  // Hydrating companyId/period from undefined for the same bookId must not
+  // remount the workspace and reset the user's chosen book tab.
+  const baseKey = JSON.stringify([
     props.session.scope_key,
     props.session.user_id,
     props.session.firm_id,
     props.bookId,
-    props.companyId,
-    props.period,
   ]);
+  const [scope, setScope] = useState(() => ({
+    baseKey,
+    companyId: props.companyId,
+    period: props.period,
+    epoch: 0,
+  }));
+  let activeScope = scope;
+  if (scope.baseKey !== baseKey) {
+    activeScope = {
+      baseKey,
+      companyId: props.companyId,
+      period: props.period,
+      epoch: scope.epoch + 1,
+    };
+    setScope(activeScope);
+  } else {
+    const companyChanged =
+      Boolean(scope.companyId) && Boolean(props.companyId) && scope.companyId !== props.companyId;
+    const periodChanged =
+      Boolean(scope.period) && Boolean(props.period) && scope.period !== props.period;
+    if (companyChanged || periodChanged) {
+      activeScope = {
+        baseKey,
+        companyId: props.companyId,
+        period: props.period,
+        epoch: scope.epoch + 1,
+      };
+      setScope(activeScope);
+    } else if ((!scope.companyId && props.companyId) || (!scope.period && props.period)) {
+      activeScope = {
+        baseKey,
+        companyId: scope.companyId ?? props.companyId,
+        period: scope.period ?? props.period,
+        epoch: scope.epoch,
+      };
+      setScope(activeScope);
+    }
+  }
+  const identity = `${activeScope.baseKey}#${activeScope.epoch}`;
   return (
     <Suspense fallback={<p role="status">正在打开当前办理内容…</p>}>
       <FormalBooksContent key={identity} {...props} />

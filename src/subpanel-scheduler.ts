@@ -1,9 +1,9 @@
 /**
  * 低优先级辅助子面板请求调度器：
  * 浏览器同源 HTTP/1.1 并发槽位仅 6 个；税务底稿下挂 10 个辅助专题面板时，
- * 将辅助面板的初始后台读取限制在最多 2 个并发槽内，始终为主工作区交互
- * （档案保存、重新读取、独立复核、导出）保留 3 个空闲连接槽，并原生支持
- * AbortSignal 在排队阶段即时取消（避免 StrictMode 双挂和切账套泄漏）。
+ * 仅对初始被动挂载的后台读取限制在最多 3 个并发槽内，始终为主工作区交互
+ * （档案保存、重新读取、独立复核、导出）与用户显式操作后的刷新保留空闲连接槽，
+ * 并原生支持 AbortSignal 在排队阶段即时取消（避免 StrictMode 双挂和切账套泄漏）。
  */
 const MAX_CONCURRENT = 3;
 
@@ -22,9 +22,18 @@ function pump() {
   }
 }
 
-export function scheduleSubpanel<T>(task: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+export function scheduleSubpanel<T>(
+  task: () => Promise<T>,
+  signal?: AbortSignal,
+  priority: 'background' | 'high' = 'background',
+): Promise<T> {
   if (signal?.aborted) {
     return Promise.reject(new DOMException('辅助面板读取已取消', 'AbortError'));
+  }
+  // 用户显式点击操作/刷新（不带被动挂载 AbortSignal）或从待办任务直达的高优焦点面板，
+  // 直接发起请求，不排在数十个无关后台子面板之后。
+  if (!signal || priority === 'high') {
+    return task();
   }
   return new Promise<T>((resolve, reject) => {
     let settled = false;
