@@ -674,25 +674,6 @@ class FirmInsightsService:
         coverage_label = (
             "本期无在办账套" if not names else f"已纳入 0/{len(names)} 家（不完整：全部未开账）"
         )
-        empty_trends = [
-            {
-                "period": month,
-                "books": 0,
-                "closed": 0,
-                "reviewed_reports": 0,
-                "managed_companies": len(names),
-                "opened_companies": 0,
-                "reported_companies": 0,
-                "mixed_standards": False,
-                "comparable": False,
-                "status": "missing",
-                "status_label": "缺报",
-                "revenue_cents": None,
-                "profit_cents": None,
-                "ai_cost_micro": 0,
-            }
-            for month in _months(period)
-        ]
         return {
             "period": period,
             "generated_on": today,
@@ -742,7 +723,7 @@ class FirmInsightsService:
                 {"code": key, "label": STAGE_LABELS[key], "count": 0} for key in STAGE_ORDER
             ],
             "exceptions": [],
-            "trends": empty_trends,
+            "trends": [],
             "risk": [],
             "staff": [],
         }

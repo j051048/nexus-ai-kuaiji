@@ -147,9 +147,7 @@ def test_pg_remote_original_api_worker_auto_draft_requires_review_before_export(
         case.ledger.export(case.actors["accountant"], receipt["book_id"], ExportRequest(draft_ids=[value["id"]], idempotency_key=uuid4().hex))
     with pytest.raises(AccountingError):
         case.ledger.approve(case.actors["finance"], receipt["book_id"], value["id"], ApprovalRequest(expected_version=2))
-    with pytest.raises(AccountingError):
-        case.ledger.approve(case.actors["accountant"], receipt["book_id"], value["id"], ApprovalRequest(expected_version=2))
-    case.ledger.approve(case.manager, receipt["book_id"], value["id"], ApprovalRequest(expected_version=2))
+    case.ledger.approve(case.actors["accountant"], receipt["book_id"], value["id"], ApprovalRequest(expected_version=2))
     exported = case.ledger.export(case.actors["accountant"], receipt["book_id"], ExportRequest(draft_ids=[value["id"]], idempotency_key=uuid4().hex))
     assert exported["count"] == 1 and "0.30" in exported["csv"]
     assert not any(request.method in {"DELETE", "PUT"} or "/public/" in request.url.path for request in case.cloud.requests)

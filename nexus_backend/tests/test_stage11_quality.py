@@ -134,6 +134,8 @@ def ai_standard(c, changed_label=False):
     from app.accounting.models import ApprovalRequest
     from app.accounting.catalog import CatalogService
     from app.accounting.catalog_models import TemplateDefinition
+    from review_policy_fixtures import independent_reviewer
+
     CatalogService(c.db).save_template(c.manager, c.book['id'], TemplateDefinition(name='合成评测未付款报销', business_type='reimbursement', direction='expense', category='office', payment_status='unpaid', lines=[{'account_code': '6602.02', 'side': 'debit', 'amount_field': 'gross'}, {'account_code': '2241', 'side': 'credit', 'amount_field': 'gross'}]))
     event = create_event(c)
     ocr = extract(c, event)
@@ -141,7 +143,7 @@ def ai_standard(c, changed_label=False):
     proposal = propose(c, mapping['draft_id'])
     assert proposal['status'] == 'succeeded'
     applied = c.intelligence.apply(c.actors['accountant'], proposal['id'], 1)
-    reviewer = second_reviewer(c.ledger, c.book['id'])
+    reviewer = independent_reviewer(c.db, c.actors['accountant'], c.book['id'])
     c.ledger.approve(reviewer, c.book['id'], applied['id'], ApprovalRequest(expected_version=applied['version']))
     quality = QualityService(c.db)
     # Public assistant projections intentionally hide provider/model metadata.

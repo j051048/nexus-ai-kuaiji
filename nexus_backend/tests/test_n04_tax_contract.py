@@ -54,7 +54,14 @@ def test_context_is_scoped_read_only_and_does_not_require_account_management(
     response = context(context_http, case.book["id"])
     assert response.status_code == 200, response.text
     data = response.json()
-    assert set(data) == {"scope", "permissions", "profile", "accounts", "blocking_reasons"}
+    assert set(data) == {
+        "scope",
+        "permissions",
+        "profile",
+        "accounts",
+        "blocking_reasons",
+        "cumulative_profit",
+    }
     assert data["scope"] == {
         "firm_id": case.manager.firm_id,
         "company_id": case.company["id"],

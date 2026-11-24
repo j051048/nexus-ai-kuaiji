@@ -36,6 +36,22 @@ def workspace(c):
 
 
 def refresh_projections(c):
+    if c.db.is_postgres:
+        from app.accounting.database import Database
+        from app.workspace.projection import refresh_company_scoped
+        from test_business_postgres import ADMIN_URL
+
+        proj_db = Database(ADMIN_URL, default_role="accounting_projection")
+        try:
+            firm_id = getattr(c, "owner", getattr(c, "manager", None)).firm_id
+            for key in ("company", "other_company"):
+                raw = getattr(c, key, None)
+                if raw:
+                    cid = raw["id"] if isinstance(raw, dict) else raw
+                    refresh_company_scoped(proj_db, firm_id, cid)
+        finally:
+            proj_db.close()
+        return
     with c.db.transaction(system=True) as conn:
         rows = conn.execute(
             "SELECT fc.firm_id,fc.company_id FROM firm_clients fc WHERE fc.status='active'"

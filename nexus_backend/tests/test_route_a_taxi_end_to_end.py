@@ -56,11 +56,14 @@ from test_business import approved, business, handoff  # noqa: F401
 from test_posting_service import frozen_opening
 
 
-def _csv_return(batch_code: str, voucher_code: str, amount: float) -> str:
+def _csv_return(
+    batch_code: str, voucher_code: str, amount: float, accounts: list[str] | None = None
+) -> str:
     buf = io.StringIO(newline="")
     writer = csv.writer(buf, lineterminator="\r\n")
     writer.writerow(["批次标识", "凭证标识", "对方凭证号", "结果", "失败原因", "对方过账日期", "金额", "科目"])
-    writer.writerow([batch_code, voucher_code, "T-202610-001", "accepted", "", "2026-10-31", f"{amount:.2f}", "100201"])
+    account_text = "|".join(accounts) if accounts else "100201"
+    writer.writerow([batch_code, voucher_code, "T-202610-001", "accepted", "", "2026-10-31", f"{amount:.2f}", account_text])
     return buf.getvalue()
 
 
@@ -401,6 +404,9 @@ def test_route_a_taxi_fee_difference_full_lifecycle(business, tmp_path):
     artifact_csv = bridge.create_artifact(case.manager, case.book["id"], intent_csv["id"])
     voucher_pkg = intent_csv["package"]["vouchers"][0]
     voucher_amount = sum(float(line["debit"] or 0) for line in voucher_pkg["lines"])
+    voucher_accounts = sorted(
+        {str(line["account_code"]) for line in voucher_pkg["lines"] if line.get("account_code")}
+    )
     with pytest.raises(AccountingError, match="批次标识与冻结交付批次不一致") as wrong_batch:
         bridge.record_return(
             reviewer,
@@ -408,7 +414,12 @@ def test_route_a_taxi_fee_difference_full_lifecycle(business, tmp_path):
             artifact_csv["id"],
             BridgeReturnImport(
                 batch_code="WRONG-BATCH-999",
-                content=_csv_return("WRONG-BATCH-999", f"T54-{voucher_pkg['external_code']}", voucher_amount),
+                content=_csv_return(
+                    "WRONG-BATCH-999",
+                    f"T54-{voucher_pkg['external_code']}",
+                    voucher_amount,
+                    voucher_accounts,
+                ),
             ),
         )
     assert wrong_batch.value.status == 422
@@ -423,6 +434,7 @@ def test_route_a_taxi_fee_difference_full_lifecycle(business, tmp_path):
                 intent_csv["external_code"],
                 f"T54-{voucher_pkg['external_code']}",
                 voucher_amount,
+                voucher_accounts,
             ),
         ),
     )

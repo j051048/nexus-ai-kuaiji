@@ -1,11 +1,12 @@
 /**
  * 低优先级辅助子面板请求调度器：
  * 浏览器同源 HTTP/1.1 并发槽位仅 6 个；税务底稿下挂 10 个辅助专题面板时，
- * 仅对初始被动挂载的后台读取限制在最多 2 个并发槽内；当存在用户显式操作、
- * 刷新或任务直达高优请求在途时暂停派发新的后台任务，始终为主工作区交互
- * 保留连接槽与后端处理能力，并原生支持 AbortSignal 在排队阶段即时取消。
+ * 仅对初始被动挂载的后台读取限流（空闲时 3 并发；存在高优交互在途时降档为 1 并发，
+ * 既为高优交互留足连接槽与后端写锁，又避免连续操作导致队尾子面板被饿死），
+ * 并原生支持 AbortSignal 在排队阶段即时取消。
  */
-const MAX_CONCURRENT = 2;
+const MAX_CONCURRENT_IDLE = 3;
+const MAX_CONCURRENT_BUSY = 1;
 
 type Entry = {
   run: () => void;
@@ -16,8 +17,12 @@ let active = 0;
 let highPriorityInFlight = 0;
 const queue: Entry[] = [];
 
+function concurrencyLimit() {
+  return highPriorityInFlight > 0 ? MAX_CONCURRENT_BUSY : MAX_CONCURRENT_IDLE;
+}
+
 function pump() {
-  while (highPriorityInFlight === 0 && active < MAX_CONCURRENT && queue.length > 0) {
+  while (active < concurrencyLimit() && queue.length > 0) {
     const next = queue.shift();
     next?.run();
   }
@@ -26,13 +31,13 @@ function pump() {
 export function scheduleSubpanel<T>(
   task: () => Promise<T>,
   signal?: AbortSignal,
-  priority: 'background' | 'high' = 'background',
+  priority: 'background' | 'front' | 'high' = 'background',
 ): Promise<T> {
   if (signal?.aborted) {
     return Promise.reject(new DOMException('辅助面板读取已取消', 'AbortError'));
   }
   // 用户显式点击操作/刷新（不带被动挂载 AbortSignal）或从待办任务直达的高优焦点面板，
-  // 直接发起请求并暂缓派发新后台低优读取，避免抢占后端连接与写锁。
+  // 直接发起请求，并将后台队列临时降档为 1 并发以让路。
   if (!signal || priority === 'high') {
     highPriorityInFlight += 1;
     return Promise.resolve()
@@ -84,7 +89,11 @@ export function scheduleSubpanel<T>(
       },
     };
     signal?.addEventListener('abort', onAbort, { once: true });
-    queue.push(entry);
+    if (priority === 'front') {
+      queue.unshift(entry);
+    } else {
+      queue.push(entry);
+    }
     pump();
   });
 }

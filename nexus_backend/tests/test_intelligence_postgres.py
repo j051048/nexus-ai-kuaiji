@@ -91,25 +91,44 @@ def bank_source(case, book_id=None):
     target_book = book_id or case.book
     with case.psycopg.connect(ADMIN_URL) as conn:
         conn.execute("INSERT INTO accounting.sources(id,book_id,external_id,source_name,date,description,counterparty,amount_cents,direction,evidence_ref,fingerprint) VALUES(%s,%s,%s,'银行流水','2026-10-01','支付采购','供应商',1234,'expense','bank.pdf',%s)", (source_id, target_book, uuid4().hex, uuid4().hex))
-        conn.execute("INSERT INTO accounting.drafts(id,book_id,source_id,description,explanation,created_by) VALUES(%s,%s,%s,'支付采购','人工复核',%s)", (draft_id, target_book, source_id, case.owner.user_id))
+        conn.execute("INSERT INTO accounting.drafts(id,book_id,source_id,description,explanation) VALUES(%s,%s,%s,'支付采购','人工复核')", (draft_id, target_book, source_id))
         conn.execute(
-            "INSERT INTO accounting.draft_lines(id,draft_id,book_id,line_no,account_code,account_name,debit_cents,credit_cents) VALUES(%s,%s,%s,1,'6602.02','管理费用-办公费',1234,0),(%s,%s,%s,2,'1002','银行存款',0,1234)",
-            (uuid4().hex, draft_id, target_book, uuid4().hex, draft_id, target_book),
+            "INSERT INTO accounting.draft_lines(draft_id,book_id,ordinal,account_code,debit_cents,credit_cents) VALUES(%s,%s,1,'6602.02',1234,0),(%s,%s,2,'1002',0,1234)",
+            (draft_id, target_book, draft_id, target_book),
         )
     return source_id, draft_id
 
 
 def _mark_draft_approved(case, draft_id, book_id=None):
-    from app.accounting.review_policy import ReviewPolicyService
+    from app.accounting.models import ApprovalRequest, DraftLine, DraftUpdate
+    from app.accounting.service import AccountingService
 
     target_book = book_id or case.book
-    reviewer = case.reviewer if target_book == case.book else case.owner
-    policy_version = ReviewPolicyService(case.db).get(reviewer, target_book)["policy"]["version"]
-    with case.psycopg.connect(ADMIN_URL) as conn:
-        conn.execute(
-            "UPDATE accounting.drafts SET status='approved',version=version+1,approved_by=%s,approved_at=%s,review_policy_version=%s WHERE id=%s",
-            (reviewer.user_id, STAMP, policy_version, draft_id),
-        )
+    ledger = AccountingService(case.db)
+    draft = ledger.get_draft(case.owner, target_book, draft_id)
+    lines = (
+        [
+            DraftLine(account_code=line["account_code"], debit=line["debit"], credit=line["credit"])
+            for line in draft["lines"]
+        ]
+        if draft["lines"]
+        else [
+            DraftLine(account_code="6602.02", debit="12.34", credit="0.00"),
+            DraftLine(account_code="1002", debit="0.00", credit="12.34"),
+        ]
+    )
+    prepared = ledger.update_draft(
+        case.owner,
+        target_book,
+        draft_id,
+        DraftUpdate(expected_version=draft["version"], description=draft["description"], lines=lines),
+    )
+    ledger.approve(
+        case.reviewer,
+        target_book,
+        draft_id,
+        ApprovalRequest(expected_version=prepared["version"]),
+    )
 
 
 def bank_link(case, event_id, source_id, actor=None):

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api, ApiError } from './api';
 import { scheduleSubpanel } from './subpanel-scheduler';
 import type { Session } from './types';
@@ -76,8 +76,10 @@ export function FleetMetricsPanel({
   const [data, setData] = useState<Fleet | null>(null);
   const [failure, setFailure] = useState('');
   const [loading, setLoading] = useState(false);
+  const loadSequence = useRef(0);
 
   async function load(signal?: AbortSignal) {
+    const sequence = ++loadSequence.current;
     setLoading(true);
     setFailure('');
     try {
@@ -89,21 +91,25 @@ export function FleetMetricsPanel({
             { signal },
           ),
         signal,
+        'front',
       );
-      if (signal?.aborted) return;
+      if (sequence !== loadSequence.current || signal?.aborted) return;
       setData(result);
     } catch (error) {
-      if (signal?.aborted) return;
+      if (sequence !== loadSequence.current || signal?.aborted) return;
       setFailure(error instanceof ApiError ? error.message : '单车贡献与驾驶员欠款读取失败。');
     } finally {
-      if (!signal?.aborted) setLoading(false);
+      if (sequence === loadSequence.current && !signal?.aborted) setLoading(false);
     }
   }
 
   useEffect(() => {
     const controller = new AbortController();
     void load(controller.signal);
-    return () => controller.abort();
+    return () => {
+      loadSequence.current += 1;
+      controller.abort();
+    };
   }, [bookId, period]);
 
   return (

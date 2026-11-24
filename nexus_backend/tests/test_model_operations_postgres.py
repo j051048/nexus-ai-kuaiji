@@ -438,19 +438,30 @@ def test_snapshot_backlog_excludes_already_approved_mapping(meter_case):
     with case.db.transaction(write=True, actor=case.employee) as conn:
         assert conn.execute("SELECT accounting.record_ops_exception_snapshot(?,1,0,NULL,'review-required')", (event_id,)).fetchone()[0]
     assert metrics(case)["exceptions"]["blocking_events"] == 1
-    # Ledger domain checks are covered separately. This SQL fixture verifies
-    # only that operational summaries omit approved/exported canonical drafts.
-    from app.accounting.review_policy import ReviewPolicyService
+    # Ledger domain checks are covered separately. This fixture uses real
+    # maker/reviewer review flow so PG triggers and receipts remain enforced.
+    from app.accounting.models import ApprovalRequest, DraftLine, DraftUpdate
+    from app.accounting.service import AccountingService
 
-    policy_version = ReviewPolicyService(case.db).get(case.reviewer, case.book)["policy"]["version"]
-    with case.psycopg.connect(ADMIN_URL) as conn:
-        if not conn.execute("SELECT 1 FROM accounting.draft_lines WHERE draft_id=%s", (draft_id,)).fetchone():
-            conn.execute(
-                "INSERT INTO accounting.draft_lines(id,draft_id,book_id,line_no,account_code,account_name,debit_cents,credit_cents) VALUES(%s,%s,%s,1,'6602.02','管理费用-办公费',100,0),(%s,%s,%s,2,'1002','银行存款',0,100)",
-                (uuid4().hex, draft_id, case.book, uuid4().hex, draft_id, case.book),
-            )
-        conn.execute(
-            "UPDATE accounting.drafts SET status='approved',version=version+1,approved_by=%s,approved_at=%s,review_policy_version=%s WHERE id=%s",
-            (case.reviewer.user_id, "2026-10-13T00:00:00+00:00", policy_version, draft_id),
-        )
+    ledger = AccountingService(case.db)
+    draft = ledger.get_draft(case.owner, case.book, draft_id)
+    prepared = ledger.update_draft(
+        case.owner,
+        case.book,
+        draft_id,
+        DraftUpdate(
+            expected_version=draft["version"],
+            description=draft["description"],
+            lines=[
+                DraftLine(account_code="6602.02", debit="12.34", credit="0.00"),
+                DraftLine(account_code="1002", debit="0.00", credit="12.34"),
+            ],
+        ),
+    )
+    ledger.approve(
+        case.reviewer,
+        case.book,
+        draft_id,
+        ApprovalRequest(expected_version=prepared["version"]),
+    )
     assert metrics(case)["exceptions"]["blocking_events"] == 0

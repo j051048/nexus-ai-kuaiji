@@ -36,7 +36,33 @@
         "name": "应付账款"
       }
     ],
-    "blocking_reasons": []
+    "blocking_reasons": [],
+    "cumulative_profit": {
+      "suggested_profit_cents": null,
+      "source_kind": null,
+      "source_label": null,
+      "source_period": "2026-01..2026-10",
+      "period_range": "2026-01..2026-10",
+      "month_count": 0,
+      "months": [],
+      "missing_months": [
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04",
+        "2026-05",
+        "2026-06",
+        "2026-07",
+        "2026-08",
+        "2026-09",
+        "2026-10"
+      ],
+      "ambiguous_months": [],
+      "source_version": null,
+      "is_final_report": false,
+      "report_run_id": null,
+      "notice": "本年累计利润来源不完整（2026-01..2026-10 缺少 2026-01、2026-02、2026-03、2026-04等 10 个月 有效利润表）；系统不拿单月利润或账载税额代替累计利润，请补齐报表或人工填写并说明依据。"
+    }
   },
   "profile_response": {
     "profile": {

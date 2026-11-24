@@ -113,8 +113,9 @@ def test_ai_suggestions_never_write_facts_and_transfer_does_not_charge_twice(ai_
     from app.intake import service as intake_module
     from test_intelligence_workflow import invoice_document
     # This cache-positive test declares an independent synthetic original text
-    # layer. The separate AK03 test covers unverified blank-image output.
-    original = invoice_document()["pages"][0]["raw_text"]
+    # layer matching the fixture provider's document (including dynamic PG IDs).
+    # The separate AK03 test covers unverified blank-image output.
+    original = ai_case.provider.document["pages"][0]["raw_text"]
     prepare = intelligence_module.prepare_document
     prepare_original = lambda *args, **kwargs: [replace(page, native_text=original) for page in prepare(*args, **kwargs)]
     monkeypatch.setattr(intelligence_module, "prepare_document", prepare_original)
