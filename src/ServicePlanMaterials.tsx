@@ -113,7 +113,7 @@ export function ServicePlanMaterials({
     >
       <header className="service-section-heading">
         <div>
-          <p className="eyebrow">MONTHLY MATERIALS</p>
+          <p className="eyebrow">月度资料清单</p>
           <h2>{bookId ? '本月资料清单' : '需要我提供的资料'}</h2>
           <p>上传、无发生及不适用声明均交由独立人员验收。</p>
         </div>

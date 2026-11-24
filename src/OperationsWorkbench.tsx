@@ -333,7 +333,7 @@ export function OperationsWorkbench({
     <main className="operations-workbench">
       <section className="page-heading">
         <div>
-          <p className="eyebrow">COST, WITH ACCOUNTABILITY</p>
+          <p className="eyebrow">费用限额与运行监控</p>
           <h1>费用可核对，运行可掌握。</h1>
           <p className="page-description">
             按企业查看模型用量、费用风险与后台状态，把异常留在站内处理。

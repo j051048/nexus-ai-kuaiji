@@ -637,7 +637,7 @@ export function TaxFPanel({
     <section className="tax-f-panel" aria-label="租赁、税费与利润下钻">
       <header className="tax-f-head">
         <div>
-          <p className="tax-f-eyebrow">TAX13–15 · 合同、计税与利润</p>
+          <p className="tax-f-eyebrow">行业专项 · 合同、计税与利润</p>
           <h3>租赁、税费与利润下钻</h3>
           <p>
             业务确认、收款、发票和收入确认分开保存；税费政策、基数与人工核定留痕；利润按凭证行下钻。

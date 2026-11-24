@@ -186,7 +186,7 @@ function IngestionWorkspace({ session }: { session: Session }) {
     <main className="firm-ingestion">
       <header>
         <div>
-          <p className="eyebrow">INGESTION / OBSERVABLE FIRST</p>
+          <p className="eyebrow">数据接入 · 异常可追溯</p>
           <h1>集成与数据接入中心</h1>
           <p>连接状态、最近同步、失败记录和重试集中在同一处。</p>
         </div>

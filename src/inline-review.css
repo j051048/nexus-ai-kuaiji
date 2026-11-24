@@ -116,6 +116,19 @@
 .inline-review-header > button {
   align-self: flex-start;
 }
+.inline-review-queue-progress {
+  height: 3px;
+  width: 100%;
+  background: var(--surface-subtle);
+  flex-shrink: 0;
+  overflow: hidden;
+}
+.inline-review-queue-progress > span {
+  display: block;
+  height: 100%;
+  background: var(--brand);
+  transition: width 0.2s ease;
+}
 .inline-review-message,
 .inline-review-notice,
 .inline-review-unsaved {

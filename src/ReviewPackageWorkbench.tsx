@@ -348,7 +348,7 @@ export function ReviewPackageWorkbench({
     <main className="review-package-workbench">
       <section className="page-heading">
         <div>
-          <p className="eyebrow">COMPARE THE EXCEPTIONS</p>
+          <p className="eyebrow">批量复核 · 异常优先比对</p>
           <h1>同类业务，一起核对。</h1>
           <p className="page-description">
             按企业、往来身份、处理依据和分录结构整理。金额、日期、税额和原件差异逐笔保留。

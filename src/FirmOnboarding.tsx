@@ -284,7 +284,7 @@ function OnboardingWorkspace({ session, initialPeriod, onOpenBook }: OnboardingP
     <main className="firm-onboarding">
       <header className="onboarding-hero">
         <div>
-          <p className="eyebrow">CLIENT ONBOARDING FACTORY</p>
+          <p className="eyebrow">新客户标准化开通</p>
           <h1>客户标准化开通</h1>
           <p>从企业资料到账套、权限、模板与首月流程，一次确认清楚。</p>
         </div>

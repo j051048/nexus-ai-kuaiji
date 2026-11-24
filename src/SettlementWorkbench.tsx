@@ -310,7 +310,7 @@ export function SettlementWorkbench({
       ) : (
         <section className="page-heading">
           <div>
-            <p className="eyebrow">RECEIVABLE / PAYABLE CLEARANCE</p>
+            <p className="eyebrow">往来款项 · 应收应付核销</p>
             <h1>一笔付款，可以对应多项业务。</h1>
             <p className="page-description">
               登记未结业务、分配实际收付，再按应收/应付生成银行清偿草稿。原件与历史逐笔保留。

@@ -378,7 +378,7 @@ function DeliveryReceipts({
       ) : (
         <section className="page-heading">
           <div>
-            <p className="eyebrow">DELIVERY / RECEIPT / RECONCILIATION</p>
+            <p className="eyebrow">导出交付 · 回执核验</p>
             <h1>导出之后，还要核对回执。</h1>
             <p className="page-description">
               {overview?.company_name} · {overview?.book_name} · {overview?.period}
@@ -546,7 +546,7 @@ function DeliveryReceipts({
             <>
               <div className="delivery-section-heading">
                 <div>
-                  <p className="eyebrow">FROZEN MANIFEST</p>
+                  <p className="eyebrow">冻结导出清单</p>
                   <h2>
                     {detail.manifest.status === 'captured'
                       ? `${items.length} 张凭证 · 原始导出版本`
@@ -635,7 +635,7 @@ function DeliveryReceipts({
                 <section className="delivery-import">
                   <div className="delivery-section-heading">
                     <div>
-                      <p className="eyebrow">RETURNED FACTS</p>
+                      <p className="eyebrow">回执核验结果</p>
                       <h2>追加一份回执</h2>
                     </div>
                     <FileUp size={21} />
@@ -714,7 +714,7 @@ function DeliveryReceipts({
               <section className="delivery-receipts">
                 <div className="delivery-section-heading">
                   <div>
-                    <p className="eyebrow">RECEIPT HISTORY</p>
+                    <p className="eyebrow">历史回执记录</p>
                     <h2>
                       回执与差异<span className="count-label">{detail.pagination.total}</span>
                     </h2>

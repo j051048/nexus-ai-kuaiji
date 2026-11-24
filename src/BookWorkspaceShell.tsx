@@ -206,7 +206,7 @@ export function BookWorkspaceShell({
       {!focused && (
         <section className="page-heading">
           <div>
-            <p className="eyebrow">ACCOUNTING, WITH CLARITY</p>
+            <p className="eyebrow">清晰记账 · 有据可核</p>
             <h1>
               {filter === 'all'
                 ? '每一笔，都有据可循。'

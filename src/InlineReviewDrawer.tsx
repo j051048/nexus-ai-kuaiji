@@ -28,7 +28,14 @@ import { reviewGuidance } from './review-guidance';
 import { ClaimPreparation, ReviewResponsibility } from './ReviewResponsibility';
 import { approvalBody, canApproveResponsibility, parseReviewResponsibility } from './review-policy';
 import { TermHelp } from './TermHelp';
+import { QuickPhraseChips } from './QuickPhraseChips';
 import type { BusinessEvent } from './business-types';
+
+const INLINE_EDIT_PHRASES = [
+  '按原始票据调整会计科目',
+  '按原件更正金额与摘要',
+  '补齐辅助核算项目',
+] as const;
 import type { SourceHistory } from './SourceHistoryPanel';
 import type { BookDetail, Draft, JournalLine, Session } from './types';
 import './inline-review.css';
@@ -540,7 +547,7 @@ export function InlineReviewDrawer({
         event.altKey ||
         event.ctrlKey ||
         event.metaKey ||
-        (event.shiftKey && event.key !== '?') ||
+        (event.shiftKey && event.key !== '?' && event.key.toLowerCase() !== 'a') ||
         inputOwnsKeyboard(event.target) ||
         busy ||
         loading ||
@@ -554,7 +561,19 @@ export function InlineReviewDrawer({
         setKeyboardHelp((value) => !value);
         return;
       }
-      if (event.key.toLowerCase() === 'e' && !readonly) {
+      if (
+        event.key.toLowerCase() === 'c' &&
+        !event.shiftKey &&
+        !readonly &&
+        !dirty &&
+        !evidenceError &&
+        !error
+      ) {
+        event.preventDefault();
+        setAcknowledged((value) => !value);
+        return;
+      }
+      if (event.key.toLowerCase() === 'e' && !event.shiftKey && !readonly) {
         event.preventDefault();
         facts.current?.querySelector<HTMLTextAreaElement>('textarea')?.focus();
         return;
@@ -562,7 +581,11 @@ export function InlineReviewDrawer({
       if (event.key.toLowerCase() === 'a' && canApprove) {
         event.preventDefault();
         if (Date.now() < approveReadyAt.current) return;
-        void mutate('approve');
+        if (event.shiftKey && position >= 0 && position < queue.length - 1) {
+          void mutate('approve', queue[position + 1]);
+        } else {
+          void mutate('approve');
+        }
         return;
       }
       if (
@@ -638,6 +661,18 @@ export function InlineReviewDrawer({
             </button>
           </div>
         </header>
+        {queue.length > 1 && position >= 0 && (
+          <div
+            className="inline-review-queue-progress"
+            role="progressbar"
+            aria-label="同屏批量复核进度"
+            aria-valuenow={position + 1}
+            aria-valuemin={1}
+            aria-valuemax={queue.length}
+          >
+            <span style={{ width: `${Math.round(((position + 1) / queue.length) * 100)}%` }} />
+          </div>
+        )}
         {draft && !loading && (
           <nav className="review-focus-nav" aria-label="复核内容定位">
             <button type="button" disabled={!!busy} onClick={() => focusSection('originals')}>
@@ -691,8 +726,8 @@ export function InlineReviewDrawer({
         )}
         {keyboardHelp && (
           <p className="inline-review-keyboard-help" role="status">
-            J / K 下一笔 / 上一笔 · E 编辑摘要 · Ctrl / ⌘ S 保存 · A 审核（须先勾选已核对）· Esc
-            返回。输入框内保留原有键盘操作。
+            J / K 下一笔 / 上一笔 · E 编辑摘要 · C 勾选已核对 · Ctrl / ⌘ S 保存 · A 审核 · Shift+A
+            审核并下一笔 · Esc 返回。输入框内保留原有键盘操作。
           </p>
         )}
         {loading ? (
@@ -728,9 +763,9 @@ export function InlineReviewDrawer({
                             下载原表
                           </button>
                         </div>
-                        <p>
-                          原表第 {original.original_position ?? original.row_number} 行 · SHA-256{' '}
-                          {original.sha256.slice(0, 12)}…
+                        <p title={`校验码 SHA-256 ${original.sha256}`}>
+                          原表第 {original.original_position ?? original.row_number} 行 ·
+                          原件已防篡改存证
                         </p>
                         <dl>
                           {original.raw.map((value, i) => (
@@ -935,17 +970,26 @@ export function InlineReviewDrawer({
                   <TermHelp term="export_receipt" />
                 </div>
                 {dirty && (
-                  <label className="inline-review-label">
-                    <span>会计修正依据（可选）</span>
-                    <textarea
-                      aria-label="同屏会计修正依据"
-                      rows={2}
-                      maxLength={1000}
+                  <>
+                    <label className="inline-review-label">
+                      <span>会计修正依据（可选）</span>
+                      <textarea
+                        aria-label="同屏会计修正依据"
+                        rows={2}
+                        maxLength={1000}
+                        value={reason}
+                        disabled={!!busy}
+                        onChange={(event) => setReason(event.target.value)}
+                      />
+                    </label>
+                    <QuickPhraseChips
+                      label="常用会计修正依据"
+                      phrases={INLINE_EDIT_PHRASES}
                       value={reason}
                       disabled={!!busy}
-                      onChange={(event) => setReason(event.target.value)}
+                      onSelect={setReason}
                     />
-                  </label>
+                  </>
                 )}
                 {readonly ? (
                   <p className="permission-note">

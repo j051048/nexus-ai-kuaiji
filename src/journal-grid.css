@@ -258,12 +258,56 @@
 .journal-grid-totals {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px 18px;
+  align-items: center;
+  gap: 6px 14px;
   justify-content: flex-end;
   padding: 8px 12px;
-  color: var(--muted, #66736b);
-  font-size: 12px;
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
   font-variant-numeric: tabular-nums;
+}
+.journal-balance-pill {
+  margin-right: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-medium);
+}
+.journal-balance-pill.balanced {
+  background: var(--status-success-soft);
+  color: var(--status-success);
+}
+.journal-balance-pill.unbalanced {
+  background: var(--status-warning-soft);
+  color: var(--status-warning);
+}
+.journal-balance-pill.invalid {
+  background: var(--status-danger-soft);
+  color: var(--status-danger);
+}
+.journal-balance-action {
+  appearance: none;
+  border: 1px solid var(--brand);
+  background: var(--brand-soft);
+  color: var(--brand);
+  border-radius: 999px;
+  padding: 3px 10px;
+  min-height: 28px;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+}
+.journal-balance-action:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+.journal-balance-action:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 .journal-grid-toolbar {
   display: flex;

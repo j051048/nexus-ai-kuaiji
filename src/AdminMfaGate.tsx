@@ -132,7 +132,7 @@ export default function AdminMfaGate({
     <main className={workspace ? 'workspace-mfa' : 'admin-shell'}>
       <section className={workspace ? 'admin-mfa admin-mfa-inline' : 'admin-mfa'}>
         <ShieldCheck size={28} />
-        <p className="eyebrow">ADMINISTRATOR VERIFICATION</p>
+        <p className="eyebrow">管理员安全验证</p>
         <h1>验证管理员身份</h1>
         <p>管理企业和人员前，请通过验证器确认是本人操作。验证不会自动重新提交操作。</p>
         {error && (

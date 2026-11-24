@@ -812,7 +812,7 @@ export function BusinessWorkspace({
     <main className={`business-workspace ${financeFocus ? 'business-finance-focus' : ''}`}>
       <section className="page-heading">
         <div>
-          {!financeFocus && <p className="eyebrow">BUSINESS, WITH EVIDENCE</p>}
+          {!financeFocus && <p className="eyebrow">业务协同 · 凭据留痕</p>}
           <h1>{financeFocus ? '财务核验' : '从业务发生，到有据可记。'}</h1>
           <p className="page-description">
             {financeFocus

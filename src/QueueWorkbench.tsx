@@ -293,7 +293,7 @@ export function QueueWorkbench({
     <main className="queue-workbench">
       <section className="page-heading">
         <div>
-          <p className="eyebrow">DOCUMENTS, IN MOTION</p>
+          <p className="eyebrow">票据识别与处理队列</p>
           <h1>票据交给后台，判断留给会计。</h1>
           <p className="page-description">
             批量任务持续保存，离开页面后继续处理；企业轮流获得处理机会。

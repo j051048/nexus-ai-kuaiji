@@ -145,7 +145,7 @@ export function MonthlyBriefing({
         <article className="briefing-card">
           <header className="briefing-heading">
             <div>
-              <p className="eyebrow">MONTHLY BRIEFING</p>
+              <p className="eyebrow">月度财税简报</p>
               <h1>
                 {data.book.company_name || data.book.name} · {data.book.period} 财税简报
               </h1>
@@ -169,7 +169,7 @@ export function MonthlyBriefing({
         <article className="briefing-card">
           <header className="briefing-heading">
             <div>
-              <p className="eyebrow">MONTHLY BRIEFING</p>
+              <p className="eyebrow">月度财税简报</p>
               <h1>
                 {data.book.company_name || data.book.name} · {data.book.period} 财税简报
               </h1>

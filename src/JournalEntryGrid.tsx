@@ -6,6 +6,7 @@ import { AccountPicker } from './AccountPicker';
 import { MoneyCell } from './MoneyCell';
 import './account-picker.css';
 import { parseYuanToCents, sumCents } from './money';
+import { balanceLineWithEquals, journalBalanceSummary, smartBalanceLines } from './journal-balance';
 import './journal-grid.css';
 
 const auxiliaryLabels = {
@@ -184,6 +185,30 @@ export function JournalEntryGrid({
     pageCredit = sum(visible, 'credit'),
     allDebit = sum(lines, 'debit'),
     allCredit = sum(lines, 'credit');
+  const balance = journalBalanceSummary(lines);
+  function handleAmountKeyDown(
+    event: React.KeyboardEvent<HTMLInputElement>,
+    index: number,
+    side: 'debit' | 'credit',
+  ) {
+    if (isCompositionKey(event) || readonly || busy) return;
+    if (event.key === '=' && !event.ctrlKey && !event.altKey && !event.metaKey) {
+      event.preventDefault();
+      const balanced = balanceLineWithEquals(lines, index);
+      if (balanced) onChange(balanced);
+      return;
+    }
+    if (event.key === 'Enter' && !event.ctrlKey && !event.altKey && !event.metaKey) {
+      event.preventDefault();
+      if (side === 'debit') {
+        document
+          .querySelector<HTMLInputElement>(`#journal-row-${index} td[data-label="贷方"] input`)
+          ?.focus();
+      } else {
+        document.querySelector<HTMLInputElement>(`#journal-row-${index + 1} input`)?.focus();
+      }
+    }
+  }
   const label = (index: number, field: 'account' | 'debit' | 'credit' | 'delete') =>
     mode === 'inline'
       ? `同屏${field === 'delete' ? '删除' : ''}第 ${index + 1} 行${{ account: '科目', debit: '借方', credit: '贷方', delete: '' }[field]}`
@@ -268,8 +293,10 @@ export function JournalEntryGrid({
           {density === 'compact' ? '舒适行距' : '紧凑行距'}
         </button>
       </div>
-      {(onAddLine || onSaveShortcut) && (
+      {(!readonly || onAddLine || onSaveShortcut) && (
         <p className="journal-grid-shortcuts" aria-label="键盘快捷键">
+          {!readonly && '= 键配平当前行 · Enter 下一格'}
+          {!readonly && (onAddLine || onSaveShortcut) && ' · '}
           {onAddLine && 'Alt+Enter 新增分录'}
           {onAddLine && onSaveShortcut && ' · '}
           {onSaveShortcut && 'Ctrl+Enter 保存草稿'}
@@ -379,6 +406,7 @@ export function JournalEntryGrid({
                       value={line.debit}
                       disabled={readonly || busy}
                       onChange={(event) => update(index, 'debit', event.target.value)}
+                      onKeyDown={(event) => handleAmountKeyDown(event, index, 'debit')}
                       onBlur={() => {
                         if (line.debit === '') update(index, 'debit', '0.00');
                       }}
@@ -391,6 +419,7 @@ export function JournalEntryGrid({
                       value={line.credit}
                       disabled={readonly || busy}
                       onChange={(event) => update(index, 'credit', event.target.value)}
+                      onKeyDown={(event) => handleAmountKeyDown(event, index, 'credit')}
                       onBlur={() => {
                         if (line.credit === '') update(index, 'credit', '0.00');
                       }}
@@ -438,6 +467,38 @@ export function JournalEntryGrid({
         </tbody>
       </table>
       <div className="journal-grid-totals" data-testid="journal-totals">
+        <span
+          className={
+            'journal-balance-pill ' +
+            (balance.hasInvalidAmount ? 'invalid' : balance.balanced ? 'balanced' : 'unbalanced')
+          }
+          role="status"
+          aria-live="polite"
+        >
+          {balance.hasInvalidAmount ? (
+            '金额格式待核对'
+          ) : balance.balanced ? (
+            '借贷已平'
+          ) : (
+            <>
+              差额 <MoneyCell cents={balance.shortAmountCents} options={{ currency: true }} />（
+              {balance.shortSide === 'debit' ? '借方少' : '贷方少'}）
+            </>
+          )}
+        </span>
+        {!readonly && !balance.balanced && !balance.hasInvalidAmount && lines.length > 0 && (
+          <button
+            type="button"
+            className="journal-balance-action"
+            disabled={busy}
+            onClick={() => {
+              const balanced = smartBalanceLines(lines);
+              if (balanced) onChange(balanced);
+            }}
+          >
+            一键配平
+          </button>
+        )}
         <span>
           本页 借 <MoneyCell cents={pageDebit} options={{ currency: true }} /> · 贷{' '}
           <MoneyCell cents={pageCredit} options={{ currency: true }} />

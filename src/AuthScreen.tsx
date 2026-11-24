@@ -42,7 +42,7 @@ export function AuthScreen({
           </span>
         </div>
         <div className="auth-story-copy">
-          <p className="eyebrow">A CLEARER WAY TO ACCOUNT</p>
+          <p className="eyebrow">清晰可核的财税协同工作台</p>
           <h1>
             专注判断。
             <br />
@@ -182,7 +182,7 @@ export function NoAuthorization({
       <span className="auth-symbol">
         <ShieldCheck size={30} />
       </span>
-      <p className="eyebrow">WORKSPACE ACCESS</p>
+      <p className="eyebrow">工作空间访问</p>
       <h1>尚未获得企业或事务所授权</h1>
       <p>
         {name}，请让管理员将你的登录邮箱加入工作空间。

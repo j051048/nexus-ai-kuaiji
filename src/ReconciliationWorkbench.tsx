@@ -275,7 +275,7 @@ export function ReconciliationWorkbench({
     <Wrapper className={'reconciliation-workbench' + (embedded ? ' embedded' : '')}>
       <div className={embedded ? 'reconciliation-embedded-heading' : 'reconciliation-heading'}>
         <div>
-          {!embedded && <p className="reconciliation-kicker">BANK RECONCILIATION / 业务与资金</p>}
+          {!embedded && <p className="reconciliation-kicker">银行对账 · 业务与资金</p>}
           {embedded ? <h2>让一笔业务，对上一笔付款。</h2> : <h1>让一笔业务，对上一笔付款。</h1>}
           <p>
             {page?.book.company_name ?? '当前授权账套'} · {page?.book.period ?? ''} ·

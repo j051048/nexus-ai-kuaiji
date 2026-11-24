@@ -90,7 +90,7 @@ export default function AccountRecovery({
     <main className="admin-shell">
       <section className="admin-mfa">
         <LockKeyhole size={28} />
-        <p className="eyebrow">ACCOUNT RECOVERY</p>
+        <p className="eyebrow">账号找回</p>
         <h1>{done ? '密码已更新' : valid ? '设置新的登录密码' : '本人找回密码'}</h1>
         {error && (
           <p role="alert" className="form-error">

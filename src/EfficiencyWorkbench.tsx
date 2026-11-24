@@ -223,7 +223,7 @@ function BookEfficiencyWorkbench({
     <main className="efficiency-workbench">
       <section className="page-heading">
         <div>
-          <p className="eyebrow">HUMAN EFFORT / MEASURED</p>
+          <p className="eyebrow">人工投入与工时统计</p>
           <h1>用真实处理时间，衡量自动化。</h1>
           <p className="page-description">
             主动开始、暂停和完成计时；未计时的工作不推算，等待员工补件单独记录。

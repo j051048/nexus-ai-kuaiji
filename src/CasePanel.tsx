@@ -14,7 +14,14 @@ import type { Session } from './types';
 import { directUploadLimitLabel, directUploadSizeError } from './transport-limits';
 import { caseCanClose, caseMissingFields, caseReasonError, caseStateLabels } from './case-types';
 import type { CaseTask } from './case-types';
+import { QuickPhraseChips } from './QuickPhraseChips';
 import './cases.css';
+
+const CASE_QUICK_PHRASES: Partial<Record<'respond' | 'accept' | 'close', readonly string[]>> = {
+  respond: ['已补充清晰票据原件及业务说明，请核验', '已按要求补齐缺失字段与佐证材料'],
+  accept: ['已核对补充原件与字段，接受本次补件', '补件资料齐全清晰，进入后续账务核对'],
+  close: ['异常已核实处理完毕，具备继续复核条件', '已核对补件与账务调整结果，关闭本任务'],
+};
 
 const labelDate = (value: string) =>
   new Date(value).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false });
@@ -258,7 +265,7 @@ export function CasePanel({
     <section className="panel case-detail" aria-label="异常与补件详情">
       <div className="panel-heading">
         <div>
-          <p className="case-kicker">EXCEPTION DESK / 处理记录</p>
+          <p className="case-kicker">异常处理记录</p>
           <h2>{task?.title ?? '读取任务详情'}</h2>
         </div>
         <div className="case-actions">
@@ -549,6 +556,27 @@ export function CasePanel({
                     placeholder="记录已核对的事实、补件说明或处理结果"
                   />
                 </label>
+                {(() => {
+                  const activeOp =
+                    task.permissions.respond && !task.permissions.manage ? 'respond' : operation;
+                  const phrases =
+                    activeOp === 'respond' || activeOp === 'accept' || activeOp === 'close'
+                      ? CASE_QUICK_PHRASES[activeOp]
+                      : undefined;
+                  return phrases ? (
+                    <QuickPhraseChips
+                      label="常用处理说明"
+                      phrases={phrases}
+                      value={reason}
+                      disabled={busy}
+                      onSelect={(phrase) => {
+                        setReason(phrase);
+                        if (task.permissions.respond && !task.permissions.manage)
+                          setOperation('respond');
+                      }}
+                    />
+                  ) : null;
+                })()}
                 <button
                   className="button secondary"
                   disabled={busy || !!caseReasonError(reason)}

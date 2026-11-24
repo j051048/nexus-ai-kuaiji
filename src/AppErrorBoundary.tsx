@@ -17,7 +17,7 @@ function FatalErrorPage({ error }: { error: unknown }) {
         <span className="fatal-error-icon">
           <TriangleAlert size={28} />
         </span>
-        <p className="eyebrow">APPLICATION RECOVERY</p>
+        <p className="eyebrow">页面恢复</p>
         <h1>{chunkFailure ? '页面版本已更新' : '页面暂时无法打开'}</h1>
         <p>
           {chunkFailure

@@ -153,6 +153,13 @@ describe('工作台 4–8 的信息层级', () => {
       permissions: { edit: true, review: false, export: false, manage: false },
     });
     expect(view).toMatch(/<button[^>]*disabled=""[^>]*>继续复核/);
+    expect(view).not.toContain('顺次办理下一家');
+  });
+  it('月度清单在具备办理权限时展示本页进度条与顺次办理入口，不重复印出客户名称', () => {
+    const view = monthView();
+    expect(view).toContain('本页已锁期 0 / 1 家');
+    expect(view).toContain('办理中 1 家');
+    expect(view).toContain('顺次办理下一家');
   });
   it('未知进度不当作完成，仍提供明细核对', () => {
     const view = monthView({ work: undefined });

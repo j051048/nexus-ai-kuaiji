@@ -110,7 +110,7 @@ export function CompanyProfile({ session, bookId }: { session: Session; bookId: 
     <section className="firm-insights-detail" aria-label={`${data.company_name} 财务画像`}>
       <div className="firm-insights-detail-head">
         <div>
-          <span className="eyebrow">COMPANY PROFILE</span>
+          <span className="eyebrow">企业财务画像</span>
           <h2>{data.company_name}</h2>
           <p>
             {data.period} ·{' '}
@@ -323,7 +323,7 @@ export function CompanyComparison({ session, period }: { session: Session; perio
     <section className="firm-insights-detail" aria-label="企业对比">
       <div className="firm-insights-detail-head">
         <div>
-          <span className="eyebrow">COMPANY COMPARISON</span>
+          <span className="eyebrow">多企业横向对比</span>
           <h2>企业对比</h2>
           <p>{period} · 只列已复核报表；未复核企业保留在表中但不按 0 参与经营判断。</p>
         </div>
@@ -420,7 +420,7 @@ export function DeliveryTimeline({ session, period }: { session: Session; period
     <section className="firm-insights-detail" aria-label="交付时间线">
       <div className="firm-insights-detail-head">
         <div>
-          <span className="eyebrow">DELIVERY TIMELINE</span>
+          <span className="eyebrow">月度交付时间线</span>
           <h2>交付时间线</h2>
           <p>{period} · 按账套期间与到期日展示；没有到期日的账套不推断日期。</p>
         </div>

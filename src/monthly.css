@@ -1056,3 +1056,67 @@ button.monthly-progress-cell:hover {
     background-position: 0 50%;
   }
 }
+
+.monthly-list-region {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.monthly-page-progress {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin: var(--space-3) 0;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+.monthly-page-progress-info {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  flex: 1 1 260px;
+  min-width: 0;
+  font-size: var(--font-size-sm);
+}
+.monthly-page-progress-info strong {
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+.monthly-page-progress-info span {
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+}
+.monthly-page-progress-bar {
+  flex: 1 1 140px;
+  max-width: 240px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--surface-subtle);
+  overflow: hidden;
+}
+.monthly-page-progress-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--brand);
+  transition: width 0.2s ease;
+}
+@media (max-width: 640px) {
+  .monthly-page-progress {
+    order: 2;
+    padding: var(--space-3);
+  }
+  .monthly-list-region > .pagination-controls,
+  .monthly-list-region > .monthly-boundary {
+    order: 3;
+  }
+  .monthly-page-progress > .button {
+    width: 100%;
+    min-height: var(--control-height-touch);
+  }
+}

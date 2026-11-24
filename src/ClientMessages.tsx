@@ -236,7 +236,7 @@ function MessageList({ session, onOpen }: Props) {
       )}
       <header>
         <div>
-          <p className="eyebrow">MESSAGES / ONE NEXT STEP</p>
+          <p className="eyebrow">通知与沟通 · 明确下一步</p>
           <h1>消息与补件提醒</h1>
           <p>只显示需要你处理的退回原因、催办和办理进度。</p>
         </div>

@@ -630,7 +630,7 @@ export function TaxCostBatchPanel({
     <section className="tax-cost-panel" aria-labelledby="tax-cost-title">
       <header>
         <div>
-          <p className="tax-cost-kicker">TAX10–12 · 车辆与核定费用</p>
+          <p className="tax-cost-kicker">行业专项 · 车辆与核定费用</p>
           <h3 id="tax-cost-title">维修、保险与 OA 成本批次</h3>
         </div>
         <button type="button" onClick={() => void load()} disabled={busy}>

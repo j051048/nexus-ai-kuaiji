@@ -132,7 +132,7 @@ export function ClosingWorkbench({
       ) : (
         <section className="page-heading">
           <div>
-            <p className="eyebrow">MONTH-END REVIEW</p>
+            <p className="eyebrow">月末结账预检</p>
             <h1>先核清，再合上这个月。</h1>
             <p className="page-description">
               月结预检核对资料、任务、匹配和交付结果。会计确认当前快照后，才锁定期间。

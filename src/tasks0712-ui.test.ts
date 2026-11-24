@@ -23,6 +23,9 @@ it('底稿页面不能在已经人工申报后仍一概宣称尚未申报', () =
   );
   expect(html).toContain('生成底稿不代表已申报');
   expect(html).toContain('以人工登记及回执为准');
+  expect(html).toContain('aria-label="税务办理阶段导航"');
+  expect(html).toContain('就绪与税源');
+  expect(html).toContain('权限与回执');
 });
 it('内部正式账簿不代表外部软件已过账', () => {
   const html = renderToStaticMarkup(

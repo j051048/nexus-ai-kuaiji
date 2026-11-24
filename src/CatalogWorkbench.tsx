@@ -222,7 +222,7 @@ export function CatalogWorkbench({
       ) : (
         <section className="page-heading">
           <div>
-            <p className="eyebrow">A CHART THAT FITS THE BUSINESS</p>
+            <p className="eyebrow">贴合企业业务的科目体系</p>
             <h1>把企业的账，配置清楚。</h1>
             <p className="page-description">
               客户科目、辅助核算与固定记账模板，由授权会计维护并保留版本。

@@ -42,6 +42,13 @@ const TAX_REVIEW_PHRASES = [
   '已独立复核计税依据与差异说明，同意定稿',
 ] as const;
 
+const TAX_STAGES = [
+  { id: 'tax-stage-prep', badge: '一', label: '就绪与税源' },
+  { id: 'tax-stage-calc', badge: '二', label: '税费计提' },
+  { id: 'tax-stage-workpaper', badge: '三', label: '底稿与复核' },
+  { id: 'tax-stage-filing', badge: '四', label: '权限与回执' },
+] as const;
+
 type Props = {
   session: Session;
   bookId: string;
@@ -338,37 +345,78 @@ function TaxContent({
       <p className="tax-boundary">
         生成底稿不代表已申报；办理状态以人工登记及回执为准。本系统不自动申报或缴款，来源在复核和导出时重新校验。
       </p>
+      {!denied && !read.error && (
+        <nav className="tax-stage-nav" aria-label="税务办理阶段导航">
+          {TAX_STAGES.map((stage) => (
+            <button
+              key={stage.id}
+              type="button"
+              className="tax-stage-jump"
+              onClick={() =>
+                document
+                  .getElementById(stage.id)
+                  ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+              }
+            >
+              <span className="tax-stage-badge">{stage.badge}</span>
+              <span>{stage.label}</span>
+            </button>
+          ))}
+        </nav>
+      )}
       {subpanelsReady && !denied && !read.error && (
         <>
-          <TaxReadinessList data={readiness} />
-          <PilotBoundaryPanel session={session} companyId={companyId} />
-          <TaxSourcePanel session={session} bookId={bookId} />
-          <TaxAccrualPanel session={session} bookId={bookId} period={period} />
-          <ClosingAuthorityPanel session={session} bookId={bookId} />
-          <TaxFeeBatchPanel session={session} bookId={bookId} period={period} />
-          <FeeVariancePanel
-            session={session}
-            bookId={bookId}
-            period={period}
-            onOpenDraft={onOpenDraft}
-            initialVarianceId={initialFeeVarianceId}
-            canManage={!!context?.permissions.manage}
-          />
-          <TaxCostBatchPanel session={session} bookId={bookId} period={period} />
-          <OaSnapshotPanel
-            session={session}
-            bookId={bookId}
-            period={period}
-            canManage={!!context?.permissions.manage}
-          />
-          <TaxFPanel session={session} bookId={bookId} period={period} />
-          <TaxFilingRecords
-            session={session}
-            bookId={bookId}
-            period={period}
-            canRegister={['owner', 'admin', 'reviewer'].includes(session.role ?? '')}
-            onRecorded={() => read.reload()}
-          />
+          <section
+            id="tax-stage-prep"
+            className="tax-stage-group"
+            aria-label="阶段一：就绪检查与税源采集"
+          >
+            <header className="tax-stage-header">
+              <span className="tax-stage-badge">阶段一</span>
+              <div>
+                <h3>就绪检查与税源采集</h3>
+                <p>先核对本期申报前提、适用范围、导入税源与业务快照。</p>
+              </div>
+            </header>
+            <div className="tax-stage-body">
+              <TaxReadinessList data={readiness} />
+              <PilotBoundaryPanel session={session} companyId={companyId} />
+              <TaxSourcePanel session={session} bookId={bookId} />
+              <OaSnapshotPanel
+                session={session}
+                bookId={bookId}
+                period={period}
+                canManage={!!context?.permissions.manage}
+              />
+            </div>
+          </section>
+          <section
+            id="tax-stage-calc"
+            className="tax-stage-group"
+            aria-label="阶段二：税费测算与计提"
+          >
+            <header className="tax-stage-header">
+              <span className="tax-stage-badge">阶段二</span>
+              <div>
+                <h3>税费测算与计提</h3>
+                <p>逐项核对四税计提、规费差额、成本核算及专项测算。</p>
+              </div>
+            </header>
+            <div className="tax-stage-body">
+              <TaxAccrualPanel session={session} bookId={bookId} period={period} />
+              <TaxFeeBatchPanel session={session} bookId={bookId} period={period} />
+              <FeeVariancePanel
+                session={session}
+                bookId={bookId}
+                period={period}
+                onOpenDraft={onOpenDraft}
+                initialVarianceId={initialFeeVarianceId}
+                canManage={!!context?.permissions.manage}
+              />
+              <TaxCostBatchPanel session={session} bookId={bookId} period={period} />
+              <TaxFPanel session={session} bookId={bookId} period={period} />
+            </div>
+          </section>
         </>
       )}
       {(failure || read.error) && (
@@ -383,7 +431,18 @@ function TaxContent({
       )}
       {read.loading && <p role="status">正在读取本账套税务档案与底稿…</p>}
       {context && !read.loading && (
-        <>
+        <section
+          id="tax-stage-workpaper"
+          className="tax-stage-group"
+          aria-label="阶段三：底稿复核与申报归档"
+        >
+          <header className="tax-stage-header">
+            <span className="tax-stage-badge">阶段三</span>
+            <div>
+              <h3>增值税底稿生成与独立复核</h3>
+              <p>按「核对档案 → 确认来源与科目 → 独立复核后导出」三步完成定稿。</p>
+            </div>
+          </header>
           <ol className="tax-steps">
             <li>1 核对档案</li>
             <li>2 确认来源与科目</li>
@@ -584,7 +643,32 @@ function TaxContent({
               </>
             )}
           </section>
-        </>
+        </section>
+      )}
+      {subpanelsReady && !denied && !read.error && (
+        <section
+          id="tax-stage-filing"
+          className="tax-stage-group"
+          aria-label="阶段四：结账权限与申报回执"
+        >
+          <header className="tax-stage-header">
+            <span className="tax-stage-badge">阶段四</span>
+            <div>
+              <h3>结账权限与申报回执登记</h3>
+              <p>核对结账职责边界，并在完成人工申报后登记官方回执原件。</p>
+            </div>
+          </header>
+          <div className="tax-stage-body">
+            <ClosingAuthorityPanel session={session} bookId={bookId} />
+            <TaxFilingRecords
+              session={session}
+              bookId={bookId}
+              period={period}
+              canRegister={['owner', 'admin', 'reviewer'].includes(session.role ?? '')}
+              onRecorded={() => read.reload()}
+            />
+          </div>
+        </section>
       )}
     </section>
   );

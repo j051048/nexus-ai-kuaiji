@@ -142,7 +142,7 @@ export function LedgerWorkspace({
       ) : (
         <section className="page-heading">
           <div>
-            <p className="eyebrow">CONTINUITY OF THE BOOKS</p>
+            <p className="eyebrow">期初余额与账簿结转</p>
             <h1>一家企业，一份持续的账务档案。</h1>
             <p className="page-description">
               长期账套连接明确月份。科目与模板可以继承，每月凭证、证据和复核权限独立保存。

@@ -100,7 +100,7 @@ export default function AdminOnboarding({
     <div className="onboarding-panel">
       <header className="onboarding-heading">
         <div>
-          <p className="eyebrow">CLIENT SETUP</p>
+          <p className="eyebrow">客户建档开通</p>
           <h2>把这家企业接入日常工作</h2>
           <p>按实际配置继续完成，刷新或下次登录都可以接着做。</p>
         </div>

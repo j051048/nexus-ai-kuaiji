@@ -48,6 +48,8 @@ describe('V03 同屏复核与分录展示', () => {
       expect(html.match(/class="button primary"/g)).toHaveLength(1);
       expect(html).toContain('确认审核');
       expect(html).toContain('审核并下一笔');
+      expect(html).toContain('inline-review-queue-progress');
+      expect(html).toContain('aria-label="同屏批量复核进度"');
       expect(html).not.toContain('导出凭证');
     } finally {
       vi.unstubAllGlobals();

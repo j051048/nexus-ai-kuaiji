@@ -222,7 +222,7 @@ function AdminHeading({
   return (
     <div className="admin-heading">
       <div>
-        <p className="eyebrow">ADMINISTRATION</p>
+        <p className="eyebrow">系统与成员管理</p>
         <h1>{title}</h1>
         <p>{description}</p>
       </div>

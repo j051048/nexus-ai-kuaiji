@@ -165,7 +165,7 @@ export function CaseCreatePanel({
     <section className="panel case-create" aria-label="创建异常或补件任务">
       <div className="panel-heading">
         <div>
-          <p className="case-kicker">NEW CASE / 创建处理任务</p>
+          <p className="case-kicker">新建处理任务</p>
           <h2>明确问题、责任和补件要求</h2>
         </div>
         {onClose && (
@@ -463,7 +463,7 @@ export function CasesWorkbench({
     <div className="cases-workbench">
       <div className="case-page-heading">
         <div>
-          <p className="case-kicker">ACCOUNTING OPERATIONS / EXCEPTIONS</p>
+          <p className="case-kicker">异常与补件协作</p>
           <h1>异常与补件</h1>
           <p>把需要人工介入的事项交给合适的人，跟踪资料、核验和处理结果。</p>
         </div>

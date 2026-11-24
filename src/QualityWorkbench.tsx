@@ -249,7 +249,7 @@ export function QualityWorkbench({
     <main className="quality-workbench">
       <section className="page-heading">
         <div>
-          <p className="eyebrow">EVIDENCE / REPLAY</p>
+          <p className="eyebrow">试点评测与证据回放</p>
           <h1>用经过独立核对的业务，检验自动化。</h1>
           <p className="page-description">
             冻结已审核分录与原件，另一位会计确认标准后回放。每项结果注明测试范围，缺少覆盖会单独列出。

@@ -90,7 +90,7 @@ export default function AccountActivation({
     <main className="admin-shell">
       <section className="admin-mfa">
         <ShieldCheck size={28} />
-        <p className="eyebrow">ACCOUNT ACTIVATION</p>
+        <p className="eyebrow">账号激活</p>
         <h1>{done ? '账号已激活' : '确认加入工作空间'}</h1>
         {done ? (
           <>

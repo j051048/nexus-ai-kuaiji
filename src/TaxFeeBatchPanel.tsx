@@ -582,7 +582,7 @@ function ScopedTaxFeeBatchPanel({
     <section className="tax-fee-panel" aria-labelledby="tax-fee-title">
       <header>
         <div>
-          <p className="tax-fee-kicker">TAX06 · 出租车规费</p>
+          <p className="tax-fee-kicker">行业专项 · 出租车规费</p>
           <h3 id="tax-fee-title">规费批次与独立复核</h3>
         </div>
         <button type="button" onClick={() => void load()} disabled={busy}>

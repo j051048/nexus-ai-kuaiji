@@ -116,7 +116,7 @@ export function FleetMetricsPanel({
     <section className="fleet-metrics" aria-label="单车贡献与驾驶员欠款">
       <header>
         <div>
-          <p className="fleet-eyebrow">TAX19 · 单车贡献与收款</p>
+          <p className="fleet-eyebrow">车队经营 · 单车贡献与收款</p>
           <h4>单车贡献、未分配成本与驾驶员欠款</h4>
           <p>
             收入只取已复核规费/已确认租赁；成本只取已复核车辆费用。共用费用未分配前不计算净利润。

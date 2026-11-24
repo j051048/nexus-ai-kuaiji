@@ -232,7 +232,7 @@ function ObservabilityWorkspace({ session }: { session: Session }) {
     <main className="firm-observability">
       <header>
         <div>
-          <p className="eyebrow">OPERATIONS / TRACE</p>
+          <p className="eyebrow">运行状态与链路追踪</p>
           <h1>运行可观测性</h1>
           <p>队列、锁等待、后台处理服务、投影与 AI 成本集中在一个只读视图。</p>
         </div>

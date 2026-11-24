@@ -170,6 +170,13 @@ export function MonthlyClientWorkbench({
     }
     return open(row, row.work.target, row.work.target === 'review' ? 'pending' : undefined);
   }
+  const pageRows = data?.rows ?? [];
+  const closedCount = pageRows.filter((row) => row.status === 'closed').length;
+  const noBookCount = pageRows.filter((row) => row.status === 'no_book').length;
+  const openCount = pageRows.length - closedCount - noBookCount;
+  const nextActionableRow = pageRows.find((row) => row.status !== 'closed' && !!nextAction(row));
+  const nextActionableHandler = nextActionableRow ? nextAction(nextActionableRow) : undefined;
+  const closedPercent = pageRows.length ? Math.round((closedCount / pageRows.length) * 100) : 0;
   return (
     <main className="monthly-workbench">
       <section className="page-heading">
@@ -413,7 +420,41 @@ export function MonthlyClientWorkbench({
               ))}
             </div>
           ) : data ? (
-            <>
+            <div className="monthly-list-region">
+              {pageRows.length > 0 && (
+                <section className="monthly-page-progress" aria-label="本页月度推进概览">
+                  <div className="monthly-page-progress-info">
+                    <strong>
+                      本页已锁期 {closedCount} / {pageRows.length} 家
+                    </strong>
+                    <span>
+                      {openCount > 0 ? `办理中 ${openCount} 家` : '无开放中账套'}
+                      {noBookCount > 0 ? ` · 待建账 ${noBookCount} 家` : ''}
+                    </span>
+                    <div
+                      className="monthly-page-progress-bar"
+                      role="progressbar"
+                      aria-label="本页月度锁期进度"
+                      aria-valuenow={closedCount}
+                      aria-valuemin={0}
+                      aria-valuemax={pageRows.length}
+                    >
+                      <span style={{ width: `${closedPercent}%` }} />
+                    </div>
+                  </div>
+                  {nextActionableHandler && (
+                    <button
+                      type="button"
+                      className="button primary small"
+                      disabled={revoked}
+                      onClick={nextActionableHandler}
+                    >
+                      顺次办理下一家
+                      <ArrowUpRight size={14} />
+                    </button>
+                  )}
+                </section>
+              )}
               <section className="monthly-matrix" aria-label="企业月度进度矩阵">
                 {data.rows.map((row) => (
                   <article
@@ -638,7 +679,7 @@ export function MonthlyClientWorkbench({
               <p className="monthly-boundary">
                 同企业的多个账套分别展示；无权限的数据保持未知。月结以当前事实的预检与人工锁期记录为准，交付完成须有回执核验。
               </p>
-            </>
+            </div>
           ) : null}
         </>
       )}

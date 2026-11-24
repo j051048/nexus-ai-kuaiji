@@ -126,7 +126,7 @@ function RecurringContent({
       ) : (
         <section className="page-heading">
           <div>
-            <p className="eyebrow">RECURRING / REVIEWED TEMPLATES</p>
+            <p className="eyebrow">周期凭证 · 复核模板</p>
             <h1>重复事项，复用明确的处理方案。</h1>
             <p className="page-description">
               先写清真实科目、金额、期间与原件，再由另一位会计审批。每月生成一次未审草稿。

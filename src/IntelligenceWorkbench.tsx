@@ -66,7 +66,7 @@ export function IntelligenceWorkbench({
     <main className="intelligence-workbench">
       <section className="page-heading">
         <div>
-          <p className="eyebrow">EVIDENCE, BEFORE ENTRIES</p>
+          <p className="eyebrow">先核票据 · 再成凭证</p>
           <h1>把判断，留在异常发生处。</h1>
           <p className="page-description">
             集中核对票据、业务事项与流水之间的差异，处理依据随事项保存。

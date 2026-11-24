@@ -225,7 +225,7 @@ function MonthlyBalanceContent({
       ) : (
         <section className="page-heading">
           <div>
-            <p className="eyebrow">MONTHLY / EXTERNAL REFERENCE</p>
+            <p className="eyebrow">月度台账与外部核对</p>
             <h1>用真实外部余额，核清月度差异。</h1>
             <p className="page-description">
               外部期初加已核验交付，与外部期末逐项比较。未审核和未核验交付单独保留。

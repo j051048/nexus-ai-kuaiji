@@ -99,7 +99,7 @@ export function ServicePlanPanel({
     <section className="service-plan-workspace" aria-label="月度服务单">
       <header className="service-plan-heading">
         <div>
-          <p className="eyebrow">CLIENT SERVICE / MONTHLY PLAN</p>
+          <p className="eyebrow">客户服务单 · 月度计划</p>
           <h1>{companyName} · 月度服务单</h1>
           <p>
             <CalendarDays size={15} />

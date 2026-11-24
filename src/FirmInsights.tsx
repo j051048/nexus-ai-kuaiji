@@ -420,7 +420,7 @@ export function FirmInsights({ session }: { session: Session }) {
     <main className="firm-insights" aria-label="经营看板">
       <header className="firm-insights-head">
         <div>
-          <span className="eyebrow">FIRM INSIGHTS</span>
+          <span className="eyebrow">事务所经营洞察</span>
           <h1>经营看板</h1>
           <p>全所交付、异常与已复核报表的只读汇总。财务数字不带未复核账套，不推断原因。</p>
         </div>

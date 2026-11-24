@@ -352,7 +352,7 @@ export function LearningWorkbench({
       ) : (
         <section className="page-heading">
           <div>
-            <p className="eyebrow">REVIEWED EXPERIENCE</p>
+            <p className="eyebrow">复核沉淀的企业规则</p>
             <h1>把修正，变成下一次的依据。</h1>
             <p className="page-description">
               从已审核凭证积累企业样例；规则经过正反例评估和会计发布后，才用于后续草稿。
