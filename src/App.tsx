@@ -24,8 +24,7 @@ const NoAuthorization = lazy(() =>
   import('./AuthScreen').then((module) => ({ default: module.NoAuthorization })),
 );
 import { useAccountingAuth } from './useAccountingAuth';
-import { ActivityTimer } from './ActivityTimer';
-import { AgentNavigation, type AgentNavigationView } from './AgentNavigation';
+import type { AgentNavigationView } from './AgentNavigation';
 import { navigationCurrent } from './workspace-navigation';
 import { projectNavigationCapabilities } from './navigation-capabilities';
 import type { AgentCommand } from './AgentCommandPalette';
@@ -39,8 +38,27 @@ import type {
 import { clearReviewSession } from './review-session';
 import { taskDestination } from './workspace-types';
 import { taskScope } from './task-scope';
-import { RoleQuickStart } from './RoleQuickStart';
-import { AccountIdentity } from './AccountIdentity';
+const WorkspaceRouteContent = lazy(() =>
+  import('./WorkspaceRouteContent').then((module) => ({ default: module.WorkspaceRouteContent })),
+);
+const ClientPortalShell = lazy(() =>
+  import('./ClientPortalShell').then((module) => ({ default: module.ClientPortalShell })),
+);
+const AssistantDrawer = lazy(() =>
+  import('./AssistantDrawer').then((module) => ({ default: module.AssistantDrawer })),
+);
+const AgentNavigation = lazy(() =>
+  import('./AgentNavigation').then((module) => ({ default: module.AgentNavigation })),
+);
+const ActivityTimer = lazy(() =>
+  import('./ActivityTimer').then((module) => ({ default: module.ActivityTimer })),
+);
+const AccountIdentity = lazy(() =>
+  import('./AccountIdentity').then((module) => ({ default: module.AccountIdentity })),
+);
+const RoleQuickStart = lazy(() =>
+  import('./RoleQuickStart').then((module) => ({ default: module.RoleQuickStart })),
+);
 const WorkspaceContextBar = lazy(() =>
   import('./WorkspaceContextBar').then((module) => ({ default: module.WorkspaceContextBar })),
 );
@@ -60,10 +78,9 @@ import type { OperationsCompany } from './operations-types';
 import type { Book, BookDetail, Draft, Session, Workbench } from './types';
 
 import { EmptyState, Modal, Spinner } from './AppPrimitives';
-import { AssistantDrawer, type AssistantDrawerMode } from './AssistantDrawer';
-import { ClientPortalShell, type ClientPortalTab } from './ClientPortalShell';
+import type { AssistantDrawerMode } from './AssistantDrawer';
+import type { ClientPortalTab } from './ClientPortalShell';
 import { useBookWorkspace, type BookFilter, type BookNotice } from './useBookWorkspace';
-import { WorkspaceRouteContent } from './WorkspaceRouteContent';
 import { WorkspaceMfaPrompt } from './WorkspaceMfaPrompt';
 import { useWorkspaceRoute } from './useWorkspaceRoute';
 import { useWorkspaceProgress } from './useWorkspaceProgress';
@@ -1389,21 +1406,30 @@ export default function App() {
           <span>保留原列表选择，打开时重新核验权限。</span>
         </div>
       )}
-      <WorkspaceRouteContent
-        key={acceptedDiscardEpoch}
-        app={
-          portalRouteView === routeView
-            ? routeApp
-            : {
-                ...routeApp,
-                routeView: portalRouteView,
-                showBusiness:
-                  portalRouteView === 'business' ||
-                  (portalRouteView === 'accounting' && clientPortal),
-              }
+      <Suspense
+        fallback={
+          <div className="loading-block">
+            <Spinner />
+            正在打开工作台…
+          </div>
         }
-        book={bookWorkspace}
-      />
+      >
+        <WorkspaceRouteContent
+          key={acceptedDiscardEpoch}
+          app={
+            portalRouteView === routeView
+              ? routeApp
+              : {
+                  ...routeApp,
+                  routeView: portalRouteView,
+                  showBusiness:
+                    portalRouteView === 'business' ||
+                    (portalRouteView === 'accounting' && clientPortal),
+                }
+          }
+          book={bookWorkspace}
+        />
+      </Suspense>
     </>
   );
   const clientPortalTab: ClientPortalTab =
@@ -1537,100 +1563,109 @@ export default function App() {
             onLeave={routeGuard.proceed}
           />
         )}
-        <ClientPortalShell
-          session={session}
-          profile={profile}
-          me={me}
-          identityUnavailable={!!profileError}
-          current={clientPortalTab}
-          onNavigate={(tab) => {
-            if (tab === 'home') navigate('home');
-            else if (tab === 'materials') navigate('materials');
-            else if (tab === 'messages') navigate('messages');
-            else navigate('business');
-          }}
-          onBriefing={() => {
-            if (navigationLocked) return;
-            const target = selectBriefing(profile.briefings, reportScope);
-            if (!target) {
-              setBriefingPicker(true);
-              return;
-            }
-            openBriefing(target);
-          }}
-          onLogout={() => void auth.logout()}
-          onAccounting={canSeeAccounting ? () => navigate('accounting') : undefined}
-          onAdmin={
-            me?.permissions.manage_admin || me?.permissions.manage_firm
-              ? () => {
-                  if (!navigationLocked) void routerNavigate('/admin');
-                }
-              : undefined
+        <Suspense
+          fallback={
+            <div className="loading-block">
+              <Spinner />
+              正在打开客户门户…
+            </div>
           }
-          navigationLocked={navigationLocked}
-          persona={auth.persona}
-          personas={auth.config?.personas}
-          onPersonaChange={(value) => void auth.choosePersona(value)}
         >
-          {auth.error && (
-            <p className="form-error" role="alert">
-              {auth.error}
-            </p>
-          )}
-          {notice && (
-            <p className={notice.kind === 'error' ? 'form-error' : 'form-success'} role="alert">
-              {notice.text}
-            </p>
-          )}
-          {profileError && routeView !== 'home' && (
-            <p className="form-error" role="alert">
-              {profileError}
-              <button className="text-button" onClick={() => void loadProfile()}>
-                重新读取权限
-              </button>
-            </p>
-          )}
-          <WorkspaceMfaPrompt
-            key={`mfa:${session.scope_key}`}
+          <ClientPortalShell
             session={session}
-            onVerified={auth.refreshIdentity}
-            onLogout={auth.logout}
-          />
-          {routeContent}
-          {routeView === 'home' && (
-            <Suspense fallback={<p role="status">正在载入签收与部门费用入口…</p>}>
-              <ClientAccessTools
-                key={session.scope_key}
-                session={session}
-                canApprove={profile.can_approve}
-              />
-            </Suspense>
-          )}
-          {taskDialogs}
-          {briefingPicker && (
-            <Modal
-              title="选择财税简报"
-              subtitle="按企业、账套和期间选择。打开时会重新核验报告权限。"
-              onClose={() => setBriefingPicker(false)}
-            >
-              {reportChoices.length ? (
-                <div className="workspace-briefing-links">
-                  {reportChoices.map((target) => (
-                    <button
-                      key={`${target.company_id}:${target.book_id}:${target.period}`}
-                      type="button"
-                      onClick={() => openBriefing(target)}
-                    >
-                      {target.company_name} · {target.book_name} · {target.period}
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <p role="status">当前企业范围没有可打开的报告。</p>
-              )}
-            </Modal>
-          )}
-        </ClientPortalShell>
+            profile={profile}
+            me={me}
+            identityUnavailable={!!profileError}
+            current={clientPortalTab}
+            onNavigate={(tab) => {
+              if (tab === 'home') navigate('home');
+              else if (tab === 'materials') navigate('materials');
+              else if (tab === 'messages') navigate('messages');
+              else navigate('business');
+            }}
+            onBriefing={() => {
+              if (navigationLocked) return;
+              const target = selectBriefing(profile.briefings, reportScope);
+              if (!target) {
+                setBriefingPicker(true);
+                return;
+              }
+              openBriefing(target);
+            }}
+            onLogout={() => void auth.logout()}
+            onAccounting={canSeeAccounting ? () => navigate('accounting') : undefined}
+            onAdmin={
+              me?.permissions.manage_admin || me?.permissions.manage_firm
+                ? () => {
+                    if (!navigationLocked) void routerNavigate('/admin');
+                  }
+                : undefined
+            }
+            navigationLocked={navigationLocked}
+            persona={auth.persona}
+            personas={auth.config?.personas}
+            onPersonaChange={(value) => void auth.choosePersona(value)}
+          >
+            {auth.error && (
+              <p className="form-error" role="alert">
+                {auth.error}
+              </p>
+            )}
+            {notice && (
+              <p className={notice.kind === 'error' ? 'form-error' : 'form-success'} role="alert">
+                {notice.text}
+              </p>
+            )}
+            {profileError && routeView !== 'home' && (
+              <p className="form-error" role="alert">
+                {profileError}
+                <button className="text-button" onClick={() => void loadProfile()}>
+                  重新读取权限
+                </button>
+              </p>
+            )}
+            <WorkspaceMfaPrompt
+              key={`mfa:${session.scope_key}`}
+              session={session}
+              onVerified={auth.refreshIdentity}
+              onLogout={auth.logout}
+            />
+            {routeContent}
+            {routeView === 'home' && (
+              <Suspense fallback={<p role="status">正在载入签收与部门费用入口…</p>}>
+                <ClientAccessTools
+                  key={session.scope_key}
+                  session={session}
+                  canApprove={profile.can_approve}
+                />
+              </Suspense>
+            )}
+            {taskDialogs}
+            {briefingPicker && (
+              <Modal
+                title="选择财税简报"
+                subtitle="按企业、账套和期间选择。打开时会重新核验报告权限。"
+                onClose={() => setBriefingPicker(false)}
+              >
+                {reportChoices.length ? (
+                  <div className="workspace-briefing-links">
+                    {reportChoices.map((target) => (
+                      <button
+                        key={`${target.company_id}:${target.book_id}:${target.period}`}
+                        type="button"
+                        onClick={() => openBriefing(target)}
+                      >
+                        {target.company_name} · {target.book_name} · {target.period}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p role="status">当前企业范围没有可打开的报告。</p>
+                )}
+              </Modal>
+            )}
+          </ClientPortalShell>
+        </Suspense>
       </>
     );
   }
@@ -1644,110 +1679,112 @@ export default function App() {
           onLeave={routeGuard.proceed}
         />
       )}
-      <AgentNavigation
-        session={session}
-        current={navigationCurrent(routeView, showBusiness)}
-        presentationNav={
-          profile ? primaryNav(presentationRole(profile), navigationCapabilities) : undefined
-        }
-        presentationLabel={profile ? roleHome(presentationRole(profile)).name : undefined}
-        onAdmin={
-          me?.permissions.manage_admin || me?.permissions.manage_firm
-            ? () => {
-                if (!navigationLocked) void routerNavigate('/admin');
-              }
-            : undefined
-        }
-        onAccess={
-          me?.permissions.manage_firm
-            ? () => {
-                if (!navigationLocked) {
-                  setNotice(null);
-                  setModal('access');
+      <Suspense fallback={null}>
+        <AgentNavigation
+          session={session}
+          current={navigationCurrent(routeView, showBusiness)}
+          presentationNav={
+            profile ? primaryNav(presentationRole(profile), navigationCapabilities) : undefined
+          }
+          presentationLabel={profile ? roleHome(presentationRole(profile)).name : undefined}
+          onAdmin={
+            me?.permissions.manage_admin || me?.permissions.manage_firm
+              ? () => {
+                  if (!navigationLocked) void routerNavigate('/admin');
                 }
-              }
-            : undefined
-        }
-        capabilities={navigationCapabilities}
-        businessLabel={experience.businessLabel}
-        locked={navigationLocked || !!modal || commandOpen}
-        onNavigate={navigate}
-        onAccountingFilter={(value) => {
-          navigate('accounting');
-          setFilter(value);
-        }}
-        firmSelector={
-          (me?.firms.length ?? 0) > 1 ? (
-            <select
-              aria-label="切换事务所"
-              value={session.firm_id}
-              disabled={navigationLocked || auth.loading || commandOpen}
-              onChange={(event) => void auth.switchFirm(event.target.value)}
-            >
-              {me?.firms.map((firm) => (
-                <option key={firm.id} value={firm.id}>
-                  {firm.name}
-                </option>
-              ))}
-            </select>
-          ) : (
-            <strong>{session.firm_name}</strong>
-          )
-        }
-        footer={
-          <>
-            {session.mode === 'local' && !!auth.config?.personas?.length && (
-              <label className="persona-switch">
-                <span>切换验证身份</span>
-                <select
-                  aria-label="切换验证身份"
-                  value={auth.persona}
-                  disabled={navigationLocked || auth.loading || commandOpen}
-                  onChange={(event) => void auth.choosePersona(event.target.value)}
-                >
-                  {auth.config.personas.map((persona) => (
-                    <option key={persona.id} value={persona.id}>
-                      {persona.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
-            <button
-              type="button"
-              className="help-link"
-              disabled={navigationLocked || commandOpen}
-              onClick={() => setModal('help')}
-            >
-              <CircleHelp size={16} />
-              使用说明与版本范围
-              <ArrowUpRight size={13} />
-            </button>
-            <div className="user-block">
-              <span className="avatar">{session.user_name.slice(0, 1)}</span>
-              <div>
-                <strong>{session.user_name}</strong>
-                <span>
-                  {accountIdentity({ session, profile, me, unavailable: !!profileError }).role}
-                </span>
-              </div>
-              {session.mode === 'supabase' ? (
-                <button
-                  type="button"
-                  className="icon-button logout-button"
-                  aria-label="退出登录"
-                  disabled={navigationLocked || auth.loading}
-                  onClick={() => void auth.logout()}
-                >
-                  <LogOut size={17} />
-                </button>
-              ) : (
-                <ShieldCheck size={17} />
+              : undefined
+          }
+          onAccess={
+            me?.permissions.manage_firm
+              ? () => {
+                  if (!navigationLocked) {
+                    setNotice(null);
+                    setModal('access');
+                  }
+                }
+              : undefined
+          }
+          capabilities={navigationCapabilities}
+          businessLabel={experience.businessLabel}
+          locked={navigationLocked || !!modal || commandOpen}
+          onNavigate={navigate}
+          onAccountingFilter={(value) => {
+            navigate('accounting');
+            setFilter(value);
+          }}
+          firmSelector={
+            (me?.firms.length ?? 0) > 1 ? (
+              <select
+                aria-label="切换事务所"
+                value={session.firm_id}
+                disabled={navigationLocked || auth.loading || commandOpen}
+                onChange={(event) => void auth.switchFirm(event.target.value)}
+              >
+                {me?.firms.map((firm) => (
+                  <option key={firm.id} value={firm.id}>
+                    {firm.name}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <strong>{session.firm_name}</strong>
+            )
+          }
+          footer={
+            <>
+              {session.mode === 'local' && !!auth.config?.personas?.length && (
+                <label className="persona-switch">
+                  <span>切换验证身份</span>
+                  <select
+                    aria-label="切换验证身份"
+                    value={auth.persona}
+                    disabled={navigationLocked || auth.loading || commandOpen}
+                    onChange={(event) => void auth.choosePersona(event.target.value)}
+                  >
+                    {auth.config.personas.map((persona) => (
+                      <option key={persona.id} value={persona.id}>
+                        {persona.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
               )}
-            </div>
-          </>
-        }
-      />
+              <button
+                type="button"
+                className="help-link"
+                disabled={navigationLocked || commandOpen}
+                onClick={() => setModal('help')}
+              >
+                <CircleHelp size={16} />
+                使用说明与版本范围
+                <ArrowUpRight size={13} />
+              </button>
+              <div className="user-block">
+                <span className="avatar">{session.user_name.slice(0, 1)}</span>
+                <div>
+                  <strong>{session.user_name}</strong>
+                  <span>
+                    {accountIdentity({ session, profile, me, unavailable: !!profileError }).role}
+                  </span>
+                </div>
+                {session.mode === 'supabase' ? (
+                  <button
+                    type="button"
+                    className="icon-button logout-button"
+                    aria-label="退出登录"
+                    disabled={navigationLocked || auth.loading}
+                    onClick={() => void auth.logout()}
+                  >
+                    <LogOut size={17} />
+                  </button>
+                ) : (
+                  <ShieldCheck size={17} />
+                )}
+              </div>
+            </>
+          }
+        />
+      </Suspense>
 
       <div className="main-shell">
         {auth.error && (
@@ -1830,102 +1867,111 @@ export default function App() {
             onOpenBooks={() => navigate('accounting')}
           />
         </Suspense>
-        <AccountIdentity session={session} profile={profile} me={me} unavailable={!!profileError} />
-        <ActivityTimer
-          key={session.scope_key}
-          session={session}
-          enabled={routeView !== 'home' && routeView !== 'runs' && routeView !== 'efficiency'}
-          bookId={workspaceUsesBook(routeView) ? bookId : undefined}
-          onOpen={() => {
-            if (busy || businessBusy || reviewDirty || monthlyDirty) return;
-            setRouteView('efficiency');
-          }}
-        />
+        <Suspense fallback={null}>
+          <AccountIdentity
+            session={session}
+            profile={profile}
+            me={me}
+            unavailable={!!profileError}
+          />
+          <ActivityTimer
+            key={session.scope_key}
+            session={session}
+            enabled={routeView !== 'home' && routeView !== 'runs' && routeView !== 'efficiency'}
+            bookId={workspaceUsesBook(routeView) ? bookId : undefined}
+            onOpen={() => {
+              if (busy || businessBusy || reviewDirty || monthlyDirty) return;
+              setRouteView('efficiency');
+            }}
+          />
+        </Suspense>
         {routeContent}
       </div>
 
       {assistantOpen && (
-        <AssistantDrawer
-          mode={effectiveAssistantMode}
-          contextAvailable={!!assistantTarget}
-          contextLabel={assistantContextLabel}
-          onModeChange={switchAssistantMode}
-          onClose={closeAssistantDrawer}
-        >
-          {globalAssistant && (
-            <div className="assistant-mode-panel" hidden={effectiveAssistantMode !== 'global'}>
-              <Suspense
-                fallback={
-                  <div className="loading-block">
-                    <Spinner />
-                    正在打开全账套助手…
-                  </div>
-                }
-              >
-                <GlobalAccountingAssistant
-                  key={session.scope_key}
-                  session={session}
-                  initialContext={globalAssistant}
-                  embedded
-                  onClose={closeAssistantDrawer}
-                  onNavigateEvidence={openAssistantEvidence}
-                  onNavigateContext={(context) => {
-                    closeAssistantDrawer();
-                    if (context.draft && context.books.length === 1)
+        <Suspense fallback={null}>
+          <AssistantDrawer
+            mode={effectiveAssistantMode}
+            contextAvailable={!!assistantTarget}
+            contextLabel={assistantContextLabel}
+            onModeChange={switchAssistantMode}
+            onClose={closeAssistantDrawer}
+          >
+            {globalAssistant && (
+              <div className="assistant-mode-panel" hidden={effectiveAssistantMode !== 'global'}>
+                <Suspense
+                  fallback={
+                    <div className="loading-block">
+                      <Spinner />
+                      正在打开全账套助手…
+                    </div>
+                  }
+                >
+                  <GlobalAccountingAssistant
+                    key={session.scope_key}
+                    session={session}
+                    initialContext={globalAssistant}
+                    embedded
+                    onClose={closeAssistantDrawer}
+                    onNavigateEvidence={openAssistantEvidence}
+                    onNavigateContext={(context) => {
+                      closeAssistantDrawer();
+                      if (context.draft && context.books.length === 1)
+                        setInlineTarget({
+                          bookId: context.books[0].id,
+                          draftId: context.draft.id,
+                        });
+                      else if (context.books.length === 1)
+                        void openAssistantBook(context.books[0].id);
+                      else if (context.events.length === 1) {
+                        navigate('business', true);
+                        setBusinessTarget(context.events[0].id);
+                      } else navigate('accounting', true);
+                    }}
+                    onOpenTask={openAssistantTask}
+                  />
+                </Suspense>
+              </div>
+            )}
+            {assistantTarget && (
+              <div className="assistant-mode-panel" hidden={effectiveAssistantMode !== 'context'}>
+                <Suspense
+                  fallback={
+                    <div className="loading-block">
+                      <Spinner />
+                      正在读取当前凭证依据…
+                    </div>
+                  }
+                >
+                  <AccountingContextAssistant
+                    key={`${session.scope_key}:${assistantTarget.bookId}:${assistantTarget.draftId}:${assistantTarget.version}`}
+                    session={session}
+                    bookId={assistantTarget.bookId}
+                    draftId={assistantTarget.draftId}
+                    draftVersion={assistantTarget.version}
+                    actionTypes={['review', 'edit']}
+                    embedded
+                    onClose={closeAssistantDrawer}
+                    onOpenEvidence={() => {
                       setInlineTarget({
-                        bookId: context.books[0].id,
-                        draftId: context.draft.id,
+                        bookId: assistantTarget.bookId,
+                        draftId: assistantTarget.draftId,
                       });
-                    else if (context.books.length === 1)
-                      void openAssistantBook(context.books[0].id);
-                    else if (context.events.length === 1) {
-                      navigate('business', true);
-                      setBusinessTarget(context.events[0].id);
-                    } else navigate('accounting', true);
-                  }}
-                  onOpenTask={openAssistantTask}
-                />
-              </Suspense>
-            </div>
-          )}
-          {assistantTarget && (
-            <div className="assistant-mode-panel" hidden={effectiveAssistantMode !== 'context'}>
-              <Suspense
-                fallback={
-                  <div className="loading-block">
-                    <Spinner />
-                    正在读取当前凭证依据…
-                  </div>
-                }
-              >
-                <AccountingContextAssistant
-                  key={`${session.scope_key}:${assistantTarget.bookId}:${assistantTarget.draftId}:${assistantTarget.version}`}
-                  session={session}
-                  bookId={assistantTarget.bookId}
-                  draftId={assistantTarget.draftId}
-                  draftVersion={assistantTarget.version}
-                  actionTypes={['review', 'edit']}
-                  embedded
-                  onClose={closeAssistantDrawer}
-                  onOpenEvidence={() => {
-                    setInlineTarget({
-                      bookId: assistantTarget.bookId,
-                      draftId: assistantTarget.draftId,
-                    });
-                    closeAssistantDrawer();
-                  }}
-                  onAction={() => {
-                    setInlineTarget({
-                      bookId: assistantTarget.bookId,
-                      draftId: assistantTarget.draftId,
-                    });
-                    closeAssistantDrawer();
-                  }}
-                />
-              </Suspense>
-            </div>
-          )}
-        </AssistantDrawer>
+                      closeAssistantDrawer();
+                    }}
+                    onAction={() => {
+                      setInlineTarget({
+                        bookId: assistantTarget.bookId,
+                        draftId: assistantTarget.draftId,
+                      });
+                      closeAssistantDrawer();
+                    }}
+                  />
+                </Suspense>
+              </div>
+            )}
+          </AssistantDrawer>
+        </Suspense>
       )}
       {commandOpen && (
         <Suspense
@@ -2062,7 +2108,11 @@ export default function App() {
           onClose={() => setModal(null)}
         >
           <div className="help-content">
-            {profile && <RoleQuickStart guide={roleHomeGuide(profile)} />}
+            {profile && (
+              <Suspense fallback={null}>
+                <RoleQuickStart guide={roleHomeGuide(profile)} />
+              </Suspense>
+            )}
             <p>
               适用于中国大陆企业、人民币账套。支持员工报销、采购 /
               费用、日常收支录入与附件上传；经部门审批和企业财务核验后交接凭证草稿。也支持 CSV

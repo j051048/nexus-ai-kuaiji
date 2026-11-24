@@ -99,12 +99,14 @@ def parse_return_file(content: bytes, *, batch_code: str, exported: list[dict]) 
                     date.fromisoformat(posted)
                 except ValueError:
                     _fail("对方过账日期不是有效日期")
-            if any(value.startswith(_FORMULA) for value in (code, reason)):
+            # 对方凭证号同样来自外部文件，公式前缀注入必须与凭证标识、失败原因一并拦截。
+            external_code = raw["对方凭证号"].strip()
+            if any(value.startswith(_FORMULA) for value in (code, external_code, reason)):
                 _fail("返回结果文件包含不允许的公式前缀")
             declared.append(
                 {
                     "voucher_code": code,
-                    "external_code": raw["对方凭证号"].strip(),
+                    "external_code": external_code,
                     "status": result,
                     "reason": reason,
                     "posted_date": posted or None,
@@ -128,12 +130,16 @@ def parse_return_file(content: bytes, *, batch_code: str, exported: list[dict]) 
         status, reason = row["status"], row["reason"]
         if row["actual_cents"] is not None and row["actual_cents"] != expected["amount_cents"]:
             status, reason = "amount_mismatch", reason or "金额与冻结交付包不一致"
-        elif row["accounts"] and set(row["accounts"]).isdisjoint(set(expected["accounts"])):
+        elif row["accounts"] and set(row["accounts"]) != set(expected["accounts"]):
+            # 严格集合相等：冻结凭证有两个科目时，回执少给、多给、或夹带错科目都算差异，
+            # 只要有一科目对不上就不能进入“已核实过账”。
             status, reason = "account_mismatch", reason or "科目与冻结交付包不一致"
         elif status in {"missing", "extra", "amount_mismatch", "account_mismatch"}:
             reason = reason or "文件声明存在差异"
         if status == "accepted" and (row["actual_cents"] is None or not row["accounts"]):
             reason = reason or "客户未提供金额或科目，只能确认接收"
+        if status == "accepted" and not row["external_code"]:
+            reason = reason or "对方未提供凭证号，只能确认接收"
         row.update(status=status, reason=reason)
         rows.append(row)
 
@@ -153,8 +159,13 @@ def parse_return_file(content: bytes, *, batch_code: str, exported: list[dict]) 
 
     counts = {state: sum(row["status"] == state for row in rows) for state in RESULT_STATES}
     received = all(row["status"] == "accepted" for row in rows)
+    # 逐笔“核实过账”必须同时具备对方凭证号、对方过账日期、金额与科目；
+    # 缺任一项只代表对方已接收，绝不返回 posted = True。
     complete = all(
-        bool(row["posted_date"]) and row["actual_cents"] is not None and bool(row["accounts"])
+        bool(row["external_code"])
+        and bool(row["posted_date"])
+        and row["actual_cents"] is not None
+        and bool(row["accounts"])
         for row in rows
     )
     posted = received and complete

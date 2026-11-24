@@ -1,3 +1,4 @@
+import './queue-panels.css';
 import { CheckCircle2, Clock3, LoaderCircle, TriangleAlert } from 'lucide-react';
 import { jobActive, queueStatusLabels } from './queue-helpers';
 import type { QueueJob } from './queue-types';

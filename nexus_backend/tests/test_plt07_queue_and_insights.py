@@ -223,6 +223,78 @@ def _prepare_reviewed_book(case, company, book, period: str, standard_kind: str,
     return created
 
 
+def test_firm_insights_keeps_unopened_company_in_denominator_and_splits_standards(business):
+    """5 家应报法人：1 家未开账、1 家两账套、2 家准则不同 → 分母与合计都要能复算。"""
+
+    case = business
+    _prepare_reviewed_book(case, case.company, case.book, "2026-10", "small_enterprise")
+    second_book = case.ledger.create_book(
+        case.manager,
+        BookCreate(name="合成第二账套", period="2026-10", company_id=case.company["id"]),
+    )
+    _prepare_reviewed_book(case, case.other, case.other_book, "2026-10", "enterprise")
+    # 第 3、4 家：已开账但报表未复核（留在分母里点名）
+    company_c = case.directory.create_company(case.manager, CompanyCreate(name="合成丙公司"))
+    book_c = case.ledger.create_book(
+        case.manager, BookCreate(name="丙公司账套", period="2026-10", company_id=company_c["id"])
+    )
+    company_e = case.directory.create_company(case.manager, CompanyCreate(name="合成戊公司"))
+    book_e = case.ledger.create_book(
+        case.manager, BookCreate(name="戊公司账套", period="2026-10", company_id=company_e["id"])
+    )
+    # 第 5 家：已纳管但本期根本没有开账，必须留在分母里
+    company_d = case.directory.create_company(case.manager, CompanyCreate(name="合成丁公司"))
+
+    insights = FirmInsightsService(case.db)
+    data = insights.overview(case.manager, "2026-10")
+    kpis, fin = data["kpis"], data["financial"]
+
+    assert kpis["managed_companies"] == 5
+    assert kpis["opened_companies"] == 4
+    assert kpis["reported_companies"] == 2
+    assert kpis["books"] == 5  # 甲公司 2 套账套只算 1 家，但账套数单列
+    assert "已纳入 2/5 家" in fin["coverage_label"]
+    assert "不完整" in fin["coverage_label"]
+
+    missing = {row["company_id"]: row for row in fin["missing_companies"]}
+    assert set(missing) == {company_c["id"], company_e["id"], company_d["id"]}
+    assert missing[company_d["id"]]["reason"] == "not_opened"
+    assert missing[company_d["id"]]["book_id"] is None
+    assert missing[company_d["id"]]["top_blocker"] == "本期未开账"
+    assert missing[company_c["id"]]["reason"] == "report_missing"
+    assert company_d["name"] in fin["coverage_label"]
+
+    # 多准则：顶层合计置空表示不可比，数字只保留在分准则小计里。
+    assert fin["mixed_standards"] is True
+    assert fin["totals_comparable"] is False
+    assert all(fin[key] is None for key in ("assets_cents", "revenue_cents", "profit_cents"))
+
+    # 分准则小计可由当期已复核报表逐家精确复算。
+    expected = {"small_enterprise": 0, "enterprise": 0}
+    with case.db.transaction(actor=case.manager) as conn:
+        rows = conn.execute(
+            "SELECT rr.standard_kind,rr.content_json FROM report_runs rr JOIN books b ON b.id=rr.book_id "
+            "WHERE b.firm_id=? AND rr.period=? AND rr.status IN ('reviewed','published')",
+            (case.manager.firm_id, "2026-10"),
+        ).fetchall()
+    for row in rows:
+        content = row["content_json"]
+        if not isinstance(content, dict):
+            import json
+
+            content = json.loads(content)
+        expected[row["standard_kind"]] += int(
+            (content.get("balance_sheet") or {}).get("assets") or 0
+        )
+    breakdown = {row["standard_kind"]: row for row in fin["standards_breakdown"]}
+    for standard, assets in expected.items():
+        assert breakdown[standard]["assets_cents"] == assets
+    assert second_book["id"] != case.book["id"]
+    assert book_c["id"] and book_e["id"]
+    assert fin["complete"] is False
+    assert any(row["book_id"] == second_book["id"] for row in fin["pending_book_reports"])
+
+
 def test_firm_insights_marks_missing_mixed_standards_legacy_and_blocks_non_manager(business):
     case = business
     # 共 3 家企业：case.book（缺报/仅草稿）、case.other_book（小企业已复核）、新建一般企业（企业准则已复核且模拟历史报表）

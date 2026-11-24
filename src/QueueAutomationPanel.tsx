@@ -1,3 +1,4 @@
+import './queue-panels.css';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Clock3, RefreshCw, ShieldCheck, TriangleAlert } from 'lucide-react';
 import { api } from './api';

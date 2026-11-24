@@ -6,6 +6,7 @@ can already authorize and validate. Generate/review/export remain authoritative.
 
 from ..accounting.domain import AccountingError
 from .workpaper import _period, _snapshot
+from . import profit_source
 
 
 def tax_context(tax, actor, book_id, period=None):
@@ -80,5 +81,7 @@ def tax_context(tax, actor, book_id, period=None):
             },
             "profile": profile,
             "accounts": accounts,
+            # 累计利润只能来自可追溯的报表快照：没有快照就明说没有，不猜 0。
+            "cumulative_profit": profit_source.suggest(conn, book, period),
             "blocking_reasons": list(dict.fromkeys(reasons)),
         }

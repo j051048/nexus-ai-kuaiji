@@ -42,6 +42,8 @@ def package(
     cit_rate_bp=2_500,
     contracts=(),
     stamp_rates=None,
+    stamp_contracts=None,
+    stamp_zero_confirmed=False,
     already_counted=(),
     halved=False,
 ):
@@ -74,7 +76,39 @@ def package(
         prepaid_cents=prepaid_cents,
         rate_bp=cit_rate_bp,
     )
-    stamp = engines.stamp_duty(contracts, stamp_rates or {}, already_counted=already_counted)
+    provided = list(stamp_contracts) if stamp_contracts is not None else list(contracts)
+    if stamp_zero_confirmed and provided:
+        raise AccountingError(
+            "已确认本期无应税合同（零业务），不能再录入印花税合同明细；"
+            "如确有应税合同，请取消零业务确认后重新计提",
+            422,
+        )
+    if provided:
+        stamp = engines.stamp_duty(provided, stamp_rates or {}, already_counted=already_counted)
+        stamp = {
+            "status": "computed",
+            "accrued": True,
+            "notice": None,
+            "total_cents": stamp["total_cents"],
+            "lines": stamp["lines"],
+        }
+    elif stamp_zero_confirmed:
+        stamp = {
+            "status": "zero_confirmed",
+            "accrued": True,
+            "notice": "已确认本期无应税合同（零业务）",
+            "total_cents": 0,
+            "lines": [],
+        }
+    else:
+        # 没收到合同资料不等于本期没有应税合同：给 0 会让会计以为已经算过。
+        stamp = {
+            "status": "unprovided",
+            "accrued": False,
+            "notice": "未提供合同资料，本次未计提印花税，不能视作本期零业务",
+            "total_cents": None,
+            "lines": [],
+        }
     return {
         "period": period,
         "source": {

@@ -15,6 +15,14 @@ export interface AccrualPreview {
   debit_cents: number;
   credit_cents: number;
   refund_note: string;
+  /**
+   * ``unprovided`` means no contract data was supplied: stamp duty is *unknown*,
+   * not zero. ``zero_confirmed`` means a human confirmed there are no taxable
+   * contracts this period.
+   */
+  stamp_duty_status?: 'computed' | 'unprovided' | 'zero_confirmed' | string;
+  stamp_duty_notice?: string;
+  notices?: string[];
   surtax_basis?: SurtaxBasis;
   posted: false;
   note: string;
@@ -40,6 +48,9 @@ export interface AccrualRequest {
     credit_cents: number;
   };
   refund_note: string;
+  stamp_duty_status?: string;
+  stamp_duty_notice?: string;
+  notices?: string[];
   surtax_basis: SurtaxBasis;
   surtax_cents: number;
   /** Set once a formal voucher exists for this request; the status alone cannot say it. */
@@ -88,6 +99,58 @@ export const surtaxBasisLabel = (basis: SurtaxBasis) =>
     ? `附加税按税务档案核定税率 ${percent(basis.rate_bp ?? 0)}% 计征`
     : '附加税按请求中的政策条目计征';
 
+/**
+ * 「没给合同资料」和「确认没有合同」是两件事：前者印花税未知，后者才是 0。
+ * 界面必须让会计看出这一点，否则一个空白的 0 元会被当成已经算过。
+ */
+export const stampDutyLabel = (status?: string, notice?: string) => {
+  if (status === 'unprovided') return notice || '未提供合同资料，未计提印花税';
+  if (status === 'zero_confirmed') return notice || '已确认本期无应税合同（零业务）';
+  if (status === 'computed') return '印花税已按合同明细计提';
+  return '';
+};
+
+/** 累计利润参考来源：服务端只返回可追溯的报表快照，没有来源时金额为 null。 */
+export interface ProfitSource {
+  suggested_profit_cents: number | null;
+  source_kind: 'reviewed_report' | 'trial_report' | null;
+  source_label: string | null;
+  source_period: string | null;
+  source_version: number | null;
+  is_final_report: boolean;
+  report_run_id: string | null;
+  notice: string | null;
+}
+
+/** 累计利润的来源说明：必须让人看出这是哪一份报表、哪个期间、哪一版。 */
+export const profitSourceLabel = (source: ProfitSource | null) => {
+  if (!source) return '';
+  if (source.suggested_profit_cents === null) return source.notice || '没有可用的利润表快照';
+  const parts = [
+    `来源：${source.source_label ?? '利润表快照'}`,
+    `期间 ${source.source_period ?? '未知'}`,
+    `版本 ${source.source_version ?? '未知'}`,
+  ];
+  if (!source.is_final_report) parts.push('正式报表尚未复核');
+  return parts.join(' · ');
+};
+
+/**
+ * 人工改过的累计利润必须留下原因；不改就不要求填，避免多一步无意义操作。
+ */
+export const needsAdjustReason = (cents: number | null, source: ProfitSource | null) =>
+  source?.suggested_profit_cents !== null &&
+  source?.suggested_profit_cents !== undefined &&
+  cents !== source.suggested_profit_cents;
+
+/** 分转成输入框里的元，仍走字符串拼接，不引入浮点乘法。 */
+export const centsToYuanInput = (cents: number) => {
+  const negative = cents < 0;
+  const digits = String(Math.abs(cents)).padStart(3, '0');
+  const text = `${digits.slice(0, -2)}.${digits.slice(-2)}`;
+  return negative ? `-${text}` : text;
+};
+
 export function AccrualPreviewView({
   data,
   blocked,
@@ -101,8 +164,19 @@ export function AccrualPreviewView({
         {blocked}
       </p>
     );
-  if (!data || data.entries.length === 0)
-    return <p className="tax-accrual-empty">本期没有可计提的税金，或底稿尚未复核。</p>;
+  if (!data) return null;
+  const stampNote = stampDutyLabel(data.stamp_duty_status, data.stamp_duty_notice);
+  if (data.entries.length === 0)
+    return (
+      <>
+        <p className="tax-accrual-empty">本期没有可计提的税金，或底稿尚未复核。</p>
+        {stampNote ? (
+          <p className="tax-accrual-note" data-stamp-status={data.stamp_duty_status}>
+            {stampNote}。
+          </p>
+        ) : null}
+      </>
+    );
   return (
     <div className="tax-accrual-preview">
       <p className="tax-accrual-totals">{previewTotals(data)}</p>
@@ -127,6 +201,11 @@ export function AccrualPreviewView({
         </tbody>
       </table>
       <p className="tax-accrual-note">{data.note}</p>
+      {stampNote ? (
+        <p className="tax-accrual-note" data-stamp-status={data.stamp_duty_status}>
+          {stampNote}。
+        </p>
+      ) : null}
       {data.surtax_basis ? (
         <p className="tax-accrual-note">{surtaxBasisLabel(data.surtax_basis)}。</p>
       ) : null}
@@ -162,6 +241,11 @@ export function AccrualRequestView({
           `${surtaxBasisLabel(outcome.surtax_basis)}。`}
       </p>
       {outcome.refund_note ? <p className="tax-accrual-note">{outcome.refund_note}</p> : null}
+      {stampDutyLabel(outcome.stamp_duty_status, outcome.stamp_duty_notice) ? (
+        <p className="tax-accrual-note" data-stamp-status={outcome.stamp_duty_status}>
+          {stampDutyLabel(outcome.stamp_duty_status, outcome.stamp_duty_notice)}。
+        </p>
+      ) : null}
       {outcome.posted_voucher_id ? (
         <p className="tax-accrual-note">
           已生成正式凭证，记账完成；正式凭证不能修改，记错须另开冲销凭证。
@@ -189,14 +273,55 @@ export function TaxAccrualPanel({
   const [blocked, setBlocked] = useState('');
   const [loading, setLoading] = useState(true);
   const [profit, setProfit] = useState('');
+  const [source, setSource] = useState<ProfitSource | null>(null);
+  const [adjustReason, setAdjustReason] = useState('');
+  const [stampZero, setStampZero] = useState(false);
   const [outcome, setOutcome] = useState<AccrualRequest | null>(null);
   const [requestError, setRequestError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const profitCents = yuanToCents(profit);
+  const adjustRequired = needsAdjustReason(profitCents, source);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    // 切换账套或期间时必须清掉旧账套的累计利润与申请结果，防止跨账套串数。
+    setProfit('');
+    setSource(null);
+    setAdjustReason('');
+    setStampZero(false);
+    setOutcome(null);
+    setRequestError('');
+    api<ProfitSource>(
+      `/tax/books/${encodeURIComponent(bookId)}/cumulative-profit?period=${encodeURIComponent(period)}`,
+      session,
+      { signal: controller.signal },
+    )
+      .then((raw) => {
+        if (controller.signal.aborted) return;
+        setSource(raw);
+        // 有可追溯来源就预填；用户已经输入过则不动，避免覆盖手工值。
+        if (raw.suggested_profit_cents !== null) {
+          setProfit((current) =>
+            current.trim() ? current : centsToYuanInput(raw.suggested_profit_cents as number),
+          );
+        }
+      })
+      .catch(() => {
+        if (controller.signal.aborted) return;
+        // 拿不到参考值不是失败：输入框保持为空，由会计人工填写并说明原因。
+        setSource(null);
+      });
+    return () => controller.abort();
+  }, [session, bookId, period]);
 
   const load = useCallback(
     (cents: number | null, signal?: AbortSignal) => {
-      const body = { book_id: bookId, period, cumulative_profit_cents: cents };
+      const body = {
+        book_id: bookId,
+        period,
+        cumulative_profit_cents: cents,
+        stamp_zero_confirmed: stampZero,
+      };
       api<AccrualPreview>('/tax/accrual-preview', session, {
         method: 'POST',
         body,
@@ -215,7 +340,7 @@ export function TaxAccrualPanel({
         })
         .finally(() => setLoading(false));
     },
-    [session, bookId, period],
+    [session, bookId, period, stampZero],
   );
 
   useEffect(() => {
@@ -228,7 +353,7 @@ export function TaxAccrualPanel({
       clearTimeout(timer);
       controller.abort();
     };
-  }, [load, profitCents]);
+  }, [load, profitCents, stampZero]);
 
   const requestVoucher = useCallback(() => {
     if (profitCents === null) return;
@@ -236,7 +361,13 @@ export function TaxAccrualPanel({
     setRequestError('');
     api<AccrualRequest>('/tax/accrual-manual-request', session, {
       method: 'POST',
-      body: { book_id: bookId, period, cumulative_profit_cents: profitCents },
+      body: {
+        book_id: bookId,
+        period,
+        cumulative_profit_cents: profitCents,
+        stamp_zero_confirmed: stampZero,
+        reason: adjustReason.trim() || undefined,
+      },
     })
       .then((raw) => {
         setOutcome(raw);
@@ -248,7 +379,7 @@ export function TaxAccrualPanel({
         setRequestError(errorMessage(error));
       })
       .finally(() => setSubmitting(false));
-  }, [session, bookId, period, profitCents]);
+  }, [session, bookId, period, profitCents, stampZero, adjustReason]);
 
   const refreshStatus = useCallback(() => {
     const identifier = outcome?.request.id;
@@ -275,7 +406,12 @@ export function TaxAccrualPanel({
   }, [outcome, bookId, session]);
 
   const canRequest =
-    !loading && !submitting && !blocked && profitCents !== null && Boolean(data?.entries.length);
+    !loading &&
+    !submitting &&
+    !blocked &&
+    profitCents !== null &&
+    Boolean(data?.entries.length) &&
+    (!adjustRequired || adjustReason.trim().length >= 4);
 
   return (
     <section className="tax-accrual" aria-label="四税计提预览" aria-busy={loading}>
@@ -308,6 +444,43 @@ export function TaxAccrualPanel({
         </label>
         <span className="tax-accrual-note">
           企业所得税预缴按累计利润计征；底稿里的账载税额不能代替利润，未填写时服务端会拒绝计提所得税。
+        </span>
+      </p>
+      {source ? (
+        <p className="tax-accrual-note" data-profit-source={source.source_kind ?? 'none'}>
+          {profitSourceLabel(source)}
+        </p>
+      ) : null}
+      {adjustRequired ? (
+        <p>
+          <label>
+            人工调整原因
+            <input
+              aria-label="人工调整原因"
+              maxLength={500}
+              value={adjustReason}
+              onChange={(event) => setAdjustReason(event.target.value)}
+            />
+          </label>
+          <span className="tax-accrual-note">
+            人工改过的累计利润必须说明依据（如：补记未入账收入、剔除非本期损益），会随计提申请留痕。
+          </span>
+        </p>
+      ) : null}
+      <p>
+        <label>
+          <input
+            aria-label="已核实本期无应税合同（确认零业务）"
+            checked={stampZero}
+            type="checkbox"
+            onChange={(event) => setStampZero(event.target.checked)}
+          />
+          已核实本期无应税合同（确认零业务）
+        </label>
+        <span className="tax-accrual-note" data-stamp-hint={stampZero ? 'zero' : 'unprovided'}>
+          {stampZero
+            ? '已确认本期无应税合同：印花税按 0 元计提，并会在回执中留痕。'
+            : '未提供合同资料，未计提印花税；勾选此项前请先确认本期确实没有应税合同。'}
         </span>
       </p>
       <AccrualPreviewView data={data} blocked={blocked} />

@@ -1177,10 +1177,25 @@ export function IntegrationWorkbench({
                       {returns.map((row) => (
                         <div className="integration-history" key={row.id}>
                           <span>
-                            {row.batch_code} · {row.verification_label ?? row.result_status} ·{' '}
+                            {row.batch_code} ·{' '}
+                            <strong
+                              className="integration-receipt-tier"
+                              data-tier={
+                                row.posted
+                                  ? 'posted'
+                                  : row.verification_state === 'file_partial_discrepancy' ||
+                                      row.verification_state ===
+                                        'manual_posted_claimed_with_evidence'
+                                    ? 'pending'
+                                    : 'received'
+                              }
+                            >
+                              {row.verification_label ?? row.result_status}
+                            </strong>{' '}
+                            ·{' '}
                             {row.source_kind === 'manual'
-                              ? `${row.received ? '已接收' : '未接收'} · ${row.posted ? '已核验过账' : row.manual_posted_claim ? '人工声明已过账（未逐笔核对）' : '未过账'}`
-                              : `已确认 ${row.summary_breakdown?.confirmed_count ?? row.counts.accepted} / 待查 ${row.summary_breakdown?.pending_count ?? row.counts.discrepancy} / 已处置 ${row.summary_breakdown?.handled_count ?? 0} · ${row.received ? '已接收' : '未接收'} · ${row.posted ? '已过账' : '未过账'}`}
+                              ? `${row.received ? '已接收' : '未接收'} · ${row.posted ? '已核实过账' : row.manual_posted_claim ? '人工声明已过账（未逐笔核对）' : '未过账'}`
+                              : `已确认 ${row.summary_breakdown?.confirmed_count ?? row.counts.accepted} / 待查 ${row.summary_breakdown?.pending_count ?? row.counts.discrepancy} / 已处置 ${row.summary_breakdown?.handled_count ?? 0} · ${row.received ? '已接收' : '未接收'} · ${row.posted ? '已核实过账' : '未核实过账'}`}
                           </span>
                           <span className="integration-offline">
                             {row.created_by_name ? `登记人 ${row.created_by_name} · ` : ''}

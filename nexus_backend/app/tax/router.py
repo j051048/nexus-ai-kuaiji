@@ -326,6 +326,9 @@ def build_tax_router(actor_dependency):
                 prepaid_cents=payload.prepaid_cents,
                 cit_rate_bp=payload.cit_rate_bp,
                 halved=payload.halved,
+                stamp_contracts=payload.stamp_contracts,
+                stamp_rates=payload.stamp_rates,
+                stamp_zero_confirmed=payload.stamp_zero_confirmed,
             )
 
         if payload.surtax_items:
@@ -367,6 +370,26 @@ def build_tax_router(actor_dependency):
         tax=Depends(service),
     ):
         return tax_context(tax, current, book_id, period)
+
+    @router.get("/books/{book_id}/cumulative-profit")
+    def cumulative_profit(
+        book_id: str,
+        period: str | None = Query(default=None, max_length=7),
+        current=Depends(actor_dependency),
+        tax=Depends(service),
+    ):
+        """累计利润参考值：只读、可溯源，无来源时明确返回 null。"""
+
+        from . import profit_source
+
+        from ..accounting.domain import AccountingError
+
+        with tax.db.transaction(actor=current) as conn:
+            book = tax.access.book(conn, current, book_id, "read")
+            target = period or book["period"]
+            if target != book["period"]:
+                raise AccountingError("累计利润期间必须与当前账套月份一致，跨期请交人工核验", 409)
+            return profit_source.suggest(conn, book, target)
 
     def policy_items(request: Request) -> TaxPolicyItemService:
         return request.app.state.tax_policy_items
@@ -1420,6 +1443,9 @@ def build_tax_router(actor_dependency):
         prepaid_cents: int = 0
         cit_rate_bp: int = 2_500
         halved: bool = False
+        stamp_contracts: list[dict] | None = None
+        stamp_rates: dict[str, int] | None = None
+        stamp_zero_confirmed: bool = False
 
     class AccrualManualRequestIn(FourTaxIn):
         """Same four-tax request plus the two facts a voucher needs.
@@ -1571,6 +1597,9 @@ def build_tax_router(actor_dependency):
                 "credit_cents": lines["credit_cents"],
             },
             "refund_note": lines["refund_note"],
+            "stamp_duty_status": lines["stamp_duty_status"],
+            "stamp_duty_notice": lines["stamp_duty_notice"],
+            "notices": lines["notices"],
             "surtax_basis": surtax_basis,
             "surtax_cents": surtax_cents,
             "posted": False,
@@ -1597,6 +1626,9 @@ def build_tax_router(actor_dependency):
             prepaid_cents=payload.prepaid_cents,
             cit_rate_bp=payload.cit_rate_bp,
             halved=payload.halved,
+            stamp_contracts=payload.stamp_contracts,
+            stamp_rates=payload.stamp_rates,
+            stamp_zero_confirmed=payload.stamp_zero_confirmed,
         )
 
     @router.post("/fee-variances/{variance_id}/reverse")

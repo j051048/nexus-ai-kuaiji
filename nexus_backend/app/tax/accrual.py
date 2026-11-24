@@ -64,7 +64,16 @@ def accrual_lines(package, *, accounts=None, chart=None):
         refund_note = "本期企业所得税为多缴，未生成计提分录；请走退税或抵减"
     else:
         post("cit_expense", "cit_payable", cit_due, "企业所得税预缴计提")
-    post("stamp_expense", "stamp_payable", package["stamp_duty"]["total_cents"], "印花税计提")
+    stamp = package.get("stamp_duty") or {}
+    stamp_status = stamp.get("status") or "computed"
+    stamp_notice = ""
+    if stamp_status == "unprovided":
+        # ``total_cents`` 为 None 表示没收到合同资料，不是“算出来是 0”。
+        stamp_notice = stamp.get("notice") or "未提供合同资料，本次计提不含印花税"
+    else:
+        post("stamp_expense", "stamp_payable", stamp.get("total_cents"), "印花税计提")
+    if stamp_status == "zero_confirmed":
+        stamp_notice = stamp.get("notice") or "已确认本期无应税合同（零业务）"
 
     debit = sum(item["cents"] for item in entries if item["side"] == "debit")
     credit = sum(item["cents"] for item in entries if item["side"] == "credit")
@@ -77,4 +86,7 @@ def accrual_lines(package, *, accounts=None, chart=None):
         "debit_cents": debit,
         "credit_cents": credit,
         "refund_note": refund_note,
+        "stamp_duty_status": stamp_status,
+        "stamp_duty_notice": stamp_notice,
+        "notices": [stamp_notice] if stamp_notice else [],
     }

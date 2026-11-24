@@ -692,3 +692,48 @@
   font-size: 11px;
   margin-left: 4px;
 }
+
+/* 集团合并试算底稿：只读、可折叠，随懒加载块进入，不占首屏样式预算。 */
+.consolidation-panel {
+  margin-top: 12px;
+  border-top: 1px dashed rgba(15, 23, 42, 0.12);
+  padding-top: 10px;
+}
+.consolidation-panel > summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.consolidation-statement {
+  margin: 8px 0 4px;
+  font-weight: 600;
+  color: #7c2d12;
+}
+.consolidation-lines {
+  margin: 6px 0 10px;
+  padding-left: 18px;
+  display: grid;
+  gap: 2px;
+}
+.consolidation-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.consolidation-table caption {
+  text-align: left;
+  padding-bottom: 4px;
+  color: #475569;
+}
+.consolidation-table th,
+.consolidation-table td {
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+  padding: 4px 6px;
+  text-align: left;
+}
+.consolidation-cross-standard {
+  margin: 8px 0 0;
+  color: #92400e;
+}
+.consolidation-differences {
+  margin-top: 10px;
+}

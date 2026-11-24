@@ -4,7 +4,17 @@ import { api, errorMessage } from './api';
 import { Spinner } from './AppPrimitives';
 import type { Session } from './types';
 import { cny } from './value-baseline';
+import ConsolidationWorksheetPanel, {
+  worksheetCompanyIds,
+  worksheetCompanyNames,
+} from './firm-insights-consolidation';
 import { CompanyComparison, CompanyProfile, DeliveryTimeline } from './FirmInsightsViews';
+import {
+  CoverageCounts,
+  CoverageHead,
+  MissingCompanies,
+  StandardBreakdown,
+} from './firm-insights-coverage';
 import './firm-insights.css';
 
 type Stage = { code: string; label: string; count: number };
@@ -43,6 +53,9 @@ type Insights = {
   note: string;
   kpis: {
     companies: number;
+    managed_companies?: number;
+    opened_companies?: number;
+    reported_companies?: number;
     books: number;
     blocked: number;
     overdue: number;
@@ -57,17 +70,21 @@ type Insights = {
     ai_cost_unknown: number;
   };
   financial: {
-    assets_cents: number;
-    liabilities_cents: number;
-    equity_cents: number;
-    revenue_cents: number;
-    expenses_cents: number;
-    profit_cents: number;
-    cash_closing_cents: number;
-    unclassified_cash_cents: number;
+    assets_cents: number | null;
+    liabilities_cents: number | null;
+    equity_cents: number | null;
+    revenue_cents: number | null;
+    expenses_cents: number | null;
+    profit_cents: number | null;
+    cash_closing_cents: number | null;
+    unclassified_cash_cents: number | null;
     known_books: number;
     missing_books: number;
     total_books?: number;
+    managed_companies?: number;
+    opened_companies?: number;
+    reported_companies?: number;
+    companies_without_books?: number;
     complete?: boolean;
     coverage_label?: string;
     mixed_standards?: boolean;
@@ -90,9 +107,18 @@ type Insights = {
     missing_companies?: {
       company_id: string;
       company_name: string;
+      book_id?: string | null;
       owner_name: string;
       top_blocker: string;
       has_trial_draft: boolean;
+      reason?: string;
+    }[];
+    pending_book_reports?: {
+      company_id: string;
+      company_name: string;
+      book_id?: string | null;
+      top_blocker: string;
+      reason?: string;
     }[];
     standards_breakdown?: {
       standard_kind: string;
@@ -453,9 +479,12 @@ export function FirmInsights({ session }: { session: Session }) {
           <section className="firm-insights-kpis" aria-label="全所关键指标">
             <article>
               <Building2 size={18} />
-              <span>服务企业</span>
-              <strong>{data.kpis.companies}</strong>
-              <small>{data.kpis.books} 套在期账套</small>
+              <span>应报法人（已纳管）</span>
+              <strong>{data.kpis.managed_companies ?? data.kpis.companies}</strong>
+              <small>
+                已开账 {data.kpis.opened_companies ?? data.kpis.companies} 家 · 已报送{' '}
+                {data.kpis.reported_companies ?? data.kpis.known_reports} 家
+              </small>
             </article>
             <article>
               <BarChart3 size={18} />
@@ -531,43 +560,14 @@ export function FirmInsights({ session }: { session: Session }) {
           <section className="firm-insights-finance" aria-label="已复核报表财务汇总">
             <div className="firm-insights-card-head">
               <h2>已复核报表财务汇总（管理汇总，非合并财务报表）</h2>
-              <span>
-                {data.financial.coverage_label ??
-                  (data.financial.known_books
-                    ? `${data.financial.known_books} 套账套已覆盖`
-                    : '暂无已复核报表，未按 0 元展示')}
-              </span>
+              <CoverageHead financial={data.financial} />
             </div>
+            <CoverageCounts kpis={data.kpis} />
             {data.financial.totals_notice && (
               <p className="field-help">{data.financial.totals_notice}</p>
             )}
             {data.financial.mixed_standards && data.financial.standards_breakdown?.length ? (
-              <div className="firm-insights-table-scroll">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>会计准则口径</th>
-                      <th>纳入套数</th>
-                      <th>资产</th>
-                      <th>收入</th>
-                      <th>利润</th>
-                      <th>期末现金</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.financial.standards_breakdown.map((row) => (
-                      <tr key={row.standard_kind}>
-                        <td>{row.standard_label}</td>
-                        <td>{row.books} 套</td>
-                        <td>{cny(row.assets_cents)}</td>
-                        <td>{cny(row.revenue_cents)}</td>
-                        <td>{cny(row.profit_cents)}</td>
-                        <td>{cny(row.cash_closing_cents)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <StandardBreakdown financial={data.financial} />
             ) : (
               <dl>
                 <div>
@@ -622,21 +622,15 @@ export function FirmInsights({ session }: { session: Session }) {
                 </div>
               </dl>
             )}
-            {(data.financial.missing_companies?.length ?? 0) > 0 && (
-              <details className="firm-insights-table-fallback">
-                <summary>
-                  未纳入合计单位（{data.financial.missing_companies?.length} 家，未按 0 补齐）
-                </summary>
-                <ul>
-                  {data.financial.missing_companies?.map((m) => (
-                    <li key={m.company_id}>
-                      {m.company_name} · 负责人：{m.owner_name} · 当前阻断：{m.top_blocker}
-                      {m.has_trial_draft ? '（仅有试算/草稿，未入正式汇总）' : ''}
-                    </li>
-                  ))}
-                </ul>
-              </details>
-            )}
+            <MissingCompanies financial={data.financial} />
+            {data.financial ? (
+              <ConsolidationWorksheetPanel
+                session={session}
+                period={period}
+                companyIds={worksheetCompanyIds(data.financial)}
+                companyNames={worksheetCompanyNames(data.financial)}
+              />
+            ) : null}
           </section>
 
           <section className="firm-insights-grid">

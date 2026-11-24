@@ -306,3 +306,22 @@
   cursor: pointer;
   color: var(--ink-2, #35433a);
 }
+.integration-receipt-tier {
+  display: inline-block;
+  padding: 0 6px;
+  border: 1px solid var(--line, #d9ded8);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.integration-receipt-tier[data-tier='posted'] {
+  border-color: #2f7d4f;
+  color: #2f7d4f;
+}
+.integration-receipt-tier[data-tier='pending'] {
+  border-color: #a5731c;
+  color: #8a5f13;
+}
+.integration-receipt-tier[data-tier='received'] {
+  border-color: #4a6a8a;
+  color: #3d5872;
+}

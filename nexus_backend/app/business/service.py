@@ -10,6 +10,7 @@ from app.accounting.account_roles import AccountRoleService
 from app.accounting.models import money_to_cents
 from app.accounting.service import fingerprint, now
 from app.accounting.telemetry import tag_authorized_company
+from ..workflow import binding as workflow_binding
 from .models import BusinessEventCreate, BusinessEventUpdate, HandoffRequest, ReturnRequest
 from .templates import TEMPLATES, validate_payload
 
@@ -362,6 +363,7 @@ class BusinessService:
         ).fetchone()
         result["applicant_name"] = applicant[0] if applicant else ""
         result["payload"] = json.loads(event["payload"])
+        result["workflow_instance"] = workflow_binding.summary(conn, actor.firm_id, event["id"])
         result["currency"] = "CNY"
         result["attachments"] = self._attachments(conn, event["id"])
         from ..intelligence.current_evidence import superseded_ids
@@ -778,6 +780,7 @@ class BusinessService:
             ),
         )
         self._bump(conn, actor, event, "submitted", new_version)
+        self._bind_workflow(conn, actor, event, payload, new_version)
         self._audit(
             conn,
             actor,
@@ -821,6 +824,7 @@ class BusinessService:
                 "department_approved" if stage == "department" else "finance_approved",
             )
             self._action(conn, actor, event, stage, "approve")
+            self._advance_workflow(conn, actor, event_id, stage)
             self._audit(
                 conn,
                 actor,
@@ -847,6 +851,9 @@ class BusinessService:
                 raise AccountingError("只有当前阶段审批人可退回，申请人不可退回本人事项", 403)
             self._bump(conn, actor, event, "returned")
             self._action(conn, actor, event, "return", "return", request.reason)
+            instance = workflow_binding.instance_for(conn, actor.firm_id, event_id)
+            if instance:
+                workflow_binding.suspend_for_return(conn, actor, instance, request.reason, now())
             self._audit(
                 conn,
                 actor,
@@ -859,6 +866,45 @@ class BusinessService:
                 },
             )
             return self._event_json(conn, actor, self._event(conn, actor, event_id))
+
+    def _bind_workflow(self, conn, actor, event, payload, subject_version):
+        """费用报销提交时在同一事务里绑定生效流程版本（无定义时保持既有默认审批流）。
+
+        这里绝不写入 ``workflow_definitions``：员工提交动作不能变成隐式的管理动作，
+        企业没有发布定义时报销单照旧走默认部门/财务审批。
+        """
+
+        if event["template_id"] != "reimbursement":
+            return
+        definition = workflow_binding.active_definition(conn, actor.firm_id, event["company_id"])
+        if not definition:
+            return
+        try:
+            amount_cents = money_to_cents(
+                payload.get("amount") if isinstance(payload, dict) else ""
+            )
+        except ValueError as failure:
+            raise AccountingError(f"报销金额格式损坏，无法绑定流程：{failure}", 422) from failure
+        instance = workflow_binding.instance_for(conn, actor.firm_id, event["id"])
+        if instance and instance["status"] == "suspended":
+            if int(instance["amount_cents"]) == amount_cents:
+                workflow_binding.resume_after_resubmit(conn, actor, instance, now())
+                return
+            # 退回后改了金额可能跨过审批门槛：原挂起实例作废留痕，按本次新版本重新路由。
+            workflow_binding.supersede_for_amount_change(conn, actor, instance, amount_cents, now())
+        elif instance and instance["status"] != "rejected":
+            return
+        bound = workflow_binding.bind(
+            conn, actor, event, definition, amount_cents, now(), subject_version
+        )
+        if bound is None:
+            # 锁定的旧版本审批节点不足双人要求：保留默认审批流，不伪造已满足的双人审批。
+            return
+
+    def _advance_workflow(self, conn, actor, event_id, stage):
+        instance = workflow_binding.instance_for(conn, actor.firm_id, event_id)
+        if instance:
+            workflow_binding.advance(conn, actor, instance, stage, now())
 
     def _manage_department(self, conn, actor, company_id, department_id):
         self.access.company(conn, actor, company_id, manage=True)

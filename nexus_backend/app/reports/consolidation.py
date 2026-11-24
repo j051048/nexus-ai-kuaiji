@@ -252,12 +252,19 @@ def build_worksheet(*, requested, companies, standards, pairs, eliminations):
     for pair in pairs:
         left = standards.get(pair["company_id"], "unclassified")
         right = standards.get(pair["counterparty_company_id"], "unclassified")
+        named = {
+            **pair,
+            "left_company_name": names.get(pair["company_id"], pair["company_id"]),
+            "right_company_name": names.get(
+                pair["counterparty_company_id"], pair["counterparty_company_id"]
+            ),
+        }
         if left == right and left not in {"mixed"}:
-            scoped_pairs.append({**pair, "standard": left})
+            scoped_pairs.append({**named, "standard": left})
         else:
             not_mixed.append(
                 {
-                    **pair,
+                    **named,
                     "reason": "standard_mismatch",
                     "label": "两家法人准则口径不同，未合并试算",
                     "standards": [
@@ -323,6 +330,74 @@ def build_worksheet(*, requested, companies, standards, pairs, eliminations):
             for row in pending
         ],
     }
+
+
+def worksheet_totals(scoped_pairs, not_merged_pairs):
+    """Totals for the worksheet: comparable pairs only, cross-standard kept apart.
+
+    Recomputable by construction: the top-level numbers are exactly the sum of
+    ``totals_by_standard`` (each of which is the sum of its own pairs), and the
+    cross-standard pairs never enter either of them.
+    """
+
+    by_standard: dict[str, dict] = {}
+    for row in scoped_pairs:
+        standard = row.get("standard") or "unclassified"
+        bucket = by_standard.setdefault(
+            standard,
+            {
+                "standard": standard,
+                "standard_label": STANDARD_LABELS.get(standard, standard),
+                "pairs": 0,
+                "matched_cents": 0,
+                "difference_cents": 0,
+                "open_pairs": 0,
+            },
+        )
+        bucket["pairs"] += 1
+        bucket["matched_cents"] += int(row["matched_cents"])
+        bucket["difference_cents"] += int(row["difference_cents"])
+        bucket["open_pairs"] += 1 if row["status"] != "balanced" else 0
+    for bucket in by_standard.values():
+        bucket["matched"] = money(bucket["matched_cents"])
+        bucket["difference"] = money(bucket["difference_cents"])
+    mixed_groups = len(by_standard) > 1
+    if mixed_groups:
+        # 存在多个会计准则分组时，不能把企业准则与小企业准则的小计混加为一个总计。
+        totals = {
+            "matched_cents": None,
+            "matched": None,
+            "difference_cents": None,
+            "difference": None,
+            "open_pairs": len([row for row in scoped_pairs if row["status"] != "balanced"]),
+            "comparable": False,
+            "scope": "存在多种会计准则分组，顶层不混算总计，请按下方分准则小计复算",
+            "pairs": len(scoped_pairs),
+        }
+    else:
+        matched_cents = sum(int(row["matched_cents"]) for row in scoped_pairs)
+        difference_cents = sum(int(row["difference_cents"]) for row in scoped_pairs)
+        totals = {
+            "matched_cents": matched_cents,
+            "matched": money(matched_cents),
+            "difference_cents": difference_cents,
+            "difference": money(difference_cents),
+            "open_pairs": len([row for row in scoped_pairs if row["status"] != "balanced"]),
+            "comparable": True,
+            "scope": "同口径可比合计（只含会计准则一致的法人对）",
+            "pairs": len(scoped_pairs),
+        }
+    unmatched_matched = sum(int(row["matched_cents"]) for row in not_merged_pairs)
+    unmatched_difference = sum(int(row["difference_cents"]) for row in not_merged_pairs)
+    not_merged_totals = {
+        "pairs": len(not_merged_pairs),
+        "matched_cents": unmatched_matched,
+        "matched": money(unmatched_matched),
+        "difference_cents": unmatched_difference,
+        "difference": money(unmatched_difference),
+        "label": "异准则未合并往来（未计入同口径可比合计）",
+    }
+    return totals, [by_standard[k] for k in sorted(by_standard)], not_merged_totals
 
 
 class ConsolidationService:
@@ -621,13 +696,10 @@ class ConsolidationService:
             }
             for cid in company_ids
         ]
-        sheet["totals"] = {
-            "matched_cents": sum(row["matched_cents"] for row in pairs),
-            "matched": money(sum(row["matched_cents"] for row in pairs)),
-            "difference_cents": sum(row["difference_cents"] for row in pairs),
-            "difference": money(sum(row["difference_cents"] for row in pairs)),
-            "open_pairs": len([row for row in pairs if row["status"] != "balanced"]),
-        }
+        # 顶层合计只累加同准则可比对；异准则往来单列，绝不混加进匹配金额。
+        sheet["totals"], sheet["totals_by_standard"], sheet["not_merged_totals"] = worksheet_totals(
+            sheet["pairs"], sheet["not_merged_pairs"]
+        )
         return sheet
 
     def _party_index(self, conn, actor, company_ids):

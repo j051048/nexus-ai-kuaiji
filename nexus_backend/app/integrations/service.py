@@ -14,6 +14,7 @@ from uuid import uuid4
 from pydantic import ValidationError
 from app.accounting.access import AccessControl
 from app.accounting.domain import AccountingError
+from app.accounting.invariants import money_to_cents
 from app.accounting.queries import page_bounds
 from app.accounting.service import fingerprint, now
 from app.delivery.service import DeliveryService
@@ -1420,13 +1421,13 @@ class FinancialBridgeService:
         if not is_manual:
             if posted_verified:
                 verification_state = "file_posted_verified"
-                verification_label = "逐笔文件已核验过账"
+                verification_label = "已核实过账"
             elif int(row["discrepancy_count"]) > 0 or row["result_status"] != "accepted":
                 verification_state = "file_partial_discrepancy"
-                verification_label = "逐笔文件存在差异（待核对）"
+                verification_label = "凭据待核（逐笔文件存在差异）"
             else:
                 verification_state = "file_received_only"
-                verification_label = "逐笔文件已接收（未确认过账）"
+                verification_label = "对方已接收（未逐笔核验）"
             confirmed_count = sum(1 for item in rows if item["status"] == "accepted")
             handled_count = sum(
                 1
@@ -1441,16 +1442,16 @@ class FinancialBridgeService:
         else:
             if posted_declared and evidence_attached:
                 verification_state = "manual_posted_claimed_with_evidence"
-                verification_label = "人工声明已过账 · 已附原件（未逐笔核对凭证）"
+                verification_label = "凭据待核（人工声明已过账 · 已附原件，未逐笔核对）"
             elif posted_declared:
                 verification_state = "manual_posted_claimed_no_evidence"
-                verification_label = "人工声明已过账 · 缺证据原件"
+                verification_label = "对方已接收（人工声明已过账 · 缺原件）"
             elif evidence_attached:
                 verification_state = "manual_received_with_evidence"
-                verification_label = "人工声明已接收 · 已附原件（未过账）"
+                verification_label = "对方已接收（已附原件）"
             else:
                 verification_state = "manual_received_no_evidence"
-                verification_label = "人工声明已接收 · 缺证据原件"
+                verification_label = "对方已接收（缺原件）"
             confirmed_count = 0
             handled_count = 0
             pending_count = 0
@@ -1555,7 +1556,11 @@ class FinancialBridgeService:
                 amount = 0
                 accounts = set()
                 for line in voucher.get("lines") or []:
-                    amount += int(round(float(line.get("debit") or 0) * 100))
+                    # 金额一律走整数分：禁止 float*100 的十进制误差进入逐笔核对。
+                    try:
+                        amount += money_to_cents(str(line.get("debit") or "0"))
+                    except ValueError as error:
+                        raise AccountingError("冻结凭证金额格式损坏，拒绝核对", 409) from error
                     if line.get("account_code"):
                         accounts.add(str(line["account_code"]))
                 exported.append(
@@ -1589,7 +1594,9 @@ class FinancialBridgeService:
                     parsed["status"],
                     bool(parsed["received"]),
                     bool(parsed["posted"]),
-                    True,
+                    # 只有逐笔核对全部一致（凭证号/日期/金额/科目齐全）才记为已核实；
+                    # 存在差异或仅为“已接收”时保持 False，绝不把接收当核实。
+                    bool(parsed["posted"]),
                     len(parsed["rows"]),
                     counts["accepted"],
                     counts["rejected"],

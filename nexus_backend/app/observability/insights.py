@@ -111,6 +111,13 @@ class FirmInsightsService:
         first = months[0]
         with self.db.transaction(actor=actor) as conn:
             self.access.require_manager(conn, actor)
+            # 分母基准：先取事务所全部应报/纳管法人，再关联当期账套与已复核报表。
+            # 未开账法人必须留在分母里并点名，不能因为“本期没有账套”而从看板消失。
+            managed = conn.execute(
+                "SELECT c.id,c.name FROM companies c JOIN firm_clients fc ON fc.company_id=c.id "
+                "WHERE fc.firm_id=? AND fc.status='active' ORDER BY c.name",
+                (actor.firm_id,),
+            ).fetchall()
             books = conn.execute(
                 "SELECT b.id,b.company_id,c.name AS company_name,b.period,"
                 "COALESCE(p.status,'open') AS period_status FROM books b "
@@ -121,7 +128,7 @@ class FirmInsightsService:
             ).fetchall()
             book_ids = [row["id"] for row in books]
             if not book_ids:
-                return self._empty(actor.firm_id, period)
+                return self._empty(actor.firm_id, period, managed)
 
             def grouped(sql: str, params: tuple = ()) -> dict[str, int]:
                 return {
@@ -313,19 +320,22 @@ class FirmInsightsService:
         missing_companies = []
         by_standard: dict[str, dict[str, Any]] = {}
         item_by_book = {item["book_id"]: item for item in items}
+        # 缺报按“法人”点名（一家只出现一次）；同一法人已报部分账套时，其余全部未复核账套
+        # 逐条记入 pending_book_reports，不吞掉其余账套，也不把未全齐的期间误标成 complete。
+        missing_by_company: dict[str, list[dict]] = {}
+        pending_book_reports: list[dict] = []
         for item in items:
             report = reports.get(item["book_id"])
             if not report or report["status"] not in {"reviewed", "published"}:
-                missing_companies.append(
-                    {
-                        "company_id": item["company_id"],
-                        "company_name": item["company_name"],
-                        "book_id": item["book_id"],
-                        "owner_name": item["owner_name"],
-                        "top_blocker": item["top_blocker"] or "报表尚未复核",
-                        "has_trial_draft": item["book_id"] in draft_trial_books,
-                    }
-                )
+                entry = {
+                    "company_id": item["company_id"],
+                    "company_name": item["company_name"],
+                    "book_id": item["book_id"],
+                    "owner_name": item["owner_name"],
+                    "top_blocker": item["top_blocker"] or "报表尚未复核",
+                    "has_trial_draft": item["book_id"] in draft_trial_books,
+                }
+                missing_by_company.setdefault(item["company_id"], []).append(entry)
                 continue
             known += 1
             eff_mode = report["effective_mode"]
@@ -378,17 +388,58 @@ class FirmInsightsService:
                 bucket[k] += v
         distinct_standards = sorted(by_standard.keys())
         mixed_standards = len(distinct_standards) > 1
-        complete = bool(items) and known == len(items)
+        # 法人分母：事务所全部纳管法人 ∪ 当期有账套的法人（历史账套也不能丢分母）。
+        company_names = {row["id"]: row["name"] for row in managed}
+        for item in items:
+            company_names.setdefault(item["company_id"], item["company_name"])
+        opened_ids = {item["company_id"] for item in items}
+        reported_ids = {
+            item["company_id"]
+            for item in items
+            if (reports.get(item["book_id"]) or {}).get("status") in {"reviewed", "published"}
+        }
+        missing_companies = [
+            entries[0] for cid, entries in missing_by_company.items() if cid not in reported_ids
+        ]
+        pending_book_reports = [
+            {**entry, "reason": "book_report_missing"}
+            for cid, entries in missing_by_company.items()
+            if cid in reported_ids
+            for entry in entries
+        ]
+        # 未开账法人必须留在分母里并点名，不能因为“本期没有账套”而从看板消失。
+        for company_id, company_name in company_names.items():
+            if company_id in opened_ids:
+                continue
+            missing_companies.append(
+                {
+                    "company_id": company_id,
+                    "company_name": company_name,
+                    "book_id": None,
+                    "owner_name": "待安排",
+                    "top_blocker": "本期未开账",
+                    "has_trial_draft": False,
+                    "reason": "not_opened",
+                }
+            )
+        for row in missing_companies:
+            row.setdefault("reason", "report_missing")
+        complete = bool(items) and not missing_companies and not pending_book_reports
         missing_names = [m["company_name"] for m in missing_companies]
         if not items:
             coverage_label = "本期无在办账套"
         elif complete:
-            coverage_label = f"已纳入 {known}/{len(items)} 家"
-        else:
+            coverage_label = f"已纳入 {len(reported_ids)}/{len(company_names)} 家"
+        elif missing_companies:
             missing_preview = "、".join(missing_names[:3]) + (
                 f"等 {len(missing_names)} 家" if len(missing_names) > 3 else ""
             )
-            coverage_label = f"已纳入 {known}/{len(items)} 家（不完整：缺 {missing_preview}）"
+            coverage_label = f"已纳入 {len(reported_ids)}/{len(company_names)} 家（不完整：缺 {missing_preview}）"
+        else:
+            coverage_label = (
+                f"已纳入 {len(reported_ids)}/{len(company_names)} 家"
+                f"（不完整：另有 {len(pending_book_reports)} 套账套未复核）"
+            )
         if legacy_books:
             coverage_label += f" · 含 {legacy_books} 家门槛建立前历史报表"
         totals_comparable = not mixed_standards and known > 0
@@ -396,6 +447,8 @@ class FirmInsightsService:
             totals_notice = (
                 "已纳入单位存在多种会计准则口径，不建议直接混算合计，请查看下方分口径汇总。"
             )
+            # 顶层合计不再混算异准则金额：置空表示“不可比”，数字只保留在分准则小计里。
+            financial = {key: None for key in FINANCIAL_KEYS}
         elif not complete:
             totals_notice = "存在未复核或缺报单位，当前合计不完整（未按 0 元补齐）。"
         else:
@@ -455,7 +508,10 @@ class FirmInsightsService:
             "stage_projection": True,
             "note": "经营看板是只读投影；阶段按现有资料、草稿、复核和报表状态推断，不自动关账或复核。",
             "kpis": {
-                "companies": len({item["company_id"] for item in items}),
+                "companies": len(company_names),
+                "managed_companies": len(company_names),
+                "opened_companies": len(opened_ids),
+                "reported_companies": len(reported_ids),
                 "books": len(items),
                 "blocked": sum(1 for item in items if item["blockers"]),
                 "overdue": sum(1 for item in items if item["overdue"]),
@@ -474,6 +530,10 @@ class FirmInsightsService:
                 "known_books": known,
                 "missing_books": len(items) - known,
                 "total_books": len(items),
+                "managed_companies": len(company_names),
+                "opened_companies": len(opened_ids),
+                "reported_companies": len(reported_ids),
+                "companies_without_books": len(company_names) - len(opened_ids),
                 "complete": complete,
                 "coverage_label": coverage_label,
                 "mixed_standards": mixed_standards,
@@ -484,6 +544,7 @@ class FirmInsightsService:
                 "management_summary_notice": "管理汇总，非合并财务报表（无内部往来抵销）。",
                 "included_companies": included_companies,
                 "missing_companies": missing_companies,
+                "pending_book_reports": pending_book_reports,
                 "standards_breakdown": [by_standard[k] for k in distinct_standards],
             },
             "stages": [
@@ -551,15 +612,35 @@ class FirmInsightsService:
         return result
 
     @staticmethod
-    def _empty(firm_id: str, period: str) -> dict:
+    def _empty(firm_id: str, period: str, managed=()) -> dict:
         today = datetime.now(ZoneInfo("Asia/Shanghai")).date().isoformat()
+        names = {row["id"]: row["name"] for row in managed}
+        # 没有在办账套时，纳管法人仍留在分母里并逐家点名「本期未开账」。
+        missing = [
+            {
+                "company_id": company_id,
+                "company_name": company_name,
+                "book_id": None,
+                "owner_name": "待安排",
+                "top_blocker": "本期未开账",
+                "has_trial_draft": False,
+                "reason": "not_opened",
+            }
+            for company_id, company_name in names.items()
+        ]
+        coverage_label = (
+            "本期无在办账套" if not names else f"已纳入 0/{len(names)} 家（不完整：全部未开账）"
+        )
         return {
             "period": period,
             "generated_on": today,
             "stage_projection": True,
             "note": "当前月份没有可汇总的账套；看板不生成业务数据。",
             "kpis": {
-                "companies": 0,
+                "companies": len(names),
+                "managed_companies": len(names),
+                "opened_companies": 0,
+                "reported_companies": 0,
                 "books": 0,
                 "blocked": 0,
                 "overdue": 0,
@@ -578,8 +659,12 @@ class FirmInsightsService:
                 "known_books": 0,
                 "missing_books": 0,
                 "total_books": 0,
+                "managed_companies": len(names),
+                "opened_companies": 0,
+                "reported_companies": 0,
+                "companies_without_books": len(names),
                 "complete": False,
-                "coverage_label": "本期无在办账套",
+                "coverage_label": coverage_label,
                 "mixed_standards": False,
                 "totals_comparable": False,
                 "totals_notice": "本期无已复核报表。",
@@ -587,7 +672,8 @@ class FirmInsightsService:
                 "trial_books": 0,
                 "management_summary_notice": "管理汇总，非合并财务报表（无内部往来抵销）。",
                 "included_companies": [],
-                "missing_companies": [],
+                "missing_companies": missing,
+                "pending_book_reports": [],
                 "standards_breakdown": [],
             },
             "stages": [

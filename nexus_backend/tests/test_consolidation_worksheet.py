@@ -167,6 +167,140 @@ def test_worksheet_never_mixes_accounting_standards(group):
     assert sheet["statement"] == consolidation.STATEMENT
 
 
+def test_totals_are_recomputable_and_never_add_cross_standard_pairs():
+    """多准则分组时顶层不混算总计，只留分准则可比小计；异准则往来一律单列。"""
+
+    def pair(left, right, standard, matched, difference, status):
+        return {
+            "company_id": left,
+            "counterparty_company_id": right,
+            "standard": standard,
+            "matched_cents": matched,
+            "difference_cents": difference,
+            "status": status,
+        }
+
+    scoped = [
+        pair("a", "b", "small_enterprise", 5_000_000, 0, "balanced"),
+        pair("c", "d", "enterprise", 3_000_000, 200_000, "difference"),
+    ]
+    not_merged = [
+        pair("a", "c", None, 9_000_000, 9_000_000, "difference") | {"reason": "standard_mismatch"}
+    ]
+    totals, by_standard, not_merged_totals = consolidation.worksheet_totals(scoped, not_merged)
+
+    assert totals["comparable"] is False
+    assert totals["matched_cents"] is None
+    assert totals["matched"] is None
+    assert totals["difference_cents"] is None
+    assert totals["difference"] is None
+    assert totals["open_pairs"] == 1
+    assert totals["pairs"] == 2
+    assert "不混算总计" in totals["scope"]
+    # 每个准则小计都能由该准则的明细精确复算。
+    assert {row["standard"]: row["matched_cents"] for row in by_standard} == {
+        "small_enterprise": 5_000_000,
+        "enterprise": 3_000_000,
+    }
+    assert {row["standard"]: row["difference_cents"] for row in by_standard} == {
+        "small_enterprise": 0,
+        "enterprise": 200_000,
+    }
+    # 异准则往来金额单列，绝不进入顶层匹配金额。
+    assert not_merged_totals["matched_cents"] == 9_000_000
+    assert not_merged_totals["pairs"] == 1
+    assert "未计入" in not_merged_totals["label"]
+
+    # 单一会计准则时顶层才给出可比合计，且严格等于该准则明细之和。
+    single_totals, single_by_standard, _ = consolidation.worksheet_totals(
+        [scoped[0]], not_merged
+    )
+    assert single_totals["comparable"] is True
+    assert single_totals["matched_cents"] == 5_000_000
+    assert single_totals["matched"] == "50,000.00"
+    assert single_totals["difference_cents"] == 0
+    assert len(single_by_standard) == 1
+
+
+def test_worksheet_totals_recompute_on_five_company_scope():
+    """5 家应报法人（含 1 家未开账/无权、准则不同）：合计只按同口径分准则复算。"""
+
+    companies = [
+        {"company_id": "a", "name": "甲"},
+        {"company_id": "b", "name": "乙"},
+        {"company_id": "c", "name": "丙"},
+        {"company_id": "e", "name": "戊"},
+    ]
+    standards = {
+        "a": "small_enterprise",
+        "b": "small_enterprise",
+        "c": "enterprise",
+        "e": "enterprise",
+    }
+    # 两家小企业准则：对平；两家企业准则：有 350.00 未达；甲与丙跨准则：不得合并。
+    pairs = [
+        {
+            "company_id": "a",
+            "counterparty_company_id": "b",
+            "kind": "internal_receivable",
+            "counterpart_kind": "internal_payable",
+            "matched_cents": 5_000_000,
+            "difference_cents": 0,
+            "status": "balanced",
+        },
+        {
+            "company_id": "c",
+            "counterparty_company_id": "e",
+            "kind": "internal_revenue",
+            "counterpart_kind": "internal_cost",
+            "matched_cents": 3_000_000,
+            "difference_cents": 35_000,
+            "status": "difference",
+        },
+        {
+            "company_id": "a",
+            "counterparty_company_id": "c",
+            "kind": "internal_funding",
+            "counterpart_kind": "internal_funding",
+            "matched_cents": 9_000_000,
+            "difference_cents": 9_000_000,
+            "status": "difference",
+        },
+    ]
+    sheet = consolidation.build_worksheet(
+        requested=["a", "b", "c", "e", "d"],
+        companies=companies,
+        standards=standards,
+        pairs=pairs,
+        eliminations=[],
+    )
+    totals, by_standard, not_merged = consolidation.worksheet_totals(
+        sheet["pairs"], sheet["not_merged_pairs"]
+    )
+
+    # 未开账/无权法人在 missing_companies 里点名，不会被静默丢弃。
+    assert sheet["missing_companies"] == ["d"]
+    assert len(sheet["included_companies"]) == 4
+    # 跨准则那对只出现在 not_merged_pairs，且对平/未达明细附带中文名称供前端展示。
+    assert [row["company_id"] for row in sheet["not_merged_pairs"]] == ["a"]
+    assert sheet["open_differences"][0]["left_company_name"] == "丙"
+    assert sheet["open_differences"][0]["right_company_name"] == "戊"
+    assert len(sheet["pairs"]) == 2
+    # 存在两套准则分组时顶层不混算；每个分准则小计可由对应明细精确复算。
+    assert totals["comparable"] is False
+    assert totals["matched_cents"] is None
+    assert totals["difference_cents"] is None
+    assert {row["standard"]: row["matched_cents"] for row in by_standard} == {
+        "small_enterprise": 5_000_000,
+        "enterprise": 3_000_000,
+    }
+    assert {row["standard"]: row["difference_cents"] for row in by_standard} == {
+        "small_enterprise": 0,
+        "enterprise": 35_000,
+    }
+    assert not_merged["matched_cents"] == 9_000_000
+
+
 def test_elimination_requires_an_independent_reviewer(group):
     entry = group.service.create_elimination(
         group.manager,

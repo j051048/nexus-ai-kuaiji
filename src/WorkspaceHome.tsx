@@ -357,26 +357,36 @@ export function WorkspaceHome({
 
   async function openLatest() {
     if (!unavailable || latestBusy) return;
+    const task = unavailable.task;
+    const started = session.scope_key;
     setLatestBusy(true);
     try {
       const current = await api<WorkspaceTask>(
-        `/workspace/tasks/${encodeURIComponent(unavailable.task.kind)}/${encodeURIComponent(
-          unavailable.task.ref,
-        )}`,
+        `/workspace/tasks/${encodeURIComponent(task.kind)}/${encodeURIComponent(task.ref)}`,
         session,
       );
+      if (!alive.current || scope.current !== started) return;
       setUnavailable(null);
       onOpen(current);
     } catch (caught) {
-      setUnavailable({
-        task: unavailable.task,
-        reason:
-          caught instanceof ApiError && caught.status === 403
-            ? 'forbidden'
-            : caught instanceof ApiError && caught.status === 404
-              ? 'missing'
-              : 'stale',
-      });
+      if (!alive.current || scope.current !== started) return;
+      if (caught instanceof ApiError && caught.status === 410) {
+        // 已办完是终态：继续显示「打开最新内容」只会反复提示已更新，这里改成明确结论并刷新队列。
+        setUnavailable({ task, reason: 'completed', detail: caught.message });
+        setValue(null);
+        setPrivacyRevision((value) => value + 1);
+        void load();
+      } else if (
+        caught instanceof ApiError &&
+        (caught.status === 403 || caught.status === 404 || caught.status === 401)
+      ) {
+        setUnavailable({ task, reason: caught.status === 403 ? 'forbidden' : 'missing' });
+        setValue(null);
+        setPrivacyRevision((value) => value + 1);
+        void load();
+      } else {
+        setUnavailable({ task, reason: 'stale' });
+      }
     } finally {
       setLatestBusy(false);
     }

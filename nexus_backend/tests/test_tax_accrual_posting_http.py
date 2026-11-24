@@ -438,3 +438,70 @@ def test_accrual_request_refuses_other_period_and_missing_accounts(tmp_path):
         )
         assert no_profit.status_code == 409, no_profit.text
         assert "累计利润" in no_profit.json()["detail"]
+
+
+def test_stamp_duty_three_states_through_the_api(tmp_path):
+    """接口层必须区分「未给合同」与「确认零业务」，不能都回一个 0 元。"""
+    app = create_app(tmp_path / "tax-stamp-http.db", seed=True)
+    with TestClient(app, base_url="http://127.0.0.1", client=("127.0.0.1", 45695)) as client:
+        headers = {"Authorization": "Bearer " + client.get("/api/session").json()["token"]}
+        setup = _bound_book(app)
+        book = setup["book"]
+        bound = client.post(
+            "/api/posting/opening-bindings",
+            headers=headers,
+            json={
+                "book_id": book["id"],
+                "package_version_id": setup["version_id"],
+                "reason": "绑定印花税三态 HTTP 期初",
+            },
+        )
+        assert bound.status_code == 201, bound.text
+        reviewer, reviewer_headers = _firm_identity(app, "reviewer", "stamp-reviewer")
+        app.state.directory.grant_book_member(
+            LOCAL_ACTOR, book["id"], reviewer.user_id, BookMemberGrant(role="reviewer")
+        )
+        _reviewed_workpaper(client, app, setup, headers, reviewer_headers)
+
+        # /four-tax 不像计提接口那样回落到税务档案，附加税条目要显式给出。
+        four_tax_body = {
+            **_accrual_body(setup),
+            "surtax_items": [{"code": "city", "rate_bp": 1200}],
+        }
+        missing = client.post("/api/tax/four-tax", headers=headers, json=four_tax_body)
+        assert missing.status_code == 200, missing.text
+        stamp = missing.json()["stamp_duty"]
+        assert stamp["status"] == "unprovided"
+        assert stamp["total_cents"] is None
+        assert "不能视作本期零业务" in stamp["notice"]
+
+        zero = client.post(
+            "/api/tax/four-tax",
+            headers=headers,
+            json={**four_tax_body, "stamp_zero_confirmed": True},
+        )
+        assert zero.status_code == 200, zero.text
+        assert zero.json()["stamp_duty"]["status"] == "zero_confirmed"
+        assert zero.json()["stamp_duty"]["total_cents"] == 0
+
+        conflict = client.post(
+            "/api/tax/four-tax",
+            headers=headers,
+            json={
+                **four_tax_body,
+                "stamp_zero_confirmed": True,
+                "stamp_contracts": [{"key": "c-1", "kind": "purchase", "cents": 1_000_000}],
+                "stamp_rates": {"purchase": 30},
+            },
+        )
+        assert conflict.status_code == 422, conflict.text
+        assert "零业务" in conflict.json()["detail"]
+
+        preview = client.post(
+            "/api/tax/accrual-preview",
+            headers=headers,
+            json={**_accrual_body(setup), "stamp_zero_confirmed": True},
+        )
+        assert preview.status_code == 200, preview.text
+        assert preview.json()["stamp_duty_status"] == "zero_confirmed"
+        assert "已确认本期无应税合同" in preview.json()["stamp_duty_notice"]

@@ -19,12 +19,21 @@ from app.integrations.service import FinancialBridgeService
 from test_accounting import service, book, make_draft, approve  # noqa: F401
 
 
-def _csv(batch, voucher, amount, posted="2026-10-31"):
+def _csv(batch, voucher, amount, posted="2026-10-31", accounts="100201|222101"):
     buffer = io.StringIO(newline="")
     writer = csv.writer(buffer, lineterminator="\r\n")
     writer.writerow(["批次标识", "凭证标识", "对方凭证号", "结果", "失败原因", "对方过账日期", "金额", "科目"])
-    writer.writerow([batch, voucher, "T-1", "accepted", "", posted, f"{amount:.2f}", "100201"])
+    writer.writerow([batch, voucher, "T-1", "accepted", "", posted, f"{amount:.2f}", accounts])
     return buffer.getvalue()
+
+
+def _accounts_cell(voucher, keep=None):
+    """冻结凭证的全部外部科目码；keep=None 表示全部，keep=1 表示只回一个。"""
+    codes = [str(line["account_code"]) for line in voucher["lines"] if line.get("account_code")]
+    codes = list(dict.fromkeys(codes))
+    if keep is not None:
+        codes = codes[:keep]
+    return "|".join(codes)
 
 
 def _artifact(bridge, service, book_id):
@@ -70,15 +79,53 @@ def test_return_import_is_idempotent_and_marks_received_posted(service, book):  
     amount = sum(float(line["debit"] or 0) for line in voucher["lines"])
     payload = BridgeReturnImport(
         batch_code=intent["external_code"],
-        content=_csv(intent["external_code"], f"T54-{voucher['external_code']}", amount),
+        content=_csv(
+            intent["external_code"],
+            f"T54-{voucher['external_code']}",
+            amount,
+            accounts=_accounts_cell(voucher),
+        ),
     )
     result = bridge.record_return(LOCAL_ACTOR, book, artifact["id"], payload)
     assert result["received"] is True
     assert result["posted"] is True
+    assert result["evidence_verified"] is True
+    assert result["verification_label"] == "已核实过账"
     assert result["counts"]["accepted"] == 1
     assert bridge.record_return(LOCAL_ACTOR, book, artifact["id"], payload)["id"] == result["id"]
     listed = bridge.list_returns(LOCAL_ACTOR, book, artifact["id"])
     assert listed["returns"][0]["id"] == result["id"]
+
+
+def test_partial_account_receipt_is_pending_evidence_not_posted(service, book):  # noqa: F811
+    """冻结凭证有两个科目、回执只回一个：判差异，且不得记为已核实过账。"""
+    bridge = FinancialBridgeService(service.db)
+    intent, artifact = _artifact(bridge, service, book)
+    voucher = intent["package"]["vouchers"][0]
+    assert len(_accounts_cell(voucher).split("|")) >= 2
+    amount = sum(float(line["debit"] or 0) for line in voucher["lines"])
+    result = bridge.record_return(
+        LOCAL_ACTOR,
+        book,
+        artifact["id"],
+        BridgeReturnImport(
+            batch_code=intent["external_code"],
+            content=_csv(
+                intent["external_code"],
+                f"T54-{voucher['external_code']}",
+                amount,
+                accounts=_accounts_cell(voucher, keep=1),
+            ),
+        ),
+    )
+    assert result["rows"][0]["status"] == "account_mismatch"
+    assert result["received"] is False
+    assert result["posted"] is False
+    assert result["evidence_verified"] is False
+    assert result["verification_label"].startswith("凭据待核")
+    listed = bridge.list_returns(LOCAL_ACTOR, book, artifact["id"])
+    assert listed["returns"][0]["posted"] is False
+    assert listed["returns"][0]["evidence_verified"] is False
 
 
 def test_return_import_amount_mismatch_is_partial_and_not_received(service, book):  # noqa: F811
@@ -292,6 +339,7 @@ def test_return_without_amount_or_accounts_is_received_not_posted(service, book)
     assert result["result_status"] == "accepted"
     assert result["received"] is True
     assert result["posted"] is False
+    assert result["evidence_verified"] is False
     assert "只能确认接收" in result["rows"][0]["reason"]
 
 

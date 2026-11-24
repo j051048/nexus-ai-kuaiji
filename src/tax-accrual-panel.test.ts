@@ -4,12 +4,16 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import {
   AccrualPreviewView,
   AccrualRequestView,
+  centsToYuanInput,
+  needsAdjustReason,
   previewTotals,
+  profitSourceLabel,
   requestStatus,
+  stampDutyLabel,
   surtaxBasisLabel,
   yuanToCents,
 } from './TaxAccrualPanel';
-import type { AccrualPreview, AccrualRequest } from './TaxAccrualPanel';
+import type { AccrualPreview, AccrualRequest, ProfitSource } from './TaxAccrualPanel';
 
 const sample: AccrualPreview = {
   entries: [
@@ -142,5 +146,126 @@ describe('yuan parsing', () => {
   it('refuses anything that is not a two-decimal amount', () => {
     for (const text of ['', 'abc', '1.234', '1e5', '1.', '.5', '--1', '1 000'])
       expect(yuanToCents(text)).toBeNull();
+  });
+});
+
+describe('stamp duty three states', () => {
+  it('labels missing / confirmed-zero / computed as different things', () => {
+    expect(stampDutyLabel('unprovided')).toContain('未提供合同资料');
+    expect(stampDutyLabel('zero_confirmed')).toContain('已确认本期无应税合同');
+    expect(stampDutyLabel('computed')).toContain('按合同明细计提');
+    expect(stampDutyLabel('unprovided', '服务端原文')).toBe('服务端原文');
+    expect(stampDutyLabel(undefined)).toBe('');
+  });
+
+  it('says stamp duty is not accrued when contract data is missing', () => {
+    const html = renderToStaticMarkup(
+      createElement(AccrualPreviewView, {
+        data: {
+          ...sample,
+          stamp_duty_status: 'unprovided',
+          stamp_duty_notice: '未提供合同资料，本次未计提印花税，不能视作本期零业务',
+        },
+        blocked: '',
+      }),
+    );
+    expect(html).toContain('未提供合同资料');
+    expect(html).toContain('data-stamp-status="unprovided"');
+    expect(html).toContain('不能视作本期零业务');
+  });
+
+  it('keeps the missing-contract warning even when there are no accrual lines', () => {
+    const html = renderToStaticMarkup(
+      createElement(AccrualPreviewView, {
+        data: {
+          ...sample,
+          entries: [],
+          stamp_duty_status: 'unprovided',
+          stamp_duty_notice: '未提供合同资料，本次未计提印花税，不能视作本期零业务',
+        },
+        blocked: '',
+      }),
+    );
+    expect(html).toContain('本期没有可计提的税金');
+    expect(html).toContain('未提供合同资料');
+  });
+
+  it('states confirmed zero business instead of a silent zero', () => {
+    const html = renderToStaticMarkup(
+      createElement(AccrualPreviewView, {
+        data: { ...sample, stamp_duty_status: 'zero_confirmed' },
+        blocked: '',
+      }),
+    );
+    expect(html).toContain('已确认本期无应税合同（零业务）');
+    expect(html).toContain('data-stamp-status="zero_confirmed"');
+  });
+
+  it('carries the stamp note into the request receipt', () => {
+    const outcome: AccrualRequest = {
+      request: { id: 'req-12345678', status: 'pending', version: 1 },
+      voucher: {
+        command_key: 'k',
+        voucher_date: '2026-10-31',
+        line_count: 4,
+        debit_cents: 100,
+        credit_cents: 100,
+      },
+      refund_note: '',
+      stamp_duty_status: 'unprovided',
+      stamp_duty_notice: '未提供合同资料，本次未计提印花税，不能视作本期零业务',
+      surtax_basis: { source: 'request', rate_bp: null },
+      surtax_cents: 0,
+      posted: false,
+      note: '',
+    };
+    const html = renderToStaticMarkup(createElement(AccrualRequestView, { outcome, error: '' }));
+    expect(html).toContain('未提供合同资料');
+  });
+});
+
+describe('累计利润来源与人工调整原因', () => {
+  const reviewed: ProfitSource = {
+    suggested_profit_cents: 1_234_500,
+    source_kind: 'reviewed_report',
+    source_label: '已复核利润表快照',
+    source_period: '2026-10',
+    source_version: 3,
+    is_final_report: true,
+    report_run_id: 'run-1',
+    notice: null,
+  };
+
+  it('来源说明写清口径、期间与版本', () => {
+    expect(profitSourceLabel(reviewed)).toBe('来源：已复核利润表快照 · 期间 2026-10 · 版本 3');
+    expect(
+      profitSourceLabel({ ...reviewed, is_final_report: false, source_label: '试算利润表快照' }),
+    ).toContain('正式报表尚未复核');
+  });
+
+  it('没有来源时明确说明，而不是显示 0', () => {
+    const empty: ProfitSource = {
+      ...reviewed,
+      suggested_profit_cents: null,
+      source_kind: null,
+      source_label: null,
+      is_final_report: false,
+      notice: '本期没有可用的利润表快照',
+    };
+    expect(profitSourceLabel(empty)).toBe('本期没有可用的利润表快照');
+    expect(needsAdjustReason(null, empty)).toBe(false);
+  });
+
+  it('人工改成不同金额时必须填原因，保持一致则不要求', () => {
+    expect(needsAdjustReason(1_234_500, reviewed)).toBe(false);
+    expect(needsAdjustReason(1_200_000, reviewed)).toBe(true);
+    expect(needsAdjustReason(null, reviewed)).toBe(true);
+    expect(needsAdjustReason(1_200_000, null)).toBe(false);
+  });
+
+  it('分转元仍用字符串拼接，不引入浮点误差', () => {
+    expect(centsToYuanInput(1_234_500)).toBe('12345.00');
+    expect(centsToYuanInput(7)).toBe('0.07');
+    expect(centsToYuanInput(-12_345)).toBe('-123.45');
   });
 });

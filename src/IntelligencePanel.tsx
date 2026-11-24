@@ -1,3 +1,4 @@
+import './queue-panels.css';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {

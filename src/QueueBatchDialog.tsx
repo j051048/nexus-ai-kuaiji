@@ -1,3 +1,4 @@
+import './queue-panels.css';
 import { useEffect, useRef, useState } from 'react';
 import {
   CheckCircle2,
