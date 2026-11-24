@@ -88,10 +88,28 @@ def paid_mapped(case, payment_status="paid"):
 
 def bank_source(case, book_id=None):
     source_id, draft_id = uuid4().hex, uuid4().hex
+    target_book = book_id or case.book
     with case.psycopg.connect(ADMIN_URL) as conn:
-        conn.execute("INSERT INTO accounting.sources(id,book_id,external_id,source_name,date,description,counterparty,amount_cents,direction,evidence_ref,fingerprint) VALUES(%s,%s,%s,'银行流水','2026-10-01','支付采购','供应商',1234,'expense','bank.pdf',%s)", (source_id, book_id or case.book, uuid4().hex, uuid4().hex))
-        conn.execute("INSERT INTO accounting.drafts(id,book_id,source_id,description,explanation) VALUES(%s,%s,%s,'支付采购','人工复核')", (draft_id, book_id or case.book, source_id))
+        conn.execute("INSERT INTO accounting.sources(id,book_id,external_id,source_name,date,description,counterparty,amount_cents,direction,evidence_ref,fingerprint) VALUES(%s,%s,%s,'银行流水','2026-10-01','支付采购','供应商',1234,'expense','bank.pdf',%s)", (source_id, target_book, uuid4().hex, uuid4().hex))
+        conn.execute("INSERT INTO accounting.drafts(id,book_id,source_id,description,explanation,created_by) VALUES(%s,%s,%s,'支付采购','人工复核',%s)", (draft_id, target_book, source_id, case.owner.user_id))
+        conn.execute(
+            "INSERT INTO accounting.draft_lines(id,draft_id,book_id,line_no,account_code,account_name,debit_cents,credit_cents) VALUES(%s,%s,%s,1,'6602.02','管理费用-办公费',1234,0),(%s,%s,%s,2,'1002','银行存款',0,1234)",
+            (uuid4().hex, draft_id, target_book, uuid4().hex, draft_id, target_book),
+        )
     return source_id, draft_id
+
+
+def _mark_draft_approved(case, draft_id, book_id=None):
+    from app.accounting.review_policy import ReviewPolicyService
+
+    target_book = book_id or case.book
+    reviewer = case.reviewer if target_book == case.book else case.owner
+    policy_version = ReviewPolicyService(case.db).get(reviewer, target_book)["policy"]["version"]
+    with case.psycopg.connect(ADMIN_URL) as conn:
+        conn.execute(
+            "UPDATE accounting.drafts SET status='approved',version=version+1,approved_by=%s,approved_at=%s,review_policy_version=%s WHERE id=%s",
+            (reviewer.user_id, STAMP, policy_version, draft_id),
+        )
 
 
 def bank_link(case, event_id, source_id, actor=None):
@@ -289,11 +307,10 @@ def test_ai_bank_link_wrong_scope_and_finalized_or_unpaid_documents_are_blocked(
     bank_id, bank_draft_id = bank_source(case, case.other_book if invalid == "other_company" else None)
     if invalid == "business_source":
         bank_id = business_source_id
-    with case.psycopg.connect(ADMIN_URL) as conn:
-        if invalid == "approved_bank":
-            conn.execute("UPDATE accounting.drafts SET status='approved' WHERE id=%s", (bank_draft_id,))
-        elif invalid == "approved_business":
-            conn.execute("UPDATE accounting.drafts SET status='approved' WHERE id=%s", (business_draft_id,))
+    if invalid == "approved_bank":
+        _mark_draft_approved(case, bank_draft_id)
+    elif invalid == "approved_business":
+        _mark_draft_approved(case, business_draft_id)
     with pytest.raises((case.psycopg.errors.CheckViolation, case.psycopg.errors.ForeignKeyViolation)):
         bank_link(case, event_id, bank_id)
 
@@ -306,8 +323,7 @@ def test_ai_bank_source_is_linked_at_most_once_and_link_freezes_after_review(bus
     bank_link(case, event_id, bank_id)
     with pytest.raises(case.psycopg.errors.UniqueViolation):
         bank_link(case, other_event, bank_id)
-    with case.psycopg.connect(ADMIN_URL) as conn:
-        conn.execute("UPDATE accounting.drafts SET status='approved' WHERE id=%s", (business_draft_id,))
+    _mark_draft_approved(case, business_draft_id)
     with pytest.raises(case.psycopg.errors.CheckViolation):
         with case.db.transaction(write=True, actor=case.finance) as conn:
             conn.execute("DELETE FROM ai_bank_links WHERE bank_source_id=?", (bank_id,))
@@ -359,8 +375,7 @@ def test_ai_open_event_reveals_only_scoped_boolean_and_freezes_staff_after_ledge
     assert event_open(case.employee, case.other_company) is False
     with case.db.transaction(actor=case.employee) as conn:
         assert conn.execute("SELECT COUNT(*) FROM business_mappings WHERE event_id=?", (event_id,)).fetchone()[0] == 0
-    with case.psycopg.connect(ADMIN_URL) as conn:
-        conn.execute("UPDATE accounting.drafts SET status='approved' WHERE id=%s", (draft_id,))
+    _mark_draft_approved(case, draft_id)
     for actor in (case.employee, case.approver, case.finance, case.reviewer, case.viewer):
         assert event_open(actor) is False
     with pytest.raises(case.psycopg.errors.InsufficientPrivilege):

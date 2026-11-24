@@ -464,7 +464,7 @@ class FeeVarianceService:
         ]
 
     def assignees(self, actor, book_id: str) -> list[dict]:
-        with self.db.transaction() as conn:
+        with self.db.transaction(actor=actor) as conn:
             self.ledgers.access.book(conn, actor, book_id, "manage")
             rows = conn.execute(
                 "SELECT u.id,u.name FROM book_access ba JOIN users u ON u.id=ba.user_id "

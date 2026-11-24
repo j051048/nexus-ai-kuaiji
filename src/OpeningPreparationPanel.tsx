@@ -192,7 +192,7 @@ export function OpeningPreparationPanel({
     }
   }
   const data = query.data,
-    disabled = busy || uncertain || !data || reason.trim().length < 3 || !standard || !taxpayer;
+    disabled = busy || uncertain || !data || reason.trim().length < 3;
   return (
     <section aria-label="期初办理" className="review-section opening-preparation">
       <h3>
@@ -327,7 +327,7 @@ export function OpeningPreparationPanel({
           </label>
           <button
             className="button"
-            disabled={disabled}
+            disabled={disabled || !standard || !taxpayer}
             onClick={() =>
               void command('/opening/policies', {
                 ledger_id: data.ledger.id,

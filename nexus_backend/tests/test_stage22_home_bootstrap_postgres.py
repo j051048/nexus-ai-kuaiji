@@ -116,7 +116,7 @@ def test_pg_bootstrap_uses_one_app_read_snapshot_and_binds_selected_firm(
     result = home_bootstrap(directory, service, identity, mode="local")
     assert result["me"]["current_firm_id"] == case.reviewer.firm_id
     assert len(transactions) == 1
-    assert transactions[0] == {"actor": Actor(case.reviewer.user_id, "")}
+    assert transactions[0] == {"actor": Actor(case.reviewer.user_id, ""), "jit": False}
     assert len(states) == 3
     assert len({connection for connection, _ in states}) == 1
     assert len({state[5] for _, state in states}) == 1

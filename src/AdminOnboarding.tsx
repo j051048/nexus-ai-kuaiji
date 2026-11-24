@@ -93,6 +93,9 @@ export default function AdminOnboarding({
   const visible = dataKey.current === key ? data : null;
   const required = visible?.steps.filter((step) => step.required) ?? [];
   const completed = required.filter((step) => step.complete).length;
+  const blockingCount = visible?.score?.blocking ?? Math.max(0, required.length - completed);
+  const nextBlockerTitle =
+    visible?.blockers?.[0]?.title ?? required.find((step) => !step.complete)?.title ?? '—';
   return (
     <div className="onboarding-panel">
       <header className="onboarding-heading">
@@ -150,7 +153,7 @@ export default function AdminOnboarding({
                   ? '恢复企业服务后，重新检查开通条件。'
                   : visible.ready
                     ? '仍需逐月确认资料、权限与交付。'
-                    : `仍有 ${visible.score.blocking} 项必要检查阻断；下一项：${visible.blockers[0]?.title ?? '—'}。`}
+                    : `仍有 ${blockingCount} 项必要检查阻断；下一项：${nextBlockerTitle}。`}
               </span>
             </div>
             <ol className="onboarding-steps" aria-label="企业开通清单">

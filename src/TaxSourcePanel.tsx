@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, ApiError } from './api';
+import { scheduleSubpanel } from './subpanel-scheduler';
 import type { Session } from './types';
 import { EvidenceViewer } from './EvidenceViewer';
 import './tax-source.css';
@@ -89,16 +90,20 @@ function ScopedTaxSourcePanel({ session, bookId }: { session: Session; bookId: s
     return data;
   }
   useEffect(() => {
+    const controller = new AbortController();
     let live = true;
-    api<{ items: Source[] }>(url, session)
+    scheduleSubpanel(
+      () => api<{ items: Source[] }>(url, session, { signal: controller.signal }),
+      controller.signal,
+    )
       .then((data) => {
-        if (live) {
+        if (live && !controller.signal.aborted) {
           data.items.forEach(checked);
           setItems(data.items);
         }
       })
       .catch((error) => {
-        if (live) {
+        if (live && !controller.signal.aborted) {
           setItems([]);
           setSelected(null);
           setNotice('');
@@ -107,6 +112,7 @@ function ScopedTaxSourcePanel({ session, bookId }: { session: Session; bookId: s
       });
     return () => {
       live = false;
+      controller.abort();
     };
   }, [url, busy, session]);
   async function upload(event: React.FormEvent) {

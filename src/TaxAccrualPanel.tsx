@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, errorMessage } from './api';
+import { scheduleSubpanel } from './subpanel-scheduler';
 import type { Session } from './types';
 
 /** One accrual entry as the service returns it: a side plus integer cents. */
@@ -313,10 +314,14 @@ export function TaxAccrualPanel({
     setStampZero(false);
     setOutcome(null);
     setRequestError('');
-    api<ProfitSource>(
-      `/tax/books/${encodeURIComponent(bookId)}/cumulative-profit?period=${encodeURIComponent(period)}`,
-      session,
-      { signal: controller.signal },
+    scheduleSubpanel(
+      () =>
+        api<ProfitSource>(
+          `/tax/books/${encodeURIComponent(bookId)}/cumulative-profit?period=${encodeURIComponent(period)}`,
+          session,
+          { signal: controller.signal },
+        ),
+      controller.signal,
     )
       .then((raw) => {
         if (controller.signal.aborted) return;
@@ -350,27 +355,34 @@ export function TaxAccrualPanel({
         signal,
       })
         .then((raw) => {
+          if (signal?.aborted) return;
           setData(raw);
           setBlocked('');
         })
         .catch((error) => {
+          if (signal?.aborted) return;
           // A missing reviewed workpaper or a missing profit is a normal state,
           // not a failure: show the server's own explanation instead of
           // inventing numbers.
           setData(null);
           setBlocked(errorMessage(error));
         })
-        .finally(() => setLoading(false));
+        .finally(() => {
+          if (!signal?.aborted) setLoading(false);
+        });
     },
     [session, bookId, period, stampZero],
   );
 
+  const previewInitialized = useRef(false);
   useEffect(() => {
     const controller = new AbortController();
     setLoading(true);
-    // Typing a profit must not fire one request per keystroke; invalid text
-    // still reloads immediately so the operator sees why it is refused.
-    const timer = setTimeout(() => load(profitCents, controller.signal), 350);
+    // Fire immediately on first mount so initial accrual preview settles alongside
+    // the primary workpaper; debounce subsequent typing updates.
+    const delay = previewInitialized.current ? 350 : 0;
+    previewInitialized.current = true;
+    const timer = setTimeout(() => load(profitCents, controller.signal), delay);
     return () => {
       clearTimeout(timer);
       controller.abort();

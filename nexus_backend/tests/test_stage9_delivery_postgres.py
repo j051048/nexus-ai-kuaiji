@@ -13,10 +13,10 @@ pytestmark = pytest.mark.skipif(not ADMIN_URL or not APP_URL, reason="需要专�
 
 
 def prepare(c, legacy=False):
-    ledger, actor = c.service, c.reviewer
-    ledger.import_sources(actor, c.book, ImportRequest(source_name="合成回执测试", rows=[SourceRow(external_id=uuid4().hex, date="2026-10-03", description="办公用品", counterparty="合成供应商", amount="113.01", direction="expense", evidence_ref="核实合成原件")]))
-    ledger.suggestions(actor, c.book)
-    draft = ledger.get_book(actor, c.book)["drafts"][0]
+    ledger, maker, actor = c.service, c.owner, c.reviewer
+    ledger.import_sources(maker, c.book, ImportRequest(source_name="合成回执测试", rows=[SourceRow(external_id=uuid4().hex, date="2026-10-03", description="办公用品", counterparty="合成供应商", amount="113.01", direction="expense", evidence_ref="核实合成原件")]))
+    ledger.suggestions(maker, c.book)
+    draft = ledger.get_book(maker, c.book)["drafts"][0]
     ledger.approve(actor, c.book, draft["id"], ApprovalRequest(expected_version=draft["version"]))
     approved = ledger.get_draft(actor, c.book, draft["id"])
     delivery = DeliveryService(c.db)

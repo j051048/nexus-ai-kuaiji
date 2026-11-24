@@ -166,12 +166,25 @@ def test_pg_company_admin_audit_scope_and_nonactive_access(case):
 
 def test_pg_unique_service_relationship_and_version_guard(case):
     another = peer(case, firm_role="owner", other_firm=True)
+    # OPT04-B (migration 265) allows distinct firms to hold separate scoped
+    # service relationships for the same company, while the same (firm_id, company_id)
+    # pair remains strictly unique and RLS-isolated across firms.
     with pytest.raises(case.psycopg.errors.UniqueViolation):
         with case.psycopg.connect(ADMIN_URL) as conn:
             conn.execute(
                 "INSERT INTO accounting.firm_clients(firm_id,company_id) VALUES(%s,%s)",
-                (another.firm_id, case.company),
+                (case.actor.firm_id, case.company),
             )
+    with case.psycopg.connect(ADMIN_URL) as conn:
+        conn.execute(
+            "INSERT INTO accounting.firm_clients(firm_id,company_id) VALUES(%s,%s)",
+            (another.firm_id, case.company),
+        )
+    with case.db.transaction(actor=case.actor) as conn:
+        rows = conn.execute(
+            "SELECT firm_id FROM firm_clients WHERE company_id=?", (case.company,)
+        ).fetchall()
+        assert [row[0] for row in rows] == [case.actor.firm_id]
     with pytest.raises(case.psycopg.errors.CheckViolation):
         with case.db.transaction(write=True, actor=case.actor) as conn:
             conn.execute("UPDATE companies SET name='旧版本绕过' WHERE id=?", (case.company,))

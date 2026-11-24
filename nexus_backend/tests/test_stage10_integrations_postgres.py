@@ -154,10 +154,13 @@ def test_pg_return_file_marks_received_posted(business_case):
     artifact = svc.create_artifact(c.reviewer, c.book, intent["id"])
     voucher = intent["package"]["vouchers"][0]
     amount = sum(float(line["debit"] or 0) for line in voucher["lines"])
+    accounts_cell = "|".join(
+        dict.fromkeys(str(line["account_code"]) for line in voucher["lines"] if line.get("account_code"))
+    )
     buffer = io.StringIO(newline="")
     writer = csv.writer(buffer, lineterminator="\r\n")
     writer.writerow(["批次标识", "凭证标识", "对方凭证号", "结果", "失败原因", "对方过账日期", "金额", "科目"])
-    writer.writerow([intent["external_code"], f"T54-{voucher['external_code']}", "T-1", "accepted", "", "2026-10-31", f"{amount:.2f}", "100201"])
+    writer.writerow([intent["external_code"], f"T54-{voucher['external_code']}", "T-1", "accepted", "", "2026-10-31", f"{amount:.2f}", accounts_cell])
     result = svc.record_return(
         c.reviewer,
         c.book,
@@ -204,7 +207,12 @@ def test_pg_return_discrepancy_is_handled_with_evidence(business_case):
         artifact["id"],
         result["id"],
         f"T54-{voucher['external_code']}",
-        BridgeReturnRowHandle(action="resolved", reason="客户确认手续费", evidence_ref="客户邮件 2026-11-02"),
+        BridgeReturnRowHandle(
+            action="resolved",
+            reason_code="amount_mismatch",
+            reason="客户确认手续费",
+            evidence_ref="客户邮件 2026-11-02",
+        ),
     )
     assert handled["rows"][0]["handled"] is True
 

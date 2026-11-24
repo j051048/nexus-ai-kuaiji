@@ -25,6 +25,7 @@ from test_queue_worker_postgres import (
     pg_ai, pg_queue,
 )
 from test_shared_original_storage import SyntheticStorage
+from test_stage7_proposal_queue import independent_original
 
 needs_pg = pytest.mark.skipif(
     not ADMIN_URL or not APP_URL or not WORKER_URL,
@@ -80,7 +81,7 @@ def test_pg_api_lifespan_remote_factory_private_download_and_public_bucket_start
 
 
 @pytest.fixture
-def cloud_pg(pg_queue):
+def cloud_pg(pg_queue, monkeypatch):
     case, cloud = pg_queue, SyntheticStorage()
     api_store, worker_store = cloud.store(), cloud.store()
     worker_db = case.worker.queue.db
@@ -92,6 +93,8 @@ def cloud_pg(pg_queue):
     case.ledger.intelligence = case.intelligence
     worker_ai = IntelligenceService(worker_db, worker_store, case.provider)
     case.worker = QueueWorker(QueueService(worker_db, worker_ai), worker_id="shared-storage-" + uuid4().hex)
+    independent_original(case, monkeypatch)
+    case.original_text = case.provider.document["pages"][0]["raw_text"]
     case.cloud, case.worker_store = cloud, worker_store
     assert api_store.root is worker_store.root is None
     assert api_store.backend is not worker_store.backend
@@ -144,7 +147,9 @@ def test_pg_remote_original_api_worker_auto_draft_requires_review_before_export(
         case.ledger.export(case.actors["accountant"], receipt["book_id"], ExportRequest(draft_ids=[value["id"]], idempotency_key=uuid4().hex))
     with pytest.raises(AccountingError):
         case.ledger.approve(case.actors["finance"], receipt["book_id"], value["id"], ApprovalRequest(expected_version=2))
-    case.ledger.approve(case.actors["accountant"], receipt["book_id"], value["id"], ApprovalRequest(expected_version=2))
+    with pytest.raises(AccountingError):
+        case.ledger.approve(case.actors["accountant"], receipt["book_id"], value["id"], ApprovalRequest(expected_version=2))
+    case.ledger.approve(case.manager, receipt["book_id"], value["id"], ApprovalRequest(expected_version=2))
     exported = case.ledger.export(case.actors["accountant"], receipt["book_id"], ExportRequest(draft_ids=[value["id"]], idempotency_key=uuid4().hex))
     assert exported["count"] == 1 and "0.30" in exported["csv"]
     assert not any(request.method in {"DELETE", "PUT"} or "/public/" in request.url.path for request in case.cloud.requests)

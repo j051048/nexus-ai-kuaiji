@@ -28,8 +28,10 @@ def test_pg_atomic_completion_uses_existing_independent_approval(pg_ai):
     shared_intake_tests.test_complete_is_atomic_independent_approval_and_idempotent(pg_ai)
 
 
-def test_pg_recognition_transfers_without_second_fee(pg_ai):
-    shared_intake_tests.test_ai_suggestions_never_write_facts_and_transfer_does_not_charge_twice(pg_ai)
+def test_pg_recognition_transfers_without_second_fee(pg_ai, monkeypatch):
+    shared_intake_tests.test_ai_suggestions_never_write_facts_and_transfer_does_not_charge_twice(
+        pg_ai, monkeypatch
+    )
 
 
 def test_pg_intake_held_send_blocks_ordinary_event_ocr_budget(pg_ai):

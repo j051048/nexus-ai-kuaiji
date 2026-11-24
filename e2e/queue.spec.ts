@@ -61,6 +61,10 @@ test('真实本地 UI：任务中心可读，供应商未配置时单份与批�
   const event = await createOriginal(page, description);
   const panel = page.getByRole('region', { name: '票据识别与交叉核对' });
   await expect(panel.getByRole('button', { name: '识别票据', exact: true })).toBeDisabled();
+  // Scope the list to the newly created company so earlier tests in the same
+  // shard that seeded attachments in other demo companies do not inflate options.
+  await page.getByLabel('筛选业务事项企业', { exact: true }).selectOption(event.company_id);
+  await expect(page.getByRole('button', { name: '批量识别本页票据', exact: true })).toBeEnabled();
   await page.getByRole('button', { name: '批量识别本页票据', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: '批量识别本页票据', exact: true });
   await expect(dialog.getByText('等待管理员配置模型服务', { exact: true })).toBeVisible();

@@ -77,6 +77,8 @@ def company_onboarding(service, actor, company_id, period):
                 "period": period,
                 "active": False,
                 "ready": False,
+                "score": {"completed": 0, "required": 0, "percent": 0, "blocking": 0},
+                "blockers": [],
                 "steps": [],
                 "updated_at": now(),
                 "note": "企业已暂停或归档，恢复后重新检查开通条件。",
@@ -147,11 +149,37 @@ def company_onboarding(service, actor, company_id, period):
                 "detail": "可选。开启许可仍受模型配置、费用限制和会计复核约束。",
             },
         ]
+        for step in steps:
+            step.setdefault(
+                "action_target",
+                {"kind": step["tab"], "book_id": "", "period": period},
+            )
+        required_steps = [s for s in steps if s["required"]]
+        completed_required = sum(1 for s in required_steps if s["complete"])
+        blocking_steps = [s for s in required_steps if not s["complete"]]
+        percent = (
+            int(round(completed_required * 100 / len(required_steps))) if required_steps else 100
+        )
         return {
             "company_id": company_id,
             "period": period,
             "active": True,
-            "ready": all(s["complete"] for s in steps if s["required"]),
+            "ready": len(blocking_steps) == 0,
+            "score": {
+                "completed": completed_required,
+                "required": len(required_steps),
+                "percent": percent,
+                "blocking": len(blocking_steps),
+            },
+            "blockers": [
+                {
+                    "id": s["id"],
+                    "title": s["title"],
+                    "next_action": s["detail"],
+                    "action_target": s["action_target"],
+                }
+                for s in blocking_steps
+            ],
             "steps": steps,
             "updated_at": now(),
             "note": "按当前有效账号、权限和记录计算；开通检查不能证明本月资料齐全或外部软件已入账。",

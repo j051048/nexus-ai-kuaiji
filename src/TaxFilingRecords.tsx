@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, apiBlob, errorMessage } from './api';
+import { scheduleSubpanel } from './subpanel-scheduler';
 import { prepareUploadIntent } from './upload-client';
 import type { Session } from './types';
 import { parseYuanToCents } from './money';
@@ -143,23 +144,33 @@ export function TaxFilingRecords({
   const live = useRef(true);
   const formRef = useRef<HTMLFormElement | null>(null);
 
-  const load = useCallback(async () => {
-    try {
-      const raw = await api<unknown>(
-        `/tax/filings?book_id=${encodeURIComponent(bookId)}&period=${encodeURIComponent(period)}`,
-        session,
-      );
-      if (live.current) setRows(parseFilings(raw));
-    } catch {
-      if (live.current) setRows([]);
-    }
-  }, [session, bookId, period]);
+  const load = useCallback(
+    async (signal?: AbortSignal) => {
+      try {
+        const raw = await scheduleSubpanel(
+          () =>
+            api<unknown>(
+              `/tax/filings?book_id=${encodeURIComponent(bookId)}&period=${encodeURIComponent(period)}`,
+              session,
+              { signal },
+            ),
+          signal,
+        );
+        if (live.current && !signal?.aborted) setRows(parseFilings(raw));
+      } catch {
+        if (live.current && !signal?.aborted) setRows([]);
+      }
+    },
+    [session, bookId, period],
+  );
 
   useEffect(() => {
+    const controller = new AbortController();
     live.current = true;
-    void load();
+    void load(controller.signal);
     return () => {
       live.current = false;
+      controller.abort();
     };
   }, [load]);
 

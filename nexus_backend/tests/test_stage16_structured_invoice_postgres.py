@@ -46,7 +46,9 @@ def test_pg_xml_intake_mime_and_transfer_retain_original_without_fee(pg_ai):
     event = service.complete(c.actors["employee"], draft["id"], confirmed(draft))["event"]
     assert c.provider.extract_calls == 0
     run = c.intelligence.detail(c.actors["employee"], event["id"])["runs"][0]
-    assert run["extraction_method"] == "structured_xml" and run["provider"] == "local-structured-parser"
+    assert run["provider"] is None and run["extraction_method"] == "structured_xml" and run["verification_status"] == "not_verified"
+    with c.db.transaction(actor=c.actors["employee"]) as conn:
+        assert conn.execute("SELECT provider FROM ai_runs WHERE id=?", (run["id"],)).fetchone()[0] == "local-structured-parser"
     with c.psycopg.connect(ADMIN_URL) as conn:
         assert conn.execute("SELECT count(*) FROM accounting.model_costs WHERE intake_run_id=%s OR run_id=%s", (result["id"], run["id"])).fetchone()[0] == 0
         assert conn.execute("SELECT media_type FROM accounting.intake_attachments WHERE id=%s", (draft["attachments"][0]["id"],)).fetchone()[0] == "application/xml"

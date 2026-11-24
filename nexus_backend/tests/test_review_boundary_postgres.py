@@ -7,7 +7,7 @@ approved/exported record. They require the dedicated test DSNs supplied by CI.
 
 import pytest
 
-from test_business_postgres import ADMIN_URL, APP_URL, business_case, full_event, handoff
+from test_business_postgres import ADMIN_URL, APP_URL, business_case, business_postgres, full_event, handoff  # noqa: F401
 
 pytestmark = pytest.mark.skipif(
     not ADMIN_URL or not APP_URL, reason="需要专用 PostgreSQL 管理员和受限运行测试连接"

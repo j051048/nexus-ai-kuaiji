@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, ApiError, errorMessage } from './api';
+import { scheduleSubpanel } from './subpanel-scheduler';
 import { formatCents, parseYuanToCents } from './money';
 import type { Session } from './types';
 import './fee-variance.css';
@@ -61,12 +62,14 @@ export function FeeVariancePanel({
   period,
   onOpenDraft,
   initialVarianceId,
+  canManage = false,
 }: {
   session: Session;
   bookId: string;
   period: string;
   onOpenDraft?: (bookId: string, draftId: string) => void;
   initialVarianceId?: string;
+  canManage?: boolean;
 }) {
   const [items, setItems] = useState<Variance[] | null>(null);
   const [reasons, setReasons] = useState<Reason[]>([]);
@@ -111,17 +114,29 @@ export function FeeVariancePanel({
     setError('');
     try {
       const [rows, catalog] = await Promise.all([
-        api<{ items: Variance[] }>(
-          `/tax/books/${bookId}/fee-variances?period=${encodeURIComponent(period)}`,
-          session,
-          { signal },
+        scheduleSubpanel(
+          () =>
+            api<{ items: Variance[] }>(
+              `/tax/books/${bookId}/fee-variances?period=${encodeURIComponent(period)}`,
+              session,
+              { signal },
+            ),
+          signal,
         ),
-        api<{ items: Reason[] }>(`/tax/books/${bookId}/fee-variance-reasons`, session, { signal }),
+        scheduleSubpanel(
+          () =>
+            api<{ items: Reason[] }>(`/tax/books/${bookId}/fee-variance-reasons`, session, {
+              signal,
+            }),
+          signal,
+        ),
       ]);
+      if (signal?.aborted) return;
       setItems(rows.items);
       setReasons(catalog.items);
     } catch (failure) {
-      if (failure instanceof DOMException && failure.name === 'AbortError') return;
+      if (signal?.aborted || (failure instanceof DOMException && failure.name === 'AbortError'))
+        return;
       setError(failureText(failure));
       setItems([]);
     }
@@ -134,8 +149,19 @@ export function FeeVariancePanel({
   }, [bookId, period, session.scope_key]);
 
   useEffect(() => {
+    if (!canManage) {
+      setAssignees([]);
+      return;
+    }
+    const controller = new AbortController();
     let active = true;
-    void api<{ items: Assignee[] }>(`/tax/books/${bookId}/fee-variance-assignees`, session)
+    void scheduleSubpanel(
+      () =>
+        api<{ items: Assignee[] }>(`/tax/books/${bookId}/fee-variance-assignees`, session, {
+          signal: controller.signal,
+        }),
+      controller.signal,
+    )
       .then((people) => {
         if (active) setAssignees(people.items);
       })
@@ -144,8 +170,9 @@ export function FeeVariancePanel({
       });
     return () => {
       active = false;
+      controller.abort();
     };
-  }, [bookId, session.scope_key]);
+  }, [bookId, canManage, session.scope_key]);
 
   async function register() {
     setRegisterError('');

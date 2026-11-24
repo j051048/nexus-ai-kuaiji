@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, ApiError } from './api';
+import { scheduleSubpanel } from './subpanel-scheduler';
 import type { Session } from './types';
 import { formatCents, parseYuanToCents } from './money';
 import './oa-snapshot.css';
@@ -52,24 +53,36 @@ export function OaSnapshotPanel({
   const [amount, setAmount] = useState('');
   const [reason, setReason] = useState('');
 
-  async function load() {
+  async function load(signal?: AbortSignal) {
     try {
       const [a, b] = await Promise.all([
-        api<{ items: Snapshot[] }>(`/books/${bookId}/oa-snapshots`, session),
-        api<{ items: MaterialRequest[] }>(
-          `/books/${bookId}/oa-snapshots/material-requests`,
-          session,
+        scheduleSubpanel(
+          () => api<{ items: Snapshot[] }>(`/books/${bookId}/oa-snapshots`, session, { signal }),
+          signal,
+        ),
+        scheduleSubpanel(
+          () =>
+            api<{ items: MaterialRequest[] }>(
+              `/books/${bookId}/oa-snapshots/material-requests`,
+              session,
+              { signal },
+            ),
+          signal,
         ),
       ]);
+      if (signal?.aborted) return;
       setSnapshots(a.items);
       setRequests(b.items);
       setError('');
     } catch (err) {
+      if (signal?.aborted) return;
       setError(err instanceof ApiError ? err.message : 'OA 快照读取失败');
     }
   }
   useEffect(() => {
-    void load();
+    const controller = new AbortController();
+    void load(controller.signal);
+    return () => controller.abort();
   }, [bookId, period]);
 
   async function register() {

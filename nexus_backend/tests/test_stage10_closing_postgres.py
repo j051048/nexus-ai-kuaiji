@@ -20,7 +20,7 @@ def ready_export(case):
     case.service.import_sources(case.owner, case.book, request())
     case.service.suggestions(case.owner, case.book)
     draft = case.service.get_book(case.owner, case.book)['drafts'][0]
-    case.service.approve(case.owner, case.book, draft['id'], ApprovalRequest(expected_version=draft['version']))
+    case.service.approve(case.reviewer, case.book, draft['id'], ApprovalRequest(expected_version=draft['version']))
     export = case.service.export(case.owner, case.book, ExportRequest(draft_ids=[draft['id']], idempotency_key=uuid4().hex))
     delivery = DeliveryService(case.db)
     body = json.loads(delivery.template(case.owner, case.book, export['id']))

@@ -1,6 +1,7 @@
 """PLT04-D: a non-import source has one immutable, scoped original."""
 
 import hashlib
+import os
 import time
 from uuid import uuid4
 
@@ -191,6 +192,10 @@ def test_source_original_http_upload_and_download(source_original):
         assert missing.status_code == 404
 
 
+@pytest.mark.skipif(
+    os.getenv("ACCOUNTING_AK05_ISOLATED_TARGET") != "1",
+    reason="需要显式 AK05 四角色隔离 PostgreSQL 运行器",
+)
 def test_pg_source_original_round_trip(formal_case, tmp_path):
     """The PG 298 table/view/function binding works on the real dispatcher."""
     case = formal_case

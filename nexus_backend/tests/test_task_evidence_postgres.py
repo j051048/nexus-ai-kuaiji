@@ -11,6 +11,12 @@ from test_task_parallel_reads import (
     test_parallel_late_results_hold_slots_and_never_publish as late,
 )
 from app.assistant import investigation
+import os
+
+pytestmark = pytest.mark.skipif(
+    os.getenv("ACCOUNTING_AK05_ISOLATED_TARGET") != "1",
+    reason="需要显式 AK05 四角色隔离 PostgreSQL 运行器",
+)
 
 
 def test_pg_rule_memory_current_source_scope_and_no_publication(candidate):

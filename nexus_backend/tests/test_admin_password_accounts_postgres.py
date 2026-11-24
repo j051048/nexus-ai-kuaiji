@@ -111,7 +111,8 @@ def test_pg_department_policy_change_preserves_cancellation_and_completed_replay
             assert not conn.execute("SELECT * FROM company_memberships WHERE company_id=? AND user_id=?", (case.company, uid)).fetchall()
 
 
-def test_http_password_account_requires_mfa_and_employee_lands_in_own_workspace(client):
+def test_http_password_account_requires_mfa_and_employee_lands_in_own_workspace(client, monkeypatch):
+    monkeypatch.setenv("ACCOUNTING_MFA_ENFORCE", "enforce")
     firm, company, book = setup_books(client)
     provider = PasswordProvider()
     client.app.state.admin_identity.provider = provider

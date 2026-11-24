@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { api, ApiError } from './api';
+import { scheduleSubpanel } from './subpanel-scheduler';
 import type { Session } from './types';
 import { centsToApiString, parseYuanToCents } from './money';
 import './tax-fee.css';
@@ -222,7 +223,7 @@ function ScopedTaxFeeBatchPanel({
     return data;
   }
 
-  async function load() {
+  async function load(signal?: AbortSignal) {
     const current = ++revision.current;
     setFailure('');
     try {
@@ -235,30 +236,61 @@ function ScopedTaxFeeBatchPanel({
         allocationData,
         refundData,
       ] = await Promise.all([
-        api<{ items: Source[] }>(`/tax/books/${encodeURIComponent(bookId)}/sources`, session),
-        api<{ items: Batch[] }>(url, session),
-        api<{ items: Receivable[] }>(
-          `/tax/books/${encodeURIComponent(bookId)}/fee-receivables?period=${encodeURIComponent(period)}`,
-          session,
+        scheduleSubpanel(
+          () =>
+            api<{ items: Source[] }>(`/tax/books/${encodeURIComponent(bookId)}/sources`, session, {
+              signal,
+            }),
+          signal,
         ),
-        api<{ items: BankSource[] }>(
-          `/tax/books/${encodeURIComponent(bookId)}/fee-bank-sources?period=${encodeURIComponent(period)}`,
-          session,
+        scheduleSubpanel(() => api<{ items: Batch[] }>(url, session, { signal }), signal),
+        scheduleSubpanel(
+          () =>
+            api<{ items: Receivable[] }>(
+              `/tax/books/${encodeURIComponent(bookId)}/fee-receivables?period=${encodeURIComponent(period)}`,
+              session,
+              { signal },
+            ),
+          signal,
         ),
-        api<{ items: BankSource[] }>(
-          `/tax/books/${encodeURIComponent(bookId)}/fee-bank-sources?period=${encodeURIComponent(period)}&direction=expense`,
-          session,
+        scheduleSubpanel(
+          () =>
+            api<{ items: BankSource[] }>(
+              `/tax/books/${encodeURIComponent(bookId)}/fee-bank-sources?period=${encodeURIComponent(period)}`,
+              session,
+              { signal },
+            ),
+          signal,
         ),
-        api<{ items: Allocation[] }>(
-          `/tax/books/${encodeURIComponent(bookId)}/fee-allocations?period=${encodeURIComponent(period)}`,
-          session,
+        scheduleSubpanel(
+          () =>
+            api<{ items: BankSource[] }>(
+              `/tax/books/${encodeURIComponent(bookId)}/fee-bank-sources?period=${encodeURIComponent(period)}&direction=expense`,
+              session,
+              { signal },
+            ),
+          signal,
         ),
-        api<{ items: Refund[] }>(
-          `/tax/books/${encodeURIComponent(bookId)}/fee-refunds?period=${encodeURIComponent(period)}`,
-          session,
+        scheduleSubpanel(
+          () =>
+            api<{ items: Allocation[] }>(
+              `/tax/books/${encodeURIComponent(bookId)}/fee-allocations?period=${encodeURIComponent(period)}`,
+              session,
+              { signal },
+            ),
+          signal,
+        ),
+        scheduleSubpanel(
+          () =>
+            api<{ items: Refund[] }>(
+              `/tax/books/${encodeURIComponent(bookId)}/fee-refunds?period=${encodeURIComponent(period)}`,
+              session,
+              { signal },
+            ),
+          signal,
         ),
       ]);
-      if (current !== revision.current) return;
+      if (current !== revision.current || signal?.aborted) return;
       if (sourceData.items.some((item) => item.book_id !== bookId))
         throw new ApiError('返回的来源范围不一致，请刷新后核对。', 409);
       batchData.items.forEach(checked);
@@ -273,7 +305,7 @@ function ScopedTaxFeeBatchPanel({
         previous ? (batchData.items.find((item) => item.id === previous.id) ?? null) : null,
       );
     } catch (error) {
-      if (current !== revision.current) return;
+      if (current !== revision.current || signal?.aborted) return;
       setSources([]);
       setBatches([]);
       setReceivables([]);
@@ -288,9 +320,11 @@ function ScopedTaxFeeBatchPanel({
     }
   }
   useEffect(() => {
-    void load();
+    const controller = new AbortController();
+    void load(controller.signal);
     return () => {
       revision.current++;
+      controller.abort();
     };
   }, [bookId, session]);
 

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, ApiError } from './api';
+import { scheduleSubpanel } from './subpanel-scheduler';
 import type { Session } from './types';
 import { centsToApiString, formatCents, parseYuanToCents } from './money';
 import './tax-cost.css';
@@ -198,27 +199,42 @@ export function TaxCostBatchPanel({
   const [rateTaxIncluded, setRateTaxIncluded] = useState(false);
   const loadSequence = useRef(0);
 
-  async function load() {
+  async function load(signal?: AbortSignal) {
     const sequence = ++loadSequence.current;
     setFailure('');
     try {
       const [sourceData, batchData, rateData, packageData] = await Promise.all([
-        api<{ items: Source[] }>(`${base}/cost-sources`, session),
-        api<{ items: Batch[] }>(url, session),
-        api<{ items: Rate[] }>(`${base}/repair-rates`, session),
-        api<{ items: PackageContract[] }>(`${base}/repair-packages`, session),
+        scheduleSubpanel(
+          () => api<{ items: Source[] }>(`${base}/cost-sources`, session, { signal }),
+          signal,
+        ),
+        scheduleSubpanel(() => api<{ items: Batch[] }>(url, session, { signal }), signal),
+        scheduleSubpanel(
+          () => api<{ items: Rate[] }>(`${base}/repair-rates`, session, { signal }),
+          signal,
+        ),
+        scheduleSubpanel(
+          () => api<{ items: PackageContract[] }>(`${base}/repair-packages`, session, { signal }),
+          signal,
+        ),
       ]);
-      if (sequence !== loadSequence.current) return;
+      if (sequence !== loadSequence.current || signal?.aborted) return;
       setSources(sourceData.items.filter((item) => item.status === 'active'));
       setBatches(batchData.items);
       setRates(rateData.items);
       setPackages(packageData.items);
     } catch (error) {
+      if (sequence !== loadSequence.current || signal?.aborted) return;
       setFailure(error instanceof ApiError ? error.message : '成本批次读取失败。');
     }
   }
   useEffect(() => {
-    void load();
+    const controller = new AbortController();
+    void load(controller.signal);
+    return () => {
+      loadSequence.current++;
+      controller.abort();
+    };
   }, [bookId, session]);
 
   function changeKind(next: Kind) {

@@ -17,7 +17,7 @@ test('导入去重、补证、修改复核、冻结和真实 CSV 下载', async 
   await page.screenshot({ path: 'artifacts/accounting-workbench.png', fullPage: true });
   await page.getByRole('button', { name: '新建账套', exact: true }).click();
   await page.getByLabel('企业名称', { exact: true }).fill('端到端验证企业');
-  await page.getByLabel('会计期间').fill('2026-10');
+  await page.getByLabel('会计期间', { exact: true }).fill('2026-10');
   await page.getByRole('button', { name: '创建账套', exact: true }).click();
   await expect(page.getByRole('heading', { name: '端到端验证企业', exact: true })).toBeVisible();
 

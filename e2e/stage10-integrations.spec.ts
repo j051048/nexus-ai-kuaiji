@@ -198,7 +198,9 @@ test('手工登记回执在浏览器选择证据原件并留痕', async ({ page,
   expect(manualResponse.status()).toBe(201);
   const manualReturn = await manualResponse.json();
   await expect(page.getByText(/手工回执与证据原件已登记/)).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByText(/人工声明已过账 · 已附原件（未逐笔核对凭证）/)).toBeVisible();
+  await expect(
+    page.getByText(/凭据待核（人工声明已过账 · 已附原件，未逐笔核对）/),
+  ).toBeVisible();
   await expect(page.getByText(/原件 manual-receipt\.pdf/)).toBeVisible();
   await expect(page.getByText(/对方已过账/)).toHaveCount(0);
   const evidence = await request.get(
@@ -387,7 +389,7 @@ test('财务软件文件底座真实 UI：配置、人工确认参考、冻结�
   });
   await page.getByRole('button', { name: '核对返回文件', exact: true }).click();
   await expect(page.getByText(/返回文件已核对/)).toBeVisible();
-  await expect(page.getByText(/已接收 · 已过账/)).toBeVisible();
+  await expect(page.getByText(/已接收 · 已核实过账/)).toBeVisible();
   await page.getByText(/逐笔明细/).click();
   await expect(page.getByText(`T54-${voucher.external_code}`)).toBeVisible();
   await page.screenshot({ path: 'artifacts/stage10-financial-bridge.png', fullPage: true });

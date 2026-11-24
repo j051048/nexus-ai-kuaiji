@@ -9,31 +9,33 @@ from app.intelligence.cache import config_key
 from test_business_postgres import ADMIN_URL, APP_URL, business_case, business_postgres
 from test_intelligence_workflow_postgres import pg_ai
 from test_intelligence_workflow import create_event
-from test_stage7_intelligence import identify
+from test_stage7_intelligence import cache_document, create_cache_event, identify
 
 pytestmark = pytest.mark.skipif(not ADMIN_URL or not APP_URL, reason="需要专用 PG 管理员及受限运行测试连接")
 
 
 def test_pg_cache_capabilities_never_enumerate_or_disclose_another_event(pg_ai):
-    first = create_event(pg_ai)
+    pg_ai.provider.document = cache_document()
+    first = create_cache_event(pg_ai)
     identify(pg_ai, first)
-    key = config_key(pg_ai.provider.settings, "image/png")
+    key = config_key(pg_ai.provider.settings, "application/pdf")
     for actor in (pg_ai.actors["peer"], pg_ai.manager, pg_ai.actors["outsider"]):
         with pg_ai.db.transaction(actor=actor) as conn:
             assert conn.execute("SELECT accounting.read_document_extraction(?,?)", (first["attachments"][0]["id"], key)).fetchone()[0] is None
         with pytest.raises(pg_ai.psycopg.errors.InsufficientPrivilege):
             with pg_ai.db.transaction(actor=actor) as conn:
                 conn.execute("SELECT * FROM document_extractions").fetchall()
-    peer = create_event(pg_ai, actor="peer")
+    peer = create_cache_event(pg_ai, actor="peer")
     reused = identify(pg_ai, peer, actor="peer")
     assert reused["cache_hit"] == 1 and pg_ai.provider.extract_calls == 1
     assert reused["event_id"] == peer["id"] and first["id"] not in str(reused)
 
 
 def test_pg_cache_capability_rechecks_revoked_membership_and_opt_out(pg_ai):
-    event = create_event(pg_ai)
+    pg_ai.provider.document = cache_document()
+    event = create_cache_event(pg_ai)
     identify(pg_ai, event)
-    key = config_key(pg_ai.provider.settings, "image/png")
+    key = config_key(pg_ai.provider.settings, "application/pdf")
     with pg_ai.db.transaction(actor=pg_ai.actors["employee"]) as conn:
         assert json.loads(conn.execute("SELECT accounting.read_document_extraction(?,?)", (event["attachments"][0]["id"], key)).fetchone()[0])["documents"]
     pg_ai.intelligence.company_settings(pg_ai.manager, pg_ai.company["id"], False)

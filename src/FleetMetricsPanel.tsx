@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, ApiError } from './api';
+import { scheduleSubpanel } from './subpanel-scheduler';
 import type { Session } from './types';
 import './fleet-metrics.css';
 
@@ -76,24 +77,33 @@ export function FleetMetricsPanel({
   const [failure, setFailure] = useState('');
   const [loading, setLoading] = useState(false);
 
-  async function load() {
+  async function load(signal?: AbortSignal) {
     setLoading(true);
     setFailure('');
     try {
-      const result = await api<Fleet>(
-        `/reports/fleet?book_id=${encodeURIComponent(bookId)}&period=${encodeURIComponent(period)}`,
-        session,
+      const result = await scheduleSubpanel(
+        () =>
+          api<Fleet>(
+            `/reports/fleet?book_id=${encodeURIComponent(bookId)}&period=${encodeURIComponent(period)}`,
+            session,
+            { signal },
+          ),
+        signal,
       );
+      if (signal?.aborted) return;
       setData(result);
     } catch (error) {
+      if (signal?.aborted) return;
       setFailure(error instanceof ApiError ? error.message : '单车贡献与驾驶员欠款读取失败。');
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) setLoading(false);
     }
   }
 
   useEffect(() => {
-    void load();
+    const controller = new AbortController();
+    void load(controller.signal);
+    return () => controller.abort();
   }, [bookId, period]);
 
   return (

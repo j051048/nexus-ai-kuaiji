@@ -67,7 +67,7 @@ test('会计上下文助手只解释当前保存资料，换凭证清空问答�
     .click();
   await page.getByLabel('复核企业', { exact: true }).selectOption(book.company_id);
   await page
-    .locator('.batch-review-row')
+    .locator('.review-table-row')
     .filter({ hasText: `合成办公用品甲 ${tag}` })
     .getByRole('button', { name: '查看证据', exact: true })
     .click();

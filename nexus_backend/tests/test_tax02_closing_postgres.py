@@ -21,11 +21,15 @@ from app.posting.service import PostingService
 from test_posting_service import admin, frozen_opening
 from test_b04_pilot import setup_b03
 from test_tax02_closing import _account, _approve_and_post, _closing, _line, _post
+import os
 
 ADMIN_URL = __import__("os").getenv("ACCOUNTING_TEST_POSTGRES_URL")
 APP_URL = __import__("os").getenv("ACCOUNTING_TEST_DATABASE_URL")
 
-pytestmark = []
+pytestmark = pytest.mark.skipif(
+    os.getenv("ACCOUNTING_AK05_ISOLATED_TARGET") != "1",
+    reason="需要显式 AK05 四角色隔离 PostgreSQL 运行器",
+)
 
 
 @pytest.fixture(scope="module")

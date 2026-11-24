@@ -60,6 +60,9 @@ def derived_grants(c, member, company=None, book=None, *, reviewer=False):
             c.actor, book, member.user_id, BookMemberGrant(role="reviewer")
         )
     c.ledgers.grant_manager(
+        c.actor, book, ManagerGrant(user_id=c.actor.user_id, reason="明确授予长期账套管理职责")
+    )
+    c.ledgers.grant_manager(
         c.actor, book, ManagerGrant(user_id=member.user_id, reason="明确授予长期账套管理职责")
     )
     ledger = c.ledgers.overview(c.actor, book)["id"]
@@ -82,11 +85,21 @@ def derived_grants(c, member, company=None, book=None, *, reviewer=False):
                 stamp,
             ),
         )
-        for user in [c.actor.user_id, member.user_id]:
-            conn.execute(
-                "INSERT INTO migration_project_access VALUES(?,?,'manager',?,?,?)",
-                (project, user, c.actor.user_id, "明确迁移管理责任", stamp),
-            )
+        conn.execute(
+            "INSERT INTO migration_project_access VALUES(?,?,'manager',?,?,?)",
+            (project, c.actor.user_id, c.actor.user_id, "明确迁移管理责任", stamp),
+        )
+        conn.execute(
+            "INSERT INTO migration_project_access VALUES(?,?,?,?,?,?)",
+            (
+                project,
+                member.user_id,
+                "manager" if reviewer else "viewer",
+                c.actor.user_id,
+                "明确迁移管理责任",
+                stamp,
+            ),
+        )
     return ledger, project
 
 

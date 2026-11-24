@@ -12,6 +12,12 @@ from app.b04_close.service import CloseService
 from app.tax.variances import FeeVarianceService
 from test_n03_notification_postgres import p0_case, p0_pg  # noqa: F401
 from test_p02_formal_read_postgres import formal_case  # noqa: F401
+import os
+
+pytestmark = pytest.mark.skipif(
+    os.getenv("ACCOUNTING_AK05_ISOLATED_TARGET") != "1",
+    reason="需要显式 AK05 四角色隔离 PostgreSQL 运行器",
+)
 
 
 def test_pg_fee_variance_pending_blocks_close(formal_case):

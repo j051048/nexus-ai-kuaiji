@@ -54,7 +54,8 @@ def headers(token, firm=None):
     return {"Authorization": f"Bearer {token}", **({"X-Firm-Id": firm} if firm else {})}
 
 
-def test_management_http_denies_password_only_session_without_blocking_business(client):
+def test_management_http_denies_password_only_session_without_blocking_business(client, monkeypatch):
+    monkeypatch.setenv("ACCOUNTING_MFA_ENFORCE", "enforce")
     firm, company, book = setup_books(client)
     original = client.provider.identities["owner"]
     client.provider.identities["owner"] = Identity(original.user_id, original.email, original.display_name)
@@ -112,11 +113,13 @@ def test_public_configuration_real_mode_has_no_demo_session_and_forged_scope_fai
 def test_real_postgres_http_workflow_with_duties_and_immediate_revocation(client):
     firm, company, book = setup_books(client)
     owner = headers("owner", firm)
-    for token, role in [("operator", "operator"), ("reviewer", "reviewer"), ("viewer", "viewer")]:
+    for token, role, book_role in [("operator", "operator", "editor"), ("reviewer", "reviewer", "reviewer"), ("viewer", "viewer", "viewer")]:
         identity = client.provider.identities[token]
         assert client.put("/api/firm/members", headers=owner, json={"email": identity.email, "role": role}).status_code == 200
         assert client.get("/api/workbench", headers=headers(token, firm)).json()["books"] == []
-        assert client.put(f"/api/books/{book}/members/{identity.user_id}", headers=owner, json={"role": "reviewer"}).status_code == 200
+        if book_role != "reviewer":
+            assert client.put(f"/api/books/{book}/members/{identity.user_id}", headers=owner, json={"role": "reviewer"}).status_code == 403
+        assert client.put(f"/api/books/{book}/members/{identity.user_id}", headers=owner, json={"role": book_role}).status_code == 200
     operator, reviewer, viewer = headers("operator", firm), headers("reviewer", firm), headers("viewer", firm)
     payload = {"source_name": "试点接口.csv", "rows": [{"external_id": "bank:001", "date": "2026-10-01", "description": "办公用品", "amount": "0.30", "direction": "expense", "evidence_ref": "虚构发票"}]}
     assert client.post(f"/api/books/{book}/imports", headers=viewer, json=payload).status_code == 403

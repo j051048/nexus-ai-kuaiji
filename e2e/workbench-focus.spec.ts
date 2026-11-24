@@ -37,7 +37,7 @@ for (const width of [1440, 390]) {
     await checked(await request.post(`/api/books/${book.id}/suggestions`, { headers }), 200);
     await page.goto(`/workspace/review?book=${book.id}`);
     await page.getByLabel('复核期间', { exact: true }).fill('2026-10');
-    const row = page.locator('.batch-review-row').filter({ hasText: tag });
+    const row = page.locator('.review-table-row').filter({ hasText: tag });
     await expect(row).toHaveCount(1);
     await row.getByRole('checkbox').check();
     await expect(page.locator('.review-instructions')).not.toHaveAttribute('open');

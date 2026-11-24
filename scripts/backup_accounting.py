@@ -1112,6 +1112,8 @@ def restore(directory, destination, postgres_target=None, *, restore_permissions
             ).fetchone()[0]
             if count or custom_schemas or custom_functions:
                 raise ValueError("PostgreSQL 目标不是空数据库，禁止覆盖")
+            target_major = conn.execute("SELECT current_setting('server_version')").fetchone()[0]
+            target_major = int(str(target_major).split(".")[0])
         database_item = next(
             (item for item in manifest["files"] if item["path"] == "database.dump"), None
         )
@@ -1122,8 +1124,6 @@ def restore(directory, destination, postgres_target=None, *, restore_permissions
                 decrypted_dump = target / ".database.dump.restore"
                 _decrypt_file(dump_source, decrypted_dump, encryption_key)
                 dump_source = decrypted_dump
-            target_major = conn.execute("SELECT current_setting('server_version')").fetchone()[0]
-            target_major = int(str(target_major).split(".")[0])
             conflict = restore_version_conflict(
                 tool_major_version("pg_restore"),
                 dump_source_major(dump_source, postgres_target),
@@ -1131,9 +1131,6 @@ def restore(directory, destination, postgres_target=None, *, restore_permissions
             )
             if conflict:
                 raise ValueError(conflict)
-            if decrypted_dump is not None:
-                decrypted_dump.unlink(missing_ok=True)
-                decrypted_dump = None
             pg_tool(
                 "pg_restore",
                 [

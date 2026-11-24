@@ -97,6 +97,7 @@ function TaxContent({
   const [confirmed, setConfirmed] = useState(false);
   const [blocked, setBlocked] = useState<TaxBlock>(null);
   const [denied, setDenied] = useState(false);
+  const [subpanelsReady, setSubpanelsReady] = useState(false);
   const live = useRef(true),
     locked = useRef(false),
     write = useRef(new AbortController());
@@ -149,6 +150,10 @@ function TaxContent({
   const data = denied ? null : read.data;
   const context = data?.context,
     papers = data?.papers ?? [];
+  useEffect(() => {
+    if (context && !denied && !read.error) setSubpanelsReady(true);
+    else if (denied || read.error) setSubpanelsReady(false);
+  }, [context, denied, read.error]);
   const selected = selectedId ? papers.find((p) => p.id === selectedId) : papers[0];
   const latest = papers[0]?.version ?? 0;
   const supported =
@@ -322,34 +327,39 @@ function TaxContent({
       <p className="tax-boundary">
         生成底稿不代表已申报；办理状态以人工登记及回执为准。本系统不自动申报或缴款，来源在复核和导出时重新校验。
       </p>
-      <TaxReadinessList data={readiness} />
-      <PilotBoundaryPanel session={session} companyId={companyId} />
-      <TaxSourcePanel session={session} bookId={bookId} />
-      <TaxAccrualPanel session={session} bookId={bookId} period={period} />
-      <ClosingAuthorityPanel session={session} bookId={bookId} />
-      <TaxFeeBatchPanel session={session} bookId={bookId} period={period} />
-      <FeeVariancePanel
-        session={session}
-        bookId={bookId}
-        period={period}
-        onOpenDraft={onOpenDraft}
-        initialVarianceId={initialFeeVarianceId}
-      />
-      <TaxCostBatchPanel session={session} bookId={bookId} period={period} />
-      <OaSnapshotPanel
-        session={session}
-        bookId={bookId}
-        period={period}
-        canManage={!!context?.permissions.manage}
-      />
-      <TaxFPanel session={session} bookId={bookId} period={period} />
-      <TaxFilingRecords
-        session={session}
-        bookId={bookId}
-        period={period}
-        canRegister={['owner', 'admin', 'reviewer'].includes(session.role ?? '')}
-        onRecorded={() => read.reload()}
-      />
+      {subpanelsReady && !denied && !read.error && (
+        <>
+          <TaxReadinessList data={readiness} />
+          <PilotBoundaryPanel session={session} companyId={companyId} />
+          <TaxSourcePanel session={session} bookId={bookId} />
+          <TaxAccrualPanel session={session} bookId={bookId} period={period} />
+          <ClosingAuthorityPanel session={session} bookId={bookId} />
+          <TaxFeeBatchPanel session={session} bookId={bookId} period={period} />
+          <FeeVariancePanel
+            session={session}
+            bookId={bookId}
+            period={period}
+            onOpenDraft={onOpenDraft}
+            initialVarianceId={initialFeeVarianceId}
+            canManage={!!context?.permissions.manage}
+          />
+          <TaxCostBatchPanel session={session} bookId={bookId} period={period} />
+          <OaSnapshotPanel
+            session={session}
+            bookId={bookId}
+            period={period}
+            canManage={!!context?.permissions.manage}
+          />
+          <TaxFPanel session={session} bookId={bookId} period={period} />
+          <TaxFilingRecords
+            session={session}
+            bookId={bookId}
+            period={period}
+            canRegister={['owner', 'admin', 'reviewer'].includes(session.role ?? '')}
+            onRecorded={() => read.reload()}
+          />
+        </>
+      )}
       {(failure || read.error) && (
         <div role="alert" className="tax-alert">
           {failure || read.error}

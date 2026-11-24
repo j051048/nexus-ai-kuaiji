@@ -194,3 +194,14 @@ def test_xlsx_nonstandard_lzma_compression_rejected_before_xml_or_decompression(
         archive.writestr('xl/workbook.xml', '<workbook/>')
     with pytest.raises(AccountingError, match='非标准压缩'):
         parse_file('不规范压缩.xlsx', output.getvalue())
+
+
+def test_masked_saved_profile_still_deduplicates_without_leaking_raw_account(wizard, book):
+    first, _ = preview(wizard, LOCAL_ACTOR, book, account='虚构工商银行-1234')
+    wizard.confirm(LOCAL_ACTOR, book, first['id'], True)
+    saved = wizard.profiles(LOCAL_ACTOR, book)['profiles'][0]
+    assert saved['bank_account'] == '****1234'
+    repeated, _ = preview(wizard, LOCAL_ACTOR, book, account=saved['bank_account'])
+    assert repeated['bank_account'] == '****1234'
+    assert repeated['new_count'] == 0 and repeated['duplicate_count'] == 2
+    assert all(row['status'] == 'duplicate' for row in repeated['rows'])

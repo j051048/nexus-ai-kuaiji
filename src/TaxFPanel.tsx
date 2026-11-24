@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { parseTaxFLink, taxFLinkUrl } from './taxf-link';
 import { api, apiBlob, ApiError } from './api';
+import { scheduleSubpanel } from './subpanel-scheduler';
 import type { Session } from './types';
 import { centsToApiString } from './money';
 import { prepareUploadIntent } from './upload-client';
@@ -245,19 +246,41 @@ export function TaxFPanel({
 
   const current = leases.find((row) => row.id === selectedLease) ?? null;
 
-  async function load(nextReportId = profitReportId) {
+  async function load(nextReportId = profitReportId, signal?: AbortSignal) {
     setFailure('');
     try {
       const reportQuery = nextReportId ? `&report_run_id=${encodeURIComponent(nextReportId)}` : '';
       const [leaseData, basisData, profitData, reportData] = await Promise.all([
-        api<{ items: Lease[] }>(leasesUrl, session),
-        api<{ items: Basis[] }>(`${basisUrl}?period=${encodeURIComponent(period)}`, session),
-        api<Profit>(
-          `/reports/profit?book_id=${encodeURIComponent(bookId)}&period=${encodeURIComponent(period)}${reportQuery}`,
-          session,
+        scheduleSubpanel(() => api<{ items: Lease[] }>(leasesUrl, session, { signal }), signal),
+        scheduleSubpanel(
+          () =>
+            api<{ items: Basis[] }>(`${basisUrl}?period=${encodeURIComponent(period)}`, session, {
+              signal,
+            }),
+          signal,
         ),
-        api<{ reports: ReportOption[] }>(`/reports?book_id=${encodeURIComponent(bookId)}`, session),
+        scheduleSubpanel(
+          () =>
+            api<Profit>(
+              `/reports/profit?book_id=${encodeURIComponent(bookId)}&period=${encodeURIComponent(period)}${reportQuery}`,
+              session,
+              { signal },
+            ),
+          signal,
+        ),
+        scheduleSubpanel(
+          () =>
+            api<{ reports: ReportOption[] }>(
+              `/reports?book_id=${encodeURIComponent(bookId)}`,
+              session,
+              {
+                signal,
+              },
+            ),
+          signal,
+        ),
       ]);
+      if (signal?.aborted) return;
       setLeases(leaseData.items);
       setSelectedLease((value) => value || leaseData.items[0]?.id || '');
       setBasis(basisData.items);
@@ -270,11 +293,14 @@ export function TaxFPanel({
         setProfitReportId('');
       }
     } catch (error) {
+      if (signal?.aborted) return;
       setFailure(error instanceof ApiError ? error.message : '租赁、税费与利润数据读取失败。');
     }
   }
   useEffect(() => {
-    void load();
+    const controller = new AbortController();
+    void load(profitReportId, controller.signal);
+    return () => controller.abort();
   }, [bookId, period, session]);
 
   async function attachSourceOriginal(sourceRef: string, file: File | undefined) {

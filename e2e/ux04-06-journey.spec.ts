@@ -181,6 +181,8 @@ for (const width of [1280, 390]) {
     const wizard = page.locator('.setup-wizard');
     await wizard.locator('#setup-template').getByRole('button').click();
     await page.getByLabel('本次办理依据').fill('本地虚构企业开户核对');
+    await page.getByRole('combobox', { name: '会计准则', exact: true }).selectOption('small_enterprise');
+    await page.getByRole('combobox', { name: '纳税人身份', exact: true }).selectOption('small_scale');
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(
       true,
     );

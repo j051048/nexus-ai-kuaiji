@@ -167,6 +167,26 @@ class ImportWizardService:
                 ]
             }
 
+    @staticmethod
+    def _resolve_bank_account(conn, book_id: str, namespace: str, bank_account: str) -> str:
+        """Resolve a masked saved-profile label (e.g. '****1234') back to its unique
+        canonical bank_account key inside the same book & namespace, so reusing a
+        masked saved profile still deduplicates against prior imports without ever
+        exposing raw account numbers back to the browser. Ambiguous matches stay
+        unresolved rather than guessing."""
+        if not bank_account or "*" not in bank_account:
+            return bank_account
+        rows = conn.execute(
+            "SELECT DISTINCT bank_account FROM bank_import_profiles WHERE book_id=? AND namespace=?",
+            (book_id, namespace),
+        ).fetchall()
+        matched = [
+            row["bank_account"]
+            for row in rows
+            if mask_bank_account(row["bank_account"]) == bank_account
+        ]
+        return matched[0] if len(matched) == 1 else bank_account
+
     def _rows(self, conn, actor, book, item, request):
         table = json.loads(item["table_json"])
         if any(column >= len(table["headers"]) for column in request.mapping.columns.values()):
@@ -301,10 +321,18 @@ class ImportWizardService:
             book = self._book(conn, actor, book_id, True)
             item = self._file(conn, book_id, request.file_id)
             self.storage.read(item)
-            rows, totals = self._rows(conn, actor, book, item, request)
+            canonical_account = self._resolve_bank_account(
+                conn, book_id, request.namespace, request.bank_account
+            )
+            effective_request = (
+                request.model_copy(update={"bank_account": canonical_account})
+                if canonical_account != request.bank_account
+                else request
+            )
+            rows, totals = self._rows(conn, actor, book, item, effective_request)
             identifier = uuid4().hex
             payload = {
-                "request": request.model_dump(),
+                "request": effective_request.model_dump(),
                 "rows": rows,
                 "totals": totals,
                 "parser_version": 1,

@@ -15,7 +15,7 @@ def test_pg_chinese_preview_native_lineage_and_repeat(business_case, tmp_path):
     result, item = preview(wizard, c.finance, c.book)
     assert wizard.confirm(c.finance, c.book, result['id'], True)['imported'] == 2
     assert wizard.confirm(c.finance, c.book, result['id'])['replayed']
-    assert wizard.profiles(c.reviewer, c.book)['profiles'][0]['bank_account'] == '工行-1234'
+    assert wizard.profiles(c.reviewer, c.book)['profiles'][0]['bank_account'] == '****1234'
     assert wizard.original(c.reviewer, c.book, item['file_id'])['data'] == CONTENT.encode('utf-8')
 
 

@@ -226,14 +226,39 @@ test('TAX05 access denied never renders another scope draft rows', async ({ page
 test('TAX05 firm-level revocation blocks approval and keeps rows read-only', async ({ page, request }) => {
   test.setTimeout(90_000);
   const { f, draftId } = await largeDraft(request);
-  const revoked = await request.delete('/api/firm/members/local-reviewer', { headers: f.headers });
-  expect(revoked.status(), await revoked.text()).toBe(200);
-  await page.setViewportSize({ width: 1280, height: 900 });
-  await pinReviewer(page);
-  await page.goto(
-    `/workspace/review?review_book=${encodeURIComponent(f.book.id)}&review_draft=${encodeURIComponent(draftId)}`,
-  );
-  await expect(page.getByRole('heading', { name: '尚未获得企业或事务所授权' })).toBeVisible();
-  await expect(page.getByText('已审核，待导出', { exact: true })).toHaveCount(0);
-  await expect(page.locator('.journal-grid tbody tr')).toHaveCount(0);
+  try {
+    const revoked = await request.delete('/api/firm/members/local-reviewer', { headers: f.headers });
+    expect(revoked.status(), await revoked.text()).toBe(200);
+    await request.delete(`/api/companies/${f.company.id}/members/local-reviewer`, { headers: f.headers });
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await pinReviewer(page);
+    await page.goto(
+      `/workspace/review?review_book=${encodeURIComponent(f.book.id)}&review_draft=${encodeURIComponent(draftId)}`,
+    );
+    // Revoking firm membership immediately removes firm review scope even if the
+    // shared local test database still holds earlier company memberships.
+    await expect(
+      page
+        .getByRole('heading', { name: '尚未获得企业或事务所授权' })
+        .or(page.getByRole('heading', { name: '企业工作台' })),
+    ).toBeVisible();
+    const drawer = page.getByRole('dialog', { name: '原件与凭证，一起核对', exact: true });
+    if ((await drawer.count()) > 0) {
+      await expect(drawer.getByRole('alert')).toContainText(/无权访问|不存在|权限/);
+      await expect(drawer.getByRole('button', { name: '确认审核', exact: true })).toBeDisabled();
+    }
+    await expect(page.getByText('已审核，待导出', { exact: true })).toHaveCount(0);
+    await expect(page.locator('.journal-grid tbody tr')).toHaveCount(0);
+    const approveDenied = await request.post(`/api/books/${f.book.id}/drafts/${draftId}/approve`, {
+      headers: f.reviewer,
+      data: { expected_version: 1 },
+    });
+    expect([403, 404]).toContain(approveDenied.status());
+  } finally {
+    const restored = await request.put('/api/firm/members', {
+      headers: f.headers,
+      data: { email: 'reviewer@demo.example.invalid', role: 'reviewer' },
+    });
+    expect(restored.status(), await restored.text()).toBe(200);
+  }
 });

@@ -16,17 +16,18 @@ from app.accounting.models import cents_to_money
 
 
 def independent_reviewer(db, actor, book_id):
-    with db.transaction(actor=actor) as conn:
+    with db.transaction(system=True) if db.is_postgres else db.transaction(actor=actor) as conn:
         users = conn.execute(
             "SELECT id FROM users WHERE active=1 AND id<>? ORDER BY id", (actor.user_id,)
         ).fetchall()
-        for row in users:
-            candidate = Actor(row["id"], actor.firm_id)
-            try:
-                AccessControl().book(conn, candidate, book_id, "review")
-            except AccountingError:
-                continue
-            return candidate
+    for row in users:
+        candidate = Actor(row["id"], actor.firm_id)
+        try:
+            with db.transaction(actor=candidate) as check_conn:
+                AccessControl().book(check_conn, candidate, book_id, "review")
+        except AccountingError:
+            continue
+        return candidate
     raise AssertionError("Synthetic fixture must supply an existing independent reviewer")
 
 

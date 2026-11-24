@@ -36,7 +36,7 @@ def workspace(c):
 
 
 def refresh_projections(c):
-    with c.db.transaction() as conn:
+    with c.db.transaction(system=True) as conn:
         rows = conn.execute(
             "SELECT fc.firm_id,fc.company_id FROM firm_clients fc WHERE fc.status='active'"
         ).fetchall()

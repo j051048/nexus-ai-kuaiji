@@ -229,6 +229,8 @@ export function IntegrationWorkbench({
       importId: string;
       voucherCode: string;
       action: 'resolved' | 'ignored';
+      reasonCode:
+        'amount_mismatch' | 'account_mismatch' | 'date_mismatch' | 'voucher_missing' | 'other';
       reason: string;
       evidence: string;
     } | null>(null),
@@ -333,10 +335,19 @@ export function IntegrationWorkbench({
       }
       await refreshArtifact(task.outbox_id);
       if (!live.current) return;
+      const inferReasonCode = (
+        status?: string,
+      ): 'amount_mismatch' | 'account_mismatch' | 'date_mismatch' | 'voucher_missing' | 'other' => {
+        if (status === 'amount_mismatch') return 'amount_mismatch';
+        if (status === 'account_mismatch') return 'account_mismatch';
+        if (status === 'missing') return 'voucher_missing';
+        return 'other';
+      };
       setHandleDraft({
         importId: task.import_id,
         voucherCode: task.voucher_code,
         action: 'resolved',
+        reasonCode: inferReasonCode((task as { status?: string }).status),
         reason: '',
         evidence: '',
       });
@@ -509,6 +520,7 @@ export function IntegrationWorkbench({
           method: 'POST',
           body: {
             action: handleDraft.action,
+            reason_code: handleDraft.reasonCode,
             reason: handleDraft.reason,
             evidence_ref: handleDraft.evidence,
           },
@@ -1256,6 +1268,14 @@ export function IntegrationWorkbench({
                                               importId: row.id,
                                               voucherCode: item.voucher_code,
                                               action: 'resolved',
+                                              reasonCode:
+                                                item.status === 'amount_mismatch'
+                                                  ? 'amount_mismatch'
+                                                  : item.status === 'account_mismatch'
+                                                    ? 'account_mismatch'
+                                                    : item.status === 'missing'
+                                                      ? 'voucher_missing'
+                                                      : 'other',
                                               reason: '',
                                               evidence: '',
                                             })
@@ -1289,6 +1309,33 @@ export function IntegrationWorkbench({
                                   >
                                     <option value="resolved">已解决（说明原因）</option>
                                     <option value="ignored">忽略（保留原差异）</option>
+                                  </select>
+                                </label>
+                                <label>
+                                  差异原因码
+                                  <select
+                                    value={handleDraft.reasonCode}
+                                    onChange={(e) =>
+                                      setHandleDraft((d) =>
+                                        d
+                                          ? {
+                                              ...d,
+                                              reasonCode: e.target.value as
+                                                | 'amount_mismatch'
+                                                | 'account_mismatch'
+                                                | 'date_mismatch'
+                                                | 'voucher_missing'
+                                                | 'other',
+                                            }
+                                          : d,
+                                      )
+                                    }
+                                  >
+                                    <option value="amount_mismatch">金额不一致</option>
+                                    <option value="account_mismatch">科目不一致</option>
+                                    <option value="date_mismatch">过账日期不一致</option>
+                                    <option value="voucher_missing">对方缺失凭证</option>
+                                    <option value="other">其他原因</option>
                                   </select>
                                 </label>
                                 <label>

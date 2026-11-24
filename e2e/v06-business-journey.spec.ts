@@ -403,11 +403,15 @@ for (const viewport of [
     await expect(page.getByRole('heading', { name: '业务事实纠错', exact: true })).toBeVisible();
     await expect(page.getByLabel('待修订事项编号', { exact: true })).toHaveValue(f.event.id);
     await page.getByLabel('修订金额', { exact: true }).fill('39.20');
-    page.once('dialog', (dialog) => dialog.dismiss());
     await page.getByRole('button', { name: '返回原业务事项', exact: true }).click();
+    const confirmLeave = page.getByRole('dialog', { name: '放弃本次修订？', exact: true });
+    await expect(confirmLeave).toBeVisible();
+    await confirmLeave.getByRole('button', { name: '取消', exact: true }).click();
+    await expect(confirmLeave).toHaveCount(0);
     await expect(page.getByLabel('修订金额', { exact: true })).toHaveValue('39.20');
-    page.once('dialog', (dialog) => dialog.accept());
     await page.getByRole('button', { name: '返回原业务事项', exact: true }).click();
+    await expect(confirmLeave).toBeVisible();
+    await confirmLeave.getByRole('button', { name: '放弃并返回', exact: true }).click();
     await expect(detail).toContainText(f.tag);
     await expect(detail).toContainText('38.20');
     await expect(page).toHaveURL(new RegExp(`event=${f.event.id}`));

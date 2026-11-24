@@ -19,7 +19,8 @@ def control_body(value, enabled):
     }
 
 
-def test_http_pg_ai_controls_require_mfa_on_new_and_legacy_mutations(client):
+def test_http_pg_ai_controls_require_mfa_on_new_and_legacy_mutations(client, monkeypatch):
+    monkeypatch.setenv("ACCOUNTING_MFA_ENFORCE", "enforce")
     firm, company, _book = setup_books(client)
     owner = headers("owner", firm)
     path = f"/api/admin/companies/{company}/ai-control"

@@ -29,8 +29,8 @@ def guard_case(request):
             pytest.skip("需要专用 PostgreSQL 管理员及受限运行测试连接")
         raw = request.getfixturevalue("business_case")
         case = SimpleNamespace(db=raw.db, owner=raw.owner, employee=raw.employee, finance=raw.finance,
-                               approver=raw.approver, reviewer=raw.reviewer, ledger=raw.service,
-                               company=raw.company, book=raw.book)
+                               approver=raw.approver, reviewer=raw.reviewer, reviewer2=raw.owner,
+                               ledger=raw.service, company=raw.company, book=raw.book)
         case.business = BusinessService(raw.db)
     else:
         raw = request.getfixturevalue("business")

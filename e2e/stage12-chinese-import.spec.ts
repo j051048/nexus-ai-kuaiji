@@ -40,7 +40,7 @@ test('中文流水向导在手机分步确认，保留原件并识别再次导�
   await page.getByRole('button', { name: '导入流水', exact: true }).click();
   await page.getByLabel('选择银行流水文件').setInputFiles({ name: '中文合成流水.csv', mimeType: 'text/csv', buffer: Buffer.from(content, 'utf8') });
   await expect(dialog).toContainText('2条流水');
-  await dialog.getByLabel('使用保存的银行格式').selectOption({ label: '虚构工商银行-1234 · bank-statement · v1' });
+  await dialog.getByLabel('使用保存的银行格式').selectOption({ label: '****1234 · bank-statement · v1' });
   await dialog.getByRole('button', { name: '确认字段', exact: true }).click();
   await dialog.getByRole('button', { name: '预览流水', exact: true }).click();
   await expect(dialog).toContainText('重复将跳过');

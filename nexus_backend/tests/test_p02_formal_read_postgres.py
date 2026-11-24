@@ -25,6 +25,12 @@ from app.reports.service import ReportService
 from app.subledger.service import SubledgerService
 from scripts.pg_suite_target import load_suite_target, verify_suite_target
 from test_n03_notification_postgres import p0_pg, p0_case  # noqa: F401
+import os
+
+pytestmark = pytest.mark.skipif(
+    os.getenv("ACCOUNTING_AK05_ISOLATED_TARGET") != "1",
+    reason="需要显式 AK05 四角色隔离 PostgreSQL 运行器",
+)
 
 
 @pytest.fixture

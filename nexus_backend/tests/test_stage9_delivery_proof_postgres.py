@@ -14,8 +14,8 @@ pytestmark = pytest.mark.skipif(not ADMIN_URL or not APP_URL, reason="需要专�
 
 def uncaptured_export(c, label="A", description=None):
     external = uuid4().hex
-    c.service.import_sources(c.reviewer, c.book, ImportRequest(source_name="合成原生回执防伪", rows=[SourceRow(external_id=external, date="2026-10-03", description=description or "办公费用 " + label, counterparty="合成供应商 " + label, amount="23.01", direction="expense", evidence_ref="归档证据 " + label)]))
-    c.service.suggestions(c.reviewer, c.book)
+    c.service.import_sources(c.owner, c.book, ImportRequest(source_name="合成原生回执防伪", rows=[SourceRow(external_id=external, date="2026-10-03", description=description or "办公费用 " + label, counterparty="合成供应商 " + label, amount="23.01", direction="expense", evidence_ref="归档证据 " + label)]))
+    c.service.suggestions(c.owner, c.book)
     with c.db.transaction(actor=c.reviewer) as conn:
         draft_id = conn.execute("SELECT d.id FROM drafts d JOIN sources s ON s.id=d.source_id AND s.book_id=d.book_id WHERE s.external_id=? AND s.book_id=?", (external, c.book)).fetchone()[0]
     draft = c.service.get_draft(c.reviewer, c.book, draft_id)

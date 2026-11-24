@@ -110,30 +110,34 @@ def test_postgres_concurrent_import_approval_and_export_are_atomic(case):
 
 def test_postgres_service_bypass_queries_still_respect_rls(case):
     create_draft(case)
-    actors = [peer(case, firm_role="reviewer"), peer(case, firm_role="owner", other_firm=True), peer(case, company_role="employee", book_role="reviewer")]
+    actors = [peer(case, firm_role="reviewer"), peer(case, firm_role="owner", other_firm=True), peer(case, company_role="employee", book_role="editor")]
     for actor in actors:
         with case.db.transaction(actor=actor) as conn:
             assert conn.execute("SELECT * FROM books WHERE id=?", (case.book,)).fetchall() == []
             assert conn.execute("SELECT * FROM sources WHERE book_id=?", (case.book,)).fetchall() == []
             assert conn.execute("SELECT * FROM drafts WHERE book_id=?", (case.book,)).fetchall() == []
-    finance = peer(case, company_role="finance", book_role="reviewer")
+    finance = peer(case, company_role="finance", book_role="editor")
     assert case.service.get_book(finance, case.book)["sources"]
     with case.db.transaction(actor=finance) as conn:
         assert conn.execute("SELECT * FROM sources WHERE book_id=?", (case.book,)).fetchone()
+    with pytest.raises(case.psycopg.errors.InsufficientPrivilege):
+        peer(case, company_role="finance", book_role="reviewer")
 
 
 def test_postgres_viewer_cannot_write_and_operator_cannot_approve(case):
     draft = create_draft(case)
-    viewer = peer(case, firm_role="viewer", book_role="reviewer")
+    viewer = peer(case, firm_role="viewer", book_role="viewer")
     with case.db.transaction(write=True, actor=viewer) as conn:
         assert conn.execute("UPDATE drafts SET description='forbidden' WHERE id=?", (draft["id"],)).rowcount == 0
     with pytest.raises(AccountingError) as error:
         case.service.import_sources(viewer, case.book, request(external_id="forbidden"))
     assert error.value.status == 403
-    operator = peer(case, firm_role="operator", book_role="reviewer")
+    operator = peer(case, firm_role="operator", book_role="editor")
     with pytest.raises(AccountingError) as error:
         case.service.approve(operator, case.book, draft["id"], ApprovalRequest(expected_version=draft["version"]))
     assert error.value.status == 403
+    with pytest.raises(case.psycopg.errors.InsufficientPrivilege):
+        peer(case, firm_role="operator", book_role="reviewer")
 
 
 def test_postgres_suspended_customer_and_revoked_user_lose_access_immediately(case):
@@ -257,13 +261,19 @@ def test_postgres_directory_grants_department_and_client_firm_discovery(case):
     with case.db.transaction(write=True, system=True) as conn:
         conn.execute("INSERT INTO users(id,name,email) VALUES(?,?,?)", (user_id, "企业财务", email))
     directory.grant_company_member(case.actor, case.company, CompanyMemberGrant(email=email, role="finance", department_id=department["id"]))
-    directory.grant_book_member(case.actor, case.book, user_id, BookMemberGrant(role="reviewer"))
+    with pytest.raises(AccountingError) as denied_reviewer:
+        directory.grant_book_member(case.actor, case.book, user_id, BookMemberGrant(role="reviewer"))
+    assert denied_reviewer.value.status == 403
+    directory.grant_book_member(case.actor, case.book, user_id, BookMemberGrant(role="editor"))
     discovered = directory.me(user_id)
     assert discovered["current_firm_id"] == case.actor.firm_id
     assert discovered["permissions"]["manage_firm"] is False
     finance = Actor(user_id, case.actor.firm_id)
     draft = create_draft(case)
-    assert case.service.approve(finance, case.book, draft["id"], ApprovalRequest(expected_version=draft["version"]))["status"] == "approved"
+    assert case.service.get_book(finance, case.book)["drafts"]
+    with pytest.raises(AccountingError) as cannot_approve:
+        case.service.approve(finance, case.book, draft["id"], ApprovalRequest(expected_version=draft["version"]))
+    assert cannot_approve.value.status == 403
     directory.revoke_company_member(case.actor, case.company, user_id)
     with pytest.raises(AccountingError) as error:
         case.service.get_book(finance, case.book)

@@ -322,7 +322,7 @@ test('折叠识别明细不隐藏核对阻断，核验冲突只读取最新事�
       .getByText(blocking.payload.message, { exact: true }),
   ).toBeVisible();
   await expect(
-    detail.getByLabel('本事项办理助手').getByText(blocking.payload.message, { exact: true }),
+    detail.getByLabel('本事项办理助手').getByText(blocking.payload.message, { exact: true }).first(),
   ).toBeVisible();
   let attempts = 0;
   await page.route(`**/api/business/events/${f.event.id}/finance-approve`, async (route) => {

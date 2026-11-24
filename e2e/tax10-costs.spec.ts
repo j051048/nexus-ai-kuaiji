@@ -90,15 +90,36 @@ for (const viewport of [
     await openTax(page, f);
     const panel = page.locator('section[aria-labelledby="tax-cost-title"]');
     await panel.scrollIntoViewIfNeeded();
-    const rateGroup = panel.locator('details.tax-cost-rates');
+    const rateGroup = panel
+      .locator('details.tax-cost-rates')
+      .filter({ hasText: '按车型维修费率卡' });
     await rateGroup.locator('summary').click();
     await rateGroup.getByLabel('车型').fill('出租车');
     await rateGroup.getByLabel('费率（分）').fill('5000');
     await rateGroup.getByLabel('生效月').fill('2026-10');
     await rateGroup.getByLabel('结束月').fill('2026-12');
-    await rateGroup.getByRole('button', { name: '登记费率卡' }).click();
-    await expect(panel.getByText('费率卡已登记；同车型有效期不能重叠。')).toBeVisible();
+    await rateGroup.getByRole('button', { name: '新建费率草稿', exact: true }).click();
+    await expect(panel.getByText(/费率草稿 v1 已建立/)).toBeVisible();
     await expect(panel.getByText(/出租车 · ¥50.00/)).toBeVisible();
+    const rateList = await request.get(`/api/tax/books/${f.book.id}/repair-rates`, {
+      headers: f.headers,
+    });
+    expect(rateList.status()).toBe(200);
+    const rateDraft = (await rateList.json()).items.find(
+      (item: { vehicle_type: string }) => item.vehicle_type === '出租车',
+    );
+    expect(
+      (
+        await request.post(`/api/tax/books/${f.book.id}/repair-rates/${rateDraft.id}/confirm`, {
+          headers: f.reviewer,
+          data: { expected_version: 1 },
+        })
+      ).status(),
+    ).toBe(200);
+    await panel.getByRole('button', { name: '刷新', exact: true }).first().click();
+    const rateRow = rateGroup.locator('.tax-cost-lines article').filter({ hasText: '出租车' }).first();
+    await rateRow.getByRole('button', { name: '生效', exact: true }).click();
+    await expect(panel.getByText(/已生效；历史版本保留/)).toBeVisible();
     await panel.getByRole('button', { name: '登记并采用来源' }).click();
     await expect(panel.getByText(/来源已登记并采用/)).toBeVisible();
     const after = await request.get(`/api/tax/books/${f.book.id}/cost-sources`, {

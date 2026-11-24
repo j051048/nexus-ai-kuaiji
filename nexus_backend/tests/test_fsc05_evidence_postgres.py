@@ -19,7 +19,10 @@ from scripts.pg_suite_target import load_suite_target, verify_suite_target
 
 ADMIN_URL = os.getenv("ACCOUNTING_TEST_POSTGRES_URL")
 APP_URL = os.getenv("ACCOUNTING_TEST_DATABASE_URL")
-pytestmark = []
+pytestmark = pytest.mark.skipif(
+    os.getenv("ACCOUNTING_AK05_ISOLATED_TARGET") != "1",
+    reason="需要显式 AK05 四角色隔离 PostgreSQL 运行器",
+)
 
 
 @pytest.fixture(scope="module")

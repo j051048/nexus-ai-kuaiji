@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api, ApiError } from './api';
+import { scheduleSubpanel } from './subpanel-scheduler';
 import type { Session } from './types';
 
 type Dependency = {
@@ -69,21 +70,28 @@ export function PilotBoundaryPanel({
   const target = readiness?.target;
   const blockers = useMemo(() => deps.filter((d) => d.status === 'unresolved'), [deps]);
 
-  async function load() {
+  async function load(signal?: AbortSignal) {
     setError('');
     try {
-      const data = await api<Readiness>(`${base}/readiness`, session);
+      const data = await scheduleSubpanel(
+        () => api<Readiness>(`${base}/readiness`, session, { signal }),
+        signal,
+      );
+      if (signal?.aborted) return;
       setReadiness(data);
       if (data.target) {
         setMode((data.target.authority_mode as typeof mode) || 'internal');
         setDeps(data.target.dependencies.length ? data.target.dependencies : DEFAULT_CODES);
       }
     } catch (e) {
+      if (signal?.aborted) return;
       setError(failure(e));
     }
   }
   useEffect(() => {
-    void load();
+    const controller = new AbortController();
+    void load(controller.signal);
+    return () => controller.abort();
   }, [base, session.scope_key]);
 
   function setDependency(code: string, patch: Partial<Dependency>) {

@@ -147,7 +147,7 @@ def ai_standard(c, changed_label=False):
     # Public assistant projections intentionally hide provider/model metadata.
     # The replay test is an operator-side check, so read the frozen run meta
     # under the manager's authorized transaction instead of weakening redaction.
-    with c.db.transaction(actor=c.manager) as conn:
+    with c.db.transaction(actor=c.actors['accountant']) as conn:
         sample_id = conn.execute('SELECT id FROM learning_samples WHERE draft_id=?', (applied['id'],)).fetchone()[0]
         for run in (ocr, proposal):
             meta = conn.execute('SELECT model,prompt_version FROM ai_runs WHERE id=?', (run['id'],)).fetchone()

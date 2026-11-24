@@ -51,6 +51,9 @@ test('STEP1a 四税计提申请必须由另一人复核后才能过账', async (
   await expect(requestButton).toBeDisabled();
 
   await accrual.getByLabel('本期累计利润（元）', { exact: true }).fill('1000');
+  await accrual
+    .getByLabel('人工调整原因', { exact: true })
+    .fill('本地端到端验证：本年度前期快照不全，按人工核定本年累计利润 1000 元计提');
   const previewed = page.waitForResponse(
     (response) =>
       response.url().endsWith('/api/tax/accrual-preview') &&

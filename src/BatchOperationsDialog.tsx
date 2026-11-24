@@ -117,14 +117,14 @@ export function BatchOperationsDialog({
     );
   }, [offset, run, session, historyRevision, initialBatchId]);
   useEffect(() => {
-    if (!batch || denied || busy || !['queued', 'running'].includes(batch.status)) return;
+    if (!batch || denied || busy || action || !['queued', 'running'].includes(batch.status)) return;
     const timer = window.setTimeout(() => {
       if (document.visibilityState === 'visible') void load(batch.id);
       else setBatch({ ...batch });
     }, 2000);
     return () => clearTimeout(timer);
     // load is intentionally read from the current render, never a stale selection.
-  }, [batch, busy, denied]);
+  }, [batch, busy, denied, action]);
   function changeKind(value: typeof kind) {
     setKind(value);
     setPlan(null);

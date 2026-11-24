@@ -393,6 +393,11 @@ from test_business_postgres import business_case, business_postgres  # noqa: F40
 from test_intelligence_workflow_postgres import pg_ai  # noqa: F401
 from c01_bank_fixture import reviewed_export_draft
 
+pytestmark = pytest.mark.skipif(
+    os.getenv("ACCOUNTING_AK05_ISOLATED_TARGET") != "1",
+    reason="需要显式 AK05 四角色隔离 PostgreSQL 运行器",
+)
+
 
 @pytest.mark.parametrize(
     "scenario",

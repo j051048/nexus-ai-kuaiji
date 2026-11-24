@@ -5,6 +5,12 @@ from app.accounting.service import Actor
 from app.tax.fees import TaxFeeService
 from test_tax06_fees import POLICY
 from test_tax06_fees_postgres import pg, case, ADMIN_URL  # noqa: F401
+import os
+
+pytestmark = pytest.mark.skipif(
+    os.getenv("ACCOUNTING_AK05_ISOLATED_TARGET") != "1",
+    reason="需要显式 AK05 四角色隔离 PostgreSQL 运行器",
+)
 
 
 def test_viewer_cannot_forge_fee_review_with_direct_sql(case):

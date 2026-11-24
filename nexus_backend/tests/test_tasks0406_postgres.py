@@ -1,6 +1,7 @@
 """Restricted roles and real concurrent sessions; synthetic identity and transport."""
 
 from concurrent.futures import ThreadPoolExecutor
+import os
 from threading import Barrier
 import pytest
 from app.accounting.domain import AccountingError
@@ -119,6 +120,10 @@ def test_pg_review_stats_remain_separate_after_policy_change(case):
     assert policy.get(c.actor, c.book)["review_summary"] == s
 
 
+@pytest.mark.skipif(
+    os.getenv("ACCOUNTING_AK05_ISOLATED_TARGET") != "1",
+    reason="需要显式 AK05 四角色隔离 PostgreSQL 运行器",
+)
 def test_pg_receipts_bound_and_revoked_viewer_denied(callback):
     c, raw, stamp, event_id = callback
     worker_db = Database(c.worker_url)

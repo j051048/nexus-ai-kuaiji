@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, ApiError } from './api';
+import { scheduleSubpanel } from './subpanel-scheduler';
 import type { Session } from './types';
 
 type Authority = {
@@ -66,22 +67,36 @@ export function ClosingAuthorityPanel({ session, bookId }: { session: Session; b
   const [details, setDetails] = useState('{"voucher":"记-001"}');
   const [reason, setReason] = useState('客户外部结转回执核对');
 
-  const load = useCallback(async () => {
-    setError('');
-    try {
-      const data = await api<Summary>(
-        `/periodic/closing/summary?book_id=${encodeURIComponent(bookId)}`,
-        session,
-      );
-      setSummary(data);
-    } catch (caught) {
-      setSummary(null);
-      setError(caught instanceof ApiError ? caught.message : '结转权威信息读取失败');
-    }
-  }, [bookId, session]);
+  const load = useCallback(
+    async (signal?: AbortSignal) => {
+      setError('');
+      try {
+        const data = await scheduleSubpanel(
+          () =>
+            api<Summary>(
+              `/periodic/closing/summary?book_id=${encodeURIComponent(bookId)}`,
+              session,
+              {
+                signal,
+              },
+            ),
+          signal,
+        );
+        if (signal?.aborted) return;
+        setSummary(data);
+      } catch (caught) {
+        if (signal?.aborted) return;
+        setSummary(null);
+        setError(caught instanceof ApiError ? caught.message : '结转权威信息读取失败');
+      }
+    },
+    [bookId, session],
+  );
 
   useEffect(() => {
-    void load();
+    const controller = new AbortController();
+    void load(controller.signal);
+    return () => controller.abort();
   }, [load]);
 
   async function bind() {

@@ -6,8 +6,12 @@ from app.accounting.domain import AccountingError
 from app.tax.sources import TaxSourceAdapter
 from test_tax04_sources import COLUMNS, ROWS, xlsx
 from test_tax_workpaper_postgres import case, pg  # noqa: F401
+import os
 
-pytestmark = []
+pytestmark = pytest.mark.skipif(
+    os.getenv("ACCOUNTING_AK05_ISOLATED_TARGET") != "1",
+    reason="需要显式 AK05 四角色隔离 PostgreSQL 运行器",
+)
 
 
 def test_source_import_is_scoped_and_versioned_on_postgres(case):
