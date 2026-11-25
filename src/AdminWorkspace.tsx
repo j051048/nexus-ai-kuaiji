@@ -13,6 +13,7 @@ import {
   RefreshCw,
   Search,
   ShieldCheck,
+  SlidersHorizontal,
   Users,
 } from 'lucide-react';
 import { api, errorMessage } from './api';
@@ -34,6 +35,7 @@ import './admin.css';
 const AdminAIControls = lazy(() => import('./AdminAIControls'));
 const AdminOnboarding = lazy(() => import('./AdminOnboarding'));
 const WorkflowStudioPanel = lazy(() => import('./WorkflowStudioPanel'));
+const FscRuleCenterPanel = lazy(() => import('./FscRuleCenterPanel'));
 
 export default function AdminWorkspace({
   session,
@@ -56,9 +58,11 @@ export default function AdminWorkspace({
   const section =
     location.pathname === '/admin/members'
       ? 'members'
-      : location.pathname === '/admin/audit'
-        ? 'audit'
-        : 'companies';
+      : location.pathname === '/admin/fsc-rules'
+        ? 'rules'
+        : location.pathname === '/admin/audit'
+          ? 'audit'
+          : 'companies';
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     onBusyChange(busy);
@@ -79,13 +83,13 @@ export default function AdminWorkspace({
         >
           <span className="admin-brand-mark">衡</span>
           <span>
-            衡账 <small>组织管理</small>
+            衡账 <small>共享中心配置台</small>
           </span>
         </button>
         <div className="admin-header-actions">
           {me.firms.length > 1 ? (
             <select
-              aria-label="切换管理事务所"
+              aria-label="切换集团共享中心"
               value={session.firm_id ?? ''}
               disabled={busy || loading}
               onChange={(event) => {
@@ -108,7 +112,7 @@ export default function AdminWorkspace({
             onClick={() => go('/workspace/home')}
           >
             <ArrowUpRight size={15} />
-            会计工作台
+            共享财务工作台
           </button>
           <button
             className="icon-button"
@@ -139,7 +143,7 @@ export default function AdminWorkspace({
               onClick={() => go('/admin')}
             >
               <Building2 size={16} />
-              企业管理
+              子公司档案
             </button>
             {me.permissions.manage_firm && (
               <button
@@ -148,9 +152,17 @@ export default function AdminWorkspace({
                 onClick={() => go('/admin/members')}
               >
                 <Users size={16} />
-                事务所人员
+                共享中心人员
               </button>
             )}
+            <button
+              className={section === 'rules' ? 'active' : ''}
+              disabled={busy}
+              onClick={() => go('/admin/fsc-rules')}
+            >
+              <SlidersHorizontal size={16} />
+              业态与绿通规则
+            </button>
             <button
               className={section === 'audit' ? 'active' : ''}
               disabled={busy}
@@ -164,8 +176,8 @@ export default function AdminWorkspace({
             {section === 'members' && me.permissions.manage_firm ? (
               <>
                 <AdminHeading
-                  title="事务所人员"
-                  description="负责人和管理员管理全部企业；经办、复核和只读成员需要分配具体账套。"
+                  title="共享中心人员与分管矩阵"
+                  description="共享中心负责人与管理员总管全集团子公司；分管核算会计与复核主管按授权具体子公司隔离操作。"
                 />
                 <AdminMembers
                   key={`firm:${session.scope_key}`}
@@ -173,6 +185,23 @@ export default function AdminWorkspace({
                   kind="firm"
                   onBusy={setBusy}
                 />
+              </>
+            ) : section === 'rules' ? (
+              <>
+                <AdminHeading
+                  title="子公司业态插件与绿通红线配置"
+                  description="统一维护旗下 5 大试点业态核算插件与绿通合规包金额上限、高风险拦截红线。"
+                />
+                <Suspense
+                  fallback={
+                    <div className="loading-block" role="status">
+                      <Spinner />
+                      正在载入业态与绿通规则配置台…
+                    </div>
+                  }
+                >
+                  <FscRuleCenterPanel session={session} />
+                </Suspense>
               </>
             ) : section === 'audit' ? (
               <>

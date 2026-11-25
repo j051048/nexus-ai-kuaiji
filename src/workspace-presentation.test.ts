@@ -60,9 +60,9 @@ describe('UX01 role presentation contract', () => {
     }
   });
   it('uses the same plain management labels in navigation and page breadcrumbs', () => {
-    expect(workspaceViewLabels.firm).toBe('全所概览');
-    expect(workspaceViewLabels.monthly).toBe('月度交付');
-    expect(workspaceViewLabels.ingestion).toBe('数据接入');
+    expect(workspaceViewLabels.firm).toBe('集团总览');
+    expect(workspaceViewLabels.monthly).toBe('报税与月末结账');
+    expect(workspaceViewLabels.ingestion).toBe('外部数据接入');
   });
   it('defines a default surface for all nine presentation roles', () => {
     const surfaces = allRoles.map((role) => workSurface(role));
@@ -137,28 +137,28 @@ describe('UX01 role presentation contract', () => {
       can_review: true,
     });
     const role = presentationRole(current);
-    expect(roleHome(role).name).toBe('财务核验');
+    expect(roleHome(role).name).toBe('子公司财务核验');
     expect(roleHome(role).subtitle).toBe(roleHome(role).focus);
-    expect(primaryNav(role)[0].label).toBe('待核验');
+    expect(primaryNav(role)[0].label).toBe('待核验移交');
     expect(workSurface(role)).toBe('client');
   });
 
   it('labels customer navigation by the current job without adding permission', () => {
     const nav = (role: WorkspaceProfile['role']) =>
       clientPortalNav(profile({ role, can_submit: true }));
-    expect(nav('employee').find((item) => item.id === 'submit')?.label).toBe('我的事项');
+    expect(nav('employee').find((item) => item.id === 'submit')?.label).toBe('我要报销');
     expect(nav('approver').map((item) => item.label)).toEqual([
-      '待审批',
-      '部门事项',
+      '待我放行',
+      '部门单据',
       '资料清单',
-      '消息',
+      '消息通知',
     ]);
     expect(
       nav('finance')
         .slice(0, 2)
         .map((item) => item.label),
-    ).toEqual(['待核验', '业务事项']);
-    expect(nav('manager')[0].label).toBe('企业首页');
+    ).toEqual(['待核验移交', '收支核验']);
+    expect(nav('manager')[0].label).toBe('公司首页');
     expect(nav('manager').some((item) => item.id === 'submit')).toBe(true);
   });
 
@@ -203,17 +203,17 @@ describe('UX01 role presentation contract', () => {
     ).toBe('multi_company');
     expect(contextMode(profile({ display_role: 'firm_owner' }))).toBe('firm');
     expect(contextMode(profile({ display_role: 'admin' }))).toBe('system');
-    expect(contextTitle(profile({ display_role: 'admin' }))).toBe('系统管理');
+    expect(contextTitle(profile({ display_role: 'admin' }))).toBe('共享中心管理');
   });
 
   it('filters primary navigation with server capabilities, not role labels alone', () => {
-    const accountant = profile({ can_accounting: true, can_review: false });
+    const accountantNoReview = profile({ can_accounting: true, can_review: false });
     expect(
-      primaryNav('accountant', capabilities(accountant)).some((item) => item.id === 'review'),
+      primaryNav('reviewer', capabilities(accountantNoReview)).some((item) => item.id === 'review'),
     ).toBe(false);
     const reviewer = profile({ can_accounting: true, can_review: true });
     expect(
-      primaryNav('accountant', capabilities(reviewer)).some((item) => item.id === 'review'),
+      primaryNav('reviewer', capabilities(reviewer)).some((item) => item.id === 'review'),
     ).toBe(true);
     const owner = profile({
       display_role: 'firm_owner',
@@ -222,8 +222,8 @@ describe('UX01 role presentation contract', () => {
       can_review: false,
     });
     expect(primaryNav('firm_owner', capabilities(owner)).map((item) => item.id)).toEqual([
-      'firm',
       'insights',
+      'firm',
       'monthly',
       'cases',
     ]);

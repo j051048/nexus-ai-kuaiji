@@ -138,7 +138,8 @@ export function CashierPaymentDesk({ session, bookId }: { session: Session; book
         </button>
       </header>
       <p>
-        付款岗位与账套权限是两条轴：出纳能制单但不能放款，资金审批人能放款但不能制单。制单人与资金审批人必须是不同的人。
+        <strong>钱账分离内控护栏：</strong>
+        共享出纳专管待打款池、网银流水导入与回单核销（不开放修改总账凭证科目入口）；出纳制单与资金放款审批必须由不同岗位人员独立完成，大额打款自动触发升级审批。
       </p>
       {failure ? <p role="alert">{failure}</p> : null}
       {notice ? <p role="status">{notice}</p> : null}

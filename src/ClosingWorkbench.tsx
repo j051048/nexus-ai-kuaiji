@@ -117,7 +117,10 @@ export function ClosingWorkbench({
       {embedded ? (
         <section className="book-embedded-heading">
           <div>
-            <h2>月结预检与锁期</h2>
+            <h2>四步傻瓜式报税与月末结账向导</h2>
+            <p className="field-help">
+              ① 核对发票与税源 → ② 税费计提与底稿复核 → ③ 银企对平与损益结转 → ④ 正式报表发布与锁期（任一步有卡点均可在下方一键定位处理）
+            </p>
             <p>核对资料、任务、匹配和交付结果，确认当前快照后才锁定期间。</p>
           </div>
           <button

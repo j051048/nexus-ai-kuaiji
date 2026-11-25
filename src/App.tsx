@@ -63,6 +63,13 @@ const WorkspaceContextBar = lazy(() =>
   import('./WorkspaceContextBar').then((module) => ({ default: module.WorkspaceContextBar })),
 );
 import { accountIdentity } from './account-identity';
+import {
+  fscRoleProfile,
+  readAssistantDocked,
+  readManualMode,
+  writeAssistantDocked,
+  writeManualMode,
+} from './fsc-shell';
 import { roleHomeGuide } from './workspace-role-home';
 import { workspaceExperience } from './workspace-experience';
 import {
@@ -131,6 +138,8 @@ export default function App() {
   const [commandOpen, setCommandOpen] = useState(false);
   const [globalAssistant, setGlobalAssistant] = useState<AssistantInitialContext | null>(null);
   const [assistantMode, setAssistantMode] = useState<AssistantDrawerMode>('global');
+  const [manualMode, setManualMode] = useState<boolean>(() => readManualMode());
+  const [assistantDocked, setAssistantDocked] = useState<boolean>(() => readAssistantDocked());
   const [assistantTarget, setAssistantTarget] = useState<{
     bookId: string;
     draftId: string;
@@ -1173,7 +1182,7 @@ export default function App() {
   function openGlobalAssistant() {
     if (navigationLocked || modal || commandOpen || assistantOpen) return;
     setAssistantMode('global');
-    // Keep global browsing separate from the current voucher's explicit scope.
+    // 自动带入顶栏当前选中的子公司或账套，打开即可直接聊天，无需再填表建会话。
     setGlobalAssistant(
       routeUsesBook && detail
         ? {
@@ -1181,8 +1190,43 @@ export default function App() {
             bookId: detail.book.id,
             draftId: routeView === 'accounting' ? activeDraft?.id : undefined,
           }
-        : {},
+        : workCompany
+          ? { companyId: workCompany }
+          : {},
     );
+  }
+  function toggleManualMode() {
+    setManualMode((prev) => {
+      const next = !prev;
+      writeManualMode(next);
+      setNotice({
+        kind: 'success',
+        text: next
+          ? '已切换为纯手工办理模式：填单、制单、复核与结账均可离线独立完成。'
+          : '已恢复智能辅助在线模式：可继续使用智能识别与财税副驾问答。',
+      });
+      return next;
+    });
+  }
+  function toggleAssistantDocked() {
+    setAssistantDocked((prev) => {
+      const next = !prev;
+      writeAssistantDocked(next);
+      return next;
+    });
+  }
+  function handleGlobalCompanyChange(nextCompanyId: string) {
+    setWorkCompany(nextCompanyId);
+    setOperationsTarget(routeView === 'operations' ? nextCompanyId : '');
+    setWorkspaceRevision((n) => n + 1);
+    if (nextCompanyId && workbench?.books.length) {
+      const matchingBook = workbench.books.find((item) => item.company_id === nextCompanyId);
+      if (matchingBook && matchingBook.id !== bookId) {
+        setBookId(matchingBook.id);
+        focusBookRef.current = matchingBook.id;
+        if (routeUsesBook) void initialize(undefined, matchingBook.id);
+      }
+    }
   }
   function closeAssistantDrawer() {
     setGlobalAssistant(null);
@@ -1533,6 +1577,129 @@ export default function App() {
     </>
   );
 
+  const activeRole = presentationRole(profile);
+  const activeCompanyName =
+    profile?.companies.find((company) => company.id === workCompany)?.name ??
+    (workCompany
+      ? undefined
+      : profile?.companies.length === 1
+        ? profile.companies[0].name
+        : undefined);
+  const currentRoleMeta = fscRoleProfile(activeRole, {
+    companyName: activeCompanyName,
+    companyCount: profile?.companies.length ?? 0,
+  });
+
+  const assistantOverlay = (
+    <>
+      {assistantOpen ? (
+        <Suspense fallback={null}>
+          <AssistantDrawer
+            mode={effectiveAssistantMode}
+            contextAvailable={!!assistantTarget}
+            contextLabel={assistantContextLabel}
+            scopeBadge={currentRoleMeta.scopeBadge}
+            docked={!clientPortal && assistantDocked}
+            onToggleDock={clientPortal ? undefined : toggleAssistantDocked}
+            onModeChange={switchAssistantMode}
+            onClose={closeAssistantDrawer}
+          >
+            {globalAssistant && (
+              <div className="assistant-mode-panel" hidden={effectiveAssistantMode !== 'global'}>
+                <Suspense
+                  fallback={
+                    <div className="loading-block">
+                      <Spinner />
+                      正在打开智能财税副驾…
+                    </div>
+                  }
+                >
+                  <GlobalAccountingAssistant
+                    key={session.scope_key}
+                    session={session}
+                    initialContext={globalAssistant}
+                    role={activeRole}
+                    manualMode={manualMode}
+                    activeCompanyId={workCompany}
+                    embedded
+                    onClose={closeAssistantDrawer}
+                    onNavigateEvidence={openAssistantEvidence}
+                    onNavigateContext={(context) => {
+                      closeAssistantDrawer();
+                      if (context.draft && context.books.length === 1)
+                        setInlineTarget({
+                          bookId: context.books[0].id,
+                          draftId: context.draft.id,
+                        });
+                      else if (context.books.length === 1)
+                        void openAssistantBook(context.books[0].id);
+                      else if (context.events.length === 1) {
+                        navigate('business', true);
+                        setBusinessTarget(context.events[0].id);
+                      } else navigate('accounting', true);
+                    }}
+                    onOpenTask={openAssistantTask}
+                  />
+                </Suspense>
+              </div>
+            )}
+            {assistantTarget && (
+              <div className="assistant-mode-panel" hidden={effectiveAssistantMode !== 'context'}>
+                <Suspense
+                  fallback={
+                    <div className="loading-block">
+                      <Spinner />
+                      正在读取当前凭证依据…
+                    </div>
+                  }
+                >
+                  <AccountingContextAssistant
+                    key={`${session.scope_key}:${assistantTarget.bookId}:${assistantTarget.draftId}:${assistantTarget.version}`}
+                    session={session}
+                    bookId={assistantTarget.bookId}
+                    draftId={assistantTarget.draftId}
+                    draftVersion={assistantTarget.version}
+                    actionTypes={['review', 'edit']}
+                    embedded
+                    onClose={closeAssistantDrawer}
+                    onOpenEvidence={() => {
+                      setInlineTarget({
+                        bookId: assistantTarget.bookId,
+                        draftId: assistantTarget.draftId,
+                      });
+                      closeAssistantDrawer();
+                    }}
+                    onAction={() => {
+                      setInlineTarget({
+                        bookId: assistantTarget.bookId,
+                        draftId: assistantTarget.draftId,
+                      });
+                      closeAssistantDrawer();
+                    }}
+                  />
+                </Suspense>
+              </div>
+            )}
+          </AssistantDrawer>
+        </Suspense>
+      ) : (
+        !navigationLocked &&
+        !modal &&
+        !commandOpen && (
+          <button
+            type="button"
+            className="assistant-fab"
+            aria-label="打开智能财税副驾"
+            onClick={openGlobalAssistant}
+          >
+            <Sparkles size={16} aria-hidden="true" />
+            <span>智能财税副驾</span>
+          </button>
+        )
+      )}
+    </>
+  );
+
   if (clientPortal && profile) {
     // The accounting workspace may retain a different book while the client is
     // choosing a company on the home screen. Only use the active route's scope.
@@ -1567,7 +1734,7 @@ export default function App() {
           fallback={
             <div className="loading-block">
               <Spinner />
-              正在打开客户门户…
+              正在打开子公司财税门户…
             </div>
           }
         >
@@ -1577,6 +1744,12 @@ export default function App() {
             me={me}
             identityUnavailable={!!profileError}
             current={clientPortalTab}
+            companyId={workCompany}
+            onCompanyChange={handleGlobalCompanyChange}
+            manualMode={manualMode}
+            onToggleManualMode={toggleManualMode}
+            onOpenAssistant={openGlobalAssistant}
+            assistantOpen={assistantOpen}
             onNavigate={(tab) => {
               if (tab === 'home') navigate('home');
               else if (tab === 'materials') navigate('materials');
@@ -1643,8 +1816,8 @@ export default function App() {
             {taskDialogs}
             {briefingPicker && (
               <Modal
-                title="选择财税简报"
-                subtitle="按企业、账套和期间选择。打开时会重新核验报告权限。"
+                title="选择经营财税简报"
+                subtitle="按子公司、账套和期间选择。打开时会重新核验报告权限。"
                 onClose={() => setBriefingPicker(false)}
               >
                 {reportChoices.length ? (
@@ -1660,18 +1833,23 @@ export default function App() {
                     ))}
                   </div>
                 ) : (
-                  <p role="status">当前企业范围没有可打开的报告。</p>
+                  <p role="status">当前子公司范围没有可打开的简报。</p>
                 )}
               </Modal>
             )}
           </ClientPortalShell>
         </Suspense>
+        {assistantOverlay}
       </>
     );
   }
 
   return (
-    <div className="app-shell agent-shell">
+    <div
+      className={
+        'app-shell agent-shell' + (assistantOpen && assistantDocked ? ' assistant-docked' : '')
+      }
+    >
       {routeGuard.blocked && (
         <RouteLeaveDialog
           canDiscard={routeGuard.canDiscard}
@@ -1715,7 +1893,7 @@ export default function App() {
           firmSelector={
             (me?.firms.length ?? 0) > 1 ? (
               <select
-                aria-label="切换事务所"
+                aria-label="切换共享中心"
                 value={session.firm_id}
                 disabled={navigationLocked || auth.loading || commandOpen}
                 onChange={(event) => void auth.switchFirm(event.target.value)}
@@ -1800,11 +1978,11 @@ export default function App() {
         />
         <header className="topbar">
           <div className="breadcrumbs">
-            工作空间
+            集团共享财务中心
             <ChevronRight size={13} />
             <span>
               {routeView === 'accounting' && showBusiness
-                ? '业务事项'
+                ? '报销与收支单'
                 : (workspaceViewLabels[routeView] ??
                   navItems.find((item) => item.id === filter)?.label)}
             </span>
@@ -1812,24 +1990,17 @@ export default function App() {
           <div className="agent-topbar-actions">
             <button
               className="agent-topbar-assistant"
-              aria-label="问会计助手"
+              aria-label="打开智能财税副驾"
               disabled={navigationLocked || !!modal || commandOpen || assistantOpen}
               onClick={openGlobalAssistant}
             >
               <Sparkles size={15} />
-              <span>问会计助手</span>
-              <small>
-                {[
-                  profile?.companies.find((company) => company.id === workCompany)?.name,
-                  workPeriod,
-                ]
-                  .filter(Boolean)
-                  .join(' · ') || '当前授权范围'}
-              </small>
+              <span>智能财税副驾</span>
+              <small>{currentRoleMeta.scopeBadge}</small>
             </button>
             <button
               className="agent-topbar-command"
-              aria-label="查找企业与工作入口"
+              aria-label="查找子公司与工作入口"
               disabled={navigationLocked || !!modal}
               onClick={() => setCommandOpen(true)}
             >
@@ -1841,28 +2012,27 @@ export default function App() {
               <span className="status-dot" />
               {session.mode === 'local' ? '本地验证环境' : '已验证账户'}
               <span className="topbar-separator" />
-              CNY 人民币
+              人民币账套
             </div>
           </div>
         </header>
         <Suspense fallback={null}>
           <WorkspaceContextBar
             session={session}
-            companyName={
-              profile?.companies.find((company) => company.id === workCompany)?.name ??
-              (workCompany
-                ? undefined
-                : profile?.companies.length === 1
-                  ? profile.companies[0].name
-                  : undefined)
-            }
+            companyName={activeCompanyName}
+            companies={profile?.companies}
+            companyId={workCompany}
             period={workPeriod}
             bookId={routeUsesBook ? bookId : undefined}
+            manualMode={manualMode}
+            dutySummary={currentRoleMeta.dutySummary}
+            onToggleManualMode={toggleManualMode}
             unsavedLabels={[
               ...(reviewDirty ? ['凭证复核编辑'] : []),
               ...(drawerDirty ? ['复核抽屉编辑'] : []),
               ...(monthlyDirty ? ['月度办理说明'] : []),
             ]}
+            onCompanyChange={handleGlobalCompanyChange}
             onPeriodChange={(next) => setWorkPeriod(next)}
             onOpenBooks={() => navigate('accounting')}
           />
@@ -1888,91 +2058,7 @@ export default function App() {
         {routeContent}
       </div>
 
-      {assistantOpen && (
-        <Suspense fallback={null}>
-          <AssistantDrawer
-            mode={effectiveAssistantMode}
-            contextAvailable={!!assistantTarget}
-            contextLabel={assistantContextLabel}
-            onModeChange={switchAssistantMode}
-            onClose={closeAssistantDrawer}
-          >
-            {globalAssistant && (
-              <div className="assistant-mode-panel" hidden={effectiveAssistantMode !== 'global'}>
-                <Suspense
-                  fallback={
-                    <div className="loading-block">
-                      <Spinner />
-                      正在打开全账套助手…
-                    </div>
-                  }
-                >
-                  <GlobalAccountingAssistant
-                    key={session.scope_key}
-                    session={session}
-                    initialContext={globalAssistant}
-                    embedded
-                    onClose={closeAssistantDrawer}
-                    onNavigateEvidence={openAssistantEvidence}
-                    onNavigateContext={(context) => {
-                      closeAssistantDrawer();
-                      if (context.draft && context.books.length === 1)
-                        setInlineTarget({
-                          bookId: context.books[0].id,
-                          draftId: context.draft.id,
-                        });
-                      else if (context.books.length === 1)
-                        void openAssistantBook(context.books[0].id);
-                      else if (context.events.length === 1) {
-                        navigate('business', true);
-                        setBusinessTarget(context.events[0].id);
-                      } else navigate('accounting', true);
-                    }}
-                    onOpenTask={openAssistantTask}
-                  />
-                </Suspense>
-              </div>
-            )}
-            {assistantTarget && (
-              <div className="assistant-mode-panel" hidden={effectiveAssistantMode !== 'context'}>
-                <Suspense
-                  fallback={
-                    <div className="loading-block">
-                      <Spinner />
-                      正在读取当前凭证依据…
-                    </div>
-                  }
-                >
-                  <AccountingContextAssistant
-                    key={`${session.scope_key}:${assistantTarget.bookId}:${assistantTarget.draftId}:${assistantTarget.version}`}
-                    session={session}
-                    bookId={assistantTarget.bookId}
-                    draftId={assistantTarget.draftId}
-                    draftVersion={assistantTarget.version}
-                    actionTypes={['review', 'edit']}
-                    embedded
-                    onClose={closeAssistantDrawer}
-                    onOpenEvidence={() => {
-                      setInlineTarget({
-                        bookId: assistantTarget.bookId,
-                        draftId: assistantTarget.draftId,
-                      });
-                      closeAssistantDrawer();
-                    }}
-                    onAction={() => {
-                      setInlineTarget({
-                        bookId: assistantTarget.bookId,
-                        draftId: assistantTarget.draftId,
-                      });
-                      closeAssistantDrawer();
-                    }}
-                  />
-                </Suspense>
-              </div>
-            )}
-          </AssistantDrawer>
-        </Suspense>
-      )}
+      {assistantOverlay}
       {commandOpen && (
         <Suspense
           fallback={

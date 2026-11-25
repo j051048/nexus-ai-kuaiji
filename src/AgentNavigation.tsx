@@ -186,7 +186,7 @@ export function AgentNavigation({
             <span />
           </span>
           <span className="brand-name">
-            衡账<span>ACCOUNTING AGENT</span>
+            衡账<span>集团共享财务中心</span>
           </span>
         </a>
         <button
@@ -216,7 +216,7 @@ export function AgentNavigation({
         aria-label={mobileOpen ? '工作空间导航' : undefined}
       >
         <div className="agent-mobile-panel-header">
-          <strong>工作空间</strong>
+          <strong>集团共享财务中心</strong>
           <button
             className="icon-button"
             onClick={() => setMobileOpen(false)}
@@ -231,7 +231,7 @@ export function AgentNavigation({
           </span>
           <div>
             {firmSelector}
-            <span>会计专用工作空间</span>
+            <span>共享财务中台</span>
           </div>
         </div>
         <nav aria-label="主导航" className="agent-primary-nav">
@@ -243,7 +243,7 @@ export function AgentNavigation({
           {mainItems.map((item) => renderEntry(item, true))}
           {dailyItems.length > 0 && (
             <details className="nav-group" open={dailyItems.some((item) => item.id === current)}>
-              <summary>日常业务</summary>
+              <summary>更多日常单据与台账</summary>
               {dailyItems.map((item) => renderEntry(item))}
             </details>
           )}
@@ -252,7 +252,7 @@ export function AgentNavigation({
               className="nav-group"
               open={current !== null && ['accounting', 'review', 'revision'].includes(current)}
             >
-              <summary>会计工作区</summary>
+              <summary>总账与凭证快捷入口</summary>
               {accountingItems.map((item) => renderEntry(item))}
               <button className="nav-item" disabled={locked} onClick={() => filter('pending')}>
                 <CheckCheck size={16} />
@@ -270,7 +270,7 @@ export function AgentNavigation({
               aria-label="设置"
               open={settingsItems.some((item) => item.id === current)}
             >
-              <summary>设置</summary>
+              <summary>中心配置与运维</summary>
               <nav aria-label="设置入口">
                 {settings.map((group) => (
                   <section
@@ -301,7 +301,7 @@ export function AgentNavigation({
         )}
         <div className="agent-sidebar-note">
           <ShieldCheck size={14} />
-          <span>原件留存 · 会计复核后导出</span>
+          <span>断网纯手工保底 · 独立复核入账</span>
           <ArrowUpRight size={13} />
         </div>
         <div className="sidebar-bottom">{footer}</div>

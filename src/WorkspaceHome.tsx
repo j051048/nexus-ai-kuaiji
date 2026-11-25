@@ -51,6 +51,13 @@ import { currentHomeTask } from './workspace-home-focus';
 import { taskPresentation, taskTitle } from './task-presentation';
 import { homeProgress, type HomeProgress } from './workspace-progress';
 import { OaMaterialRequestList } from './OaMaterialRequestList';
+import {
+  classifyTaskLane,
+  employeeProgressSteps,
+  parseOaRef,
+  readTriagePolicy,
+  type TriageLane,
+} from './fsc-triage';
 import './workspace.css';
 import './workbench-focus.css';
 
@@ -119,6 +126,8 @@ export function WorkspaceHome({
   const [offset, setOffset] = useState(initialProgress.current.offset);
   const [sort, setSort] = useState<WorkspaceSort>(initialProgress.current.sort);
   const [density, setDensity] = useState<WorkspaceDensity>(initialProgress.current.density);
+  const [triageFilter, setTriageFilter] = useState<'all' | TriageLane>('all');
+  const [previewKey, setPreviewKey] = useState<string>('');
   const [query, setQuery] = useState(initialProgress.current.query);
   const [search, setSearch] = useState(initialProgress.current.query.trim());
   const scrollRestore = useRef(initialProgress.current.scrollY ?? 0);
@@ -1003,86 +1012,253 @@ export function WorkspaceHome({
             )}
           </div>
         )}
+        {!experience.simple && rows.length > 0 && (() => {
+          const policy = readTriagePolicy();
+          const decisions = rows.map((item) => ({
+            task: item,
+            decision: classifyTaskLane(item, policy),
+          }));
+          const greenCount = decisions.filter((d) => d.decision.lane === 'green_pass').length;
+          const riskCount = decisions.filter((d) => d.decision.lane === 'high_risk').length;
+          const waitCount = decisions.filter((d) => d.decision.lane === 'waiting').length;
+          return (
+            <div className="fsc-mailbox-tabs" role="tablist" aria-label="共享中心待办收件箱分箱">
+              {(
+                [
+                  ['all', `全部待办 (${rows.length})`],
+                  ['green_pass', `绿通合规包 (${greenCount})`],
+                  ['high_risk', `高风险红线拦截 (${riskCount})`],
+                  ['waiting', `待子公司补件 (${waitCount})`],
+                ] as const
+              ).map(([lane, label]) => (
+                <button
+                  key={lane}
+                  type="button"
+                  role="tab"
+                  aria-selected={triageFilter === lane}
+                  className={
+                    'fsc-mailbox-tab ' +
+                    lane +
+                    (triageFilter === lane ? ' active' : '')
+                  }
+                  onClick={() => setTriageFilter(lane)}
+                >
+                  {label}
+                </button>
+              ))}
+              {profile?.can_review && greenCount > 0 && (
+                <button
+                  type="button"
+                  className="fsc-mailbox-batch-btn"
+                  disabled={locked}
+                  onClick={onReview}
+                >
+                  进入批量复核放行绿通包 →
+                </button>
+              )}
+            </div>
+          );
+        })()}
         {loading ? (
           <p className="loading-block">
             <LoaderCircle className="spinner" size={16} />
             正在读取待办…
           </p>
-        ) : rows.length ? (
-          <div
-            className={'workspace-task-list ' + (density === 'table' ? 'workspace-table-view' : '')}
-          >
-            {density === 'table' && (
-              <div className="workspace-table-labels" aria-hidden="true">
-                <span>事项 / 企业</span>
-                <span>状态 / 期限</span>
-                <span>金额</span>
-                <span>下一步</span>
+        ) : rows.length ? (() => {
+          const policy = readTriagePolicy();
+          const filteredShownRows =
+            !experience.simple && triageFilter !== 'all'
+              ? shownRows.filter((item) => classifyTaskLane(item, policy).lane === triageFilter)
+              : shownRows;
+          const selectedTask = !experience.simple
+            ? (filteredShownRows.find((item) => item.key === previewKey) ??
+              filteredShownRows[0] ??
+              null)
+            : null;
+          const selectedDecision = selectedTask ? classifyTaskLane(selectedTask, policy) : null;
+          const selectedOa = selectedTask ? parseOaRef(selectedTask.title) : null;
+          return (
+            <div className={!experience.simple && selectedTask ? 'fsc-mailbox-split' : ''}>
+              <div
+                className={
+                  'workspace-task-list ' + (density === 'table' ? 'workspace-table-view' : '')
+                }
+              >
+                {density === 'table' && (
+                  <div className="workspace-table-labels" aria-hidden="true">
+                    <span>事项 / 子公司</span>
+                    <span>状态 / 期限</span>
+                    <span>金额</span>
+                    <span>下一步</span>
+                  </div>
+                )}
+                {filteredShownRows.map((task) => {
+                  const summary = taskPresentation(task, profileError ? null : profile);
+                  const decision = !experience.simple ? classifyTaskLane(task, policy) : null;
+                  const oaParsed = parseOaRef(task.title);
+                  const steps = employee ? employeeProgressSteps(task.state) : null;
+                  const isPreviewActive = selectedTask?.key === task.key;
+                  return (
+                    <article
+                      className={
+                        'workspace-task ' +
+                        (task.overdue ? 'overdue ' : '') +
+                        (isPreviewActive ? 'fsc-mail-active' : '')
+                      }
+                      key={task.key}
+                      data-task-key={task.key}
+                      data-summary={summary.key}
+                      onClick={() => {
+                        if (!experience.simple) setPreviewKey(task.key);
+                      }}
+                    >
+                      <div className="workspace-task-main">
+                        <div className="workspace-task-meta">
+                          <span className="workspace-task-kind">{summary.kindLabel}</span>
+                          <span>{task.company_name}</span>
+                          {decision && (
+                            <span className={`fsc-triage-pill ${decision.lane}`}>
+                              {decision.badge}
+                            </span>
+                          )}
+                          {oaParsed.oaRef && (
+                            <span className="fsc-oa-badge">原审批 {oaParsed.oaRef}</span>
+                          )}
+                          {task.overdue && <span className="case-overdue">已逾期</span>}
+                          <span className="workspace-task-mobile-amount">
+                            {formatTaskAmount(task.amount)}
+                          </span>
+                        </div>
+                        <h3>{taskTitle(task, summary)}</h3>
+                        {(!employee || summary.key !== 'mine') && (
+                          <small>负责人：{summary.responsible}</small>
+                        )}
+                        {steps && (
+                          <ol className="fsc-logistics-steps" aria-label="报销与打款进度">
+                            {steps.map((step) => (
+                              <li key={step.label} className={step.status}>
+                                <span className="fsc-logistics-dot" aria-hidden="true" />
+                                <span>{step.label}</span>
+                              </li>
+                            ))}
+                          </ol>
+                        )}
+                        {summary.key === 'blocked' ? (
+                          <p className="workspace-task-guidance">
+                            <span>下一步</span>
+                            {summary.next}
+                          </p>
+                        ) : (
+                          <details className="workspace-task-help">
+                            <summary>处理说明</summary>
+                            <p className="workspace-task-guidance">
+                              <span>下一步</span>
+                              {summary.next}
+                            </p>
+                          </details>
+                        )}
+                      </div>
+                      <div className="workspace-task-state">
+                        <span data-summary={summary.key} className="workspace-state-pill">
+                          {summary.label}
+                        </span>
+                        <span className="workspace-task-detail" data-state={task.state}>
+                          {summary.detail}
+                        </span>
+                        {(task.due_on || !employee) && (
+                          <small>{task.due_on ? `期限 ${task.due_on}` : '未设置期限'}</small>
+                        )}
+                      </div>
+                      <span className="workspace-task-amount">{formatTaskAmount(task.amount)}</span>
+                      <button
+                        className="button secondary"
+                        disabled={locked}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void open(task);
+                        }}
+                      >
+                        {opening === task.key ? (
+                          <LoaderCircle className="spinner" size={15} />
+                        ) : null}
+                        {summary.actionLabel}
+                        <ArrowRight size={15} />
+                      </button>
+                    </article>
+                  );
+                })}
+                {!filteredShownRows.length && (
+                  <p className="workspace-view-notice">当前分箱下暂无匹配待办，可切回“全部待办”。</p>
+                )}
               </div>
-            )}
-            {shownRows.map((task) => {
-              const summary = taskPresentation(task, profileError ? null : profile);
-              return (
-                <article
-                  className={'workspace-task ' + (task.overdue ? 'overdue' : '')}
-                  key={task.key}
-                  data-task-key={task.key}
-                  data-summary={summary.key}
-                >
-                  <div className="workspace-task-main">
-                    <div className="workspace-task-meta">
-                      <span className="workspace-task-kind">{summary.kindLabel}</span>
-                      <span>{task.company_name}</span>
-                      {task.overdue && <span className="case-overdue">已逾期</span>}
-                      <span className="workspace-task-mobile-amount">
-                        {formatTaskAmount(task.amount)}
-                      </span>
+              {!experience.simple && selectedTask && selectedDecision && (
+                <aside className="fsc-mailbox-preview" aria-label="同屏单据速览与审单指引">
+                  <header className="fsc-preview-head">
+                    <span className={`fsc-triage-pill ${selectedDecision.lane}`}>
+                      {selectedDecision.badge}
+                    </span>
+                    <strong>{selectedTask.company_name}</strong>
+                    <small>{selectedTask.period || '当前账期'}</small>
+                  </header>
+                  <h3 className="fsc-preview-title">{selectedOa?.cleanText || selectedTask.title}</h3>
+                  <dl className="fsc-preview-facts">
+                    <div>
+                      <dt>涉及金额</dt>
+                      <dd>{formatTaskAmount(selectedTask.amount)}</dd>
                     </div>
-                    <h3>{taskTitle(task, summary)}</h3>
-                    {(!employee || summary.key !== 'mine') && (
-                      <small>负责人：{summary.responsible}</small>
-                    )}
-                    {summary.key === 'blocked' ? (
-                      <p className="workspace-task-guidance">
-                        <span>下一步</span>
-                        {summary.next}
-                      </p>
-                    ) : (
-                      <details className="workspace-task-help">
-                        <summary>处理说明</summary>
-                        <p className="workspace-task-guidance">
-                          <span>下一步</span>
-                          {summary.next}
-                        </p>
-                      </details>
+                    <div>
+                      <dt>原办公审批单</dt>
+                      <dd>{selectedOa?.oaRef || '打开原件后核对截图/单号'}</dd>
+                    </div>
+                    <div>
+                      <dt>当前经办</dt>
+                      <dd>{selectedTask.responsible || '待分配'}</dd>
+                    </div>
+                    <div>
+                      <dt>目标期限</dt>
+                      <dd>{selectedTask.due_on || '常规办理'}</dd>
+                    </div>
+                  </dl>
+                  <div className={`fsc-preview-box ${selectedDecision.lane}`}>
+                    <strong>
+                      {selectedDecision.lane === 'high_risk'
+                        ? '高风险红线拦截原因（须人工严审）'
+                        : selectedDecision.lane === 'green_pass'
+                          ? '绿通初审结论（建议快速放行）'
+                          : '办理指引'}
+                    </strong>
+                    <ul>
+                      {selectedDecision.reasons.map((reason) => (
+                        <li key={reason}>{reason}</li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div className="fsc-preview-actions">
+                    <button
+                      type="button"
+                      className="button primary"
+                      disabled={locked}
+                      onClick={() => void open(selectedTask)}
+                    >
+                      打开原件并同屏办理
+                      <ArrowRight size={15} />
+                    </button>
+                    {profile?.can_accounting && (
+                      <button
+                        type="button"
+                        className="button secondary"
+                        disabled={locked}
+                        onClick={onAccounting}
+                      >
+                        纯手工改凭证 / 查账套
+                      </button>
                     )}
                   </div>
-                  <div className="workspace-task-state">
-                    <span data-summary={summary.key} className="workspace-state-pill">
-                      {summary.label}
-                    </span>
-                    <span className="workspace-task-detail" data-state={task.state}>
-                      {summary.detail}
-                    </span>
-                    {(task.due_on || !employee) && (
-                      <small>{task.due_on ? `期限 ${task.due_on}` : '未设置期限'}</small>
-                    )}
-                  </div>
-                  <span className="workspace-task-amount">{formatTaskAmount(task.amount)}</span>
-                  <button
-                    className="button secondary"
-                    disabled={locked}
-                    onClick={() => void open(task)}
-                  >
-                    {opening === task.key ? <LoaderCircle className="spinner" size={15} /> : null}
-                    {summary.actionLabel}
-                    <ArrowRight size={15} />
-                  </button>
-                </article>
-              );
-            })}
-          </div>
-        ) : (
+                </aside>
+              )}
+            </div>
+          );
+        })() : (
           !error &&
           visibleValue && (
             <div className="workspace-clear">
@@ -1254,7 +1430,7 @@ export function WorkspaceHome({
       )}
       <p className="workspace-boundary">
         <CircleDot size={12} />
-        AI 在后台识别、核对与生成草稿；会计复核后导出。
+        智能辅助在后台验票、识别与起草分录；断网也可纯手工独立做账，所有正式凭证均须复核把关。
       </p>
     </main>
   );

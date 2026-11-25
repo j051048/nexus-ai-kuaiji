@@ -90,15 +90,15 @@ describe('第二批岗位主任务与设置归位', () => {
     });
     const group = (label: string) =>
       html.match(new RegExp(`<section[^>]*aria-label="${label}"[\\s\\S]*?<\\/section>`))?.[0] ?? '';
-    expect(group('人员与授权')).toContain('企业与人员管理');
-    expect(group('人员与授权')).toContain('成员与账套授权');
-    expect(group('费用与人工投入')).toContain('费用与运行监控');
-    expect(group('费用与人工投入')).toContain('客户人工投入');
-    expect(group('资料处理与接入')).toContain('票据核对异常');
-    expect(group('资料处理与接入')).toContain('票据处理任务');
-    expect(group('技术诊断')).toContain('运行可观测性');
-    expect(group('技术诊断')).toContain('试点评测');
-    expect(group('技术诊断')).not.toContain('票据核对异常');
+    expect(group('子公司与分管授权')).toContain('子公司与人员');
+    expect(group('子公司与分管授权')).toContain('分管权限矩阵');
+    expect(group('人效与智能用量')).toContain('智能用量监控');
+    expect(group('人效与智能用量')).toContain('人员效率负荷');
+    expect(group('票据识别与数据接入')).toContain('票据核对异常');
+    expect(group('票据识别与数据接入')).toContain('票据识别队列');
+    expect(group('高级运维工具')).toContain('系统运行诊断');
+    expect(group('高级运维工具')).toContain('规则效果评测');
+    expect(group('高级运维工具')).not.toContain('票据核对异常');
   });
   it('V04 显式空主导航不回退到另一套菜单', () => {
     const html = render('firm', { presentationNav: [] });
@@ -108,7 +108,7 @@ describe('第二批岗位主任务与设置归位', () => {
     expect(render(null)).not.toContain('aria-current="page"');
     const html = render(navigationCurrent('ledger'));
     expect(html.match(/aria-current="page"/g)).toHaveLength(1);
-    expect(html).toMatch(/aria-label="客户企业"[^>]*aria-current="page"/);
+    expect(html).toMatch(/aria-label="子公司账套"[^>]*aria-current="page"/);
   });
   it('授权入口缺少操作回调时禁用，避免可点击但没有结果', () => {
     const html = render('firm', {
@@ -116,8 +116,8 @@ describe('第二批岗位主任务与设置归位', () => {
       onAdmin: undefined,
       onAccess: undefined,
     });
-    expect(html).toMatch(/aria-label="企业与人员管理"[^>]*disabled=""/);
-    expect(html).toMatch(/aria-label="成员与账套授权"[^>]*disabled=""/);
+    expect(html).toMatch(/aria-label="子公司与人员"[^>]*disabled=""/);
+    expect(html).toMatch(/aria-label="分管权限矩阵"[^>]*disabled=""/);
   });
   it('V04 业务能力撤销后主次菜单都不出现可办理事项入口', () => {
     const html = render('home', {
@@ -128,17 +128,17 @@ describe('第二批岗位主任务与设置归位', () => {
       onAdmin: undefined,
       onAccess: undefined,
     });
-    expect(html).not.toContain('aria-label="业务事项"');
-    expect(html).not.toContain('aria-label="会计工作台"');
-    expect(html).not.toContain('aria-label="全所概览"');
+    expect(html).not.toContain('aria-label="报销与收支"');
+    expect(html).not.toContain('aria-label="总账与凭证"');
+    expect(html).not.toContain('aria-label="集团总览"');
     expect(html).toContain('资料清单');
   });
-  it('事务所负责人和管理员主导航聚焦业务，不含技术和管理后台', () => {
-    const ids = ['firm', 'insights', 'accounting', 'monthly', 'cases'];
+  it('共享中心负责人和管理员主导航聚焦经营与业务，不含技术和管理后台', () => {
+    const ids = ['insights', 'firm', 'accounting', 'monthly', 'cases'];
     expect(primaryNav('firm_owner', capabilities).map((item) => item.id)).toEqual(ids);
     expect(primaryNav('admin', capabilities).map((item) => item.id)).toEqual(ids);
   });
-  it('只有具备全所权限的管理员默认进入全所概览', () => {
+  it('只有具备全集团权限的管理员默认进入集团总览', () => {
     expect(roleHome('admin', { ...profile, display_role: 'admin' }).defaultView).toBe('firm');
     expect(roleHome('admin', { ...profile, can_firm_operations: false }).defaultView).toBe('admin');
     expect(
@@ -150,15 +150,15 @@ describe('第二批岗位主任务与设置归位', () => {
   it('技术入口集中在有名称的设置中，保留原业务和会计处理入口', () => {
     const html = render();
     const settings = html.match(/<details[^>]*aria-label="设置"[\s\S]*?<\/details>/)?.[0] ?? '';
-    expect(settings).toContain('数据接入');
-    expect(settings).toContain('运行可观测性');
-    expect(settings).toContain('费用与运行监控');
-    expect(settings).toContain('票据处理任务');
-    expect(settings).toContain('后台运行');
-    expect(settings).toContain('试点评测');
-    expect(settings).toContain('企业与人员管理');
-    expect(settings).not.toContain('异常与补件');
-    expect(html).toContain('事实修订与调整');
+    expect(settings).toContain('外部数据接入');
+    expect(settings).toContain('系统运行诊断');
+    expect(settings).toContain('智能用量监控');
+    expect(settings).toContain('票据识别队列');
+    expect(settings).toContain('后台处理记录');
+    expect(settings).toContain('规则效果评测');
+    expect(settings).toContain('子公司与人员');
+    expect(settings).not.toContain('高风险与补件');
+    expect(html).toContain('冲销与调整');
     expect(html).toContain('审核与导出');
     expect(html).not.toContain('更多工具');
     expect(html).not.toContain('处理记录与管理');
@@ -185,7 +185,7 @@ describe('第二批岗位主任务与设置归位', () => {
       expect(html).toMatch(/<details[^>]*aria-label="设置"[^>]*open=""/);
     }
   });
-  it('企业管理兼任账套权限不产生全所或技术入口，授权的专业业务可发现', () => {
+  it('子公司管理兼任账套权限不产生全集团或技术入口，授权的专业业务可发现', () => {
     const clientCapabilities = { ...capabilities, operations: false, quality: false, admin: false };
     const html = render('home', {
       presentationNav: primaryNav('manager', clientCapabilities),
@@ -193,38 +193,38 @@ describe('第二批岗位主任务与设置归位', () => {
       onAdmin: undefined,
     });
     for (const label of [
-      '全所概览',
-      '数据接入',
-      '运行可观测性',
-      '费用与运行监控',
-      '试点评测',
-      '企业与人员管理',
+      '集团总览',
+      '外部数据接入',
+      '系统运行诊断',
+      '智能用量监控',
+      '规则效果评测',
+      '子公司与人员',
     ]) {
       expect(html).not.toContain(label);
     }
     expect(html).toContain('审核与导出');
-    expect(html).toContain('异常与补件');
+    expect(html).toContain('高风险与补件');
     expect(html.match(/aria-current="page"/g)).toHaveLength(1);
   });
   it('锁定期间管理后台入口与其他操作一起禁用', () => {
     const html = render('firm', { locked: true });
-    expect(html).toMatch(/<button[^>]*aria-label="企业与人员管理"[^>]*disabled=""/);
+    expect(html).toMatch(/<button[^>]*aria-label="子公司与人员"[^>]*disabled=""/);
   });
   it('成员授权只投影统一能力，回调存在本身不能提升权限，锁定时禁用', () => {
-    expect(render('firm', { onAccess: () => {} })).not.toContain('成员与账套授权');
-    expect(render()).not.toContain('成员与账套授权');
+    expect(render('firm', { onAccess: () => {} })).not.toContain('分管权限矩阵');
+    expect(render()).not.toContain('分管权限矩阵');
     const enabled = render('firm', {
       capabilities: { ...capabilities, access: true },
       onAccess: () => {},
     });
     expect(enabled.match(/<details[^>]*aria-label="设置"[\s\S]*?<\/details>/)?.[0]).toContain(
-      '成员与账套授权',
+      '分管权限矩阵',
     );
     const locked = render('firm', {
       capabilities: { ...capabilities, access: true },
       onAccess: () => {},
       locked: true,
     });
-    expect(locked).toMatch(/<button[^>]*aria-label="成员与账套授权"[^>]*disabled=""/);
+    expect(locked).toMatch(/<button[^>]*aria-label="分管权限矩阵"[^>]*disabled=""/);
   });
 });

@@ -13,11 +13,11 @@ type BookAction = {
 export type BookPipelineStep = 'intake' | 'matching' | 'queue' | 'closing' | 'delivery';
 
 const pipelineSteps: { id: BookPipelineStep; label: string; view: WorkspaceView }[] = [
-  { id: 'intake', label: '① 资料与流水', view: 'accounting' },
-  { id: 'matching', label: '② 匹配与核销', view: 'reconciliation' },
-  { id: 'queue', label: '③ 凭证队列与复核', view: 'accounting' },
-  { id: 'closing', label: '④ 对账与月结', view: 'balances' },
-  { id: 'delivery', label: '⑤ 交付与导出', view: 'delivery' },
+  { id: 'intake', label: '① 票据与银行流水', view: 'accounting' },
+  { id: 'matching', label: '② 银企对账与出纳', view: 'reconciliation' },
+  { id: 'queue', label: '③ 填制与审核凭证', view: 'accounting' },
+  { id: 'closing', label: '④ 总账余额与月结', view: 'balances' },
+  { id: 'delivery', label: '⑤ 报表发布与导出', view: 'delivery' },
 ];
 
 /** Which stage of the book pipeline a view belongs to; null for settings-only screens. */

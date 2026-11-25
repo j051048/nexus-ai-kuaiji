@@ -56,6 +56,7 @@ import { BusinessOriginalPreview } from './BusinessOriginalPreview';
 import { TermHelp } from './TermHelp';
 import { businessListEmpty, readRecovery, type ReadRecovery } from './workspace-recovery';
 import { assertBusinessSelection, nextBusinessItem } from './business-selection';
+import { parseOaRef } from './fsc-triage';
 import './intake.css';
 import './business-record.css';
 import './workspace-help.css';
@@ -1350,6 +1351,23 @@ export function BusinessWorkspace({
                     {busy === 'submit' ? <Spinner /> : <Send size={14} />}提交审批
                   </button>
                 )}
+                {(selected.permissions.department_approve || selected.permissions.finance_approve) &&
+                  (() => {
+                    const oa = parseOaRef(selected.payload.description);
+                    return (
+                      <div className="fsc-oa-check-card" aria-label="原办公审批单核对">
+                        <ShieldCheck size={15} aria-hidden="true" />
+                        <div>
+                          <strong>
+                            原办公审批单核对：{oa.oaRef ? oa.oaRef : '未填写单号（请核对下方审批截图）'}
+                          </strong>
+                          <small>
+                            集团采用极简衔接模式：确认原办公系统已签批且票据真实后，下方一键放行即可。
+                          </small>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 {selected.permissions.department_approve && (
                   <button
                     type="button"
@@ -1358,7 +1376,7 @@ export function BusinessWorkspace({
                     onClick={() => void transition('department-approve')}
                   >
                     {busy === 'department-approve' ? <Spinner /> : <CheckCircle2 size={14} />}
-                    部门审批通过
+                    已核对原审批 · 一键放行
                   </button>
                 )}
                 {selected.permissions.finance_approve && (
@@ -1369,7 +1387,7 @@ export function BusinessWorkspace({
                     onClick={() => void transition('finance-approve')}
                   >
                     {busy === 'finance-approve' ? <Spinner /> : <CheckCircle2 size={14} />}
-                    财务核验通过
+                    财务核验通过 · 移交共享中心
                   </button>
                 )}
                 {selected.permissions.return && (

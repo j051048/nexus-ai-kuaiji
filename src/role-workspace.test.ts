@@ -81,11 +81,11 @@ describe('同一展示身份贯通首页和客户门户', () => {
   });
 
   it.each([
-    ['employee', '首页', '我的事项'],
-    ['approver', '待审批', '部门事项'],
-    ['finance', '待核验', '业务事项'],
-    ['manager', '企业首页', '报告'],
-  ] as const)('%s 客户导航反映当前岗位职责', (role, home, action) => {
+    ['employee', '我的进度', '我要报销'],
+    ['approver', '待我放行', '部门单据'],
+    ['finance', '待核验移交', '收支核验'],
+    ['manager', '公司首页', '经营简报'],
+  ] as const)('%s 子公司导航反映当前岗位职责', (role, home, action) => {
     const html = renderToStaticMarkup(
       createElement(ClientPortalShell, {
         session,

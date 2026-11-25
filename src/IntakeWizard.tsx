@@ -44,6 +44,7 @@ import { intakeGuidance } from './intake-guidance';
 import { TermHelp } from './TermHelp';
 import { BusinessPreparation } from './BusinessPreparation';
 import { ReturnedBusinessNotice } from './ReturnedBusinessNotice';
+import { attachOaRef, parseOaRef } from './fsc-triage';
 import './intake.css';
 
 export function IntakeWizard({
@@ -1072,15 +1073,37 @@ export function IntakeWizard({
                 />
               </label>
               <label className="wide-field">
-                <span className="field-label">事项摘要</span>
+                <span className="field-label">
+                  原办公审批单号
+                  <small className="intake-field-hint">
+                    选填 · 填写原办公系统已审批单号，便于负责人与财务一键核对放行
+                  </small>
+                </span>
+                <input
+                  aria-label="原办公审批单号"
+                  value={parseOaRef(fields.description).oaRef}
+                  maxLength={60}
+                  placeholder="例如：OA-202611-0088（未走原审批可留空或传审批截图）"
+                  disabled={fieldsDisabled}
+                  onChange={(event) => {
+                    const clean = parseOaRef(fields.description).cleanText;
+                    field('description', attachOaRef(clean, event.target.value));
+                  }}
+                />
+              </label>
+              <label className="wide-field">
+                <span className="field-label">事项用途（用大白话写清楚花在哪儿）</span>
                 <input
                   ref={descriptionInput}
                   aria-label="事项摘要"
-                  value={fields.description}
-                  maxLength={500}
-                  placeholder="例如：客户拜访交通费、办公文具采购"
+                  value={parseOaRef(fields.description).cleanText}
+                  maxLength={420}
+                  placeholder="例如：给车队采购防冻液、客户拜访交通费、办公文具采购"
                   disabled={fieldsDisabled}
-                  onChange={(event) => field('description', event.target.value)}
+                  onChange={(event) => {
+                    const oaRef = parseOaRef(fields.description).oaRef;
+                    field('description', attachOaRef(event.target.value, oaRef));
+                  }}
                 />
               </label>
               <div className="wide-field term-field">

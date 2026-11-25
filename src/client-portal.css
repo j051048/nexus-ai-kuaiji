@@ -52,9 +52,60 @@
 .client-portal-user button {
   border: 0;
   background: transparent;
-  color: #6a756a;
+  color: var(--text-muted);
   padding: 7px;
-  border-radius: 7px;
+  border-radius: var(--radius-sm);
+}
+.client-portal-user .client-portal-assistant-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--brand-soft);
+  color: var(--brand);
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-strong);
+  cursor: pointer;
+}
+.client-portal-user .client-portal-assistant-btn.active {
+  background: var(--brand);
+  color: var(--on-brand);
+  border-color: var(--brand);
+}
+.client-portal-user .client-portal-mode-btn {
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface-soft);
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+}
+.client-portal-user .client-portal-mode-btn.manual {
+  background: var(--status-warning-soft);
+  color: var(--status-warning);
+  border-color: var(--status-warning);
+}
+.client-portal-duty-tip {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 24px;
+  background: var(--surface-subtle);
+  border-bottom: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+}
+.client-portal-duty-badge {
+  flex: none;
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+  background: var(--brand-soft);
+  color: var(--brand);
+  font-weight: var(--weight-strong);
 }
 .client-portal-tabs {
   display: flex;
@@ -111,7 +162,9 @@
     font-size: var(--font-size-input-mobile);
   }
   .client-portal-firm,
-  .client-portal-user small {
+  .client-portal-user small,
+  .client-portal-duty-tip,
+  .client-portal-mode-btn {
     display: none;
   }
   .client-portal-tabs {

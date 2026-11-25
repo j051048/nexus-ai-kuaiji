@@ -62,12 +62,20 @@ import type {
   AssistantTurn,
 } from './assistant-types';
 import type { BookDetail, Company, Pagination, Session } from './types';
+import type { PresentationRole } from './workspace-types';
+import { fscRoleProfile } from './fsc-shell';
 import { isCompositionKey } from './keyboard';
 import './global-assistant.css';
 
 export interface GlobalAccountingAssistantProps {
   session: Session;
   initialContext?: AssistantInitialContext;
+  /** 当前账号岗位视角，用于展示权限边界与角色专属快捷提问 */
+  role?: PresentationRole;
+  /** 是否处于纯手工/离线保底模式 */
+  manualMode?: boolean;
+  /** 顶栏全局选中的子公司，变化时自动同步聊天范围 */
+  activeCompanyId?: string;
   onClose: () => void;
   onNavigateEvidence?: (evidence: AssistantEvidence) => void;
   onNavigateContext?: (context: AssistantContext) => void;
@@ -116,6 +124,9 @@ function PlanItems({ items }: { items: AssistantActionPlan['items'] }) {
 export function GlobalAccountingAssistant({
   session,
   initialContext,
+  role = 'accountant',
+  manualMode = false,
+  activeCompanyId,
   onClose,
   onNavigateEvidence,
   onNavigateContext,
@@ -123,10 +134,10 @@ export function GlobalAccountingAssistant({
   embedded = false,
 }: GlobalAccountingAssistantProps) {
   const [companies, setCompanies] = useState<Company[]>([]),
-    [companyId, setCompanyId] = useState(initialContext?.companyId ?? '');
+    [companyId, setCompanyId] = useState(initialContext?.companyId ?? activeCompanyId ?? '');
   const [conversationId, setConversationId] = useState<string | null>(null),
     [showHistory, setShowHistory] = useState(false),
-    [creating, setCreating] = useState(true);
+    [creating, setCreating] = useState(false);
   const [scopeOptions, setScopeOptions] = useState<Loaded<AssistantScopeOptions> | null>(null),
     [conversations, setConversations] = useState<Loaded<AssistantConversationPage> | null>(null);
   const [detail, setDetail] = useState<Loaded<AssistantConversationDetail> | null>(null),
@@ -198,36 +209,44 @@ export function GlobalAccountingAssistant({
       ['queued', 'running', 'retry_wait', 'waiting'].includes(job.status),
     ),
   );
-  const modelAvailable = current
-    ? (current.model_available ??
-      current.context.model_available ??
-      options?.model_available ??
-      false)
-    : (options?.model_available ?? false);
+  const modelAvailable = manualMode
+    ? false
+    : current
+      ? (current.model_available ??
+        current.context.model_available ??
+        options?.model_available ??
+        false)
+      : (options?.model_available ?? false);
   const companyAIEnabled =
     current?.company_enabled ?? current?.context.company_enabled ?? options?.company_enabled;
   const supplierConfigured =
     current?.supplier_configured ??
     current?.context.supplier_configured ??
     options?.supplier_configured;
-  const modelUnavailableNotice =
-    companyAIEnabled === false
-      ? '该企业AI已由管理员暂停，请联系管理员恢复。历史会话和人工复核流程继续可用。'
+  const modelUnavailableNotice = manualMode
+    ? '当前已切换为纯手工办理模式，智能问答已暂停。左侧所有填单、制单、复核与结账功能全部纯手工正常可用。'
+    : companyAIEnabled === false
+      ? '该子公司智能问答已由管理员暂停，历史会话与左侧纯手工账务流程全部继续可用。'
       : current?.notice ||
         current?.context.notice ||
         options?.notice ||
-        '会计对话服务尚未配置，请联系系统管理员。';
-  const modelUnavailablePlaceholder =
-    companyAIEnabled === false
-      ? '该企业AI已暂停，请联系管理员恢复'
+        '云端智能问答暂未配置或当前离线，左侧填单、做凭证、审单与月结均可纯手工正常办理。';
+  const modelUnavailablePlaceholder = manualMode
+    ? '当前为纯手工模式，可点击顶栏恢复智能在线'
+    : companyAIEnabled === false
+      ? '该子公司智能问答已暂停，左侧手工流程照常可用'
       : supplierConfigured === false
-        ? '会计对话服务尚未配置，请联系系统管理员'
+        ? '云端问答暂离线，左侧手工账务照常可用'
         : modelUnavailableNotice;
   const companyName =
     current?.context.company_name ||
     options?.company_name ||
     companies.find((company) => company.id === companyId)?.name ||
     '';
+  const roleMeta = fscRoleProfile(role, {
+    companyName: companyName || undefined,
+    companyCount: companies.length,
+  });
 
   useLayoutEffect(() => {
     if (embedded) return;
@@ -323,9 +342,10 @@ export function GlobalAccountingAssistant({
     clearSensitive();
     setRevoked(false);
     setError('');
-    setCreating(true);
+    setCreating(false);
     setShowHistory(false);
-    setCompanyId(initialContext?.companyId ?? '');
+    const preferredCompany = initialContext?.companyId || activeCompanyId || '';
+    setCompanyId(preferredCompany);
     setBookIds(initialContext?.bookId ? [initialContext.bookId] : []);
     setEventIds(initialContext?.eventId ? [initialContext.eventId] : []);
     const controller = new AbortController(),
@@ -337,7 +357,7 @@ export function GlobalAccountingAssistant({
         });
         if (controller.signal.aborted || generation !== bootEpoch.current) return;
         setCompanies(value.companies);
-        if (!initialContext?.companyId && initialContext?.bookId) {
+        if (!preferredCompany && initialContext?.bookId) {
           const book = await api<BookDetail>(`/books/${encode(initialContext.bookId)}`, session, {
             signal: controller.signal,
           });
@@ -346,10 +366,16 @@ export function GlobalAccountingAssistant({
             generation === bootEpoch.current &&
             book.book.company_id &&
             value.companies.some((company) => company.id === book.book.company_id)
-          )
+          ) {
             setCompanyId(book.book.company_id);
-        } else if (!initialContext?.companyId && value.companies.length === 1)
+            return;
+          }
+        }
+        if (preferredCompany && value.companies.some((c) => c.id === preferredCompany)) {
+          setCompanyId(preferredCompany);
+        } else if (value.companies.length > 0) {
           setCompanyId(value.companies[0].id);
+        }
       } catch (failure) {
         if (!controller.signal.aborted && generation === bootEpoch.current) {
           if (failure instanceof ApiError && [401, 403].includes(failure.status)) clearSensitive();
@@ -371,6 +397,14 @@ export function GlobalAccountingAssistant({
     initialContext?.eventId,
     clearSensitive,
   ]);
+  useEffect(() => {
+    if (!activeCompanyId || activeCompanyId === companyId || revoked) return;
+    if (companies.some((company) => company.id === activeCompanyId)) {
+      setCompanyId(activeCompanyId);
+      setCreating(false);
+      setShowHistory(false);
+    }
+  }, [activeCompanyId, companies, companyId, revoked]);
   useEffect(() => {
     scopeController.current.abort();
     scopeController.current = new AbortController();
@@ -749,7 +783,7 @@ export function GlobalAccountingAssistant({
   }
   function changeCompany(id: string) {
     setCompanyId(id);
-    setCreating(true);
+    setCreating(false);
     setShowHistory(false);
     setBookIds([]);
     setEventIds([]);
@@ -765,12 +799,17 @@ export function GlobalAccountingAssistant({
     setMessages(null);
     setPlans([]);
     setActionPagination(null);
-    setCreating(true);
+    setCreating(false);
     setShowHistory(false);
     setQuestion('');
     setError('');
     setNotice('');
     requestKeys.current.clear();
+  }
+  function openScopeBuilder() {
+    setShowHistory(false);
+    setCreating((value) => !value);
+    setError('');
   }
   function openConversation(row: AssistantConversation) {
     if (row.company_id !== companyId) return;
@@ -826,41 +865,96 @@ export function GlobalAccountingAssistant({
   }
   function sendQuestion(value: string) {
     const submitted = assistantQuestion(value);
-    if (!submitted || !current || activeTurn || !modelAvailable) return;
-    const conversation = current.conversation;
+    if (!submitted || activeTurn || !modelAvailable || !companyId) return;
+    if (current) {
+      const conversation = current.conversation;
+      void mutate(
+        () =>
+          api<{ turn: AssistantTurn }>(
+            `/assistant/conversations/${encode(conversation.id)}/turns`,
+            session,
+            {
+              method: 'POST',
+              body: {
+                question: submitted,
+                expected_scope_version: conversation.scope_version,
+                idempotency_key: keyFor('turn', `${conversation.id}:${submitted}`),
+              },
+              signal: scopeController.current.signal,
+            },
+          ),
+        (result) => {
+          requestKeys.current.delete('turn');
+          setQuestion('');
+          setDetail((previous) =>
+            previous?.key === detailKey
+              ? {
+                  ...previous,
+                  value: {
+                    ...previous.value,
+                    turns: [
+                      result.turn,
+                      ...previous.value.turns.filter((turn) => turn.id !== result.turn.id),
+                    ],
+                  },
+                }
+              : previous,
+          );
+          void loadConversation(false, true);
+        },
+      );
+      return;
+    }
+    // 零门槛直聊：尚无活动会话时，后台按当前账号与当前子公司静默自动建会话并立即提问。
+    const autoBooks = bookIds.length
+      ? bookIds.filter((id) => !options || options.books.some((book) => book.id === id))
+      : (options?.books.slice(0, 5).map((book) => book.id) ?? []);
+    const createBody = {
+      company_id: companyId,
+      book_ids: autoBooks,
+      event_ids: eventIds,
+      ...(initialContext?.draftId &&
+      autoBooks.length === 1 &&
+      autoBooks[0] === initialContext.bookId
+        ? { draft_id: initialContext.draftId }
+        : {}),
+      title: submitted.slice(0, 24),
+    };
     void mutate(
-      () =>
-        api<{ turn: AssistantTurn }>(
-          `/assistant/conversations/${encode(conversation.id)}/turns`,
+      async () => {
+        const created = await api<{ conversation: AssistantConversation } | AssistantConversation>(
+          '/assistant/conversations',
+          session,
+          {
+            method: 'POST',
+            body: {
+              ...createBody,
+              idempotency_key: keyFor('quick-create', `${companyId}:${submitted}`),
+            },
+            signal: scopeController.current.signal,
+          },
+        );
+        const row = 'conversation' in created ? created.conversation : created;
+        const turnResult = await api<{ turn: AssistantTurn }>(
+          `/assistant/conversations/${encode(row.id)}/turns`,
           session,
           {
             method: 'POST',
             body: {
               question: submitted,
-              expected_scope_version: conversation.scope_version,
-              idempotency_key: keyFor('turn', `${conversation.id}:${submitted}`),
+              expected_scope_version: row.scope_version,
+              idempotency_key: keyFor('turn', `${row.id}:${submitted}`),
             },
             signal: scopeController.current.signal,
           },
-        ),
-      (result) => {
+        );
+        return { row, turn: turnResult.turn };
+      },
+      ({ row }) => {
+        requestKeys.current.delete('quick-create');
         requestKeys.current.delete('turn');
         setQuestion('');
-        setDetail((previous) =>
-          previous?.key === detailKey
-            ? {
-                ...previous,
-                value: {
-                  ...previous.value,
-                  turns: [
-                    result.turn,
-                    ...previous.value.turns.filter((turn) => turn.id !== result.turn.id),
-                  ],
-                },
-              }
-            : previous,
-        );
-        void loadConversation(false, true);
+        openConversation(row);
       },
     );
   }
@@ -974,18 +1068,19 @@ export function GlobalAccountingAssistant({
               <Sparkles size={19} />
             </div>
             <div>
-              <p>衡账 · ACCOUNTING AGENT</p>
-              <h2 id="global-assistant-title">会计助手</h2>
+              <p>衡账 · 集团共享财税副驾</p>
+              <h2 id="global-assistant-title">智能财税副驾</h2>
             </div>
           </>
         )}
         <div className="ga-header-actions">
           <button
             className="icon-button"
-            aria-label="查看我的会话"
-            title="我的会话"
+            aria-label="查看历史对话"
+            title="历史对话"
             disabled={!companyId || revoked || busy}
             onClick={() => {
+              setCreating(false);
               setShowHistory((value) => !value);
             }}
           >
@@ -993,8 +1088,17 @@ export function GlobalAccountingAssistant({
           </button>
           <button
             className="icon-button"
-            aria-label="新建会计会话"
-            title="新建会话"
+            aria-label="限定专项核对资料"
+            title={creating ? '返回直接聊天' : '限定专项资料范围'}
+            disabled={!companyId || revoked || busy}
+            onClick={openScopeBuilder}
+          >
+            <FileSearch size={18} />
+          </button>
+          <button
+            className="icon-button"
+            aria-label="开启新对话"
+            title="开启新对话"
             disabled={!companyId || revoked || busy}
             onClick={startNew}
           >
@@ -1015,7 +1119,7 @@ export function GlobalAccountingAssistant({
       <div className="ga-company">
         <Building2 size={15} />
         <label className="sr-only" htmlFor="ga-company-select">
-          助手所属企业
+          当前查询子公司
         </label>
         <select
           id="ga-company-select"
@@ -1023,16 +1127,16 @@ export function GlobalAccountingAssistant({
           disabled={busy || revoked}
           onChange={(event) => changeCompany(event.target.value)}
         >
-          <option value="">选择本次工作的企业</option>
+          <option value="">选择已授权子公司</option>
           {companies.map((company) => (
             <option key={company.id} value={company.id}>
               {company.name}
             </option>
           ))}
         </select>
-        <span className="ga-private">
+        <span className="ga-private" title={roleMeta.scopeDetail}>
           <ShieldCheck size={12} />
-          本人会话
+          按权查库
         </span>
       </div>
       {error && (
@@ -1740,7 +1844,97 @@ export function GlobalAccountingAssistant({
                 </p>
               </footer>
             </>
-          ) : null}
+          ) : (
+            <>
+              <div className="ga-quick-chat ga-scroll">
+                <section className="ga-permission-card" aria-label="数据权限说明">
+                  <div className="ga-permission-head">
+                    <ShieldCheck size={15} aria-hidden="true" />
+                    <strong>{roleMeta.title}</strong>
+                    <span>{roleMeta.scopeBadge}</span>
+                  </div>
+                  <p>{roleMeta.scopeDetail}</p>
+                </section>
+                <div className="ga-quick-prompts">
+                  <p className="ga-quick-title">您可以直接打字提问，或点下面常见问题一键查库：</p>
+                  <div className="ga-prompt-list">
+                    {roleMeta.quickPrompts.map((prompt) => (
+                      <button
+                        key={prompt}
+                        type="button"
+                        className="ga-prompt-chip"
+                        disabled={busy || !modelAvailable || scopeLoading}
+                        onClick={() => {
+                          if (modelAvailable) sendQuestion(prompt);
+                          else setQuestion(prompt);
+                        }}
+                      >
+                        <span>{prompt}</span>
+                        <ChevronRight size={14} aria-hidden="true" />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {!modelAvailable && (
+                  <div className="ga-offline-card" role="status">
+                    <TriangleAlert size={15} aria-hidden="true" />
+                    <div>
+                      <strong>智能问答暂离线（不影响正常做账）</strong>
+                      <p>{modelUnavailableNotice}</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+              <footer className="ga-composer">
+                <form
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    sendQuestion(question);
+                  }}
+                >
+                  <label className="sr-only" htmlFor="ga-question">
+                    向智能财税副驾提问
+                  </label>
+                  <textarea
+                    id="ga-question"
+                    ref={questionInput}
+                    rows={2}
+                    value={question}
+                    maxLength={4000}
+                    disabled={busy || !modelAvailable}
+                    placeholder={
+                      modelAvailable
+                        ? '直接输入大白话问题，系统按您的账号权限查库作答…'
+                        : modelUnavailablePlaceholder
+                    }
+                    onChange={(event) => setQuestion(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (
+                        event.key === 'Enter' &&
+                        !event.shiftKey &&
+                        !isCompositionKey(event)
+                      ) {
+                        event.preventDefault();
+                        sendQuestion(question);
+                      }
+                    }}
+                  />
+                  <button
+                    aria-label="发送智能财税副驾问题"
+                    type="submit"
+                    disabled={busy || !modelAvailable || !assistantQuestion(question)}
+                  >
+                    {busy ? <LoaderCircle className="spinner" size={17} /> : <ArrowUp size={18} />}
+                  </button>
+                </form>
+                <p className="ga-composer-note">
+                  <ShieldCheck size={12} />
+                  <span>{roleMeta.scopeBadge} · 越权查询自动拦截</span>
+                  <span>{question.length > 3500 ? `${question.length}/4000` : '回车直接发送'}</span>
+                </p>
+              </footer>
+            </>
+          )}
         </>
       ) : null}
     </div>

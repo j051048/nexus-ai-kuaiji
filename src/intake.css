@@ -808,3 +808,49 @@
     scroll-margin-bottom: 96px;
   }
 }
+.fsc-oa-check-card,
+.fsc-voucher-plain-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--brand-soft);
+  color: var(--text-primary);
+  font-size: var(--font-size-xs);
+  margin-bottom: 10px;
+}
+.fsc-oa-check-card {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 10px;
+  color: var(--brand);
+}
+.fsc-oa-check-card strong {
+  display: block;
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+}
+.fsc-oa-check-card small {
+  color: var(--text-secondary);
+}
+.fsc-voucher-plain-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--brand);
+}
+.fsc-voucher-plain-desc {
+  margin: 0;
+  font-size: var(--font-size-base);
+  font-weight: var(--weight-strong);
+  color: var(--text-primary);
+}
+.fsc-voucher-plain-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  color: var(--text-secondary);
+}

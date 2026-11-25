@@ -6,6 +6,12 @@
   margin-left: 232px;
   width: calc(100% - 232px);
   min-width: 0;
+  transition: padding-right var(--motion-base) var(--motion-ease);
+}
+@media (min-width: 1181px) {
+  .agent-shell.assistant-docked .main-shell {
+    padding-right: 408px;
+  }
 }
 .agent-shell .sidebar {
   width: 232px;

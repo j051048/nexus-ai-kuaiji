@@ -1,5 +1,5 @@
 import { useEffect, useRef, type ReactNode } from 'react';
-import { Sparkles, X } from 'lucide-react';
+import { PanelRightClose, PanelRightOpen, ShieldCheck, Sparkles, X } from 'lucide-react';
 import './assistant-drawer.css';
 
 export type AssistantDrawerMode = 'context' | 'global';
@@ -8,6 +8,9 @@ export function AssistantDrawer({
   mode,
   contextAvailable,
   contextLabel,
+  scopeBadge,
+  docked = false,
+  onToggleDock,
   onModeChange,
   onClose,
   children,
@@ -15,6 +18,9 @@ export function AssistantDrawer({
   mode: AssistantDrawerMode;
   contextAvailable: boolean;
   contextLabel?: string;
+  scopeBadge?: string;
+  docked?: boolean;
+  onToggleDock?: () => void;
   onModeChange: (mode: AssistantDrawerMode) => void;
   onClose: () => void;
   children: ReactNode;
@@ -23,9 +29,9 @@ export function AssistantDrawer({
   const close = useRef(onClose);
   close.current = onClose;
   useEffect(() => {
-    closeButton.current?.focus();
+    if (!docked) closeButton.current?.focus();
     const escape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
+      if (event.key === 'Escape' && !docked) {
         event.preventDefault();
         event.stopPropagation();
         close.current();
@@ -33,60 +39,82 @@ export function AssistantDrawer({
     };
     document.addEventListener('keydown', escape, true);
     return () => document.removeEventListener('keydown', escape, true);
-  }, []);
+  }, [docked]);
+
   return (
-    <div className="assistant-unified-layer">
+    <div className={'assistant-unified-layer' + (docked ? ' docked' : '')}>
       <aside
-        className={`assistant-unified-drawer ${mode}`}
-        role="dialog"
+        className={`assistant-unified-drawer ${mode}` + (docked ? ' docked' : '')}
+        role={docked ? 'complementary' : 'dialog'}
         aria-modal="false"
-        aria-label="会计助手"
+        aria-label="智能财税副驾"
       >
         <header className="assistant-unified-header">
           <span className="assistant-unified-mark">
             <Sparkles size={17} />
           </span>
           <div>
-            <strong>会计助手</strong>
-            <small>{mode === 'context' ? '当前凭证依据' : '全账套与跨期对话'}</small>
+            <strong>智能财税副驾</strong>
+            <small>{mode === 'context' ? '当前凭证依据核对' : '按账号权限查库 · 随时提问'}</small>
           </div>
-          <button
-            ref={closeButton}
-            type="button"
-            className="icon-button"
-            aria-label="关闭会计助手"
-            onClick={onClose}
-          >
-            <X size={18} />
-          </button>
+          <div className="assistant-unified-header-actions">
+            {onToggleDock && (
+              <button
+                type="button"
+                className="icon-button assistant-dock-btn"
+                aria-label={docked ? '切换为浮层窗口' : '固定常驻在右侧'}
+                title={docked ? '切换为浮层窗口' : '固定常驻在右侧'}
+                onClick={onToggleDock}
+              >
+                {docked ? <PanelRightClose size={17} /> : <PanelRightOpen size={17} />}
+              </button>
+            )}
+            <button
+              ref={closeButton}
+              type="button"
+              className="icon-button"
+              aria-label="收起智能财税副驾"
+              title="收起为悬浮球"
+              onClick={onClose}
+            >
+              <X size={18} />
+            </button>
+          </div>
         </header>
-        <div className="assistant-unified-tabs" role="tablist" aria-label="会计助手模式">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={mode === 'context'}
-            className={mode === 'context' ? 'active' : ''}
-            disabled={!contextAvailable}
-            title={contextAvailable ? contextLabel : '先打开一张凭证再切换'}
-            onClick={() => onModeChange('context')}
-          >
-            当前凭证
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={mode === 'global'}
-            className={mode === 'global' ? 'active' : ''}
-            onClick={() => onModeChange('global')}
-          >
-            全账套对话
-          </button>
-          {contextAvailable && contextLabel && (
-            <span className="assistant-context-pill" title={contextLabel}>
-              {contextLabel}
-            </span>
-          )}
-        </div>
+        {scopeBadge && (
+          <div className="assistant-scope-strip" aria-label="当前数据查询权限范围">
+            <ShieldCheck size={14} aria-hidden="true" />
+            <span>{scopeBadge}</span>
+          </div>
+        )}
+        {contextAvailable && (
+          <div className="assistant-unified-tabs" role="tablist" aria-label="智能财税副驾模式">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mode === 'context'}
+              className={mode === 'context' ? 'active' : ''}
+              title={contextLabel}
+              onClick={() => onModeChange('context')}
+            >
+              当前凭证
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mode === 'global'}
+              className={mode === 'global' ? 'active' : ''}
+              onClick={() => onModeChange('global')}
+            >
+              直接提问
+            </button>
+            {contextLabel && (
+              <span className="assistant-context-pill" title={contextLabel}>
+                {contextLabel}
+              </span>
+            )}
+          </div>
+        )}
         <div className="assistant-unified-body">{children}</div>
       </aside>
     </div>

@@ -148,7 +148,7 @@ describe('岗位首页围绕主任务收敛', () => {
   it('授权说明默认收折，身份仍在可访问区域内', () => {
     const html = render('employee');
     expect(html).toMatch(/<section[^>]*aria-label="当前职责与授权范围"[^>]*>\s*<details/);
-    expect(html).toContain('<span class="sr-only">我的工作台</span>');
+    expect(html).toContain('<span class="sr-only">子公司报销门户</span>');
     expect(html).toContain('查看岗位与操作说明');
     expect(html).not.toMatch(/<details[^>]*\bopen(?:="")?[^>]*>/);
   });

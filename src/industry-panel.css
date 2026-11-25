@@ -1,0 +1,104 @@
+.fsc-industry-panel {
+  margin: 0 0 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--brand);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  display: grid;
+  gap: 12px;
+}
+.fsc-industry-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+.fsc-industry-title {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.fsc-industry-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  background: var(--brand-soft);
+  color: var(--brand);
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+.fsc-industry-title strong {
+  display: block;
+  font-size: var(--font-size-base);
+  color: var(--text-primary);
+}
+.fsc-industry-title p {
+  margin: 2px 0 0;
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+.fsc-industry-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  background: var(--brand-soft);
+  color: var(--brand);
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-strong);
+}
+.fsc-industry-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.fsc-industry-grid h3 {
+  margin: 0 0 6px;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+.fsc-industry-grid ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 5px;
+}
+.fsc-industry-grid li {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: var(--font-size-xs);
+  color: var(--text-primary);
+  line-height: 1.45;
+}
+.fsc-industry-grid li svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--brand);
+}
+.fsc-industry-kpis {
+  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+.fsc-industry-kpis b {
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-subtle);
+  color: var(--text-primary);
+  font-weight: var(--weight-medium);
+}
+@media (max-width: 780px) {
+  .fsc-industry-grid {
+    grid-template-columns: 1fr;
+  }
+}

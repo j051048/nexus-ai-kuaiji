@@ -23,15 +23,19 @@ describe('roleHomeGuide', () => {
     const guide = roleHomeGuide(
       profile({ role: 'employee', can_submit: true, can_review: true, can_accounting: true }),
     );
-    expect(guide.label).toBe('我的工作台');
+    expect(guide.label).toBe('子公司报销门户');
     expect(guide.actions).toEqual(
-      expect.arrayContaining(['提交本人事项与补件', '凭证复核与审核后导出', '进入当前授权账套']),
+      expect.arrayContaining([
+        '提交本人报销与补件',
+        '凭证复核与绿通放行',
+        '办理所分管子公司账套',
+      ]),
     );
   });
 
   it('keeps a viewer without capabilities read-only', () => {
     const guide = roleHomeGuide(profile({ role: 'viewer' }));
-    expect(guide.actions).toEqual(['读取当前授权范围']);
+    expect(guide.actions).toEqual(['只读查阅当前授权范围']);
   });
 
   it('shows the service-side authorization boundary', () => {
@@ -63,9 +67,9 @@ describe('roleHomeGuide', () => {
   it('does not expose firm operations hints through the deprecated can_operations flag', () => {
     expect(
       roleHomeGuide(profile({ can_operations: true, can_firm_operations: false })).actions,
-    ).not.toContain('事务所运营视图');
+    ).not.toContain('查看集团共享中心总览');
     expect(roleHomeGuide(profile({ can_firm_operations: true })).actions).toContain(
-      '事务所运营视图',
+      '查看集团共享中心总览',
     );
   });
 });

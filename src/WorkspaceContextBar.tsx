@@ -13,21 +13,20 @@ interface CloseRow {
 }
 
 const roleLabels: Record<string, string> = {
-  owner: '事务所负责人',
-  admin: '事务所管理员',
-  reviewer: '复核会计',
-  operator: '记账会计',
-  finance: '企业财务',
-  viewer: '只读',
-  employee: '企业员工',
-  client_member: '企业联系人',
+  owner: '共享中心负责人',
+  admin: '共享中心管理员',
+  reviewer: '总账复核主管',
+  operator: '分管核算会计',
+  finance: '子公司财务',
+  viewer: '只读查阅成员',
+  employee: '子公司员工',
+  client_employee: '子公司员工',
+  client_member: '子公司成员',
 };
 
 /**
- * Persistent "unit / identity / period" strip. It reports the facts the shell
- * already owns (firm, working company, role, period) and the lock state the
- * close ledger reports; switching stays on the existing book-entry points so
- * this strip cannot invent an authorization.
+ * 全局「共享中心 / 当前子公司 / 岗位身份 / 会计期间 / 智能与纯手工模式」常驻切换条。
+ * 切换子公司或会计期间时同步触发全局请求防串台护栏与当前视图联动，不越权造假。
  */
 export function WorkspaceContextBar({
   session,
@@ -37,6 +36,9 @@ export function WorkspaceContextBar({
   period,
   bookId,
   unsavedLabels,
+  manualMode = false,
+  dutySummary,
+  onToggleManualMode,
   onPeriodChange,
   onCompanyChange,
   onOpenBooks,
@@ -49,6 +51,11 @@ export function WorkspaceContextBar({
   bookId?: string;
   /** 工作区里当前有未保存编辑的来源标签（由 App 汇总，纯字符串，避免把守卫模块打进首屏）。 */
   unsavedLabels?: string[];
+  /** 是否处于离线/纯手工办理模式 */
+  manualMode?: boolean;
+  /** 首屏一句大白话岗位职责摘要 */
+  dutySummary?: string;
+  onToggleManualMode?: () => void;
   onPeriodChange: (period: string) => void;
   onCompanyChange?: (companyId: string) => void;
   onOpenBooks: () => void;
@@ -69,7 +76,6 @@ export function WorkspaceContextBar({
       setClose(null);
       return;
     }
-    // 局部激活标记 + 全局 epoch + AbortController 三重保险：无论通过顶部条还是浏览器导航切上下文，旧响应绝不写回。
     let active = true;
     const scope = scopedController();
     const query = new URLSearchParams({ book_id: bookId, period });
@@ -83,8 +89,6 @@ export function WorkspaceContextBar({
       })
       .catch(() => {
         if (!active || !isCurrentScope(scope.epoch)) return;
-        // The strip never blocks the page: an unreadable lock state is shown as
-        // unknown instead of being guessed as open.
         setClose(null);
         setError('锁期状态待核实');
       })
@@ -101,103 +105,134 @@ export function WorkspaceContextBar({
       ? '锁期状态待核实'
       : close?.status === 'locked' || close?.status === 'published'
         ? '已锁期'
-        : close
-          ? '未锁期'
-          : '未锁期';
+        : '未锁期';
+
+  const hasMultiCompanies = !!companies && companies.length > 0 && !!onCompanyChange;
 
   return (
-    <section className="workspace-context-bar" aria-label="当前单位、身份与期间">
-      <div className="workspace-context-item">
-        <span className="workspace-context-label">我所属单位</span>
-        <strong>{session.firm_name || '未载入'}</strong>
-      </div>
-      <div className="workspace-context-item">
-        <span className="workspace-context-label">当前办理单位</span>
-        {companies && companies.length > 0 && onCompanyChange ? (
-          <select
-            aria-label="当前办理单位"
-            value={companyId ?? ''}
-            onChange={(event) => {
-              const next = event.target.value;
-              if (next === (companyId ?? '')) return;
-              const nextName = companies.find((item) => item.id === next)?.name;
+    <section className="workspace-context-bar" aria-label="当前子公司、岗位与会计期间">
+      <div className="workspace-context-row">
+        <div className="workspace-context-item">
+          <span className="workspace-context-label">所属中心</span>
+          <strong>{session.firm_name || '未载入'}</strong>
+        </div>
+        <div className="workspace-context-item workspace-context-company">
+          <span className="workspace-context-label">当前子公司</span>
+          {hasMultiCompanies ? (
+            <select
+              aria-label="当前办理子公司"
+              value={companyId ?? ''}
+              onChange={(event) => {
+                const next = event.target.value;
+                if (next === (companyId ?? '')) return;
+                const nextName =
+                  next === ''
+                    ? '全部已授权子公司'
+                    : companies.find((item) => item.id === next)?.name;
+                void (async () => {
+                  const proceed = await confirmLeaveIfDirty({
+                    title: '切换当前办理子公司？',
+                    description: '切换子公司会同步更新本页数据、账套与右侧财税助手范围',
+                    company: nextName ?? (next || undefined),
+                  });
+                  if (!proceed) return;
+                  beginScope();
+                  onCompanyChange(next);
+                })();
+              }}
+            >
+              <option value="">
+                {companies.length > 1 ? `全部已授权子公司（${companies.length}家）` : '未选择'}
+              </option>
+              {companies.map((company) => (
+                <option key={company.id} value={company.id}>
+                  {company.name}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <strong>{companyName ?? '未选择'}</strong>
+          )}
+          <button
+            type="button"
+            className="text-button"
+            onClick={() => {
               void (async () => {
                 const proceed = await confirmLeaveIfDirty({
-                  title: '切换办理单位？',
-                  description: '切换单位会重新加载该单位的账套与任务',
-                  company: nextName ?? (next || undefined),
+                  title: '前往子公司账套列表？',
+                  description: '进入总账与凭证中心可切换该公司的具体账套',
                 });
                 if (!proceed) return;
                 beginScope();
-                onCompanyChange(next);
+                onOpenBooks();
               })();
             }}
           >
-            <option value="">未选择</option>
-            {companies.map((company) => (
-              <option key={company.id} value={company.id}>
-                {company.name}
-              </option>
-            ))}
-          </select>
-        ) : (
-          <strong>{companyName ?? '未选择'}</strong>
-        )}
-        <button
-          type="button"
-          className="text-button"
-          onClick={() => {
-            void (async () => {
-              const proceed = await confirmLeaveIfDirty({
-                title: '离开当前办理单位？',
-                description: '去会计工作台重新选择单位会替换当前单位的数据',
-              });
-              if (!proceed) return;
-              beginScope();
-              onOpenBooks();
-            })();
-          }}
-        >
-          切换
-        </button>
+            账套
+          </button>
+        </div>
+        <div className="workspace-context-item">
+          <span className="workspace-context-label">岗位</span>
+          <strong>{roleLabels[session.role ?? ''] ?? session.role ?? '未载入'}</strong>
+        </div>
+        <label className="workspace-context-item workspace-context-period">
+          <span className="workspace-context-label">会计期间</span>
+          <input
+            type="month"
+            aria-label="当前会计期间"
+            min="2000-01"
+            max="2099-12"
+            value={period}
+            onChange={(event) => {
+              const next = event.target.value;
+              if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(next) || next === period) return;
+              void (async () => {
+                const proceed = await confirmLeaveIfDirty({
+                  title: '切换会计期间？',
+                  description: '切换会计期间会重新加载该期间的账务与报税进度',
+                  period: next,
+                });
+                if (!proceed) return;
+                beginScope();
+                onPeriodChange(next);
+              })();
+            }}
+          />
+        </label>
+        <div className="workspace-context-status-group">
+          {onToggleManualMode && (
+            <button
+              type="button"
+              className={'workspace-mode-pill' + (manualMode ? ' manual' : '')}
+              aria-pressed={manualMode}
+              title={
+                manualMode
+                  ? '当前已切为纯手工办理模式，点击恢复智能辅助'
+                  : '云端智能辅助在线；如遇断网或需纯手工操作，可一键切换纯手工模式'
+              }
+              onClick={onToggleManualMode}
+            >
+              <span className="workspace-mode-dot" aria-hidden="true" />
+              {manualMode ? '纯手工模式' : '智能辅助在线'}
+            </button>
+          )}
+          <span
+            className={
+              'workspace-context-lock' +
+              (lockLabel === '已锁期' ? ' locked' : '') +
+              (lockLabel === '锁期状态待核实' ? ' unknown' : '')
+            }
+          >
+            {lockLabel}
+          </span>
+        </div>
       </div>
-      <div className="workspace-context-item">
-        <span className="workspace-context-label">身份</span>
-        <strong>{roleLabels[session.role ?? ''] ?? session.role ?? '未载入'}</strong>
-      </div>
-      <label className="workspace-context-item workspace-context-period">
-        <span className="workspace-context-label">期间</span>
-        <input
-          type="month"
-          aria-label="当前会计期间"
-          min="2000-01"
-          max="2099-12"
-          value={period}
-          onChange={(event) => {
-            const next = event.target.value;
-            if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(next) || next === period) return;
-            void (async () => {
-              const proceed = await confirmLeaveIfDirty({
-                title: '切换会计期间？',
-                description: '切换期间会重新加载当前账套在该期间的数据',
-                period: next,
-              });
-              if (!proceed) return;
-              beginScope();
-              onPeriodChange(next);
-            })();
-          }}
-        />
-      </label>
-      <span
-        className={
-          'workspace-context-lock' +
-          (lockLabel === '已锁期' ? ' locked' : '') +
-          (lockLabel === '锁期状态待核实' ? ' unknown' : '')
-        }
-      >
-        {lockLabel}
-      </span>
+      {dutySummary && (
+        <p className="workspace-duty-tip">
+          <span className="workspace-duty-badge">岗位指引</span>
+          <span>{dutySummary}</span>
+        </p>
+      )}
     </section>
   );
 }

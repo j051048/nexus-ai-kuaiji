@@ -33,7 +33,7 @@ describe('workspace context bar', () => {
     const html = render();
     expect(html).toContain('虚构示例事务所');
     expect(html).toContain('虚构示例制造有限公司');
-    expect(html).toContain('复核会计');
+    expect(html).toContain('总账复核主管');
     expect(html).toContain('value="2026-10"');
   });
 

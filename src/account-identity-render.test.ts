@@ -37,17 +37,17 @@ describe('shared signed-in identity', () => {
       }),
     );
     const summary = html.split('</summary>')[0];
-    expect(summary).toContain('所属事务所');
+    expect(summary).toContain('所属共享中心');
     expect(summary).toContain('虚构事务所');
-    expect(summary).toContain('事务所负责人');
+    expect(summary).toContain('共享中心负责人');
   });
   it('shows an actual job name and account, with keyboard-native disclosure and no secrets', () => {
     const html = renderToStaticMarkup(createElement(AccountIdentity, { session, profile }));
     expect(html).toContain('aria-label="当前登录身份"');
-    expect(html).toContain('企业员工');
+    expect(html).toContain('子公司员工');
     expect(html).toContain('虚构员工');
     expect(html).toContain('<summary');
-    expect(html).toContain('授权范围');
+    expect(html).toContain('授权数据范围');
     expect(html).not.toContain(session.token);
     expect(html).not.toContain('我的工作台');
     expect(html).not.toContain('超级管理员');

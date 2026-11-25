@@ -44,33 +44,33 @@ export function AccountIdentity(props: AccountIdentityOptions) {
         <div className="account-identity-details">
           <dl>
             <div>
-              <dt>{identity.clientIdentity ? '服务事务所' : '所属事务所'}</dt>
+              <dt>{identity.clientIdentity ? '集团共享财务中心' : '所属共享中心'}</dt>
               <dd>{identity.confirmed ? identity.firm : '待确认'}</dd>
             </div>
             {identity.companyMemberships.map((company) => (
               <div key={company.id}>
-                <dt>企业成员身份</dt>
+                <dt>子公司成员身份</dt>
                 <dd>
                   {company.name} · {company.role}
                 </dd>
               </div>
             ))}
             <div>
-              <dt>授权范围</dt>
+              <dt>授权数据范围</dt>
               <dd>{identity.scope}</dd>
             </div>
           </dl>
           {identity.confirmed ? (
             <>
               {identity.capabilities.length > 0 && (
-                <p>当前具备：{identity.capabilities.join('、')}。</p>
+                <p>当前岗位职责：{identity.capabilities.join('、')}。</p>
               )}
               <p>
-                各项能力仅适用于获授权的具体企业、部门或账套，以办理时的权限核验为准。凭证仍须会计复核后导出。
+                各项能力仅适用于获授权的具体子公司、部门或账套，以办理时的服务端权限核验为准。凭证须独立复核后入账导出。
               </p>
             </>
           ) : (
-            <p>当前权限尚未确认，请重新读取权限或联系管理员。此处不会自动重试业务操作。</p>
+            <p>当前权限尚未确认，请重新读取权限或联系共享中心管理员。此处不会自动重试业务操作。</p>
           )}
         </div>
       </details>

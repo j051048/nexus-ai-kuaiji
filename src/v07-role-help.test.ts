@@ -19,7 +19,7 @@ describe('V07 岗位入门复用主身份，不把额外权限变成新的主任
   it('员工有可执行的第一步、交接对象和虚构示例，不把提交说成记账完成', () => {
     const guide = roleHomeGuide(profile({ can_submit: true }));
     expect(guide.firstStep).toContain('上传');
-    expect(guide.handoff).toContain('审批');
+    expect(guide.handoff).toContain('放行');
     expect(guide.example).toContain('例如');
     expect(guide.example).not.toMatch(/已入账|记账完成|自动报税/);
   });
@@ -32,18 +32,18 @@ describe('V07 岗位入门复用主身份，不把额外权限变成新的主任
         can_accounting: true,
       }),
     );
-    expect(guide.label).toBe('财务核验');
+    expect(guide.label).toBe('子公司财务核验');
     expect(guide.firstStep).toContain('核对');
-    expect(guide.handoff).toContain('会计');
+    expect(guide.handoff).toContain('共享财务中心');
     expect(guide.firstStep).not.toContain('批量复核');
   });
-  it('会计解释原件、草稿与审核后导出，负责人先安排客户与期限', () => {
+  it('会计解释原件、草稿与审核后导出，负责人先安排子公司进度与分工', () => {
     const accountant = roleHomeGuide(profile({ display_role: 'accountant', can_accounting: true }));
-    expect(accountant.firstStep).toContain('原件');
+    expect(accountant.firstStep).toContain('分录草稿');
     expect(accountant.handoff).toContain('复核');
     const owner = roleHomeGuide(profile({ display_role: 'firm_owner', can_firm_operations: true }));
-    expect(owner.firstStep).toContain('客户');
-    expect(owner.handoff).toContain('负责人');
+    expect(owner.firstStep).toContain('子公司');
+    expect(owner.handoff).toContain('分工');
   });
   it('岗位名与能力错配时解释联系管理员，不指导执行没有的权限', () => {
     const guide = roleHomeGuide(profile({ display_role: 'finance' }));
@@ -57,7 +57,7 @@ describe('V07 岗位入门复用主身份，不把额外权限变成新的主任
     });
     const guide = roleHomeGuide(current);
     expect(guide.firstStep).toContain('查看');
-    expect(guide.handoff).toContain('负责人');
+    expect(guide.handoff).toContain('会计');
     expect(guide.example).not.toContain('不得出现在示例中');
   });
 });

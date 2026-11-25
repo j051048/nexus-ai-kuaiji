@@ -44,15 +44,15 @@ function me(patch: Partial<Me> = {}): Me {
   };
 }
 const roleLabels: [PresentationRole, string][] = [
-  ['employee', '企业员工'],
-  ['approver', '部门审批人'],
-  ['finance', '企业财务'],
-  ['manager', '企业管理人员'],
-  ['accountant', '经办会计'],
-  ['reviewer', '复核会计'],
-  ['firm_owner', '事务所负责人'],
-  ['admin', '事务所管理员'],
-  ['viewer', '只读成员'],
+  ['employee', '子公司员工'],
+  ['approver', '部门负责人'],
+  ['finance', '子公司财务'],
+  ['manager', '子公司负责人'],
+  ['accountant', '分管核算会计'],
+  ['reviewer', '总账复核主管'],
+  ['firm_owner', '共享中心负责人'],
+  ['admin', '共享中心管理员'],
+  ['viewer', '只读查阅成员'],
 ];
 
 describe('account identity presentation without permission escalation', () => {
@@ -62,7 +62,7 @@ describe('account identity presentation without permission escalation', () => {
       profile: profile({ companies: [{ id: 'other', name: '仅可办理的客户' }] }),
       me: { ...me(), company_memberships: [{ id: 'a', name: '本人企业', role: 'employee' }] },
     });
-    expect(value).toMatchObject({ unitLabel: '所属企业', unitName: '本人企业' });
+    expect(value).toMatchObject({ unitLabel: '所属子公司', unitName: '本人企业' });
     expect(value.unitName).not.toContain('仅可办理');
   });
   it.each(['owner', 'admin', 'operator', 'reviewer', 'viewer'] as const)(
@@ -71,9 +71,9 @@ describe('account identity presentation without permission escalation', () => {
       const value = accountIdentity({
         session: { ...session, role },
         profile: profile({ display_role: 'accountant' }),
-        me: me({ firms: [{ id: 'firm-a', name: '最新事务所名称', role }] }),
+        me: me({ firms: [{ id: 'firm-a', name: '最新共享中心名称', role }] }),
       });
-      expect(value).toMatchObject({ unitLabel: '所属事务所', unitName: '最新事务所名称' });
+      expect(value).toMatchObject({ unitLabel: '所属共享中心', unitName: '最新共享中心名称' });
     },
   );
   it('lists all joined companies without silently choosing a primary one, including admin pages', () => {
@@ -120,7 +120,7 @@ describe('account identity presentation without permission escalation', () => {
         profile: profile(),
         me: { ...me(), company_memberships } as Me,
       });
-      expect(value.unitName).toBe('所属企业待确认');
+      expect(value.unitName).toBe('所属子公司待确认');
     }
     expect(
       accountIdentity({
@@ -141,7 +141,7 @@ describe('account identity presentation without permission escalation', () => {
       firm: '示例事务所',
       confirmed: true,
     });
-    expect(value.scope).toBe('仅限获授权的企业、部门及账套');
+    expect(value.scope).toBe('仅限获授权的子公司、部门及账套');
   });
 
   it('does not turn additional review authority into a finance primary job change', () => {
@@ -154,8 +154,12 @@ describe('account identity presentation without permission escalation', () => {
         can_accounting: true,
       }),
     });
-    expect(value.role).toBe('企业财务');
-    expect(value.capabilities).toEqual(['核验获授权企业资料', '查看获授权账套', '复核获授权账套']);
+    expect(value.role).toBe('子公司财务');
+    expect(value.capabilities).toEqual([
+      '核验获授权子公司资料',
+      '查看获授权账套',
+      '复核获授权账套',
+    ]);
     expect(value.scope).not.toContain('全部');
   });
 
@@ -181,14 +185,14 @@ describe('account identity presentation without permission escalation', () => {
       }),
     });
     expect(value.capabilities).toEqual([
-      '提交本人业务',
+      '提交本人报销与单据',
       '审批获授权部门事项',
-      '核验获授权企业资料',
+      '核验获授权子公司资料',
       '查看获授权账套',
       '复核获授权账套',
-      '管理获授权企业与人员',
+      '管理获授权子公司与人员',
     ]);
-    expect(value.role).toBe('企业员工');
+    expect(value.role).toBe('子公司员工');
   });
 
   it('does not mislabel legacy firm admin fallback as firm owner', () => {
@@ -201,7 +205,7 @@ describe('account identity presentation without permission escalation', () => {
           can_firm_operations: true,
         }),
       }).role,
-    ).toBe('事务所管理员');
+    ).toBe('共享中心管理员');
   });
 
   it('requires matched live me permissions for all-firm scope', () => {
@@ -217,13 +221,13 @@ describe('account identity presentation without permission escalation', () => {
     expect(
       accountIdentity({ session, profile: profile({ display_role: 'firm_owner' }), me: owner })
         .scope,
-    ).toBe('本事务所全部企业（不含其他事务所）');
+    ).toBe('本集团共享中心全部子公司（严格隔离外部租户）');
     expect(
       accountIdentity({
         session: { ...session, role: 'owner' },
         profile: profile({ can_firm_operations: true }),
       }).scope,
-    ).toBe('仅限获授权的企业、部门及账套');
+    ).toBe('仅限获授权的子公司、部门及账套');
   });
 
   it('waits for the profile instead of guessing a customer primary job from session role', () => {
@@ -293,7 +297,7 @@ describe('account identity presentation without permission escalation', () => {
       }),
       profile: profile(),
     });
-    expect(value.role).toBe('企业员工');
+    expect(value.role).toBe('子公司员工');
     expect(value.role + value.scope + value.capabilities.join()).not.toMatch(/超级|平台/);
   });
 });
@@ -316,13 +320,13 @@ describe('administration identity uses current membership and management scope',
     });
     const admin = accountIdentity({ session, me: identity, administration: true });
     expect(admin.role).toBe(workspace.role);
-    expect(admin.role).toBe('企业管理人员');
-    expect(admin.scope).toBe('仅限获授权的企业、部门及账套');
+    expect(admin.role).toBe('子公司负责人');
+    expect(admin.scope).toBe('仅限获授权的子公司、部门及账套');
   });
 
   it.each([
-    ['owner', '事务所负责人'],
-    ['admin', '事务所管理员'],
+    ['owner', '共享中心负责人'],
+    ['admin', '共享中心管理员'],
   ] as const)('shows %s using a matched current firm', (role, label) => {
     const identity = me({
       firms: [{ id: 'firm-a', name: '示例事务所', role }],
@@ -338,8 +342,8 @@ describe('administration identity uses current membership and management scope',
     ).toMatchObject({
       role: label,
       confirmed: true,
-      scope: '本事务所全部企业（不含其他事务所）',
-      capabilities: ['管理获授权企业与人员'],
+      scope: '本集团共享中心全部子公司（严格隔离外部租户）',
+      capabilities: ['管理获授权子公司与人员'],
     });
   });
 
@@ -354,19 +358,19 @@ describe('administration identity uses current membership and management scope',
       },
     });
     expect(accountIdentity({ session, me: identity, administration: true })).toMatchObject({
-      role: '企业管理人员',
+      role: '子公司负责人',
       confirmed: true,
-      scope: '仅限获授权的企业、部门及账套',
-      capabilities: ['管理获授权企业与人员'],
+      scope: '仅限获授权的子公司、部门及账套',
+      capabilities: ['管理获授权子公司与人员'],
     });
   });
 
   it.each([
-    ['operator', '经办会计'],
-    ['reviewer', '复核会计'],
-    ['viewer', '只读成员'],
-    ['client_member', '企业成员'],
-    ['client_employee', '企业成员'],
+    ['operator', '分管核算会计'],
+    ['reviewer', '总账复核主管'],
+    ['viewer', '只读查阅成员'],
+    ['client_member', '子公司成员'],
+    ['client_employee', '子公司成员'],
   ] as const)('shows a known %s with a clear lack of admin permission', (role, label) => {
     const identity = me({ firms: [{ id: 'firm-a', name: '示例事务所', role }] });
     expect(accountIdentity({ session, me: identity, administration: true })).toMatchObject({

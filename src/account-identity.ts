@@ -11,35 +11,35 @@ export interface AccountIdentityOptions {
 }
 
 const primaryRoles: Record<PresentationRole, string> = {
-  employee: '企业员工',
-  approver: '部门审批人',
-  finance: '企业财务',
-  manager: '企业管理人员',
-  accountant: '经办会计',
-  reviewer: '复核会计',
-  firm_owner: '事务所负责人',
-  admin: '事务所管理员',
-  viewer: '只读成员',
+  employee: '子公司员工',
+  approver: '部门负责人',
+  finance: '子公司财务',
+  manager: '子公司负责人',
+  accountant: '分管核算会计',
+  reviewer: '总账复核主管',
+  firm_owner: '共享中心负责人',
+  admin: '共享中心管理员',
+  viewer: '只读查阅成员',
 };
 
 const membershipRoles: Record<NonNullable<Session['role']>, string> = {
-  owner: '事务所负责人',
-  admin: '事务所管理员',
-  operator: '经办会计',
-  reviewer: '复核会计',
-  viewer: '只读成员',
-  client_employee: '企业成员',
-  client_member: '企业成员',
+  owner: '共享中心负责人',
+  admin: '共享中心管理员',
+  operator: '分管核算会计',
+  reviewer: '总账复核主管',
+  viewer: '只读查阅成员',
+  client_employee: '子公司成员',
+  client_member: '子公司成员',
 };
 
-const limitedScope = '仅限获授权的企业、部门及账套';
-const firmScope = '本事务所全部企业（不含其他事务所）';
-const managementCapability = '管理获授权企业与人员';
+const limitedScope = '仅限获授权的子公司、部门及账套';
+const firmScope = '本集团共享中心全部子公司（严格隔离外部租户）';
+const managementCapability = '管理获授权子公司与人员';
 const companyRoleLabels: Record<CompanyRole, string> = {
-  owner: '企业负责人',
-  admin: '企业管理员',
-  finance: '企业财务',
-  employee: '企业员工',
+  owner: '子公司负责人',
+  admin: '子公司管理员',
+  finance: '子公司财务',
+  employee: '子公司员工',
 };
 
 function memberCompanies(value: Me['company_memberships']) {
@@ -90,7 +90,7 @@ export function accountIdentity({
 } {
   const base = {
     name: session.user_name || '当前账号',
-    firm: session.firm_name || '尚未选择事务所',
+    firm: session.firm_name || '尚未选择共享中心',
   };
   const unresolved = (role: string) => ({
     ...base,
@@ -119,17 +119,17 @@ export function accountIdentity({
     const companies = currentFirm ? memberCompanies(me?.company_memberships) : null;
     return {
       clientIdentity,
-      unitLabel: clientIdentity ? '所属企业' : '所属事务所',
+      unitLabel: clientIdentity ? '所属子公司' : '所属共享中心',
       unitName: !clientIdentity
         ? base.firm
         : companies === null
-          ? '所属企业待确认'
+          ? '所属子公司待确认'
           : companies.length === 0
-            ? '尚未加入企业'
+            ? '尚未加入子公司'
             : companies
                 .slice(0, 2)
                 .map((row) => row.name)
-                .join('、') + (companies.length > 2 ? `等 ${companies.length} 家企业` : ''),
+                .join('、') + (companies.length > 2 ? `等 ${companies.length} 家子公司` : ''),
       companyMemberships: companies ?? [],
     };
   };
@@ -145,7 +145,7 @@ export function accountIdentity({
         ['client_employee', 'client_member'].includes(currentFirm.role) ||
           (currentFirm.role === 'viewer' && canManage && !allFirm),
       ),
-      role: clientMember && canManage ? '企业管理人员' : membershipRoles[currentFirm.role],
+      role: clientMember && canManage ? '子公司负责人' : membershipRoles[currentFirm.role],
       scope: !canManage ? '当前账号没有管理后台权限' : allFirm ? firmScope : limitedScope,
       capabilities: canManage ? [managementCapability] : [],
       confirmed: true,
@@ -158,9 +158,9 @@ export function accountIdentity({
   // membership distinguishes an administrator from the firm's owner.
   const legacyAdmin = !profile.display_role && primary === 'firm_owner' && session.role === 'admin';
   const capabilities: string[] = [];
-  if (profile.can_submit === true) capabilities.push('提交本人业务');
+  if (profile.can_submit === true) capabilities.push('提交本人报销与单据');
   if (profile.can_approve === true) capabilities.push('审批获授权部门事项');
-  if (profile.can_finance === true) capabilities.push('核验获授权企业资料');
+  if (profile.can_finance === true) capabilities.push('核验获授权子公司资料');
   if (profile.can_accounting === true) capabilities.push('查看获授权账套');
   if (profile.can_review === true) capabilities.push('复核获授权账套');
   if (profile.can_manage === true) capabilities.push(managementCapability);

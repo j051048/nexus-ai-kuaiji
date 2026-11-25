@@ -26,6 +26,7 @@ import {
 import { previewExpired, reviewAuthorization, singleOperatorNote } from './review-authorization';
 import { reviewEligibility } from './review-eligibility';
 import { clearReviewSession, readReviewWorkspace, saveReviewWorkspace } from './review-session';
+import { classifyReviewDraft, readTriagePolicy } from './fsc-triage';
 import type { Draft, Session } from './types';
 import './review.css';
 import './workbench-focus.css';
@@ -466,7 +467,7 @@ export function ReviewWorkbench({
           </div>
           <div className="batch-review-filters">
             <label>
-              <span>客户企业</span>
+              <span>子公司</span>
               <select
                 aria-label="复核企业"
                 value={company}
@@ -476,7 +477,7 @@ export function ReviewWorkbench({
                   setOffset(0);
                 }}
               >
-                <option value="">全部获授权企业</option>
+                <option value="">全部获授权子公司</option>
                 {list?.companies.map((item) => (
                   <option key={item.id} value={item.id}>
                     {item.name}
@@ -537,12 +538,38 @@ export function ReviewWorkbench({
             </label>
           </div>
           <div className="review-risk-summary" aria-label="本页风险摘要">
-            <span className="risk-high">高风险 {riskCounts.high}</span>
+            <span className="risk-high">红线拦截 {riskCounts.high}</span>
             <span className="risk-medium">中风险 {riskCounts.medium}</span>
-            <span className="risk-low">低风险 {riskCounts.low}</span>
-            <span className="risk-rule">
-              规则 {list?.items[0]?.risk_rule_version ?? 'review-risk-v1'} · 本页
-            </span>
+            <span className="risk-low">绿通候选 {riskCounts.low}</span>
+            {(() => {
+              const policy = readTriagePolicy();
+              const greenIds = (list?.items ?? [])
+                .filter(
+                  (item) =>
+                    classifyReviewDraft(
+                      {
+                        amount: item.source_amount,
+                        issue_count: item.issue_count,
+                        risk_level: item.risk,
+                        description: item.description,
+                        has_evidence: item.risk_legacy === 'basic_clear',
+                      },
+                      policy,
+                    ).lane === 'green_pass',
+                )
+                .map((item) => item.draft_id);
+              return (
+                <button
+                  type="button"
+                  className="text-button"
+                  disabled={loading || frozen || !greenIds.length}
+                  onClick={() => setSelected(new Set(greenIds))}
+                >
+                  一键勾选绿通合规包（{greenIds.length} 张 · ≤ ¥
+                  {policy.greenMaxYuan.toLocaleString('zh-CN')} 无异常）
+                </button>
+              );
+            })()}
           </div>
           <div className="batch-selection-bar">
             <label>

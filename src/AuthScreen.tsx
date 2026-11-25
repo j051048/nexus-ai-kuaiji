@@ -40,27 +40,27 @@ export function AuthScreen({
             <span />
           </span>
           <span className="brand-name">
-            衡账<span>HENGZHANG · AI</span>
+            衡账<span>集团共享财务中心</span>
           </span>
         </div>
         <div className="auth-story-copy">
-          <p className="eyebrow">清晰可核的财税协同工作台</p>
+          <p className="eyebrow">集团共享财务中台 · 智能辅助与纯手工双轨</p>
           <h1>
-            专注判断。
+            一套中台。
             <br />
-            让每一笔账，
+            管好集团五家公司，
             <br />
-            都有据可循。
+            每笔账清晰可核。
           </h1>
           <p>
-            客户企业、原始凭据与审核记录，
+            子公司报销审批、共享中心制单复核、
             <br />
-            在一个清晰的工作空间相连。
+            与集团经营大屏，在一个工作空间顺畅协同。
           </p>
         </div>
         <div className="auth-story-foot">
           <ShieldCheck size={18} />
-          <span>按事务所与账套授权访问 · 会计审核后导出</span>
+          <span>按子公司与岗位分权隔离 · 断网纯手工照常做账</span>
         </div>
       </section>
       <section className="auth-form-side">
@@ -69,19 +69,19 @@ export function AuthScreen({
             <LockKeyhole size={25} />
           </span>
           <p className="eyebrow">
-            {admin ? 'ORGANIZATION ADMINISTRATION' : 'YOUR ACCOUNTING WORKSPACE'}
+            {admin ? '集团组织与权限管理' : '集团共享财务工作空间'}
           </p>
           <h2>
             {admin
-              ? '登录组织管理后台'
+              ? '登录共享中心管理后台'
               : config?.mode === 'supabase'
-                ? '登录会计工作空间'
-                : '连接会计工作空间'}
+                ? '登录集团共享财务中心'
+                : '连接集团共享财务中心'}
           </h2>
           <p className="auth-intro">
             {admin
-              ? '使用同一工作账号，管理获授权的企业、人员和账套。'
-              : '使用管理员为你开通的账户，访问获授权的企业与账套。'}
+              ? '使用工作账号管理集团旗下子公司档案、岗位分工与智能审核规则。'
+              : '登录您的岗位账号，系统自动进入对应的共享中心工作台或子公司门户。'}
           </p>
           {error && (
             <p className="auth-error" role="alert">
@@ -192,14 +192,14 @@ export function NoAuthorization({
       <span className="auth-symbol">
         <ShieldCheck size={30} />
       </span>
-      <p className="eyebrow">工作空间访问</p>
-      <h1>尚未获得企业或事务所授权</h1>
+      <p className="eyebrow">工作空间访问权限</p>
+      <h1>尚未获得集团共享中心或子公司授权</h1>
       <p>
-        {name}，请让管理员将你的登录邮箱加入工作空间。
+        {name}，请联系集团共享财务中心管理员，将您的登录邮箱加入对应子公司或财务岗位。
         {allowCreate && (
           <>
             <br />
-            如果你负责新建事务所，可以在这里创建独立的工作空间。
+            如果您负责初始化集团共享财务中心，可以在这里创建集团工作空间。
           </>
         )}
       </p>
@@ -216,20 +216,20 @@ export function NoAuthorization({
           }}
         >
           <label className="field-label" htmlFor="first-firm-name">
-            事务所名称
+            集团共享中心名称
           </label>
           <input
             id="first-firm-name"
             value={firmName}
             onChange={(event) => setFirmName(event.target.value)}
             maxLength={120}
-            placeholder="请输入事务所名称"
+            placeholder="例如：星海集团共享财务中心"
             disabled={loading}
             required
           />
           <button className="button primary" disabled={loading || !firmName.trim()}>
             {loading ? <LoaderCircle className="spinner" size={16} /> : <Building2 size={16} />}
-            创建事务所
+            创建集团共享中心
           </button>
         </form>
       )}

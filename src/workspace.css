@@ -2175,3 +2175,209 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* 第三期：邮箱式待办收件箱、绿通/红线分箱与快递物流式进度条 */
+.fsc-mailbox-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 22px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-subtle);
+}
+.fsc-mailbox-tab {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  padding: 6px 13px;
+  background: var(--surface);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+}
+.fsc-mailbox-tab.active {
+  background: var(--brand);
+  border-color: var(--brand);
+  color: var(--on-brand);
+  font-weight: var(--weight-strong);
+}
+.fsc-mailbox-tab.high_risk.active {
+  background: var(--status-danger);
+  border-color: var(--status-danger);
+}
+.fsc-mailbox-batch-btn {
+  margin-left: auto;
+  border: 1px solid var(--brand);
+  border-radius: var(--radius-pill);
+  padding: 6px 14px;
+  background: var(--brand-soft);
+  color: var(--brand);
+  font: inherit;
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-strong);
+  cursor: pointer;
+}
+.fsc-mailbox-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(300px, 0.95fr);
+  align-items: start;
+}
+.fsc-mailbox-split .workspace-task {
+  cursor: pointer;
+}
+.fsc-mailbox-split .workspace-task.fsc-mail-active {
+  background: var(--brand-soft);
+  border-left: 3px solid var(--brand);
+}
+.fsc-mailbox-preview {
+  position: sticky;
+  top: 12px;
+  padding: 18px 20px;
+  border-left: 1px solid var(--border);
+  background: var(--surface);
+  display: grid;
+  gap: 12px;
+}
+.fsc-preview-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+.fsc-preview-head strong {
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+}
+.fsc-preview-title {
+  margin: 0;
+  font-size: 16px;
+  color: var(--text-primary);
+  line-height: 1.4;
+}
+.fsc-preview-facts {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.fsc-preview-facts > div {
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-subtle);
+}
+.fsc-preview-facts dt {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+.fsc-preview-facts dd {
+  margin: 2px 0 0;
+  font-size: var(--font-size-sm);
+  font-weight: var(--weight-strong);
+  color: var(--text-primary);
+}
+.fsc-preview-box {
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--surface-subtle);
+  font-size: var(--font-size-xs);
+}
+.fsc-preview-box.green_pass {
+  border-color: var(--status-success);
+  background: var(--status-success-soft);
+  color: var(--status-success);
+}
+.fsc-preview-box.high_risk {
+  border-color: var(--status-danger);
+  background: var(--status-danger-soft);
+  color: var(--status-danger);
+}
+.fsc-preview-box ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+}
+.fsc-preview-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.fsc-triage-pill {
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-strong);
+}
+.fsc-triage-pill.green_pass {
+  background: var(--status-success-soft);
+  color: var(--status-success);
+}
+.fsc-triage-pill.high_risk {
+  background: var(--status-danger-soft);
+  color: var(--status-danger);
+}
+.fsc-triage-pill.waiting,
+.fsc-triage-pill.standard {
+  background: var(--status-warning-soft);
+  color: var(--status-warning);
+}
+.fsc-oa-badge {
+  padding: 2px 7px;
+  border-radius: var(--radius-sm);
+  background: var(--status-info-soft);
+  color: var(--status-info);
+  font-size: var(--font-size-xs);
+}
+.fsc-logistics-steps {
+  list-style: none;
+  margin: 8px 0 2px;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+.fsc-logistics-steps li {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.fsc-logistics-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-pill);
+  background: var(--border);
+}
+.fsc-logistics-steps li.done {
+  color: var(--status-success);
+}
+.fsc-logistics-steps li.done .fsc-logistics-dot {
+  background: var(--status-success);
+}
+.fsc-logistics-steps li.current {
+  color: var(--brand);
+  font-weight: var(--weight-strong);
+}
+.fsc-logistics-steps li.current .fsc-logistics-dot {
+  background: var(--brand);
+}
+.fsc-logistics-steps li.returned {
+  color: var(--status-danger);
+  font-weight: var(--weight-strong);
+}
+.fsc-logistics-steps li.returned .fsc-logistics-dot {
+  background: var(--status-danger);
+}
+@media (max-width: 1024px) {
+  .fsc-mailbox-split {
+    grid-template-columns: 1fr;
+  }
+  .fsc-mailbox-preview {
+    display: none;
+  }
+}

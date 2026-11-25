@@ -59,8 +59,8 @@ describe('V09 navigation regression', () => {
   it('does not promote management capability into accounting navigation', () => {
     const caps = projectNavigationCapabilities(managerOnly, { ...context, operations: true });
     expect(primaryNav('firm_owner', caps).map((item) => item.id)).toEqual([
-      'firm',
       'insights',
+      'firm',
       'monthly',
       'cases',
     ]);
@@ -119,8 +119,8 @@ describe('V09 navigation regression', () => {
       access: true,
     });
     expect(primaryNav('firm_owner', caps).map((item) => item.id)).toEqual([
-      'firm',
       'insights',
+      'firm',
       'accounting',
       'monthly',
       'cases',

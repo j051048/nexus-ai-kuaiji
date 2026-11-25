@@ -21,6 +21,7 @@ import { WorkflowGuide } from './WorkflowGuide';
 import { reviewGuidance } from './review-guidance';
 import { ClaimPreparation, ReviewResponsibility } from './ReviewResponsibility';
 import { canApproveResponsibility, parseReviewResponsibility } from './review-policy';
+import { parseOaRef } from './fsc-triage';
 import type { Session, Draft, BookDetail, JournalLine } from './types';
 const statusLabels: Record<Draft['status'], string> = {
   draft: '待审核',
@@ -111,8 +112,24 @@ export function Reviewer({
     amountError = '金额须为非负数字，最多保留两位小数。';
   }
   const balanced = !amountError && debit === credit && debit > 0n;
+  const parsedOa = parseOaRef(description);
   return (
     <div className="review-content">
+      <section className="fsc-voucher-plain-summary" aria-label="业务大白话速览与纯手工兜底">
+        <div className="fsc-voucher-plain-head">
+          <strong>业务大白话速览</strong>
+          <span>
+            {balanced ? `借贷已平衡 · ¥${formatCents(debit)}` : '待配平（金额格按 = 键自动补齐差额）'}
+          </span>
+        </div>
+        <p className="fsc-voucher-plain-desc">
+          {parsedOa.cleanText || draft.description || '未填写业务摘要'}
+        </p>
+        <div className="fsc-voucher-plain-tags">
+          <span>原办公审批单：{parsedOa.oaRef || '请核对右侧/下方原始附件'}</span>
+          <span>支持断网纯手工改分录与复核</span>
+        </div>
+      </section>
       <WorkflowGuide
         compact
         label="会计复核引导"

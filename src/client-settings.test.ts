@@ -45,24 +45,24 @@ function render(changes: Partial<WorkspaceProfile> = {}) {
   );
 }
 
-describe('客户门户按需设置', () => {
-  it('把附加会计和企业管理入口放到默认折叠的设置', () => {
+describe('子公司门户按需设置', () => {
+  it('把附加共享财务中台和子公司管理入口放到默认折叠的设置', () => {
     const html = render({ can_manage: true });
     expect(html).toMatch(/<details[^>]*class="client-portal-settings"[^>]*>/);
     expect(html).not.toMatch(/<details[^>]*class="client-portal-settings"[^>]*\bopen=/);
-    expect(html).toContain('会计工作区');
-    expect(html).toContain('企业与账号');
+    expect(html).toContain('共享财务中台');
+    expect(html).toContain('子公司与人员');
   });
   it('缺少能力时不因回调存在就提供管理或专业入口', () => {
     const html = render({ can_manage: false, can_accounting: false });
-    expect(html).not.toContain('会计工作区');
-    expect(html).not.toContain('企业与账号');
+    expect(html).not.toContain('共享财务中台');
+    expect(html).not.toContain('子公司与人员');
     expect(html).not.toContain('client-portal-settings');
   });
-  it('客户财务不出现事务所技术和费用入口', () => {
+  it('子公司财务不出现共享中心技术和运维监控入口', () => {
     const html = render();
-    expect(html).not.toContain('运行可观测性');
-    expect(html).not.toContain('费用与运行监控');
-    expect(html).not.toContain('数据接入');
+    expect(html).not.toContain('系统运行诊断');
+    expect(html).not.toContain('智能用量监控');
+    expect(html).not.toContain('外部数据接入');
   });
 });

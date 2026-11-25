@@ -20,6 +20,7 @@ import { api } from './api';
 import { EmptyState, PageControls, Spinner, StatCard } from './AppPrimitives';
 import { AccountingBookToolbar, bookPipelineStep } from './AccountingBookToolbar';
 import { AnalysisEvidencePanel } from './AnalysisEvidencePanel';
+import { IndustryPanel } from './IndustryPanel';
 import { downloadCsv, formatMoney } from './csv';
 import type { Book, BookDetail, Draft, JournalLine, Me, Session, Workbench } from './types';
 import type { WorkspaceView } from './workspace-route';
@@ -291,22 +292,29 @@ export function BookWorkspaceShell({
               </section>
               <section className="process-strip" aria-label="记账流程">
                 <span>
-                  <span className="step-number">01</span>导入原始流水
+                  <span className="step-number">01</span>导入网银流水 / 传票
                 </span>
                 <ArrowRight size={15} />
                 <span>
-                  <span className="step-number">02</span>规则与模型建议
+                  <span className="step-number">02</span>智能起草或纯手工填制凭证
                 </span>
                 <ArrowRight size={15} />
                 <span>
-                  <span className="step-number">03</span>会计复核与导出
+                  <span className="step-number">03</span>总账复核与四步月结锁期
                 </span>
                 <p>
                   <ShieldCheck size={14} />
-                  每一步保留来源
+                  支持断网纯手工 · 按 = 键自动配平
                 </p>
               </section>
             </>
+          )}
+          {detail?.book && (
+            <IndustryPanel
+              companyId={detail.book.company_id}
+              companyName={detail.book.company_name || detail.book.name}
+              period={detail.book.period}
+            />
           )}
           <div className={'workspace-grid' + (bookView ? ' book-focus' : '')}>
             <div className="work-column">

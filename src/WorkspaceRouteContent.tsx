@@ -459,8 +459,8 @@ export function WorkspaceRouteContent({
           }}
         />
       ) : routeView === 'firm' ? (
-        <EmptyState title="全所工作台由事务所负责人管理" icon={<ShieldCheck size={28} />}>
-          当前账号可以继续处理本企业获授权的资料和事项。
+        <EmptyState title="集团总览由共享中心负责人管理" icon={<ShieldCheck size={28} />}>
+          当前账号可以继续处理获授权子公司的资料、审批与账务事项。
         </EmptyState>
       ) : routeView === 'onboarding' ? (
         <FirmOnboarding
@@ -490,7 +490,17 @@ export function WorkspaceRouteContent({
           onProgress={progress.saveInbox}
         />
       ) : routeView === 'insights' ? (
-        <FirmInsights session={session} />
+        <FirmInsights
+          session={session}
+          initialPeriod={workPeriod}
+          onPeriodChange={setWorkPeriod}
+          onOpenBook={(targetBookId) => {
+            navigate('accounting');
+            setBookId(targetBookId);
+            focusBookRef.current = targetBookId;
+            void initialize(undefined, targetBookId);
+          }}
+        />
       ) : routeView === 'observability' ? (
         <FirmObservability session={session} />
       ) : routeView === 'ingestion' ? (

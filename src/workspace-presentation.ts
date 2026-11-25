@@ -45,38 +45,50 @@ export function workSurface(role: PresentationRole): WorkSurface {
 
 const labels: Record<PresentationRole, { name: string; focus: string; action: string }> = {
   employee: {
-    name: '我的工作台',
-    focus: '先处理本人被退回、待补件和待提交事项。',
-    action: '提交业务',
+    name: '子公司报销门户',
+    focus: '拍照传票附上原办公审批单号即可提交，优先处理被退回和待补件单据。',
+    action: '我要报销',
   },
-  approver: { name: '部门审批', focus: '先处理本部门待审批和超期事项。', action: '处理审批' },
-  finance: { name: '财务核验', focus: '核验资料完整性，再移交会计处理。', action: '核验并移交' },
+  approver: {
+    name: '部门极简放行',
+    focus: '核对原办公审批结果一键放行，优先处理本部门待确认和超期事项。',
+    action: '一键放行',
+  },
+  finance: {
+    name: '子公司财务核验',
+    focus: '核对原办公审批单与票据原件完整性，一键移交集团共享财务中心入账。',
+    action: '核验并移交',
+  },
   manager: {
-    name: '企业工作台',
-    focus: '查看本月经营结果、财务服务进度和待确认事项。',
-    action: '查看报告',
+    name: '子公司管理门户',
+    focus: '一键放行已过原办公审批单据，随时查看本公司本月收支简报与资料进度。',
+    action: '查看经营简报',
   },
   accountant: {
-    name: '会计作业',
-    focus: '处理本人负责的异常、草稿和客户期限。',
-    action: '继续处理',
+    name: '分管核算会计台',
+    focus: '包干处理所分管子公司的票据核对、分录草稿、银企对账与报税月结。',
+    action: '进入待办收件箱',
   },
   reviewer: {
-    name: '会计复核',
-    focus: '先处理待复核凭证、重大差异和退回重提。',
+    name: '总账复核主管台',
+    focus: '批量放行绿通合规单，重点严审高风险红线拦截单与月结总账把关。',
     action: '开始复核',
   },
   firm_owner: {
-    name: '事务所管理',
-    focus: '关注交付风险、人员负载和未分派事项。',
-    action: '协调和分派',
+    name: '集团共享中心总览',
+    focus: '总览集团各子公司收支盈亏、结账锁期进度、内部抵销与人员负荷。',
+    action: '协调与分派',
   },
   admin: {
-    name: '系统管理',
-    focus: '管理企业开通、人员权限和运行异常。',
-    action: '管理企业与账号',
+    name: '共享中心配置台',
+    focus: '管理旗下子公司建档、共享中心分管权限矩阵与智能审核规则。',
+    action: '管理子公司与人员',
   },
-  viewer: { name: '只读工作台', focus: '查看当前授权范围内的事项和报告。', action: '查看' },
+  viewer: {
+    name: '只读查阅工作台',
+    focus: '查看当前授权范围内的单据进度、资料清单和已发布经营简报。',
+    action: '查看',
+  },
 };
 
 const defaultViews: Record<PresentationRole, string> = {
@@ -156,10 +168,10 @@ export function contextMode(profile: WorkspaceProfile | null) {
 
 export function contextTitle(profile: WorkspaceProfile | null, companyName = '') {
   const role = presentationRole(profile);
-  if (role === 'firm_owner') return '全所范围';
-  if (role === 'admin') return '系统管理';
+  if (role === 'firm_owner') return '全集团汇总';
+  if (role === 'admin') return '共享中心管理';
   if (contextMode(profile) === 'single_company' && companyName) return companyName;
-  return companyName || '当前企业';
+  return companyName || '当前子公司';
 }
 
 export function canSeeSurface(profile: WorkspaceProfile | null, surface: WorkSurface) {
