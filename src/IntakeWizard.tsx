@@ -839,7 +839,11 @@ export function IntakeWizard({
             </h3>
             <div className="intake-upload">
               <Upload size={27} />
-              <strong>先拍照或上传发票，系统帮您自动识别填表</strong>
+              <strong>
+                {aiEnabled && (visionReady || structuredReady)
+                  ? '拍照或上传票据，识别后核对预填结果'
+                  : '拍照或上传票据原件，随后填写金额和用途'}
+              </strong>
               <p>
                 支持电子发票 PDF / 数电票 XML / 手机拍纸质票（单张 {directUploadLimitLabel()}，合计
                 50 MB）

@@ -110,12 +110,12 @@ export function ClientPortalShell({
             <button
               type="button"
               className={'client-portal-assistant-btn' + (assistantOpen ? ' active' : '')}
-              aria-label="打开财税智能副驾"
+              aria-label="打开智能财税副驾"
               disabled={navigationLocked}
               onClick={onOpenAssistant}
             >
               <Sparkles size={15} aria-hidden="true" />
-              <span>财税助手</span>
+              <span>智能财税副驾</span>
             </button>
           )}
           {onToggleManualMode && (

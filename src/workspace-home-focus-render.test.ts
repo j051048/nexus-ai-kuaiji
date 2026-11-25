@@ -102,7 +102,7 @@ describe('岗位首页围绕主任务收敛', () => {
     expect(html).toContain('日常收支');
     expect(html.indexOf('今天要提交什么？')).toBeLessThan(html.indexOf('workspace-inbox'));
     expect(html).toContain('我的提交与补件');
-    expect(html).toContain('我的办理进度');
+    expect(html).toContain('审批进度');
     expect(html).not.toContain('class="workspace-accounting-shortcuts"');
     expect(html).not.toContain('class="workspace-runtime-link"');
     expect(html.indexOf('开始批量复核')).toBeGreaterThan(html.indexOf('workspace-inbox'));
@@ -142,7 +142,8 @@ describe('岗位首页围绕主任务收敛', () => {
       counts: {},
       pagination: { total: 0, limit: 20, offset: 0, has_more: false },
     });
-    expect(uncounted).toContain('查看清单');
+    expect(uncounted).toContain('去补件处理');
+    expect(uncounted).toContain('看审批进度');
     expect(uncounted).not.toContain('正在读取');
   });
   it('授权说明默认收折，身份仍在可访问区域内', () => {

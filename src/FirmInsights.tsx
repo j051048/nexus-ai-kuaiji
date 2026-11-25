@@ -37,6 +37,10 @@ import {
   MissingCompanies,
   StandardBreakdown,
 } from './firm-insights-coverage';
+import {
+  buildSubsidiaryCards,
+  type SubsidiaryComparisonRow,
+} from './firm-insights-subsidiaries';
 import './firm-insights.css';
 import './firm-insights-executive.css';
 
@@ -76,23 +80,13 @@ type Staff = {
   blocked: number;
   overdue: number;
 };
-type ComparisonRow = {
-  book_id: string;
-  company_name: string;
-  known: boolean;
-  report_status: string;
+type ComparisonRow = SubsidiaryComparisonRow & {
   assets_cents: number;
   liabilities_cents: number;
   equity_cents: number;
-  revenue_cents: number;
-  expenses_cents: number;
-  profit_cents: number;
   previous_known: boolean;
   previous_revenue_cents: number | null;
   previous_profit_cents: number | null;
-  revenue_delta_cents: number | null;
-  profit_delta_cents: number | null;
-  cash_closing_cents: number;
   receivables_cents: number;
   payables_cents: number;
 };
@@ -216,6 +210,7 @@ export function FirmInsights({
   const [ready, setReady] = useState(Boolean(initialPeriod));
   const [data, setData] = useState<Insights | null>(null);
   const [companyRows, setCompanyRows] = useState<ComparisonRow[]>([]);
+  const [companiesError, setCompaniesError] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [revision, setRevision] = useState(0);
@@ -278,7 +273,8 @@ export function FirmInsights({
     const controller = new AbortController();
     setLoading(true);
     setError('');
-    void Promise.all([
+    setCompaniesError('');
+    void Promise.allSettled([
       api<Insights>(`/firm/observability/insights?period=${encodeURIComponent(period)}`, session, {
         signal: controller.signal,
       }),
@@ -286,18 +282,23 @@ export function FirmInsights({
         `/firm/observability/insights/companies?period=${encodeURIComponent(period)}`,
         session,
         { signal: controller.signal },
-      ).catch(() => ({ rows: [] as ComparisonRow[] })),
+      ),
     ])
-      .then(([overviewData, companiesData]) => {
+      .then(([overviewResult, companiesResult]) => {
         if (controller.signal.aborted) return;
-        setData(overviewData);
-        setCompanyRows(companiesData.rows ?? []);
-      })
-      .catch((reason) => {
-        if (controller.signal.aborted) return;
-        setData(null);
-        setCompanyRows([]);
-        setError(errorMessage(reason));
+        if (overviewResult.status === 'fulfilled') {
+          setData(overviewResult.value);
+        } else {
+          setData(null);
+          setError(errorMessage(overviewResult.reason));
+        }
+        if (companiesResult.status === 'fulfilled') {
+          setCompanyRows(companiesResult.value.rows ?? []);
+          setCompaniesError('');
+        } else {
+          setCompanyRows([]);
+          setCompaniesError(errorMessage(companiesResult.reason));
+        }
       })
       .finally(() => {
         if (!controller.signal.aborted) setLoading(false);
@@ -345,76 +346,16 @@ export function FirmInsights({
     };
   }, [wallMode, drilldown, exitWallMode]);
 
-  // 合并已开账公司与缺报未开账公司，保证集团分母零遗漏
-  const subsidiaryCards = useMemo(() => {
-    const byName = new Map<
-      string,
-      {
-        id: string;
-        bookId?: string | null;
-        companyName: string;
-        known: boolean;
-        revenueCents: number;
-        expensesCents: number;
-        profitCents: number;
-        cashCents: number;
-        revenueDeltaCents: number | null;
-        profitDeltaCents: number | null;
-        pendingReason?: string;
-        ownerName?: string;
-      }
-    >();
-
-    for (const row of companyRows) {
-      byName.set(row.company_name, {
-        id: row.book_id,
-        bookId: row.book_id,
-        companyName: row.company_name,
-        known: row.known,
-        revenueCents: row.revenue_cents,
-        expensesCents: row.expenses_cents,
-        profitCents: row.profit_cents,
-        cashCents: row.cash_closing_cents,
-        revenueDeltaCents: row.revenue_delta_cents,
-        profitDeltaCents: row.profit_delta_cents,
-      });
-    }
-
-    for (const miss of data?.financial.missing_companies ?? []) {
-      const existing = byName.get(miss.company_name);
-      if (existing) {
-        existing.pendingReason = existing.pendingReason || miss.top_blocker || miss.reason;
-        existing.ownerName = existing.ownerName || miss.owner_name;
-      } else {
-        byName.set(miss.company_name, {
-          id: miss.book_id || miss.company_id,
-          bookId: miss.book_id ?? null,
-          companyName: miss.company_name,
-          known: false,
-          revenueCents: 0,
-          expensesCents: 0,
-          profitCents: 0,
-          cashCents: 0,
-          revenueDeltaCents: null,
-          profitDeltaCents: null,
-          pendingReason: miss.top_blocker || miss.reason || '本期尚未开账或未出复核报表',
-          ownerName: miss.owner_name,
-        });
-      }
-    }
-
-    for (const risk of data?.risk ?? []) {
-      const target = byName.get(risk.company_name);
-      if (target) {
-        target.ownerName = target.ownerName || risk.owner_name;
-        if (!target.known && risk.blockers.length) {
-          target.pendingReason = risk.blockers.map((b) => b.label).join('、');
-        }
-      }
-    }
-
-    return Array.from(byName.values());
-  }, [companyRows, data]);
+  // 合并已开账账套与未开账法人，严格按 book_id / company_id 唯一标识归集，杜绝同名覆盖
+  const subsidiaryCards = useMemo(
+    () =>
+      buildSubsidiaryCards(
+        companyRows,
+        data?.financial.missing_companies ?? [],
+        data?.risk ?? [],
+      ),
+    [companyRows, data],
+  );
 
   const knownSubsidiaries = useMemo(
     () => subsidiaryCards.filter((item) => item.known),
@@ -523,8 +464,8 @@ export function FirmInsights({
               ? item.expensesCents
               : Math.max(0, item.profitCents);
         return {
-          id: item.companyName,
-          label: item.companyName,
+          id: item.id,
+          label: item.displayLabel,
           value: Math.max(0, raw),
           displayValue: formatCompactCny(raw),
           color: palette[idx % palette.length],
@@ -542,12 +483,12 @@ export function FirmInsights({
     };
   }, [data?.exceptions, knownSubsidiaries, palette, pieDimension]);
 
-  const openDrilldownByCompanyName = useCallback(
-    (name: string) => {
-      const target = subsidiaryCards.find((item) => item.companyName === name || item.id === name);
+  const openDrilldownById = useCallback(
+    (cardId: string) => {
+      const target = subsidiaryCards.find((item) => item.id === cardId);
       if (!target) return;
       setDrilldown({
-        companyName: target.companyName,
+        companyName: target.displayLabel,
         bookId: target.bookId,
         pendingReason: target.pendingReason,
         ownerName: target.ownerName,
@@ -781,8 +722,8 @@ export function FirmInsights({
           centerLabel={donutConfig.centerLabel}
           centerValue={donutConfig.centerValue}
           ariaLabel="各子公司结构占比环形饼图"
-          emptyText={donutConfig.emptyText}
-          onSelect={pieDimension === 'exceptions' ? undefined : openDrilldownByCompanyName}
+          emptyText={companiesError ? '子公司列表暂时读取失败，请点击下方重试' : donutConfig.emptyText}
+          onSelect={pieDimension === 'exceptions' ? undefined : openDrilldownById}
         />
       </div>
 
@@ -790,19 +731,35 @@ export function FirmInsights({
         <div className="firm-insights-chart-head">
           <h2>子公司收支对比</h2>
         </div>
-        <GroupedBarChart
-          items={subsidiaryCards.map((item) => ({
-            id: item.companyName,
-            label: item.companyName,
-            known: item.known,
-            revenueCents: item.revenueCents,
-            expensesCents: item.expensesCents,
-            profitCents: item.profitCents,
-          }))}
-          ariaLabel="各子公司本月收入支出与净结余对比柱状图"
-          onSelect={openDrilldownByCompanyName}
-          presentation={wallMode}
-        />
+        {companiesError ? (
+          <div className="firm-insights-error" role="alert">
+            <span>子公司对比列表读取失败：{companiesError}</span>
+            <button
+              type="button"
+              className="text-button"
+              onClick={() => {
+                clearApiReadCache();
+                setRevision((value) => value + 1);
+              }}
+            >
+              重试
+            </button>
+          </div>
+        ) : (
+          <GroupedBarChart
+            items={subsidiaryCards.map((item) => ({
+              id: item.id,
+              label: item.displayLabel,
+              known: item.known,
+              revenueCents: item.revenueCents,
+              expensesCents: item.expensesCents,
+              profitCents: item.profitCents,
+            }))}
+            ariaLabel="各子公司本月收入支出与净结余对比柱状图"
+            onSelect={openDrilldownById}
+            presentation={wallMode}
+          />
+        )}
       </div>
     </section>
   ) : null;
@@ -810,9 +767,26 @@ export function FirmInsights({
   const subsidiariesWall = (
     <section className="firm-insights-subsidiaries" aria-label="各子公司经营健康卡片墙">
       <div className="firm-insights-section-bar">
-        <h2>子公司经营卡片（{subsidiaryCards.length} 家）</h2>
-        <span>点击任意卡片查看明细</span>
+        <h2>子公司经营卡片（{subsidiaryCards.length} 项）</h2>
+        <span>按法人与账套分别展示，点击查看明细</span>
       </div>
+      {companiesError && (
+        <div className="firm-insights-error" role="alert">
+          <span>
+            子公司明细暂时无法读取（{companiesError}），以下未包含已开账明细，不代表缺报或零收入。
+          </span>
+          <button
+            type="button"
+            className="text-button"
+            onClick={() => {
+              clearApiReadCache();
+              setRevision((value) => value + 1);
+            }}
+          >
+            重试读取
+          </button>
+        </div>
+      )}
       {subsidiaryCards.length ? (
         <div className="firm-insights-subsidiary-grid">
           {subsidiaryCards.map((item) => {
@@ -826,10 +800,15 @@ export function FirmInsights({
                 key={item.id}
                 type="button"
                 className="firm-insights-sub-card"
-                onClick={() => openDrilldownByCompanyName(item.companyName)}
+                onClick={() => openDrilldownById(item.id)}
               >
                 <div className="firm-insights-sub-head">
-                  <strong title={item.companyName}>{item.companyName}</strong>
+                  <div className="firm-insights-sub-title">
+                    <strong title={item.displayLabel}>{item.companyName}</strong>
+                    {item.subLabel && (
+                      <small className="firm-insights-sub-label">{item.subLabel}</small>
+                    )}
+                  </div>
                   <span className={`firm-insights-lamp ${status.cls}`}>{status.text}</span>
                 </div>
                 {item.known ? (
@@ -1096,7 +1075,7 @@ export function FirmInsights({
                 <button
                   type="button"
                   className="wall-ctrl-btn active"
-                  onClick={() => openDrilldownByCompanyName(wallFocusedSubsidiary.companyName)}
+                  onClick={() => openDrilldownById(wallFocusedSubsidiary.id)}
                 >
                   展开深度明细抽屉
                   <ArrowUpRight size={15} />

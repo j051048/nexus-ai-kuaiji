@@ -735,13 +735,13 @@ export function WorkspaceHome({
         >
           <span>
             <TriangleAlert size={16} />
-            需要我处理
+            {employee ? '待我补件' : '需要我处理'}
           </span>
           {visibleValue?.counts.action != null ? (
             <strong>{visibleValue.counts.action}</strong>
           ) : (
             <span className="workspace-count-pending">
-              {error ? '暂不可用' : visibleValue ? '查看清单' : '正在读取'}
+              {error ? '暂不可用' : visibleValue ? (employee ? '去补件处理' : '查看清单') : '正在读取'}
             </span>
           )}
           <small>
@@ -761,16 +761,16 @@ export function WorkspaceHome({
         >
           <span>
             <Clock3 size={16} />
-            {experience.waitingLabel}
+            {employee ? '审批进度' : experience.waitingLabel}
           </span>
           {visibleValue?.counts.waiting != null ? (
             <strong>{visibleValue.counts.waiting}</strong>
           ) : (
             <span className="workspace-count-pending">
-              {error ? '暂不可用' : visibleValue ? '查看清单' : '正在读取'}
+              {error ? '暂不可用' : visibleValue ? (employee ? '看审批进度' : '查看清单') : '正在读取'}
             </span>
           )}
-          <small>保留当前办理进度</small>
+          <small>{employee ? '查看已提交单据流转状态' : '保留当前办理进度'}</small>
         </button>
       </section>
       <section
@@ -1225,7 +1225,9 @@ export function WorkspaceHome({
                         ? '高风险红线拦截原因（须人工严审）'
                         : selectedDecision.lane === 'green_pass'
                           ? '绿通初审结论（建议快速放行）'
-                          : '办理指引'}
+                          : selectedDecision.badge === '金额待核对'
+                            ? '金额待核对（不可绿通放行）'
+                            : '办理指引'}
                     </strong>
                     <ul>
                       {selectedDecision.reasons.map((reason) => (
@@ -1240,7 +1242,9 @@ export function WorkspaceHome({
                       disabled={locked}
                       onClick={() => void open(selectedTask)}
                     >
-                      打开原件并同屏办理
+                      {selectedDecision.badge === '金额待核对'
+                        ? '打开原件核对'
+                        : '打开原件并同屏办理'}
                       <ArrowRight size={15} />
                     </button>
                     {profile?.can_accounting && (

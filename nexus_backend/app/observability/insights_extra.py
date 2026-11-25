@@ -204,7 +204,7 @@ class FirmInsightsExtraService:
         with self.db.transaction(actor=actor) as conn:
             self.access.require_manager(conn, actor)
             books = conn.execute(
-                "SELECT b.id,b.company_id,c.name AS company_name FROM books b "
+                "SELECT b.id,b.name AS book_name,b.company_id,c.name AS company_name FROM books b "
                 "JOIN companies c ON c.id=b.company_id WHERE b.firm_id=? AND b.period=? "
                 "ORDER BY c.name,b.id",
                 (actor.firm_id, period),
@@ -226,6 +226,7 @@ class FirmInsightsExtraService:
                 rows.append(
                     {
                         "book_id": book["id"],
+                        "book_name": book["book_name"],
                         "company_id": book["company_id"],
                         "company_name": book["company_name"],
                         "known": bool(report),

@@ -67,6 +67,8 @@
   color: var(--brand);
   font-size: var(--font-size-xs);
   font-weight: var(--weight-strong);
+  white-space: nowrap;
+  flex-shrink: 0;
   cursor: pointer;
 }
 .client-portal-user .client-portal-assistant-btn.active {
@@ -81,6 +83,8 @@
   background: var(--surface-soft);
   color: var(--text-secondary);
   font-size: var(--font-size-xs);
+  white-space: nowrap;
+  flex-shrink: 0;
   cursor: pointer;
 }
 .client-portal-user .client-portal-mode-btn.manual {

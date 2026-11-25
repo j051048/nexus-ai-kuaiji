@@ -61,9 +61,14 @@ export function saveTriagePolicy(policy: FscTriagePolicy): void {
   }
 }
 
-function parseAmountYuan(raw: string | null | undefined): number | null {
-  if (!raw) return null;
-  const cleaned = raw.replace(/[¥,\s]/g, '');
+const STRICT_AMOUNT_PATTERN = /^[+-]?(?:\d+(?:\.\d+)?|\.\d+)$/;
+
+export function parseAmountYuan(raw: string | null | undefined): number | null {
+  if (typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  const cleaned = trimmed.replace(/^[¥￥]\s*/, '').replace(/,/g, '');
+  if (!STRICT_AMOUNT_PATTERN.test(cleaned)) return null;
   const n = Number(cleaned);
   return Number.isFinite(n) ? Math.abs(n) : null;
 }
@@ -112,10 +117,21 @@ export function classifyTaskLane(
   }
 
   if (reasons.length > 0) {
+    if (yuan === null) {
+      reasons.unshift('金额缺失或格式待确认，请打开原件核对');
+    }
     return {
       lane: 'high_risk',
       badge: '高风险拦截',
       reasons,
+    };
+  }
+
+  if (yuan === null) {
+    return {
+      lane: 'standard',
+      badge: '金额待核对',
+      reasons: ['金额缺失或格式待确认，请打开原件核对，不可直接绿通放行'],
     };
   }
 
@@ -168,7 +184,17 @@ export function classifyReviewDraft(
   }
 
   if (reasons.length > 0) {
+    if (yuan === null) {
+      reasons.unshift('金额缺失或格式待确认，请打开原件核对');
+    }
     return { lane: 'high_risk', badge: '红线拦截', reasons };
+  }
+  if (yuan === null) {
+    return {
+      lane: 'standard',
+      badge: '金额待核对',
+      reasons: ['金额缺失或格式待确认，请打开原件核对，不可直接绿通批审'],
+    };
   }
   return {
     lane: 'green_pass',

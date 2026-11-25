@@ -71,6 +71,47 @@ describe('第三期：绿通合规分流、高风险红线拦截与原办公审�
     expect(blocked.reasons.length).toBeGreaterThanOrEqual(2);
   });
 
+  it('金额缺失或格式非法时严禁进入绿通，合法零值、正常金额与超额分别归类准确', () => {
+    const base = {
+      kind: 'review' as const,
+      state: 'draft',
+      bucket: 'action' as const,
+      overdue: false,
+      title: '常规费用核对',
+    };
+    const missing = classifyTaskLane({ ...base, amount: null });
+    expect(missing.lane).not.toBe('green_pass');
+    expect(missing.badge).toBe('金额待核对');
+    expect(missing.reasons[0]).toContain('打开原件');
+
+    const emptyStr = classifyTaskLane({ ...base, amount: '   ' });
+    expect(emptyStr.lane).not.toBe('green_pass');
+    expect(emptyStr.badge).toBe('金额待核对');
+
+    const invalid = classifyTaskLane({ ...base, amount: '未知' });
+    expect(invalid.lane).not.toBe('green_pass');
+    expect(invalid.badge).toBe('金额待核对');
+
+    const zero = classifyTaskLane({ ...base, amount: '0.00' });
+    expect(zero.lane).toBe('green_pass');
+
+    const small = classifyTaskLane({ ...base, amount: '12' });
+    expect(small.lane).toBe('green_pass');
+
+    const over = classifyTaskLane({ ...base, amount: '5,001' });
+    expect(over.lane).toBe('high_risk');
+
+    const draftUnknown = classifyReviewDraft({
+      amount: '未知',
+      issue_count: 0,
+      risk_level: 'low',
+      description: '常规凭证',
+      has_evidence: true,
+    });
+    expect(draftUnknown.lane).not.toBe('green_pass');
+    expect(draftUnknown.badge).toBe('金额待核对');
+  });
+
   it('原办公审批单号可无损附加与提取', () => {
     const attached = attachOaRef('给车队采购防冻液', 'OA-202611-0091');
     expect(attached).toBe('[原办公审批单号: OA-202611-0091] 给车队采购防冻液');

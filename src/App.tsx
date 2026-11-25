@@ -1682,21 +1682,7 @@ export default function App() {
             )}
           </AssistantDrawer>
         </Suspense>
-      ) : (
-        !navigationLocked &&
-        !modal &&
-        !commandOpen && (
-          <button
-            type="button"
-            className="assistant-fab"
-            aria-label="打开智能财税副驾"
-            onClick={openGlobalAssistant}
-          >
-            <Sparkles size={16} aria-hidden="true" />
-            <span>智能财税副驾</span>
-          </button>
-        )
-      )}
+      ) : null}
     </>
   );
 
@@ -1995,7 +1981,7 @@ export default function App() {
               onClick={openGlobalAssistant}
             >
               <Sparkles size={15} />
-              <span>智能副驾</span>
+              <span>智能财税副驾</span>
               <small>{currentRoleMeta.scopeBadge}</small>
             </button>
             <button

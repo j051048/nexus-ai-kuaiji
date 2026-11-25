@@ -194,13 +194,25 @@
 }
 .firm-insights-sub-head {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 8px;
+}
+.firm-insights-sub-title {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
 }
 .firm-insights-sub-head strong {
   font-size: 15px;
   color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.firm-insights-sub-label {
+  font-size: 12px;
+  color: var(--text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
