@@ -1978,7 +1978,7 @@ export default function App() {
         />
         <header className="topbar">
           <div className="breadcrumbs">
-            集团共享财务中心
+            <span className="breadcrumbs-root">共享中心</span>
             <ChevronRight size={13} />
             <span>
               {routeView === 'accounting' && showBusiness
@@ -1995,7 +1995,7 @@ export default function App() {
               onClick={openGlobalAssistant}
             >
               <Sparkles size={15} />
-              <span>智能财税副驾</span>
+              <span>智能副驾</span>
               <small>{currentRoleMeta.scopeBadge}</small>
             </button>
             <button

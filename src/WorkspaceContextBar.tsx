@@ -112,12 +112,12 @@ export function WorkspaceContextBar({
   return (
     <section className="workspace-context-bar" aria-label="当前子公司、岗位与会计期间">
       <div className="workspace-context-row">
-        <div className="workspace-context-item">
-          <span className="workspace-context-label">所属中心</span>
+        <div className="workspace-context-item workspace-context-firm">
+          <span className="workspace-context-label">中心</span>
           <strong>{session.firm_name || '未载入'}</strong>
         </div>
         <div className="workspace-context-item workspace-context-company">
-          <span className="workspace-context-label">当前子公司</span>
+          <span className="workspace-context-label">子公司</span>
           {hasMultiCompanies ? (
             <select
               aria-label="当前办理子公司"
@@ -127,7 +127,7 @@ export function WorkspaceContextBar({
                 if (next === (companyId ?? '')) return;
                 const nextName =
                   next === ''
-                    ? '全部已授权子公司'
+                    ? '全部子公司'
                     : companies.find((item) => item.id === next)?.name;
                 void (async () => {
                   const proceed = await confirmLeaveIfDirty({
@@ -142,7 +142,7 @@ export function WorkspaceContextBar({
               }}
             >
               <option value="">
-                {companies.length > 1 ? `全部已授权子公司（${companies.length}家）` : '未选择'}
+                {companies.length > 1 ? `全部子公司（${companies.length}家）` : '未选择'}
               </option>
               {companies.map((company) => (
                 <option key={company.id} value={company.id}>
@@ -171,12 +171,12 @@ export function WorkspaceContextBar({
             账套
           </button>
         </div>
-        <div className="workspace-context-item">
+        <div className="workspace-context-item workspace-context-role">
           <span className="workspace-context-label">岗位</span>
           <strong>{roleLabels[session.role ?? ''] ?? session.role ?? '未载入'}</strong>
         </div>
         <label className="workspace-context-item workspace-context-period">
-          <span className="workspace-context-label">会计期间</span>
+          <span className="workspace-context-label">期间</span>
           <input
             type="month"
             aria-label="当前会计期间"
@@ -208,12 +208,12 @@ export function WorkspaceContextBar({
               title={
                 manualMode
                   ? '当前已切为纯手工办理模式，点击恢复智能辅助'
-                  : '云端智能辅助在线；如遇断网或需纯手工操作，可一键切换纯手工模式'
+                  : '智能辅助在线；断网或需纯手工操作时可一键切换'
               }
               onClick={onToggleManualMode}
             >
               <span className="workspace-mode-dot" aria-hidden="true" />
-              {manualMode ? '纯手工模式' : '智能辅助在线'}
+              {manualMode ? '纯手工模式' : '智能在线'}
             </button>
           )}
           <span
@@ -227,12 +227,6 @@ export function WorkspaceContextBar({
           </span>
         </div>
       </div>
-      {dutySummary && (
-        <p className="workspace-duty-tip">
-          <span className="workspace-duty-badge">岗位指引</span>
-          <span>{dutySummary}</span>
-        </p>
-      )}
     </section>
   );
 }

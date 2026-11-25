@@ -192,10 +192,6 @@ export function ClientPortalShell({
         me={me}
         unavailable={identityUnavailable}
       />
-      <p className="client-portal-duty-tip">
-        <span className="client-portal-duty-badge">本岗指引</span>
-        <span>{roleMeta.dutySummary}</span>
-      </p>
       <nav className="client-portal-tabs" aria-label="子公司财税服务">
         {tabs.map((tab) => {
           const Icon = icons[tab.id];

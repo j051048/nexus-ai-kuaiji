@@ -1,20 +1,21 @@
 .account-identity {
-  padding: 4px 24px;
-  background: var(--surface);
+  padding: 0 20px;
+  background: var(--surface-subtle);
   border-bottom: 1px solid var(--line);
   color: var(--text-primary);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-xs);
   min-width: 0;
 }
 .account-identity summary {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 8px;
-  min-height: var(--control-height-touch);
-  padding: 4px 0;
+  min-height: 34px;
+  padding: 3px 0;
   cursor: pointer;
   list-style: none;
+  min-width: 0;
 }
 .account-identity summary::-webkit-details-marker {
   display: none;
@@ -31,36 +32,44 @@
 }
 .account-identity-role {
   border: 1px solid var(--line);
-  background: var(--surface-subtle);
-  border-radius: var(--radius-sm);
-  padding: 3px 8px;
+  background: var(--surface);
+  border-radius: var(--radius-pill);
+  padding: 1px 8px;
   font-weight: 600;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 .account-identity-name {
   min-width: 0;
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .account-identity-unit {
   display: inline-flex;
-  align-items: baseline;
-  gap: 6px;
+  align-items: center;
+  gap: 5px;
   min-width: 0;
-  max-width: 100%;
+  overflow: hidden;
 }
 .account-identity-unit > .account-identity-prefix {
   flex-shrink: 0;
+  white-space: nowrap;
 }
 .account-identity-unit-name {
   min-width: 0;
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-weight: 600;
 }
 .account-identity-disclosure {
   display: inline-flex;
-  gap: 4px;
+  gap: 3px;
   align-items: center;
   margin-left: auto;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 .account-identity details[open] .account-identity-disclosure svg {
   transform: rotate(180deg);
@@ -68,23 +77,23 @@
 .account-identity-details {
   padding: 8px 0 12px;
   max-width: 960px;
-  line-height: 1.7;
+  line-height: 1.65;
   overflow-wrap: anywhere;
 }
 .account-identity dl {
   display: grid;
-  gap: 8px;
+  gap: 6px;
   margin: 0 0 8px;
 }
 .account-identity dl > div {
   display: grid;
-  font-size: var(--font-size-sm);
-  grid-template-columns: 6em minmax(0, 1fr);
+  font-size: var(--font-size-xs);
+  grid-template-columns: 7em minmax(0, 1fr);
   gap: 8px;
 }
 .account-identity dt,
 .account-identity dd {
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-xs);
   text-align: left;
   font-weight: inherit;
 }
@@ -93,6 +102,7 @@
 }
 .account-identity p {
   margin: 6px 0 0;
+  color: var(--text-secondary);
 }
 .admin-shell > .account-identity {
   padding-inline: max(24px, calc((100vw - 1240px) / 2));
@@ -102,42 +112,18 @@
   padding-block: 0;
   font-size: var(--font-size-xs);
 }
-.client-portal > .account-identity summary {
-  min-height: 36px;
-  padding: 2px 0;
-  gap: var(--space-2);
-}
-.client-portal > .account-identity .account-identity-role {
-  padding: 2px 7px;
-  font-weight: var(--weight-medium);
-}
-@media (max-width: 640px) {
-  .client-portal > .account-identity summary {
-    min-height: var(--control-height-touch);
-    padding: 4px 0;
-  }
+@media (max-width: 740px) {
   .account-identity,
   .admin-shell > .account-identity {
-    padding-inline: 14px;
-    padding-block: 2px;
+    padding: 0 14px;
   }
   .account-identity summary {
+    min-height: 36px;
     gap: 6px;
   }
+  /* 移动端单行清爽展示：省略“所属共享中心”前缀，避免折成两整行吃屏 */
+  .account-identity-prefix,
   .account-identity-unit {
-    flex-basis: calc(100% - 26px);
-  }
-  .account-identity-unit-name {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .account-identity-disclosure {
-    font-size: var(--font-size-xs);
-  }
-}
-@media print {
-  .account-identity {
     display: none;
   }
 }

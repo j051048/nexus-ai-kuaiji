@@ -108,16 +108,16 @@ export function MissingCompanies({ financial }: { financial: CoverageFinancial }
   return (
     <>
       {missing.length > 0 && (
-        <details className="firm-insights-table-fallback" open>
-          <summary>未纳入合计法人（{missing.length} 家，未按 0 补齐，仍留在分母里）</summary>
+        <details className="firm-insights-table-fallback">
+          <summary>未纳入合计法人（{missing.length} 家，点击展开）</summary>
           <ul>
             {missing.map((row) => (
               <li key={row.company_id} data-reason={row.reason ?? 'report_missing'}>
                 {row.company_name} ·{' '}
                 {row.reason === 'not_opened'
                   ? '本期未开账（没有账套，不是零申报）'
-                  : `负责人：${row.owner_name} · 当前阻断：${row.top_blocker}`}
-                {row.has_trial_draft ? '（仅有试算/草稿，未入正式汇总）' : ''}
+                  : `${row.top_blocker}（分管：${row.owner_name}）`}
+                {row.has_trial_draft ? ' · 仅有草稿' : ''}
               </li>
             ))}
           </ul>

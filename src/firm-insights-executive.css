@@ -2,9 +2,10 @@
 .firm-insights-wall-btn {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  min-height: 38px;
-  padding: 0 16px;
+  justify-content: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 14px;
   border: 1px solid var(--brand);
   border-radius: var(--radius-md);
   background: var(--brand);
@@ -12,6 +13,8 @@
   font: inherit;
   font-size: var(--font-size-sm);
   font-weight: var(--weight-strong);
+  white-space: nowrap;
+  flex-shrink: 0;
   cursor: pointer;
 }
 .firm-insights-wall-btn:hover {
@@ -452,7 +455,32 @@
   }
 }
 @media (max-width: 640px) {
+  .firm-insights-wall-btn {
+    padding: 0 10px;
+    font-size: var(--font-size-xs);
+  }
   .firm-insights-hero-kpis {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+  .firm-insights-hero-card {
+    padding: 13px 14px;
+    gap: 6px;
+  }
+  .firm-insights-hero-card.accent,
+  .firm-insights-hero-card:last-child {
+    grid-column: 1 / -1;
+  }
+  .firm-insights-hero-card strong {
+    font-size: clamp(18px, 4.8vw, 22px);
+  }
+  .firm-insights-chart-card {
+    padding: 14px;
+    gap: 10px;
+  }
+  .firm-insights-pill-group button {
+    padding: 4px 10px;
+    white-space: nowrap;
   }
 }

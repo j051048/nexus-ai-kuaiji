@@ -731,10 +731,23 @@
 @media (max-width: 740px) {
   .agent-topbar-actions {
     gap: 6px;
+    flex-shrink: 0;
+  }
+  .agent-shell .breadcrumbs {
+    font-size: var(--font-size-sm);
+    font-weight: var(--weight-strong);
+    color: var(--text-primary);
+  }
+  .agent-shell .breadcrumbs > .breadcrumbs-root,
+  .agent-shell .breadcrumbs > svg {
+    display: none;
   }
   .agent-topbar-assistant {
-    padding: 7px;
+    padding: 6px 10px;
     font-size: var(--font-size-xs);
+  }
+  .agent-topbar-assistant > small {
+    display: none;
   }
   .agent-topbar-command kbd {
     display: none;

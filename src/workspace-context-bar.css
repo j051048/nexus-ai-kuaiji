@@ -1,8 +1,7 @@
 .workspace-context-bar {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 8px 18px;
+  padding: 6px 20px;
   border-bottom: 1px solid var(--border);
   background: var(--surface);
   font-size: var(--font-size-xs);
@@ -14,38 +13,47 @@
   gap: 8px 14px;
 }
 .workspace-context-item {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 6px;
   min-width: 0;
+  flex-shrink: 0;
 }
 .workspace-context-item strong {
   font-size: var(--font-size-xs);
   font-weight: var(--weight-strong);
   color: var(--text-primary);
-  max-width: 22ch;
+  max-width: 18ch;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .workspace-context-company select {
-  max-width: 220px;
-  padding: 3px 8px;
+  max-width: 210px;
+  min-height: 30px;
+  padding: 2px 8px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  background: var(--surface-soft);
+  background: var(--surface-subtle);
   color: var(--text-primary);
   font: inherit;
   font-weight: var(--weight-medium);
 }
+.workspace-context-company .text-button {
+  white-space: nowrap;
+  flex-shrink: 0;
+  padding: 2px 6px;
+}
 .workspace-context-label {
   color: var(--text-muted);
+  white-space: nowrap;
 }
 .workspace-context-period input {
-  padding: 2px 6px;
+  min-height: 30px;
+  padding: 2px 8px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  background: var(--surface);
+  background: var(--surface-subtle);
   color: var(--text-primary);
   font: inherit;
 }
@@ -54,12 +62,13 @@
   align-items: center;
   gap: 8px;
   margin-left: auto;
+  flex-shrink: 0;
 }
 .workspace-mode-pill {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 3px 10px;
+  padding: 4px 10px;
   border: 1px solid var(--border);
   border-radius: var(--radius-pill);
   background: var(--brand-soft);
@@ -67,6 +76,8 @@
   font: inherit;
   font-size: var(--font-size-xs);
   font-weight: var(--weight-medium);
+  white-space: nowrap;
+  flex-shrink: 0;
   cursor: pointer;
 }
 .workspace-mode-pill.manual {
@@ -79,15 +90,18 @@
   height: 7px;
   border-radius: var(--radius-pill);
   background: currentColor;
+  flex-shrink: 0;
 }
 .workspace-context-lock {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 3px 9px;
+  padding: 4px 10px;
   border-radius: var(--radius-pill);
   background: var(--surface-soft);
   color: var(--text-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 .workspace-context-lock.locked {
   background: var(--status-success-soft);
@@ -97,42 +111,47 @@
   background: var(--status-warning-soft);
   color: var(--status-warning);
 }
-.workspace-duty-tip {
-  margin: 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 5px 10px;
-  border-radius: var(--radius-sm);
-  background: var(--surface-subtle);
-  color: var(--text-secondary);
-  font-size: var(--font-size-xs);
-  line-height: 1.45;
-}
-.workspace-duty-badge {
-  flex: none;
-  padding: 1px 7px;
-  border-radius: var(--radius-pill);
-  background: var(--brand-soft);
-  color: var(--brand);
-  font-weight: var(--weight-strong);
-}
-@media (max-width: 640px) {
+@media (max-width: 740px) {
   .workspace-context-bar {
-    padding: 6px 12px;
+    padding: 8px 14px;
   }
   .workspace-context-row {
-    flex-wrap: nowrap;
-    overflow-x: auto;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px 10px;
+    align-items: center;
   }
-  .workspace-context-item strong {
-    max-width: 14ch;
-  }
-  .workspace-context-label,
-  .workspace-duty-tip {
+  /* 移动端隐藏与顶栏/身份条重复的只读单位和岗位，把宽度留给真正需要操作的下拉与胶囊 */
+  .workspace-context-firm,
+  .workspace-context-role,
+  .workspace-context-label {
     display: none;
   }
+  .workspace-context-company {
+    min-width: 0;
+    width: 100%;
+  }
+  .workspace-context-company select {
+    flex: 1;
+    min-width: 0;
+    max-width: none;
+    min-height: 36px;
+    font-size: var(--font-size-sm);
+  }
+  .workspace-context-period {
+    justify-self: end;
+  }
+  .workspace-context-period input {
+    min-height: 36px;
+    max-width: 128px;
+    font-size: var(--font-size-sm);
+  }
   .workspace-context-status-group {
+    grid-column: 1 / -1;
     margin-left: 0;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    gap: 8px;
   }
 }

@@ -580,8 +580,8 @@ export function FirmInsights({
         </strong>
         <small>
           {data.financial.mixed_standards
-            ? '旗下存在多套会计准则，分准则独立列示不混加'
-            : `已纳入 ${data.financial.known_books} 套已复核报表`}
+            ? '多准则分列'
+            : `已复核 ${data.financial.known_books} 套`}
         </small>
       </article>
 
@@ -598,9 +598,7 @@ export function FirmInsights({
               : cny(data.financial.expenses_cents)}
         </strong>
         <small>
-          {data.kpis.exceptions > 0
-            ? `另有 ${data.kpis.exceptions} 项异常补件处理中`
-            : '当前无高风险阻断异常'}
+          {data.kpis.exceptions > 0 ? `${data.kpis.exceptions} 项异常待处理` : '无阻断异常'}
         </small>
       </article>
 
@@ -611,7 +609,7 @@ export function FirmInsights({
         }
       >
         <div className="firm-insights-hero-top">
-          <span>集团本月净结余 / 利润</span>
+          <span>集团本月净结余</span>
           <TrendingUp size={17} aria-hidden="true" />
         </div>
         <strong>
@@ -623,8 +621,8 @@ export function FirmInsights({
         </strong>
         <small>
           {data.kpis.missing_reports > 0
-            ? `另有 ${data.kpis.missing_reports} 套未出正式报表，不按 0 估算`
-            : '全量已复核管理汇总（非审计法定合并表）'}
+            ? `${data.kpis.missing_reports} 套未出表，不按 0 计`
+            : '管理汇总口径'}
         </small>
       </article>
 
@@ -632,7 +630,7 @@ export function FirmInsights({
         <div className="firm-insights-hero-ring-row">
           <div>
             <div className="firm-insights-hero-top">
-              <span>资金余额与结账进度</span>
+              <span>资金与结账进度</span>
               <Wallet size={16} aria-hidden="true" />
             </div>
             <strong>
@@ -643,7 +641,7 @@ export function FirmInsights({
                   : formatCompactCny(data.financial.cash_closing_cents)}
             </strong>
             <small>
-              已复核 {reportedTotal} / 应报 {managedTotal} 家 · 已锁期 {data.kpis.closed} 套
+              已复核 {reportedTotal}/{managedTotal} 家 · 锁期 {data.kpis.closed} 套
             </small>
           </div>
           <ProgressRing value={reportedTotal} total={managedTotal} label="子公司复核覆盖率" />
@@ -656,10 +654,7 @@ export function FirmInsights({
     <section className="firm-insights-charts-grid" aria-label="集团经营可视化图表">
       <div className="firm-insights-chart-card wide">
         <div className="firm-insights-chart-head">
-          <div>
-            <h2>近 6 个月集团经营走势</h2>
-            <p>平滑曲线直观反映收支趋势与月结推进节奏；缺报月份诚实断线不补 0</p>
-          </div>
+          <h2>近 6 个月经营走势</h2>
           <div className="firm-insights-pill-group" role="group" aria-label="走势图口径切换">
             <button
               type="button"
@@ -667,7 +662,7 @@ export function FirmInsights({
               aria-pressed={effectiveTrendMode === 'finance'}
               onClick={() => setTrendMode('finance')}
             >
-              财务收支走势
+              财务收支
             </button>
             <button
               type="button"
@@ -675,7 +670,7 @@ export function FirmInsights({
               aria-pressed={effectiveTrendMode === 'operations'}
               onClick={() => setTrendMode('operations')}
             >
-              月结交付进度
+              月结进度
             </button>
           </div>
         </div>
@@ -759,10 +754,7 @@ export function FirmInsights({
 
       <div className="firm-insights-chart-card">
         <div className="firm-insights-chart-head">
-          <div>
-            <h2>各子公司结构占比环形图</h2>
-            <p>鼠标悬停看占比，点击任意子公司扇区立即下钻经营明细</p>
-          </div>
+          <h2>子公司占比分布</h2>
           <div className="firm-insights-pill-group" role="group" aria-label="环形图维度切换">
             {(
               [
@@ -796,10 +788,7 @@ export function FirmInsights({
 
       <div className="firm-insights-chart-card">
         <div className="firm-insights-chart-head">
-          <div>
-            <h2>各子公司收支盈亏对比柱状图</h2>
-            <p>横向对比收入、支出与净结余；未出报表公司标“核算中”</p>
-          </div>
+          <h2>子公司收支对比</h2>
         </div>
         <GroupedBarChart
           items={subsidiaryCards.map((item) => ({
@@ -821,8 +810,8 @@ export function FirmInsights({
   const subsidiariesWall = (
     <section className="firm-insights-subsidiaries" aria-label="各子公司经营健康卡片墙">
       <div className="firm-insights-section-bar">
-        <h2>各子公司经营健康卡片（{subsidiaryCards.length} 家）</h2>
-        <span>绿灯稳健盈利 · 红灯亏损预警 · 琥珀灯核算中；点击任意卡片下钻明细</span>
+        <h2>子公司经营卡片（{subsidiaryCards.length} 家）</h2>
+        <span>点击任意卡片查看明细</span>
       </div>
       {subsidiaryCards.length ? (
         <div className="firm-insights-subsidiary-grid">
@@ -962,23 +951,14 @@ export function FirmInsights({
       ) : (
         <>
           <header className="firm-insights-head">
-            <div>
-              <span className="eyebrow">集团共享财务中心 · 经营决策总控</span>
-              <h1>集团经营驾驶舱</h1>
-              <p>
-                一屏看清集团旗下各子公司收支盈亏、资金余额、结账进度与内部往来；未复核公司诚实标“核算中”，绝不按
-                0 估算。
-              </p>
-            </div>
+            <h1>集团经营驾驶舱</h1>
             <div className="firm-insights-controls">
-              <label>
-                会计期间
-                <input
-                  type="month"
-                  value={period}
-                  onChange={(event) => handlePeriodChange(event.target.value)}
-                />
-              </label>
+              <input
+                type="month"
+                aria-label="选择会计期间"
+                value={period}
+                onChange={(event) => handlePeriodChange(event.target.value)}
+              />
               <button
                 type="button"
                 onClick={() => {
@@ -986,11 +966,11 @@ export function FirmInsights({
                   setRevision((value) => value + 1);
                 }}
               >
-                <RefreshCw size={16} />
+                <RefreshCw size={15} />
                 刷新
               </button>
               <button type="button" className="firm-insights-wall-btn" onClick={enterWallMode}>
-                <Maximize2 size={16} />
+                <Maximize2 size={15} />
                 一键投大屏
               </button>
             </div>
@@ -1179,68 +1159,70 @@ export function FirmInsights({
 
           <section className="firm-insights-finance" aria-label="集团已复核财务汇总与内部往来抵销">
             <div className="firm-insights-card-head">
-              <h2>已复核报表财务汇总与内部往来抵销（管理汇总，非审计合并报表）</h2>
+              <h2>报表覆盖与内部往来</h2>
               <CoverageHead financial={data.financial} />
             </div>
             <CoverageCounts kpis={data.kpis} />
-            {data.financial.totals_notice && (
-              <p className="field-help">{data.financial.totals_notice}</p>
-            )}
             {data.financial.mixed_standards && data.financial.standards_breakdown?.length ? (
               <StandardBreakdown financial={data.financial} />
             ) : (
-              <dl>
-                <div>
-                  <dt>总资产</dt>
-                  <dd>
-                    {data.financial.known_books ? cny(data.financial.assets_cents) : '未覆盖'}
-                  </dd>
-                </div>
-                <div>
-                  <dt>总负债</dt>
-                  <dd>
-                    {data.financial.known_books ? cny(data.financial.liabilities_cents) : '未覆盖'}
-                  </dd>
-                </div>
-                <div>
-                  <dt>净资产 / 权益</dt>
-                  <dd>
-                    {data.financial.known_books ? cny(data.financial.equity_cents) : '未覆盖'}
-                  </dd>
-                </div>
-                <div>
-                  <dt>本月收入</dt>
-                  <dd>
-                    {data.financial.known_books ? cny(data.financial.revenue_cents) : '未覆盖'}
-                  </dd>
-                </div>
-                <div>
-                  <dt>本月支出</dt>
-                  <dd>
-                    {data.financial.known_books ? cny(data.financial.expenses_cents) : '未覆盖'}
-                  </dd>
-                </div>
-                <div>
-                  <dt>本月净结余</dt>
-                  <dd>
-                    {data.financial.known_books ? cny(data.financial.profit_cents) : '未覆盖'}
-                  </dd>
-                </div>
-                <div>
-                  <dt>期末资金</dt>
-                  <dd>
-                    {data.financial.known_books ? cny(data.financial.cash_closing_cents) : '未覆盖'}
-                  </dd>
-                </div>
-                <div>
-                  <dt>待分类资金</dt>
-                  <dd>
-                    {data.financial.known_books
-                      ? cny(data.financial.unclassified_cash_cents)
-                      : '未覆盖'}
-                  </dd>
-                </div>
-              </dl>
+              <details className="firm-insights-table-fallback" open={data.financial.known_books > 0}>
+                <summary>
+                  资产负债与现金汇总（{data.financial.known_books ? `${data.financial.known_books} 套已出表` : '暂无已出表数据'}）
+                </summary>
+                <dl>
+                  <div>
+                    <dt>总资产</dt>
+                    <dd>
+                      {data.financial.known_books ? cny(data.financial.assets_cents) : '未覆盖'}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>总负债</dt>
+                    <dd>
+                      {data.financial.known_books ? cny(data.financial.liabilities_cents) : '未覆盖'}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>净资产</dt>
+                    <dd>
+                      {data.financial.known_books ? cny(data.financial.equity_cents) : '未覆盖'}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>本月收入</dt>
+                    <dd>
+                      {data.financial.known_books ? cny(data.financial.revenue_cents) : '未覆盖'}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>本月支出</dt>
+                    <dd>
+                      {data.financial.known_books ? cny(data.financial.expenses_cents) : '未覆盖'}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>本月净结余</dt>
+                    <dd>
+                      {data.financial.known_books ? cny(data.financial.profit_cents) : '未覆盖'}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>期末资金</dt>
+                    <dd>
+                      {data.financial.known_books ? cny(data.financial.cash_closing_cents) : '未覆盖'}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>待分类资金</dt>
+                    <dd>
+                      {data.financial.known_books
+                        ? cny(data.financial.unclassified_cash_cents)
+                        : '未覆盖'}
+                    </dd>
+                  </div>
+                </dl>
+              </details>
             )}
             <MissingCompanies financial={data.financial} />
             <ConsolidationWorksheetPanel
@@ -1254,8 +1236,8 @@ export function FirmInsights({
           <section className="firm-insights-grid">
             <div className="firm-insights-card">
               <div className="firm-insights-card-head">
-                <h2>月结阶段分布</h2>
-                <span>按现有资料与复核进度实时投影</span>
+                <h2>月结阶段</h2>
+                <span>{stageTotal} 套</span>
               </div>
               {stageTotal ? (
                 <>
@@ -1290,8 +1272,8 @@ export function FirmInsights({
 
             <div className="firm-insights-card">
               <div className="firm-insights-card-head">
-                <h2>共享中心人员负荷</h2>
-                <span>按分管会计账套数与阻塞数</span>
+                <h2>人员负荷</h2>
+                <span>{data.staff.length} 组</span>
               </div>
               {data.staff.length ? (
                 <ul className="firm-insights-staff">
@@ -1311,14 +1293,14 @@ export function FirmInsights({
                   ))}
                 </ul>
               ) : (
-                <p className="firm-insights-empty">本期没有已分配分管会计。</p>
+                <p className="firm-insights-empty">本期暂未分配分管会计。</p>
               )}
             </div>
 
             <div className="firm-insights-card firm-insights-wide">
               <div className="firm-insights-card-head">
-                <h2>重点风险与结账卡点</h2>
-                <span>按阻断项与到期时间排序，点击公司名可穿透看明细</span>
+                <h2>风险与卡点</h2>
+                <span>{data.risk.length} 项</span>
               </div>
               {data.risk.length ? (
                 <>
@@ -1328,10 +1310,10 @@ export function FirmInsights({
                         <tr>
                           <th>子公司</th>
                           <th>账期</th>
-                          <th>当前阶段</th>
-                          <th>分管会计</th>
-                          <th>主要卡点</th>
-                          <th>目标到期</th>
+                          <th>阶段</th>
+                          <th>分管</th>
+                          <th>卡点</th>
+                          <th>到期</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1393,17 +1375,18 @@ export function FirmInsights({
                   </div>
                 </>
               ) : (
-                <p className="firm-insights-empty">本期没有登记中的风险卡点。</p>
+                <p className="firm-insights-empty">本期无风险卡点。</p>
               )}
             </div>
           </section>
 
-          <footer className="firm-insights-note">
-            <span>{data.note}</span>
-            <span>
-              生成于 {data.generated_on} · {data.period}
-            </span>
-          </footer>
+          <details className="firm-insights-footnote">
+            <summary>
+              数据口径说明 · {data.period}（更新于 {data.generated_on}）
+            </summary>
+            <p>{data.note}</p>
+            {data.financial.totals_notice && <p>{data.financial.totals_notice}</p>}
+          </details>
         </>
       ) : null}
 

@@ -1,31 +1,33 @@
 .firm-insights {
   max-width: 1480px;
   margin: 0 auto;
-  padding: 28px 32px 48px;
+  padding: 20px 28px 40px;
   color: var(--ink, #18231f);
 }
 .firm-insights-head {
   display: flex;
   justify-content: space-between;
-  gap: 24px;
-  align-items: flex-end;
-  margin-bottom: 22px;
+  gap: 16px;
+  align-items: center;
+  margin-bottom: 16px;
 }
 .firm-insights-head h1 {
-  margin: 4px 0 6px;
-  font-size: clamp(28px, 3vw, 40px);
-  letter-spacing: -0.03em;
+  margin: 0;
+  font-size: clamp(21px, 2.2vw, 28px);
+  letter-spacing: -0.02em;
+  line-height: 1.25;
 }
 .firm-insights-head p {
-  margin: 0;
-  max-width: 760px;
+  margin: 4px 0 0;
+  max-width: 720px;
   color: var(--muted, #66736e);
-  line-height: 1.6;
+  font-size: 13px;
+  line-height: 1.5;
 }
 .firm-insights-controls {
   display: flex;
-  gap: 10px;
-  align-items: flex-end;
+  gap: 8px;
+  align-items: center;
   flex-wrap: wrap;
 }
 .firm-insights-controls label {
@@ -36,17 +38,21 @@
 }
 .firm-insights-controls input,
 .firm-insights-controls button {
-  min-height: 38px;
+  min-height: 36px;
   border: 1px solid #d8dfda;
   border-radius: 9px;
   padding: 0 12px;
   background: #fff;
   color: inherit;
   font: inherit;
+  font-size: 13px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 .firm-insights-controls button {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
   cursor: pointer;
 }
@@ -302,7 +308,7 @@
 }
 .firm-insights-staff small {
   color: var(--muted, #66736e);
-  font-size: 11px;
+  font-size: 12px;
 }
 .firm-insights-empty {
   color: var(--muted, #66736e);
@@ -318,6 +324,24 @@
   font-size: 12px;
   margin-top: 12px;
 }
+.firm-insights-footnote {
+  margin-top: 14px;
+  padding: 10px 14px;
+  border: 1px solid #e6ece8;
+  border-radius: 10px;
+  background: #fafcfb;
+  color: #66736e;
+  font-size: 12px;
+  line-height: 1.55;
+}
+.firm-insights-footnote summary {
+  cursor: pointer;
+  color: #52605a;
+  font-weight: 500;
+}
+.firm-insights-footnote p {
+  margin: 8px 0 0;
+}
 @media (max-width: 1100px) {
   .firm-insights-kpis {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -331,14 +355,28 @@
 }
 @media (max-width: 640px) {
   .firm-insights {
-    padding: 18px 14px 36px;
+    padding: 14px 14px 32px;
   }
   .firm-insights-head {
     align-items: stretch;
     flex-direction: column;
+    gap: 10px;
+    margin-bottom: 12px;
   }
   .firm-insights-controls {
-    justify-content: space-between;
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 6px;
+  }
+  .firm-insights-controls input {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 0 8px;
+  }
+  .firm-insights-controls button {
+    padding: 0 10px;
+    font-size: 12px;
   }
   .firm-insights-kpis {
     grid-template-columns: 1fr 1fr;
@@ -369,15 +407,35 @@
   .firm-insights-risk-cards article {
     border: 1px solid #edf1ee;
     border-radius: 10px;
-    padding: 10px 11px;
+    padding: 10px 12px;
     display: grid;
-    gap: 4px;
+    gap: 5px;
   }
   .firm-insights-risk-cards header {
     display: flex;
     justify-content: space-between;
-    gap: 12px;
-    align-items: baseline;
+    gap: 10px;
+    align-items: flex-start;
+  }
+  .firm-insights-risk-cards header strong {
+    min-width: 0;
+    font-size: 14px;
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+  }
+  .firm-insights-risk-cards header span {
+    flex-shrink: 0;
+    white-space: nowrap;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: #eef4f1;
+    color: #315a4c;
+    font-size: 12px;
+    font-weight: 500;
+  }
+  .firm-insights-risk-cards header span.is-overdue {
+    background: #fdeee9;
+    color: #a03d25;
   }
   .firm-insights-risk-cards p {
     margin: 0;
@@ -388,7 +446,7 @@
   }
   .firm-insights-risk-cards small {
     color: #78847f;
-    font-size: 11px;
+    font-size: 12px;
   }
 }
 .firm-insights-finance {
@@ -397,6 +455,9 @@
   background: #fff;
   padding: 16px;
   margin-bottom: 14px;
+}
+.firm-insights-finance .firm-insights-table-fallback dl {
+  margin-top: 10px;
 }
 .firm-insights-finance dl {
   display: grid;
@@ -431,9 +492,9 @@
 .firm-insights-tabs {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   flex-wrap: wrap;
-  margin: 0 0 16px;
+  margin: 0 0 14px;
   padding: 4px;
   border: 1px solid #e0e6e1;
   border-radius: 10px;
@@ -443,15 +504,38 @@
   border: 0;
   background: transparent;
   color: #52605a;
-  padding: 8px 12px;
+  padding: 7px 12px;
   border-radius: 7px;
   font-size: 13px;
+  white-space: nowrap;
+  flex-shrink: 0;
   cursor: pointer;
 }
 .firm-insights-tabs button.is-active {
   background: #eaf2ee;
   color: #245a4c;
   font-weight: 600;
+}
+@media (max-width: 640px) {
+  .firm-insights-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    gap: 2px;
+  }
+  .firm-insights-tabs::-webkit-scrollbar {
+    display: none;
+  }
+  .firm-insights-tabs button {
+    padding: 7px 9px;
+    font-size: 12px;
+  }
+  .firm-insights-tabs label {
+    width: auto;
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
 }
 .firm-insights-tabs label {
   margin-left: auto;
@@ -640,10 +724,9 @@
 @media (max-width: 760px) {
   .firm-insights-tabs label {
     margin-left: 0;
-    width: 100%;
   }
   .firm-insights-tabs select {
-    flex: 1;
+    max-width: 220px;
   }
   .firm-insights-detail-metrics {
     grid-template-columns: 1fr 1fr;
