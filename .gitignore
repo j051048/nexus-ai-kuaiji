@@ -134,6 +134,8 @@ pytest-of-*/
 accounting-schema-*/
 tmp*
 .tmp_build/
+.tmp-build/
+deploy-web.sh
 
 # Vercel local project/build state (environment and account metadata)
 .vercel/
