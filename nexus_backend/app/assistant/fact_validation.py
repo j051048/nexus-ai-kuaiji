@@ -7,10 +7,54 @@ policy in the atomic completion transaction.
 
 from datetime import date
 from decimal import Decimal
+import re
 
 from app.intelligence.context_pack import ContextError, load_context_pack
 from app.intelligence.fact_validation import AnswerError, Claim, EvidenceFact, validate_bound_claims
 from .models import AssistantModelReply, AssistantReply
+
+
+_FORBIDDEN_UNBOUND_PHRASES = (
+    "已审核",
+    "已复核",
+    "审核通过",
+    "复核通过",
+    "已过账",
+    "已导出",
+    "已确认",
+    "利润",
+)
+_UNBOUND_MONEY_PATTERN = re.compile(
+    r"(?:¥|￥|CNY|RMB)\s*\d|\d[\d,\.]*\s*(?:元|万元|千元|亿元)|"
+    r"(?:金额|收入|支出|费用|成本|税额|余额|利润|负债|资产)[^。\n]{0,12}\d"
+)
+
+
+def _safe_general_answer(text: str) -> bool:
+    cleaned = (text or "").strip()
+    if not cleaned or len(cleaned) > 6000:
+        return False
+    if any(phrase in cleaned for phrase in _FORBIDDEN_UNBOUND_PHRASES):
+        return False
+    if _UNBOUND_MONEY_PATTERN.search(cleaned):
+        return False
+    return True
+
+
+def _render_authorized_companies(pack) -> str:
+    fact = next((row for row in pack.facts if row["key"] == "authorized_companies"), None)
+    if not fact or not isinstance(fact.get("value"), list):
+        return ""
+    companies = fact["value"]
+    if not companies:
+        return "按当前账号权限，目前名下暂无可查看的企业记录。"
+    lines = [f"按当前账号授权范围，共可查看 {len(companies)} 家企业："]
+    for idx, item in enumerate(companies, start=1):
+        name = str(item.get("name") or "").strip()
+        if name:
+            lines.append(f"{idx}. {name}")
+    lines.append("如需核对具体某家子公司的账套或凭证，可在上方下拉框切换后继续提问。")
+    return "\n".join(lines)
 
 
 FALLBACK = "当前回复缺少可核验的事实依据，请人工核对当前资料；仍须会计复核后导出。"
@@ -93,14 +137,27 @@ def render_assistant_reply(reply, context_pack, *, with_validation=False):
         from .request_budget import omission_notice
 
         notice = ""
+        directory_summary = ""
         try:
             pack = load_context_pack(
                 context_pack.as_dict() if hasattr(context_pack, "as_dict") else context_pack
             )
             summary, citations = render_delivery(pack)
+            directory_summary = _render_authorized_companies(pack)
             notice = omission_notice(pack)
         except (ContextError, KeyError, ValueError, TypeError, AttributeError):
             summary, citations = "", []
+        if directory_summary:
+            if code == "ak04_fact_verified" and rendered.answer and rendered.answer != FALLBACK:
+                answer = directory_summary + "\n\n" + rendered.answer
+            else:
+                answer = directory_summary
+                code = "ak04_fact_verified"
+            rendered = AssistantReply(
+                answer=answer[:12000],
+                citation_ids=list(rendered.citation_ids),
+                proposals=[],
+            )
         if summary:
             answer = summary + "\n" + rendered.answer
             refs = list(dict.fromkeys([*citations, *rendered.citation_ids]))
@@ -147,6 +204,15 @@ def render_assistant_reply(reply, context_pack, *, with_validation=False):
             }[reply.fact_status],
         )
     if not reply.claims:
+        if _safe_general_answer(reply.answer):
+            return result(
+                AssistantReply(
+                    answer=reply.answer.strip() + "\n以上为智能辅助说明，具体账务处理请以会计复核为准。",
+                    citation_ids=list(reply.citation_ids),
+                    proposals=[],
+                ),
+                "ak04_fact_verified",
+            )
         return result(fallback, "ak04_fact_invalid")
     try:
         pack = load_context_pack(

@@ -208,6 +208,32 @@ def test_production_without_managed_policy_blocks_legacy_ai(business, monkeypatc
     monkeypatch.setenv("ACCOUNTING_ENV", "production")
     service = AIEndpointPolicyService(case.db)
     with case.db.transaction() as conn:
+        # B-2 默认策略：未定制企业外发政策时，受控环境变量端点默认放通，但仍阻断元数据地址
+        default_evidence = service.check_send(
+            conn,
+            case.manager,
+            case.company["id"],
+            "chat",
+            {"chat"},
+            "https://legacy.example.test/v1",
+            "legacy-model",
+            True,
+        )
+        assert default_evidence["env_default"] is True
+        with pytest.raises(AccountingError, match="元数据"):
+            service.check_send(
+                conn,
+                case.manager,
+                case.company["id"],
+                "chat",
+                {"chat"},
+                "https://169.254.169.254/v1",
+                "legacy-model",
+                True,
+            )
+    # 显式开启强制每企白名单策略时仍严格阻断
+    monkeypatch.setenv("ACCOUNTING_AI_REQUIRE_MANAGED_POLICY", "1")
+    with case.db.transaction() as conn:
         with pytest.raises(AccountingError, match="未配置企业 AI 外发政策"):
             service.check_send(
                 conn,

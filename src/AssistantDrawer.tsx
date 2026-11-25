@@ -51,11 +51,16 @@ export function AssistantDrawer({
       >
         <header className="assistant-unified-header">
           <span className="assistant-unified-mark">
-            <Sparkles size={17} />
+            <Sparkles size={15} />
           </span>
-          <div>
+          <div className="assistant-unified-title">
             <strong>智能财税副驾</strong>
-            <small>{mode === 'context' ? '当前凭证依据核对' : '按账号权限查库 · 随时提问'}</small>
+            {scopeBadge && (
+              <span className="assistant-scope-badge" title={scopeBadge}>
+                <ShieldCheck size={12} aria-hidden="true" />
+                {scopeBadge}
+              </span>
+            )}
           </div>
           <div className="assistant-unified-header-actions">
             {onToggleDock && (
@@ -66,7 +71,7 @@ export function AssistantDrawer({
                 title={docked ? '切换为浮层窗口' : '固定常驻在右侧'}
                 onClick={onToggleDock}
               >
-                {docked ? <PanelRightClose size={17} /> : <PanelRightOpen size={17} />}
+                {docked ? <PanelRightClose size={16} /> : <PanelRightOpen size={16} />}
               </button>
             )}
             <button
@@ -74,19 +79,13 @@ export function AssistantDrawer({
               type="button"
               className="icon-button"
               aria-label="收起智能财税副驾"
-              title="收起为悬浮球"
+              title="收起"
               onClick={onClose}
             >
-              <X size={18} />
+              <X size={17} />
             </button>
           </div>
         </header>
-        {scopeBadge && (
-          <div className="assistant-scope-strip" aria-label="当前数据查询权限范围">
-            <ShieldCheck size={14} aria-hidden="true" />
-            <span>{scopeBadge}</span>
-          </div>
-        )}
         {contextAvailable && (
           <div className="assistant-unified-tabs" role="tablist" aria-label="智能财税副驾模式">
             <button

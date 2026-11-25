@@ -17,6 +17,36 @@ def encode(value):
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 
+_COMPANY_DIRECTORY_HINTS = (
+    "几家公司",
+    "哪几家",
+    "有哪些公司",
+    "有哪些企业",
+    "哪些子公司",
+    "子公司列表",
+    "子公司清单",
+    "集团公司",
+    "集团有",
+    "集团一共",
+    "旗下公司",
+    "旗下企业",
+    "公司名单",
+    "公司列表",
+    "企业名单",
+    "企业列表",
+    "所有公司",
+    "全部公司",
+    "授权范围",
+)
+
+
+def is_company_directory_question(question: str) -> bool:
+    text = (question or "").strip()
+    if not text:
+        return False
+    return any(keyword in text for keyword in _COMPANY_DIRECTORY_HINTS)
+
+
 TURN_PUBLIC = "id,conversation_id,firm_id,company_id,created_by,question,status,provider,model,expected_scope_version,input_fingerprint,model_fingerprint,snapshot_json,attempt_count,available_at,sent_at,error_code,error_detail,reply_json,created_at,updated_at,finished_at"
 
 
@@ -276,7 +306,9 @@ class AssistantService:
                 **self._availability(conn, actor, company_id),
             }
 
-    def snapshot_in_transaction(self, conn, actor, conversation, *, delivery_task=False):
+    def snapshot_in_transaction(
+        self, conn, actor, conversation, *, delivery_task=False, company_directory=False
+    ):
         company, books, events, draft_row = self._check_refs(conn, actor, conversation)
         context = {
             "company_id": company["id"],
@@ -517,6 +549,30 @@ class AssistantService:
                         evidence["detail"] = (
                             "打开本月当前资料；历史诊断需重新核对，不执行复核、记账或导出"
                         )
+        if company_directory:
+            rows = conn.execute(
+                "SELECT DISTINCT c.id,c.name,c.tax_id FROM companies c "
+                "JOIN firm_clients fc ON fc.company_id=c.id "
+                "WHERE fc.firm_id=? AND fc.status='active' ORDER BY c.name,c.id LIMIT 60",
+                (actor.firm_id,),
+            ).fetchall()
+            authorized = []
+            for row in rows:
+                try:
+                    self.access.company(conn, actor, row["id"])
+                except AccountingError as denied:
+                    if denied.status in {403, 404}:
+                        continue
+                    raise
+                authorized.append(
+                    {
+                        "id": row["id"],
+                        "name": row["name"],
+                        "tax_id": row["tax_id"] or "",
+                    }
+                )
+            context["authorized_companies"] = authorized
+            basis["authorized_companies"] = authorized
         context["input_fingerprint"] = (
             conn.execute(
                 "SELECT accounting.assistant_input_basis(?)", (conversation["id"],)
@@ -823,7 +879,11 @@ class AssistantService:
             from .delivery_context import is_delivery_question
 
             context = self.snapshot_in_transaction(
-                conn, actor, conversation, delivery_task=is_delivery_question(body.question)
+                conn,
+                actor,
+                conversation,
+                delivery_task=is_delivery_question(body.question),
+                company_directory=is_company_directory_question(body.question),
             )
             history = self._history(conn, conversation_id)
             info = self._availability(conn, actor, conversation["company_id"])

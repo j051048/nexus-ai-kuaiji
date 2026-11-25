@@ -233,6 +233,17 @@ def build_assistant_context_pack(
                 reference_ids,
             )
             add("delivery_task", projection, kind="delivery_readiness")
+        if "authorized_companies" in snapshot:
+            authorized_rows = _rows(snapshot.get("authorized_companies"))
+            cleaned_companies = [
+                {
+                    "id": _id(row.get("id")),
+                    "name": _id(row.get("name")),
+                    "tax_id": str(row.get("tax_id") or ""),
+                }
+                for row in authorized_rows[:60]
+            ]
+            add("authorized_companies", cleaned_companies, kind="authorized_directory")
         facts.append(Fact("current_question", question, 1, "user_text"))
         # Saved history has no fact-version proof. Retain questions for discourse
         # only; never relabel an old answer with the current snapshot version.

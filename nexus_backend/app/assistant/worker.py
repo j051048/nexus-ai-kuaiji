@@ -89,9 +89,14 @@ class AssistantWorker:
         ]:
             raise AccountingError("企业已关闭模型处理，资料不会继续发送", 403)
         from .delivery_context import is_delivery_question
+        from .service import is_company_directory_question
 
         context = self.service.snapshot_in_transaction(
-            conn, actor, conversation, delivery_task=is_delivery_question(turn["question"])
+            conn,
+            actor,
+            conversation,
+            delivery_task=is_delivery_question(turn["question"]),
+            company_directory=is_company_directory_question(turn["question"]),
         )
         if (
             context["input_fingerprint"] != turn["input_fingerprint"]
@@ -324,16 +329,19 @@ class AssistantWorker:
             with self.db.transaction(write=True, actor=self._actor(turn)) as conn:
                 snapshot = self._check(conn, turn)
                 chat = effective_settings(self.provider.settings, "chat")
-                evidence = AIEndpointPolicyService(self.db).check_send(
-                    conn,
-                    self._actor(turn),
-                    turn["company_id"],
-                    "chat",
-                    {"chat"},
-                    chat.base_url,
-                    chat.model,
-                    bool(chat.api_key),
-                )
+                try:
+                    evidence = AIEndpointPolicyService(self.db).check_send(
+                        conn,
+                        self._actor(turn),
+                        turn["company_id"],
+                        "chat",
+                        {"chat"},
+                        chat.base_url,
+                        chat.model,
+                        bool(chat.api_key),
+                    )
+                except AccountingError as policy_denied:
+                    raise ProviderError("policy_rejected", policy_denied.detail) from None
                 from app.intelligence.provider import ExecutionLimits
 
                 chat_limits = ExecutionLimits.from_evidence(

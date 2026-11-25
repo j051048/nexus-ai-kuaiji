@@ -316,14 +316,31 @@ class AIEndpointPolicyService:
                 os.getenv(key, "").strip().lower() in {"prod", "production"}
                 for key in ("APP_ENV", "ENV", "ENVIRONMENT")
             )
-            if production:
+            require_managed = (
+                os.getenv("ACCOUNTING_AI_REQUIRE_MANAGED_POLICY", "0").strip() == "1"
+            )
+            if production and require_managed:
                 raise AccountingError(
                     "生产环境未配置企业 AI 外发政策，已阻断该调用；请由管理员完成端点与数据授权后再启用",
                     403,
                 )
+            if base_url:
+                parsed = urlsplit(canonical_base_url(base_url))
+                allow_http = os.getenv("ACCOUNTING_AI_ALLOW_HTTP", "0").strip() == "1"
+                validate_endpoint(
+                    parsed.scheme,
+                    parsed.hostname or "",
+                    parsed.port or (443 if parsed.scheme == "https" else 80),
+                    parsed.path.rstrip("/"),
+                    allow_http,
+                    allow_http,
+                )
+            if not base_url or not model:
+                raise AccountingError("服务器尚未配置该场景的模型端点或模型标识", 403)
             return {
                 "managed": False,
                 "legacy": True,
+                "env_default": True,
                 "policy_version": 0,
                 "context_limit": 128_000,
                 "output_limit": 4096,

@@ -239,3 +239,31 @@ def test_supplier_strict_schema_requires_every_envelope_field_but_local_legacy_f
             assert set(definition["required"]) == set(definition["properties"])
     legacy = AssistantModelReply.model_validate({"answer": "未绑定旧答复", "citation_ids": [], "proposals": []})
     assert legacy.fact_status == "requires_accountant" and legacy.claims == []
+
+
+def test_company_directory_question_returns_authorized_companies_without_hallucination(business):
+    c = runtime(business)
+    configure(c, reply([], fact_status="requires_accountant"))
+    result = run(c, thread(c), "集团一共有哪几家公司？")
+    assert result["status"] == "succeeded"
+    answer = result["reply"]["answer"]
+    assert "按当前账号授权范围" in answer
+    assert business.company["name"] in answer
+    assert "999999" not in answer
+
+
+def test_safe_general_accounting_guidance_is_published_when_verified_without_claims(business):
+    c = runtime(business)
+    configure(
+        c,
+        reply(
+            [],
+            fact_status="verified",
+            answer="报销缺少原始发票时，请先退回申请人补充有效凭证，再由主办会计整理入账。",
+        ),
+    )
+    result = run(c, thread(c), "员工报销缺少发票怎么处理？")
+    assert result["status"] == "succeeded"
+    answer = result["reply"]["answer"]
+    assert "退回申请人补充有效凭证" in answer
+    assert "会计复核为准" in answer

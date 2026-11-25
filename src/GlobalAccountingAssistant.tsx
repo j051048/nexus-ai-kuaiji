@@ -8,7 +8,6 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
-  Clock3,
   FileSearch,
   FileText,
   History,
@@ -26,7 +25,6 @@ import {
 } from 'lucide-react';
 import { api, ApiError, errorMessage } from './api';
 import { ExecutionRecordPanel } from './ExecutionRecordPanel';
-import { AssistantTurnProgress } from './AssistantTurnProgress';
 import { AssistantDeliveryDetails } from './AssistantDeliveryDetails';
 import { assistantDeliveryTarget } from './assistant-delivery-target';
 import { useAssistantTurnEvents } from './useAssistantTurnEvents';
@@ -156,9 +154,12 @@ export function GlobalAccountingAssistant({
     [actionPagination, setActionPagination] = useState<Pagination | null>(null);
   const [title, setTitle] = useState(''),
     [question, setQuestion] = useState(''),
+    [pendingQuestion, setPendingQuestion] = useState<{ text: string; at: string } | null>(null),
+    [toolsOpen, setToolsOpen] = useState(false),
     [loading, setLoading] = useState(false),
     [scopeLoading, setScopeLoading] = useState(false),
     [busy, setBusy] = useState(false);
+  const optimisticConversationId = useRef<string | null>(null);
   const [error, setError] = useState(''),
     [notice, setNotice] = useState(''),
     [revoked, setRevoked] = useState(false),
@@ -315,6 +316,9 @@ export function GlobalAccountingAssistant({
     setPlans([]);
     setActionPagination(null);
     setQuestion('');
+    setPendingQuestion(null);
+    setToolsOpen(false);
+    optimisticConversationId.current = null;
     setTitle('');
     setBookIds([]);
     setEventIds([]);
@@ -418,6 +422,9 @@ export function GlobalAccountingAssistant({
     setActionPagination(null);
     setConversationId(null);
     setQuestion('');
+    setPendingQuestion(null);
+    setToolsOpen(false);
+    optimisticConversationId.current = null;
     setNotice('');
     setHistoryOffset(0);
     setMessageOffset(0);
@@ -598,6 +605,9 @@ export function GlobalAccountingAssistant({
           setMessages({ key: started, value: values[1] });
           setPlans(values[2].plans);
           setActionPagination(values[2].pagination);
+          if (values[0].turns.length > 0 || values[1].messages.length > 0) {
+            setPendingQuestion(null);
+          }
         } catch (failure) {
           if (
             signal.aborted ||
@@ -632,6 +642,8 @@ export function GlobalAccountingAssistant({
       clearSensitive,
     ],
   );
+  const loadConversationRef = useRef(loadConversation);
+  loadConversationRef.current = loadConversation;
   const turnEvents = useAssistantTurnEvents({
     session,
     companyId,
@@ -640,19 +652,33 @@ export function GlobalAccountingAssistant({
     active: !!activeTurn,
     scopeKey: detailKey,
     onRevoked: clearSensitive,
-    onFinished: loadConversation,
+    onFinished: () => loadConversationRef.current(false, true),
   });
-  const readTurnEvents = turnEvents.read;
+  const readTurnEventsRef = useRef(turnEvents.read);
+  readTurnEventsRef.current = turnEvents.read;
   useEffect(() => {
+    if (!conversationId) {
+      setDetail(null);
+      setMessages(null);
+      setPlans([]);
+      progressRevision.current = null;
+      return;
+    }
+    const isOptimistic = optimisticConversationId.current === conversationId;
+    if (isOptimistic) {
+      optimisticConversationId.current = null;
+      progressRevision.current = null;
+      void loadConversationRef.current(false, true);
+      return;
+    }
     setDetail(null);
     setMessages(null);
     setPlans([]);
-    setQuestion('');
     setNotice('');
     setError('');
     progressRevision.current = null;
-    if (conversationId) void loadConversation(true, true);
-  }, [conversationId, messageOffset, loadConversation]);
+    void loadConversationRef.current(true, true);
+  }, [conversationId, messageOffset]);
   useEffect(() => {
     if (!conversationId || revoked) return;
     const captured = detailKey,
@@ -668,13 +694,13 @@ export function GlobalAccountingAssistant({
         // A cheap, freshly authorized cursor makes completed responses visible
         // sooner. Full facts are still refreshed periodically and on focus.
         if (legacy || Date.now() - lastFull >= 30_000) {
-          await loadConversation();
+          await loadConversationRef.current(false, false);
           lastFull = Date.now();
           return;
         }
         // Active supported turns use a bounded milestone cursor, not repeated
         // whole-workspace reads. Action receipts retain their own revision path.
-        if (await readTurnEvents()) {
+        if (await readTurnEventsRef.current()) {
           if (!activeTask) return;
         }
         const progress = await api<AssistantConversationProgress>(
@@ -693,7 +719,7 @@ export function GlobalAccountingAssistant({
           return;
         }
         if (progressRevision.current !== progress.revision) {
-          await loadConversation();
+          await loadConversationRef.current(false, true);
           if (!signal.aborted && captured === liveDetail.current) {
             progressRevision.current = progress.revision;
             lastFull = Date.now();
@@ -707,7 +733,7 @@ export function GlobalAccountingAssistant({
           failure.message === 'Not Found'
         ) {
           legacy = true;
-          await loadConversation();
+          await loadConversationRef.current(false, false);
         } else {
           if (failure instanceof ApiError && [401, 403, 404].includes(failure.status))
             clearSensitive();
@@ -717,9 +743,9 @@ export function GlobalAccountingAssistant({
         reading = false;
       }
     };
-    const timer = window.setInterval(() => void poll(), activeTurn || activeTask ? 1000 : 15000);
+    const timer = window.setInterval(() => void poll(), activeTurn || activeTask ? 1200 : 15000);
     const foreground = () => {
-      if (document.visibilityState === 'visible') void loadConversation();
+      if (document.visibilityState === 'visible') void loadConversationRef.current(false, false);
     };
     window.addEventListener('focus', foreground);
     document.addEventListener('visibilitychange', foreground);
@@ -734,18 +760,16 @@ export function GlobalAccountingAssistant({
     companyId,
     detailKey,
     planOffset,
-    session,
+    session.scope_key,
     activeTurn?.id,
     activeTask,
     revoked,
-    loadConversation,
     clearSensitive,
-    readTurnEvents,
   ]);
   useEffect(() => {
     if (messageOffset === 0)
       transcript.current?.scrollTo({ top: transcript.current.scrollHeight, behavior: 'auto' });
-  }, [currentMessages?.messages.length, activeTurn?.status, messageOffset]);
+  }, [currentMessages?.messages.length, activeTurn?.status, pendingQuestion?.text, messageOffset]);
 
   function keyFor(operation: string, signature: string) {
     const prior = requestKeys.current.get(operation);
@@ -772,6 +796,7 @@ export function GlobalAccountingAssistant({
       if (generation === epoch.current && target === liveDetail.current) {
         if (failure instanceof ApiError && [401, 403, 404].includes(failure.status))
           clearSensitive();
+        setPendingQuestion(null);
         setError(errorMessage(failure));
       }
     } finally {
@@ -794,6 +819,7 @@ export function GlobalAccountingAssistant({
   }
   function startNew() {
     invalidateDetailRead();
+    optimisticConversationId.current = null;
     setConversationId(null);
     setDetail(null);
     setMessages(null);
@@ -801,7 +827,9 @@ export function GlobalAccountingAssistant({
     setActionPagination(null);
     setCreating(false);
     setShowHistory(false);
+    setToolsOpen(false);
     setQuestion('');
+    setPendingQuestion(null);
     setError('');
     setNotice('');
     requestKeys.current.clear();
@@ -866,6 +894,8 @@ export function GlobalAccountingAssistant({
   function sendQuestion(value: string) {
     const submitted = assistantQuestion(value);
     if (!submitted || activeTurn || !modelAvailable || !companyId) return;
+    setPendingQuestion({ text: submitted, at: new Date().toISOString() });
+    setQuestion('');
     if (current) {
       const conversation = current.conversation;
       void mutate(
@@ -885,7 +915,7 @@ export function GlobalAccountingAssistant({
           ),
         (result) => {
           requestKeys.current.delete('turn');
-          setQuestion('');
+          setPendingQuestion(null);
           setDetail((previous) =>
             previous?.key === detailKey
               ? {
@@ -900,12 +930,12 @@ export function GlobalAccountingAssistant({
                 }
               : previous,
           );
-          void loadConversation(false, true);
+          void loadConversationRef.current(false, true);
         },
       );
       return;
     }
-    // 零门槛直聊：尚无活动会话时，后台按当前账号与当前子公司静默自动建会话并立即提问。
+    // 零门槛原地直聊：静默建会话并入队提问，绝不清空界面跳白屏。
     const autoBooks = bookIds.length
       ? bookIds.filter((id) => !options || options.books.some((book) => book.id === id))
       : (options?.books.slice(0, 5).map((book) => book.id) ?? []);
@@ -953,8 +983,10 @@ export function GlobalAccountingAssistant({
       ({ row }) => {
         requestKeys.current.delete('quick-create');
         requestKeys.current.delete('turn');
-        setQuestion('');
-        openConversation(row);
+        optimisticConversationId.current = row.id;
+        setCreating(false);
+        setShowHistory(false);
+        setConversationId(row.id);
       },
     );
   }
@@ -1061,21 +1093,50 @@ export function GlobalAccountingAssistant({
       aria-label={embedded ? '会计助手' : undefined}
       data-assistant-company={companyId || undefined}
     >
-      <header className="ga-header">
-        {!embedded && (
-          <>
-            <div className="ga-mark">
-              <Sparkles size={19} />
-            </div>
-            <div>
-              <p>衡账 · 集团共享财税副驾</p>
-              <h2 id="global-assistant-title">智能财税副驾</h2>
-            </div>
-          </>
-        )}
-        <div className="ga-header-actions">
+      {!embedded && (
+        <header className="ga-header">
+          <div className="ga-mark">
+            <Sparkles size={17} />
+          </div>
+          <div>
+            <h2 id="global-assistant-title">智能财税副驾</h2>
+          </div>
+          <div className="ga-header-actions">
+            <button
+              ref={closeButton}
+              className="icon-button"
+              aria-label="关闭全局会计助手"
+              onClick={closeAssistant}
+            >
+              <X size={18} />
+            </button>
+          </div>
+        </header>
+      )}
+      <div className="ga-toolbar">
+        <div className="ga-company-select-wrap">
+          <Building2 size={14} aria-hidden="true" />
+          <label className="sr-only" htmlFor="ga-company-select">
+            当前查询子公司
+          </label>
+          <select
+            id="ga-company-select"
+            value={companyId}
+            disabled={busy || revoked}
+            onChange={(event) => changeCompany(event.target.value)}
+          >
+            <option value="">选择子公司</option>
+            {companies.map((company) => (
+              <option key={company.id} value={company.id}>
+                {company.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="ga-toolbar-actions">
           <button
-            className="icon-button"
+            type="button"
+            className={'icon-button' + (showHistory ? ' active' : '')}
             aria-label="查看历史对话"
             title="历史对话"
             disabled={!companyId || revoked || busy}
@@ -1084,60 +1145,29 @@ export function GlobalAccountingAssistant({
               setShowHistory((value) => !value);
             }}
           >
-            <History size={18} />
+            <History size={16} />
           </button>
           <button
-            className="icon-button"
+            type="button"
+            className={'icon-button' + (creating ? ' active' : '')}
             aria-label="限定专项核对资料"
-            title={creating ? '返回直接聊天' : '限定专项资料范围'}
+            title={creating ? '返回对话' : '限定专项资料范围'}
             disabled={!companyId || revoked || busy}
             onClick={openScopeBuilder}
           >
-            <FileSearch size={18} />
+            <FileSearch size={16} />
           </button>
           <button
+            type="button"
             className="icon-button"
             aria-label="开启新对话"
-            title="开启新对话"
+            title="新对话"
             disabled={!companyId || revoked || busy}
             onClick={startNew}
           >
-            <Plus size={19} />
+            <Plus size={17} />
           </button>
-          {!embedded && (
-            <button
-              ref={closeButton}
-              className="icon-button"
-              aria-label="关闭全局会计助手"
-              onClick={closeAssistant}
-            >
-              <X size={19} />
-            </button>
-          )}
         </div>
-      </header>
-      <div className="ga-company">
-        <Building2 size={15} />
-        <label className="sr-only" htmlFor="ga-company-select">
-          当前查询子公司
-        </label>
-        <select
-          id="ga-company-select"
-          value={companyId}
-          disabled={busy || revoked}
-          onChange={(event) => changeCompany(event.target.value)}
-        >
-          <option value="">选择已授权子公司</option>
-          {companies.map((company) => (
-            <option key={company.id} value={company.id}>
-              {company.name}
-            </option>
-          ))}
-        </select>
-        <span className="ga-private" title={roleMeta.scopeDetail}>
-          <ShieldCheck size={12} />
-          按权查库
-        </span>
       </div>
       {error && (
         <div className="ga-error" role="alert">
@@ -1387,104 +1417,121 @@ export function GlobalAccountingAssistant({
         </section>
       ) : companyId && !revoked ? (
         <>
-          {loading && !current ? (
-            <div className="ga-empty" role="status">
-              <LoaderCircle className="spinner" size={24} />
-              <p>正在读取当前授权会话…</p>
-            </div>
-          ) : current ? (
-            <>
-              <div className="ga-context">
-                <div>
-                  <strong>{current.conversation.title || '会计资料核对'}</strong>
-                  {onNavigateContext && (
-                    <button
-                      className="text-button"
-                      disabled={busy}
-                      onClick={() => onNavigateContext(current.context)}
-                    >
-                      查看资料
-                      <ChevronRight size={12} />
-                    </button>
-                  )}
-                </div>
-                <div className="ga-chips">
-                  {current.context.books.map((book) => (
+          {current &&
+            (current.context.books.length > 0 ||
+              current.context.events.length > 0 ||
+              current.context.draft) && (
+              <div className="ga-scope-line">
+                <div className="ga-scope-line-tags">
+                  {current.context.books.slice(0, 2).map((book) => (
                     <span key={book.id}>
-                      <BookOpen size={11} />
                       {book.period} · {book.name}
                     </span>
                   ))}
+                  {current.context.books.length > 2 && (
+                    <span>等 {current.context.books.length} 套账</span>
+                  )}
                   {current.context.events.length > 0 && (
-                    <span>
-                      <FileText size={11} />
-                      {current.context.events.length} 项业务事项
-                    </span>
+                    <span>{current.context.events.length} 项事项</span>
                   )}
-                  {current.context.draft && (
-                    <span>
-                      当前凭证
-                      {current.context.draft.version ? ` v${current.context.draft.version}` : ''}
-                    </span>
-                  )}
-                  {!current.context.books.length && !current.context.events.length && (
-                    <span>一般咨询 · 未加入企业资料</span>
-                  )}
+                  {current.context.draft && <span>当前凭证</span>}
+                </div>
+                {onNavigateContext && (
+                  <button
+                    type="button"
+                    className="text-button"
+                    disabled={busy}
+                    onClick={() => onNavigateContext(current.context)}
+                  >
+                    查看资料
+                    <ChevronRight size={12} />
+                  </button>
+                )}
+              </div>
+            )}
+
+          <div className="ga-transcript ga-scroll" ref={transcript} aria-label="智能财税副驾对话">
+            {loading && !current && !pendingQuestion ? (
+              <div className="ga-inline-loading" role="status">
+                <LoaderCircle className="spinner" size={18} />
+                <span>正在加载对话…</span>
+              </div>
+            ) : !current && !pendingQuestion ? (
+              <div className="ga-welcome-clean">
+                <p className="ga-welcome-hello">有什么财税或账务问题，直接问我即可。</p>
+                <div className="ga-prompt-list">
+                  {roleMeta.quickPrompts.map((prompt) => (
+                    <button
+                      key={prompt}
+                      type="button"
+                      className="ga-prompt-chip"
+                      disabled={busy || !modelAvailable || scopeLoading}
+                      onClick={() => {
+                        if (modelAvailable) sendQuestion(prompt);
+                        else setQuestion(prompt);
+                      }}
+                    >
+                      <span>{prompt}</span>
+                      <ChevronRight size={14} aria-hidden="true" />
+                    </button>
+                  ))}
                 </div>
               </div>
-              <div
-                className="ga-transcript ga-scroll"
-                ref={transcript}
-                aria-label="会计助手会话记录"
-              >
+            ) : (
+              <>
                 {currentMessages?.pagination.has_more && (
                   <button
+                    type="button"
                     className="ga-older"
                     disabled={busy}
                     onClick={() => setMessageOffset(messageOffset + 100)}
                   >
-                    查看更早的 100 条记录
+                    查看更早记录
                   </button>
                 )}
                 {messageOffset > 0 && (
                   <button
+                    type="button"
                     className="ga-older"
                     disabled={busy}
                     onClick={() => setMessageOffset(Math.max(0, messageOffset - 100))}
                   >
-                    返回较新的记录
+                    返回最新记录
                   </button>
                 )}
-                {!currentMessages?.messages.length && !activeTurn && (
-                  <div className="ga-welcome">
-                    <FileSearch size={25} />
-                    <h3>从这份资料里找答案</h3>
-                    <p>核对金额、解释分录依据，或准备一批受控后台任务。</p>
-                    <div className="ga-prompts">
-                      {[
-                        '帮我梳理所选资料中需要人工处理的问题',
-                        '核对所选票据与业务事项的金额差异',
-                        '解释当前分录草稿的依据与缺少的证据',
-                      ].map((value) => (
-                        <button
-                          key={value}
-                          disabled={!modelAvailable || busy}
-                          onClick={() => setQuestion(value)}
-                        >
-                          <MessageSquareText size={13} />
-                          {value}
-                          <ChevronRight size={13} />
-                        </button>
-                      ))}
+                {current &&
+                  !currentMessages?.messages.length &&
+                  !visibleTurns.length &&
+                  !pendingQuestion && (
+                    <div className="ga-welcome-clean">
+                      <p className="ga-welcome-hello">已就绪，请直接输入您的问题。</p>
+                      <div className="ga-prompt-list">
+                        {[
+                          '帮我梳理所选资料中需要人工处理的问题',
+                          '核对所选票据与业务事项的金额差异',
+                          '解释当前分录草稿的依据与缺少的证据',
+                        ].map((value) => (
+                          <button
+                            key={value}
+                            type="button"
+                            className="ga-prompt-chip"
+                            disabled={!modelAvailable || busy}
+                            onClick={() => sendQuestion(value)}
+                          >
+                            <span>{value}</span>
+                            <ChevronRight size={14} aria-hidden="true" />
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
+
                 {currentMessages?.messages.map((message) => {
                   const reply =
                     message.role === 'assistant' && 'answer' in message.content
                       ? message.content
                       : null;
-                  const citedEvidence = message.citations ?? current.context.evidence;
+                  const citedEvidence = message.citations ?? current?.context.evidence ?? [];
                   const detailTargets =
                     reply && message.turn_id
                       ? assistantCitations(reply, citedEvidence)
@@ -1492,22 +1539,12 @@ export function GlobalAccountingAssistant({
                           .filter((target) => target !== null)
                       : [];
                   const historical =
+                    !!current &&
                     !!message.input_fingerprint &&
                     message.input_fingerprint !== current.context.input_fingerprint;
                   return (
                     <article key={message.id} className={`ga-message ${message.role}`}>
-                      <div className="ga-message-label">
-                        {message.role === 'assistant' ? (
-                          <>
-                            <Sparkles size={13} />
-                            会计助手 · 模型回复
-                          </>
-                        ) : (
-                          <>你</>
-                        )}
-                        <time dateTime={message.created_at}>{dateLabel(message.created_at)}</time>
-                      </div>
-                      <p>
+                      <p className="ga-message-text">
                         {reply?.answer ||
                           ('question' in message.content ? message.content.question : '')}
                       </p>
@@ -1517,7 +1554,7 @@ export function GlobalAccountingAssistant({
                             new Set(reply.citation_ids).size >
                               assistantCitations(reply, citedEvidence).length) && (
                             <p className="ga-historical-citation">
-                              这是基于历史资料的回复，当前资料已更新。引用保留当时依据，请按最新资料重新核对。
+                              该回复基于历史资料，当前数据已有更新。
                             </p>
                           )}
                           {assistantCitations(reply, citedEvidence).length > 0 && (
@@ -1525,6 +1562,7 @@ export function GlobalAccountingAssistant({
                               {assistantCitations(reply, citedEvidence).map((item) => (
                                 <button
                                   key={item.id}
+                                  type="button"
                                   disabled={!onNavigateEvidence}
                                   title={item.detail}
                                   onClick={() => onNavigateEvidence?.(item)}
@@ -1535,7 +1573,8 @@ export function GlobalAccountingAssistant({
                               ))}
                             </div>
                           )}
-                          {detailTargets.length === 1 &&
+                          {current &&
+                            detailTargets.length === 1 &&
                             detailTargets[0].company_id === current.conversation.company_id && (
                               <AssistantDeliveryDetails
                                 key={JSON.stringify([
@@ -1552,72 +1591,100 @@ export function GlobalAccountingAssistant({
                             )}
                           {assistantAllowedProposals(reply).map((proposal, index) => (
                             <button
+                              type="button"
                               className="ga-task-proposal"
                               key={`${proposal.kind}:${index}`}
                               disabled={busy}
                               onClick={() => prepareTask(proposal.kind, proposal.reason)}
                             >
-                              <ListChecks size={16} />
+                              <ListChecks size={15} />
                               <span>
                                 <strong>{assistantTaskLabels[proposal.kind]}</strong>
                                 <small>{proposal.reason}</small>
                               </span>
                               <span className="ga-proposal-label">
-                                先预览
+                                预览
                                 <ChevronRight size={13} />
                               </span>
                             </button>
                           ))}
                         </>
                       )}
-                      {message.role === 'assistant' && (
-                        <ExecutionRecordPanel
-                          session={session}
-                          companyId={companyId}
-                          kind="chat"
-                          runId={message.turn_id}
-                          contextKey={`${current.conversation.id}:${current.conversation.scope_version}:${current.context.input_fingerprint}`}
-                        />
-                      )}
                     </article>
                   );
                 })}
-                {messageOffset === 0 && (
-                  <AssistantTurnProgress feed={turnEvents.feed} notice={turnEvents.notice} />
-                )}
+
                 {visibleTurns
                   .filter((turn) => !referencedTurns.has(turn.id) && messageOffset === 0)
                   .slice()
                   .reverse()
                   .map((turn) => (
                     <article className="ga-message user" key={`turn:${turn.id}`}>
-                      <div className="ga-message-label">你</div>
-                      <p>{turn.question}</p>
+                      <p className="ga-message-text">{turn.question}</p>
                     </article>
                   ))}
-                {visibleTurns
-                  .filter((turn) => turn.status !== 'succeeded' && messageOffset === 0)
-                  .slice()
-                  .reverse()
-                  .map((turn) => (
-                    <div
-                      className={`ga-turn-state ${assistantTurnActive(turn.status) ? 'active' : 'attention'}`}
-                      role="status"
-                      key={`status:${turn.id}`}
-                    >
-                      {assistantTurnActive(turn.status) ? (
-                        <LoaderCircle className="spinner" size={15} />
-                      ) : (
-                        <TriangleAlert size={15} />
+
+                {pendingQuestion && (
+                  <article className="ga-message user" key="pending-user">
+                    <p className="ga-message-text">{pendingQuestion.text}</p>
+                  </article>
+                )}
+
+                {(pendingQuestion || activeTurn) && messageOffset === 0 && (
+                  <article className="ga-message assistant ga-thinking-bubble" role="status">
+                    <div className="ga-thinking-row">
+                      <LoaderCircle className="spinner" size={14} aria-hidden="true" />
+                      <span>
+                        {turnEvents.feed?.events.at(-1)?.message ||
+                          (activeTurn ? assistantTurnLabels[activeTurn.status] : '正在思考…')}
+                      </span>
+                      {activeTurn && (
+                        <button
+                          type="button"
+                          className="text-button ga-cancel-inline"
+                          disabled={busy}
+                          onClick={() => cancelTurn(activeTurn)}
+                        >
+                          <Square size={10} />
+                          停止
+                        </button>
                       )}
-                      <div>
-                        <strong>{assistantTurnLabels[turn.status]}</strong>
-                        <p>
+                    </div>
+                  </article>
+                )}
+
+                {current &&
+                  visibleTurns
+                    .filter(
+                      (turn) =>
+                        turn.status !== 'succeeded' &&
+                        !assistantTurnActive(turn.status) &&
+                        messageOffset === 0,
+                    )
+                    .slice(0, 1)
+                    .map((turn) => (
+                      <article
+                        className="ga-message assistant ga-error-bubble"
+                        role="status"
+                        key={`status:${turn.id}`}
+                      >
+                        <div className="ga-error-bubble-head">
+                          <TriangleAlert size={14} aria-hidden="true" />
+                          <strong>{assistantTurnLabels[turn.status]}</strong>
+                          <button
+                            type="button"
+                            className="text-button ga-retry-inline"
+                            disabled={busy || !modelAvailable}
+                            onClick={() => sendQuestion(turn.question)}
+                          >
+                            <RefreshCw size={12} />
+                            重试
+                          </button>
+                        </div>
+                        <p className="ga-message-text">
                           {turn.error_detail ||
                             assistantErrorCodeLabel(turn.error_code) ||
-                            (assistantTurnActive(turn.status)
-                              ? '请求已持久保存，关闭助手后仍会继续处理。'
-                              : '请核对当前资料与运行记录，再决定下一步。')}
+                            '本次未能完成回复，请稍后重试。'}
                         </p>
                         <ExecutionRecordPanel
                           session={session}
@@ -1626,315 +1693,202 @@ export function GlobalAccountingAssistant({
                           runId={turn.id}
                           contextKey={`${current.conversation.id}:${current.conversation.scope_version}:${current.context.input_fingerprint}`}
                         />
+                      </article>
+                    ))}
+
+                {current &&
+                  plans.map((plan) => (
+                    <section className="ga-action-plan" key={plan.id}>
+                      <div className="ga-plan-title">
+                        <ListChecks size={15} />
+                        <h4>{assistantTaskLabels[plan.kind]}</h4>
+                        <span>
+                          {plan.state === 'executed'
+                            ? '已登记'
+                            : plan.state === 'empty'
+                              ? '无可执行项'
+                              : plan.state === 'expired'
+                                ? '已过期'
+                                : '待确认'}
+                        </span>
                       </div>
-                      {assistantTurnActive(turn.status) && (
+                      <p>{plan.reason}</p>
+                      <div className="ga-plan-summary">
+                        <strong>{plan.count}</strong>
+                        <span>项资料</span>
+                      </div>
+                      <PlanItems items={plan.items} />
+                      {plan.blocked.map((blocked, index) => (
+                        <p className="ga-plan-blocked" key={`${blocked.code}:${index}`}>
+                          <TriangleAlert size={13} />
+                          {blocked.message}
+                        </p>
+                      ))}
+                      {!plan.receipt && (
                         <button
-                          className="text-button"
+                          type="button"
+                          className="ga-plan-rebuild"
                           disabled={busy}
-                          onClick={() => cancelTurn(turn)}
+                          onClick={() => prepareTask(plan.kind, plan.reason)}
                         >
-                          <Square size={11} />
-                          取消
+                          <RefreshCw size={12} />
+                          重新预览
                         </button>
                       )}
-                    </div>
-                  ))}
-                {visibleTurns
-                  .filter(
-                    (turn) =>
-                      turn.status === 'succeeded' &&
-                      messageOffset === 0 &&
-                      !currentMessages?.messages.some(
-                        (message) => message.turn_id === turn.id && message.role === 'assistant',
-                      ),
-                  )
-                  .map((turn) => (
-                    <ExecutionRecordPanel
-                      key={`execution:${turn.id}`}
-                      session={session}
-                      companyId={companyId}
-                      kind="chat"
-                      runId={turn.id}
-                      contextKey={`${current.conversation.id}:${current.conversation.scope_version}:${current.context.input_fingerprint}`}
-                    />
-                  ))}
-                {plans.map((plan) => (
-                  <section className="ga-action-plan" key={plan.id}>
-                    <div className="ga-plan-title">
-                      <ListChecks size={17} />
-                      <h4>{assistantTaskLabels[plan.kind]}</h4>
-                      <span>
-                        {plan.state === 'executed'
-                          ? '已登记'
-                          : plan.state === 'empty'
-                            ? '无可执行项'
-                            : plan.state === 'expired'
-                              ? '预览已过期'
-                              : '待你确认'}
-                      </span>
-                    </div>
-                    <p>{plan.reason}</p>
-                    <div className="ga-plan-summary">
-                      <strong>{plan.count}</strong>
-                      <span>项资料 · 仅当前会话范围</span>
-                    </div>
-                    <PlanItems items={plan.items} />
-                    {plan.blocked.map((blocked, index) => (
-                      <p className="ga-plan-blocked" key={`${blocked.code}:${index}`}>
-                        <TriangleAlert size={13} />
-                        {blocked.message}
-                      </p>
-                    ))}
-                    {!plan.receipt && (
-                      <button
-                        className="ga-plan-rebuild"
-                        disabled={busy}
-                        onClick={() => prepareTask(plan.kind, plan.reason)}
-                      >
-                        <RefreshCw size={12} />
-                        重新预览当前资料
-                      </button>
-                    )}
-                    {plan.receipt ? (
-                      <div className="ga-receipt">
-                        <CheckCircle2 size={15} />
-                        <div>
-                          <strong>
-                            {plan.receipt.jobs.length
-                              ? `${plan.receipt.jobs.length} 个后台任务已登记`
-                              : `${plan.receipt.created} 份草稿已生成`}
-                          </strong>
-                          <p>{assistantReceiptProgress(plan.receipt)}</p>
-                          <p>
-                            回执 {plan.receipt.id.slice(0, 8)} ·{' '}
-                            {dateLabel(plan.receipt.created_at)}
-                          </p>
+                      {plan.receipt ? (
+                        <div className="ga-receipt">
+                          <CheckCircle2 size={15} />
+                          <div>
+                            <strong>
+                              {plan.receipt.jobs.length
+                                ? `${plan.receipt.jobs.length} 个后台任务已登记`
+                                : `${plan.receipt.created} 份草稿已生成`}
+                            </strong>
+                            <p>{assistantReceiptProgress(plan.receipt)}</p>
+                          </div>
+                          {onOpenTask && (
+                            <button
+                              type="button"
+                              className="text-button"
+                              onClick={() => onOpenTask(plan.receipt!)}
+                            >
+                              查看
+                              <ChevronRight size={13} />
+                            </button>
+                          )}
                         </div>
-                        {onOpenTask && (
-                          <button className="text-button" onClick={() => onOpenTask(plan.receipt!)}>
-                            查看结果
-                            <ChevronRight size={13} />
-                          </button>
-                        )}
-                      </div>
-                    ) : plan.state === 'ready' ? (
-                      <>
-                        <p className="ga-plan-expiry">
-                          <Clock3 size={12} />
-                          预览有效至 {dateLabel(plan.expires_at)}，资料变化后需要重新预览。
-                        </p>
+                      ) : plan.state === 'ready' ? (
                         <button
+                          type="button"
                           className="ga-primary"
                           disabled={busy || !assistantPlanConfirmable(plan, current.conversation)}
                           onClick={() => confirmTask(plan)}
                         >
                           {busy ? (
-                            <LoaderCircle className="spinner" size={15} />
+                            <LoaderCircle className="spinner" size={14} />
                           ) : (
-                            <Check size={15} />
+                            <Check size={14} />
                           )}
                           确认执行这 {plan.count} 项
                         </button>
-                      </>
-                    ) : null}
-                  </section>
-                ))}
+                      ) : null}
+                    </section>
+                  ))}
+
                 {actionPagination && actionPagination.total > 20 && (
                   <div className="ga-pagination">
                     <button
+                      type="button"
                       disabled={!planOffset || busy}
                       onClick={() => setPlanOffset(Math.max(0, planOffset - 20))}
                     >
                       <ChevronLeft size={14} />
-                      较新任务
+                      上一页
                     </button>
                     <span>
                       {planOffset + 1}–{Math.min(planOffset + 20, actionPagination.total)} /{' '}
                       {actionPagination.total}
                     </span>
                     <button
+                      type="button"
                       disabled={!actionPagination.has_more || busy}
                       onClick={() => setPlanOffset(planOffset + 20)}
                     >
-                      更早任务
+                      下一页
                       <ChevronRight size={14} />
                     </button>
                   </div>
                 )}
-                <div className="ga-controlled-tools">
-                  <details>
-                    <summary>
-                      <ListChecks size={14} />
-                      直接准备后台任务 <span>先预览，再确认</span>
-                    </summary>
-                    <div>
-                      {Object.entries(assistantTaskLabels).map(([kind, label]) => (
-                        <button
-                          key={kind}
-                          disabled={busy}
-                          onClick={() =>
-                            prepareTask(
-                              kind as AssistantTaskKind,
-                              `用户申请${label}，范围限定为当前会话所选资料`,
-                            )
-                          }
-                        >
-                          {label}
-                          <ChevronRight size={13} />
-                        </button>
-                      ))}
-                    </div>
-                  </details>
-                </div>
+              </>
+            )}
+          </div>
+
+          <footer className="ga-composer ga-composer-clean">
+            {!modelAvailable && (
+              <p className="ga-config-note">
+                <TriangleAlert size={14} />
+                {modelUnavailableNotice}
+              </p>
+            )}
+            {current && toolsOpen && (
+              <div className="ga-tools-popover" role="menu" aria-label="快捷后台任务">
+                {Object.entries(assistantTaskLabels).map(([kind, label]) => (
+                  <button
+                    key={kind}
+                    type="button"
+                    disabled={busy}
+                    onClick={() => {
+                      setToolsOpen(false);
+                      prepareTask(
+                        kind as AssistantTaskKind,
+                        `用户申请${label}，范围限定为当前会话所选资料`,
+                      );
+                    }}
+                  >
+                    {label}
+                    <ChevronRight size={13} />
+                  </button>
+                ))}
               </div>
-              <footer className="ga-composer">
-                {!modelAvailable && (
-                  <p className="ga-config-note">
-                    <TriangleAlert size={14} />
-                    {modelUnavailableNotice}
-                  </p>
-                )}
-                <form
-                  onSubmit={(event) => {
+            )}
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                sendQuestion(question);
+              }}
+            >
+              <label className="sr-only" htmlFor="ga-question">
+                向智能财税副驾提问
+              </label>
+              <textarea
+                id="ga-question"
+                ref={questionInput}
+                rows={2}
+                value={question}
+                maxLength={4000}
+                disabled={busy || !!activeTurn || !modelAvailable}
+                placeholder={
+                  modelAvailable ? '输入财税或账务问题，回车发送…' : modelUnavailablePlaceholder
+                }
+                onChange={(event) => setQuestion(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && !event.shiftKey && !isCompositionKey(event)) {
                     event.preventDefault();
                     sendQuestion(question);
-                  }}
-                >
-                  <label className="sr-only" htmlFor="ga-question">
-                    向会计助手提问
-                  </label>
-                  <textarea
-                    id="ga-question"
-                    ref={questionInput}
-                    rows={2}
-                    value={question}
-                    maxLength={4000}
-                    disabled={busy || !!activeTurn || !modelAvailable}
-                    placeholder={
-                      modelAvailable
-                        ? '核对资料、解释依据，或让助手准备任务…'
-                        : modelUnavailablePlaceholder
-                    }
-                    onChange={(event) => setQuestion(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (
-                        event.key === 'Enter' &&
-                        (event.ctrlKey || event.metaKey) &&
-                        !isCompositionKey(event)
-                      ) {
-                        event.preventDefault();
-                        sendQuestion(question);
-                      }
-                    }}
-                  />
+                  }
+                }}
+              />
+              <div className="ga-composer-bar">
+                {current ? (
                   <button
-                    aria-label="发送会计助手问题"
-                    type="submit"
-                    disabled={
-                      busy || !!activeTurn || !modelAvailable || !assistantQuestion(question)
-                    }
+                    type="button"
+                    className={'ga-tools-trigger' + (toolsOpen ? ' active' : '')}
+                    disabled={busy}
+                    onClick={() => setToolsOpen((prev) => !prev)}
                   >
-                    {busy ? <LoaderCircle className="spinner" size={17} /> : <ArrowUp size={18} />}
+                    <ListChecks size={13} />
+                    后台任务
                   </button>
-                </form>
-                <p className="ga-composer-note">
-                  <ShieldCheck size={12} />
-                  <span>仅所选资料 · 任务须确认 · 凭证保留会计复核</span>
-                  <span>{question.length > 3500 ? `${question.length}/4000` : 'Ctrl ↵ 发送'}</span>
-                </p>
-              </footer>
-            </>
-          ) : (
-            <>
-              <div className="ga-quick-chat ga-scroll">
-                <section className="ga-permission-card" aria-label="数据权限说明">
-                  <div className="ga-permission-head">
-                    <ShieldCheck size={15} aria-hidden="true" />
-                    <strong>{roleMeta.title}</strong>
-                    <span>{roleMeta.scopeBadge}</span>
-                  </div>
-                  <p>{roleMeta.scopeDetail}</p>
-                </section>
-                <div className="ga-quick-prompts">
-                  <p className="ga-quick-title">您可以直接打字提问，或点下面常见问题一键查库：</p>
-                  <div className="ga-prompt-list">
-                    {roleMeta.quickPrompts.map((prompt) => (
-                      <button
-                        key={prompt}
-                        type="button"
-                        className="ga-prompt-chip"
-                        disabled={busy || !modelAvailable || scopeLoading}
-                        onClick={() => {
-                          if (modelAvailable) sendQuestion(prompt);
-                          else setQuestion(prompt);
-                        }}
-                      >
-                        <span>{prompt}</span>
-                        <ChevronRight size={14} aria-hidden="true" />
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                {!modelAvailable && (
-                  <div className="ga-offline-card" role="status">
-                    <TriangleAlert size={15} aria-hidden="true" />
-                    <div>
-                      <strong>智能问答暂离线（不影响正常做账）</strong>
-                      <p>{modelUnavailableNotice}</p>
-                    </div>
-                  </div>
+                ) : (
+                  <span className="ga-composer-hint">Shift + 回车换行</span>
                 )}
-              </div>
-              <footer className="ga-composer">
-                <form
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    sendQuestion(question);
-                  }}
+                <button
+                  aria-label="发送问题"
+                  type="submit"
+                  className="ga-send-btn"
+                  disabled={
+                    busy || !!activeTurn || !modelAvailable || !assistantQuestion(question)
+                  }
                 >
-                  <label className="sr-only" htmlFor="ga-question">
-                    向智能财税副驾提问
-                  </label>
-                  <textarea
-                    id="ga-question"
-                    ref={questionInput}
-                    rows={2}
-                    value={question}
-                    maxLength={4000}
-                    disabled={busy || !modelAvailable}
-                    placeholder={
-                      modelAvailable
-                        ? '直接输入大白话问题，系统按您的账号权限查库作答…'
-                        : modelUnavailablePlaceholder
-                    }
-                    onChange={(event) => setQuestion(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (
-                        event.key === 'Enter' &&
-                        !event.shiftKey &&
-                        !isCompositionKey(event)
-                      ) {
-                        event.preventDefault();
-                        sendQuestion(question);
-                      }
-                    }}
-                  />
-                  <button
-                    aria-label="发送智能财税副驾问题"
-                    type="submit"
-                    disabled={busy || !modelAvailable || !assistantQuestion(question)}
-                  >
-                    {busy ? <LoaderCircle className="spinner" size={17} /> : <ArrowUp size={18} />}
-                  </button>
-                </form>
-                <p className="ga-composer-note">
-                  <ShieldCheck size={12} />
-                  <span>{roleMeta.scopeBadge} · 越权查询自动拦截</span>
-                  <span>{question.length > 3500 ? `${question.length}/4000` : '回车直接发送'}</span>
-                </p>
-              </footer>
-            </>
-          )}
+                  {busy || !!activeTurn ? (
+                    <LoaderCircle className="spinner" size={16} />
+                  ) : (
+                    <ArrowUp size={16} />
+                  )}
+                </button>
+              </div>
+            </form>
+          </footer>
         </>
       ) : null}
     </div>

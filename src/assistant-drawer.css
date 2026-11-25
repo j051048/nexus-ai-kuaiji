@@ -33,51 +33,56 @@
 .assistant-unified-header {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 13px 14px 11px;
+  gap: 8px;
+  padding: 10px 12px;
   border-bottom: 1px solid var(--border);
-  background: var(--surface-soft);
+  background: var(--surface);
+  min-height: 48px;
 }
 .assistant-unified-mark {
-  width: 34px;
-  height: 34px;
+  width: 28px;
+  height: 28px;
   display: grid;
   place-items: center;
   flex: none;
-  border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--brand-soft);
   color: var(--brand);
 }
-.assistant-unified-header > div {
-  display: grid;
-  gap: 2px;
+.assistant-unified-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   min-width: 0;
+  flex: 1;
 }
 .assistant-unified-header strong {
-  font-size: var(--font-size-base);
+  font-size: 14px;
   color: var(--text-primary);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
-.assistant-unified-header small {
-  color: var(--text-muted);
-  font-size: var(--font-size-xs);
+.assistant-scope-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--brand-soft);
+  color: var(--brand);
+  font-size: 12px;
+  font-weight: var(--weight-medium);
 }
 .assistant-unified-header-actions {
   margin-left: auto;
   display: flex;
   align-items: center;
-  gap: 4px;
-}
-.assistant-scope-strip {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 7px 14px;
-  border-bottom: 1px solid var(--border);
-  background: var(--brand-soft);
-  color: var(--brand);
-  font-size: var(--font-size-xs);
-  font-weight: var(--weight-medium);
+  gap: 2px;
+  flex-shrink: 0;
 }
 .assistant-unified-tabs {
   display: flex;
