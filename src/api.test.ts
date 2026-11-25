@@ -380,3 +380,63 @@ describe('deployment transport limits', () => {
     expect(fetcher.mock.calls[0][1].headers).not.toHaveProperty('Content-Type');
   });
 });
+
+describe('低带宽内存级只读缓存与强安全失效', () => {
+  it('短时内重复读取或并发读取白名单只读接口只发一次请求，且返回独立副本', async () => {
+    setApiScope(credentials);
+    tokenGetter.mockResolvedValue('cache-token');
+    const fetcher = vi.fn(
+      async () => new Response(JSON.stringify({ companies: [{ id: 'c1', name: '安达出租车' }] })),
+    );
+    vi.stubGlobal('fetch', fetcher);
+
+    const [a, b] = await Promise.all([
+      api<{ companies: { id: string; name: string }[] }>('/companies', credentials),
+      api<{ companies: { id: string; name: string }[] }>('/companies', credentials),
+    ]);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(a.companies[0].name).toBe('安达出租车');
+    // 修改返回副本不得污染缓存
+    a.companies[0].name = '被篡改';
+    const c = await api<{ companies: { id: string; name: string }[] }>('/companies', credentials);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(c.companies[0].name).toBe('安达出租车');
+    expect(b.companies[0].name).toBe('安达出租车');
+  });
+
+  it('任意写操作或权限失效后，内存缓存瞬间清空并重新直连服务端', async () => {
+    setApiScope(credentials);
+    tokenGetter.mockResolvedValue('cache-token');
+    let count = 0;
+    const fetcher = vi.fn(async () => {
+      count += 1;
+      return new Response(JSON.stringify({ version: count }));
+    });
+    vi.stubGlobal('fetch', fetcher);
+
+    const first = await api<{ version: number }>('/companies', credentials);
+    expect(first.version).toBe(1);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+
+    // 任意写操作必须瞬间清空只读缓存
+    await api('/companies', credentials, { method: 'POST', body: { name: '新子公司' } });
+    const afterWrite = await api<{ version: number }>('/companies', credentials);
+    expect(afterWrite.version).toBe(3);
+
+    // 权限重验失效后必须再次直连服务端
+    invalidateApiScope(credentials);
+    const afterInvalidate = await api<{ version: number }>('/companies', credentials);
+    expect(afterInvalidate.version).toBe(4);
+  });
+
+  it('非白名单业务凭证路径永不命中缓存，始终实时直连', async () => {
+    setApiScope(credentials);
+    tokenGetter.mockResolvedValue('cache-token');
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({ ok: true })));
+    vi.stubGlobal('fetch', fetcher);
+
+    await api('/books/b1/drafts', credentials);
+    await api('/books/b1/drafts', credentials);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+});

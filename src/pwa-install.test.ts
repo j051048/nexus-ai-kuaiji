@@ -126,7 +126,10 @@ describe('PWA 国产手机与微信环境识别及安全边界', () => {
 
     const sw = readFileSync(resolve(root, 'public/sw.js'), 'utf8');
     expect(sw).toContain("url.pathname.startsWith('/api/')");
-    expect(sw).not.toContain('cache.put');
+    // 严格只允许缓存带内容哈希指纹的 /assets/ 与 /icons/ 静态资源，禁止缓存任意接口或 HTML 文档
+    expect(sw).toContain("pathname.startsWith('/assets/')");
+    expect(sw).toContain("pathname.startsWith('/icons/')");
+    expect(sw).toContain('isCacheableStaticPath(url.pathname)');
     expect(sw).not.toContain('cache.add');
   });
 

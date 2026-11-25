@@ -1,11 +1,15 @@
 /**
- * 衡账 PWA 轻量服务工作线程（财务安全：零业务数据缓存策略）。
+ * 衡账 PWA 轻量服务工作线程（静态指纹包本地强缓存 + 财务数据严格零缓存策略）。
  *
  * 设计原则：
- * 1. 严禁缓存任何 /api/* 响应、附件、身份或页面数据，避免多企业切账/撤权后残留陈旧财务信息。
- * 2. 所有请求默认实时直连网络，确保权限校验、凭证状态与报表版本与服务端强一致。
- * 3. 仅在彻底断网进行页面导航时，返回内置中文离线提示页，不伪造或展示历史金额。
+ * 1. 严禁缓存任何 /api/* 响应、身份信息、附件或 HTML 页面，避免切账/撤权后残留陈旧财务数据。
+ * 2. 仅缓存同源 /assets/*（构建自带内容哈希指纹的不可变脚本与样式）与 /icons/* 图标，
+ *    显著降低低带宽服务器（如 3M 带宽）下的重复下载耗时，二次打开首屏零静态流量。
+ * 3. 发版更新激活时自动清理历史旧缓存；彻底断网导航时返回中文离线提示页，不伪造历史金额。
  */
+
+const STATIC_CACHE = 'hengzhang-static-v1';
+const MAX_STATIC_ENTRIES = 160;
 
 const OFFLINE_HTML = `<!doctype html>
 <html lang="zh-CN">
@@ -73,11 +77,15 @@ const OFFLINE_HTML = `<!doctype html>
     <main>
       <div class="mark" aria-hidden="true">衡</div>
       <h1>当前网络已断开</h1>
-      <p>为保障账务与权限状态准确，衡账不会在离线状态下展示旧财务数据。请检查手机网络后重新连接。</p>
+      <p>为保障账务与权限状态准确，衡账不会在离线状态下展示旧财务数据。请检查网络后重新连接。</p>
       <button type="button" onclick="location.reload()">重新连接</button>
     </main>
   </body>
 </html>`;
+
+function isCacheableStaticPath(pathname) {
+  return pathname.startsWith('/assets/') || pathname.startsWith('/icons/');
+}
 
 self.addEventListener('install', () => {
   self.skipWaiting();
@@ -88,7 +96,7 @@ self.addEventListener('activate', (event) => {
     (async () => {
       if (typeof caches !== 'undefined') {
         const keys = await caches.keys();
-        await Promise.all(keys.map((key) => caches.delete(key)));
+        await Promise.all(keys.filter((key) => key !== STATIC_CACHE).map((key) => caches.delete(key)));
       }
       await self.clients.claim();
     })(),
@@ -100,7 +108,29 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET') return;
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
+  // 绝对禁止拦截或缓存任何后端财务接口
   if (url.pathname.startsWith('/api/')) return;
+
+  // 仅对带哈希指纹的静态脚本/样式与图标执行缓存优先，极大减轻低带宽服务器负担
+  if (isCacheableStaticPath(url.pathname) && typeof caches !== 'undefined') {
+    event.respondWith(
+      caches.open(STATIC_CACHE).then(async (cache) => {
+        const cached = await cache.match(request);
+        if (cached) return cached;
+        const response = await fetch(request);
+        if (response.ok && response.type === 'basic') {
+          const keys = await cache.keys();
+          if (keys.length >= MAX_STATIC_ENTRIES) {
+            await cache.delete(keys[0]);
+          }
+          await cache.put(request, response.clone());
+        }
+        return response;
+      }),
+    );
+    return;
+  }
+
   if (request.mode !== 'navigate') return;
 
   event.respondWith(

@@ -19,6 +19,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 from starlette.middleware.cors import CORSMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from .auth import AuthSettings, AuthError, Identity, SupabaseAuthenticator
@@ -713,6 +714,7 @@ def create_app(
         expose_headers=["X-Request-Id"],
         allow_credentials=False,
     )
+    app.add_middleware(GZipMiddleware, minimum_size=512, compresslevel=6)
 
     @app.middleware("http")
     async def authenticate_request(request: Request, call_next):

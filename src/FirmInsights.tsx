@@ -12,7 +12,7 @@ import {
   TrendingUp,
   Wallet,
 } from 'lucide-react';
-import { api, errorMessage } from './api';
+import { api, clearApiReadCache, errorMessage } from './api';
 import { Spinner } from './AppPrimitives';
 import { CompanyDrilldownDrawer } from './CompanyDrilldownDrawer';
 import {
@@ -979,7 +979,13 @@ export function FirmInsights({
                   onChange={(event) => handlePeriodChange(event.target.value)}
                 />
               </label>
-              <button type="button" onClick={() => setRevision((value) => value + 1)}>
+              <button
+                type="button"
+                onClick={() => {
+                  clearApiReadCache();
+                  setRevision((value) => value + 1);
+                }}
+              >
                 <RefreshCw size={16} />
                 刷新
               </button>
